@@ -113,29 +113,6 @@ function widened_parameter(node::Expr, index::Int)::Expr
     return widened
 end
 
-"""
-    DefinitionScopes(root, own_methods)
-
-Where the definitions of a package's sources resolve their names: `root`, the package's module
-(`Base` when none is loaded), and `modules`, the module each of `own_methods` was defined in, by its
-file (resolved with `realpath`) and line. `definition_scope` reads it.
-"""
-struct DefinitionScopes
-    root::Module
-    modules::Dict{Tuple{String, Int}, Module}
-end
-function DefinitionScopes(root::Module, own_methods::AbstractVector{Method})::DefinitionScopes
-    real_files = Dict{String, String}()
-    modules = Dict{Tuple{String, Int}, Module}()
-    for method in own_methods
-        file = string(method.file)
-        if isfile(file)
-            modules[(get!(() -> realpath(file), real_files, file), Int(method.line))] = method.module
-        end
-    end
-    return DefinitionScopes(root, modules)
-end
-
 """Each expression below parsed `node` (`node` included), mapped to the names of the `module` blocks around it in its file, outermost first."""
 function module_blocks!(found::IdDict{Expr, Vector{Symbol}}, node::Expr, path::AbstractVector{Symbol})::IdDict{Expr, Vector{Symbol}} # lint: abstract-local  Expr nodes hold untyped arguments
     inner = Meta.isexpr(node, :module) ? Symbol[path; node.args[2]] : collect(Symbol, path)
@@ -148,10 +125,37 @@ function module_blocks!(found::IdDict{Expr, Vector{Symbol}}, node::Expr, path::A
     return found
 end
 
-"""The module the `module` blocks named in `path` reach from `root`, as far as `root` binds them: `Inner` of `module Outer … module Inner`."""
-function block_scope(root::Module, path::AbstractVector{Symbol})::Module
-    current::Module = root
-    for name in path
+"""
+    DefinitionScopes(source, root, own_methods)
+
+Where the definitions of `source` resolve their names: `root`, the package's module (`Base` when none
+is loaded); `modules`, the module each of `own_methods` was defined in, by its file (resolved with
+`realpath`) and line; `blocks`, the `module` blocks around each expression of `source`
+(`module_blocks!`); and `path`, the `realpath` of `source`. `definition_scope` and `block_scope` read it.
+"""
+struct DefinitionScopes
+    root::Module
+    modules::Dict{Tuple{String, Int}, Module}
+    blocks::IdDict{Expr, Vector{Symbol}}
+    path::String
+end
+function DefinitionScopes(source::Source, root::Module, own_methods::AbstractVector{Method})::DefinitionScopes
+    real_files = Dict{String, String}()
+    modules = Dict{Tuple{String, Int}, Module}()
+    for method in own_methods
+        file = string(method.file)
+        if isfile(file)
+            modules[(get!(() -> realpath(file), real_files, file), Int(method.line))] = method.module
+        end
+    end
+    blocks = module_blocks!(IdDict{Expr, Vector{Symbol}}(), first(source.located).node, Symbol[])
+    return DefinitionScopes(root, modules, blocks, realpath(source.path))
+end
+
+"""The module the `module` blocks around expression `item` reach from the root of `scopes`, as far as the root binds them: `Inner` of `module Outer … module Inner`."""
+function block_scope(scopes::DefinitionScopes, item::Located)::Module
+    current::Module = scopes.root
+    for name in get(scopes.blocks, item.node, Symbol[])
         if isdefined(current, name) && getglobal(current, name) isa Module
             current = getglobal(current, name)
         end
@@ -160,19 +164,19 @@ function block_scope(root::Module, path::AbstractVector{Symbol})::Module
 end
 
 """
-    definition_scope(scopes, item, path, blocks)
+    definition_scope(scopes, item)
 
-The module whose names definition `item` of the file at `path` (resolved with `realpath`) reads: the
-module of a method compiled from it, which also places a file included into a submodule, else the
-`module` blocks around it in `blocks` (`module_blocks!`), else the package's root.
+The module whose names definition `item` reads: the module of a method compiled from it, which also
+places a file included into a submodule, else the module its `module` blocks reach (`block_scope`),
+else the package's root.
 """
-function definition_scope(scopes::DefinitionScopes, item::Located, path::String, blocks::IdDict{Expr, Vector{Symbol}})::Module
+function definition_scope(scopes::DefinitionScopes, item::Located)::Module
     for line in definition_lines(item.node, item.line)
-        if haskey(scopes.modules, (path, line))
-            return scopes.modules[(path, line)]
+        if haskey(scopes.modules, (scopes.path, line))
+            return scopes.modules[(scopes.path, line)]
         end
     end
-    return block_scope(scopes.root, get(blocks, item.node, Symbol[]))
+    return block_scope(scopes, item)
 end
 
 """
@@ -187,14 +191,12 @@ and the defined name; the detail names the `<:` form.
 """
 function invariant_parameters(source::Source, root::Module, own_methods::AbstractVector{Method} = Method[])::Vector{Site} # lint: abstract-local  Expr nodes hold untyped arguments
     sites = Site[]
-    scopes = DefinitionScopes(root, own_methods)
-    blocks = module_blocks!(IdDict{Expr, Vector{Symbol}}(), first(source.located).node, Symbol[])
-    path = realpath(source.path)
+    scopes = DefinitionScopes(source, root, own_methods)
     for item in source.located
         if isnothing(signature_call(item.node)) || length(item.node.args) < 2
             continue
         end
-        scope = definition_scope(scopes, item, path, blocks)
+        scope = definition_scope(scopes, item)
         variables = where_variables(item.node)
         span = definition_lines(item.node, item.line)
         for node in collect(Expr, Iterators.flatten(curly_expressions.(argument_annotations(item.node))))
