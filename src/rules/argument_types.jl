@@ -93,18 +93,19 @@ own_type(type::Type, scope::Module)::Bool = !(scope in (Base, Core)) && type isa
 """
     enumerated_supertype(node, scope, variables = ())
 
-The common supertype of the types parsed `Union{…}` expression `node` lists in `scope`
+The common supertype of the types parsed `Union{…}` expression `node` lists in `scope`, the
+definition's module,
 (`AbstractFloat` of `Union{Float32, Float64}`) when it lists two or more concrete types besides
-`Nothing` and `Missing`, none of them the package's own (`own_type`); otherwise `Any`, as for members
+`Nothing` and `Missing`, none of them the package's own (`own_type` of `root`, the package's module); otherwise `Any`, as for members
 that share only `Any`. A member that names a type variable or does not resolve gives `Any` too.
 """
-function enumerated_supertype(node::Expr, scope::Module, variables::Any = ())::Type # lint: widened-return # lint: abstract-local  reflects on the types the members name
+function enumerated_supertype(node::Expr, scope::Module, variables::Any = (); root::Module = scope)::Type # lint: widened-return # lint: abstract-local  reflects on the types the members name
     members = resolved_type.(node.args[2:end], (scope,), (variables,))
     if !all(Base.Fix2(isa, Type), members)
         return Any
     end
     listed = collect(Type, filter(!absent_value, members))
-    if length(listed) < 2 || !all(isconcretetype, listed) || any(Base.Fix2(own_type, scope), listed)
+    if length(listed) < 2 || !all(isconcretetype, listed) || any(Base.Fix2(own_type, root), listed)
         return Any
     end
     return reduce(typejoin, listed)
@@ -160,21 +161,26 @@ end
 is_union(node::Expr)::Bool = first(node.args) === :Union
 
 """
-    enumerated_unions(source, scope)
+    enumerated_unions(source, root, own_methods = Method[])
 
 Each `Union` of two or more concrete types besides `Nothing` and `Missing` that share a supertype
 narrower than `Any` (`enumerated_supertype`), in an argument annotation, a `where` bound or a `const`
-alias of `source`, its names resolved in `scope`: `Union{Float32, Float64}` turns away `Float16`,
+alias of `source`, its names resolved in the definition's own module (`definition_scope`, from
+`own_methods` and the `module` blocks below `root`, the package's module): `Union{Float32, Float64}` turns away `Float16`,
 `BigFloat` and the dual numbers of automatic differentiation, which `AbstractFloat` takes. One site
 per union, keyed by file and the defined name. A method with a sibling that takes all its
 arguments (`covered_by_sibling`) is exempt: the union picks a fast path, as with BLAS's float types.
 """
-function enumerated_unions(source::Source, scope::Module)::Vector{Site} # lint: abstract-local  Expr nodes hold untyped arguments
+function enumerated_unions(source::Source, root::Module, own_methods::AbstractVector{Method} = Method[])::Vector{Site} # lint: abstract-local  Expr nodes hold untyped arguments
     sites = Site[]
+    scopes = DefinitionScopes(root, own_methods)
+    blocks = module_blocks!(IdDict{Expr, Vector{Symbol}}(), first(source.located).node, Symbol[])
+    path = realpath(source.path)
     for item in source.located
         if !isnothing(signature_call(item.node)) && length(item.node.args) >= 2
+            scope = definition_scope(scopes, item, path, blocks)
             unions = filter(is_union, collect(Expr, Iterators.flatten(curly_expressions.(argument_annotations(item.node)))))
-            supertypes = collect(Type, enumerated_supertype.(unions, (scope,), (where_variables(item.node),)))
+            supertypes = collect(Type, enumerated_supertype.(unions, (scope,), (where_variables(item.node),); root))
             if !all(Base.Fix1(===, Any), supertypes) && !covered_by_sibling(item, source, scope)
                 key = "$(source.name) $(defined_name(item.node))"
                 append!(sites, union_sites(unions, supertypes, key, source.path, definition_lines(item.node, item.line)))
@@ -182,7 +188,8 @@ function enumerated_unions(source::Source, scope::Module)::Vector{Site} # lint: 
         elseif item.node.head === :const && Meta.isexpr(only(item.node.args), :(=), 2)
             alias, value = only(item.node.args).args
             aliased = filter(is_union, curly_expressions(value))
-            alias_supertypes = collect(Type, enumerated_supertype.(aliased, (scope,), (Meta.isexpr(alias, :curly) ? alias.args[2:end] : (),)))
+            alias_scope = block_scope(root, blocks[item.node])
+            alias_supertypes = collect(Type, enumerated_supertype.(aliased, (alias_scope,), (Meta.isexpr(alias, :curly) ? alias.args[2:end] : (),); root))
             append!(sites, union_sites(aliased, alias_supertypes, "$(source.name) $(type_head(alias))", source.path, item.line:item.line))
         end
     end
@@ -217,19 +224,87 @@ function widened_parameter(node::Expr, index::Int)::Expr
 end
 
 """
-    invariant_parameters(source, scope)
+    DefinitionScopes(root, own_methods)
+
+Where the definitions of a package's sources resolve their names: `root`, the package's module
+(`Base` when none is loaded), and `modules`, the module each of `own_methods` was defined in, by its
+file (resolved with `realpath`) and line. `definition_scope` reads it.
+"""
+struct DefinitionScopes
+    root::Module
+    modules::Dict{Tuple{String, Int}, Module}
+end
+function DefinitionScopes(root::Module, own_methods::AbstractVector{Method})::DefinitionScopes
+    real_files = Dict{String, String}()
+    modules = Dict{Tuple{String, Int}, Module}()
+    for method in own_methods
+        file = string(method.file)
+        if isfile(file)
+            modules[(get!(() -> realpath(file), real_files, file), Int(method.line))] = method.module
+        end
+    end
+    return DefinitionScopes(root, modules)
+end
+
+"""Each expression below parsed `node` (`node` included), mapped to the names of the `module` blocks around it in its file, outermost first."""
+function module_blocks!(found::IdDict{Expr, Vector{Symbol}}, node::Expr, path::AbstractVector{Symbol})::IdDict{Expr, Vector{Symbol}} # lint: abstract-local  Expr nodes hold untyped arguments
+    inner = Meta.isexpr(node, :module) ? Symbol[path; node.args[2]] : collect(Symbol, path)
+    found[node] = inner
+    for argument in node.args
+        if argument isa Expr
+            module_blocks!(found, argument, inner)
+        end
+    end
+    return found
+end
+
+"""The module the `module` blocks named in `path` reach from `root`, as far as `root` binds them: `Inner` of `module Outer … module Inner`."""
+function block_scope(root::Module, path::AbstractVector{Symbol})::Module
+    current::Module = root
+    for name in path
+        if isdefined(current, name) && getglobal(current, name) isa Module
+            current = getglobal(current, name)
+        end
+    end
+    return current
+end
+
+"""
+    definition_scope(scopes, item, path, blocks)
+
+The module whose names definition `item` of the file at `path` (resolved with `realpath`) reads: the
+module of a method compiled from it, which also places a file included into a submodule, else the
+`module` blocks around it in `blocks` (`module_blocks!`), else the package's root.
+"""
+function definition_scope(scopes::DefinitionScopes, item::Located, path::String, blocks::IdDict{Expr, Vector{Symbol}})::Module
+    for line in definition_lines(item.node, item.line)
+        if haskey(scopes.modules, (path, line))
+            return scopes.modules[(path, line)]
+        end
+    end
+    return block_scope(scopes.root, get(blocks, item.node, Symbol[]))
+end
+
+"""
+    invariant_parameters(source, root, own_methods = Method[])
 
 Each abstract type parameter written without `<:` (`invariant_parameter`) in an argument annotation or
-`where` bound of `source`, its names resolved in `scope`: `f(xs::AbstractVector{Real})` throws a
-`MethodError` for `f([1.0, 2.0])`, which `AbstractVector{<:Real}` takes. One site per parameter,
-keyed by file and the defined name; the detail names the `<:` form.
+`where` bound of `source`: `f(xs::AbstractVector{Real})` throws a `MethodError` for `f([1.0, 2.0])`,
+which `AbstractVector{<:Real}` takes. Each definition's names resolve in its own module
+(`definition_scope`): the module of its method among `own_methods`, the package's own, else the
+`module` blocks around it below `root`, the package's module. One site per parameter, keyed by file
+and the defined name; the detail names the `<:` form.
 """
-function invariant_parameters(source::Source, scope::Module)::Vector{Site} # lint: abstract-local  Expr nodes hold untyped arguments
+function invariant_parameters(source::Source, root::Module, own_methods::AbstractVector{Method} = Method[])::Vector{Site} # lint: abstract-local  Expr nodes hold untyped arguments
     sites = Site[]
+    scopes = DefinitionScopes(root, own_methods)
+    blocks = module_blocks!(IdDict{Expr, Vector{Symbol}}(), first(source.located).node, Symbol[])
+    path = realpath(source.path)
     for item in source.located
         if isnothing(signature_call(item.node)) || length(item.node.args) < 2
             continue
         end
+        scope = definition_scope(scopes, item, path, blocks)
         variables = where_variables(item.node)
         span = definition_lines(item.node, item.line)
         for node in collect(Expr, Iterators.flatten(curly_expressions.(argument_annotations(item.node))))
