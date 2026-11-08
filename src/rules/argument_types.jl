@@ -221,9 +221,12 @@ function widened_parameter(node::Expr, index::Int)::Expr
     return widened
 end
 
+"""The name parsed `module` block `node` declares: its first `Symbol` argument, wherever the Julia version places it (1.14 adds an argument before it)."""
+module_name(node::Expr)::Symbol = node.args[findfirst(Base.Fix2(isa, Symbol), node.args)]
+
 """Each expression below parsed `node` (`node` included), mapped to the names of the `module` blocks around it in its file, outermost first."""
 function module_blocks!(found::IdDict{Expr, Vector{Symbol}}, node::Expr, path::AbstractVector{Symbol})::IdDict{Expr, Vector{Symbol}} # lint: abstract-local  Expr nodes hold untyped arguments
-    inner = Meta.isexpr(node, :module) ? Symbol[path; node.args[2]] : collect(Symbol, path)
+    inner = Meta.isexpr(node, :module) ? Symbol[path; module_name(node)] : collect(Symbol, path)
     found[node] = inner
     for argument in node.args
         if argument isa Expr
