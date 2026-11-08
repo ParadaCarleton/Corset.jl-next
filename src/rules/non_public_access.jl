@@ -13,8 +13,7 @@ using .Membership: Package
 Each name of another module that `mod` reaches by qualified access (`Base.JuliaSyntax`) or explicit
 import (`using Base: uniontypes`) though that module neither exports it nor declares it `public`.
 ExplicitImports reads `file` and the files it includes. A qualified access has a site per use; an
-explicit import has one per name, at its first import. The names of `DE_FACTO_PUBLIC`, such as
-`LinearAlgebra.BlasFloat`, are exempt.
+explicit import has one per name, at its first import.
 """
 function non_public_accesses(mod::Module, file::AbstractString = entry_file(mod))::Vector{Site}
     findings = improper_qualified_accesses(mod, file)

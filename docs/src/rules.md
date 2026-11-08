@@ -208,7 +208,7 @@ Each takes `Corset.Source(repo, file)`, the file read and parsed once.
 | `return-type` | `return_type_calls` | calls of `Core.Compiler.return_type`, a guess at a result type | restructure so the type is known |
 | `concrete-arg` | `concrete_arguments` | arguments annotated `Vector`, `Matrix`, `Array` or `Dict` that the method never resizes | `AbstractVector{T}` and the like; they accept views, `OffsetArray` and GPU arrays |
 | `concrete-return` | `concrete_returns(source, mod)` | result types that name a concrete type, `Vector{E}` included; `AbstractMatrix{T}` passes; a constructor returning its own type is exempt | annotate by what the arguments bind; `Corset.CONCRETE_RETURN_FIX` is the log text |
-| `enumerated-union` | `enumerated_unions(source, mod, own_methods)` | a `Union` of two or more concrete types besides `Nothing` and `Missing` whose common supertype is narrower than `Any`, in an argument annotation, a `where` bound or a `const` alias, its names resolved in the definition's own module: `Union{Float32, Float64}` turns away `Float16`, `BigFloat` and automatic differentiation's dual numbers. `Union{Int, String}` shares only `Any` and passes, as does a union of the package's own types (its exceptions). A method beside a sibling that takes all its arguments (`f(x::Union{Float32, Float64})` beside `f(x::Real)`) is exempt: the union picks a fast path | the supertype the detail names (`AbstractFloat`), or a fallback method for the rest; `LinearAlgebra.BlasFloat` for a BLAS-backed method |
+| `enumerated-union` | `enumerated_unions(source, mod, own_methods)` | unions of concrete types that have a common parent type, such as `Union{Float32, Float64}`; see below | use the parent type (`AbstractFloat`) |
 | `invariant-parameter` | `invariant_parameters(source, mod, own_methods)` | an abstract type parameter written without `<:` in an argument annotation or `where` bound: `f(xs::AbstractVector{Real})` throws a `MethodError` for `f([1.0, 2.0])`. Names resolve in each definition's own module, a submodule's included files too. `Any` and the parameters of `Tuple`, `NTuple`, `Type` and `Val` pass | `AbstractVector{<:Real}`, which the detail spells, or a type parameter |
 | `annotation` | `missing_annotations` | methods with an unannotated argument or result | annotate |
 | `float64` | `float64_sites(source)` | `Float64` tokens and untyped float literals; `float-widening` reads where they widen a narrower argument | `zero(T)`, `T(0.5)` or `oftype(x, 0.5)` |
@@ -223,6 +223,24 @@ Each takes `Corset.Source(repo, file)`, the file read and parsed once.
 | `quadratic-vcat` | `quadratic_concatenations(source)` | a fold whose operator is `vcat`, `hcat`, `cat` or `hvcat` that runs one piece at a time: `reduce` with `init` (Base's one-allocation `reduce(vcat, ::AbstractVector{<:AbstractVector})` then does not apply) or over a generator, and every `foldl`, `foldr`, `mapreduce`, `mapfoldl` and `mapfoldr`, `do` form included. Each step copies the accumulator, so the fold is quadratic in the total length | `collect(T, Iterators.flatten(pieces))`, a flattening comprehension `T[x for piece in pieces for x in piece]`, or `reduce(vcat, pieces)` on a nonempty vector |
 | `non-atomic-write` | `non_atomic_writes(source)` | `write.(paths, texts)`, `foreach(write, paths, texts)`, and loops, comprehensions and mapped anonymous functions whose body calls `write(path, …)` or `open(path, "w")` (also `"a"`, `"w+"`, `"a+"`, `"r+"`, `write = true`, `append = true`, `truncate = true`) on a path built from the iteration variable; a crash halfway leaves some files rewritten. A function that calls `mv` or `rename` stages its writes and passes | compute every text, write each to a temporary file beside its target, then rename them all (`Corset.write_all!`) |
 | `forbidden-pattern` | `forbidden_pattern_sites(repo, source)` | lines that match a `Repository.forbidden_patterns` entry (`name`, `pattern`, `message`, optional `unless`, `skip_files`) | what the entry's `message` says |
+
+### `enumerated-union`: `enumerated_unions(source, mod, own_methods)`
+
+This rule prohibits unions of concrete types that have a common parent type, such as
+`Union{Float32, Float64}`. Such a union rejects the other subtypes of the parent: `Float16`,
+`BigFloat` and the dual numbers of automatic differentiation. It does not make the method faster,
+because Julia compiles the method for each argument type anyway.
+
+The rule checks argument types, `where` bounds and `const` aliases. It finds names in the module of
+each definition, so a submodule's own types count. These unions are not reported:
+
+  - A union whose only common parent is `Any`, such as `Union{Int, String}`.
+  - A union of the package's own types, such as its exception types.
+  - A union in a method when another method accepts all its arguments, such as
+    `f(x::Union{Float32, Float64})` beside `f(x::Real)`. The union then selects a fast path.
+
+Repair: use the parent type that the message names, or add a method for the other types. For a
+method that calls BLAS, use `LinearAlgebra.BlasFloat`.
 
 ## Rules with fixers
 

@@ -1,10 +1,17 @@
-# Rules on argument annotations that accept less than they mean to. `enumerated-union`: a `Union`
-# that lists concrete types (`Union{Float32, Float64}`) where their common supertype (`AbstractFloat`)
-# says what the method takes. `invariant-parameter`: an abstract type parameter written without `<:`
-# (`AbstractVector{Real}`), which a container of a concrete subtype (`Vector{Float64}`) does not match.
+# Two rules on argument types.
 #
-# The rules read parsed annotations and resolve their names by reflection, so the values they handle
-# have no static type: the helpers below opt out of the rules on inferred code that flag that.
+# `enumerated-union` prohibits unions of concrete types that have a common parent type, such as
+# `Union{Float32, Float64}`. These unions reject the other subtypes of the parent: `Float16`,
+# `BigFloat` and the dual numbers of automatic differentiation. They do not make the method faster,
+# because Julia compiles the method for each argument type anyway. Use the parent type,
+# `AbstractFloat`.
+#
+# `invariant-parameter` prohibits abstract type parameters without `<:`, such as
+# `AbstractVector{Real}`. Type parameters are invariant: a `Vector{Float64}` is not an
+# `AbstractVector{Real}`, so the call fails with a `MethodError`. Use `AbstractVector{<:Real}`.
+#
+# The helpers below find type names by reflection, so their values have no static type. For this
+# reason they opt out of the rules that check inferred code.
 
 # lint: runtime-dispatch-begin  parsed `Expr` arguments and the types reflection returns have no static type
 # lint: unmarked-mutation-begin  only reads parsed annotations; the possible writes are the runtime dispatches
@@ -91,13 +98,17 @@ end
 own_type(type::Type, scope::Module)::Bool = !(scope in (Base, Core)) && type isa DataType && within(parentmodule(type), scope)
 
 """
-    enumerated_supertype(node, scope, variables = ())
+    enumerated_supertype(node, scope, variables = (); root = scope)
 
-The common supertype of the types parsed `Union{…}` expression `node` lists in `scope`, the
-definition's module,
-(`AbstractFloat` of `Union{Float32, Float64}`) when it lists two or more concrete types besides
-`Nothing` and `Missing`, none of them the package's own (`own_type` of `root`, the package's module); otherwise `Any`, as for members
-that share only `Any`. A member that names a type variable or does not resolve gives `Any` too.
+The parent type that the `Union{…}` expression `node` should name instead. For
+`Union{Float32, Float64}` it is `AbstractFloat`. The names resolve in `scope`.
+
+The result is `Any`, which means "no finding", in these cases:
+
+  - Fewer than two members remain after `Nothing` and `Missing` are removed.
+  - A member is not concrete, is a type variable, or does not resolve.
+  - A member is a type of the package `root`. A package can list its own exception types on purpose.
+  - The only common parent is `Any`, as for `Union{Int, String}`.
 """
 function enumerated_supertype(node::Expr, scope::Module, variables::Any = (); root::Module = scope)::Type # lint: widened-return # lint: abstract-local  reflects on the types the members name
     members = resolved_type.(node.args[2:end], (scope,), (variables,))
@@ -111,7 +122,7 @@ function enumerated_supertype(node::Expr, scope::Module, variables::Any = (); ro
     return reduce(typejoin, listed)
 end
 
-"""The repair text of an enumerated union `node` whose members share `supertype`; its `Nothing` and `Missing` members stay in the repair."""
+"""The message for union `node`. It names `supertype` as the fix and keeps `Nothing` and `Missing` in the fix."""
 function enumerated_detail(node::Expr, supertype::Type)::String # lint: abstract-local  Expr nodes hold untyped arguments
     absent = [string(member) for member in node.args[2:end] if member in (:Nothing, :Missing)]
     repair = isempty(absent) ? string(supertype) : "Union{$(join([absent; string(supertype)], ", "))}"
@@ -131,10 +142,9 @@ covered(method::Method, siblings::AbstractVector{Method})::Bool = any(Base.Fix2(
 """
     covered_by_sibling(item, source, scope)
 
-Whether every method `scope` compiled from definition `item` of `source` has a sibling method of the
-same function whose signature takes all its arguments: the generic fallback beside a specialized
-method (`f(x::Union{Float32, Float64})` beside `f(x::Real)`). A function `scope` does not bind
-has no sibling it can see.
+Whether another method of the same function accepts all the arguments of definition `item`. An
+example is `f(x::Union{Float32, Float64})` beside `f(x::Real)`. Then the union only selects a fast
+path, and other types still work, so the rule does not report it. The function must be bound in `scope`.
 """
 function covered_by_sibling(item::Located, source::Source, scope::Module)::Bool
     name = defined_name(item.node)
@@ -146,7 +156,7 @@ function covered_by_sibling(item::Located, source::Source, scope::Module)::Bool
     return !isempty(own) && all(Base.Fix2(covered, siblings), own)
 end
 
-"""The sites of the `unions` whose entry of `supertypes` is narrower than `Any`, keyed `key` and placed at `lines` of `path`."""
+"""One `Site` for each union in `unions` whose entry in `supertypes` is not `Any`."""
 function union_sites(unions::AbstractVector{Expr}, supertypes::AbstractVector{<:Type}, key::String, path::String, lines::UnitRange{Int})::Vector{Site}
     sites = Site[]
     for (node, supertype) in zip(unions, supertypes)
@@ -163,13 +173,14 @@ is_union(node::Expr)::Bool = first(node.args) === :Union
 """
     enumerated_unions(source, root, own_methods = Method[])
 
-Each `Union` of two or more concrete types besides `Nothing` and `Missing` that share a supertype
-narrower than `Any` (`enumerated_supertype`), in an argument annotation, a `where` bound or a `const`
-alias of `source`, its names resolved in the definition's own module (`definition_scope`, from
-`own_methods` and the `module` blocks below `root`, the package's module): `Union{Float32, Float64}` turns away `Float16`,
-`BigFloat` and the dual numbers of automatic differentiation, which `AbstractFloat` takes. One site
-per union, keyed by file and the defined name. A method with a sibling that takes all its
-arguments (`covered_by_sibling`) is exempt: the union picks a fast path, as with BLAS's float types.
+Find unions of concrete types that have a common parent type, such as `Union{Float32, Float64}`.
+The method should take the parent type (`AbstractFloat`) instead. `enumerated_supertype` lists the
+unions that pass.
+
+The rule checks argument types, `where` bounds and `const` aliases. It finds names in the module
+of each definition (`definition_scope`). `root` is the package's module, and `own_methods` are the
+package's methods. A method is not reported when another method accepts all its arguments
+(`covered_by_sibling`). BLAS fast paths use this pattern.
 """
 function enumerated_unions(source::Source, root::Module, own_methods::AbstractVector{Method} = Method[])::Vector{Site} # lint: abstract-local  Expr nodes hold untyped arguments
     sites = Site[]

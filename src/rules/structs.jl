@@ -15,10 +15,15 @@ is_struct_binding(@nospecialize(value::Any))::Bool = value isa Type && !is_closu
 mutable_structs(mod::Module)::Vector{DataType} = filter(ismutabletype, module_structs(mod))
 
 """
-Fields of `type` declared with an abstract type (not a type parameter), a `Union` of two or more
-types besides `Nothing` and `Missing`, or a concrete container of either: `Vector{Any}`,
-`Base.RefValue{Any}` and `Dict{Tuple, Any}` are concrete, but every read from them is dynamically
-dispatched, and a `Union{Float32, Float64}` field leaves each read a union a parameter would fix.
+The fields of `type` whose declared type the compiler cannot know exactly. Code that reads such a
+field cannot be compiled for one type. A field is reported when its type is one of these:
+
+  - An abstract type, such as `Real`. A type parameter of the struct is not abstract.
+  - A `Union` of two or more types other than `Nothing` and `Missing`, such as `Union{Float32, Float64}`.
+  - A concrete container of the types above, such as `Vector{Any}` or `Dict{Tuple, Any}`.
+
+The fix is a type parameter. `Union{Nothing, Float64}` is not reported: one type and an absent
+value are a common pattern that the compiler handles well.
 """
 function abstract_fields(type::DataType)::Vector{Symbol}
     field_names = collect(Symbol, fieldnames(type))
@@ -29,13 +34,13 @@ end
 abstract_declaration(@nospecialize(declared::Any))::Bool =
     !(declared isa TypeVar) && (declared isa Union ? union_holds_abstract(declared) : holds_abstract(declared))
 
-"""Whether `type` is one of the types a `Union` adds for an absent value, which a field may hold: `Nothing` and `Missing`."""
+"""Whether `type` is `Nothing` or `Missing`, the types a `Union` adds for an absent value."""
 absent_value(type::Any)::Bool = type === Nothing || type === Missing
 
 """
-Whether the `Union` `declared` lists two or more members besides `Nothing` and `Missing`
-(`Union{Float32, Float64}`, `Union{T, Int}`), or one that `holds_abstract` (`Union{Nothing, Real}`).
-`Union{Nothing, Float64}` and `Union{Missing, T}` hold an absent value or one type, and pass.
+Whether the `Union` `declared` makes a field abstract. First remove `Nothing` and `Missing`. The
+union is abstract when two or more members remain, as in `Union{Float32, Float64}`. It is also
+abstract when the one remaining member is abstract, as in `Union{Nothing, Real}`.
 """
 function union_holds_abstract(declared::Union)::Bool # lint: abstract-local  a Union's members are types and type variables
     members = filter(!absent_value, Base.uniontypes(declared)) # lint: non-public-access  Base has no public accessor for a Union's members
