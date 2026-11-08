@@ -129,9 +129,10 @@ end
     DefinitionScopes(source, root, own_methods)
 
 Where the definitions of `source` resolve their names: `root`, the package's module (`Base` when none
-is loaded); `modules`, the module each of `own_methods` was defined in, by its file (resolved with
-`realpath`) and line; `blocks`, the `module` blocks around each expression of `source`
-(`module_blocks!`); and `path`, the `realpath` of `source`. `definition_scope` and `block_scope` read it.
+is loaded); `modules`, the module each of `own_methods` was defined in, by its file and line;
+`blocks`, the `module` blocks around each expression of `source` (`module_blocks!`); and `path`, the
+path of `source`. Paths are compared as `place_path` spells them, which reads no file: a rule reads
+only the parsed `Source`. `definition_scope` and `block_scope` read it.
 """
 struct DefinitionScopes
     root::Module
@@ -140,17 +141,13 @@ struct DefinitionScopes
     path::String
 end
 function DefinitionScopes(source::Source, root::Module, own_methods::AbstractVector{Method})::DefinitionScopes
-    real_files = Dict{String, String}()
-    modules = Dict{Tuple{String, Int}, Module}()
-    for method in own_methods
-        file = string(method.file)
-        if isfile(file)
-            modules[(get!(() -> realpath(file), real_files, file), Int(method.line))] = method.module
-        end
-    end
+    modules = Dict{Tuple{String, Int}, Module}((place_path(string(method.file)), Int(method.line)) => method.module for method in own_methods)
     blocks = module_blocks!(IdDict{Expr, Vector{Symbol}}(), first(source.located).node, Symbol[])
-    return DefinitionScopes(root, modules, blocks, realpath(source.path))
+    return DefinitionScopes(root, modules, blocks, place_path(source.path))
 end
+
+"""The absolute, normalized spelling of `path`, by which a method's file matches a source's; it reads no file."""
+place_path(path::AbstractString)::String = normpath(abspath(path))
 
 """The module the `module` blocks around expression `item` reach from the root of `scopes`, as far as the root binds them: `Inner` of `module Outer … module Inner`."""
 function block_scope(scopes::DefinitionScopes, item::Located)::Module
