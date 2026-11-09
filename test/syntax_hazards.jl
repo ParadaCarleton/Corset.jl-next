@@ -46,3 +46,12 @@ end
     @test length(found_in(Corset.non_atomic_writes, "non-atomic-write")) == 9
     @test Corset.level(Corset.load_config(mktempdir()), Corset.NonAtomicWriteRule()) === :warn
 end
+
+@testset "collect and dims-keyword: eager vectors and dims reductions" begin
+    sites(finder::Function, text::String) = (path = tempname() * ".jl"; write(path, text); finder(parsed(path)))
+    @test length(sites(Corset.collect_calls, "f(x) = collect(x)\ng(x) = Base.collect(Int, x)\nh(x) = sum(x)\n")) == 2
+    text = "a(x) = sum(x; dims = 1)\nb(x) = sum(x, dims = 2)\nc(x) = sum.(x; dims = 1)\nd(dims, x) = sum(x; dims)\ne(dims, x) = sum(x, dims)\nf(x) = sum(x)\n"
+    @test [site.line for site in sites(Corset.dims_keyword_calls, text)] == [1, 2, 3, 4]
+    @test Corset.level(Corset.load_config(mktempdir()), Corset.CollectRule()) === :allow
+    @test Corset.level(Corset.load_config(mktempdir()), Corset.DimsKeywordRule()) === :allow
+end
