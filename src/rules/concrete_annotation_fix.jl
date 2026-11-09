@@ -4,7 +4,7 @@
 
 const ABSTRACT_PARENTS = (
     Vector = "AbstractVector", Matrix = "AbstractMatrix", Array = "AbstractArray", Dict = "AbstractDict",
-    Float64 = "AbstractFloat", Float32 = "AbstractFloat", Int = "Integer", String = "AbstractString", # lint: float64  the names of the annotations it rewrites
+    Float64 = "Real", Float32 = "Real", Int = "Integer", String = "AbstractString", # lint: float64  the names of the annotations it rewrites
 )
 
 """The annotated arguments of call syntax `call` as (name, annotation) pairs; keyword arguments and splats included."""

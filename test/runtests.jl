@@ -1683,7 +1683,7 @@ end
     @test concrete_annotation_fixed("f(x::Vector{Int}) = 1 # lint: concrete-annotation  kept\n") == "f(x::Vector{Int}) = 1 # lint: concrete-annotation  kept\n"
     @test concrete_annotation_fixed("function nothing_to_fix end\nf(x::Int, y::Vector{Int}) = x\n") == "function nothing_to_fix end\nf(x::Integer, y::AbstractVector{Int}) = x\n"
     @test concrete_annotation_fixed("f(x::Float64, y::Float32; z::Int = 1, w::String = \"\")::Float64 = x\n") ==
-        "f(x::AbstractFloat, y::AbstractFloat; z::Integer = 1, w::AbstractString = \"\")::Float64 = x\n"
+        "f(x::Real, y::Real; z::Integer = 1, w::AbstractString = \"\")::Float64 = x\n"
     @test concrete_annotation_fixed("f(x::Union{Nothing, Int}, y::T) where {T <: Float64} = x\n") == "f(x::Union{Nothing, Integer}, y::T) where {T <: Float64} = x\n"
     @test concrete_annotation_fixed("struct Pair2\n    x::Float64\nend\nf(x::Float64) = 1 # lint: concrete-arg  kept\n") == "struct Pair2\n    x::Float64\nend\nf(x::Float64) = 1 # lint: concrete-arg  kept\n"
     @test concrete_annotation_fixed("f(x::Base.Vector{Int}) = 1\n") == "f(x::Base.Vector{Int}) = 1\n"
@@ -1691,4 +1691,7 @@ end
     tree = write_tree(mktempdir(), ["source.jl" => fixed])
     remaining = Corset.concrete_annotations(Corset.Source(Repository(tree), joinpath(tree, "source.jl")), Base)
     @test !any(site -> occursin(r"`(Vector|Matrix|Array)`", site.detail), remaining)
+    # `abstract-float` reports every AbstractFloat annotation, so the fixer must never write one.
+    floats = concrete_annotation_fixed("f(x::Float64, y::Float32, z::Union{Nothing, Float64}) = x\n")
+    @test floats == "f(x::Real, y::Real, z::Union{Nothing, Real}) = x\n" && !occursin("AbstractFloat", floats)
 end
