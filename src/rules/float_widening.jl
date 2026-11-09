@@ -94,20 +94,25 @@ function returned_operands(statement::Core.ReturnNode, ir::COMPILER.IRCode)::Vec
     return [Operand(statement.val, ir)]
 end
 
-"""The floats IR statement `statement` makes: those of its inferred `type`, or a `return`'s value's (its `operands`)."""
-result_floats(::Any, type::Any, ::AbstractVector{Operand})::Vector{DataType} = value_floats(COMPILER.widenconst(type)) # lint: unstable-variable  IR statements and types are any value
-result_floats(::Core.ReturnNode, ::Any, operands::AbstractVector{Operand})::Vector{DataType} = collect(DataType, Iterators.flatten(getfield.(operands, :floats)))
+"""The floats IR statement `statement` of `ir` makes: those of its inferred `type`, or a `return`'s value's."""
+result_floats(::Any, type::Any, ::COMPILER.IRCode)::Vector{DataType} = value_floats(COMPILER.widenconst(type)) # lint: unstable-variable  IR statements and types are any value
+result_floats(statement::Core.ReturnNode, ::Any, ir::COMPILER.IRCode)::Vector{DataType} =
+    collect(DataType, Iterators.flatten(getfield.(returned_operands(statement, ir), :floats)))
 
 """
 The detail of IR statement `statement`, of inferred type `type`, when it widens: its result holds a
 float wider than `budget` and no computed operand already did. It names the first operand that brings
-the wide float in, else the callee; `nothing` when the statement does not widen.
+the wide float in, else the callee; `nothing` when the statement does not widen. The operands, whose
+labels print IR values, are read only for a wide result: nearly every statement returns first.
 """
 function widening_detail(statement::Any, type::Any, ir::COMPILER.IRCode, budget::FloatBudget)::Union{Nothing, String} # lint: unstable-variable  IR statements and types are any value
+    result = result_floats(statement, type, ir)
+    if !wider(result, budget)
+        return nothing
+    end
     operands = statement_operands(statement, ir)
-    result = result_floats(statement, type, operands)
     wide = operands[wider.(getfield.(operands, :floats), (budget,))]
-    if !wider(result, budget) || any(getfield.(wide, :computed))
+    if any(getfield.(wide, :computed))
         return nothing
     end
     return "$(widening_source(statement, wide)) makes a $(widest(result)); the widest float argument is $(widest(budget.floats))"
