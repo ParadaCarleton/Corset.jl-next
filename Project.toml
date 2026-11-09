@@ -33,3 +33,5 @@ baseline = "corset_baseline.toml"
 
     [preferences.Corset.levels]
     concrete-return = "allow"
+    concrete-annotation = "allow"
+    any-supertype = "allow"

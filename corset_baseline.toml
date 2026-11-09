@@ -40,9 +40,6 @@
 
 [c-type]
 
-[concrete-arg]
-"src/config.jl" = 2
-
 [concrete-return]
 
 [fatou]

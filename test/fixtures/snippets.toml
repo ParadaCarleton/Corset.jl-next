@@ -48,7 +48,7 @@ source = '''
 filled(count_::Int)::Vector{Float32} = (buffer = zeros(Float32, count_); buffer .= 1; buffer)
 '''
 
-[concrete-arg]
+[concrete-annotation]
 source = '''
 first_of(values::Vector{Int})::Int = first(values)
 grows(values::Vector{Int})::Vector{Int} = push!(values, 1)
@@ -316,4 +316,11 @@ function each_block(names::Vector{String})::Nothing
 end
 lambda_broadcast(names::Vector{String})::Vector{Int} = (name -> write(name, name)).(names)
 opted(paths::Vector{String}, texts::Vector{String})::Nothing = (write.(paths, texts); nothing) # lint: non-atomic-write  scratch files
+'''
+
+[any-supertype]
+source = '''
+struct Unrelated
+    payload
+end
 '''

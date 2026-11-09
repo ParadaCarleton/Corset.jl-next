@@ -1,4 +1,4 @@
-# The fixer of `concrete-arg`: an argument annotated `Vector{T}`, `Matrix{T}`, `Array{T, N}` or
+# The fixer of `concrete-annotation`: an argument annotated `Vector{T}`, `Matrix{T}`, `Array{T, N}` or
 # `Dict{K, V}` that the method never resizes takes `AbstractVector{T}` and its siblings instead.
 
 const ABSTRACT_CONTAINERS = (Vector = "AbstractVector", Matrix = "AbstractMatrix", Array = "AbstractArray", Dict = "AbstractDict")
@@ -51,7 +51,7 @@ function definition_nodes(node::SYNTAX.SyntaxNode)::Vector{SYNTAX.SyntaxNode}
 end
 
 """The repairs of the Julia file `source`: one per container annotation of an argument the method does not resize."""
-function concrete_arg_repairs(source::Source)::Vector{Repair{ByteRewrite}}
+function concrete_annotation_repairs(source::Source)::Vector{Repair{ByteRewrite}}
     repairs = Repair{ByteRewrite}[]
     for definition in definition_nodes(source.tree)
         parts = node_children(definition)
@@ -70,9 +70,9 @@ function concrete_arg_repairs(source::Source)::Vector{Repair{ByteRewrite}}
 end
 
 """
-    concrete_arg_plan(repository, directories)
+    concrete_annotation_plan(repository, directories)
 
 The `FixPlan` that writes the concrete container annotations of arguments a method never resizes as their abstract forms.
 """
-concrete_arg_plan(repository::Repository, directories::Tuple{Vararg{String}})::FixPlan{ByteRewrite, typeof(rewritten_texts)} =
-    FixPlan(collect(Repair{ByteRewrite}, Iterators.flatten(concrete_arg_repairs.(directory_sources(repository, directories)))), rewritten_texts)
+concrete_annotation_plan(repository::Repository, directories::Tuple{Vararg{String}})::FixPlan{ByteRewrite, typeof(rewritten_texts)} =
+    FixPlan(collect(Repair{ByteRewrite}, Iterators.flatten(concrete_annotation_repairs.(directory_sources(repository, directories)))), rewritten_texts)

@@ -128,7 +128,7 @@ function with_overrides(
         overrides::AbstractVector{<:Pair{String, Symbol}},
         candidate_limit::Union{Nothing, Integer},
     )::Config
-    levels::Dict{String, Symbol} = merge(config.levels, Dict{String, Symbol}(overrides))
+    levels::Dict{String, Symbol} = merge(config.levels, Dict{String, Symbol}(canonical_rule_name(rule) => level for (rule, level) in overrides))
     unknown::Vector{String} = sort!(setdiff(collect(keys(levels)), collect(rule_name.(RULES))))
     if !isempty(unknown)
         throw(UsageError("no such rule: $(join(unknown, ", ")); `corset rules` lists them"))

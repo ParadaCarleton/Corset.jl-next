@@ -230,8 +230,11 @@ repeated_statements(source)
 @rule FileRule "return-type" :default "calls of Core.Compiler.return_type" (context, source) ->
 return_type_calls(source)
 
-@rule FileRule "concrete-arg" :default "arguments annotated with a concrete container the method never resizes" (context, source) ->
-concrete_arguments(source)
+@rule FileRule "concrete-annotation" :pedantic "type annotations that name a concrete type (arguments, results, bounds, public struct fields)" (context, source) ->
+concrete_annotations(source, scope(context))
+
+@rule FileRule "any-supertype" :pedantic "structs with supertype Any, which later code cannot extend" (context, source) ->
+any_supertype_sites(source)
 
 @rule FileRule "concrete-return" :pedantic "results annotated with a concrete type" (context, source) ->
 concrete_returns(source, scope(context))
@@ -305,8 +308,14 @@ fix_plan(::NanInitializerRule, repository::Repository, directories::Tuple{Vararg
 fix_plan(::QuadraticVcatRule, repository::Repository, directories::Tuple{Vararg{String}})::FixPlan{ByteRewrite, typeof(rewritten_texts)} =
     flatten_plan(repository, directories)
 
-fix_plan(::ConcreteArgRule, repository::Repository, directories::Tuple{Vararg{String}})::FixPlan{ByteRewrite, typeof(rewritten_texts)} =
-    concrete_arg_plan(repository, directories)
+fix_plan(::ConcreteAnnotationRule, repository::Repository, directories::Tuple{Vararg{String}})::FixPlan{ByteRewrite, typeof(rewritten_texts)} =
+    concrete_annotation_plan(repository, directories)
+
+"""Former rule names that levels, baseline tables and `# lint:` comments still accept, with the rule each became."""
+const RULE_ALIASES = Dict{String, String}("concrete-arg" => "concrete-annotation")
+
+"""The current name of the rule `name` is, or was."""
+canonical_rule_name(name::AbstractString)::String = get(RULE_ALIASES, name, String(name))
 
 """Every rule, ordered by name."""
 const RULES = Tuple(sort!([type() for kind in (ModuleRule, TreeRule, FileRule) for type in subtypes(kind)]; by = rule_name))

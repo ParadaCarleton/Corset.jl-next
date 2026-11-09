@@ -96,7 +96,7 @@ function load_config(root::AbstractString)::Config
         read_preferences(joinpath(root, "LocalPreferences.toml"), ("Corset",)),
     )
     levels = Dict{String, Symbol}(
-        rule => Symbol(level)
+        canonical_rule_name(rule) => Symbol(level)
             for (rule, level) in something(prefs.levels, Dict{String, String}())
     )
     for (rule, level) in levels

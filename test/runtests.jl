@@ -5,7 +5,7 @@ using JET: JET
 using TOML: TOML
 using Corset: Corset
 using Corset: CONCRETE_RETURN_FIX, Repository, Site, Source, ratchet!, offenders!, @call_sites, @opt_sites, float64_ops, undefined_names, abstract_fields, unstable_variables,
-    c_type_sites, impure_anon_funs, concrete_arguments, concrete_returns, fatou_sites, float64_sites, hidden_inputs,
+    c_type_sites, impure_anon_funs, concrete_returns, fatou_sites, float64_sites, hidden_inputs,
     jscpd_sites, misplaced_imports, missing_annotations, module_structs, non_public_accesses, nothing_returns,
     one_letter_sites, present_directories, range_guards, repeated_prefix, repeated_statements,
     repository_sources, return_type_calls, struct_locations, struct_site, unmarked_effects,
@@ -553,10 +553,6 @@ end
         @test site_lines(found_in(return_type_calls, "return-type")) == [1]
     end
 
-    @testset "concrete-arg: an argument annotated with a concrete container it does not resize" begin
-        @test site_lines(found_in(concrete_arguments, "concrete-arg")) == [1]
-    end
-
     @testset "concrete-return: a result annotated with a concrete type, `Matrix{T}` included" begin
         sites = found_in(source -> concrete_returns(source, Base), "concrete-return")
         @test site_keys(sites) == ["source.jl fixed", "source.jl squared"]
@@ -1032,11 +1028,6 @@ end
         path = tempname() * ".jl"
         write(path, "@testset \"inside\" begin\n    f(a) = 1\nend\n")
         @test any(item.enclosing === :inside for item in parsed(path).located)
-    end
-    @testset "concrete containers: bare, in a Union, and not a type at all" begin
-        @test Corset.is_concrete_container(Meta.parse("Union{Vector, Nothing}"))
-        @test !Corset.is_concrete_container(Meta.parse("a.b"))
-        @test !Corset.is_concrete_container(1)
     end
     @testset "annotated arguments: keyword, keyword-section and splat forms" begin
         @test Corset.annotated_arguments(Expr(:kw, :(x::Int), 1)) == [(:x, :Int)]
@@ -1575,6 +1566,7 @@ include("cli.jl")
 include("syntax_hazards.jl")
 include("constant_array.jl")
 include("nan_initializer.jl")
+include("concrete_annotation.jl")
 include("fixer_properties.jl")
 
 @testset "undefined_names: a name nothing defines is reported, and so is an unlowered testset" begin
@@ -1675,23 +1667,24 @@ include("fixer_properties.jl")
     @test !isfile(marker)
 end
 
-"""The text the concrete-arg fixer leaves of `text`, written to a fresh file."""
-function concrete_arg_fixed(text::AbstractString)::String
+"""The text the concrete-annotation fixer leaves of `text`, written to a fresh file."""
+function concrete_annotation_fixed(text::AbstractString)::String
     tree = write_tree(mktempdir(), ["source.jl" => text])
-    Corset.fix!(Corset.ConcreteArgRule(), Repository(tree), (".",))
+    Corset.fix!(Corset.ConcreteAnnotationRule(), Repository(tree), (".",))
     return read(joinpath(tree, "source.jl"), String)
 end
 
-@testset "concrete-arg: the fixer widens containers a method never resizes" begin
-    @test concrete_arg_fixed("f(x::Vector{Int}, y::Matrix)::Int = 1\n") == "f(x::AbstractVector{Int}, y::AbstractMatrix)::Int = 1\n"
-    @test concrete_arg_fixed("g(d::Dict{Symbol, Int}; w::Union{Nothing, Array{Float32, 2}} = nothing)::Int = 1\n") ==
+@testset "concrete-annotation: the fixer widens containers a method never resizes" begin
+    @test concrete_annotation_fixed("f(x::Vector{Int}, y::Matrix)::Int = 1\n") == "f(x::AbstractVector{Int}, y::AbstractMatrix)::Int = 1\n"
+    @test concrete_annotation_fixed("g(d::Dict{Symbol, Int}; w::Union{Nothing, Array{Float32, 2}} = nothing)::Int = 1\n") ==
         "g(d::AbstractDict{Symbol, Int}; w::Union{Nothing, AbstractArray{Float32, 2}} = nothing)::Int = 1\n"
     resizing = "function h!(x::Vector{Int}, y::Vector{Int})::Nothing\n    push!(x, 1)\n    return nothing\nend\n"
-    @test concrete_arg_fixed(resizing) == replace(resizing, "y::Vector" => "y::AbstractVector")
-    @test concrete_arg_fixed("f(x::Vector{Int}) = 1 # lint: concrete-arg  kept\n") == "f(x::Vector{Int}) = 1 # lint: concrete-arg  kept\n"
-    @test concrete_arg_fixed("function nothing_to_fix end\nf(x::Int, y::Vector{Int}) = x\n") == "function nothing_to_fix end\nf(x::Int, y::AbstractVector{Int}) = x\n"
-    @test concrete_arg_fixed("f(x::Base.Vector{Int}) = 1\n") == "f(x::Base.Vector{Int}) = 1\n"
-    fixed = concrete_arg_fixed("f(x::Vector{Int}, y::Array)::Int = 1\n")
+    @test concrete_annotation_fixed(resizing) == replace(resizing, "y::Vector" => "y::AbstractVector")
+    @test concrete_annotation_fixed("f(x::Vector{Int}) = 1 # lint: concrete-annotation  kept\n") == "f(x::Vector{Int}) = 1 # lint: concrete-annotation  kept\n"
+    @test concrete_annotation_fixed("function nothing_to_fix end\nf(x::Int, y::Vector{Int}) = x\n") == "function nothing_to_fix end\nf(x::Int, y::AbstractVector{Int}) = x\n"
+    @test concrete_annotation_fixed("f(x::Base.Vector{Int}) = 1\n") == "f(x::Base.Vector{Int}) = 1\n"
+    fixed = concrete_annotation_fixed("f(x::Vector{Int}, y::Array)::Int = 1\n")
     tree = write_tree(mktempdir(), ["source.jl" => fixed])
-    @test isempty(Corset.concrete_arguments(Corset.Source(Repository(tree), joinpath(tree, "source.jl"))))
+    remaining = Corset.concrete_annotations(Corset.Source(Repository(tree), joinpath(tree, "source.jl")), Base)
+    @test !any(site -> occursin(r"`(Vector|Matrix|Array)`", site.detail), remaining)
 end

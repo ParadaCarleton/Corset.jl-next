@@ -165,7 +165,7 @@ end
 
 """The comment `found`, an `OPT_OUT` match in a comment token that starts at byte `start`, placed by `lines`."""
 opt_out_comment(lines::SYNTAX.SourceFile, start::Integer, found::RegexMatch)::OptOutComment =
-    OptOutComment(found[1]::AbstractString, opt_out_form(found[2]), SYNTAX.source_line(lines, start + found.offset - 1))
+    OptOutComment(canonical_rule_name(found[1]::AbstractString), opt_out_form(found[2]), SYNTAX.source_line(lines, start + found.offset - 1))
 
 """The form an `OPT_OUT` suffix (`file`, `begin`, `end` or none) gives its comment."""
 opt_out_form(suffix::AbstractString)::Symbol = Symbol(suffix)
@@ -245,9 +245,9 @@ exceeds(found::Integer, entry::Integer)::Bool = found > entry
 """A baseline file: per rule, the allowance (a count or a note) of each offender."""
 const Baseline = Dict{String, Dict{String, Union{Int, String}}}
 
-"""The baseline in the TOML file at `path`."""
+"""The baseline in the TOML file at `path`; a table named for a former rule name (`RULE_ALIASES`) is read under the current one."""
 read_baseline(path::AbstractString)::Baseline =
-    Baseline(rule => Dict{String, Union{Int, String}}(entries) for (rule, entries) in TOML.parsefile(path))
+    Baseline(canonical_rule_name(rule) => Dict{String, Union{Int, String}}(entries) for (rule, entries) in TOML.parsefile(path))
 
 """Write `baseline` to the file at `path` in one rename, so a reader never sees half a file."""
 function write_baseline!(baseline::Baseline, path::AbstractString)::String

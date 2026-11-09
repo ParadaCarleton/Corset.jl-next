@@ -961,19 +961,6 @@ const RESIZERS = (
     :setdiff!,
 )
 
-"""Whether parsed type expression `annotation` is a concrete container (`Vector`, `Matrix`, `Array`, `Dict`, bare or with parameters), alone or as a direct member of a `Union`."""
-is_concrete_container(annotation::Symbol)::Bool = annotation in CONCRETE_CONTAINERS
-function is_concrete_container(annotation::Expr)::Bool
-    if annotation.head !== :curly
-        return false
-    end
-    if first(annotation.args) === :Union
-        return any(is_concrete_container, annotation.args[2:end])
-    end
-    return (first(annotation.args) in CONCRETE_CONTAINERS)::Bool
-end
-is_concrete_container(::Any)::Bool = false
-
 """Whether parsed `node` resizes the variable `name`: a call of `push!`, `empty!` or another size-changing function on it."""
 function resizes(node::Expr, name::Symbol)::Bool # lint: unstable-variable  Expr nodes hold untyped arguments
     if node.head === :call &&
@@ -1021,33 +1008,6 @@ function annotated_arguments(argument::Expr)::Vector{Tuple{Symbol, Any}} # lint:
     return found
 end
 annotated_arguments(::Any)::Vector{Tuple{Symbol, Any}} = Tuple{Symbol, Any}[]
-
-"""
-Arguments annotated with a concrete container (`is_concrete_container`) that the method does not
-resize, one site per argument at the method's signature, keyed by file: `AbstractVector{T}` takes a
-view, an `OffsetArray` or a GPU array, a `Vector{T}` takes none of them.
-"""
-function concrete_arguments(source::Source)::Vector{Site} # lint: unstable-variable  Expr nodes hold untyped arguments
-    (; located) = source
-    sites = Site[]
-    for item in located
-        call = signature_call(item.node)
-        if isnothing(call) || length(item.node.args) < 2
-            continue
-        end
-        span = definition_lines(item.node, item.line)
-        body = item.node.args[2]
-        for argument in call.args[2:end]
-            for (name, annotation) in annotated_arguments(argument)
-                if is_concrete_container(annotation) &&
-                        !(body isa Expr && resizes(body, name))
-                    push!(sites, Site(source.name, source.path, first(span), last(span), ""))
-                end
-            end
-        end
-    end
-    return sites
-end
 
 # Result types that need no generic form: nothing, booleans, tuples and named tuples.
 const EXEMPT_RESULT_TYPES = (:Nothing, :Bool, :NamedTuple, :Tuple, :NTuple)

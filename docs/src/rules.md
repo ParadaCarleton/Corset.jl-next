@@ -16,8 +16,8 @@ A `pedantic` rule enforces house style that Rust allows, or is a noisy heuristic
 
 | Group | Rules |
 | --- | --- |
-| `default` | `abstract-field`, `annotation`, `bang`, `broad-catch`, `concrete-arg`, `derived-constant`, `fatou`, `float-widening`, `forbidden-pattern`, `hidden-input`, `impure-anon-fun`, `jet`, `misplaced-import`, `mutable-struct`, `non-atomic-write`, `non-public-access`, `overspecialized-anon-fun`, `quadratic-vcat`, `recursion-limit`, `repeated-statement`, `return-type`, `runtime-dispatch`, `unmarked-mutation`, `unstable-anon-fun`, `unstable-return`, `unstable-variable`, `where-return` |
-| `pedantic` | `c-type`, `concrete-return`, `constant-array`, `file-length`, `float64`, `jscpd`, `nan-initializer`, `nothing-return`, `one-letter`, `quadratic-scan`, `range-guard`, `ref`, `repeated-prefix`, `struct-constant`, `wide-struct` |
+| `default` | `abstract-field`, `annotation`, `bang`, `broad-catch`, `derived-constant`, `fatou`, `float-widening`, `forbidden-pattern`, `hidden-input`, `impure-anon-fun`, `jet`, `misplaced-import`, `mutable-struct`, `non-atomic-write`, `non-public-access`, `overspecialized-anon-fun`, `quadratic-vcat`, `recursion-limit`, `repeated-statement`, `return-type`, `runtime-dispatch`, `unmarked-mutation`, `unstable-anon-fun`, `unstable-return`, `unstable-variable`, `where-return` |
+| `pedantic` | `any-supertype`, `c-type`, `concrete-annotation`, `concrete-return`, `constant-array`, `file-length`, `float64`, `jscpd`, `nan-initializer`, `nothing-return`, `one-letter`, `quadratic-scan`, `range-guard`, `ref`, `repeated-prefix`, `struct-constant`, `wide-struct` |
 
 `corset rules` prints each rule's group and level. `[preferences.Corset.levels]` and the `--allow`,
 `--warn` and `--deny` flags set the level of one rule.
@@ -201,7 +201,8 @@ Each takes `Corset.Source(repo, file)`, the file read and parsed once.
 | `range-guard` | `range_guards` | `floatmin`/`floatmax`, `exp`'s range edges (88, 709), `isfinite(exp(…))` | compute in log space or clamp at the source |
 | `repeated-statement` | `repeated_statements` | a statement repeated in one block; the same line in two branches passes | delete the copy |
 | `return-type` | `return_type_calls` | calls of `Core.Compiler.return_type`, a guess at a result type | restructure so the type is known |
-| `concrete-arg` | `concrete_arguments` | arguments annotated `Vector`, `Matrix`, `Array` or `Dict` that the method never resizes | `AbstractVector{T}` and the like; they accept views, `OffsetArray` and GPU arrays |
+| `concrete-annotation` | `concrete_annotations(source, mod)` | a type annotation that names a concrete type: argument, `where` bound, result, or a field of a public struct (exported or `public`). Fields must name a type parameter, so `x::Real` is flagged too. Also bare `Type`, bare `Vararg`, a `Function` the method only passes through, and a type argument that fixes an invariant parameter (`AbstractVector{Float64}`, `AbstractVector{Real}`). `Bool`, enums and types whose supertype is `Any` (`Nothing`, `Symbol`, tuples) are exempt, as is the head of a container the method resizes | `AbstractVector{<:Real}`, `Type{T}`, `f::F`, `Vararg{T, N}`, a type variable for a field. `concrete-arg` is the former name and still works in levels, baselines and `# lint:` comments |
+| `any-supertype` | `any_supertype_sites(source)` | a `struct` with no supertype or `<: Any` | declare an abstract supertype so later code can extend the type |
 | `concrete-return` | `concrete_returns(source, mod)` | result types that name a concrete type, `Vector{E}` included; `AbstractMatrix{T}` passes; a constructor returning its own type is exempt | annotate by what the arguments bind; `Corset.CONCRETE_RETURN_FIX` is the log text |
 | `annotation` | `missing_annotations` | methods with an unannotated argument or result | annotate |
 | `float64` | `float64_sites(source)` | `Float64` tokens and untyped float literals; `float-widening` reads where they widen a narrower argument | `zero(T)`, `T(0.5)` or `oftype(x, 0.5)` |
