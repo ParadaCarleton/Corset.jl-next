@@ -52,7 +52,7 @@ end
         root = write_tree(mktempdir(), [location => text])
         return Corset.unseeded_rngs(root, Source(Repository(root), joinpath(root, location)))
     end
-    @test [site.line for site in sites("test/a.jl", "a = rand(3)\nb = rand(Xoshiro(1), 3)\nc = Xoshiro()\nd = randn(rng, 2)\ne = shuffle(1:3)\n")] == [1, 3, 5]
+    @test [site.line for site in sites("test/a.jl", "a = rand(3)\nb = rand(Xoshiro(1), 3)\nc = Xoshiro()\nd = randn(rng, 2)\ne = shuffle(1:3)\nf = rand(state.rng, 2)\n")] == [1, 3, 5]
     @test isempty(sites("test/a.jl", "Random.seed!(1)\na = rand(3)\nb = randn(2)\n"))
     @test isempty(sites("src/a.jl", "a = rand(3)\n"))
     @test Corset.level(Corset.load_config(mktempdir()), Corset.UnseededRngRule()) === :allow

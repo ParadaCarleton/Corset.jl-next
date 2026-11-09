@@ -7,10 +7,18 @@ const RANDOM_DRAWS = (:rand, :randn, :rand!, :randn!, :randexp, :randexp!, :samp
 const SYSTEM_SEEDED = (:Xoshiro, :MersenneTwister, :default_rng, :RandomDevice, :TaskLocalRNG, :StableRNG, :Random123)
 
 """Whether parsed argument `node` is a generator: a name containing `rng` or `random`, or a constructor call."""
-is_generator(node::Symbol)::Bool = occursin(r"rng|random|generator"i, string(node))
-is_generator(node::Expr)::Bool = callee(node) in SYSTEM_SEEDED || (node.head === :. && is_generator(last(node.args)))
-is_generator(node::QuoteNode)::Bool = is_generator(node.value)
-is_generator(::Any)::Bool = false
+function is_generator(node::Union{Symbol, Expr, QuoteNode})::Bool
+    if node isa Symbol
+        return occursin(r"rng|random|generator"i, string(node))
+    end
+    if node isa QuoteNode
+        return generator_argument(node.value)
+    end
+    return callee(node) in SYSTEM_SEEDED || (node.head === :. && generator_argument(last(node.args)))
+end
+
+"""Whether parsed `node`, of any kind, is a generator; inlined so the check of its kind leaves a call on a concrete type."""
+@inline generator_argument(node::Any)::Bool = node isa Union{Symbol, Expr, QuoteNode} && is_generator(node)
 
 """Whether parsed expression `node` seeds the global generator: a call of `seed!`."""
 seeds_global(node::Expr)::Bool = callee(node) === :seed!
@@ -28,11 +36,14 @@ function unseeded_rngs(root::AbstractString, source::Source)::Vector{Site}
         return Site[]
     end
     seeded = any(item -> seeds_global(item.node), located)
-    return [
-        Site("$name $(item.enclosing)", path, item.line, detail)
-            for item in located
-            for detail in [unseeded_detail(item.node, seeded)] if !isempty(detail)
-    ]
+    sites = Site[]
+    for item in located
+        detail = unseeded_detail(item.node, seeded)
+        if !isempty(detail)
+            push!(sites, Site("$name $(item.enclosing)", path, item.line, detail))
+        end
+    end
+    return sites
 end
 
 """Why call `node` draws without a pinned seed, or the empty string when it does not."""
@@ -40,7 +51,7 @@ function unseeded_detail(node::Expr, seeded::Bool)::String
     if node.head === :call && callee(node) in SYSTEM_SEEDED && isempty(call_arguments(node))
         return "builds a generator from the system; pass a seed"
     end
-    if node.head === :call && callee(node) in RANDOM_DRAWS && !seeded && !is_generator(get(call_arguments(node), 1, nothing))
+    if node.head === :call && callee(node) in RANDOM_DRAWS && !seeded && !generator_argument(get(call_arguments(node), 1, nothing))
         return "draws from the global generator, which no `Random.seed!` call in this file pins"
     end
     return ""
