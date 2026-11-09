@@ -19,22 +19,31 @@ const FINITENESS_TESTS = (:isfinite, :isnan, :isinf)
 const ELEMENT_FILTERS = (:filter, :filter!, :findall, :deleteat!, :count)
 
 """Whether parsed expression `node` mentions a finiteness test at any depth."""
-mentions_finiteness(node::Expr)::Bool = any(mentions_finiteness, node.args)
+mentions_finiteness(node::Expr)::Bool = any(mentions_any_finiteness, node.args)
 mentions_finiteness(node::Symbol)::Bool = node in FINITENESS_TESTS
-mentions_finiteness(::Any)::Bool = false
+
+"""Whether parsed `node`, of any kind, mentions a finiteness test; inlined so the check of its kind leaves calls on concrete types."""
+@inline function mentions_any_finiteness(node::Any)::Bool
+    if node isa Expr
+        return mentions_finiteness(node)
+    elseif node isa Symbol
+        return mentions_finiteness(node)
+    end
+    return false
+end
 
 """Whether the expression `item` drops or skips elements by a finiteness test: `filter(isfinite, x)`, `x[isfinite.(x)]` or `isnan(x) && continue`."""
 function drops_nonfinite(node::Expr)::Bool
     if node.head === :call && callee(node) in ELEMENT_FILTERS
-        return any(mentions_finiteness, call_arguments(node))
+        return any(mentions_any_finiteness, call_arguments(node))
     end
     if node.head === :ref
-        return any(mentions_finiteness, node.args[2:end])
+        return any(mentions_any_finiteness, node.args[2:end])
     end
     if node.head === :if
-        return mentions_finiteness(first(node.args)) && any(branch -> Meta.isexpr(branch, :block) && any(statement -> statement == Expr(:continue), branch.args), node.args[2:end])
+        return mentions_any_finiteness(first(node.args)) && any(branch -> Meta.isexpr(branch, :block) && any(Base.Fix2(Meta.isexpr, :continue), branch.args), node.args[2:end])
     end
-    return node.head === :(&&) && mentions_finiteness(first(node.args)) && last(node.args) == Expr(:continue)
+    return node.head === :(&&) && mentions_any_finiteness(first(node.args)) && Meta.isexpr(last(node.args), :continue)
 end
 
 """Elements dropped or skipped by a finiteness test, keyed by file and the function they sit in; a NaN or infinity is a failure to report."""
