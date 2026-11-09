@@ -27,6 +27,7 @@ struct Config
     forbidden_patterns::Tuple{Vararg{ForbiddenPattern}}
     banned_words::Tuple{Vararg{String}}
     banned_suffixes::Tuple{Vararg{String}}
+    no_default_names::Tuple{Vararg{Symbol}}
 end
 
 const LEVELS = (:allow, :warn, :deny)
@@ -56,6 +57,7 @@ end
     forbidden_patterns::Union{Nothing, Vector{ForbiddenPatternPreference}} = nothing
     banned_words::Union{Nothing, Vector{String}} = nothing
     banned_suffixes::Union{Nothing, Vector{String}} = nothing
+    no_default_names::Union{Nothing, Vector{String}} = nothing
 end
 
 """Merge two preference dictionaries, with `over` overriding matching keys in `under`."""
@@ -126,6 +128,7 @@ function load_config(root::AbstractString)::Config
         Tuple(forbidden_pattern.(something(prefs.forbidden_patterns, ForbiddenPatternPreference[]))),
         Tuple(something(prefs.banned_words, String[])),
         Tuple(something(prefs.banned_suffixes, String[])),
+        Tuple(Symbol.(something(prefs.no_default_names, String[]))),
     )
 end
 
@@ -211,6 +214,7 @@ function repository(config::Config, root::AbstractString)::Repository
         config.forbidden_patterns,
         config.banned_words,
         config.banned_suffixes,
+        config.no_default_names,
     )
 end
 

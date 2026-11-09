@@ -59,3 +59,14 @@ end
     @test !Corset.is_banned(:cellular, ("cell",), ())
     @test Corset.load_config(mktempdir()).banned_words == ()
 end
+
+@testset "no-default: a listed name never takes a default" begin
+    function sites(text::String)::Vector{Site}
+        root = write_tree(mktempdir(), ["a.jl" => text])
+        return Corset.default_sites(Repository(root; no_default_names = (:precision, :rent)), Source(Repository(root), joinpath(root, "a.jl")))
+    end
+    text = "f(x; precision = 1) = x\ng(x, rent::Float32 = 1) = x\nh(x; other = 1, precision) = x\n@kwdef struct P\n    precision::Float32 = 1\n    other::Int = 2\n    rent::Float32\nend\n"
+    @test [site.line for site in sites(text)] == [1, 2, 4]
+    @test Corset.level(Corset.load_config(mktempdir()), Corset.NoDefaultRule()) === :warn
+    @test Corset.load_config(mktempdir()).no_default_names == ()
+end

@@ -148,6 +148,7 @@ function with_overrides(
         config.forbidden_patterns,
         config.banned_words,
         config.banned_suffixes,
+        config.no_default_names,
     )
 end
 
