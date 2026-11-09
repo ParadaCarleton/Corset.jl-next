@@ -4,40 +4,43 @@
 # Heads whose parameters are covariant, so each parameter is itself an annotation.
 const COVARIANT_HEADS = (:Union, :Tuple, :NTuple, :Vararg, :Type)
 
-"""The type that parsed name `annotation` refers to in `scope` or Base, or `nothing` for a type variable, a name that resolves to no type, or an unresolved name."""
-function lookup_type(annotation::Symbol, scope::Module, variables::AbstractVector{Symbol})::Union{Type, Nothing}
+"""
+How parsed type name `annotation` reads in `scope` or Base: `:variable` for a type variable of `variables`,
+`:unresolved` for a name that is no type, `:exempt` for `Bool`, an `Enum` type or a type whose direct supertype
+is `Any` (`Nothing`, `Symbol`, `Missing`, tuples), `:concrete` for a concrete type with an abstract parent, else `:abstract`.
+"""
+function type_class(annotation::Symbol, scope::Module, variables::AbstractVector{Symbol})::Symbol
     if annotation in variables
-        return nothing
+        return :variable
     end
     for source in (scope, Base)
         if isdefined(source, annotation)
-            named = getglobal(source, annotation)
-            return named isa Type ? named : nothing
+            return type_class(getglobal(source, annotation))
         end
     end
-    return nothing
+    return :unresolved
 end
 
-function lookup_type(annotation::Expr, scope::Module, variables::AbstractVector{Symbol})::Union{Type, Nothing} # lint: unstable-variable  Expr nodes hold untyped arguments
+function type_class(annotation::Expr, scope::Module, variables::AbstractVector{Symbol})::Symbol # lint: unstable-variable # lint: unmarked-mutation # lint: runtime-dispatch  Expr nodes hold untyped arguments
     if !(last(annotation.args) isa QuoteNode)
-        return nothing
+        return :unresolved
     end
     owner = first(annotation.args)
-    parent = owner isa Symbol && isdefined(scope, owner) ? getglobal(scope, owner) : nothing
-    field = last(annotation.args).value
-    return parent isa Module && isdefined(parent, field) && getglobal(parent, field) isa Type ? getglobal(parent, field) : nothing
+    parent = owner isa Symbol && isdefined(scope, owner) ? getglobal(scope, owner) : nothing # lint: unstable-variable  a name may hold any value
+    field = last(annotation.args).value::Symbol
+    return parent isa Module && isdefined(parent, field) ? type_class(getglobal(parent, field)) : :unresolved
 end
 
-"""Whether `named` needs no generic form: `Bool`, an `Enum` type, or a type whose direct supertype is `Any` (`Nothing`, `Symbol`, `Missing`, tuples)."""
-function exempt_type(named::Type)::Bool
-    plain = Base.unwrap_unionall(named)
-    return named === Bool || named <: Enum || (plain isa DataType && supertype(plain) === Any)
-end
-
-"""Whether `named` is a concrete type with an abstract parent to name instead."""
-function concrete_type(named::Type)::Bool
-    plain = Base.unwrap_unionall(named)
-    return plain isa DataType && !isabstracttype(plain) && !exempt_type(named)
+"""The `type_class` of the value `named` a name holds."""
+function type_class(named::Any)::Symbol # lint: unstable-variable  reflects on values of unknown type
+    if !(named isa Type)
+        return :unresolved
+    end
+    plain = Base.unwrap_unionall(named) # lint: non-public-access  there is no public way to strip a UnionAll's variables
+    if named === Bool || named <: Enum || (plain isa DataType && supertype(plain) === Any)
+        return :exempt
+    end
+    return plain isa DataType && !isabstracttype(plain) ? :concrete : :abstract
 end
 
 """
@@ -54,19 +57,17 @@ function annotation_problems(annotation::Symbol, scope::Module, variables::Abstr
     elseif annotation === :Vararg
         return ["bare `Vararg` is not specialized on; write `Vararg{T, N}`"]
     end
-    named = lookup_type(annotation, scope, variables)
-    return isnothing(named) || annotation in allowed || !concrete_type(named) ? String[] : ["`$annotation` is concrete; name an abstract type or a type variable"]
+    return type_class(annotation, scope, variables) !== :concrete || annotation in allowed ? String[] : ["`$annotation` is concrete; name an abstract type or a type variable"]
 end
 
 function annotation_problems(annotation::Expr, scope::Module, variables::AbstractVector{Symbol}, allowed::Tuple{Vararg{Symbol}})::Vector{String} # lint: unstable-variable  Expr nodes hold untyped arguments
     if annotation.head === :.
-        named = lookup_type(annotation, scope, variables)
-        return isnothing(named) || !concrete_type(named) ? String[] : ["`$annotation` is concrete; name an abstract type or a type variable"]
+        return type_class(annotation, scope, variables) !== :concrete ? String[] : ["`$annotation` is concrete; name an abstract type or a type variable"]
     elseif annotation.head !== :curly
         return String[]
     end
     head, parameters = Iterators.peel(annotation.args)
-    if head in COVARIANT_HEADS
+    if head isa Symbol && head in COVARIANT_HEADS
         return collect(String, Iterators.flatten(annotation_problems.(parameters, (scope,), (variables,), (allowed,))))
     end
     return [annotation_problems(head, scope, variables, allowed); collect(String, Iterators.flatten(parameter_problems.(parameters, (scope,), (variables,))))]
@@ -76,8 +77,7 @@ annotation_problems(::Any, ::Module, ::AbstractVector{Symbol}, ::Tuple{Vararg{Sy
 
 """Why parsed type argument `parameter` of an invariant type fixes the parameter exactly, empty when it is a type variable, a `<:` bound that is generic, or a value."""
 function parameter_problems(parameter::Symbol, scope::Module, variables::AbstractVector{Symbol})::Vector{String}
-    named = lookup_type(parameter, scope, variables)
-    return isnothing(named) || exempt_type(named) ? String[] : ["type argument `$parameter` fixes the parameter exactly; write `<:$parameter` or a type variable"]
+    return type_class(parameter, scope, variables) in (:exempt, :unresolved, :variable) ? String[] : ["type argument `$parameter` fixes the parameter exactly; write `<:$parameter` or a type variable"]
 end
 
 function parameter_problems(parameter::Expr, scope::Module, variables::AbstractVector{Symbol})::Vector{String} # lint: unstable-variable  Expr nodes hold untyped arguments
@@ -103,11 +103,10 @@ function calls_variable(node::Expr, name::Symbol)::Bool # lint: unstable-variabl
     end
     return false
 end
-calls_variable(::Any, ::Symbol)::Bool = false
 
 """Why argument `name` annotated `annotation` of a method with `body` is not generic: `annotation_problems`, and a `Function` the body only passes through."""
 function argument_problems(name::Symbol, annotation::Any, body::Any, scope::Module, variables::AbstractVector{Symbol})::Vector{String} # lint: unstable-variable  Expr nodes hold untyped arguments
-    if annotation === :Function && !calls_variable(body, name)
+    if annotation === :Function && !(body isa Expr && calls_variable(body, name))
         return ["`Function` argument `$name` is passed through unspecialized; annotate it with a type variable (`f::F`)"]
     end
     allowed = resizes(body, name) ? CONCRETE_CONTAINERS : ()
@@ -115,7 +114,7 @@ function argument_problems(name::Symbol, annotation::Any, body::Any, scope::Modu
 end
 
 """The upper bounds of the `where` clauses of parsed function definition `node` (`Real` of `T <: Real`)."""
-function where_bounds(node::Expr)::Vector{Any}
+function where_bounds(node::Expr)::Vector{Any} # lint: unstable-variable  Expr nodes hold untyped arguments
     bounds = Any[]
     signature = node.args[1]
     while signature isa Expr && signature.head in (:where, :(::))
@@ -128,7 +127,7 @@ function where_bounds(node::Expr)::Vector{Any}
 end
 
 """Why the arguments, `where` bounds and result type of parsed function definition `node` are not generic; empty for anything but a method definition."""
-function definition_problems(node::Expr, scope::Module)::Vector{String}
+function definition_problems(node::Expr, scope::Module)::Vector{String} # lint: unstable-variable # lint: runtime-dispatch  Expr nodes hold untyped arguments
     call = signature_call(node)
     if isnothing(call) || length(node.args) < 2
         return String[]
@@ -170,7 +169,7 @@ function struct_nodes(node::SYNTAX.SyntaxNode)::Vector{SYNTAX.SyntaxNode}
 end
 
 """The name, type-parameter names and declared supertype (`nothing` when none) of parsed `struct` header `header`."""
-function struct_header(header::Any)::Tuple{Symbol, Vector{Symbol}, Any} # lint: unstable-variable  Expr nodes hold untyped arguments
+function struct_header(header::Any)::Tuple{Symbol, Vector{Symbol}, Any} # lint: unstable-variable # lint: unstable-return  Expr nodes hold untyped arguments
     declared = nothing
     if Meta.isexpr(header, :<:)
         header, declared = header.args
@@ -182,7 +181,7 @@ function struct_header(header::Any)::Tuple{Symbol, Vector{Symbol}, Any} # lint: 
 end
 
 """The field declarations of parsed struct `body`, each as an `x::T` expression; fields without a type are left out."""
-function typed_fields(body::Expr)::Vector{Expr} # lint: unstable-variable  Expr nodes hold untyped arguments
+function typed_fields(body::Expr)::Vector{Expr} # lint: unstable-variable # lint: runtime-dispatch  Expr nodes hold untyped arguments
     unwrapped = [Meta.isexpr(field, :const) ? first(field.args) : field for field in body.args]
     return Expr[field for field in unwrapped if Meta.isexpr(field, :(::)) && length(field.args) == 2]
 end
@@ -190,26 +189,35 @@ end
 """Whether parsed type expression `declared` of a field is a type variable of the struct, a type built only from them and values, or a type with no abstract parent."""
 function parameter_built(declared::Any, scope::Module, variables::AbstractVector{Symbol})::Bool # lint: unstable-variable  Expr nodes hold untyped arguments
     if declared isa Symbol
-        named = lookup_type(declared, scope, variables)
-        return declared in variables || (!isnothing(named) && exempt_type(named))
+        return type_class(declared, scope, variables) in (:variable, :exempt)
     elseif Meta.isexpr(declared, :curly)
-        return all(parameter -> parameter_built(parameter, scope, variables), Iterators.drop(declared.args, 1))
+        for parameter in Iterators.drop(declared.args, 1)
+            if !parameter_built(parameter, scope, variables)
+                return false
+            end
+        end
+        return true
     end
     return !(declared isa Expr)
 end
 
 """Why the fields of the parsed `struct` expression `declaration` are not type parameters: a concrete or abstract field type in a struct that `scope` exports or declares public."""
-function field_problems(declaration::Expr, scope::Module)::Vector{String} # lint: unstable-variable  Expr nodes hold untyped arguments
+function field_problems(declaration::Expr, scope::Module)::Vector{String} # lint: unstable-variable # lint: unmarked-mutation # lint: runtime-dispatch  Expr nodes hold untyped arguments
     name, variables, _ = struct_header(declaration.args[2])
     if !(name isa Symbol) || !isdefined(scope, name) || !Base.ispublic(scope, name)
         return String[]
     end
-    fields = [field for field in typed_fields(declaration.args[3]) if !parameter_built(last(field.args), scope, variables)]
-    return ["field `$field` of public struct `$name` must be a type parameter" for field in fields]
+    problems = String[]
+    for field in typed_fields(declaration.args[3])
+        if !parameter_built(last(field.args), scope, variables)
+            push!(problems, "field `$field` of public struct `$name` must be a type parameter")
+        end
+    end
+    return problems
 end
 
 """The sites of the structs of `source` that declare no supertype, or `Any`: a later type cannot extend one."""
-function any_supertype_sites(source::Source)::Vector{Site}
+function any_supertype_sites(source::Source)::Vector{Site} # lint: unstable-variable # lint: runtime-dispatch  Expr nodes hold untyped arguments
     sites = Site[]
     for node in struct_nodes(source.tree)
         name, _, declared = struct_header(Expr(node).args[2])

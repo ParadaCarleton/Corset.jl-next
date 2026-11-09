@@ -312,10 +312,10 @@ fix_plan(::ConcreteAnnotationRule, repository::Repository, directories::Tuple{Va
     concrete_annotation_plan(repository, directories)
 
 """Former rule names that levels, baseline tables and `# lint:` comments still accept, with the rule each became."""
-const RULE_ALIASES = Dict{String, String}("concrete-arg" => "concrete-annotation")
+const RULE_ALIASES = ("concrete-arg" => "concrete-annotation",)
 
 """The current name of the rule `name` is, or was."""
-canonical_rule_name(name::AbstractString)::String = get(RULE_ALIASES, name, String(name))
+canonical_rule_name(name::AbstractString)::String = get(Dict(RULE_ALIASES), name, String(name))
 
 """Every rule, ordered by name."""
 const RULES = Tuple(sort!([type() for kind in (ModuleRule, TreeRule, FileRule) for type in subtypes(kind)]; by = rule_name))

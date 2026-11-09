@@ -38,6 +38,7 @@ end
     @test annotation_details("f(x::Unknown.Thing, y::Base.Nonexistent) = x\n") == String[]
     @test annotation_details("f(x::Base.Missing) = x\n") == String[]
     @test annotation_details("f(x::g.(1)) = x\n") == String[]
+    @test annotation_details("f(x::sum, y::Base.sum) = x\n") == String[]
     @test annotation_details("f(x::Color)::Color = x\n", module_with("@enum Color red green\nstruct Other end\n", :Color, :Other)) == String[]
     @test annotation_details("f(x::Vector{T}) where {T} = push!(x, first(x))\n") == String[]
     @test annotation_details("f(x::Vector{Float64}) = push!(x, 1)\n") == ["type argument `Float64` fixes the parameter exactly; write `<:Float64` or a type variable"]
