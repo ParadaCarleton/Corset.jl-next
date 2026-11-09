@@ -25,7 +25,6 @@ has_dims_keyword(node::Expr)::Bool = any(is_dims_argument, is_broadcast(node) ? 
 is_dims_argument(argument::Expr)::Bool = argument.head === :parameters ? any(is_dims_keyword, argument.args) : is_dims_keyword(argument)
 is_dims_argument(::Any)::Bool = false
 
-"""Whether `keyword` is `dims = …`, or `dims` alone: the shorthand after `;`."""
+"""Whether `keyword`, an entry after `;`, is `dims = …` or `dims` alone."""
 is_dims_keyword(keyword::Expr)::Bool = keyword.head === :kw && first(keyword.args) === :dims
 is_dims_keyword(keyword::Symbol)::Bool = keyword === :dims
-is_dims_keyword(::Any)::Bool = false
