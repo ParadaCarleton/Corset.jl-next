@@ -19,13 +19,13 @@ function dims_keyword_calls(source::Source)::Vector{Site}
 end
 
 """Whether call or broadcast `node` has a `dims` keyword argument: `dims = …` inline or after `;`, or the shorthand `; dims`."""
-function has_dims_keyword(node::Expr)::Bool
-    arguments = is_broadcast(node) ? last(node.args).args : node.args
-    keywords = Any[argument for argument in arguments if Meta.isexpr(argument, :kw)]
-    for argument in arguments
-        if Meta.isexpr(argument, :parameters)
-            append!(keywords, argument.args)
-        end
-    end
-    return any(keyword -> keyword === :dims || (Meta.isexpr(keyword, :kw) && first(keyword.args) === :dims), keywords)
-end
+has_dims_keyword(node::Expr)::Bool = any(is_dims_argument, is_broadcast(node) ? (last(node.args)::Expr).args : node.args)
+
+"""Whether argument `argument` of a call is `dims = …`, or a block of keywords after `;` with one of them."""
+is_dims_argument(argument::Expr)::Bool = argument.head === :parameters ? any(is_dims_keyword, argument.args) : is_dims_keyword(argument)
+is_dims_argument(::Any)::Bool = false
+
+"""Whether `keyword` is `dims = …`, or `dims` alone: the shorthand after `;`."""
+is_dims_keyword(keyword::Expr)::Bool = keyword.head === :kw && first(keyword.args) === :dims
+is_dims_keyword(keyword::Symbol)::Bool = keyword === :dims
+is_dims_keyword(::Any)::Bool = false

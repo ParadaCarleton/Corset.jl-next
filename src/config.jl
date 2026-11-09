@@ -157,7 +157,7 @@ function configured_directories(root::AbstractString, directories::AbstractVecto
         throw(UsageError("[preferences.Corset] directories names $(join(repr.(absent), ", ")), missing under $root"))
     end
     paths = unique(directory_path.(directories))
-    return paths[.!vec(any(holds.(permutedims(paths), paths); dims = 2))]
+    return paths[map(!any, eachrow(holds.(permutedims(paths), paths)))]
 end
 
 """Relative directory path `directory` normalized: no `.` part and no trailing separator."""
