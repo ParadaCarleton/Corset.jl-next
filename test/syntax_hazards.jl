@@ -46,3 +46,12 @@ end
     @test length(found_in(Corset.non_atomic_writes, "non-atomic-write")) == 9
     @test Corset.level(Corset.load_config(mktempdir()), Corset.NonAtomicWriteRule()) === :warn
 end
+
+@testset "throw-call and nonfinite-drop: failures as values" begin
+    sites(finder::Function, text::String) = (path = tempname() * ".jl"; write(path, text); finder(parsed(path)))
+    @test [site.line for site in sites(Corset.raise_calls, "a(x) = error(\"no\")\nb(x) = throw(ArgumentError(\"no\"))\nc(x) = Base.error(\"no\")\nd(x) = x\n")] == [1, 2, 3]
+    text = "a(x) = filter(isfinite, x)\nb(x) = filter(!isnan, x)\nc(x) = x[isfinite.(x)]\nd(x) = filter(y -> !isinf(y), x)\ne(x) = findall(isnan, x)\nf(x) = filter(>(0), x)\ng(x) = x[1]\nh(x) = for y in x\n    isnan(y) && continue\nend\ni(x) = for y in x\n    if isnan(y)\n        continue\n    end\nend\nj(x) = for y in x\n    isnan(y) && return y\nend\n"
+    @test [site.line for site in sites(Corset.nonfinite_drops, text)] == [1, 2, 3, 4, 5, 9, 12]
+    @test Corset.level(Corset.load_config(mktempdir()), Corset.ThrowCallRule()) === :allow
+    @test Corset.level(Corset.load_config(mktempdir()), Corset.NonfiniteDropRule()) === :allow
+end
