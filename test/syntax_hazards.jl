@@ -46,3 +46,12 @@ end
     @test length(found_in(Corset.non_atomic_writes, "non-atomic-write")) == 9
     @test Corset.level(Corset.load_config(mktempdir()), Corset.NonAtomicWriteRule()) === :warn
 end
+
+@testset "while-true-return: a loop that leaves by return" begin
+    sites(text::String) = (path = tempname() * ".jl"; write(path, text); Corset.while_true_returns(parsed(path)))
+    @test length(sites("function f(x)\n    while true\n        x > 1 && return x\n        x += 1\n    end\nend\n")) == 1
+    @test isempty(sites("function f(x)\n    while x < 3\n        x < 2 && return x\n        x += 1\n    end\n    return x\nend\n"))
+    @test isempty(sites("function f(x)\n    while true\n        x += 1\n        x > 3 && break\n    end\n    return x\nend\n"))
+    @test isempty(sites("function f(x)\n    while true\n        g = y -> (return y)\n        break\n    end\nend\n"))
+    @test Corset.level(Corset.load_config(mktempdir()), Corset.WhileTrueReturnRule()) === :allow
+end

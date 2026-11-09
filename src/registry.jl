@@ -260,6 +260,9 @@ derived_constant_sites(context.mod, source)
 @rule FileRule "forbidden-pattern" :default "lines that match a pattern the project forbids (forbidden_patterns)" (context, source) ->
 forbidden_pattern_sites(context.repository, source)
 
+@rule FileRule "while-true-return" :pedantic "while true loops that leave by return" (context, source) ->
+while_true_returns(source)
+
 @rule FileRule "where-return" :default "short-form definitions whose where binds the return annotation" (context, source) ->
 where_return_sites(source)
 

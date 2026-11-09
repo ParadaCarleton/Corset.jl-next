@@ -317,3 +317,13 @@ end
 lambda_broadcast(names::Vector{String})::Vector{Int} = (name -> write(name, name)).(names)
 opted(paths::Vector{String}, texts::Vector{String})::Nothing = (write.(paths, texts); nothing) # lint: non-atomic-write  scratch files
 '''
+
+[while-true-return]
+source = '''
+spin(x::Int)::Int = begin
+    while true
+        x > 3 && return x
+        x += 1
+    end
+end
+'''
