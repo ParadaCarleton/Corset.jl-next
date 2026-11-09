@@ -260,6 +260,9 @@ derived_constant_sites(context.mod, source)
 @rule FileRule "forbidden-pattern" :default "lines that match a pattern the project forbids (forbidden_patterns)" (context, source) ->
 forbidden_pattern_sites(context.repository, source)
 
+@rule FileRule "unseeded-rng" :pedantic "random draws in test files with no pinned seed" (context, source) ->
+unseeded_rngs(context.repository.root, source)
+
 @rule FileRule "where-return" :default "short-form definitions whose where binds the return annotation" (context, source) ->
 where_return_sites(source)
 

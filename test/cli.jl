@@ -196,7 +196,7 @@ end
     @test all(group in (:default, :pedantic) for group in rule_group.(RULES))
     @test sort!([rule_name(rule) for rule in RULES if rule_group(rule) === :pedantic]) == [
         "c-type", "concrete-return", "constant-array", "file-length", "float64", "jscpd", "nan-initializer", "nothing-return", "one-letter",
-        "quadratic-scan", "range-guard", "ref", "repeated-prefix", "struct-constant", "wide-struct",
+        "quadratic-scan", "range-guard", "ref", "repeated-prefix", "struct-constant", "unseeded-rng", "wide-struct",
     ]
 end
 
@@ -406,7 +406,9 @@ end
     fixture = load_fixture(joinpath(root, "src"))
     smells = join((SNIPPETS[name]["source"] for name in ("nothing-return", "range-guard", "return-type", "concrete-arg", "concrete-return", "constant-array", "nan-initializer", "float64", "c-type", "ref", "annotation", "one-letter", "fatou", "jscpd", "quadratic-scan")), "\n")
     write(joinpath(root, "src", "smells.jl"), smells)
-    write(joinpath(root, "Project.toml"), "name = \"Demo\"\n[preferences.Corset]\nstruct_field_limit = 1\nfile_line_limit = 1\n")
+    mkpath(joinpath(root, "test"))
+    write(joinpath(root, "test", "draws.jl"), SNIPPETS["unseeded-rng"]["source"])
+    write(joinpath(root, "Project.toml"), "name = \"Demo\"\n[preferences.Corset]\ndirectories = [\"src\", \"test\"]\nstruct_field_limit = 1\nfile_line_limit = 1\n")
     config = with_overrides(load_config(root), true, Pair{String, Symbol}[], nothing)
     findings, skipped = run_rules(config, root; mod = fixture, frames = entry_frames(concrete_signatures(fixture), fixture))
     @test isempty(skipped)
