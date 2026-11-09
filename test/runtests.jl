@@ -1674,7 +1674,7 @@ function concrete_annotation_fixed(text::AbstractString)::String
     return read(joinpath(tree, "source.jl"), String)
 end
 
-@testset "concrete-annotation: the fixer widens containers a method never resizes" begin
+@testset "concrete-annotation: the fixer widens containers a method never resizes and scalar arguments" begin
     @test concrete_annotation_fixed("f(x::Vector{Int}, y::Matrix)::Int = 1\n") == "f(x::AbstractVector{Int}, y::AbstractMatrix)::Int = 1\n"
     @test concrete_annotation_fixed("g(d::Dict{Symbol, Int}; w::Union{Nothing, Array{Float32, 2}} = nothing)::Int = 1\n") ==
         "g(d::AbstractDict{Symbol, Int}; w::Union{Nothing, AbstractArray{Float32, 2}} = nothing)::Int = 1\n"
@@ -1682,6 +1682,10 @@ end
     @test concrete_annotation_fixed(resizing) == replace(resizing, "y::Vector" => "y::AbstractVector")
     @test concrete_annotation_fixed("f(x::Vector{Int}) = 1 # lint: concrete-annotation  kept\n") == "f(x::Vector{Int}) = 1 # lint: concrete-annotation  kept\n"
     @test concrete_annotation_fixed("function nothing_to_fix end\nf(x::Int, y::Vector{Int}) = x\n") == "function nothing_to_fix end\nf(x::Int, y::AbstractVector{Int}) = x\n"
+    @test concrete_annotation_fixed("f(x::Float64, y::Float32; z::Int = 1, w::String = \"\")::Float64 = x\n") ==
+        "f(x::AbstractFloat, y::AbstractFloat; z::Integer = 1, w::AbstractString = \"\")::Float64 = x\n"
+    @test concrete_annotation_fixed("f(x::Union{Nothing, Int}, y::T) where {T <: Float64} = x\n") == "f(x::Union{Nothing, Integer}, y::T) where {T <: Float64} = x\n"
+    @test concrete_annotation_fixed("struct Pair2\n    x::Float64\nend\nf(x::Float64) = 1 # lint: concrete-arg  kept\n") == "struct Pair2\n    x::Float64\nend\nf(x::Float64) = 1 # lint: concrete-arg  kept\n"
     @test concrete_annotation_fixed("f(x::Base.Vector{Int}) = 1\n") == "f(x::Base.Vector{Int}) = 1\n"
     fixed = concrete_annotation_fixed("f(x::Vector{Int}, y::Array)::Int = 1\n")
     tree = write_tree(mktempdir(), ["source.jl" => fixed])

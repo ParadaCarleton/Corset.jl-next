@@ -1,7 +1,11 @@
 # The fixer of `concrete-annotation`: an argument annotated `Vector{T}`, `Matrix{T}`, `Array{T, N}` or
-# `Dict{K, V}` that the method never resizes takes `AbstractVector{T}` and its siblings instead.
+# `Dict{K, V}` that the method never resizes takes `AbstractVector{T}` and its siblings instead, and a
+# scalar argument takes its abstract parent. Fields, results and struct supertypes are never rewritten.
 
-const ABSTRACT_CONTAINERS = (Vector = "AbstractVector", Matrix = "AbstractMatrix", Array = "AbstractArray", Dict = "AbstractDict")
+const ABSTRACT_PARENTS = (
+    Vector = "AbstractVector", Matrix = "AbstractMatrix", Array = "AbstractArray", Dict = "AbstractDict",
+    Float64 = "AbstractFloat", Float32 = "AbstractFloat", Int = "Integer", String = "AbstractString",
+)
 
 """The annotated arguments of call syntax `call` as (name, annotation) pairs; keyword arguments and splats included."""
 function annotated_argument_nodes(call::SYNTAX.SyntaxNode)::Vector{Tuple{SYNTAX.SyntaxNode, SYNTAX.SyntaxNode}}
@@ -29,10 +33,10 @@ function signature_call_nodes(signature::SYNTAX.SyntaxNode)::Vector{SYNTAX.Synta
     return SYNTAX.kind(signature) === CALL_KIND ? [signature] : SYNTAX.SyntaxNode[]
 end
 
-"""The (range, text) rewrites that make the container names of annotation syntax `annotation` abstract: a bare or curly head, or the members of a `Union`."""
+"""The (range, text) rewrites that make the container and scalar names of annotation syntax `annotation` abstract: a bare or curly head, or the members of a `Union`."""
 function abstract_container_edits(annotation::SYNTAX.SyntaxNode)::Vector{Tuple{UnitRange{Int}, String}}
     if SYNTAX.kind(annotation) === IDENTIFIER_KIND
-        replacement = get(ABSTRACT_CONTAINERS, Symbol(SYNTAX.sourcetext(annotation)), "")
+        replacement = get(ABSTRACT_PARENTS, Symbol(SYNTAX.sourcetext(annotation)), "")
         return isempty(replacement) ? Tuple{UnitRange{Int}, String}[] : [(SYNTAX.byte_range(annotation), replacement)]
     elseif SYNTAX.kind(annotation) === SYNTAX.@K_str("curly")
         head, members = Iterators.peel(node_children(annotation))

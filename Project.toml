@@ -32,6 +32,6 @@ julia = "1.13"
 baseline = "corset_baseline.toml"
 
     [preferences.Corset.levels]
-    concrete-return = "allow"
-    concrete-annotation = "allow"
     any-supertype = "allow"
+    concrete-annotation = "allow"
+    concrete-return = "allow"
