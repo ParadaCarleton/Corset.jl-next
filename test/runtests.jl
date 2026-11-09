@@ -1681,7 +1681,7 @@ end
     resizing = "function h!(x::Vector{Int}, y::Vector{Int})::Nothing\n    push!(x, 1)\n    return nothing\nend\n"
     @test concrete_annotation_fixed(resizing) == replace(resizing, "y::Vector" => "y::AbstractVector")
     @test concrete_annotation_fixed("f(x::Vector{Int}) = 1 # lint: concrete-annotation  kept\n") == "f(x::Vector{Int}) = 1 # lint: concrete-annotation  kept\n"
-    @test concrete_annotation_fixed("function nothing_to_fix end\nf(x::Int, y::Vector{Int}) = x\n") == "function nothing_to_fix end\nf(x::Int, y::AbstractVector{Int}) = x\n"
+    @test concrete_annotation_fixed("function nothing_to_fix end\nf(x::Int, y::Vector{Int}) = x\n") == "function nothing_to_fix end\nf(x::Integer, y::AbstractVector{Int}) = x\n"
     @test concrete_annotation_fixed("f(x::Float64, y::Float32; z::Int = 1, w::String = \"\")::Float64 = x\n") ==
         "f(x::AbstractFloat, y::AbstractFloat; z::Integer = 1, w::AbstractString = \"\")::Float64 = x\n"
     @test concrete_annotation_fixed("f(x::Union{Nothing, Int}, y::T) where {T <: Float64} = x\n") == "f(x::Union{Nothing, Integer}, y::T) where {T <: Float64} = x\n"
