@@ -271,7 +271,7 @@ Proposal: test-only oracle. Typed IR from native compiler at lint time.
 | main | `repeated-prefix` | F79 Related fields belong in nested struct, table or array | `field-prefix` |  |
 | main | `repeated-statement` | F60 Same statement twice in block | `duplicate-statement` |  |
 | main | `return-type` | F26 Behavior depends on inference result | `inference-dependent` |  |
-| main | `concrete-arg` | F15 Concrete annotation blocks generic callers | `narrow-signature` |  |
+| main | `concrete-arg` | F15 Fixed annotation blocks generic callers | `narrow-signature` |  |
 | main | `concrete-return` | F13 Result annotation converts instead of checking<br>F71 Argument or result without type | `annotation`, `result-conversion` |  |
 | main | `annotation` | F71 Argument or result without type | `annotation` |  |
 | main | `c-type` | F81 C types outside C calls | `c-type` |  |
@@ -304,8 +304,8 @@ Proposal: test-only oracle. Typed IR from native compiler at lint time.
 | open work | `no-inbounds` | F37 Index safety removed without proof | `unverified-inbounds` |  |
 | open work | `abstract-element` | F21 Empty literal has `Any` element type | `untyped-empty` |  |
 | open work | `invariant-parameter` | F14 Invariant parameter rejects intended arguments | `invariant-parameter` |  |
-| open work | `abstract-float` | F15 Concrete annotation blocks generic callers | `narrow-signature` |  |
-| open work | `concrete-annotation` | F13 Result annotation converts instead of checking<br>F15 Concrete annotation blocks generic callers | `narrow-signature`, `result-conversion` |  |
+| open work | `abstract-float` | F15 Fixed annotation blocks generic callers | `narrow-signature` |  |
+| open work | `concrete-annotation` | F13 Result annotation converts instead of checking<br>F15 Fixed annotation blocks generic callers | `narrow-signature`, `result-conversion` |  |
 | open work | `enumerated-union` | F20 Ad-hoc union of unrelated types where sum type belongs | `vague-type` |  |
 | open work | `literal-array` | F16 Hard-coded `Array` drops caller's array type | `type-disruption` |  |
 | open work | `similar-array` | F16 Hard-coded `Array` drops caller's array type | `type-disruption` |  |
