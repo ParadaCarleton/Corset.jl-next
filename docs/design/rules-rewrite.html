@@ -215,7 +215,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 </section>
 
 <section id="strictness">
-  <h2>Groups and strictness</h2>
+  <h2>Groups, strictness and trust</h2>
   <p>Four groups replace <code>default</code> and <code>pedantic</code>: <span class="chip g-correctness">correctness</span> <span class="chip g-performance">performance</span> <span class="chip g-composability">composability</span> <span class="chip g-readability">readability</span>. Readability holds house style: anything that makes code hard to read. Composability holds code that must work with other types and future Julia versions.</p>
   <p>Noise is no longer reason for group. Each finding says how sure analysis is. One setting picks what to report:</p>
   <div class="scroll">
@@ -226,6 +226,16 @@ footer { color: var(--muted); font-size: 0.85rem; }
     </div>
   </div>
   <p class="note">Rules with both kinds today, unlabeled: <code>unmarked-mutation</code> and <code>float-widening</code> ("may write", "may widen" past candidate budget); <code>nan-initializer</code> and <code>constant-array</code> (sites fixer skips).</p>
+  <h3>Trust</h3>
+  <p>Each finding also records origin: created in package code, or inherited from dependency (for example union returned by <code>DepA.f</code> and forwarded). Setting <code>trust</code> decides which inherited findings to report: <code>"all"</code> trusts every dependency, <code>"stdlib"</code> trusts Base and standard libraries, <code>"none"</code> trusts nothing. List <code>trusted = [...]</code> overrides per package.</p>
+  <div class="scroll">
+    <div class="matrix" role="table" aria-label="Which findings strictness and trust report">
+      <div class="h" role="columnheader">finding</div><div class="h" role="columnheader">created in package</div><div class="h" role="columnheader">inherited from dependency</div>
+      <div role="cell"><code>proven</code></div><div class="yes" role="cell">report</div><div class="yes" role="cell">report unless trusted</div>
+      <div role="cell"><code>unproven</code></div><div class="yes" role="cell">report if strictness = "unproven"</div><div class="no" role="cell">report if strictness = "unproven" and not trusted</div>
+    </div>
+  </div>
+  <p class="note">Inherited findings arise in union policy, <code>runtime-dispatch</code>, <code>unstable-variable</code>, <code>float-widening</code>, <code>unmarked-mutation</code>, <code>hidden-input</code>. Families D and E know each callee, so origin costs one field. Default for <code>trust</code> is open.</p>
 </section>
 
 <section id="kept">
@@ -432,13 +442,15 @@ footer { color: var(--muted); font-size: 0.85rem; }
     <div class="decision"><span class="status new">decided</span><h3>Annotations</h3><p><code>::Any</code> is explicit opt-out. Abstract argument types are intended.</p></div>
     <div class="decision"><span class="status new">decided</span><h3>constant-array</h3><p>Keep. It prevents pointless allocations.</p></div>
     <div class="decision"><span class="status new">decided</span><h3>Borrow checking</h3><p>Defer. Revisit for concurrency rules.</p></div>
+    <div class="decision"><span class="status new">decided</span><h3>Origin and trust</h3><p>Findings record origin: created in package, or inherited from dependency. Setting <code>trust</code> filters inherited findings.</p></div>
+    <div class="decision open"><span class="status open">open</span><h3><code>trust</code> default</h3><p>Proposal: <code>"stdlib"</code>. Alternatives: no default (required), or <code>"all"</code>.</p></div>
     <div class="decision open"><span class="status open">open</span><h3>Strictness wording</h3><p>Setting names <code>"proven"</code> and <code>"unproven"</code> are draft. Confirm meaning: report proven problems only, or also unproven safety.</p></div>
     <div class="decision open"><span class="status open">open</span><h3>one-letter exemptions</h3><p><code>i</code> allowed. Decide <code>j</code>, <code>k</code> for nested loops, and <code>T</code> for type parameters. Prefer role names (<code>left</code>, <code>right</code>) over <code>num1</code>, <code>num2</code>.</p></div>
     <div class="decision open"><span class="status open">open</span><h3>specialization-blowup</h3><p>Replace <code>overspecialized-anon-fun</code> with measured specialization count?</p></div>
     <div class="decision open"><span class="status open">open</span><h3>concrete-return</h3><p>State what it must catch, or remove it.</p></div>
     <div class="decision"><span class="status new">decided</span><h3>Rule names</h3><p>Follow <code>main</code>: <code>unstable-variable</code>, <code>unstable-return</code>, <code>*-anon-fun</code>.</p></div>
     <div class="decision"><span class="status new">decided</span><h3>No <code>float64</code> check</h3><p>Rewrite has no check for <code>Float64</code> tokens. <code>float-widening</code> covers real cases.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>Union width</h3><p>One policy for inferred locals, results and struct fields; argument annotations exempt. <code>Nothing</code> and <code>Missing</code> are free. Members from one module other than Base or Core form variant group. Allow at most one member outside that group.</p><ul><li>Pass: <code>Union{Circle, Square}</code>, <code>Union{DepA.Leaf, DepA.Node}</code>, <code>Union{Float64, ParseError}</code>.</li><li>Report: <code>Union{Int, Float64}</code>, <code>Union{String, Symbol}</code>.</li><li>Union from foreign callee: report at call and name callee.</li><li>Message suggests sum-type package (Moshi.jl, SumTypes.jl).</li><li>Baseline keeps existing findings from failing CI.</li></ul></div>
+    <div class="decision"><span class="status new">decided</span><h3>Union width</h3><p>One policy for inferred locals, results and struct fields; argument annotations exempt. <code>Nothing</code> and <code>Missing</code> are free. Members from one module other than Base or Core form variant group. Allow at most one member outside that group.</p><ul><li>Pass: <code>Union{Circle, Square}</code>, <code>Union{DepA.Leaf, DepA.Node}</code>, <code>Union{Float64, ParseError}</code>.</li><li>Report: <code>Union{Int, Float64}</code>, <code>Union{String, Symbol}</code>.</li><li>Report where union is created: merge in package method, or package declaration. Union forwarded unchanged from dependency is inherited; see <a href="#strictness">trust</a>.</li><li>Message suggests sum-type package (Moshi.jl, SumTypes.jl).</li><li>Baseline keeps existing findings from failing CI.</li></ul></div>
     <div class="decision"><span class="status new">decided</span><h3>Public struct fields</h3><p><code>concrete-annotation</code> accepts only type parameter (<code>x::T</code>) as fix, so <code>abstract-field</code> never reports result.</p></div>
     <div class="decision"><span class="status new">decided</span><h3>Explicit <code>Any</code></h3><p><code>::Any</code>, <code>Vector{Any}</code>, <code>Any[]</code> are approved opt-outs everywhere. Container rule (<code>abstract-element</code> idea) exempts them.</p></div>
     <div class="decision open"><span class="status open">conflict</span><h3><code>literal-array</code> and <code>similar-array</code></h3><p>Both push concrete array constructors toward <code>similar</code>. Keep one.</p></div>
