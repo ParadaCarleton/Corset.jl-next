@@ -1,0 +1,704 @@
+== Bool as number/index (15 primary)
+P0	wrong-result	compiler-isa-flag-loop	Inference folds `w && el isa String` to false when `w = el isa C` was set in the previous loop iteration
+P1	crash	memsafety-gmp-zero-bool-rem-null	rem(Base.GMP.ZERO, Bool) dereferences a null limb pointer and segfaults
+P2	missing-error	iddicts-idset-eltype	IdSet{T} push! accepts values of any type; iteration then throws TypeError and union! drops elements
+P2	wrong-exception	misccov-parsers-parsevalue-bool	Base.Parsers.parsevalue(Bool, bytes) throws InexactError for every digit string
+P2	wrong-exception	tuples-namedtuple-haskey-integer	`haskey(nt, k)` and `get(nt, k, d)` throw TypeError for integer keys that are not Int
+P2	wrong-result	bitarrays-setindex-mask-partial	B[mask] = X on a BitArray writes elements before throwing DimensionMismatch for a length mismatch
+P3	documentation	int-signed-bool-size-v2	signed(Bool) is Int rather than a signed type with Bool's size
+P3	documentation	iocov-runtests-propagate-doc	Base.runtests docstring says propagate_project defaults to true, but the default is false
+P3	missing-error	tuples-getindex-bool	Tuples accept `Bool` scalar indices (`t[true]`, `get`, `Base.setindex`, `isassigned`) that arrays and ranges reject
+P3	wrong-exception	intfuncscov-isperm-noninteger	isperm and invperm throw for vectors of non-Int numbers but accept the same tuples
+P3	wrong-exception	multidim-selectdim-trailing	selectdim(A, d, i) for d > ndims(A) disagrees with view(A, :, ..., i): throws for 1:1 and drops dimensions
+P3	wrong-result	abstractarrays-checkbounds-real-index	checkbounds accepts unsupported Bool and Float64 scalar indices that getindex rejects
+P3	wrong-result	iteratorscov-countfrom-eltype	countfrom(true) declares Bool elements but yields integers outside Bool
+P3	wrong-result	reducecov-findmax-inplace-init	findmax!(rval, rind, A; init=false) ignores the values already in rval, unlike maximum!(r, A; init=false)
+P3	wrong-result	tuples-getindex-bool-range	`t[false:true]` indexes a tuple as an integer range instead of logically
+== other (94 primary)
+P0	crash	dictscov-deepcopy-weakref	deepcopy(::WeakRef) returns an unregistered WeakRef whose value dangles after GC
+P1	hang	artifacts-override-cycle	Cyclic artifact hash overrides hang during path resolution
+P1	hang	channels-onceperthread-yield-hang	OncePerThread hangs when its initializer yields and another task on the same thread calls it
+P1	missing-error	artifacts-slash-traversal	Artifact slash indexing permits paths outside the artifact directory
+P1	wrong-result	artifacts-hash-pkg-uuid	Artifacts helpers ignore pkg_uuid keywords and bypass name overrides
+P1	wrong-result	bignums-rational-cmp-range	cmp(::Rational{BigInt}, ::Rational{BigInt}) returns values other than -1, 0, 1 (e.g. -4)
+P1	wrong-result	dates-range-month-stop	Month-stepped Date ranges can include a date beyond their requested stop
+P1	wrong-result	files-rm-recursive-symlink-slash	rm on a directory symlink with a trailing slash deletes target contents and then fails
+P1	wrong-result	iocov-getpass-backspace	Base.getpass ignores Backspace: typing a, b, Backspace, c returns "abc"
+P1	wrong-result	platforms-detect-libstdcxx-csl	detect_libstdcxx_version() returns nothing once CompilerSupportLibraries_jll is loaded
+P1	wrong-result	tuples-split-rest-state	`a, b..., c = t` reuses consumed elements when the tuple or named tuple is too short
+P2	crash	bitsetscov-isdisjoint-zero-step	isdisjoint throws DivideError for two overlapping integer StepRangeLens with step 0
+P2	crash	memsafety-sort-send-to-end-window	send_to_end! reads out of bounds when lo or hi is outside the vector
+P2	crash	regexunicode-regex-concat-comment	Regex * and ^ fail for a free-spacing (x) regex that ends in a comment
+P2	hang	tasks-asyncmap-negative-ntasks-function	asyncmap hangs when a dynamic ntasks function returns a negative integer
+P2	missing-error	base64uuid-decode-padding-midstream	base64decode accepts padding before the last group, which the Base64 manual says is rejected
+P2	missing-error	combinatorics-swap-equal-bounds	swapcols! and swaprows! skip bounds checks when the two indices are equal
+P2	missing-error	dates-constructor-overflow	DateTime accepts an out-of-range year and silently constructs a different year
+P2	missing-error	iterators-nth-zip-empty	Iterators.nth(zip(), 0) returns () instead of throwing BoundsError
+P2	missing-error	memsafety-slices-constructor-axes	Base.Slices accepts axes outside its parent and then reads or writes out of bounds
+P2	missing-error	misccov-shell-redirect-before-pipe	A backtick redirect with no filename before | is silently dropped: `echo a > | cat`
+P2	model-counterexample	c-runtime-mark-actual-capacity-slot-data-race	GC work-stealing queue can race on a reused circular-buffer slot
+P2	model-counterexample	c-runtime-page-next-data-race	GC page-stack rollback races with a concurrent next-pointer read
+P2	model-counterexample	cruntime-world-stop-execution-safety	Formal world-stop model admits a cached safepoint load during collection
+P2	model-counterexample	cruntime-writebarrier-header-data-race	Concurrent write barriers mix plain GC-header reads with atomic RMWs
+P2	model-counterexample	cruntime-writebarrier-quick-start-coverage	Failed remset growth overwrites an existing remembered parent
+P2	wrong-exception	abstractarrays-get-range-default	get(v::AbstractVector, r::AbstractRange, default) always throws ArgumentError (scalar assigned to a range)
+P2	wrong-exception	broadcastviews-range-singleton	(1:3) .+ (5:5) throws DimensionMismatch instead of broadcasting the length-1 range
+P2	wrong-exception	dicts-persistentdict-nothrow	PersistentDict insertion violates its nothrow effect annotation
+P2	wrong-exception	iterators-partition-generic-alloc	Iterators.partition rejects a three-element tuple with a huge chunk limit
+P2	wrong-exception	multidim-hvcat-row-mismatch	hvcat with uneven rows throws ArgumentError for same-type numbers but DimensionMismatch otherwise
+P2	wrong-exception	multidimcov-keepat-undef	keepat! throws UndefRefError on a kept #undef element, while deleteat! of the complement succeeds
+P2	wrong-exception	randomsampling-randsubseq-zero	randsubseq indexes A[0] when randexp returns zero
+P2	wrong-exception	reduce-any-dims-missing	any(A; dims) and all(A; dims) throw TypeError on missing instead of following three-valued logic
+P2	wrong-exception	reduce-maxdims-union-eltype	maximum(A; dims) throws InexactError for Union{Int,Float64} arrays and type-unstable f
+P2	wrong-exception	sorttuplescov-merge-zip	merge(nt, zip(keys, vals)) throws where merge(nt, collect(zip(keys, vals))) succeeds
+P2	wrong-exception	sorttuplescov-sort-missing-scratch	sort! with same-typed missing scratch throws during reinterpretation
+P2	wrong-result	abstractarrays-get-scattered-default	Base.get!(X, A, I::AbstractVector{Int}, default) leaves interior out-of-bounds positions unfilled
+P2	wrong-result	abstractarrays-stride-trailing-dimension	Generic stride(A, k) for k > ndims(A) returns sum(strides(A) .* size(A)), disagreeing with Array and SubArray
+P2	wrong-result	arrayops-deleteat-error-partial	deleteat!(a, inds) and keepat!(a, inds) modify a before throwing for unsorted or out-of-bounds inds
+P2	wrong-result	base64uuid-uuid5-unescape	uuid5 hashes unescape_string(name) instead of the name: escape spellings collide and names with backslashes throw
+P2	wrong-result	bitarray-scalar-extrema-values	BitArray maximum includes a true bit outside the parent's logical extent
+P2	wrong-result	dates-range-last-iteration	Month range last(r) differs from r[end] and is not in its own range
+P2	wrong-result	dates-week-negative	Dates.week mirrors dates before year 1 instead of returning their ISO week
+P2	wrong-result	dicts-immutabledict-isequal	Repeated ImmutableDict keys make == and isequal asymmetric
+P2	wrong-result	dicts-immutabledict-to-dict	Converting an ImmutableDict restores shadowed values
+P2	wrong-result	dicts-replace-lossy-key	replace!(f, ::Dict) and replace!(f, ::Set) convert new keys lossily instead of throwing like setindex!/push!
+P2	wrong-result	dicts-set-in-bang-convert	in!(x, ::Set) converts x lossily instead of throwing like push!
+P2	wrong-result	dictscov-merge-iddict	merge of an IdDict collapses identity-distinct true and 1 keys
+P2	wrong-result	files-tempname-dangling-symlink	tempname can return the path of an existing dangling symlink
+P2	wrong-result	floatranges-colon-decimal-threshold	(0.0:0.1:16777217.0)[4] == 0.30000000000000004 while (0.0:0.1:16777216.0)[4] == 0.3
+P2	wrong-result	iddicts-idset-issetequal	issetequal(::IdSet, itr) is false although a ⊆ b and b ⊆ a, when the IdSet holds isequal but distinct elements
+P2	wrong-result	iddicts-idset-issubset	issubset(::IdSet, b) returns false when the IdSet is longer than b, although every element is in b
+P2	wrong-result	iddicts-idset-symdiff	symdiff!(::IdSet, itr) collapses isequal but distinct elements of itr because it converts itr to a Set
+P2	wrong-result	iddicts-weakkeydict-length	WeakKeyDict: re-setting an isequal key registers no finalizer for it; after it is collected, length counts a dead entry forever
+P2	wrong-result	iobuffers-takestring-mark	takestring!(::PipeBuffer) returns already-read bytes when the buffer is marked
+P2	wrong-result	iocov-encode-uri-padding	uripath percent-encodes bytes below 0x10 with one hex digit ("\t" becomes "%9")
+P2	wrong-result	iocov-withenv-duplicate-key	withenv does not restore a variable that appears twice in its arguments
+P2	wrong-result	iterators-zip-shared-stateful-completion	A nested zip of a shared Stateful input consumes an unrelated input without yielding a row
+P2	wrong-result	iteratorscov-product-intersect-arity	intersect of products with different tuple arities invents common elements
+P2	wrong-result	loading-named-env-path-escape	Named environments with .. escape the depot and can create files outside it
+P2	wrong-result	loading-workspace-home-prefix	Workspace lookup mistakes a home-directory name prefix for containment
+P2	wrong-result	nummisc-tanh-float32-nonmonotone-v2	tanh decreases across adjacent positive Float32 inputs
+P2	wrong-result	range-srl-eq-length	StepRangeLen ranges of different lengths compare equal when their step is zero
+P2	wrong-result	rangescov-eq-twiceprecision	r1 == r2 for Float64 ranges with different elements: == compares only first, length and last
+P2	wrong-result	reduce-accumulate-dims-init	accumulate(op, A; dims, init) ignores init when dims > ndims(A)
+P2	wrong-result	runtimecov-load-path-expand-script-prefix	Named environments whose name starts with `script` (e.g. `@scripts`) are treated as `@script`
+P2	wrong-result	shellcmd-eq-ignores-cpus	==(::Cmd, ::Cmd) and hash(::Cmd) ignore the CPU affinity set by setcpuaffinity
+P2	wrong-result	sort-partialsort-reversed-range	partialsort(v, k) returns wrong values when k is a descending range
+P2	wrong-result	sorttuplescov-partialquicksort-reversed-range	sort(v; alg=PartialQuickSort(k)) leaves v[k] unsorted when k is a descending range
+P2	wrong-result	stringutil-annotated-reverse	reverse(::AnnotatedString) maps annotation regions with lastindex and misplaces them for multi-byte characters
+P2	wrong-result	stringutil-annotated-substring-pos	annotations(::SubString{<:AnnotatedString}, pos) returns regions relative to the parent string
+P2	wrong-result	twiceprecision-srl-twice-sum-values	sum(-51540000771.0:3.0:51540000771.0) returns 1.0 instead of 0.0: TwicePrecision * Integer is inexact for large integers
+P3	documentation	intfuncscov-matches-spec-unsorted	matches_spec_range! misses versions in unsorted lists, contrary to its comment
+P3	documentation	ranges-range-error-hint	range_error hint uses `start !== nothing` for haslength, so it can say a given `length` is missing
+P3	documentation	reducecov-promote-shape-message	promote_shape reports identical axes for two axes that do not match
+P3	missing-error	missingchar-skipmissing-getindex-nonscalar	skipmissing(x)[1:2] returns missing values instead of throwing MissingException
+P3	missing-error	reduce-cumsum-dims-nonpositive	cumsum(v::AbstractVector; dims=0) silently returns a copy instead of throwing
+P3	wrong-exception	broadcastviews-shape-mixed-singleton	Broadcast.broadcast_shape((3,), (Base.OneTo(1),)) throws although OneTo(1) is a singleton
+P3	wrong-exception	broadcastviews-stride-zero-dim	stride(V, 1) throws BoundsError for a zero-dimensional view such as view(A, 1, 2)
+P3	wrong-exception	dicts-immutabledict-in-missing	in(pair, ::ImmutableDict) and == throw TypeError on missing values instead of returning missing
+P3	wrong-exception	intfuncscov-semver-spec-nothrow	semver_spec(s; throw=false) throws InexactError or ErrorException for some specifiers
+P3	wrong-exception	shellcmd-split-escaped-trailing-space	shell_split keeps an escaped trailing space but reports a dangling backslash for an escaped trailing tab
+P3	wrong-exception	stringscovb-haskey-nul	haskey(m::RegexMatch, name) throws ArgumentError for a name containing NUL
+P3	wrong-exception	stringscovb-regex-execute-mask	Regex accepts PCRE.NO_START_OPTIMIZE as a match option, which every match then rejects
+P3	wrong-result	arrayops-append-many-self	append!(a, a, a) and prepend!(a, a, a) append a four times: later collections see the grown vector
+P3	wrong-result	dicts-persistentdict-eq-asymmetric	PersistentDict and Dict equality depends on argument order
+P3	wrong-result	iobuffers-truncate-mark	truncate(io, n) removes a mark at position n, which is still inside the buffer
+P3	wrong-result	logging-right-justify-unicode	ConsoleLogger right_justify misaligns metadata after wide or combining characters
+P3	wrong-result	regexunicode-dupnames-haskey	With (?J) duplicate group names, keys(m) lists a name that haskey(m, name) and m[name] reject
+P3	wrong-result	runtimecov-isa-isless-order	`isless(::ISA, ::ISA)` is the subset partial order, not the total order `isless` requires
+P3	wrong-result	runtimecov-scan-deps-unreported-cycle	Precompilation reports only one of two connected circular dependency cycles
+P3	wrong-result	showcov-type-depth-limit-backslash	type_depth_limit loses the rest of a signature after an escaped backslash in a quoted type parameter
+P3	wrong-result	stringscovb-chartransform-ascii-grow	annotated_chartransform shifts the start of an annotation on a one-byte character that grows
+== typemin/typemax/overflow (198 primary)
+P0	crash	memsafety-threads-comprehension-firstindex-overflow	Threaded comprehension reads out of bounds when firstindex is typemax(Int)
+P1	crash	memsafety-accumulate-offset-axis-overflow	accumulate! reads out of bounds for a one-element axis ending at typemax(Int)
+P1	crash	ranges-collect-full-width-crash	collect(typemin(Int):typemax(Int)) segfaults: Array(r) writes past a vector sized by the wrapped length
+P1	hang	base64uuid-readbytes-empty-hang	readbytes!(::Base64DecodePipe, UInt8[], nb) with nb > 0 never returns
+P1	hang	bignumscov-nextfloat-typemin	nextfloat(::BigFloat, typemin(Int)) and prevfloat(::BigFloat, typemin(Int)) never return
+P1	wrong-exception	base64uuid-decodepipe-eof-ignored-tail	Base64DecodePipe: eof is false before a trailing newline, then read(pipe, UInt8) and readline throw EOFError
+P1	wrong-result	array-range-target-search-overflow	findfirst and findlast return negative keys for matching narrow integer ranges
+P1	wrong-result	combinatorics-binomial-typemin	binomial(typemin(T), one(T)) returns zero for every signed integer type
+P1	wrong-result	exprreflect-enum-typemin-order	typemin of an @enum is wrong when a later member has the lowest value
+P1	wrong-result	floatintcov-divrem-roundup-typemin	rem with RoundUp negates typemin, so it disagrees with divrem and returns the wrong remainder
+P1	wrong-result	int-div-unsigned-signed-promotes	div(0x0a, Int16(-3)) returns 0xfffd::UInt16 although promote_type(UInt8, Int16) == Int16 and the quotient is -3
+P1	wrong-result	intarith-checked-negative-pow	checked_pow accepts negative exponents for unsigned typemax values
+P1	wrong-result	intarith-powers-negative-base-typemin	ndigits overcounts unsigned inputs when a negative base is typemin
+P1	wrong-result	intarith-powers-nextpow-overflow	nextpow(2, x) silently returns a negative number or zero after overflow
+P1	wrong-result	iocov-eachline-reverse-first-line	Iterators.reverse(eachline(io)) loses the start of the first line when lines span 4 KiB chunks
+P1	wrong-result	printf-negative-precision-int-oob	Printf integer conversions with a negative dynamic precision write digits past the end of the buffer
+P1	wrong-result	range-findin-overflow	findall(in(Int8(50):Int8(100)), Int8(-100):Int8(-90)) returns -105:11: _findin subtracts in the element type
+P1	wrong-result	ranges-operations-findfirst-overflow	findfirst on narrow integer ranges can return zero or negative indices
+P1	wrong-result	ranges-operations-intersect-mixed-regression	Mixed UInt8/Int8 range intersection returns values absent from an input on master
+P1	wrong-result	ranges-operations-step-intersect-overflow	StepRange intersection silently drops shared Int8 values after overflow
+P1	wrong-result	ranges-operations-unit-intersect-overflow	UnitRange/StepRange intersection silently loses shared Int8 elements
+P1	wrong-result	ranges-rational-int8-length-wraps	length of a 64-element Int8 rational UnitRange returns -64
+P1	wrong-result	reinterpretarrays-rr-nested-size	reinterpret(reshape, T, reinterpret(reshape, S, a)) uses the shape of a, not of the inner reinterpreted array
+P1	wrong-result	sort-range-search-overflow	searchsortedfirst/searchsortedlast on integer ranges overflow when the range spans more than typemax(T)
+P1	wrong-result	strings-first-n-overflow	first(s, typemax(Int)) returns an empty string for non-ASCII s
+P2	crash	markdown-list-number-overflow	Markdown.parse throws OverflowError on an ordered-list marker with 20 or more digits
+P2	crash	sort-vector-u8-search-sentinel	searchsortedlast(v, x, lo, hi, o) reads v[0] out of bounds for lo=0x01, hi=0xff
+P2	crash	stringscovb-normalize-impure-chartransform	normalize(s; chartransform=f) overflows its buffer when f is not pure
+P2	hang	dicts-sizehint-wrap-hang	sizehint!(::Dict, n) hangs when capacity arithmetic wraps
+P2	hang	randomsampling-string-continuation	rand(s::String) never returns a stray continuation byte character, and hangs when s has only those
+P2	missing-error	bignums-digits-unsigned-negative	digits(UInt8, big(-7)) silently returns wrapped values instead of throwing InexactError
+P2	missing-error	iddicts-weakvalue-eltype	WeakValueIdDict{K,V} stores values of any type; every read then throws TypeError on the ::V cast
+P2	missing-error	promotion-rational-from-float-exact	Rational{Int32}(2f0^31) silently clamps to 2147483647//1 on master instead of throwing InexactError
+P2	wrong-exception	arrayops-deleteat-range-overflow	deleteat!(a, -1:typemax(Int)) throws an internal ArgumentError instead of BoundsError: length(r) overflows
+P2	wrong-exception	combinatorics-factorial-wide-error	factorial throws InexactError before classifying large fixed-width and BigInt inputs
+P2	wrong-exception	complex-pow-typemin	ComplexF64 ^ typemin(Int) throws DomainError instead of returning a power
+P2	wrong-exception	files-diskstat-stored-fields	DiskStat stored properties and available bytes throw when total exceeds Int64
+P2	wrong-exception	floatranges-in-overflow-throws	1.0e308 in range(-1.0e308, 1.0e308; length=3) throws InexactError
+P2	wrong-exception	floatranges-splitprec-typemax	StepRangeLen{Float64}(typemax(Int)-1:typemax(Int)) throws InexactError in splitprec
+P2	wrong-exception	hashops-annotated-non8-hash	hash(::AnnotatedString) throws for non-UInt8 AbstractString storage
+P2	wrong-exception	intarith-complex-rational-zero-power-overflow	Zero integer power of a complex Rational{Int8} throws OverflowError
+P2	wrong-exception	intarith-number-lcm-mixed-typemin	lcm throws for unsigned-first mixed inputs whose result is representable
+P2	wrong-exception	intarith-powers-large-base	ndigits rejects valid positive integer bases larger than typemax(Int)
+P2	wrong-exception	intarith-round-float64-unsigned-rational-infinity	round to Float64 rejects positive unsigned rational infinity
+P2	wrong-exception	intarith-round-rational-unsigned-infinity	round to an unsigned Rational target rejects positive rational infinity
+P2	wrong-exception	intarith-round-unsigned-rational-infinity	round on unsigned rational infinity raises OverflowError
+P2	wrong-exception	intfuncs-lcm-array-real	lcm on a rational array overflows before a later zero makes the result representable
+P2	wrong-exception	intfuncs-lcm-nary-zero	Three-argument lcm throws OverflowError despite a leading zero
+P2	wrong-exception	intfuncscov-gcd-array-typemin	gcd(v::AbstractArray) throws OverflowError for typemin elements whose gcd is representable
+P2	wrong-exception	intfuncscov-gcd-mixed-typemin	gcd, lcm and gcdx of typemin(Signed) and a same-width Unsigned throw InexactError
+P2	wrong-exception	iobuffers-view-grow	Writable IOBuffer over a view throws MethodError when it needs to grow or after take!
+P2	wrong-exception	iterators-nth-cycle-overflow	Iterators.nth rejects valid indices when a repeated cycle length overflows
+P2	wrong-exception	logging-disable-typemax	disable_logging throws for the largest valid LogLevel
+P2	wrong-exception	nummisc-fastmath-hypot-varargs	@fastmath makes documented variadic hypot calls throw MethodError
+P2	wrong-exception	parse-complex-imaginary-typemin	Complex parsing rejects a representable minimum signed imaginary component
+P2	wrong-exception	parseprint-string-negative-base-unsigned	string(n; base=-b) throws InexactError for unsigned n above typemax of its signed type
+P2	wrong-exception	platforms-dl-name-four-part	parse_dl_name_version throws on library names with a four-part soversion such as libcublas.so.12.1.3.1
+P2	wrong-exception	randomsampling-steprange-full-width	rand(typemin(Int):1:typemax(Int)) throws "collection must be non-empty" for a non-empty StepRange
+P2	wrong-exception	range-linrange-int-step-overflow	LinRange rejects an integer step when endpoint subtraction wraps
+P2	wrong-exception	range-srl-add-step-overflow	+(::StepRangeLen) throws when the step sum overflows but element sums fit
+P2	wrong-exception	range-srl-neg-unsigned	-(::StepRangeLen) throws when negating an unsigned step
+P2	wrong-exception	range-srl-range-index-offset	Slicing a StepRangeLen with a range can throw when its offset is typemax
+P2	wrong-exception	range-unit-step-getindex-empty	Indexing an AbstractUnitRange with an empty StepRange can throw at typemin
+P2	wrong-exception	ranges-broadcast-mul-elementwise	r .* x on a small-integer range builds a StepRangeLen whose elements throw InexactError
+P2	wrong-exception	ranges-operations-empty-unsigned-slice	Empty slicing at unsigned zero throws instead of returning an empty range
+P2	wrong-exception	ranges-operations-slice-overflow	Slicing an Int8 UnitRange with an Int8 index range throws on a valid index
+P2	wrong-exception	ranges-ordinal-typemin-checked-length	checked_length throws InexactError for a two-element range with a typemin step
+P2	wrong-exception	ranges-ordinal-unsigned-index	A valid unsigned scalar index throws BoundsError for negative UnitRange elements
+P2	wrong-exception	rangescov-linrange-integer-elements	LinRange(-90:60:90)[2] throws InexactError: Int64(-30.000000000000007)
+P2	wrong-exception	rangescov-linspace-int-imin-inexact	range(typemax(Int)-10, typemax(Int); length=3) throws InexactError: Int64(-Inf)
+P2	wrong-exception	rangescov-ordinal-add-small-int	(Int8(126):Int8(127)) + (Int8(1):Int8(2)) is a range whose elements throw InexactError
+P2	wrong-exception	rangescov-steprange-unsigned-step-empty	StepRange(-5, UInt(1), -10) throws InexactError instead of returning an empty range
+P2	wrong-exception	rangescov-steprangelen-sum-small-int	sum((Int8(1):Int8(100)) .* Int8(1)) throws InexactError instead of returning 5050
+P2	wrong-exception	rangescov-unitrange-convert-empty	convert(UnitRange{UInt8}, 0:-1) throws InexactError although the range is empty
+P2	wrong-exception	reduce-maxdims-all-missing	maximum(A; dims) throws for a Matrix{Missing}: typemin(Union{})
+P2	wrong-exception	reduce-sumdims-init-narrow	sum(A; dims, init) stores into an array of typeof(init): Int8 init throws InexactError, Int init with Float64 data throws
+P2	wrong-exception	reinterpretarray-mapreduce-offset-overflow	sum on a reshaped reinterpret array wraps a typemax index and throws BoundsError
+P2	wrong-exception	reinterpretarray-totuple	NTuple conversion rejects a matrix despite enough iterable elements
+P2	wrong-exception	reinterpretarrays-permuted-int-type	PermutedDimsArray(A, Int32[2, 1]) throws ErrorException although permutedims(A, Int32[2, 1]) works
+P2	wrong-exception	reinterpretarrays-reshape-typemax-dim	reshape(1:typemax(Int), typemax(Int), 1) throws "invalid Array dimensions" (regression)
+P2	wrong-exception	sort-partialsortperm-index-type	partialsortperm(v, k) throws InexactError when k is a narrow integer type and v is long
+P2	wrong-exception	sorttuplescov-float-range-search-overflow	searchsortedfirst/last on a float range throw InexactError when the range spans more than floatmax
+P2	wrong-exception	strings-chop-head-overflow	chop(s, head=typemax(Int)) throws BoundsError instead of returning ""
+P2	wrong-exception	strings-lpad-typemin	lpad(s, typemin(Int)) and rpad(s, typemin(Int)) throw OutOfMemoryError
+P2	wrong-exception	strings-partition-overflow	Iterators.partition(s, typemax(Int)) throws BoundsError for non-ASCII strings
+P2	wrong-exception	stringscova-stringview-empty-constructor	typemin and one fail for StringView types whose backing vector has no zero-argument constructor
+P2	wrong-exception	stringutil-split-limit-type	split, rsplit, eachsplit and eachrsplit throw MethodError for non-Int limit::Integer values
+P2	wrong-exception	subarray-range-view-length-overflow	Range views reject a valid singleton selection when parent length wraps
+P2	wrong-exception	versionnumbers-tryparse-throws	tryparse(VersionNumber, s) throws on too-large or non-ASCII numbers instead of returning nothing
+P2	wrong-result	bitarrays-count-init-wrap	count(::BitArray; init) wraps around in init's type, while count on Array{Bool} widens small init types to Int
+P2	wrong-result	broadcastviews-range-negate-unsigned	.-r on an unsigned range containing 0 is empty, and .-(0x01:0x00) has 256 elements
+P2	wrong-result	channels-lock-reentrancy-wrap	ReentrantLock's UInt32 recursion count wraps: after 2^32+1 nested locks one unlock releases it
+P2	wrong-result	combinatorics-permutecols-unsigned	permutecols! and invpermutecols! silently ignore unsigned permutation vectors
+P2	wrong-result	complex-cis-spurious-nan	cis(0.0 - 1000.0im) returns a NaN imaginary component instead of zero
+P2	wrong-result	complex-div-spurious-nan	ComplexF64 division returns NaN components when the divisor is real or imaginary
+P2	wrong-result	complex-int-div-typemin	Complex{Int} division by a divisor with a typemin component returns NaN + NaN*im
+P2	wrong-result	dates-canonicalize-overflow	canonicalize can turn a positive CompoundPeriod into a negative period
+P2	wrong-result	dates-daynumber-roundtrip	Date calendar accessors overflow and break constructor and string round-trips
+P2	wrong-result	dates-rounding-overflow	floor(Date(-1), Day(typemax(Int64))) returns a date after its input
+P2	wrong-result	dates-time-add-overflow	Time addition wraps at Int64 before wrapping at the 24-hour boundary
+P2	wrong-result	div-bitinteger-fldmod-contract-v2	All-types fldmod equivalence fails on a mixed UInt8 and Int8 remainder
+P2	wrong-result	div-bitinteger-remainder-equation-v2	RoundUp rem violates the exact remainder equation for a signed minimum divisor
+P2	wrong-result	floatintcov-divrem-roundup-typemin-v2	RoundUp divrem disagrees with separate rem when the divisor is signed typemin
+P2	wrong-result	floatranges-linrange-step-overflow	step(LinRange(-1e308, 1e308, 3)) is Inf, so 0.0 in r is false although r[2] == 0.0
+P2	wrong-result	floatranges-start-step-overflow-nan	range(1.0; step=1e308, length=3) has NaN as its last element instead of Inf
+P2	wrong-result	indices-linearindices-iterate-end	iterate(::LinearIndices) does not stop after length typemax(Int): the state wraps to typemin(Int)
+P2	wrong-result	intarith-division-fldmod-consistency	fldmod returns a different remainder from mod for unsigned numerators and negative signed divisors
+P2	wrong-result	intarith-division-fldmod-consistency-v2	Mixed fldmod returns UInt8(255) where separate mod returns Int8(-1)
+P2	wrong-result	intfuncs-gcdx-nary-signed-bezout	Signed n-ary gcdx can return coefficients that fail the exact Bezout identity
+P2	wrong-result	intfuncs-lcm-array	lcm on an integer array returns typemin instead of a positive result or OverflowError
+P2	wrong-result	iobuffers-peek-clears-mark	peek(io, T) removes the stream's mark for T such as Char or Int8
+P2	wrong-result	iterators-partition-range-overflow	Iterators.partition returns an empty first chunk near typemax(Int)
+P2	wrong-result	iterators-partition-vector	Vector partition returns an empty final chunk after endpoint overflow
+P2	wrong-result	iteratorscov-partition-methods	Partition method semantics lose the final two vector elements on overflow
+P2	wrong-result	markdown-list-trailing-blank-loose	Markdown: a tight list followed by a blank line is parsed as a loose list
+P2	wrong-result	mathcov-cosc-large-argument	cosc(x) returns 0.0 or NaN instead of 1/x for large finite x
+P2	wrong-result	mathfuncs-exponent-rational	exponent(::Rational) is off by one for values just below a power of two
+P2	wrong-result	mathfuncs-prevpow-float32-overflow	prevpow(2.0f0, 1.0e39) returns Inf32, which is greater than x
+P2	wrong-result	multidim-cartesianindices-view-step-overflow	CartesianIndices slicing drops two selected coordinates when the composed stride overflows
+P2	wrong-result	numberscov-rationalize-integer-tolerance	rationalize(Int8, 128.0; tol=0.0) returns a result outside tol (127//1 on master, 1//0 on 1.13) instead of honoring or rejecting the tolerance
+P2	wrong-result	permuteddims-tile-ranges	permutedims! leaves destination entries untouched when a tile endpoint overflows
+P2	wrong-result	range-sort-typemin-step	sort returns an empty range when a descending range has a typemin step
+P2	wrong-result	range-srl-iterate-typemax	iterate(::StepRangeLen) does not stop after length typemax(Int): the state wraps to typemin(Int)
+P2	wrong-result	range-step-stop-length-count	range(stop, step, length) can silently return empty when computing start underflows
+P2	wrong-result	ranges-broadcast-add-length	r .+ x and r .- x on an integer UnitRange return an empty range when the endpoints wrap
+P2	wrong-result	ranges-eq-wrapped-length	A full-width range compares == to an empty range or empty vector because its length wraps to 0
+P2	wrong-result	ranges-keyword-length	range(start; length) and range(start; step, length) silently return an empty range when the stop overflows
+P2	wrong-result	ranges-length-overflow-silent	length(typemin(Int):typemax(Int)) returns 0 instead of throwing
+P2	wrong-result	ranges-mod-congruence	mod(x, r::AbstractUnitRange) returns a non-congruent value when x - first(r) overflows
+P2	wrong-result	ranges-operations-intersect-empty	Intersecting an Int8 StepRange with an empty UnitRange returns elements
+P2	wrong-result	ranges-operations-negate-typemin	Negating an Int8 range disagrees with negating its collected elements
+P2	wrong-result	ranges-operations-reverse-typemin	Reversing a StepRange with a typemin step can return an empty range
+P2	wrong-result	rangescov-issorted-full-width	issorted(typemax(Int):-1:typemin(Int)) is true, and sort returns the descending range unchanged
+P2	wrong-result	rangescov-linspace-int128-overflow	range(a, b; length) with large Int128 endpoints silently returns negative elements
+P2	wrong-result	rational-checked-length-native-rational-range	Base.checked_length returns a negative count on a rational UnitRange ending at 1//0
+P2	wrong-result	rational-gcdx-wrapped-bezout	gcdx(::Rational) returns invalid Bezout coefficients after an intermediate wrap
+P2	wrong-result	reduce-maxabs-dims-typemin	maximum(abs, A; dims) returns 0 for [typemin(Int)] (start value 0 assumes abs(x) >= 0)
+P2	wrong-result	reduce-prod-init-mixed-sign	prod(Int8[-1]; init=0x01) === 0xff: mul_prod does not widen mixed-sign small integers
+P2	wrong-result	reducecov-float-missing-abstract	float(A) for an abstract Union{T, Missing} element type rounds BigFloat and overflows BigInt to Float64
+P2	wrong-result	reducecov-linearindices-range-index	LinearIndices((3:5,))[2:3] == 4:5 although LinearIndices((3:5,)) holds 1, 2, 3
+P2	wrong-result	reducecov-slice-integer-index	Base.Slice(3:5)[Int8(3)] == 5 although Base.Slice(3:5)[3] == 3
+P2	wrong-result	reinterpretarrays-size-overflow	size(reinterpret(T, A)) wraps for long lazy arrays: reinterpret(Int32, 1:2^61) is empty
+P2	wrong-result	shellcmd-csh-posix-backslash	shell_escape_csh output is not safe for a POSIX shell when an argument has a quote and a backslash
+P2	wrong-result	sockets-bigint-constructor	IPv4(big(1)) and IPv6(big(1)) fail in typemax(BigInt)
+P2	wrong-result	sort-searchsorted-equivalent-range	searchsorted wraps the insertion boundary at typemax(Int) on an AbstractVector axis
+P2	wrong-result	strings-cmp-malformed	cmp(::String, ::String) disagrees with generic cmp(::AbstractString, ::AbstractString) for malformed UTF-8
+P2	wrong-result	strings-search-offset-zero-byte	Byte-pattern searches miss index zero in an offset-indexed vector
+P2	wrong-result	stringutil-split-sentinel-overflow	eachsplit never ends on a string with ncodeunits == typemax(Int): the end state ncodeunits + 2 wraps
+P2	wrong-result	subarray-step-view-step-overflow	A StepRange view silently becomes empty when its composed step overflows
+P2	wrong-result	toml-int64-parsed-as-int128	TOML parser returns Int128 for integers in the Int64 range that have 18 or more characters
+P2	wrong-result	twiceprecision-div12-rounded	Base.div12 double-rounds subnormal quotients and returns (Inf, -Inf) on overflow
+P3	documentation	div-bitinteger-away-quotient	Mixed RoundFromZero division returns wrapped UInt8(255) rather than -1
+P3	documentation	div-bitinteger-directed-wrapper-correct-v2	Mixed fld returns UInt8(255) instead of the mathematical floor -1
+P3	documentation	div-bitinteger-divrem-reconstruction	Unsigned RoundUp divrem wraps a mathematically negative remainder to UInt8(255)
+P3	documentation	floatintcov-int-widen-v2	widen preserves unsignedness, so widened unsigned subtraction still wraps
+P3	documentation	hashops-widen-unsigned-sub	widen documentation promises overflow-free subtraction, but widened unsigned subtraction wraps
+P3	documentation	int-signed-bool-size	signed(Bool) is Int (8 bytes), but the signed(T) docstring promises the signed type of the same size
+P3	documentation	intarith-number-gcdx-strict-bounds	gcdx documents strict coefficient bounds that fail for equal nonzero inputs
+P3	documentation	intarith-rational-normalize-before-convert	Rational{Int8}(128, -1) fails although its normalized components fit
+P3	documentation	iobuffers-pipebuffer-maxsize-type	PipeBuffer documents maxsize::Integer but throws TypeError for non-Int integers
+P3	documentation	iterators-take-huge-count	Generic first and take docs omit the intentional Int count limit
+P3	documentation	misccov-ccall-macro-parse-doc	Docstring of Base.ccall_macro_parse describes a 4-tuple with a bare function name; it returns a 7-tuple (6 in 1.13)
+P3	documentation	randomsampling-randstring-uint8-length	randstring with UInt8 characters can return fewer characters than requested
+P3	documentation	runtimecov-datatype-fielddesc-type-doc	`Base.datatype_fielddesc_type` returns a 0-3 code, not the entry size in bytes its docstring promises
+P3	documentation	runtimecov-datatype-haspadding-doc	`Base.datatype_haspadding` docstring describes the opposite of what it returns
+P3	missing-error	dicts-union-max-values-break	union!/Set{T}(itr) skip converting the rest of itr once the set has max_values(T) elements
+P3	missing-error	misccov-memcmp-negative-length	Base.memcmp wraps a negative length to a huge one, while memcpy/memmove/memset throw InexactError
+P3	missing-error	reinterpretarrays-smi-div-typemin	div(typemin(Int), multiplicativeinverse(-1)) returns typemin(Int) instead of throwing DivideError
+P3	wrong-exception	abstractarrays-require-one-based-large-axis	require_one_based_indexing throws InexactError instead of ArgumentError for large UInt axes
+P3	wrong-exception	abstractarrays-size-large-dim	size(A, d) throws for large positive Integer dimensions while axes(A, d) returns 1:1
+P3	wrong-exception	array-filter-bang-native-axes	filter!(f, a::AbstractVector) throws BoundsError when the last index is typemax(Int)
+P3	wrong-exception	bootcov-signbit-func-name	UInt16(Int8(-1)) reports InexactError: trunc(UInt16, -1) although nothing is truncated
+P3	wrong-exception	concurrencycov-channel-float-size-error	Channel(-Inf), Channel(NaN) and Channel(2.5) throw InexactError instead of the size ArgumentError
+P3	wrong-exception	floatfuncs-isapprox-int-negative-rtol	Integer isapprox disagrees with its exact formula for negative relative tolerances
+P3	wrong-exception	iocov-secretbuffer-peek	peek(::SecretBuffer, Char) throws FieldError: SecretBuffer has no mark field
+P3	wrong-exception	iterators-drop-drop-overflow	drop(drop(itr, a), b) throws ArgumentError when the combined count overflows
+P3	wrong-exception	iterators-product-length-zero	length of an empty Iterators.product throws when earlier dimensions overflow
+P3	wrong-exception	missingchar-isvalid-char-negative	isvalid(Char, -1) throws InexactError instead of returning false
+P3	wrong-exception	parseprint-digits-typemin-base	digits(n; base=typemin(Int)) throws DomainError "base must be ≥ 2 or ≤ -2" because abs(base) overflows
+P3	wrong-exception	promotion-rational-from-float-representable	Rational{T}(x::AbstractFloat) throws InexactError for exactly representable x such as -128.0
+P3	wrong-exception	reducecov-dims-unsigned-large	sum(A; dims=UInt(2)^63) throws InexactError while sum(A; dims=typemax(Int)) reduces over the trailing singleton dimension
+P3	wrong-exception	regexunicode-isvalid-char-negative	isvalid(Char, x) throws InexactError for negative integers instead of returning false
+P3	wrong-exception	sockets-ipv4-overflow-error	parse(IPv4, "1.2.3.999999999999999999999999") throws OverflowError, not ArgumentError
+P3	wrong-exception	tuples-getindex-inexact	`t[typemax(UInt)]` throws InexactError instead of BoundsError
+P3	wrong-result	abstractset-union-typemax-sentinel	union! treats typemax(Int) as a full capacity for an AbstractSet{Int}
+P3	wrong-result	array-reverseind-wide-index	reverseind overflows its endpoint sum before subtracting a wide index
+P3	wrong-result	markdown-plain-loose-list	Markdown.plain prints loose lists without blank lines, so they reparse as tight lists
+P3	wrong-result	mathfuncs-copysign-typemin	copysign(typemin(Int), 1) returns a negative number
+P3	wrong-result	missingchar-some-show-typeinfo	repr([Some(1), Some(2)]) is "Some{Int64}[1, 2]", which does not evaluate
+P3	wrong-result	multidim-cartesianindices-length-overflow	length(CartesianIndices((2^32, 2^32))) == 0: isempty is true and linear indexing fails for a nonempty CartesianIndices
+P3	wrong-result	parseprint-ryu-precision-pow10-overflow	Ryu.writeshortest with precision >= 20 switches to exponent form for exact powers of ten from 1e19, because 10^(pt - olength) overflows Int
+P3	wrong-result	reducecov-reduce-number	reduce(op, x::Number) returns x without reduce_first: reduce(+, true) === true, reduce(hcat, 5) === 5
+P3	wrong-result	reducecov-slice-promote-rule	promote_type of two Slice (or IdentityUnitRange) types is the UnionAll Base.Slice: el_same is passed a range type
+P3	wrong-result	regexunicode-subst-group-overflow	A huge group number in a SubstitutionString wraps around Int and refers to another group
+P3	wrong-result	showcov-truncate-width-overflow	Limited Dict/Set display overflows the line when an entry ends in a wide character
+P3	wrong-result	strings-nextind-n-overflow	nextind(s, i, n) wraps to a negative index for large n
+P3	wrong-result	stringutil-hex2bytes-nonascii	hex2bytes accepts an overlong UTF-8 encoding of an ASCII hex digit
+P3	wrong-result	toml-octal-overflow-length	TOML parser rejects 22-digit octal integers above typemax(UInt64) but accepts larger 23-digit ones
+== offset axes (11 primary)
+P1	wrong-result	abstractarrayspecs-cat-offset-axes	cat silently misplaces arguments with offset axes, returning zeros or uninitialized memory
+P1	wrong-result	reinterpretarrays-nested-slice-offset	view(V, :) of a view with an IdentityUnitRange index reads and writes the wrong (even out-of-bounds) parent elements
+P1	wrong-result	stringscova-search-offset-pattern-range	Byte-vector search returns ranges that are too long for offset-indexed patterns
+P2	wrong-exception	regexunicode-findnext-start-below	findnext(::Regex, s, i) and match(::Regex, s, i) throw InexactError for i < 1 and ErrorException for i past the end
+P2	wrong-result	iobuffers-copyline-prior	copyline(out::IOBuffer, s; keep=false) deletes newline bytes that were already in out
+P2	wrong-result	reducecov-slice-bool-range	Base.Slice(r)[false:true] returns the Bool range instead of logical indexing
+P3	documentation	toml-offset-datetime-rejected	TOML stdlib docs claim TOML v1.1 support, but offset date-times other than Z are rejected
+P3	wrong-exception	arrayops-findnext-start-below	findnext(f, v, 0) throws BoundsError although findnext(f, v, length(v)+1) returns nothing (findprev mirrored)
+P3	wrong-result	iocov-iobuffer-show-compacted	show(::IOBuffer) prints the internal pointer, not the position, after a PipeBuffer was compacted
+P3	wrong-result	reducecov-linearindices-mixed-axes	LinearIndices((Base.IdentityUnitRange(3:5), 2)) drops the offset axis that LinearIndices((Base.IdentityUnitRange(3:5), Base.OneTo(2))) keeps
+P3	wrong-result	stringscovb-replace-clears-before	replace(out::AnnotatedIOBuffer, ...) at a non-final position clears the annotations of the byte before
+== empty collection (65 primary)
+P1	crash	markdown-hashheader-cr-eof	Markdown.parse throws EOFError on a "#" line ended by a lone carriage return at end of input
+P1	wrong-exception	multidim-findfirst-empty-matrix	findfirst and findlast throw BoundsError on empty matrices with zero rows
+P1	wrong-result	base64uuid-decodepipe-eof-buffered	Base64DecodePipe: eof ignores buffered input, so a read after a partial read loses data
+P1	wrong-result	bitarrays-bitset-symdiff-duplicates	symdiff!(::BitSet, itr) cancels repeated iterable elements instead of ignoring duplicates
+P1	wrong-result	iterators-cycle-empty-length	take of an empty cycle reports a positive length while yielding nothing
+P1	wrong-result	iterators-take-isdone-zero	isempty(Iterators.take(itr, 0)) is false for stateful iterators, and zip then consumes elements
+P1	wrong-result	multidimcov-sizehint-first-empty	sizehint!(v, n; first=true) throws BoundsError when v is empty but has spare capacity
+P2	missing-error	sockets-ipv6-double-elision	parse(IPv6, ..) accepts two '::' elisions, silently dropping groups
+P2	missing-error	sockets-ipv6-empty-string	parse(IPv6, "") returns the unspecified address instead of an error
+P2	missing-error	sockets-ipv6-lone-colon	parse(IPv6, ":1") and parse(IPv6, "1:") silently misplace the groups instead of erroring
+P2	model-counterexample	c-runtime-page-acquire-zero-retained-scratch	Parallel sweep model frees scratch after a worker's pre-free base load
+P2	wrong-exception	abstractarrayspecs-zero-index-offset	A[] on an IndexCartesian array with length-1 offset axes indexes at (1, ..., 1) and throws BoundsError
+P2	wrong-exception	bitarrays-circshift-empty	circshift!(::BitVector, k) throws DivideError for an empty BitVector
+P2	wrong-exception	bitarrays-reverse-dims-empty	reverse(::BitArray; dims) throws "step cannot be zero" for some empty BitArrays
+P2	wrong-exception	bitsetscov-replace-set-singleton	replace(Set([1, missing]), missing => 0) throws MethodError instead of returning Set([1, 0])
+P2	wrong-exception	combinatorics-nextprod-empty	nextprod((), 1) throws BoundsError instead of returning the empty product
+P2	wrong-exception	dictscov-immutable-filter-copy	filter and copy of a nonempty ImmutableDict throw MethodError
+P2	wrong-exception	intfuncscov-invperm-empty-any	invperm(Any[]) throws MethodError although the empty vector is a valid permutation
+P2	wrong-exception	iterators-product-stateful-done	collect(Iterators.product(eachline(io))) throws ArgumentError: tuple must be non-empty
+P2	wrong-exception	multidim-circcopy-empty	circcopy! throws DivideError for empty arrays with different axes
+P2	wrong-exception	multidimcov-filter-cartesian-empty	filter(f, a) throws TypeError for an empty IndexCartesian array when f is not inferred to return Bool
+P2	wrong-exception	rangescov-bigfloat-colon-empty	big(3.0):big(1.0) throws "length cannot be negative" instead of returning an empty range
+P2	wrong-exception	reduce-flatten-sum-empty	sum(Iterators.flatten([Int[], Int[]])) throws although the element type is known
+P2	wrong-exception	shellcmd-escape-empty-args	shell_escape_csh and escape_microsoft_c_args throw on an empty Cmd or no arguments
+P2	wrong-exception	sort-dimension-copy-empty-axis	sort(A; dims) throws when the sorted dimension is empty
+P2	wrong-exception	sort-dimension-mutation-empty-slices	sort! throws when a valid dimension has no slices
+P2	wrong-exception	sort-partialsort-empty-range	partialsort! rejects an empty index range on a 260-element input
+P2	wrong-exception	stringutil-startswith-io-eof	startswith(io, chars) throws EOFError on an empty stream and leaves it marked
+P2	wrong-exception	transcode-cwstring-empty-vector	Passing an empty Vector{Cwchar_t} as a Cwstring throws BoundsError instead of the NUL-termination ArgumentError
+P2	wrong-result	abstractarrayspecs-cat-similar-empty-vector	cat_similar(a::AbstractArray, T, Int[]) allocates size(a), while shape () allocates a zero-dimensional array
+P2	wrong-result	iobuffers-copyline-middle	copyline(out::IOBuffer, s; keep=false) keeps the newline of an empty line when writing into the middle of out
+P2	wrong-result	iocov-strftime-long	strftime returns "" when the formatted time is longer than 127 characters
+P2	wrong-result	iterators-rest-isdone-state	isempty on Iterators.rest ignores its stored iteration state
+P2	wrong-result	iteratorscov-product-empty-infinite	IteratorSize(product(1:0, countfrom())) is IsInfinite, so zip and take with it return uninitialised elements
+P2	wrong-result	loading-v1-manifest-format-name	A package named manifest_format disappears from v1 manifests
+P2	wrong-result	multidim-cat-scalar-shape	vcat(1, [2 3]) returns [1 1; 2 3]: cat broadcasts scalars instead of checking sizes
+P2	wrong-result	range-bool-steprange-empty	StepRange(false, -1, true) contains false instead of being empty
+P2	wrong-result	regexunicode-eachmatch-offset-inside-malformed	On master (PCRE2 10.49), eachmatch and replace place empty matches inside a malformed character
+P2	wrong-result	regexunicode-findall-skips-nonempty	findall/count with a Regex miss a non-empty match that starts where an empty match was found
+P2	wrong-result	regexunicode-replace-empty-after-match	replace(s, r => t) skips an empty regex match right after a non-empty match, unlike eachmatch, findall and count
+P2	wrong-result	sort-range-search-empty	searchsorted on an empty range returns a nonempty or out-of-range answer when the step points against the order
+P2	wrong-result	stringscova-substring-empty-offset	Empty SubString discards the requested offset
+P2	wrong-result	stringscovb-replace-end-empty-match	replace(::AnnotatedString, pat => AnnotatedString) drops the annotations of a replacement made by an empty match at the end
+P2	wrong-result	stringscovb-replace-skipped-empty-annotation	replace(::AnnotatedString) annotates text after a skipped empty match with the replacement's annotations
+P3	documentation	channels-isready-buffered-stored	isready(::Channel) is true for an empty buffered channel while a woken put! has not run
+P3	documentation	multidimcov-intersect-range-vector	intersect documentation omits mixed range/vector ordering and equality behavior
+P3	missing-error	iterators-product-last-empty	last of an empty Iterators.product returns a tuple absent from the product
+P3	missing-error	multidim-copyto-empty-size	copyto!(dest, Rdest, src, Rsrc) does not check sizes when Rdest is empty
+P3	missing-error	regexunicode-match-offset-inside-char	match(r, s, i) with i inside a character returns a match starting at that invalid index
+P3	wrong-exception	arrayops-reverse-window-inconsistent	reverse(v, 5, 5) throws BoundsError for a 3-element vector while reverse!(v, 5, 5) returns v
+P3	wrong-exception	mathfuncs-evalpoly-empty	evalpoly(x, ()) throws BoundsError instead of returning the empty sum
+P3	wrong-exception	reduce-count-init-float	count(::Array{Bool}; init=0.0) throws MethodError while count over a tuple returns 1.0
+P3	wrong-exception	reducecov-maximum-inplace-empty	maximum!(r, A), minimum! and extrema! throw BoundsError instead of ArgumentError when A is empty along a reduced dimension
+P3	wrong-exception	regexunicode-subst-empty-group-name	s"\g<>" in replace throws ArgumentError from parse instead of "Bad replacement string"
+P3	wrong-result	markdown-plain-empty-code-span	Markdown.plain prints an empty code span as `` which reparses as text
+P3	wrong-result	misccov-shell-empty-word-redirect	An empty quoted word directly before a redirect is dropped: `echo ''>x` runs `echo` with no argument
+P3	wrong-result	multidim-cartesianindices-empty-eq	Empty CartesianIndices of the same size compare unequal with == although isequal is true
+P3	wrong-result	platforms-triplet-roundtrip	parse(Platform, triplet(p)) fails or differs for strictly validated platforms (empty tag value, libgfortran6, minor versions)
+P3	wrong-result	reduce-finddims-empty-shape	findmax(zeros(0, 0); dims=1) returns 0x0 arrays instead of the reduced 1x0 shape
+P3	wrong-result	reducecov-identityrange-bool-step	IdentityUnitRange(1:2)[StepRange(true, -1, false)] is empty instead of [1]
+P3	wrong-result	runtimecov-init-depot-path-duplicate	`JULIA_DEPOT_PATH=":$HOME/.julia"` puts the user depot in `DEPOT_PATH` twice
+P3	wrong-result	stringscovb-aio-empty-write-splits	Writing an empty AnnotatedString into the middle of an AnnotatedIOBuffer splits annotations
+P3	wrong-result	stringscovb-repeat-char-zero	repeat(c::AnnotatedChar, 0) keeps annotations with empty regions, unlike repeat(::AnnotatedString, 0)
+P3	wrong-result	stringutil-eachregion-empty	eachregion(AnnotatedString("")) yields one empty region because of an operator-precedence slip
+P3	wrong-result	tuples-prod-empty	`prod(())` returns 1 but `prod(identity, ())`, `sum(())` and `reduce(*, ())` throw
+== doc mismatch (29 primary)
+P1	wrong-result	regexunicode-isequal-normalized-stripmark	isequal_normalized(...; stripmark=true) is wrong when a combining mark is a separate character
+P2	crash	memsafety-ryu-lookup-index	Ryu pow5 lookup helpers read outside their tables for unchecked indices
+P2	model-counterexample	c-runtime-page-no-aba-contract	Windows page commit failure violates the GC page stack no-ABA contract
+P2	wrong-exception	abstractarrayspecs-linear-zero-unitrange	Zero-index access to an IndexLinear vector with a UnitRange axis uses index 1
+P2	wrong-exception	docssyntaxcov-library-files-unrelated-invalid	library_files throws when a directory contains an unrelated library with a four-part version
+P2	wrong-result	bitsetscov-allunique-idset	IdSet predicate shortcuts disagree with documented isequal comparisons
+P2	wrong-result	docssyntaxcov-doc-signature-typevar	Docs.signature adds Tuple{T} for each `where T`, so g(x::Vector{T}) where T docs match g(::Int)
+P2	wrong-result	docssyntaxcov-field-doc-const	The docstring of a const field of a mutable struct is attached to the next field
+P2	wrong-result	hashops-annotated-isless	AnnotatedString isless treats unequal annotations as equivalent
+P2	wrong-result	logging-maxlog-bigint	ConsoleLogger and SimpleLogger ignore maxlog when its documented integer is a BigInt
+P2	wrong-result	logging-splat-special-keys	@logmsg treats splatted _module, _file, and _line as ordinary metadata
+P2	wrong-result	stringutil-truncate-width	rtruncate/ltruncate/ctruncate return the replacement even when it is wider than maxwidth
+P3	documentation	abstractarrayspecs-eachindex-size-mismatch	eachindex(A, B) returns OneTo(length) for linear arrays of different sizes instead of throwing DimensionMismatch
+P3	documentation	bignums-gmp-extended-gcd	BigInt gcdx's documented strict coefficient bounds fail for equal unit inputs
+P3	documentation	concurrencycov-threadcall-pool-size	@threadcall ignores UV_THREADPOOL_SIZE set for a restarted Julia process
+P3	documentation	concurrencycov-timev-zero-counters	@timev prints zero-valued counters although documented to print only non-zero ones
+P3	documentation	iobuffers-take-readonly-reset	take! on a read-only IOBuffer does not reset it, contrary to its docstring
+P3	documentation	iocov-open-flags-append-doc	open docstring says append=true implies truncate=true by default, but open_flags gives truncate=false
+P3	documentation	mathfuncs-rempio2-kernel-sign	rem_pio2_kernel docstring: quadrant k is only correct mod 4 on the Payne-Hanek path
+P3	documentation	misccov-ryu-log10pow-negative	Ryu.log10pow2 and log10pow5 docstrings claim validity for all e below a bound, but they are wrong for some negative e
+P3	documentation	misccov-ryu-pow5invsplit-bitcount	Ryu.pow5invsplit(T, 0) has pow5_inv_bitcount(T)+1 significant bits, not pow5_inv_bitcount(T) as documented
+P3	documentation	multidimcov-isbitsunion-many-members	isbitsunion is false for a Union of 127 or more isbits types, contradicting its docstring
+P3	documentation	paths-splitext-dotfile-doc	splitext(".bashrc") does not split although the docstring says it splits at the last dot
+P3	documentation	runtimecov-iskindtype-abstract-kind	`Base.iskindtype` accepts the abstract `Core.AnyType`, but its docstring says all kinds are concrete
+P3	documentation	shellcmd-wincmd-percent-doc	shell_escape_wincmd docstring says input with % fails with ArgumentError, but it is returned unescaped
+P3	documentation	sorttuplescov-reverseordering-perm-lt	ReverseOrdering docstring: lt(ReverseOrdering(o), a, b) == lt(o, b, a) fails for Perm orderings
+P3	wrong-exception	bignums-string-base-error	string(big(7); base=63) throws ArgumentError, string(7; base=63) throws DomainError
+P3	wrong-result	platforms-show-tag-names	show(::Platform) prints tag names such as "cuda.version" as keyword arguments, so repr(p) is not valid Julia
+P3	wrong-result	rational-manual-float-identity	float(a//b) can differ from a/b despite the manual identity
+== IO/EOF/state (16 primary)
+P1	crash	markdown-github-paragraph-cr-eof	Markdown.parse(s, flavor = :github) throws EOFError when s ends with a lone carriage return
+P1	missing-error	streams-iostream-closed-write	Writing to a closed IOStream silently returns zero
+P1	wrong-result	regexunicode-replace-capture-append	replace(io, s, r => s"\1") writes captures at the read position of an append-mode IOBuffer
+P2	missing-error	iobuffers-readuntil-unreadable	readline/readuntil/copyuntil read from an IOBuffer opened with read=false
+P2	missing-error	memsafety-deprecated-substring-negative-count	Deprecated no-shift SubString constructor accepts a negative code-unit count
+P2	missing-error	toml-array-table-in-inline-table	TOML parser lets an array-of-tables header add a key to an inline table
+P2	wrong-exception	iobuffers-take-closewrite	take!(PipeBuffer) after closewrite throws "Unreachable IOBuffer state"
+P2	wrong-result	abstractarrayspecs-hvncat-zero-d-eltype	typed_hvncat(Any, 0, x) returns a zero-dimensional Array with typeof(x) as its element type
+P2	wrong-result	base64uuid-crc32c-iostream-filesize	crc32c(io::IOStream) trusts filesize: returns the seed for /proc files and throws after seeking past the end
+P2	wrong-result	iocov-copyline-cr-crlf	copyline(out, s) keeps an extra '\r' before "\r\n" when out is not an IOBuffer
+P2	wrong-result	strings-findprev-empty-end	findprev("", s, ncodeunits(s)+1) returns 0:-1
+P2	wrong-result	stringscovb-aio-write-aio-clears-before	write(::AnnotatedIOBuffer, ::AnnotatedIOBuffer) also clears annotations on the byte before the written region
+P2	wrong-result	stringscovb-aio-write-aio-drops-spanning	write(::AnnotatedIOBuffer, ::AnnotatedIOBuffer) drops annotations that start before the source position
+P2	wrong-result	stringscovb-annotatedstring-char-region	annotatedstring gives an AnnotatedChar argument a one-byte region, cutting multi-byte characters
+P2	wrong-result	stringutil-startswith-io-mark	startswith(io, prefix) removes the stream's existing mark
+P3	wrong-result	show-namedtuple-type-operator	NamedTuple types with operator field names print as @NamedTuple{+::Int64}, which does not evaluate
+== NaN/Inf/signed zero (34 primary)
+P2	wrong-exception	missingchar-skipmissing-findlast	findlast, findnext and findprev fail on skipmissing although findfirst and findall work
+P2	wrong-exception	range-linrange-range-index-nan	Slicing a one-element LinRange containing NaN throws because NaN is not equal to itself
+P2	wrong-result	array-findall-in-array-isequal	findall(in(b), array) replaces the supplied membership predicate with Set equality
+P2	wrong-result	array-findall-in-sorted-isless	Sorted real-array findall(in(b), x) uses ordering equivalence instead of membership
+P2	wrong-result	bignums-cmp-signed-zero	cmp(big(-0.0), 0.0) and cmp(big(-0.0), 0) return 0 although isless(big(-0.0), 0.0) is true
+P2	wrong-result	bignums-gmp-comparison-ieee	cmp(BigInt(0), -0.0) ignores the documented signed-zero total order
+P2	wrong-result	bignums-gmp-comparison-ieee-reverse	cmp(-0.0, BigInt(0)) ignores the documented signed-zero total order
+P2	wrong-result	bignumscov-mpfr-1009-v2	cmp loses signed-zero order between BigFloat and Float64
+P2	wrong-result	bignumscov-mpfr-1014-v2	Reverse Float64 BigFloat cmp also loses signed-zero order
+P2	wrong-result	bignumscov-mpfr-994-v2	cmp treats BigFloat negative zero and BigInt zero as equal
+P2	wrong-result	bignumscov-mpfr-998-v2	cmp ignores the sign of BigFloat zero against Int64 zero
+P2	wrong-result	bitsetscov-isdisjoint-threshold	isdisjoint(a, b::Vector) switches from == to isequal when length(b) reaches 70
+P2	wrong-result	dicts-issubset-vector-threshold	issubset(a, b::Vector) switches from == to isequal when length(b) > 70
+P2	wrong-result	error-backoff-iteration	ExponentialBackOff with infinite jitter yields NaN delays
+P2	wrong-result	floatranges-colon-infinite-step	0.0:Inf:1.0 is a one-element range whose element is NaN
+P2	wrong-result	floatranges-colon-underflow-nonempty	1.0e-300:1.0e30:0.0 is nonempty although start > stop and step > 0
+P2	wrong-result	mathfuncs-exp2-int128-wrap	exp2(::Int128) returns nonzero results, even floatmin, for exponents below -2^64
+P2	wrong-result	mathfuncs-pow-negzero-odd	(-0.0)^y loses the sign of zero for odd integer y with |y| > 24576
+P2	wrong-result	parseprint-round-digits-overflow-zero	round(floatmax(); sigdigits=1) and round(floatmax(); digits=-308) return 0.0
+P2	wrong-result	promotion-cmp-rational-signed-zero	cmp(-0.0, 0//1) returns 0 although isless(-0.0, 0//1) is true
+P2	wrong-result	show-expr-neg-zero-base	Expr printing of (-0.0)^2 drops the parentheses and changes the value
+P2	wrong-result	sorttuplescov-insorted-range-equivalence	insorted(x, ::AbstractRange) uses == instead of the sort-order equivalence and can return missing
+P2	wrong-result	tuples-findall-in-isequal	findall(in(b), tuple) changes membership equality for signed zero and NaN
+P3	documentation	arraycov-indexin-isequal	indexin documents membership without explaining its isequal key semantics
+P3	documentation	mathfuncs-min-isless-nan	Floating-point min/max propagate NaN despite the generic isless-order docstrings
+P3	documentation	printf-tie-rounding-doc	@printf docstring says ties round away from zero, but they round to even
+P3	wrong-exception	bignums-rational-nan	Rational{BigInt}(NaN) throws ArgumentError from its own 0//0 return value instead of InexactError
+P3	wrong-exception	floatranges-colon-nonfinite-error	0.0:1.0:Inf throws InexactError: Int64(Inf) instead of an ArgumentError
+P3	wrong-exception	promotion-trunc-rational-infinite-error	trunc/round/floor/ceil(T, x::Rational) throw DivideError for 1//0 instead of InexactError
+P3	wrong-result	docssyntaxcov-text-hash-isequal	isequal(Docs.Text(-0.0), Docs.Text(0.0)) is true but their hashes differ
+P3	wrong-result	floatranges-colon-signed-zero	first(-0.0:1.0:2.0) is +0.0
+P3	wrong-result	floatranges-linrange-infinite-endpoint	LinRange(0.0, Inf, 3)[1] is NaN while first(r) is 0.0
+P3	wrong-result	printf-hex-zero-alternate-point	Printf %#a omits the decimal point for zero
+P3	wrong-result	showcov-alignment-inf	Base.alignment splits Inf at its 'f', so Inf is misaligned against the decimal point in array display
+== wrong exception type (27 primary)
+P1	crash	regexunicode-replace-capture-generic-io	replace(io, s, r => s"\1") throws MethodError unless io is an IOBuffer
+P2	crash	markdown-latex-printer-throws	Markdown.latex throws MethodError on interpolated values and (on master) raw HTML
+P2	crash	markdown-rst-printer-throws	Markdown.rst throws MethodError on images, strikethrough, raw HTML and interpolated values
+P2	hang	reducecov-rangestepstyle-hang	Base.RangeStepStyle(x) never returns for a value or type that is not a range
+P2	wrong-exception	arraycov-reshaped-iterator-exhaustion	ReshapedArrayIterator throws MethodError at normal iteration exhaustion
+P2	wrong-exception	bignums-isqrt-negative	isqrt(::BigInt) throws DivideError for negative input instead of DomainError
+P2	wrong-exception	broadcastviews-range-ldiv	x .\ r throws MethodError (adjoint(::TwicePrecision)) for Float64 ranges such as 0.0:0.5:2.0
+P2	wrong-exception	exprreflect-nloops-atomic-body	Base.Cartesian.@nloops rejects a variable or literal body with an internal MethodError
+P2	wrong-exception	indices-heterogeneous-cartesian-promotion	A vector literal of compatible CartesianIndices throws MethodError for mixed axis types
+P2	wrong-exception	iocov-lazylibrary-throw-error	dlopen(::LazyLibrary; throw_error=false) throws MethodError instead of returning nothing
+P2	wrong-exception	printf-uppercase-integer-dispatch	Printf.Format accepts %D, %O and %U, which no formatter implements
+P2	wrong-exception	runtimecov-hasfield-kind-types	`hasfield(T, name)` throws `MethodError` for `T = Union{}` and, on master, for `T = Type{Int}`
+P2	wrong-exception	showcov-terminals-move-fallbacks	Terminals: TextTerminal cursor-move fallbacks call cmove without the terminal and clamp down/right moves with max
+P2	wrong-exception	sorttuplescov-legacy-sort-scratch	Legacy sort!(v, lo, hi, QuickSort, order, scratch::Vector) throws ArgumentError instead of sorting
+P2	wrong-exception	sorttuplescov-sort-ntuple-alg	sort((2, 1); alg=InsertionSort) throws an internal MethodError
+P2	wrong-exception	streams-detach-pipeline	detach rejects pipeline command objects
+P2	wrong-exception	streams-ignorestatus-stderr-pipeline	ignorestatus rejects pipelines that redirect stderr to a command
+P2	wrong-result	dicts-immutabledict-lossy-key	ImmutableDict(d, key => v) and Base.setindex(d, v, key) convert the key lossily, so the new key is not found
+P2	wrong-result	logging-custom-level-builtins	ConsoleLogger rejects custom log level types after @logmsg converts them for filtering
+P2	wrong-result	missingchar-sincospi-missing	sincospi(missing) returns missing instead of (missing, missing)
+P3	documentation	misccov-max-methods-default	Experimental.@max_methods default throws MethodError although the docstring lists default as a supported value
+P3	wrong-exception	iocov-skipchars-nonseekable	skipchars throws on non-seekable streams (pipes, BufferStream, PipeBuffer)
+P3	wrong-exception	misccov-ccallable-forward-decl	@ccallable function f end throws FieldError instead of "expected method definition in @ccallable"
+P3	wrong-exception	misccov-shell-fd-overflow	Backtick redirect with a huge fd number throws OverflowError instead of the "unsupported fd" parse error
+P3	wrong-exception	multidimcov-get-tuple-vectors	get(A, I, default) throws MethodError for a tuple of index vectors, which its signature accepts
+P3	wrong-exception	platforms-match-reflexive	platforms_match(p, p) throws for a strictly validated platform with a non-version julia_version
+P3	wrong-exception	sorttuplescov-sort-dims-exception	sort!(A; dims=0) throws BoundsError instead of the ArgumentError its dimension check raises
+== unsigned (30 primary)
+P1	wrong-result	broadcastviews-range-unsigned-float	Broadcasting an unsigned range with a Float64 gives wrong elements or InexactError: (UInt(1):UInt(2):UInt(5)) .- 2.0
+P1	wrong-result	ranges-operations-slice-unsigned-step	Reverse indexing a small unsigned StepRange silently returns an empty range
+P2	crash	shellcmd-show-uid-inexact	show(::Cmd) throws InexactError for a uid or gid of 2^31 or more
+P2	missing-error	ranges-keyword-negative-length	range(start; length=-1) returns an empty range for signed start but throws for UInt start
+P2	missing-error	transcode-cwstring-overlong-nul	Base.cwstring lets overlong NUL encodings through, so Windows APIs receive a truncated string
+P2	wrong-exception	arraycov-wrap-memory-unsigned	wrap(Array, ::Memory, n::UInt) throws MethodError although the MemoryRef overload accepts it
+P2	wrong-exception	bitsetscov-sizehint-bitvector-integer	sizehint!(::BitVector, n) throws MethodError unless n is an Int
+P2	wrong-exception	dicts-persistentdict-objectid-collision	PersistentDict throws "Perfect hash collision" for distinct keys with equal objectid
+P2	wrong-exception	intarith-rational-infinity-sub	Subtracting a finite unsigned rational from infinity throws OverflowError
+P2	wrong-exception	iterators-nth-unsigned-offset	Iterators.nth(A, n::Unsigned) throws BoundsError for arrays with negative first indices
+P2	wrong-exception	multidimcov-range-getindex-unsigned	Valid unsigned indexing of a negative StepRange throws InexactError
+P2	wrong-exception	range-srl-reverse-unsigned	reverse(::StepRangeLen) throws for an unsigned step
+P2	wrong-exception	ranges-ordinal-unsigned-step-last	A StepRange with negative signed endpoints and an unsigned step cannot reach its last element
+P2	wrong-exception	regexunicode-uppercase-malformed	uppercase/lowercase/uppercasefirst throw InvalidCharError on strings with invalid UTF-8; titlecase does not
+P2	wrong-exception	show-symbol-invalid-utf8	repr(Symbol("\x80")) throws InvalidCharError
+P2	wrong-exception	sockets-ipv6-signed-field-error	parse(IPv6, "::-1") throws InexactError instead of ArgumentError
+P2	wrong-exception	transcode-utf32-invalid	transcode(UInt32, s) throws InvalidCharError on invalid UTF-8, although transcode promises to succeed on invalid data
+P2	wrong-exception	versionnumbers-negative-inexacterror	VersionNumber(-1) throws InexactError instead of the intended ArgumentError
+P2	wrong-result	bignumscov-mpfr-1002-v2	cmp equates negative BigFloat zero with UInt64 zero
+P2	wrong-result	missingchar-isvalid-overlength	isvalid(c) is true for Chars holding more bytes than their lead byte announces
+P3	documentation	misccov-ryu-decimallength-doc	Ryu.decimallength is documented as the digit count of any integer but stops at 17 digits (9 for UInt32)
+P3	documentation	ranges-keyword-stop-length-unitrange	range docstring says integer stop+length gives a UnitRange, but unsigned stop gives a StepRangeLen
+P3	documentation	runtimecov-datatype-npointers-return-type	`Base.datatype_npointers` returns `UInt32`, but its docstring declares `::Int`
+P3	documentation	transcode-utf32-out-of-range	transcode(String, ::Vector{UInt32}) throws CodePointError for values at or above 0x200000, contradicting its docstring
+P3	missing-error	nummisc-float-nan-invalid-payload	tryparse(Float64, ...) accepts non-integer NaN payloads as plain NaN
+P3	wrong-exception	arrayops-index-type-exception	LinearIndices(v)[UInt(2)^63] throws InexactError while v[UInt(2)^63] throws BoundsError
+P3	wrong-exception	iocov-systemsleep-large	Libc.systemsleep(s) throws InexactError for s ≥ 4294.97 seconds
+P3	wrong-exception	stringscovb-isassigned-negative	Unicode.isassigned(x) throws InexactError for negative integers instead of returning false
+P3	wrong-result	parseprint-ryu-compact-tie-even	Compact Float64 display rounds exact ties up above 2^54: a width mismatch in the mod-5 test
+P3	wrong-result	printf-plus-unsigned	Printf applies the + and space flags to unsigned conversions
+== parse/text formats (50 primary)
+P1	missing-error	toml-table-overwritten-by-value	TOML parser silently replaces a table created by [a.b.c] when [a] later assigns b = value
+P1	wrong-result	markdown-html-admonition-title	Markdown.html inserts admonition titles without HTML escaping
+P2	missing-error	bignums-parse-bigint-whitespace	parse(BigInt, "100 10") == 10010: GMP ignores whitespace inside the digits
+P2	missing-error	docssyntaxcov-parse-complex-trailing	parse(ComplexF64, "1+2imabc") returns 1.0 + 2.0im: text after the imaginary unit is ignored
+P2	missing-error	sockets-ipv4-field-grammar	parse(IPv4, ..) accepts signed and whitespace-padded fields like "+1.2.3.4" or " 1.2.3.4 "
+P2	missing-error	sockets-ipv6-field-overflow	parse(IPv6, "::10000") silently bleeds an oversized group into its neighbours
+P2	missing-error	toml-signed-date-time	TOML parser accepts signed dates and times such as -200-01-01 and +1:30:00
+P2	missing-error	toml-single-line-continuation	TOML parser accepts a line-ending backslash inside a single-line basic string
+P2	missing-error	versionnumbers-ident-trailing-newline	VersionNumber accepts identifiers ending in a newline, so parse(string(v)) != v
+P2	wrong-exception	printf-incomplete-bounds	Printf.Format throws BoundsError for a specification ending in a width
+P2	wrong-exception	strings-raw-substring-iterate	Iterating a raw_substring with a truncated character throws BoundsError
+P2	wrong-exception	toml-base-parser-date-array	Base's TOML parser throws on an array of dates, so code loading fails on such a Project.toml
+P2	wrong-exception	toml-tryparse-typeerror	TOML.tryparse throws TypeError when an array-of-tables header goes through a key that holds a value
+P2	wrong-result	arrayops-splice-convert-undef	splice!(a, r, ins) leaves #undef or uninitialized elements in a when converting a replacement fails
+P2	wrong-result	bignums-parse-bigint-sign	parse(BigInt, "--5") == 5 and parse(BigInt, "-0x-5") == 5: GMP accepts a second minus sign
+P2	wrong-result	docssyntaxcov-toml-print-inline-array-table	TOML.print writes invalid TOML when a table of an array of tables is in inline_tables
+P2	wrong-result	markdown-plain-display-math	Markdown.plain prints display math in a $$ form that Markdown.parse does not accept
+P2	wrong-result	markdown-plain-text-unescaped	Markdown.plain does not escape Markdown syntax characters in text, so its output reparses differently
+P2	wrong-result	platforms-openbsd-os-version	triplet drops the OpenBSD os_version that parse(Platform, s) reads
+P2	wrong-result	printf-dynamic-negative-width	Printf ignores a negative dynamic field width instead of left-justifying
+P2	wrong-result	shellcmd-show-backslash-backtick	show(::Cmd) prints an unparsable literal for an argument containing a backslash before a backtick
+P2	wrong-result	show-range-repr-elements	repr of a float StepRangeLen evaluates to a range with different elements
+P2	wrong-result	stringscova-cwstring-pointer-type	Ptr{Cvoid}(::Cwstring) returns Ptr{Cwchar_t} instead of the requested pointer type
+P2	wrong-result	toml-continuation-trailing-space	TOML parser rejects whitespace between a line-ending backslash and the newline
+P2	wrong-result	toml-float-underscore-exponent	TOML parser rejects floats with underscores before an exponent, such as 6.022_140_76e23
+P2	wrong-result	toml-multiline-quotes	TOML parser rejects multi-line strings with one or two quotes before the closing delimiter
+P2	wrong-result	toml-r1-parse-error-location	TOML reports line 2, column -1 for an invalid bare key at line 1
+P3	missing-error	platforms-validate-os-version	validate_strict accepts a non-version os_version, and triplet of the platform then throws
+P3	missing-error	toml-control-chars-accepted	TOML parser accepts control characters in strings and comments, and a bare CR as a newline
+P3	missing-error	toml-hex-float-accepted	TOML parser accepts hexadecimal floats such as 0x.5
+P3	wrong-result	bootcov-svec-isassigned-undef	isassigned(::Core.SimpleVector, i) returns true for an undefined slot
+P3	wrong-result	dictscov-show-limit-ellipsis	Limited dictionary display adds an ellipsis without omitting any pair
+P3	wrong-result	docssyntaxcov-toml-print-by-inline	TOML.print(...; sorted=true, by=f) ignores `by` for inline tables
+P3	wrong-result	logging-simplelogger-multiline-value	SimpleLogger leaves continuation lines of multiline values unprefixed
+P3	wrong-result	markdown-html-ordered-start-zero	Markdown.html drops the start number of an ordered list that starts at 0
+P3	wrong-result	markdown-latex-admonition-title	Markdown.latex inserts admonition titles without LaTeX escaping
+P3	wrong-result	markdown-latex-h6-invalid	Markdown.latex renders level-6 headers as the nonexistent \subsubparagraph command
+P3	wrong-result	platforms-select-order	select_platform depends on Dict insertion order when two keys have the same triplet
+P3	wrong-result	printf-hex-alternate-zero	Printf %#x and %#X print a 0x prefix for zero
+P3	wrong-result	rangescov-logrange-show-unparseable	repr(logrange(1.0, 4.0, 5)) is "LogRange{Float64}(...)", which does not parse outside Base
+P3	wrong-result	shellcmd-posixly-reserved-word	shell_escape_posixly leaves a reserved word such as `done` unquoted in command position
+P3	wrong-result	shellcmd-show-carriage-return	show(::Cmd) prints carriage returns raw, and they parse back as linefeeds
+P3	wrong-result	show-expr-cmd-backtick	Expr printing of a command literal does not escape backticks
+P3	wrong-result	show-expr-decl-unary-rhs	Expr printing of x::(-T) produces x::-T, which is a ParseError
+P3	wrong-result	show-expr-dotted-shortcircuit	print of a .&& b / a .|| b falls back to $(Expr(:.&&, ...))
+P3	wrong-result	show-expr-dotted-unary	Expr printing of .-x gives (.-)(x), which parses to a different Expr
+P3	wrong-result	show-expr-operator-call-kwargs	Expr printing of (+)(b; a = 1) produces +(b; a = 1), which parses as + applied to a block
+P3	wrong-result	show-expr-quoted-symbol	Expr printing of :var"a b" inside an expression gives Symbol("a b"), a call
+P3	wrong-result	showcov-truncate-ansi-reset	_truncate_at_width_or_chars always appends an ANSI reset, even after an existing reset
+P3	wrong-result	sockets-ipv6-boundary-single-elision	parse(IPv6, ...) rejects a single zero compressed at either end
+== aliasing/mutation (24 primary)
+P0	crash	bitarrays-vec-resize-alias	Resizing vec(M) corrupts BitArray padding and can remove required storage
+P0	crash	printf-bigfloat-buffer-overflow	Printf writes past the end of its buffer when a large BigFloat follows other output
+P0	wrong-result	multidim-selectdim-cartesian-oob	selectdim(A, d, I::CartesianIndex) returns a view that reads and writes outside A
+P1	wrong-result	bitsetscov-replace-generic-set	replace loses elements or dictionary entries when replacements reuse original keys
+P1	wrong-result	dictscov-iddict-map-rehash	map!(f, values(::IdDict)) and mergewith!(f, d, d) skip values when setindex! rehashes mid-iteration
+P1	wrong-result	files-cp-force-dangling-symlink	cp with force=true follows a dangling destination symlink instead of replacing it
+P1	wrong-result	transcode-string-vector-alias	String(v) on a take! buffer returns a String that other arrays sharing v's memory can modify or truncate
+P2	model-counterexample	c-runtime-page-neighbor-map-data-race	GC page decommit scan races with reuse of a physical-page neighbor
+P2	wrong-exception	bignums-digits-view-pow2-base	digits!(view, ::BigInt; base=128) throws MethodError: the mpz_export path resizes the output array
+P2	wrong-exception	multidimcov-permutedims-offset-view	permutedims rejects a valid offset-axis StridedArray with DimensionMismatch
+P2	wrong-exception	multidimcov-reshape-bang-field	Base.reshape! always throws FieldError because Array has no dims field
+P2	wrong-result	base64uuid-readbytes-shrinks	readbytes!(::Base64DecodePipe, b) shrinks b, although readbytes! promises never to decrease it
+P2	wrong-result	broadcastviews-cartesian-alias	Broadcast assignment misses aliasing between a view with a scalar index and a view indexed by CartesianIndex arrays
+P2	wrong-result	exprreflect-copy-quotenode-alias	copy(::Expr) leaves mutable Expr values inside QuoteNode shared with the original
+P2	wrong-result	multidimcov-logicalindex-mutable-mask	LogicalIndex becomes stale or throws after its Boolean mask is mutated
+P2	wrong-result	permuteddimsarray-copy-linear-length	copyto! to a PermutedDimsArray copies a Cartesian rectangle instead of the linear prefix
+P2	wrong-result	reduce-foldr-reduce-first	foldr skips reduce_first for a single element: foldr(+, [true]) === true, foldr(hcat, [v]) is a Vector
+P3	documentation	bootcov-foldable-meta-effects	@_foldable_meta asserts :notaskstate and :inaccessiblememonly, which @assume_effects :foldable does not
+P3	documentation	combinatorics-invperm-offset	invperm rejects offset-indexed vectors that isperm accepts, without documenting the restriction
+P3	documentation	multidimcov-hcat-vector-eltype	hcat's documented equivalence to cat omits value-dependent element type narrowing
+P3	documentation	stringscovb-annotate-nothing-partial	annotate!(s, range, label, nothing) removes only annotations whose region equals range
+P3	wrong-result	broadcastviews-repeated-index-alias	@views x[idx] .+= 1 adds twice for repeated indices while x[idx] .+= 1 adds once
+P3	wrong-result	concurrencycov-threadpooldescription-gc-range	Threads.threadpooldescription reports the first adopted foreign thread as "foreign: gc"
+P3	wrong-result	platforms-compare-strategies-alias	Platform constructor mutates the caller's compare_strategies Dict and shares it between platforms
+== float rounding/precision (56 primary)
+P1	crash	bignums-parse-base-abort	tryparse(BigFloat, s; base=1) aborts the Julia process with an MPFR assertion failure
+P1	wrong-result	bignums-bigfloat-rational-rounding	BigFloat(q::Rational, r) rounds twice: BigFloat(1//5, RoundToZero; precision=2) == 0.25 > 1//5
+P1	wrong-result	floatfuncs-sigdigits-hidigit	floor(99.99999999999999; sigdigits=1) == 0.0: hidigit overcounts digits just below a power of ten
+P1	wrong-result	floatranges-linspace-tiny-endpoint	range(a, b; length=n) misses a tiny nonzero stop: last(range(1.0, 1e-300; length=24)) == 7.9e-31
+P1	wrong-result	printf-bigfloat-exact-fit-nul	Printf replaces the last character of a BigFloat conversion with NUL when it exactly fills the buffer
+P2	missing-error	bignumscov-scoped-setprecision-validation	Callback-scoped BigFloat setprecision accepts invalid precision and base values
+P2	missing-error	sockets-ipv6-field-grammar	parse(IPv6, "::+1") and parse(IPv6, ":: 1") accept signed or padded groups
+P2	wrong-exception	bignums-round-ties-away	round(Int, big(2.5), RoundNearestTiesAway) throws MethodError
+P2	wrong-exception	bignums-tryparse-nul	tryparse(BigFloat, "1\0") throws ArgumentError instead of returning nothing
+P2	wrong-exception	bignumscov-mpfr-467-v2	BigInt rounding of BigFloat positive zero rejects RoundNearestTiesAway
+P2	wrong-exception	floatranges-linspace-imin-overflow	range(a, b; length=n) throws InexactError when zero lies far outside [a, b]
+P2	wrong-exception	printf-dynamic-negative-precision	Printf does not treat a negative dynamic precision as omitted
+P2	wrong-exception	serialization-primitive-type	serialize throws MethodError for values of user-defined primitive types
+P2	wrong-result	broadcastcov-linrange-shift-elementwise	Broadcasting + or - between a LinRange and a scalar changes elementwise results
+P2	wrong-result	broadcastcov-steprangelen-div-elementwise	Broadcast division of a Float64 StepRangeLen differs from elementwise division
+P2	wrong-result	dicts-range-allunique-subulp	A nonzero floating range step can give repeated elements and wrong allunique/allequal results
+P2	wrong-result	floatfuncs-round-float-type-double	round(Float32, x::Float64) and round(Float16, x) round twice and miss the nearest representable integer
+P2	wrong-result	floatfuncs-sigdigits-idempotent	round(x; sigdigits) is not idempotent: round(1.0e-144; sigdigits=1) == 1.0000000000000001e-144
+P2	wrong-result	floatranges-linrange-nonmonotone	An increasing LinRange is not sorted: LinRange(62.1443, 62.14430000000095, 283)[8] > r[9]
+P2	wrong-result	floatranges-linrange-outside-endpoints	LinRange(0.1, 0.1, 6)[2] == 0.10000000000000002: elements leave [start, stop]
+P2	wrong-result	floatranges-linrange-reverse	reverse(LinRange(0.0, 1.0, 4)) does not hold the elements in reverse order
+P2	wrong-result	floatranges-scalar-mul-broadcast	3.0 * (0.0:0.1:0.3) and 3.0 .* (0.0:0.1:0.3) have different elements
+P2	wrong-result	markdown-blocktex-inline-dollar	Markdown: a paragraph starting with inline $x$ math is split into a display equation and a new paragraph
+P2	wrong-result	nummisc-irrational-directed-rounding	AbstractIrrational directed conversion can round in the wrong direction
+P2	wrong-result	nummisc-tanh-float32-nonmonotone	tanh(::Float32) decreases across adjacent inputs near 0.4921456
+P2	wrong-result	parseprint-ryu-compact-lost-digit	Compact display of some Float64 values between 2^53 and ~2^60 drops the sixth significant digit
+P2	wrong-result	printf-general-style-rounding	Printf %g chooses between fixed and exponential style from the wrong rounding
+P2	wrong-result	printf-integer-zero-precision	Printf prints 0 for a zero value with precision zero
+P2	wrong-result	printf-octal-alternate-precision	Printf %#o adds a zero even when the precision already supplies one
+P2	wrong-result	printf-zero-flag-zero-precision	Printf keeps the 0 flag for integer conversions with precision zero
+P2	wrong-result	promotion-float-from-rational-nearest	Float64(::Rational) and Float16(::Rational) are not correctly rounded
+P2	wrong-result	rangescov-cmp-float-ranges	cmp(r1, r2) returns 0 for different Float64 ranges on master (regression from #60337)
+P2	wrong-result	rangescov-unitrange-float-last	UnitRange(0.7, 3.6999999999999997) has last element 3.7, beyond its stop
+P2	wrong-result	rational-rounding-native-noninteger-targets	round(T, rational, r) ignores directed rounding at the target precision
+P2	wrong-result	show-expr-typed-concat-parens	typed_hcat/typed_vcat Exprs print without parentheses around an operator type expression
+P3	documentation	bignums-gmp-factorial-exact	BigInt factorial's exactness guidance omits the GMP argument limit
+P3	documentation	bignumscov-mpfr-252-v2	RoundingMode documentation does not distinguish ambient BigFloat modes from integer tie rules
+P3	documentation	bignumscov-mpfr-253-v2	Global BigFloat rounding setter rejects a tag listed among supported RoundingModes
+P3	documentation	bignumscov-mpfr-254-v2	Scoped BigFloat rounding is not equivalent to the documented save and restore program
+P3	documentation	bignumscov-mpfr-setup-rounding-v2	Public BigFloat rounding controls document global restoration for a lexical scope
+P3	documentation	dates-format-year-loss	ISODateFormat drops negative-year signs, so formatting and parsing do not round-trip
+P3	documentation	float-rem-down-bound	rem documentation gives a strict RoundDown bound contradicted by its rounding caveat
+P3	documentation	float-rem-down-bound-v2	RoundDown rem can equal its positive divisor despite the documented strict bound
+P3	documentation	mathfuncs-mod2pi-ieee-range	Float32 mod2pi result exceeds the documented exact two-pi range
+P3	documentation	mathfuncs-rem2pi-float32-range	mod2pi and rem2pi(::Float32) return values outside the documented intervals
+P3	missing-error	int-big-str-underscore-dot	big"1_." parses as 1.0 although @big_str rejects '_' next to the dot
+P3	wrong-result	complex-div-real-divisor	complex(x, 0.0)/complex(y, 0.0) disagrees with x/y (49.0+0im)/(49.0+0im) is not 1
+P3	wrong-result	complex-div-subnormal-ratio	ComplexF64 division loses all accuracy in one component when d/c is subnormal
+P3	wrong-result	complex-muladd-exact	muladd(z, w, x) for complex numbers reassociates and loses exact results
+P3	wrong-result	concurrencycov-timev-elapsed-float	@timev prints "elapsed time (ns)" as a Float64 such as 5.1156252e7
+P3	wrong-result	docssyntaxcov-parse-bool-leading-space	parse(Bool, " 1") throws although parse(Bool, "1 ") and parse(Bool, " true") succeed
+P3	wrong-result	mathfuncs-hypot-correctly-rounded	hypot(x, y) is not correctly rounded when the result is subnormal, despite the source comment
+P3	wrong-result	printf-wide-precision-padding	Printf %W.Ps pads to fewer than W columns when the precision cuts before a wide character
+P3	wrong-result	show-expr-range-quoted	Expr printing of a : :b gives a::b, a type assertion
+P3	wrong-result	sockets-ipv6-embedded-8fields	parse(IPv6, "::1:2:3:4:5:1.2.3.4") rejects valid IPv6 text
+P3	wrong-result	versionnumbers-range-print-upper	print(::VersionRange) widens a "*" lower bound range: VersionRange("*-2") prints as "0 -2.0.0"
+== negative arg (18 primary)
+P1	missing-error	multidimcov-wrap-negative-length	Base.wrap(Array, m, -1) returns a Vector with size (-1,) instead of throwing
+P1	wrong-result	bignums-rational-cmp-infinite	cmp(big(1)//0, big(1)//2) == -1: mpq_cmp is called on a zero denominator (out-of-bounds limb read)
+P2	missing-error	regexunicode-regex-pow-negative	r^n with negative n returns a regex that matches the literal text "{n}"
+P2	missing-error	tuples-split-rest-negative	`Base.split_rest(v::Vector, n)` with negative `n` returns uninitialised elements
+P2	wrong-exception	bignums-gmp-isqrt-bracket	isqrt(BigInt(-1)) throws DivideError instead of DomainError
+P2	wrong-exception	bignums-gmp-power-modulo	BigInt powermod throws DivideError for a noninvertible negative power
+P2	wrong-exception	bignums-powermod-noninvertible	powermod with a negative exponent throws DivideError for BigInt but DomainError for Int when no inverse exists
+P2	wrong-exception	bitarrays-deleteat-empty-range	deleteat!(::BitVector, r) and splice!(::BitVector, r) throw BoundsError for empty ranges that Vector accepts
+P2	wrong-exception	bitarrays-resize-negative	resize!(::BitVector, n) throws BoundsError for n < 0; resize!(::Vector, n) throws ArgumentError
+P2	wrong-result	floatfuncs-digits-step-underflow	ceil(5.0e-324; digits=-1) == 0.0: x / step underflows to zero before RoundUp is applied
+P2	wrong-result	floatranges-colon-overshoot-stop	last(0.1131:0.0252:1.0e15) is larger than the stop 1.0e15
+P2	wrong-result	showcov-terminfo-extended-labels	terminfo: extended capability names are read at the wrong offset when the extended section has no strings or its last string is absent
+P3	missing-error	iocov-dup-unchecked	Libc.dup(fd) returns RawFD(-1) instead of throwing when dup fails
+P3	wrong-exception	multidim-hvcat-zero-columns	hvcat(0, values...) throws DivideError instead of ArgumentError
+P3	wrong-result	show-expr-prefix-syntactic-operand	Expr printing of ::(-1), ::(!a), $(-1) and &(-1) drops the parentheses and does not parse
+P3	wrong-result	show-expr-transpose-literal	Expr printing of (-1)' produces -1', which is a ParseError
+P3	wrong-result	show-expr-unary-literal	Expr printing turns -(1) into the literal -1 and -(-1) into unparseable --1
+P3	wrong-result	stringscovb-match-data-leak	match, findnext and occursin leak PCRE match data when pcre2_match or the offset conversion throws
+== invalid UTF-8/unicode (22 primary)
+P1	crash	markdown-list-unicode-digit	Markdown.parse throws ArgumentError when a line starts with a non-ASCII digit followed by ". "
+P1	wrong-result	iocov-getpass-utf8	Base.getpass corrupts non-ASCII input on Unix: "пароль" is read as "па\xd1ол\xd1"
+P1	wrong-result	shellcmd-line-continuation-index	Backslash-newline in a command literal drops characters after non-ASCII text
+P1	wrong-result	toml-hex-escape-byte	TOML \xHH escape produces a raw byte instead of the code point U+00HH
+P2	crash	shellcmd-addenv-nonascii-key	addenv throws StringIndexError when an environment variable name starts with a non-ASCII character
+P2	crash	shellcmd-show-env-nonascii-key	show(::Cmd) throws StringIndexError for an environment variable whose name starts with a non-ASCII character
+P2	missing-error	missingchar-codepoint-malformed	Char conversions and arithmetic return values for malformed ASCII-leading data
+P2	wrong-exception	toml-tryparse-argumenterror	TOML.tryparse throws ArgumentError on malformed prefixed integers such as 0o8, 0b2 and 0x-1
+P2	wrong-result	range-char-in-malformed	in reports a malformed Char as present in a range when no element equals it
+P2	wrong-result	serialization-char-malformed	deserialize misreads a malformed Char followed by a value whose tag byte looks like a UTF-8 continuation byte
+P2	wrong-result	show-escape-above-unicode	escape_string emits \U escapes above U+10FFFF that unescape_string and the parser reject
+P2	wrong-result	show-sym-var-roundtrip	var"..." printing of symbols keeps raw \r and invalid UTF-8 bytes, which the parser changes or rejects
+P3	missing-error	toml-invalid-utf8-accepted	TOML parser accepts documents that are not valid UTF-8
+P3	missing-error	versionnumbers-ident-nonascii	VersionNumber identifiers accept the non-ASCII letters ſ (U+017F) and K (U+212A)
+P3	wrong-result	char-overlong-encoding	isoverlong classifies a lone 0xc0 lead byte as an overlong sequence
+P3	wrong-result	missingchar-show-char-roundtrip	show(Char(0x110000)) prints '\U110000', which the parser rejects
+P3	wrong-result	regexunicode-iscntrl-malformed	iscntrl returns true for some malformed Chars such as '\x80' and '\xc2'
+P3	wrong-result	shellcmd-show-invalid-utf8	show(::Cmd) prints invalid UTF-8 bytes raw, producing unparsable output
+P3	wrong-result	strings-findnext-inside-char	findfirst with an invalid-UTF-8 needle matches inside a character
+P3	wrong-result	strings-reverse-malformed	reverse merges malformed characters of invalid UTF-8
+P3	wrong-result	stringutil-pad-malformed	lpad/rpad with invalid UTF-8 return strings narrower than n that no longer end (start) with s
+P3	wrong-result	toml-bom-not-skipped	TOML parser never skips a leading byte order mark: the BOM check in startup tests the wrong character
