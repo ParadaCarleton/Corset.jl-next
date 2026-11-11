@@ -148,7 +148,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
     <li>Give each finding confidence: <code>definite</code> (problem exists) or <code>possible</code> (problem not ruled out). One setting filters them.</li>
     <li>Map every finding back to source bytes. Fixers edit lossless syntax tree.</li>
     <li>Keep linter process warm. Load target package once. Infer only methods that hold candidate sites.</li>
-    <li>Read typed IR from native compiler at lint time. Other linters (JET, fatou, julia-vscode) serve only as test references.</li>
+    <li>Read typed IR from native compiler at lint time. Other linters (JET, fatou, LintApp.jl, ReLint.jl) serve only as test references and code sources.</li>
   </ul>
 </section>
 
@@ -443,7 +443,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <div class="decision"><span class="status new">decided</span><h3>Borrow checking</h3><p>Defer. Revisit for concurrency rules.</p></div>
 <div class="decision"><span class="status new">decided</span><h3>Confidence setting</h3><p><code>confidence</code> sets lowest confidence finding needs to be reported. <code>definite</code> (default): problem exists. <code>possible</code>: problem not ruled out; includes definite findings. <code>likely</code> can join between them later.</p></div>
     <div class="decision"><span class="status new">decided</span><h3><code>one-letter</code> exemptions</h3><p>Allowed: type names and type parameters (<code>T</code>, <code>N</code>); <code>i</code>, <code>j</code>, <code>k</code> as indices. Everything else needs descriptive name.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>Reference linters</h3><p>JET, fatou and julia-vscode linter (JuliaWorkspaces.jl, run by julia-actions/julia-lint) run only in Corset tests, never at lint time.</p><ul><li>Tests run each reference on fixture corpus and compare findings with Corset.</li><li>Reference finding Corset misses: fix Corset, or record reason in allowlist (reference bug, different design).</li><li>Corset finding reference misses: expected. Corset is stricter by design.</li><li>Conflict is triage signal only; it never proves Corset wrong.</li></ul></div>
+    <div class="decision"><span class="status new">decided</span><h3>Reference linters</h3><p>JET, fatou, LintApp.jl (<code>julialint</code>, julia-vscode linter) and ReLint.jl run only in Corset tests, never at lint time. All four are MIT: copy their check code where it already implements our footgun, keeping license notice.</p><ul><li>Tests run each reference on fixture corpus and compare findings with Corset. <code>julialint</code> emits JSON and SARIF.</li><li>Reference finding Corset misses: fix Corset, or record reason in allowlist (reference bug, different design).</li><li>Corset finding reference misses: expected. Corset is stricter by design.</li><li>Conflict is triage signal only; it never proves Corset wrong.</li></ul></div>
   </div>
 </section>
 
