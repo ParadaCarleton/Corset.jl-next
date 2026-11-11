@@ -131,6 +131,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
   <h1>Corset Rewrite Plan</h1>
   <p class="lede">Rule set, shared analyses and decisions for rewrite of Corset. Each analysis runs once per run. Each rule is small query on analysis output.</p>
   <div class="meta">
+    <span><b>78</b> footguns</span>
     <span><b>37</b> rules on main kept or changed</span>
     <span><b>5</b> rules removed</span>
     <span><b>18</b> ideas from open work under review</span>
@@ -149,6 +150,103 @@ footer { color: var(--muted); font-size: 0.85rem; }
     <li>Keep linter process warm. Load target package once. Infer only methods that hold candidate sites.</li>
     <li>Use JET in tests as oracle for <code>runtime-dispatch</code>. Read typed IR from native compiler at lint time (proposal).</li>
   </ul>
+</section>
+
+<section id="footguns">
+  <h2>Footguns</h2>
+  <p>Source of truth for rewrite. Each line names one problem Corset prevents. Engines and checks derive from this list; old rule names appear only in coverage appendix.</p>
+  <div class="filter" role="group" aria-label="Filter footguns by group">
+    <button type="button" data-filter="all" aria-pressed="true">all</button>
+    <button type="button" data-filter="correctness" aria-pressed="false">correctness</button>
+    <button type="button" data-filter="performance" aria-pressed="false">performance</button>
+    <button type="button" data-filter="composability" aria-pressed="false">composability</button>
+    <button type="button" data-filter="readability" aria-pressed="false">readability</button>
+  </div>
+  <div class="scroll">
+  <table data-table>
+    <thead><tr><th>ID</th><th>Area</th><th>Footgun</th><th>Example</th><th>Group</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr data-group="correctness"><td>F1</td><td>syntax</td><td>Space before minus in array literal concatenates</td><td><code>[1 -2]</code> is 1×2 matrix</td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F2</td><td>syntax</td><td>Range in brackets is one-element vector</td><td><code>[1:3]</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F3</td><td>syntax</td><td>Juxtaposition binds tighter than reader expects</td><td><code>2^2x == 2^(2x)</code>, <code>1/2x</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F4</td><td>syntax</td><td><code>where</code> after result annotation binds result type</td><td><code>f(x::T)::T where {T}</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="composability"><td>F5</td><td>numbers</td><td>Literal or constant changes input type</td><td><code>x::Float32 * 0.5</code>, <code>x::Int32 * 2</code></td><td><span class="chip g-composability">composability</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F6</td><td>numbers</td><td>Signed <code>%</code> and <code>÷</code> round toward zero</td><td><code>-1 % 3 == -1</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F7</td><td>numbers</td><td>Mixed signed and unsigned division</td><td><code>div(-1, UInt(2))</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F8</td><td>numbers</td><td>Float-to-integer constructor throws on fractions</td><td><code>Int(2.5)</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F9</td><td>numbers</td><td>Approximate compare to zero without <code>atol</code> is always false</td><td><code>x ≈ 0</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F10</td><td>numbers</td><td><code>Bool</code> used as index</td><td><code>v[true]</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F11</td><td>numbers</td><td>Integer overflow wraps silently</td><td><code>typemax(Int) + 1</code></td><td><span class="chip g-correctness">correctness</span></td><td>Needs value ranges. Later.</td></tr>
+      <tr data-group="correctness"><td>F12</td><td>numbers</td><td>Result annotation converts silently</td><td><code>f(x)::Float64 = x</code> turns <code>Float32</code> into <code>Float64</code></td><td><span class="chip g-correctness">correctness</span></td><td>Replaces unclear concrete-return idea. Confirm.</td></tr>
+      <tr data-group="correctness"><td>F13</td><td>types</td><td>Invariant parameter rejects intended arguments</td><td><code>f(::Vector{Real})</code> rejects <code>Vector{Float64}</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="composability"><td>F14</td><td>types</td><td>Concrete annotation blocks generic callers</td><td><code>f(x::Float64)</code> rejects <code>Dual</code>, <code>Float32</code></td><td><span class="chip g-composability">composability</span></td><td></td></tr>
+      <tr data-group="composability"><td>F15</td><td>types</td><td>Hard-coded <code>Array</code> drops caller's array type</td><td><code>zeros(n)</code> inside method that got <code>CuArray</code></td><td><span class="chip g-composability">composability</span></td><td></td></tr>
+      <tr data-group="performance"><td>F16</td><td>types</td><td>Variable or result with vague inferred type</td><td><code>acc = 0</code> then <code>acc += 0.5</code></td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="performance"><td>F17</td><td>types</td><td>Struct field with vague type</td><td><code>x::Real</code>, <code>x::Vector</code></td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="performance"><td>F18</td><td>types</td><td>Ad-hoc union of unrelated types where sum type belongs</td><td><code>Union{Circle, Square, Error}</code></td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="performance"><td>F19</td><td>types</td><td>Empty literal has <code>Any</code> element type</td><td><code>[]</code>, <code>Dict()</code></td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F20</td><td>types</td><td>Failure returned as <code>nothing</code> instead of thrown</td><td><code>find(x)::Union{Nothing, T}</code></td><td><span class="chip g-correctness">correctness</span></td><td>Union policy allows <code>Nothing</code>. Confirm both stand.</td></tr>
+      <tr data-group="correctness"><td>F21</td><td>types</td><td><code>==</code> defined without <code>hash</code></td><td><code>Dict</code> and <code>Set</code> disagree with <code>==</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F22</td><td>types</td><td>Method named like Base function without <code>Base.</code> shadows it</td><td><code>length(x::MyT) = …</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F23</td><td>types</td><td>Methods differ only in keywords; later one overwrites</td><td><code>f(x; a)</code> and <code>f(x; b)</code></td><td><span class="chip g-correctness">correctness</span></td><td>New from scratch.</td></tr>
+      <tr data-group="composability"><td>F24</td><td>types</td><td>Type piracy</td><td><code>Base.:+(::Int, ::String)</code></td><td><span class="chip g-composability">composability</span></td><td></td></tr>
+      <tr data-group="composability"><td>F25</td><td>types</td><td>Behavior depends on inference result</td><td><code>Core.Compiler.return_type</code></td><td><span class="chip g-composability">composability</span></td><td></td></tr>
+      <tr data-group="performance"><td>F26</td><td>compile</td><td>Call resolved at run time</td><td>call on <code>Any</code></td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="performance"><td>F27</td><td>compile</td><td>Splat of variable-length collection</td><td><code>f(xs...)</code>, <code>xs::Vector</code></td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="performance"><td>F28</td><td>compile</td><td>Recursion with argument types that nest each call</td><td><code>f(x) = f((x,))</code></td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="performance"><td>F29</td><td>compile</td><td>Too many specializations on <code>Function</code> or <code>Type</code> argument</td><td>one method, 500 closure types</td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F30</td><td>arrays</td><td>Uninitialized element read before write</td><td><code>similar(x)</code> then <code>sum</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F31</td><td>arrays</td><td>Placeholder value looks like data after partial fill</td><td><code>zeros(n)</code>, half written</td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F32</td><td>arrays</td><td><code>fill</code> shares one mutable object</td><td><code>fill(zeros(3), n)</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="composability"><td>F33</td><td>arrays</td><td><code>1:length(A)</code> assumes 1-based indices</td><td><code>OffsetArray</code> breaks it</td><td><span class="chip g-composability">composability</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F34</td><td>arrays</td><td>Index safety removed without proof</td><td><code>@inbounds</code> on unchecked index</td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F35</td><td>arrays</td><td>String indexed by character count</td><td><code>s[i]</code> for <code>i in 1:length(s)</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="performance"><td>F36</td><td>arrays</td><td>Never-written constant array allocates</td><td><code>ones(n)</code> read only</td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="performance"><td>F37</td><td>arrays</td><td>Read-only slice copies</td><td><code>sum(A[:, i])</code></td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="performance"><td>F38</td><td>arrays</td><td>Broadcast rebinds preallocated buffer</td><td><code>x = f.(y)</code></td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="performance"><td>F39</td><td>arrays</td><td>Inner loop over non-first index</td><td><code>for i, j; A[i, j]</code></td><td><span class="chip g-performance">performance</span></td><td>Unproven only.</td></tr>
+      <tr data-group="performance"><td>F40</td><td>arrays</td><td>Search inside loop over same collection</td><td><code>x in v</code> per element of <code>v</code></td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="performance"><td>F41</td><td>arrays</td><td>Fold concatenates one piece at a time</td><td><code>reduce(vcat, parts)</code> in loop</td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F42</td><td>arrays</td><td>Matrix function where elementwise was meant</td><td><code>exp(A)</code></td><td><span class="chip g-correctness">correctness</span></td><td>Unproven only.</td></tr>
+      <tr data-group="correctness"><td>F43</td><td>arrays</td><td>Adjoint conjugates complex data</td><td><code>v'</code> on <code>ComplexF64</code></td><td><span class="chip g-correctness">correctness</span></td><td>Unproven only.</td></tr>
+      <tr data-group="correctness"><td>F44</td><td>containers</td><td>Mutable key mutated after insert</td><td><code>Dict{Vector{Int}, …}</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F45</td><td>containers</td><td>Container mutated while iterating</td><td><code>delete!(d, k)</code> in <code>for k in keys(d)</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F46</td><td>containers</td><td>Code relies on <code>Dict</code> order</td><td><code>Dict</code> iterated into output</td><td><span class="chip g-correctness">correctness</span></td><td>Unproven only.</td></tr>
+      <tr data-group="correctness"><td>F47</td><td>containers</td><td>Same container passed twice to mutating call</td><td><code>append!(a, a)</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F48</td><td>containers</td><td><code>Iterators.Stateful</code> consumed twice</td><td><code>isempty(s)</code> then <code>for x in s</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F49</td><td>containers</td><td><code>missing</code> reaches condition</td><td><code>if x &gt; 0</code> with <code>x::Union{Missing, Int}</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F50</td><td>effects</td><td>Function writes argument or global without <code>!</code></td><td><code>normalize(v)</code> changes <code>v</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F51</td><td>effects</td><td>Call has no effect and result is unused</td><td><code>f(x)</code> returns <code>nothing</code>, writes nothing</td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F52</td><td>effects</td><td>Hidden input: mutable global, <code>ScopedValue</code>, global RNG</td><td><code>rand()</code> in package code</td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F53</td><td>effects</td><td>Closure writes captured state</td><td><code>map(x -&gt; push!(seen, x), xs)</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="performance"><td>F54</td><td>effects</td><td>Closure rebinds captured variable; <code>Core.Box</code></td><td><code>n = 0; f = () -&gt; (n += 1)</code></td><td><span class="chip g-performance">performance</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F55</td><td>effects</td><td><code>@assume_effects</code> claim false</td><td><code>:consistent</code> on body that reads global</td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F56</td><td>effects</td><td>Catch handles every error</td><td><code>catch; end</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F57</td><td>effects</td><td>Same statement twice in block</td><td>copy-paste duplicate</td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F58</td><td>effects</td><td>Several files written without staging</td><td>crash leaves half-written set</td><td><span class="chip g-correctness">correctness</span></td><td>Niche. Keep?</td></tr>
+      <tr data-group="correctness"><td>F59</td><td>scope</td><td>Top-level loop assigns global; REPL and file differ</td><td><code>for …; total += x; end</code> in script</td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F60</td><td>scope</td><td>Variable first assigned in <code>try</code> read after it</td><td><code>try; y = f(); end; y</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F61</td><td>scope</td><td>Function defined by <code>eval</code> called in same world</td><td><code>@eval g() = 1; g()</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F62</td><td>scope</td><td>Same file included twice</td><td>two copies of module</td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="composability"><td>F63</td><td>modules</td><td>Name reached through bare <code>using</code></td><td>two packages export <code>solve</code></td><td><span class="chip g-composability">composability</span></td><td></td></tr>
+      <tr data-group="composability"><td>F64</td><td>modules</td><td>Use of other module's internal name</td><td><code>Base._foo</code></td><td><span class="chip g-composability">composability</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F65</td><td>concurrency</td><td>Buffer indexed by <code>threadid()</code></td><td><code>bufs[threadid()]</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F66</td><td>concurrency</td><td>Unsynchronized update in threaded loop</td><td><code>acc += x</code> in <code>@threads</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="correctness"><td>F67</td><td>concurrency</td><td>Task result never waited; errors vanish</td><td><code>@spawn work()</code></td><td><span class="chip g-correctness">correctness</span></td><td></td></tr>
+      <tr data-group="readability"><td>F68</td><td>readability</td><td>Argument or result without type</td><td><code>f(x) = …</code></td><td><span class="chip g-readability">readability</span></td><td><code>::Any</code> opts out.</td></tr>
+      <tr data-group="readability"><td>F69</td><td>readability</td><td>One-letter name</td><td><code>q = …</code></td><td><span class="chip g-readability">readability</span></td><td><code>i</code> allowed; <code>j</code>, <code>k</code>, <code>T</code> open.</td></tr>
+      <tr data-group="readability"><td>F70</td><td>readability</td><td>Explicit <code>return</code> mixed with implicit last value</td><td></td><td><span class="chip g-readability">readability</span></td><td></td></tr>
+      <tr data-group="readability"><td>F71</td><td>readability</td><td>Comment where docstring belongs</td><td><code># adds x</code> above function</td><td><span class="chip g-readability">readability</span></td><td></td></tr>
+      <tr data-group="readability"><td>F72</td><td>readability</td><td>Loop exits only by <code>return</code> from <code>while true</code></td><td></td><td><span class="chip g-readability">readability</span></td><td></td></tr>
+      <tr data-group="readability"><td>F73</td><td>readability</td><td>Hand-typed irrational constant</td><td><code>3.14159</code></td><td><span class="chip g-readability">readability</span></td><td></td></tr>
+      <tr data-group="readability"><td>F74</td><td>readability</td><td>Copied code block</td><td></td><td><span class="chip g-readability">readability</span></td><td></td></tr>
+      <tr data-group="readability"><td>F75</td><td>readability</td><td>File, struct or field names too large or repetitive</td><td><code>plot_width</code>, <code>plot_height</code></td><td><span class="chip g-readability">readability</span></td><td>House style.</td></tr>
+      <tr data-group="readability"><td>F76</td><td>readability</td><td><code>mutable struct</code></td><td></td><td><span class="chip g-readability">readability</span></td><td>House style: functional code.</td></tr>
+      <tr data-group="readability"><td>F77</td><td>readability</td><td>C types or <code>Ref</code> outside C calls</td><td><code>Cint</code>, <code>Ref(x)</code></td><td><span class="chip g-readability">readability</span></td><td>House style.</td></tr>
+      <tr data-group="readability"><td>F78</td><td>readability</td><td>Project-banned name or pattern</td><td>config list</td><td><span class="chip g-readability">readability</span></td><td></td></tr>
+    </tbody>
+  </table>
+  </div>
 </section>
 
 <section id="pipeline">
