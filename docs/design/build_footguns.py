@@ -51,7 +51,7 @@ FOOTGUNS = [
     (39, "arrays", "Never-written constant array allocates", "`ones(n)` read only", P, "B", ""),
     (40, "arrays", "Read-only slice copies", "`sum(A[:, i])`", P, "B", ""),
     (41, "arrays", "Broadcast rebinds preallocated buffer", "`x = f.(y)`", P, "B", ""),
-    (42, "arrays", "Inner loop over non-first index", "`for i, j; A[i, j]`", P, "A", "Unproven only."),
+    (42, "arrays", "Inner loop over non-first index", "`for i, j; A[i, j]`", P, "A", "Possible only."),
     (43, "arrays", "Search inside loop over same collection", "`x in v` per element of `v`", P, "D", ""),
     (44, "arrays", "Fold concatenates one piece at a time", "`reduce(vcat, parts)` in loop", P, "A", ""),
     (45, "arrays", "Matrix function where elementwise was meant", "`exp(A)`", C, "D", "Later; off by default."),
@@ -217,8 +217,8 @@ CHECKS = [
     ("specialization-blowup", [30], ""), ("scalar-loop", [31], ""), ("temporary-array", [32], ""),
     ("unwritten-element", [33, 34], "Kinds: undef read, placeholder read."),
     ("shared-fill", [35], ""), ("one-based-range", [36], "Fixer: `eachindex`."),
-    ("unproven-inbounds", [37], ""), ("string-index", [38], ""), ("constant-array", [39], "Fixer: FillArrays.jl."),
-    ("slice-copy", [40], ""), ("broadcast-rebind", [41], ""), ("loop-order", [42], "Unproven only."),
+    ("unverified-inbounds", [37], ""), ("string-index", [38], ""), ("constant-array", [39], "Fixer: FillArrays.jl."),
+    ("slice-copy", [40], ""), ("broadcast-rebind", [41], ""), ("loop-order", [42], "Possible only."),
     ("quadratic", [43, 44], "Kinds: scan, concatenation."),
     ("matrix-function", [45], "Later."), ("conjugating-adjoint", [46], "Later."),
     ("mutable-key", [47], ""), ("iteration-mutation", [48], ""), ("dict-order", [49], "Later."),
@@ -266,7 +266,7 @@ checks = f"""<section id="checks">
 """
 page = open(page_path).read()
 page = re.sub(r'<section id="checks">.*?</section>\n\n', "", page, flags=re.S)
-page = page.replace('<section id="strictness">', checks + '<section id="strictness">', 1)
+page = page.replace('<section id="confidence">', checks + '<section id="confidence">', 1)
 page = re.sub(r"<b>\d+</b> checks", f"<b>{len(CHECKS)}</b> checks", page)
 open(page_path, "w").write(page)
 

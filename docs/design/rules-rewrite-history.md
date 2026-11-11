@@ -301,7 +301,7 @@ Proposal: test-only oracle. Typed IR from native compiler at lint time.
 | main | `derived-constant` | — | — | Dropped: Revise workaround. |
 | main | `range-guard` | — | — | Dropped: one past bug. |
 | open work | `unwritten-undef` | F33 Uninitialized element read before write | `unwritten-element` |  |
-| open work | `no-inbounds` | F37 Index safety removed without proof | `unproven-inbounds` |  |
+| open work | `no-inbounds` | F37 Index safety removed without proof | `unverified-inbounds` |  |
 | open work | `abstract-element` | F21 Empty literal has `Any` element type | `untyped-empty` |  |
 | open work | `invariant-parameter` | F14 Invariant parameter rejects intended arguments | `invariant-parameter` |  |
 | open work | `abstract-float` | F15 Concrete annotation blocks generic callers | `narrow-signature` |  |
