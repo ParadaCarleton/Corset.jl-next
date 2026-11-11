@@ -12,7 +12,7 @@ FOOTGUNS = [
     (2, "syntax", "Range in brackets is one-element vector", "`[1:3]`", C, "A", ""),
     (3, "syntax", "Juxtaposition binds tighter than reader expects", "`2^2x == 2^(2x)`, `1/2x`", C, "A", ""),
     (4, "syntax", "`where` after result annotation binds result type", "`f(x::T)::T where {T}`", C, "A", "Errors, or silently binds global `T` if one exists; report both. Upstream rejected precedence change (JuliaLang/julia#21847)."),
-    (5, "numbers", "Literal or constant changes input type", "`x::Float32 * 0.5`, `x::Int32 * 2`", M, "D", "Applies to every argument type: stand-in type or concrete."),
+    (5, "numbers", "Literal or constant changes input type", "`x::Float32 * 0.5`, `x::Int32 * 2`", M, "D", "Report when converting literal to input type would change result type. Applies to generic and concrete arguments."),
     (6, "numbers", "Float constant where irrational exists; promotes generic code", "`sqrt(2)`, `3.14159`", M, "D", "Suggest `π`, IrrationalConstants.jl (`sqrt2`)."),
     (7, "numbers", "Signed `%` and `÷` round toward zero", "`-1 % 3 == -1`", C, "D", ""),
     (8, "numbers", "Mixed signed and unsigned division", "`div(-1, UInt(2))`", C, "D", ""),
