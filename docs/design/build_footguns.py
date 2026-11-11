@@ -81,7 +81,7 @@ FOOTGUNS = [
     (69, "concurrency", "Unsynchronized update in threaded loop", "`acc += x` in `@threads`", C, "H", ""),
     (70, "concurrency", "Task result never waited; errors vanish", "`@spawn work()`", C, "A", ""),
     (71, "readability", "Argument or result without type", "`f(x) = …`", R, "A", "Bounds inference; with result-conversion check, annotations act as type checks. `::Any` opts out."),
-    (72, "readability", "One-letter name", "`q = …`", R, "A", "`i` allowed; `j`, `k`, `T` open."),
+    (72, "readability", "One-letter name", "`q = …`", R, "A", "Exempt: type names and parameters; `i`, `j`, `k` as indices."),
     (73, "readability", "Explicit `return` mixed with implicit last value", "", R, "A", "Narrow by design. Requiring `return` everywhere forces `return nothing`, which fights formatters (Runic) and creates dead code."),
     (74, "readability", "Comment where docstring belongs", "`# adds x` above function", R, "A", ""),
     (76, "readability", "Copied code block", "", R, "G", ""),
