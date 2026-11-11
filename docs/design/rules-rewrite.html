@@ -129,13 +129,10 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <header>
   <div class="eyebrow">Corset.jl · design draft · 2026-11-10</div>
   <h1>Corset Rewrite Plan</h1>
-  <p class="lede">Rule set, shared analyses and decisions for rewrite of Corset. Each analysis runs once per run. Each rule is small query on analysis output.</p>
+  <p class="lede">Footguns, checks, shared analyses and decisions for rewrite of Corset. Each analysis runs once per run. Each check is small query on analysis output. Old rule names live in <a href="rules-rewrite-history.md">rules-rewrite-history.md</a>.</p>
   <div class="meta">
     <span><b>83</b> footguns</span>
-    <span><b>37</b> rules on main kept or changed</span>
-    <span><b>5</b> rules removed</span>
-    <span><b>18</b> ideas from open work under review</span>
-    <span><b>40</b> rules proposed</span>
+    <span><b>75</b> checks</span>
     <span><b>8</b> analysis families</span>
   </div>
 </header>
@@ -144,11 +141,11 @@ footer { color: var(--muted); font-size: 0.85rem; }
   <h2>Principles</h2>
   <ul>
     <li>Compute each expensive step once per run. Share output with every rule.</li>
-    <li>Group rules by analysis they read. User-facing group is metadata only.</li>
+    <li>Footguns are source of truth. Checks group footguns by analysis they read. User-facing group is metadata only.</li>
     <li>Give each finding confidence: <code>proven</code> or <code>unproven</code>. One setting filters them.</li>
     <li>Map every finding back to source bytes. Fixers edit lossless syntax tree.</li>
     <li>Keep linter process warm. Load target package once. Infer only methods that hold candidate sites.</li>
-    <li>Use JET in tests as oracle for <code>runtime-dispatch</code>. Read typed IR from native compiler at lint time (proposal).</li>
+    <li>Read typed IR from native compiler at lint time. JET serves only as test oracle (proposal).</li>
   </ul>
 </section>
 
@@ -256,7 +253,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 
 <section id="pipeline">
   <h2>Pipeline</h2>
-  <p>Layers run top to bottom. Rule declares lowest layer it needs. Engine computes only layers that selected rules need.</p>
+  <p>Layers run top to bottom. Check declares lowest layer it needs. Engine computes only layers that selected checks need.</p>
   <div class="scroll">
     <div class="pipeline" role="img" aria-label="Analysis layers from syntax tree to dataflow, then findings, strictness filter, report and fix">
       <div class="layer"><div class="id">L1<small>syntax</small></div><div class="what">Lossless syntax tree, index by node kind<small>JuliaSyntax · per file · milliseconds</small></div><div class="fams"><span class="fam">A</span><span class="fam">B</span></div></div>
@@ -291,6 +288,100 @@ footer { color: var(--muted); font-size: 0.85rem; }
   </div>
 </section>
 
+<section id="checks">
+  <h2>Checks</h2>
+  <p>Check is unit of config, opt-out and group. It covers one footgun, or several with same group and same analysis. Kinds inside check give distinct messages and fixes.</p>
+  <div class="filter" role="group" aria-label="Filter checks by group">
+    <button type="button" data-filter="all" aria-pressed="true">all</button>
+    <button type="button" data-filter="correctness" aria-pressed="false">correctness</button>
+    <button type="button" data-filter="performance" aria-pressed="false">performance</button>
+    <button type="button" data-filter="composability" aria-pressed="false">composability</button>
+    <button type="button" data-filter="readability" aria-pressed="false">readability</button>
+  </div>
+  <div class="scroll">
+  <table data-table>
+    <thead><tr><th>Check</th><th>Group</th><th>Family</th><th>Footguns</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr data-group="correctness"><td><code>ambiguous-concat</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F1 Space before minus in array literal concatenates</td><td></td></tr>
+      <tr data-group="correctness"><td><code>bracketed-range</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F2 Range in brackets is one-element vector</td><td></td></tr>
+      <tr data-group="correctness"><td><code>juxtaposition</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F3 Juxtaposition binds tighter than reader expects</td><td></td></tr>
+      <tr data-group="correctness"><td><code>where-binding</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F4 <code>where</code> after result annotation binds result type</td><td>Fixer adds parentheses.</td></tr>
+      <tr data-group="composability"><td><code>type-disruption</code></td><td><span class="chip g-composability">composability</span></td><td>M</td><td>F5 Literal or constant changes input type<br>F6 Float constant where irrational exists; promotes generic code<br>F16 Hard-coded <code>Array</code> drops caller's array type</td><td>Marker engine. Kinds: literal, float constant, array type.</td></tr>
+      <tr data-group="correctness"><td><code>signed-division</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F7 Signed <code>%</code> and <code>÷</code> round toward zero<br>F8 Mixed signed and unsigned division</td><td></td></tr>
+      <tr data-group="correctness"><td><code>inexact-conversion</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F9 Float-to-integer constructor throws on fractions</td><td></td></tr>
+      <tr data-group="correctness"><td><code>approx-zero</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F10 Approximate compare to zero without <code>atol</code> is always false</td><td></td></tr>
+      <tr data-group="correctness"><td><code>bool-index</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F11 <code>Bool</code> used as index</td><td></td></tr>
+      <tr data-group="correctness"><td><code>overflow</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F12 Integer overflow wraps silently</td><td>Later.</td></tr>
+      <tr data-group="correctness"><td><code>result-conversion</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F13 Result annotation converts instead of checking</td><td>With <code>annotation</code>, makes annotations checked.</td></tr>
+      <tr data-group="correctness"><td><code>invariant-parameter</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>F14 Invariant parameter rejects intended arguments</td><td></td></tr>
+      <tr data-group="composability"><td><code>narrow-signature</code></td><td><span class="chip g-composability">composability</span></td><td>C</td><td>F15 Concrete annotation blocks generic callers</td><td></td></tr>
+      <tr data-group="performance"><td><code>vague-type</code></td><td><span class="chip g-performance">performance</span></td><td>C D</td><td>F17 Variable, result or closure capture with vague inferred type<br>F18 Struct field with vague type<br>F20 Ad-hoc union of unrelated types where sum type belongs</td><td>Union policy. Kinds: local, result, capture, field, union.</td></tr>
+      <tr data-group="performance"><td><code>mutable-struct</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td>F19 Mutable struct where immutable works</td><td></td></tr>
+      <tr data-group="performance"><td><code>untyped-empty</code></td><td><span class="chip g-performance">performance</span></td><td>A</td><td>F21 Empty literal has <code>Any</code> element type</td><td>Fixer adds element type.</td></tr>
+      <tr data-group="correctness"><td><code>eq-without-hash</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>F22 <code>==</code> defined without <code>hash</code></td><td></td></tr>
+      <tr data-group="correctness"><td><code>shadowed-base</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>F23 Method named like Base function without <code>Base.</code> shadows it</td><td></td></tr>
+      <tr data-group="correctness"><td><code>keyword-overwrite</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>F24 Methods differ only in keywords; later one overwrites</td><td></td></tr>
+      <tr data-group="composability"><td><code>piracy</code></td><td><span class="chip g-composability">composability</span></td><td>G</td><td>F25 Type piracy</td><td>Aqua.jl.</td></tr>
+      <tr data-group="composability"><td><code>inference-dependent</code></td><td><span class="chip g-composability">composability</span></td><td>A</td><td>F26 Behavior depends on inference result</td><td></td></tr>
+      <tr data-group="correctness"><td><code>never-succeeds</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F83 Call can never succeed</td><td></td></tr>
+      <tr data-group="composability"><td><code>closed-struct</code></td><td><span class="chip g-composability">composability</span></td><td>C</td><td>F84 Public struct has no abstract supertype; users cannot extend</td><td></td></tr>
+      <tr data-group="performance"><td><code>runtime-dispatch</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td>F27 Call resolved at run time</td><td></td></tr>
+      <tr data-group="performance"><td><code>dynamic-splat</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td>F28 Splat of variable-length collection</td><td></td></tr>
+      <tr data-group="performance"><td><code>growing-recursion</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td>F29 Recursion with argument types that nest each call</td><td></td></tr>
+      <tr data-group="performance"><td><code>specialization-blowup</code></td><td><span class="chip g-performance">performance</span></td><td>C</td><td>F30 Too many specializations on <code>Function</code> or <code>Type</code> argument</td><td></td></tr>
+      <tr data-group="correctness"><td><code>scalar-loop</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F31 Loop over scalar runs once</td><td></td></tr>
+      <tr data-group="performance"><td><code>temporary-array</code></td><td><span class="chip g-performance">performance</span></td><td>B</td><td>F32 Temporary array built only to be consumed once</td><td></td></tr>
+      <tr data-group="correctness"><td><code>unwritten-element</code></td><td><span class="chip g-correctness">correctness</span></td><td>B</td><td>F33 Uninitialized element read before write<br>F34 Placeholder value looks like data after partial fill</td><td>Kinds: undef read, placeholder read.</td></tr>
+      <tr data-group="correctness"><td><code>shared-fill</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F35 <code>fill</code> shares one mutable object</td><td></td></tr>
+      <tr data-group="composability"><td><code>one-based-range</code></td><td><span class="chip g-composability">composability</span></td><td>A</td><td>F36 <code>1:length(A)</code> assumes 1-based indices</td><td>Fixer: <code>eachindex</code>.</td></tr>
+      <tr data-group="correctness"><td><code>unproven-inbounds</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F37 Index safety removed without proof</td><td></td></tr>
+      <tr data-group="correctness"><td><code>string-index</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F38 String indexed by character count</td><td></td></tr>
+      <tr data-group="performance"><td><code>constant-array</code></td><td><span class="chip g-performance">performance</span></td><td>B</td><td>F39 Never-written constant array allocates</td><td>Fixer: FillArrays.jl.</td></tr>
+      <tr data-group="performance"><td><code>slice-copy</code></td><td><span class="chip g-performance">performance</span></td><td>B</td><td>F40 Read-only slice copies</td><td></td></tr>
+      <tr data-group="performance"><td><code>broadcast-rebind</code></td><td><span class="chip g-performance">performance</span></td><td>B</td><td>F41 Broadcast rebinds preallocated buffer</td><td></td></tr>
+      <tr data-group="performance"><td><code>loop-order</code></td><td><span class="chip g-performance">performance</span></td><td>A</td><td>F42 Inner loop over non-first index</td><td>Unproven only.</td></tr>
+      <tr data-group="performance"><td><code>quadratic</code></td><td><span class="chip g-performance">performance</span></td><td>A D</td><td>F43 Search inside loop over same collection<br>F44 Fold concatenates one piece at a time</td><td>Kinds: scan, concatenation.</td></tr>
+      <tr data-group="correctness"><td><code>matrix-function</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F45 Matrix function where elementwise was meant</td><td>Later.</td></tr>
+      <tr data-group="correctness"><td><code>conjugating-adjoint</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F46 Adjoint conjugates complex data</td><td>Later.</td></tr>
+      <tr data-group="correctness"><td><code>mutable-key</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F47 Mutable key mutated after insert</td><td></td></tr>
+      <tr data-group="correctness"><td><code>iteration-mutation</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F48 Container mutated while iterating</td><td></td></tr>
+      <tr data-group="correctness"><td><code>dict-order</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F49 Code relies on <code>Dict</code> order</td><td>Later.</td></tr>
+      <tr data-group="correctness"><td><code>self-alias</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F50 Same container passed twice to mutating call</td><td></td></tr>
+      <tr data-group="correctness"><td><code>stateful-reuse</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F51 <code>Iterators.Stateful</code> consumed twice</td><td></td></tr>
+      <tr data-group="correctness"><td><code>missing-condition</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F52 <code>missing</code> reaches condition</td><td></td></tr>
+      <tr data-group="correctness"><td><code>missing-bang</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F53 Function writes argument or global without <code>!</code></td><td>See <code>!</code> convention.</td></tr>
+      <tr data-group="correctness"><td><code>unused-call</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F54 Call has no effect and result is unused</td><td></td></tr>
+      <tr data-group="correctness"><td><code>hidden-input</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F55 Hidden input: mutable global, <code>ScopedValue</code>, global RNG</td><td></td></tr>
+      <tr data-group="correctness"><td><code>impure-lambda</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F56 Anonymous function impure: captures mutable state</td><td></td></tr>
+      <tr data-group="performance"><td><code>boxed-capture</code></td><td><span class="chip g-performance">performance</span></td><td>H</td><td>F57 Closure rebinds captured variable; <code>Core.Box</code></td><td></td></tr>
+      <tr data-group="correctness"><td><code>false-effects</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F58 <code>@assume_effects</code> claim false</td><td></td></tr>
+      <tr data-group="correctness"><td><code>broad-catch</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F59 Catch handles every error</td><td></td></tr>
+      <tr data-group="correctness"><td><code>duplicate-statement</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F60 Same statement twice in block</td><td></td></tr>
+      <tr data-group="correctness"><td><code>soft-scope</code></td><td><span class="chip g-correctness">correctness</span></td><td>H</td><td>F61 Top-level loop assigns global; REPL and file differ</td><td></td></tr>
+      <tr data-group="correctness"><td><code>try-scope</code></td><td><span class="chip g-correctness">correctness</span></td><td>H</td><td>F62 Variable first assigned in <code>try</code> read after it</td><td></td></tr>
+      <tr data-group="correctness"><td><code>world-age</code></td><td><span class="chip g-correctness">correctness</span></td><td>H</td><td>F63 Function defined by <code>eval</code> called in same world</td><td></td></tr>
+      <tr data-group="correctness"><td><code>double-include</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F64 Same file included twice</td><td></td></tr>
+      <tr data-group="composability"><td><code>implicit-import</code></td><td><span class="chip g-composability">composability</span></td><td>G</td><td>F65 Name reached through bare <code>using</code></td><td>ExplicitImports.jl.</td></tr>
+      <tr data-group="composability"><td><code>internal-access</code></td><td><span class="chip g-composability">composability</span></td><td>G</td><td>F66 Use of other module's internal name</td><td>ExplicitImports.jl.</td></tr>
+      <tr data-group="readability"><td><code>misplaced-import</code></td><td><span class="chip g-readability">readability</span></td><td>G</td><td>F67 Import placed in file that does not use it</td><td>Fixer moves imports.</td></tr>
+      <tr data-group="correctness"><td><code>threadid-buffer</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F68 Buffer indexed by <code>threadid()</code></td><td></td></tr>
+      <tr data-group="correctness"><td><code>threaded-race</code></td><td><span class="chip g-correctness">correctness</span></td><td>H</td><td>F69 Unsynchronized update in threaded loop</td><td></td></tr>
+      <tr data-group="correctness"><td><code>orphan-task</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F70 Task result never waited; errors vanish</td><td></td></tr>
+      <tr data-group="readability"><td><code>annotation</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F71 Argument or result without type</td><td></td></tr>
+      <tr data-group="readability"><td><code>one-letter</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F72 One-letter name</td><td></td></tr>
+      <tr data-group="readability"><td><code>mixed-return</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F73 Explicit <code>return</code> mixed with implicit last value</td><td></td></tr>
+      <tr data-group="readability"><td><code>docstring</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F74 Comment where docstring belongs<br>F80 Module without docstring</td><td>Kinds: comment above function, module without docstring.</td></tr>
+      <tr data-group="readability"><td><code>duplicate-code</code></td><td><span class="chip g-readability">readability</span></td><td>G</td><td>F76 Copied code block</td><td>jscpd.</td></tr>
+      <tr data-group="readability"><td><code>file-length</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F77 File too long</td><td></td></tr>
+      <tr data-group="readability"><td><code>wide-struct</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F78 Struct with too many fields</td><td></td></tr>
+      <tr data-group="readability"><td><code>field-prefix</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F79 Related fields belong in nested struct, table or array</td><td></td></tr>
+      <tr data-group="readability"><td><code>c-type</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F81 C types outside C calls</td><td></td></tr>
+      <tr data-group="readability"><td><code>banned</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F82 Project-banned name or pattern</td><td>One config list; each entry names its group.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
 <section id="strictness">
   <h2>Groups and strictness</h2>
   <p>Four groups replace <code>default</code> and <code>pedantic</code>: <span class="chip g-correctness">correctness</span> <span class="chip g-performance">performance</span> <span class="chip g-composability">composability</span> <span class="chip g-readability">readability</span>. Readability holds house style: anything that makes code hard to read. Composability holds code that must work with other types and future Julia versions.</p>
@@ -302,125 +393,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
       <div role="cell"><code>unproven</code> safety</div><div class="no" role="cell">skip</div><div class="yes" role="cell">report</div>
     </div>
   </div>
-  <p class="note">Rules with both kinds today, unlabeled: <code>unmarked-mutation</code> and <code>float-widening</code> ("may write", "may widen" past candidate budget); <code>nan-initializer</code> and <code>constant-array</code> (sites fixer skips).</p>
-</section>
-
-<section id="kept">
-  <h2>Kept rules</h2>
-  <div class="filter" role="group" aria-label="Filter kept rules by group">
-    <button type="button" id="kept-all" data-filter="all" aria-pressed="true">all</button>
-    <button type="button" id="kept-correctness" data-filter="correctness" aria-pressed="false">correctness</button>
-    <button type="button" id="kept-performance" data-filter="performance" aria-pressed="false">performance</button>
-    <button type="button" id="kept-composability" data-filter="composability" aria-pressed="false">composability</button>
-    <button type="button" id="kept-readability" data-filter="readability" aria-pressed="false">readability</button>
-  </div>
-  <div class="scroll">
-  <table data-table="kept">
-    <thead><tr><th>Rule</th><th>Group</th><th>Family</th><th>Finds</th><th>Status · rewrite note</th></tr></thead>
-    <tbody>
-      <tr data-group="correctness"><td>no-op</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">E</td><td>Function returns <code>nothing</code> and has no side effect.</td><td><span class="status new">new · replaces bang</span><br><span class="note">Effect-free per <code>infer_effects</code> and returns <code>nothing</code>.</span></td></tr>
-      <tr data-group="correctness"><td>unmarked-mutation</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">E</td><td>Function without <code>!</code> writes argument or global state.</td><td><span class="status">changed</span><br><span class="note">Global writes added. See <a href="#bang">! convention</a>.</span></td></tr>
-      <tr data-group="correctness"><td>hidden-input</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">E</td><td>Read of mutable or non-constant global, or <code>ScopedValue</code>.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="correctness"><td>captured-mutation</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">E</td><td>Anonymous function writes state it captured.</td><td><span class="status">split from impure-anon-fun</span><br><span class="note">Today rule flags captures by type only, with no mutation analysis (<code>src/rules/general.jl:564</code>).</span></td></tr>
-      <tr data-group="correctness"><td>where-return</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td><code>f(x::T)::T where {T} = x</code>: <code>where</code> binds result type.</td><td><span class="status">kept · fixer</span><br><span class="note">Parse verified on Julia 1.12.</span></td></tr>
-      <tr data-group="correctness"><td>broad-catch</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td><code>catch</code> that handles every error and rethrows none.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="correctness"><td>nothing-return</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td>Declared <code>Union{Nothing, …}</code> result.</td><td><span class="status">moved from pedantic</span><br><span class="note">Fail-loud API.</span></td></tr>
-      <tr data-group="correctness"><td>repeated-statement</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A·E</td><td>Same statement twice in one block.</td><td><span class="status">changed</span><br><span class="note">Exempt calls with effects (<code>pop!</code>, <code>readline</code>).</span></td></tr>
-      <tr data-group="correctness"><td>non-atomic-write</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td>Loop writes several files without staging.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="correctness"><td>nan-initializer</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">B</td><td><code>zeros</code>/<code>ones</code>/<code>fill</code> array later written; unwritten element looks like data.</td><td><span class="status flight">replaced in #128</span><br><span class="note">See <code>unwritten-undef</code> in <a href="#flight">open work</a>.</span></td></tr>
-      <tr data-group="performance"><td>unstable-variable</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">D</td><td>Local variable with vague inferred type.</td><td><span class="status">changed</span><br><span class="note">Union policy by owning module; same as unstable-return and abstract-field. See <a href="#decisions">decisions</a>.</span></td></tr>
-      <tr data-group="performance"><td>unstable-return</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">D</td><td>Result type callers cannot compile against.</td><td><span class="status">changed</span><br><span class="note">Member-count limit gives way to union policy by owning module. See <a href="#decisions">decisions</a>.</span></td></tr>
-      <tr data-group="performance"><td>runtime-dispatch</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">D</td><td>Call resolved at run time.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="performance"><td>recursion-limit</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">D</td><td>Recursion with argument types that nest deeper each call.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="performance"><td>float-widening</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">D</td><td>Literal or constant widens input type (<code>Float32</code> → <code>Float64</code>, <code>Int32</code> → <code>Int64</code>).</td><td><span class="status">kept</span><br><span class="note">Absorbs removed <code>float64</code> rule. #113 groups it under <code>type-disruption</code>.</span></td></tr>
-      <tr data-group="performance"><td>abstract-field</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">C</td><td>Struct field with vague type.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="performance"><td>unstable-anon-fun</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">F</td><td>Capture with vague inferred type.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="performance"><td>boxed-capture</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">F</td><td><code>Core.Box</code>: captured variable rebound.</td><td><span class="status">split from impure-anon-fun</span></td></tr>
-      <tr data-group="performance"><td>specialization-blowup</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">F</td><td>Method with many specializations that differ only in <code>Function</code> or <code>Type</code> parameter.</td><td><span class="status open">open · replaces overspecialized-anon-fun</span><br><span class="note">Closure and plain argument both specialize per function (measured: 4 and 4). Suggest <code>@nospecialize</code>.</span></td></tr>
-      <tr data-group="performance"><td>quadratic-scan</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">A</td><td>Loop searches same collection once per element.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="performance"><td>quadratic-vcat</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">A</td><td>Fold joins pieces one at a time.</td><td><span class="status">kept · fixer</span></td></tr>
-      <tr data-group="performance"><td>constant-array</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">B</td><td>Never-written array of zeros or ones; FillArrays avoids allocation.</td><td><span class="status">kept · fixer</span><br><span class="note">Proposal: skip small constant sizes.</span></td></tr>
-      <tr data-group="composability"><td>concrete-arg</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">B</td><td><code>::Vector</code>/<code>::Dict</code> argument the method never resizes.</td><td><span class="status flight">replaced in #115</span><br><span class="note">See <code>concrete-annotation</code> in <a href="#flight">open work</a>.</span></td></tr>
-      <tr data-group="composability"><td>non-public-access</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">C</td><td>Use of another module's internal name.</td><td><span class="status">kept</span><br><span class="note">Consider wrapping ExplicitImports.jl.</span></td></tr>
-      <tr data-group="composability"><td>return-type</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">A</td><td>Call of <code>Core.Compiler.return_type</code>.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="composability"><td>concrete-return</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">A</td><td>Result annotation names concrete type.</td><td><span class="status open">open · purpose unclear</span><br><span class="note">Silent conversion by result annotation stays unchecked. <code>concrete-annotation</code> (#115) also covers results.</span></td></tr>
-      <tr data-group="readability"><td>annotation</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">A</td><td>Argument or result without type.</td><td><span class="status">kept</span><br><span class="note"><code>::Any</code> is explicit opt-out. Abstract types (<code>::Real</code>) intended.</span></td></tr>
-      <tr data-group="readability"><td>one-letter</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">A</td><td>One-letter variable name.</td><td><span class="status open">changed · partly open</span><br><span class="note">Allow <code>i</code> for indices. <code>j</code>, <code>k</code>, <code>T</code> open.</span></td></tr>
-      <tr data-group="readability"><td>file-length</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">A</td><td>File over line limit.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="readability"><td>wide-struct</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">C</td><td>Struct with too many fields.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="readability"><td>repeated-prefix</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">C</td><td>Field names share prefix (<code>plot_width</code>, <code>plot_height</code>).</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="readability"><td>mutable-struct</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">C</td><td><code>mutable struct</code>.</td><td><span class="status">kept</span><br><span class="note">House style: functional code.</span></td></tr>
-      <tr data-group="readability"><td>misplaced-import</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">C</td><td>Import outside file that uses it.</td><td><span class="status">moved from default · fixer</span><br><span class="note">Julia imports are per module, so style only.</span></td></tr>
-      <tr data-group="readability"><td>c-type</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">A</td><td><code>Cint</code> and similar outside C calls.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="readability"><td>ref</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">A</td><td><code>Ref</code> outside C calls.</td><td><span class="status">changed</span><br><span class="note">Exempt <code>f.(Ref(x), xs)</code> automatically.</span></td></tr>
-      <tr data-group="readability"><td>jscpd</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">G</td><td>Copied code blocks.</td><td><span class="status">kept</span></td></tr>
-      <tr data-group="readability"><td>forbidden-pattern</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">A</td><td>Line matches project-defined pattern.</td><td><span class="status">changed</span><br><span class="note">Each pattern declares its own group.</span></td></tr>
-    </tbody>
-  </table>
-  </div>
-  <p class="note">External tools <code>jet</code> and <code>fatou</code> stay; not reviewed. Names follow <code>main</code>, which renamed <code>unstable-variable</code>, <code>unstable-return</code> and anonymous-function rules. PRs based on older <code>main</code> still use old names.</p>
-</section>
-
-<section id="proposed">
-  <h2>Proposed rules</h2>
-  <p>Proposed rules come from Julia footgun survey and from Base bug corpus of <code>julia-in-lean</code> (<a href="julia-in-lean-rules.md">julia-in-lean-rules.md</a>). None is built.</p>
-  <div class="filter" role="group" aria-label="Filter proposed rules by group">
-    <button type="button" id="prop-all" data-filter="all" aria-pressed="true">all</button>
-    <button type="button" id="prop-correctness" data-filter="correctness" aria-pressed="false">correctness</button>
-    <button type="button" id="prop-performance" data-filter="performance" aria-pressed="false">performance</button>
-    <button type="button" id="prop-composability" data-filter="composability" aria-pressed="false">composability</button>
-    <button type="button" id="prop-readability" data-filter="readability" aria-pressed="false">readability</button>
-    <button type="button" id="prop-unproven" data-filter="unproven" aria-pressed="false">unproven only</button>
-  </div>
-  <div class="scroll">
-  <table data-table="proposed">
-    <thead><tr><th>Rule</th><th>Group</th><th>Family</th><th>Finds</th><th>Confidence · source</th></tr></thead>
-    <tbody>
-      <tr data-group="correctness"><td>array-literal-spacing</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td><code>[1 -2]</code> is 1×2 matrix; <code>[1 - 2]</code> is <code>[-1]</code>. Space before unary minus inside literal.</td><td><span class="status">proven by shape · survey</span></td></tr>
-      <tr data-group="correctness"><td>wrapped-range</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td><code>[1:3]</code>: one-element vector that holds range.</td><td><span class="status">proven by shape · survey</span></td></tr>
-      <tr data-group="correctness"><td>juxtaposition-precedence</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td><code>2^2x</code> is <code>2^(2x)</code>; <code>1/2x</code> is <code>1/(2x)</code>. Suggest explicit parentheses.</td><td><span class="status">proven by shape · survey</span></td></tr>
-      <tr data-group="correctness"><td>shared-fill</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">B</td><td><code>fill(zeros(3), n)</code>, <code>fill([], n)</code>: n references to one mutable object.</td><td><span class="status">proven · survey</span></td></tr>
-      <tr data-group="correctness"><td>isapprox-zero</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td><code>x ≈ 0</code> or <code>isapprox(x, 0)</code> without <code>atol</code>; always false for nonzero <code>x</code>.</td><td><span class="status">proven by shape · survey</span></td></tr>
-      <tr data-group="correctness"><td>threadid-buffer</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td>Buffer indexed by <code>Threads.threadid()</code>; tasks migrate between threads.</td><td><span class="status">proven by shape · survey</span></td></tr>
-      <tr data-group="correctness"><td>implicit-rng</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td><code>rand()</code>, <code>randn()</code> in package code without explicit RNG argument.</td><td><span class="status">proven by shape · survey</span><br><span class="note">Pairs with RNG exemption from <code>!</code>.</span></td></tr>
-      <tr data-group="correctness"><td>include-twice</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td>Same file included twice; second copy of its module.</td><td><span class="status">proven · survey</span></td></tr>
-      <tr data-group="correctness"><td>eq-without-hash</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">C</td><td>Type defines <code>==</code> without <code>hash</code>; <code>Dict</code> and <code>Set</code> disagree.</td><td><span class="status">proven · survey</span></td></tr>
-      <tr data-group="correctness"><td>unqualified-extension</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">C</td><td>Method named like <code>Base</code> function, defined without <code>Base.</code>; shadows it in module.</td><td><span class="status">proven · survey</span></td></tr>
-      <tr data-group="correctness"><td>signed-rounding</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">D</td><td><code>%</code>, <code>÷</code>, <code>div</code> on signed operands not known non-negative. <code>-1 % 3 == -1</code>; <code>-7 ÷ 2 == -3</code>.</td><td><span class="status">unproven without value ranges · survey</span></td></tr>
-      <tr data-group="correctness"><td>inexact-conversion</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">D</td><td><code>Int(x)</code> on float; throws on fractions. Suggest <code>round(Int, x)</code>.</td><td><span class="status">proven type · survey</span></td></tr>
-      <tr data-group="correctness"><td>missing-in-condition</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">D</td><td>Condition whose type includes <code>Missing</code>; <code>if missing</code> throws.</td><td><span class="status">proven type · survey</span></td></tr>
-      <tr data-group="correctness"><td>mutable-dict-key</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">D</td><td><code>Dict</code> or <code>Set</code> with mutable key type; mutating key corrupts table.</td><td><span class="status">proven type · survey</span></td></tr>
-      <tr data-group="correctness"><td>byte-index-string</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">D</td><td><code>s[i]</code> with <code>i</code> from <code>1:length(s)</code>; string indices are bytes.</td><td><span class="status">proven type · survey</span></td></tr>
-      <tr data-group="correctness"><td>mixed-signedness</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">D</td><td><code>div</code>/<code>fld</code>/<code>mod</code> with one <code>Unsigned</code> and one <code>Signed</code> argument.</td><td><span class="status">proven type · julia-in-lean R5</span></td></tr>
-      <tr data-group="correctness"><td>bool-index</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">D</td><td><code>Bool</code> scalar used as index or range endpoint.</td><td><span class="status">proven type · julia-in-lean R11</span></td></tr>
-      <tr data-group="correctness"><td>middle-slurp</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">D</td><td><code>a, b..., c = t</code> on tuple too short for targets.</td><td><span class="status">proven type · julia-in-lean R18</span><br><span class="note">Guards Base bug; name affected Julia versions.</span></td></tr>
-      <tr data-group="correctness"><td>dict-mutation-in-iteration</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">E</td><td>Write to <code>Dict</code> inside loop over same <code>Dict</code>; undefined behavior.</td><td><span class="status">proven when alias known · survey</span></td></tr>
-      <tr data-group="correctness"><td>self-alias-mutation</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">E</td><td>Same binding passed twice to mutating call: <code>append!(a, a)</code>.</td><td><span class="status">proven · julia-in-lean R10</span></td></tr>
-      <tr data-group="correctness"><td>shared-stateful</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">E</td><td><code>Iterators.Stateful</code> shared by two consumers, or probed by <code>isempty</code>.</td><td><span class="status">proven · julia-in-lean R9</span></td></tr>
-      <tr data-group="correctness"><td>assume-effects</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">E</td><td><code>@assume_effects</code> claim that inferred effects of body contradict.</td><td><span class="status">proven · julia-in-lean R17</span></td></tr>
-      <tr data-group="correctness"><td>soft-scope</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">H</td><td>Top-level loop in script assigns global; behavior differs between REPL and file.</td><td><span class="status">proven · survey</span></td></tr>
-      <tr data-group="correctness"><td>try-scope</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">H</td><td>Variable first assigned in <code>try</code> and read after it.</td><td><span class="status">proven · survey</span></td></tr>
-      <tr data-group="correctness"><td>threaded-race</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">H</td><td><code>+=</code> to shared variable in <code>@threads</code> body.</td><td><span class="status">proven by shape · survey</span></td></tr>
-      <tr data-group="correctness"><td>discarded-task</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">H</td><td><code>@async</code>/<code>@spawn</code> result never waited; its errors vanish.</td><td><span class="status">proven · survey</span></td></tr>
-      <tr data-group="correctness"><td>world-age</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">H</td><td>Function defined by <code>eval</code> then called in same function.</td><td><span class="status">proven by shape · survey</span></td></tr>
-      <tr data-group="performance"><td>nothing-compare</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">A</td><td><code>x == nothing</code>. Suggest <code>isnothing(x)</code>.</td><td><span class="status">proven by shape · survey</span></td></tr>
-      <tr data-group="performance unproven"><td>column-major-loop</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">A</td><td>Nested loops whose inner index is not first array index.</td><td><span class="status open">unproven only · survey</span></td></tr>
-      <tr data-group="performance"><td>slice-copy</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">B</td><td>Read-only slice <code>A[:, i]</code> allocates. Suggest <code>@views</code>.</td><td><span class="status">proven · survey</span></td></tr>
-      <tr data-group="performance"><td>broadcast-rebind</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">B</td><td><code>x = f.(y)</code> on preallocated <code>x</code>. Suggest <code>x .= f.(y)</code>.</td><td><span class="status">proven · survey</span></td></tr>
-      <tr data-group="performance"><td>splat-large</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">D</td><td>Splat of collection with no fixed length.</td><td><span class="status">proven type · survey</span></td></tr>
-      <tr data-group="composability"><td>index-range</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">A</td><td><code>1:length(A)</code> assumes 1-based indices. Suggest <code>eachindex(A)</code>.</td><td><span class="status">proven by shape · survey</span></td></tr>
-      <tr data-group="composability"><td>type-piracy</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">C</td><td>Method on function and types package does not own.</td><td><span class="status">proven · survey</span><br><span class="note">Wrap Aqua.jl.</span></td></tr>
-      <tr data-group="composability"><td>implicit-import</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">C</td><td>Name reached through bare <code>using</code>; two packages can export it.</td><td><span class="status">proven · survey</span><br><span class="note">Wrap ExplicitImports.jl.</span></td></tr>
-      <tr data-group="readability"><td>implicit-return</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">H</td><td>Function mixes explicit <code>return</code> with value from last expression.</td><td><span class="status">proven by shape · survey</span></td></tr>
-      <tr data-group="correctness unproven"><td>matrix-function</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">D</td><td><code>exp</code>, <code>sqrt</code>, <code>^</code> on matrix: matrix function, not elementwise.</td><td><span class="status open">unproven only · survey</span></td></tr>
-      <tr data-group="correctness unproven"><td>conjugating-adjoint</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">D</td><td><code>v'</code> on complex data conjugates.</td><td><span class="status open">unproven only · survey</span></td></tr>
-      <tr data-group="correctness unproven"><td>dict-order</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">D</td><td><code>Dict</code> iterated into ordered output.</td><td><span class="status open">unproven only · survey</span></td></tr>
-      <tr data-group="correctness unproven"><td>integer-overflow</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">E</td><td>Integer arithmetic that can wrap. Needs value ranges; julia-in-lean summaries could help later.</td><td><span class="status open">future · survey + julia-in-lean</span></td></tr>
-    </tbody>
-  </table>
-  </div>
-  <p class="note">Covered by open work: <code>parametric-invariance</code> (<code>invariant-parameter</code>, #105), <code>narrow-signature</code> (<code>concrete-annotation</code>, #115), <code>untyped-container</code> (extend <code>abstract-element</code>, #127, to <code>[]</code> and <code>Dict()</code>).</p>
-  <p class="note">Dropped from survey: ternary spacing (parse error), <code>"a" + "b"</code> (<code>jet</code> reports it), methods that differ only in keywords (precompile errors), <code>Adjoint</code> passed to <code>::Matrix</code> (<code>concrete-arg</code>), environment hygiene (not source code). Already covered: type instability, abstract fields, non-constant globals, boxed captures, <code>Float32</code> literals, bare <code>catch</code>.</p>
+  <p class="note">Checks with both kinds: <code>missing-bang</code> (dispatch past candidate budget may write), <code>type-disruption</code> (type branch), <code>unwritten-element</code> and <code>constant-array</code> (sites fixer cannot prove).</p>
 </section>
 
 <section id="bang">
@@ -448,155 +421,28 @@ footer { color: var(--muted); font-size: 0.85rem; }
   </ul>
 </section>
 
-<section id="removed">
-  <h2>Removed rules</h2>
-  <div class="scroll">
-  <table>
-    <thead><tr><th>Rule</th><th>Reason</th></tr></thead>
-    <tbody>
-      <tr><td>bang</td><td>Scratch code. "Returns nothing" does not mean "mutates". Replaced by <code>no-op</code> and wider <code>unmarked-mutation</code>.</td></tr>
-      <tr><td>float64</td><td>Duplicates <code>float-widening</code> with more noise.</td></tr>
-      <tr><td>struct-constant</td><td>Works around Revise; reports good code.</td></tr>
-      <tr><td>derived-constant</td><td>Works around Revise; <code>const TABLE = build_table()</code> is good practice.</td></tr>
-      <tr><td>range-guard</td><td>Specific to one past bug; reports normal <code>floatmax</code> use.</td></tr>
-    </tbody>
-  </table>
-  </div>
-</section>
-
-<section id="flight">
-  <h2>Ideas from open work</h2>
-  <p>Rule ideas from open PRs and local workspaces. Rewrite starts from scratch: review judges each idea, and no implementation carries over. None is accepted into plan yet.</p>
-  <div class="filter" role="group" aria-label="Filter open-work rules by review verdict">
-    <button type="button" id="open-all" data-filter="all" aria-pressed="true">all</button>
-    <button type="button" id="open-good" data-filter="good" aria-pressed="false">✓ keep</button>
-    <button type="button" id="open-tweak" data-filter="tweak" aria-pressed="false">~ change</button>
-    <button type="button" id="open-doubt" data-filter="doubt" aria-pressed="false">✗ doubtful</button>
-    <button type="button" id="open-conflict" data-filter="conflict" aria-pressed="false">overlaps</button>
-  </div>
-  <div class="scroll">
-  <table data-table="open">
-    <thead><tr><th>Rule</th><th>Group</th><th>Family</th><th>Finds</th><th>Source</th><th>Review</th></tr></thead>
-    <tbody>
-      <tr data-group="good"><td>unwritten-undef</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">B</td><td>Uninitialized array not provably written in full before read; written <code>zeros</code>/<code>ones</code>/<code>fill</code> array that should start as NaN.</td><td><span class="status">#128 · pedantic</span></td><td><b>✓ keep.</b> Reading <code>undef</code> memory is real bug; one rule for both array cases is good merge. Move <code>undef</code> part to correctness with <code>proven</code>/<code>unproven</code> split.</td></tr>
-      <tr data-group="good"><td>no-inbounds</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td>Every <code>@inbounds</code>.</td><td><span class="status">workspace no-inbounds · default</span></td><td><b>✓ keep.</b> Wrong index corrupts memory silently. Compiler removes checks for <code>eachindex</code> loops anyway. Fixer (workspace inbounds-fixer) only adds checks, so it is safe.</td></tr>
-      <tr data-group="tweak"><td>silent-existence-filter</td><td><span class="chip g-correctness">correctness</span></td><td class="fam-col">A</td><td>Path filter that drops paths that do not exist.</td><td><span class="status">workspace ratchet-seeding · deny</span></td><td><b>~ narrow.</b> Fits fail-loud style, but targets one pattern. Workspace base is stale; its other group changes are old.</td></tr>
-      <tr data-group="good conflict"><td>abstract-element</td><td><span class="chip g-performance">performance</span></td><td class="fam-col">A</td><td>Container built with abstract element, key or value type: <code>Real[]</code>, <code>Vector{Real}()</code>, <code>Dict{String, Any}()</code>, <code>similar(x, Real)</code>.</td><td><span class="status">#127 · pedantic</span></td><td><b>✓ keep.</b> Extend to <code>[]</code> and <code>Dict()</code>, which absorbs proposed <code>untyped-container</code>. Exempt explicit <code>Any</code> (<code>Any[]</code>, <code>Vector{Any}</code>): approved opt-out.</td></tr>
-      <tr data-group="good conflict"><td>invariant-parameter</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">A</td><td>Abstract type parameter in argument annotation without <code>&lt;:</code>: <code>Vector{Real}</code> rejects <code>Vector{Int}</code>.</td><td><span class="status">#105 · default</span></td><td><b>✓ keep, as correctness.</b> Method silently fails to match intended calls. Precise and cheap. <code>concrete-annotation</code> repeats it; remove it there.</td></tr>
-      <tr data-group="tweak conflict"><td>concrete-annotation</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">A·B</td><td>Annotation names concrete type: arguments, results, <code>where</code> bounds, public struct fields; also invariant parameters.</td><td><span class="status">#115 · pedantic · fixer #116</span></td><td><b>~ keep, trimmed.</b> Matches "abstract annotations intended". Drop invariant-parameter sub-check. Absorb <code>concrete-return</code>. Exempt fast-path methods beside generic sibling, as <code>enumerated-union</code> does. PR itself calls it noisy.</td></tr>
-      <tr data-group="doubt"><td>any-supertype</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">A</td><td>Struct with supertype <code>Any</code>.</td><td><span class="status">#115 · pedantic</span></td><td><b>✗ doubtful.</b> Most structs need no abstract parent. Rule pushes authors to invent hierarchies with one member. Abstract parent helps only when several types share methods.</td></tr>
-      <tr data-group="tweak conflict"><td>enumerated-union</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">A</td><td>Union of concrete types with shared supertype narrower than <code>Any</code>: <code>Union{Float32, Float64}</code>.</td><td><span class="status">#99 · default</span></td><td><b>~ change.</b> Union of floats joins to <code>AbstractFloat</code>; suggestion calls <code>abstract-float</code> rewrite, so message and fix say <code>Real</code>.</td></tr>
-      <tr data-group="good conflict"><td>abstract-float</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">A</td><td><code>AbstractFloat</code> where <code>Real</code> works; rejects rationals, intervals, dual numbers, units.</td><td><span class="status">#125 · pedantic · fixer #126</span></td><td><b>✓ keep.</b> <code>AbstractFloat</code> blocks autodiff: ForwardDiff <code>Dual</code> is <code>Real</code>. Report every <code>AbstractFloat</code> annotation; no exemption, since float-only functions can be defined for other <code>Real</code> types. <code>enumerated-union</code> reuses its rewrite.</td></tr>
-      <tr data-group="doubt"><td>collect</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">A</td><td>Every <code>collect</code> call.</td><td><span class="status">#121 · pedantic</span></td><td><b>✗ doubtful as written.</b> <code>collect</code> is normal way to materialize iterator, for example before <code>sort!</code>. Narrow to <code>collect</code> of array (pointless copy) or of value used once (iterate lazily).</td></tr>
-      <tr data-group="tweak conflict"><td>literal-array</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">A</td><td><code>Vector{T}(undef, …)</code>, <code>similar(Vector{T}, …)</code>. Suggest <code>similar(x, T, dims)</code>.</td><td><span class="status">#113 · default · fixer #114</span></td><td><b>~ keep one.</b> Same goal as <code>similar-array</code>: keep caller's array type (GPU, static). Useful only when template exists. <code>similar-array</code> checks that; prefer its logic.</td></tr>
-      <tr data-group="tweak conflict"><td>similar-array</td><td><span class="chip g-composability">composability</span></td><td class="fam-col">A</td><td><code>Vector</code>/<code>Matrix</code>/<code>Array</code> constructor where annotated template array exists.</td><td><span class="status">workspace similar-arrays · pedantic</span></td><td><b>~ keep one.</b> More precise of the two. Merge with <code>literal-array</code>.</td></tr>
-      <tr data-group="doubt"><td>dims-keyword</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">A</td><td>Call or broadcast with <code>dims</code> keyword. Suggest <code>eachslice</code>, <code>eachrow</code>, <code>eachcol</code>.</td><td><span class="status">#121 · pedantic</span></td><td><b>✗ doubtful.</b> <code>sum(A; dims = 1)</code> is idiomatic and fast. <code>sum.(eachcol(A))</code> returns different shape and can be slower. Rationale needed.</td></tr>
-      <tr data-group="good conflict"><td>banned-name</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">A</td><td>Names project bans by word or suffix.</td><td><span class="status">#120 · default</span></td><td><b>✓ keep.</b> Fits "descriptive names". Share one config table with <code>forbidden-pattern</code>.</td></tr>
-      <tr data-group="tweak"><td>while-true-return</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">A</td><td><code>while true</code> loop that leaves by <code>return</code>.</td><td><span class="status">#118 · pedantic</span></td><td><b>~ taste.</b> Loop-and-a-half (read, test, return) is clear in this form. Rewriting it often duplicates first read. Keep only if you prefer it.</td></tr>
-      <tr data-group="good"><td>irrational-constant</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">A</td><td>Hand-written constants that IrrationalConstants.jl names: <code>sqrt(2π)</code>, <code>log(2π) / 2</code>, normal density.</td><td><span class="status">workspace irrational-constant · pedantic</span></td><td><b>✓ keep.</b> Clearer, and exact at every float width. Fixer in workspace irrational-fixer.</td></tr>
-      <tr data-group="good"><td>comment-docstring</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">A</td><td>Function with comment block directly above and no docstring.</td><td><span class="status">workspace comment-docstring · pedantic</span></td><td><b>✓ keep.</b> Enforces "docstrings at top of functions".</td></tr>
-      <tr data-group="doubt"><td>file-module</td><td><span class="chip g-readability">readability</span></td><td class="fam-col">A</td><td>File that is not exactly one module around its content; module without docstring.</td><td><span class="status">workspace file-module · pedantic</span></td><td><b>✗ doubtful.</b> Julia packages usually <code>include</code> files into one module. One module per file adds import boilerplate everywhere. Keep module-docstring part.</td></tr>
-    </tbody>
-  </table>
-  </div>
-</section>
-
-<section id="coverage">
-  <h2>Coverage of old rules</h2>
-  <p>Every rule on main and every idea from open work, with footguns that replace it. Only place old names appear.</p>
-  <div class="scroll"><table>
-    <thead><tr><th>Source</th><th>Old rule</th><th>Footguns</th><th>Note</th></tr></thead>
-    <tbody>
-      <tr><td>main</td><td><code>unstable-variable</code></td><td>F17 Variable, result or closure capture with vague inferred type<br></td><td></td></tr>
-      <tr><td>main</td><td><code>unstable-return</code></td><td>F17 Variable, result or closure capture with vague inferred type<br></td><td></td></tr>
-      <tr><td>main</td><td><code>unstable-anon-fun</code></td><td>F17 Variable, result or closure capture with vague inferred type<br></td><td></td></tr>
-      <tr><td>main</td><td><code>runtime-dispatch</code></td><td>F27 Call resolved at run time<br></td><td></td></tr>
-      <tr><td>main</td><td><code>recursion-limit</code></td><td>F29 Recursion with argument types that nest each call<br></td><td></td></tr>
-      <tr><td>main</td><td><code>float-widening</code></td><td>F5 Literal or constant changes input type<br></td><td></td></tr>
-      <tr><td>main</td><td><code>float64</code></td><td>F5 Literal or constant changes input type<br></td><td>Duplicate.</td></tr>
-      <tr><td>main</td><td><code>abstract-field</code></td><td>F18 Struct field with vague type<br></td><td></td></tr>
-      <tr><td>main</td><td><code>mutable-struct</code></td><td>F19 Mutable struct where immutable works<br></td><td></td></tr>
-      <tr><td>main</td><td><code>wide-struct</code></td><td>F78 Struct with too many fields<br></td><td></td></tr>
-      <tr><td>main</td><td><code>repeated-prefix</code></td><td>F79 Related fields belong in nested struct, table or array<br></td><td></td></tr>
-      <tr><td>main</td><td><code>repeated-statement</code></td><td>F60 Same statement twice in block<br></td><td></td></tr>
-      <tr><td>main</td><td><code>return-type</code></td><td>F26 Behavior depends on inference result<br></td><td></td></tr>
-      <tr><td>main</td><td><code>concrete-arg</code></td><td>F15 Concrete annotation blocks generic callers<br></td><td></td></tr>
-      <tr><td>main</td><td><code>concrete-return</code></td><td>F13 Result annotation converts instead of checking<br> F71 Argument or result without type<br></td><td></td></tr>
-      <tr><td>main</td><td><code>annotation</code></td><td>F71 Argument or result without type<br></td><td></td></tr>
-      <tr><td>main</td><td><code>c-type</code></td><td>F81 C types outside C calls<br></td><td></td></tr>
-      <tr><td>main</td><td><code>ref</code></td><td>F19 Mutable struct where immutable works<br></td><td><code>Ref</code> as C helper dropped; struct of <code>Ref</code>s kept.</td></tr>
-      <tr><td>main</td><td><code>one-letter</code></td><td>F72 One-letter name<br></td><td></td></tr>
-      <tr><td>main</td><td><code>file-length</code></td><td>F77 File too long<br></td><td></td></tr>
-      <tr><td>main</td><td><code>forbidden-pattern</code></td><td>F82 Project-banned name or pattern<br></td><td></td></tr>
-      <tr><td>main</td><td><code>where-return</code></td><td>F4 <code>where</code> after result annotation binds result type<br></td><td></td></tr>
-      <tr><td>main</td><td><code>constant-array</code></td><td>F39 Never-written constant array allocates<br></td><td></td></tr>
-      <tr><td>main</td><td><code>nan-initializer</code></td><td>F34 Placeholder value looks like data after partial fill<br></td><td></td></tr>
-      <tr><td>main</td><td><code>broad-catch</code></td><td>F59 Catch handles every error<br></td><td></td></tr>
-      <tr><td>main</td><td><code>quadratic-scan</code></td><td>F43 Search inside loop over same collection<br></td><td></td></tr>
-      <tr><td>main</td><td><code>quadratic-vcat</code></td><td>F44 Fold concatenates one piece at a time<br></td><td></td></tr>
-      <tr><td>main</td><td><code>misplaced-import</code></td><td>F67 Import placed in file that does not use it<br></td><td></td></tr>
-      <tr><td>main</td><td><code>hidden-input</code></td><td>F55 Hidden input: mutable global, <code>ScopedValue</code>, global RNG<br></td><td></td></tr>
-      <tr><td>main</td><td><code>non-public-access</code></td><td>F66 Use of other module's internal name<br></td><td></td></tr>
-      <tr><td>main</td><td><code>unmarked-mutation</code></td><td>F53 Function writes argument or global without <code>!</code><br></td><td></td></tr>
-      <tr><td>main</td><td><code>bang</code></td><td>F53 Function writes argument or global without <code>!</code><br> F54 Call has no effect and result is unused<br></td><td>Split into missing <code>!</code> and no-op call.</td></tr>
-      <tr><td>main</td><td><code>impure-anon-fun</code></td><td>F56 Anonymous function impure: captures mutable state<br> F57 Closure rebinds captured variable; <code>Core.Box</code><br></td><td>Split: impure capture, boxed capture.</td></tr>
-      <tr><td>main</td><td><code>overspecialized-anon-fun</code></td><td>F30 Too many specializations on <code>Function</code> or <code>Type</code> argument<br></td><td></td></tr>
-      <tr><td>main</td><td><code>jscpd</code></td><td>F76 Copied code block<br></td><td></td></tr>
-      <tr><td>main</td><td><code>jet</code></td><td>F83 Call can never succeed<br></td><td>Cheap cases in D scan; JET for rest.</td></tr>
-      <tr><td>main</td><td><code>fatou</code></td><td>—</td><td>External; not reviewed.</td></tr>
-      <tr><td>main</td><td><code>nothing-return</code></td><td>—</td><td>Dropped.</td></tr>
-      <tr><td>main</td><td><code>non-atomic-write</code></td><td>—</td><td>Dropped.</td></tr>
-      <tr><td>main</td><td><code>struct-constant</code></td><td>—</td><td>Dropped: Revise workaround.</td></tr>
-      <tr><td>main</td><td><code>derived-constant</code></td><td>—</td><td>Dropped: Revise workaround.</td></tr>
-      <tr><td>main</td><td><code>range-guard</code></td><td>—</td><td>Dropped: one past bug.</td></tr>
-      <tr><td>open work</td><td><code>unwritten-undef</code></td><td>F33 Uninitialized element read before write<br></td><td></td></tr>
-      <tr><td>open work</td><td><code>no-inbounds</code></td><td>F37 Index safety removed without proof<br></td><td></td></tr>
-      <tr><td>open work</td><td><code>abstract-element</code></td><td>F21 Empty literal has <code>Any</code> element type<br></td><td></td></tr>
-      <tr><td>open work</td><td><code>invariant-parameter</code></td><td>F14 Invariant parameter rejects intended arguments<br></td><td></td></tr>
-      <tr><td>open work</td><td><code>abstract-float</code></td><td>F15 Concrete annotation blocks generic callers<br></td><td></td></tr>
-      <tr><td>open work</td><td><code>concrete-annotation</code></td><td>F13 Result annotation converts instead of checking<br> F15 Concrete annotation blocks generic callers<br></td><td></td></tr>
-      <tr><td>open work</td><td><code>enumerated-union</code></td><td>F20 Ad-hoc union of unrelated types where sum type belongs<br></td><td></td></tr>
-      <tr><td>open work</td><td><code>literal-array</code></td><td>F16 Hard-coded <code>Array</code> drops caller's array type<br></td><td></td></tr>
-      <tr><td>open work</td><td><code>similar-array</code></td><td>F16 Hard-coded <code>Array</code> drops caller's array type<br></td><td></td></tr>
-      <tr><td>open work</td><td><code>banned-name</code></td><td>F82 Project-banned name or pattern<br></td><td></td></tr>
-      <tr><td>open work</td><td><code>irrational-constant</code></td><td>F6 Float constant where irrational exists; promotes generic code<br></td><td></td></tr>
-      <tr><td>open work</td><td><code>comment-docstring</code></td><td>F74 Comment where docstring belongs<br></td><td></td></tr>
-      <tr><td>open work</td><td><code>while-true-return</code></td><td>—</td><td>Dropped.</td></tr>
-      <tr><td>open work</td><td><code>collect</code></td><td>F16 Hard-coded <code>Array</code> drops caller's array type<br> F32 Temporary array built only to be consumed once<br></td><td>Goal: <code>collect</code> returns <code>Vector</code>, drops array type.</td></tr>
-      <tr><td>open work</td><td><code>file-module</code></td><td>F80 Module without docstring<br></td><td>Docstring part only.</td></tr>
-      <tr><td>open work</td><td><code>silent-existence-filter</code></td><td>—</td><td>Dropped: reasonable code.</td></tr>
-      <tr><td>open work</td><td><code>any-supertype</code></td><td>F84 Public struct has no abstract supertype; users cannot extend<br></td><td>Extensibility.</td></tr>
-      <tr><td>open work</td><td><code>dims-keyword</code></td><td>F32 Temporary array built only to be consumed once<br></td><td>Stay-lazy goal; <code>dims</code> itself fine.</td></tr>
-    </tbody>
-  </table></div>
-</section>
-
 <section id="decisions">
   <h2>Decisions</h2>
   <div class="decisions">
+<div class="decisions">
     <div class="decision open"><span class="status open">proposal</span><h3>Fix tiers</h3><p>Each fix declares tier; setting picks highest tier applied. <code>safe</code>: behavior unchanged. <code>likely</code>: types or dispatch may change. <code>breaking</code>: API changes; ratchet absorbs new findings.</p></div>
-    <div class="decision open"><span class="status open">proposal</span><h3>Project kind</h3><p>Preset over groups and fix tier. <code>library</code>: all groups, <code>likely</code> fixes. <code>application</code>: correctness and performance, <code>breaking</code> fixes (no downstream). Infer <code>application</code> when Project.toml has no <code>name</code>; else require setting.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>No tests</h3><p>Corset never reads or runs package tests. Signatures come from annotations: marker types for generic arguments, declared type otherwise. <code>::Any</code> arguments infer as <code>Any</code>.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>Groups</h3><p><code>correctness</code>, <code>performance</code>, <code>composability</code>, <code>readability</code>. <code>pedantic</code> removed.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3><code>!</code> scope</h3><p>Argument and global writes. IO and RNG exempt. Memo caches exempt with cheap proof only.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>Annotations</h3><p><code>::Any</code> is explicit opt-out. Abstract argument types are intended.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>constant-array</h3><p>Keep. It prevents pointless allocations.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>Borrow checking</h3><p>Defer. Revisit for concurrency rules.</p></div>
-    <div class="decision open"><span class="status open">open</span><h3>Strictness wording</h3><p>Setting names <code>"proven"</code> and <code>"unproven"</code> are draft. Confirm meaning: report proven problems only, or also unproven safety.</p></div>
-    <div class="decision open"><span class="status open">open</span><h3>one-letter exemptions</h3><p><code>i</code> allowed. Decide <code>j</code>, <code>k</code> for nested loops, and <code>T</code> for type parameters. Prefer role names (<code>left</code>, <code>right</code>) over <code>num1</code>, <code>num2</code>.</p></div>
-    <div class="decision open"><span class="status open">open</span><h3>specialization-blowup</h3><p>Replace <code>overspecialized-anon-fun</code> with measured specialization count?</p></div>
-    <div class="decision open"><span class="status open">open</span><h3>concrete-return</h3><p>State what it must catch, or remove it.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>Rule names</h3><p>Follow <code>main</code>: <code>unstable-variable</code>, <code>unstable-return</code>, <code>*-anon-fun</code>.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>No <code>float64</code> check</h3><p>Rewrite has no check for <code>Float64</code> tokens. <code>float-widening</code> covers real cases.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>Union width</h3><p>One policy for inferred locals, results and struct fields; argument annotations exempt. <code>Nothing</code> and <code>Missing</code> are free. Members from one module other than Base or Core form variant group. Allow at most one member outside that group.</p><ul><li>Pass: <code>Union{Circle, Square}</code>, <code>Union{DepA.Leaf, DepA.Node}</code>, <code>Union{Float64, ParseError}</code>.</li><li>Report: <code>Union{Int, Float64}</code>, <code>Union{String, Symbol}</code>.</li><li>Report where union is created: merge in package method, or package declaration.</li><li>Union forwarded unchanged from dependency passes; <code>strictness = "unproven"</code> reports it.</li><li>Message suggests sum-type package (Moshi.jl, SumTypes.jl).</li><li>Baseline keeps existing findings from failing CI.</li></ul></div>
-    <div class="decision"><span class="status new">decided</span><h3>Public struct fields</h3><p><code>concrete-annotation</code> accepts only type parameter (<code>x::T</code>) as fix, so <code>abstract-field</code> never reports result.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>Explicit <code>Any</code></h3><p><code>::Any</code>, <code>Vector{Any}</code>, <code>Any[]</code> are approved opt-outs everywhere. Container rule (<code>abstract-element</code> idea) exempts them.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3><code>similar-array</code> (O1)</h3><p>One rule replaces <code>literal-array</code> and <code>similar-array</code> ideas. Report hard-coded <code>Vector</code>/<code>Matrix</code>/<code>Array</code> construction everywhere. With template array: autofix to <code>similar(template, T, dims)</code>. Without template: message teaches caller-supplied template or array type; autofix adds parameter in <code>breaking</code> tier. Covers <code>zeros</code>, <code>ones</code>, <code>fill</code>; combined fix with <code>constant-array</code> and <code>unwritten-undef</code> through F1.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3><code>type-disruption</code> engine</h3><p><b>Principle: values from outside inputs are weak.</b> Literals, constants and globals must not change result type. Inputs combine by normal promotion. Same rule as NumPy 2 for Python scalars.</p><table><thead><tr><th>Kind</th><th>Inputs combine as</th><th>Literal or constant</th><th>Example finding</th></tr></thead><tbody><tr><td>Numbers</td><td>normal promotion; <code>Int32</code> with <code>Int64</code> gives <code>Int64</code> (pass)</td><td>weak: must not widen</td><td><code>x::Int32 * 2</code> gives <code>Int64</code></td></tr><tr><td>Arrays</td><td>keep container kind; element types promote</td><td>fresh <code>Array</code> must not take over container</td><td><code>x::JLArray .+ zeros(n)</code> gives <code>Array</code></td></tr><tr><td>Strings (later)</td><td><code>String</code> is correct common type</td><td>literal is <code>String</code> already</td><td>rare; Julia already does this</td></tr><tr><td>Dicts, sets (later)</td><td>keep container kind; key and value types promote</td><td>as for arrays</td><td>rare</td></tr></tbody></table><ul><li><b>Marker types</b>: one per kind. Numbers use <code>𝒯 &lt;: Real</code>; arrays use marker array type. Each marker is ordinary well-behaved type with normal promotion (<code>promote_rule(𝒯, Int) = 𝒯</code>). Base code runs on it unchanged.</li><li><b>Inference</b>: infer each package method with markers in place of generic arguments (<code>::Real</code>, <code>T &lt;: Real</code>, <code>AbstractArray{T}</code>). Use native inference and its cache. No JET, no Cthulhu, no custom interpreter.</li><li><b>Scan</b> (family D, package methods only):<ul><li>Arithmetic or promotion call mixes marker with foreign number type (<code>x * 2</code>, <code>x + 0.5</code>): report, even when result is still marker.</li><li>Value derived from inputs ends with type other than marker: report.</li><li>Branch on type (<code>x isa Float64</code>, <code>T === Float32</code>): report as <code>unproven</code>.</li></ul></li><li><b>Why marker</b>: Base has fast paths for <code>Float32</code> and <code>Float64</code>. Real float probe takes them; marker takes only generic path, same as user number type.</li><li><b>Base</b>: assume Base callees preserve types; analysis is sound only modulo Base. Optional concrete probes (<code>Int32</code>, <code>Float32</code>) catch Base-caused widening such as <code>middle(::Int32)</code> → <code>Float64</code>. Collect real Base widening bugs for upstream report.</li><li><b>Scope</b>: version 1 covers numbers and arrays; replaces type checks behind <code>float-widening</code> and <code>similar-array</code>. Strings and dicts need only new marker and result rule; engine stays same. Interfaces.jl can declare each kind's contract.</li><li><b>Cost</b> (rough estimate, unbuilt): number marker 100–200 lines (promotion, conversion, arithmetic, comparison, <code>one</code>/<code>zero</code>, <code>float</code>, math functions); expect to add methods until inference runs clean on real packages. Mixing check 100–200 lines. Source mapping through TypedSyntax.jl.</li><li><b>No tests</b>: markers come from annotations. <code>::Any</code> arguments infer as <code>Any</code>. Unannotated methods are skipped; <code>annotation</code> reports them.</li><li>Syntax check stays for <code>similar-array</code> without template. Shared fix helper finds in-scope type source (<code>T</code>, <code>eltype(x)</code>, template array).</li></ul></div>
-    <div class="decision open"><span class="status open">conflict</span><h3>Annotation rules overlap</h3><p><code>concrete-annotation</code> covers invariant parameters (<code>invariant-parameter</code>) and results (<code>concrete-return</code>). Merge into one rule with sub-checks?</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>Suggested abstract type</h3><p>Always suggest <code>Real</code> for floats. <code>enumerated-union</code> calls <code>abstract-float</code> rewrite directly: <code>float_to_real(typejoin(members))</code>. Property test guards all rules: applying any fix never creates new finding. Revisit general mechanism only if test keeps finding conflicts.</p></div>
-    <div class="decision open"><span class="status open">conflict</span><h3>Name bans</h3><p><code>banned-name</code> and <code>forbidden-pattern</code> both ban text by config. Merge configs?</p></div>
-    <div class="decision open"><span class="status open">open</span><h3>JET</h3><p>Proposal: test-only oracle. Typed IR from native compiler at lint time.</p></div>
+<div class="decision open"><span class="status open">proposal</span><h3>Project kind</h3><p>Preset over groups and fix tier. <code>library</code>: all groups, <code>likely</code> fixes. <code>application</code>: correctness and performance, <code>breaking</code> fixes (no downstream). Infer <code>application</code> when Project.toml has no <code>name</code>; else require setting.</p></div>
+<div class="decision"><span class="status new">decided</span><h3>No tests</h3><p>Corset never reads or runs package tests. Signatures come from annotations: marker types for generic arguments, declared type otherwise. <code>::Any</code> arguments infer as <code>Any</code>.</p></div>
+    <div class="decision"><span class="status new">decided</span><h3>Groups</h3><p><code>correctness</code>, <code>performance</code>, <code>composability</code>, <code>readability</code>. One group per check.</p></div>
+<div class="decision"><span class="status new">decided</span><h3><code>!</code> scope</h3><p>Argument and global writes. IO and RNG exempt. Memo caches exempt with cheap proof only.</p></div>
+    <div class="decision"><span class="status new">decided</span><h3>Annotations</h3><p><code>::Any</code> is explicit opt-out. Abstract argument types are intended. <code>result-conversion</code> reports result annotation that converts, so annotations act as checks.</p></div>
+    <div class="decision"><span class="status new">decided</span><h3>Explicit <code>Any</code></h3><p><code>::Any</code>, <code>Vector{Any}</code>, <code>Any[]</code> are approved opt-outs everywhere. <code>untyped-empty</code> and <code>vague-type</code> exempt them.</p></div>
+<div class="decision"><span class="status new">decided</span><h3>Union policy (<code>vague-type</code>)</h3><p>One policy for inferred locals, results and struct fields; argument annotations exempt. <code>Nothing</code> and <code>Missing</code> are free. Members from one module other than Base or Core form variant group. Allow at most one member outside that group.</p><ul><li>Pass: <code>Union{Circle, Square}</code>, <code>Union{DepA.Leaf, DepA.Node}</code>, <code>Union{Float64, ParseError}</code>.</li><li>Report: <code>Union{Int, Float64}</code>, <code>Union{String, Symbol}</code>.</li><li>Report where union is created: merge in package method, or package declaration.</li><li>Union forwarded unchanged from dependency passes; <code>strictness = "unproven"</code> reports it.</li><li>Message suggests sum-type package (Moshi.jl, SumTypes.jl).</li><li>Baseline keeps existing findings from failing CI.</li></ul></div>
+    <div class="decision"><span class="status new">decided</span><h3>Struct field fix</h3><p>Fix for vague or concrete struct field is type parameter (<code>x::T</code>) only, so <code>vague-type</code> and <code>narrow-signature</code> fixes agree.</p></div>
+    <div class="decision"><span class="status new">decided</span><h3>Suggested abstract type</h3><p>Always suggest <code>Real</code> for floats. <code>vague-type</code> and <code>narrow-signature</code> share one helper: <code>float_to_real(typejoin(members))</code>. Property test: applying any fix never creates new finding. Build general mechanism only if test keeps finding conflicts.</p></div>
+    <div class="decision"><span class="status new">decided</span><h3>Hard-coded arrays</h3><p><code>type-disruption</code> reports hard-coded <code>Vector</code>/<code>Matrix</code>/<code>Array</code> construction everywhere, <code>zeros</code>, <code>ones</code>, <code>fill</code> included. With template array: autofix to <code>similar(template, T, dims)</code>. Without template: message teaches caller-supplied template or array type; autofix adds parameter in <code>breaking</code> tier. One shared initializer fixer serves <code>type-disruption</code>, <code>constant-array</code> and <code>unwritten-element</code>.</p></div>
+<div class="decision"><span class="status new">decided</span><h3><code>type-disruption</code> engine</h3><p><b>Principle: values from outside inputs are weak.</b> Literals, constants and globals must not change result type. Inputs combine by normal promotion. Same rule as NumPy 2 for Python scalars.</p><table><thead><tr><th>Kind</th><th>Inputs combine as</th><th>Literal or constant</th><th>Example finding</th></tr></thead><tbody><tr><td>Numbers</td><td>normal promotion; <code>Int32</code> with <code>Int64</code> gives <code>Int64</code> (pass)</td><td>weak: must not widen</td><td><code>x::Int32 * 2</code> gives <code>Int64</code></td></tr><tr><td>Arrays</td><td>keep container kind; element types promote</td><td>fresh <code>Array</code> must not take over container</td><td><code>x::JLArray .+ zeros(n)</code> gives <code>Array</code></td></tr><tr><td>Strings (later)</td><td><code>String</code> is correct common type</td><td>literal is <code>String</code> already</td><td>rare; Julia already does this</td></tr><tr><td>Dicts, sets (later)</td><td>keep container kind; key and value types promote</td><td>as for arrays</td><td>rare</td></tr></tbody></table><ul><li><b>Marker types</b>: one per kind. Numbers use <code>𝒯 &lt;: Real</code>; arrays use marker array type. Each marker is ordinary well-behaved type with normal promotion (<code>promote_rule(𝒯, Int) = 𝒯</code>). Base code runs on it unchanged.</li><li><b>Inference</b>: infer each package method with markers in place of generic arguments (<code>::Real</code>, <code>T &lt;: Real</code>, <code>AbstractArray{T}</code>). Use native inference and its cache. No JET, no Cthulhu, no custom interpreter.</li><li><b>Scan</b> (family D, package methods only):<ul><li>Arithmetic or promotion call mixes marker with foreign number type (<code>x * 2</code>, <code>x + 0.5</code>): report, even when result is still marker.</li><li>Value derived from inputs ends with type other than marker: report.</li><li>Branch on type (<code>x isa Float64</code>, <code>T === Float32</code>): report as <code>unproven</code>.</li></ul></li><li><b>Why marker</b>: Base has fast paths for <code>Float32</code> and <code>Float64</code>. Real float probe takes them; marker takes only generic path, same as user number type.</li><li><b>Base</b>: assume Base callees preserve types; analysis is sound only modulo Base. Optional concrete probes (<code>Int32</code>, <code>Float32</code>) catch Base-caused widening such as <code>middle(::Int32)</code> → <code>Float64</code>. Collect real Base widening bugs for upstream report.</li><li><b>Scope</b>: version 1 covers numbers and arrays (F5, F6, F16). Strings and dicts need only new marker and result rule; engine stays same. Interfaces.jl can declare each kind's contract.</li><li><b>Cost</b> (rough estimate, unbuilt): number marker 100–200 lines (promotion, conversion, arithmetic, comparison, <code>one</code>/<code>zero</code>, <code>float</code>, math functions); expect to add methods until inference runs clean on real packages. Mixing check 100–200 lines. Source mapping through TypedSyntax.jl.</li><li><b>No tests</b>: markers come from annotations. <code>::Any</code> arguments infer as <code>Any</code>. Unannotated methods are skipped; <code>annotation</code> reports them.</li><li>Syntax check stays for hard-coded <code>Array</code> without template. Shared fix helper finds in-scope type source (<code>T</code>, <code>eltype(x)</code>, template array).</li></ul></div>
+    <div class="decision"><span class="status new">decided</span><h3>Specialization count</h3><p><code>specialization-blowup</code> predicts from source: C finds methods that specialize on <code>Function</code> or <code>Type</code> argument; A counts distinct closures or types passed at package call sites. Compiled-instance count from precompile workload: later, opt-in.</p></div>
+<div class="decision"><span class="status new">decided</span><h3>Borrow checking</h3><p>Defer. Revisit for concurrency rules.</p></div>
+<div class="decision open"><span class="status open">open</span><h3>Strictness wording</h3><p>Setting names <code>"proven"</code> and <code>"unproven"</code> are draft. Confirm meaning: report proven problems only, or also unproven safety.</p></div>
+    <div class="decision open"><span class="status open">open</span><h3><code>one-letter</code> exemptions</h3><p><code>i</code> allowed. Decide <code>j</code>, <code>k</code> for nested loops, and <code>T</code> for type parameters. Prefer role names (<code>left</code>, <code>right</code>) over <code>num1</code>, <code>num2</code>.</p></div>
+    <div class="decision open"><span class="status open">open</span><h3>Banned text</h3><p><code>banned</code> takes one config list; each entry gives pattern, message and group. Confirm.</p></div>
+    <div class="decision open"><span class="status open">open</span><h3>JET</h3><p><code>never-succeeds</code> covers cheap cases in D scan. Proposal: JET only as test oracle for <code>runtime-dispatch</code> and <code>never-succeeds</code>.</p></div>
   </div>
 </section>
 
