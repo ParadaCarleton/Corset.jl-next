@@ -158,6 +158,18 @@ footer { color: var(--muted); font-size: 0.85rem; }
   </ul>
 </section>
 
+<section id="non-goals">
+  <h2>Non-goals</h2>
+  <ul>
+    <li>Formatting: Runic or JuliaFormatter own it.</li>
+    <li>Running package tests, or reading signatures from them.</li>
+    <li>Analyzing dependency code, Base included. Code that macros expand into package counts as package code.</li>
+    <li>Julia versions older than latest release.</li>
+    <li>Security sandbox around package code. Corset loads code its user chose to lint.</li>
+    <li>Version 1: language server, concurrency and ownership checks.</li>
+  </ul>
+</section>
+
 <section id="footguns">
   <h2>Footguns</h2>
   <p>Source of truth for rewrite. Each line names one problem Corset prevents. Engines and checks derive from this list; old rule names appear only in coverage appendix.</p>
@@ -270,7 +282,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
     <div class="pipeline" role="img" aria-label="Analysis layers from syntax tree to dataflow, then findings, confidence filter, report and fix">
       <div class="layer"><div class="id">L1<small>syntax</small></div><div class="what">Lossless syntax tree, index by node kind<small>JuliaSyntax · per file · milliseconds</small></div><div class="fams"><span class="fam">A</span><span class="fam">B</span></div></div>
       <div class="layer"><div class="id">L2<small>scope</small></div><div class="what">Lowering with scope resolution and source positions<small>JuliaLowering · per file</small></div><div class="fams"><span class="fam">H</span><span class="fam">B</span></div></div>
-      <div class="divider">user code runs below · sandboxed worker</div>
+      <div class="divider">package code runs below · same process, target environment</div>
       <div class="layer"><div class="id">L3<small>module</small></div><div class="what">Loaded package: bindings, structs, method table<small>one load per run · cached by Manifest hash</small></div><div class="fams"><span class="fam">C</span></div></div>
       <div class="layer"><div class="id">L4<small>types</small></div><div class="what">Typed IR for every package method<small>native inference cache · signatures from annotations · no package tests needed</small></div><div class="fams"><span class="fam">D</span></div></div>
       <div class="layer"><div class="id">L5<small>flow</small></div><div class="what">Effect and alias summary per method<small><code>infer_effects</code> + escape analysis · once per method</small></div><div class="fams"><span class="fam">E</span></div></div>
@@ -435,6 +447,73 @@ footer { color: var(--muted); font-size: 0.85rem; }
   </ul>
 </section>
 
+<section id="architecture">
+  <h2>Architecture</h2>
+  <h3>Code layout</h3>
+  <p>Each layer is one module that produces facts. Checks read facts through one API. Engine is only module that knows order.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Module</th><th>Job</th></tr></thead>
+    <tbody>
+      <tr><td><code>Syntax</code></td><td>L1: parse files with <code>Base.JuliaSyntax</code>; index nodes by kind; array def-use (family B).</td></tr>
+      <tr><td><code>Scope</code></td><td>L2: lowering and scope facts (family H).</td></tr>
+      <tr><td><code>Load</code></td><td>L3: load package; module facts (family C); Project.toml facts.</td></tr>
+      <tr><td><code>Infer</code></td><td>L4: stand-in types; one inference per method; typed IR with source mapping (family D).</td></tr>
+      <tr><td><code>Effects</code></td><td>L5: effect and alias summary per method (family E).</td></tr>
+      <tr><td><code>External</code></td><td>Family G: Aqua.jl, ExplicitImports.jl, jscpd output as facts.</td></tr>
+      <tr><td><code>Facts</code></td><td>Fact types and query API. Only module check code may import.</td></tr>
+      <tr><td><code>Checks</code></td><td>One pure function per check; registry as data.</td></tr>
+      <tr><td><code>Engine</code></td><td>Pick layers that enabled checks need; run them; apply levels, confidence, opt-outs, baseline.</td></tr>
+      <tr><td><code>Fix</code></td><td>Apply edits to lossless tree; filter by tier.</td></tr>
+      <tr><td><code>Report</code></td><td>Render text, JSON, SARIF; <code>explain</code>.</td></tr>
+      <tr><td><code>Cache</code></td><td>Disk cache keys and storage.</td></tr>
+      <tr><td><code>Config</code></td><td>Preferences.jl table, presets, command-line overrides.</td></tr>
+      <tr><td><code>CLI</code></td><td>Julia app entry point.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Core types</h3>
+  <div class="scroll"><pre>struct Span     file::String; first_byte::Int; last_byte::Int end
+struct Label    span::Span; text::String end
+struct Edit     span::Span; replacement::String end
+struct Fix      edits::Vector{Edit}; tier::Tier end           # Tier: safe likely breaking manual
+struct Finding
+    check::Symbol; kind::Symbol; confidence::Confidence      # definite possible
+    primary::Label; causes::Vector{Label}; why::String
+    fix::Union{Fix, Nothing}
+end
+struct CheckEntry
+    name::Symbol; group::Group; footguns::Vector{Int}; family::Family
+    run::Function                                            # (facts::Facts) -&gt; Vector{Finding}
+end</pre></div>
+  <h3>Process model</h3>
+  <ul>
+    <li>One process. Corset runs inside target environment, like Aqua.jl and JET in tests.</li>
+    <li>From tests: Corset is test dependency; <code>Corset.check()</code> in <code>runtests.jl</code> shares package load with test suite.</li>
+    <li>From command line: build temporary environment with target and Corset, as <code>Pkg.test</code> does; resolve once; cache by Manifest hash.</li>
+    <li>Pkg resolves Corset dependencies with package dependencies, so conflict fails loudly at install. Keep Corset dependency list short.</li>
+    <li>Cache check runs before package load: unchanged rerun loads nothing.</li>
+  </ul>
+  <h3>Tests</h3>
+  <ul>
+    <li>UI tests, as in Clippy: <code>test/ui/&lt;check&gt;/&lt;case&gt;.jl</code> with snapshot of full rendered output and fixed source. Bless command updates snapshots; CI fails on diff.</li>
+    <li>Each footgun: positive case, negative case, fix case.</li>
+    <li>Property tests (Supposition.jl): fix creates no new finding; fix is idempotent.</li>
+    <li>Reference comparison: JET, fatou, LintApp.jl, ReLint.jl on fixtures, with allowlist.</li>
+    <li>100% line coverage; mutation testing on check code.</li>
+  </ul>
+  <h3>Command line</h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Command</th><th>Does</th></tr></thead>
+    <tbody>
+      <tr><td><code>corset check [path]</code></td><td>Report findings.</td></tr>
+      <tr><td><code>corset fix [path] [--tier T]</code></td><td>Apply fixes up to tier (default from preset), then check again.</td></tr>
+      <tr><td><code>corset explain &lt;check&gt;</code></td><td>Print check docs offline.</td></tr>
+      <tr><td><code>corset baseline [path]</code></td><td>Write current findings to baseline.</td></tr>
+    </tbody>
+  </table></div>
+  <p>Flags: <code>-A</code>, <code>-W</code>, <code>-D &lt;check or group&gt;</code> set levels (Clippy style); <code>--deny warnings</code>; <code>--confidence definite|possible</code>; <code>--format text|json|sarif</code>; <code>--no-cache</code>.</p>
+  <p>Exit codes: <code>0</code> no <code>deny</code> finding; <code>1</code> <code>deny</code> finding; <code>2</code> config or usage error; <code>101</code> internal error (Cargo convention).</p>
+</section>
+
 <section id="decisions">
   <h2>Decisions</h2>
   <div class="decisions">
@@ -460,7 +539,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
     <div class="decision"><span class="status new">decided</span><h3>Opt-out comments</h3><p><code># corset: allow &lt;check&gt; -- &lt;reason&gt;</code>. Reason is required. Opt-out that suppresses nothing is error, like Rust <code>#[expect]</code>. Scope by position: end of line covers line; line above function, struct or block covers that item; top of file covers file.</p></div>
     <div class="decision"><span class="status new">decided</span><h3>Config</h3><p><code>[preferences.Corset]</code> table in Project.toml, read through Preferences.jl. Scripts without Project.toml use defaults and command-line flags.</p></div>
     <div class="decision"><span class="status new">decided</span><h3>Macro output</h3><p>Findings inside macro expansions are reported, other packages' macros included: message marks them upstream and points at call site. Own macro: one finding at definition, with call-site count. Fixes never edit generated code.</p></div>
-    <div class="decision wide"><span class="status new">decided</span><h3>Conventions</h3><ul><li>Corset supports only latest Julia release, for running and for fixes.</li><li>Public API: exported or declared <code>public</code>. Everything else is internal.</li><li><code>test/</code>, <code>docs/</code>, <code>benchmark/</code> are scripts: loading them runs them.</li><li>Baseline matches findings by check, file, enclosing definition and normalized snippet hash. No line numbers, so edits elsewhere keep matches.</li><li><code>corset explain</code> and docs page per check follow Clippy sections: what it does, why it is bad, example, use instead, known problems.</li><li>Fixes keep surrounding style; formatting stays formatter's job (Runic, JuliaFormatter).</li><li>Corset lints itself in CI from phase 1.</li></ul></div>
+    <div class="decision wide"><span class="status new">decided</span><h3>Conventions</h3><ul><li>Corset supports only latest Julia release, for running and for fixes.</li><li>Public API: exported or declared <code>public</code>. Everything else is internal.</li><li><code>test/</code>, <code>docs/</code>, <code>benchmark/</code> are scripts: loading them runs them.</li><li>Baseline matches findings by check, file, enclosing definition and normalized snippet hash. No line numbers, so edits elsewhere keep matches.</li><li><code>corset explain</code> and docs page per check follow Clippy sections: what it does, why it is bad, example, use instead, known problems.</li><li>Fixes keep surrounding style; formatting stays formatter's job (Runic, JuliaFormatter).</li><li>Corset lints itself in CI from phase 1.</li><li>Renamed check keeps old name as alias that warns, so opt-out comments survive renames (Clippy renamed-lints list).</li></ul></div>
     <div class="decision"><span class="status new">decided</span><h3>No tests</h3><p>Corset never reads or runs package tests. Signatures come from annotations: stand-in types for generic arguments and struct parameters (from their bounds), declared type otherwise. See <b>Arguments without stand-in</b>.</p></div>
     <div class="decision"><span class="status new">decided</span><h3>Arguments without stand-in</h3><ul><li>Package abstract type (<code>s::Shape</code>): infer once per concrete subtype package defines, with stand-ins for its parameters.</li><li>Function argument: stand-in function returns opaque stand-in result. Method stable under that assumption is exempt: stable whenever <code>f</code> is. Problems method causes itself are reported. Code that uses <code>f</code>'s result past that point is not analyzed.</li><li>No stand-in yet (<code>AbstractString</code>, <code>AbstractDict</code>, abstract type without package subtype) and explicit <code>::Any</code>: no findings from that argument's data.</li><li>Analysis gaps never become findings. Run ends with coverage line: methods not analyzed and reason.</li></ul></div>
     <div class="decision"><span class="status new">decided</span><h3>Groups</h3><p><code>correctness</code>, <code>performance</code>, <code>composability</code>, <code>readability</code>. One group per check; <code>banned</code> entries name their own group.</p></div>
@@ -487,9 +566,9 @@ footer { color: var(--muted); font-size: 0.85rem; }
     <thead><tr><th>Phase</th><th>Builds</th><th>Footguns</th><th>Exit</th></tr></thead>
     <tbody>
       <tr><td>0 spikes</td><td>S1 stand-in inference · S2 source mapping · S3 scope layer · S4 syntax matcher · S5 effect API. Measure legacy Corset on corpus as speed baseline.</td><td>—</td><td>Each spike works on Julia 1.13, or fallback is chosen.</td></tr>
-      <tr><td>1 skeleton</td><td>Julia app <code>corset</code>; facts API and check contract; config, project kind, groups, confidence, fix tiers; finding type with cause spans; message renderer; <code>corset explain</code>; opt-outs; baseline; text, JSON, SARIF output; disk cache for syntax findings; fixer engine on lossless tree; test harnesses.</td><td>—</td><td>One check runs end to end: report, opt-out, baseline, fix, SARIF, cached rerun.</td></tr>
+      <tr><td>1 skeleton</td><td>Julia app <code>corset</code>; facts API and check contract; config, project kind, groups, confidence, fix tiers; finding type with cause spans; message renderer; <code>corset explain</code>; opt-outs; baseline; text, JSON, SARIF output; disk cache for syntax findings; fixer engine on lossless tree; UI snapshot tests and other harnesses.</td><td>—</td><td>One check runs end to end: report, opt-out, baseline, fix, SARIF, cached rerun.</td></tr>
       <tr><td>2 syntax</td><td>Families A and B. Copy matchers from LintApp.jl and ReLint.jl where they exist.</td><td>32</td><td>Works on scripts. Reference comparison clean or allowlisted. <b>First release.</b></td></tr>
-      <tr><td>3 module</td><td>Sandboxed package load; families C and G.</td><td>13</td><td>Load and checks run on every corpus package.</td></tr>
+      <tr><td>3 module</td><td>Package load in target environment; families C and G.</td><td>13</td><td>Load and checks run on every corpus package.</td></tr>
       <tr><td>4 types</td><td>Stand-in inference over every package method; family D and type-disruption scan; per-method disk cache; <code>annotation</code> fixer fills result types from inference.</td><td>21</td><td>Precision gate passes on corpus. <code>unverified-inbounds</code> agrees with julia-in-lean site verdicts.</td></tr>
       <tr><td>5 effects</td><td>Effect and alias summary; family E; <code>!</code> convention flow.</td><td>8</td><td>Flow fixtures pass, IO, RNG and memo exemptions included.</td></tr>
       <tr><td>6 scope</td><td>Family H on scope layer chosen in S3.</td><td>5</td><td>Scope fixtures pass on packages and scripts.</td></tr>
@@ -516,6 +595,32 @@ footer { color: var(--muted); font-size: 0.85rem; }
   </ul>
   <p>Speed budget (draft): full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines after startup; rerun with no changes under 1 s.</p>
   <p>Repository bar: 100% line coverage; mutation testing on check code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).</p>
+</section>
+
+<section id="glossary">
+  <h2>Glossary</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>footgun</td><td>One problem Corset prevents. Source of truth; ID like F17.</td></tr>
+      <tr><td>check</td><td>Unit of config, opt-out and group. Covers one or more footguns.</td></tr>
+      <tr><td>kind</td><td>Variant inside check, with own message and fix.</td></tr>
+      <tr><td>layer</td><td>Data Corset computes, L1 syntax to L5 effects.</td></tr>
+      <tr><td>family</td><td>Analysis on layer output that checks share (A to H).</td></tr>
+      <tr><td>fact</td><td>Analysis output that checks read.</td></tr>
+      <tr><td>stand-in type</td><td>Type Corset defines to stand for whatever type caller passes, so inference sees concrete type.</td></tr>
+      <tr><td>generic argument</td><td>Annotation callers can fill with many types: <code>x::Real</code>, <code>x::T</code>.</td></tr>
+      <tr><td>overspecified type</td><td>Annotation that names specific number type, <code>AbstractFloat</code>, or concrete container anywhere inside.</td></tr>
+      <tr><td>escaping value</td><td>Value that leaves method: returned, or written to argument or global.</td></tr>
+      <tr><td>confidence</td><td><code>definite</code>: problem exists. <code>possible</code>: analysis ran and could not rule it out.</td></tr>
+      <tr><td>level</td><td><code>allow</code>, <code>warn</code> or <code>deny</code> per group or check.</td></tr>
+      <tr><td>fix tier</td><td>Risk of fix to callers: <code>safe</code>, <code>likely</code>, <code>breaking</code>, <code>manual</code>.</td></tr>
+      <tr><td>project kind</td><td>Preset of levels and tier: <code>library</code>, <code>application</code>, <code>script</code>.</td></tr>
+      <tr><td>baseline</td><td>Stored existing findings that never fail run.</td></tr>
+      <tr><td>opt-out</td><td><code># corset: allow &lt;check&gt; -- &lt;reason&gt;</code> comment.</td></tr>
+      <tr><td>coverage line</td><td>End-of-run summary of methods Corset could not analyze, and why.</td></tr>
+    </tbody>
+  </table></div>
 </section>
 
 <footer>
