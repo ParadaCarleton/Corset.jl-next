@@ -501,6 +501,76 @@ footer { color: var(--muted); font-size: 0.85rem; }
   </div>
 </section>
 
+<section id="coverage">
+  <h2>Coverage of old rules</h2>
+  <p>Every rule on main and every idea from open work, with footguns that replace it. Only place old names appear.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Source</th><th>Old rule</th><th>Footguns</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>main</td><td><code>unstable-variable</code></td><td>F17 Variable or result with vague inferred type<br></td><td></td></tr>
+      <tr><td>main</td><td><code>unstable-return</code></td><td>F17 Variable or result with vague inferred type<br></td><td></td></tr>
+      <tr><td>main</td><td><code>unstable-anon-fun</code></td><td>F17 Variable or result with vague inferred type<br></td><td>Captured variable is variable.</td></tr>
+      <tr><td>main</td><td><code>runtime-dispatch</code></td><td>F27 Call resolved at run time<br></td><td></td></tr>
+      <tr><td>main</td><td><code>recursion-limit</code></td><td>F29 Recursion with argument types that nest each call<br></td><td></td></tr>
+      <tr><td>main</td><td><code>float-widening</code></td><td>F5 Literal or constant changes input type<br></td><td></td></tr>
+      <tr><td>main</td><td><code>float64</code></td><td>F5 Literal or constant changes input type<br></td><td>Duplicate.</td></tr>
+      <tr><td>main</td><td><code>abstract-field</code></td><td>F18 Struct field with vague type<br></td><td></td></tr>
+      <tr><td>main</td><td><code>mutable-struct</code></td><td>F19 <code>mutable struct</code> where immutable works<br></td><td></td></tr>
+      <tr><td>main</td><td><code>wide-struct</code></td><td>F78 Struct with too many fields<br></td><td></td></tr>
+      <tr><td>main</td><td><code>repeated-prefix</code></td><td>F79 Related fields belong in nested struct, table or array<br></td><td></td></tr>
+      <tr><td>main</td><td><code>repeated-statement</code></td><td>F60 Same statement twice in block<br></td><td></td></tr>
+      <tr><td>main</td><td><code>return-type</code></td><td>F26 Behavior depends on inference result<br></td><td></td></tr>
+      <tr><td>main</td><td><code>concrete-arg</code></td><td>F15 Concrete annotation blocks generic callers<br></td><td></td></tr>
+      <tr><td>main</td><td><code>concrete-return</code></td><td>F13 Result annotation converts instead of checking<br> F71 Argument or result without type<br></td><td></td></tr>
+      <tr><td>main</td><td><code>annotation</code></td><td>F71 Argument or result without type<br></td><td></td></tr>
+      <tr><td>main</td><td><code>c-type</code></td><td>F81 C types or <code>Ref</code> outside C calls<br></td><td></td></tr>
+      <tr><td>main</td><td><code>ref</code></td><td>F81 C types or <code>Ref</code> outside C calls<br></td><td></td></tr>
+      <tr><td>main</td><td><code>one-letter</code></td><td>F72 One-letter name<br></td><td></td></tr>
+      <tr><td>main</td><td><code>file-length</code></td><td>F77 File too long<br></td><td></td></tr>
+      <tr><td>main</td><td><code>forbidden-pattern</code></td><td>F82 Project-banned name or pattern<br></td><td></td></tr>
+      <tr><td>main</td><td><code>where-return</code></td><td>F4 <code>where</code> after result annotation binds result type<br></td><td></td></tr>
+      <tr><td>main</td><td><code>constant-array</code></td><td>F39 Never-written constant array allocates<br></td><td></td></tr>
+      <tr><td>main</td><td><code>nan-initializer</code></td><td>F34 Placeholder value looks like data after partial fill<br></td><td></td></tr>
+      <tr><td>main</td><td><code>broad-catch</code></td><td>F59 Catch handles every error<br></td><td></td></tr>
+      <tr><td>main</td><td><code>quadratic-scan</code></td><td>F43 Search inside loop over same collection<br></td><td></td></tr>
+      <tr><td>main</td><td><code>quadratic-vcat</code></td><td>F44 Fold concatenates one piece at a time<br></td><td></td></tr>
+      <tr><td>main</td><td><code>misplaced-import</code></td><td>F67 Import placed in file that does not use it<br></td><td></td></tr>
+      <tr><td>main</td><td><code>hidden-input</code></td><td>F55 Hidden input: mutable global, <code>ScopedValue</code>, global RNG<br></td><td></td></tr>
+      <tr><td>main</td><td><code>non-public-access</code></td><td>F66 Use of other module's internal name<br></td><td></td></tr>
+      <tr><td>main</td><td><code>unmarked-mutation</code></td><td>F53 Function writes argument or global without <code>!</code><br></td><td></td></tr>
+      <tr><td>main</td><td><code>bang</code></td><td>F53 Function writes argument or global without <code>!</code><br> F54 Call has no effect and result is unused<br></td><td>Split into missing <code>!</code> and no-op call.</td></tr>
+      <tr><td>main</td><td><code>impure-anon-fun</code></td><td>F56 Closure writes captured state<br> F57 Closure rebinds captured variable; <code>Core.Box</code><br></td><td>Split: captured write, boxed capture.</td></tr>
+      <tr><td>main</td><td><code>overspecialized-anon-fun</code></td><td>F30 Too many specializations on <code>Function</code> or <code>Type</code> argument<br></td><td></td></tr>
+      <tr><td>main</td><td><code>jscpd</code></td><td>F76 Copied code block<br></td><td></td></tr>
+      <tr><td>main</td><td><code>jet</code></td><td>—</td><td>External; general type errors. No single footgun.</td></tr>
+      <tr><td>main</td><td><code>fatou</code></td><td>—</td><td>External; not reviewed.</td></tr>
+      <tr><td>main</td><td><code>nothing-return</code></td><td>—</td><td>Dropped.</td></tr>
+      <tr><td>main</td><td><code>non-atomic-write</code></td><td>—</td><td>Dropped.</td></tr>
+      <tr><td>main</td><td><code>struct-constant</code></td><td>—</td><td>Dropped: Revise workaround.</td></tr>
+      <tr><td>main</td><td><code>derived-constant</code></td><td>—</td><td>Dropped: Revise workaround.</td></tr>
+      <tr><td>main</td><td><code>range-guard</code></td><td>—</td><td>Dropped: one past bug.</td></tr>
+      <tr><td>open work</td><td><code>unwritten-undef</code></td><td>F33 Uninitialized element read before write<br></td><td></td></tr>
+      <tr><td>open work</td><td><code>no-inbounds</code></td><td>F37 Index safety removed without proof<br></td><td></td></tr>
+      <tr><td>open work</td><td><code>abstract-element</code></td><td>F21 Empty literal has <code>Any</code> element type<br></td><td></td></tr>
+      <tr><td>open work</td><td><code>invariant-parameter</code></td><td>F14 Invariant parameter rejects intended arguments<br></td><td></td></tr>
+      <tr><td>open work</td><td><code>abstract-float</code></td><td>F15 Concrete annotation blocks generic callers<br></td><td></td></tr>
+      <tr><td>open work</td><td><code>concrete-annotation</code></td><td>F13 Result annotation converts instead of checking<br> F15 Concrete annotation blocks generic callers<br></td><td></td></tr>
+      <tr><td>open work</td><td><code>enumerated-union</code></td><td>F20 Ad-hoc union of unrelated types where sum type belongs<br></td><td></td></tr>
+      <tr><td>open work</td><td><code>literal-array</code></td><td>F16 Hard-coded <code>Array</code> drops caller's array type<br></td><td></td></tr>
+      <tr><td>open work</td><td><code>similar-array</code></td><td>F16 Hard-coded <code>Array</code> drops caller's array type<br></td><td></td></tr>
+      <tr><td>open work</td><td><code>banned-name</code></td><td>F82 Project-banned name or pattern<br></td><td></td></tr>
+      <tr><td>open work</td><td><code>irrational-constant</code></td><td>F6 Float constant where irrational exists; promotes generic code<br></td><td></td></tr>
+      <tr><td>open work</td><td><code>comment-docstring</code></td><td>F74 Comment where docstring belongs<br></td><td></td></tr>
+      <tr><td>open work</td><td><code>while-true-return</code></td><td>F75 Loop exits only by <code>return</code> from <code>while true</code><br></td><td></td></tr>
+      <tr><td>open work</td><td><code>collect</code></td><td>F32 Pointless copy: <code>collect</code> of array, or of iterator used once<br></td><td>Narrowed.</td></tr>
+      <tr><td>open work</td><td><code>file-module</code></td><td>F80 Module without docstring<br></td><td>Docstring part only.</td></tr>
+      <tr><td>open work</td><td><code>silent-existence-filter</code></td><td>—</td><td>Dropped: reasonable code.</td></tr>
+      <tr><td>open work</td><td><code>any-supertype</code></td><td>—</td><td>Dropped.</td></tr>
+      <tr><td>open work</td><td><code>dims-keyword</code></td><td>—</td><td>Dropped.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
 <section id="decisions">
   <h2>Decisions</h2>
   <div class="decisions">
