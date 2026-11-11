@@ -187,14 +187,14 @@ dates-range-month-stop, dates-week-negative: depend on runtime date values.
 TASK 2. SUMMARY-TABLE FEASIBILITY
 
 Function count
-Method inventory: 12,774 Base methods at pinned master; 11,686 marked modelled, 312 excluded, 776 todo (README.md:375; recount of coverage/methods/*.tsv matches).
+Method inventory: 12,774 Base methods at pinned master; 11,686 marked modeled, 312 excluded, 776 todo (README.md:375; recount of coverage/methods/*.tsv matches).
 Inventory spans 202 TSVs, one per Base source file (coverage/methods/).
-"modelled" is inventory classification; README says it is not proof count or independent review.
+"modeled" is inventory classification; README says it is not proof count or independent review.
 Registry: 8,838 entries; 7,072 proven, 745 refuted, 1,021 todo (registry.tsv.metadata.jsonl recount matches).
 Registry names 13,138 distinct `julia_functions` strings across 17,864 references.
 Lean model files: 197 Base files under JuliaLean/base/; stdlib under JuliaLean/stdlib/.
 Stdlib modules with entries: Sockets 25, Printf 20, Dates 20, Markdown 18, Random 12, Artifacts 12, Base64 7, Serialization 6, UUIDs 5, Unicode 3, CRC32c 1; Base has 8,709.
-Also modelled: C runtime pieces (JuliaLean/src/*_c.lean, JuliaLean/CRuntime/); DynamicExpressions.jl in separate package (400 entries).
+Also modeled: C runtime pieces (JuliaLean/src/*_c.lean, JuliaLean/CRuntime/); DynamicExpressions.jl in separate package (400 entries).
 
 Property kinds (rough keyword counts over 8,838 English statements; overlapping)
 Order/sortedness/source-order ~1,857 (many are "source order of calls preserved").
@@ -246,7 +246,7 @@ Refuted entries plus reproducers are directly usable as "known-bad input" record
 Properties beyond `Base.infer_effects`
 infer_effects gives type-level, unconditional bits (consistent, effect_free, nothrow, terminates, notaskstate, inaccessiblememonly).
 Conditional nothrow: e.g. "tryparse returns nothing exactly when parse throws" (parseprint-tryparse-nothing-iff-parse-throws).
-Exact exception type per input class (inexactError vs argumentError vs boundsError), modelled in JlError.
+Exact exception type per input class (inexactError vs argumentError vs boundsError), modeled in JlError.
 Result value range: e.g. MPZ.cmp returns -1, 0 or 1 (registry entry on `MPZ.cmp`).
 Length/cardinality relations: e.g. reverse preserves cardinality (ranges-operations-reverse-typemin).
 Error atomicity: state unchanged when call throws (e.g. arrayops-deleteat-error-partial refutes it for deleteat!).
