@@ -14,6 +14,7 @@ FOOTGUNS = [
     (4, "syntax", "`where` after result annotation binds result type", "`f(x::T)::T where {T}`", C, "A", "Errors, or silently binds global `T` if one exists; report both. Upstream rejected precedence change (JuliaLang/julia#21847)."),
     (5, "numbers", "Literal or constant changes input type", "`x::Float32 * 0.5`, `x::Int32 * 2`", M, "D", "Report when converting literal to input type would change type of escaping value. Applies to generic and fixed arguments."),
     (6, "numbers", "Float constant where irrational exists; promotes generic code", "`sqrt(2)`, `3.14159`", M, "D", "Suggest `π`, IrrationalConstants.jl (`sqrt2`)."),
+    (87, "numbers", "Literal widens intermediate that does not escape", "`Float32(x * 0.5)` computes in `Float64`", P, "D", "Same test as F5; slow on GPU. Fix changes rounding, so tier `likely`."),
     (7, "numbers", "Signed `%` and `÷` round toward zero", "`-1 % 3 == -1`", C, "D", ""),
     (8, "numbers", "Mixed signed and unsigned division", "`div(-1, UInt(2))`", C, "D", ""),
     (9, "numbers", "Float-to-integer constructor throws on fractions", "`Int(2.5)`", C, "D", ""),
@@ -203,7 +204,7 @@ COVERAGE = [
 CHECKS = [
     ("ambiguous-concat", [1], ""), ("bracketed-range", [2], ""), ("juxtaposition", [3], ""),
     ("where-binding", [4], "Fixer adds parentheses."),
-    ("type-disruption", [5, 6, 16], "Stand-in engine. Kinds: literal, float constant, array type."),
+    ("intermediate-widening", [87], "Sites where widened type escapes go to `type-disruption`."), ("type-disruption", [5, 6, 16], "Stand-in engine. Kinds: literal, float constant, array type."),
     ("signed-division", [7, 8], ""), ("inexact-conversion", [9], ""), ("approx-zero", [10], ""),
     ("bool-index", [11], ""), ("overflow", [12], "Later."),
     ("result-conversion", [13], "With `annotation`, makes annotations checked."),
