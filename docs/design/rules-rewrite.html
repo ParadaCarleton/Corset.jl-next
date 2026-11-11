@@ -227,11 +227,14 @@ footer { color: var(--muted); font-size: 0.85rem; }
   </div>
   <p class="note">Rules with both kinds today, unlabeled: <code>unmarked-mutation</code> and <code>float-widening</code> ("may write", "may widen" past candidate budget); <code>nan-initializer</code> and <code>constant-array</code> (sites fixer skips).</p>
   <h3>Trust</h3>
-  <p>Each finding also records origin: created in package code, or inherited from dependency (for example union returned by <code>DepA.f</code> and forwarded). Trust is set per rule. Each rule declares kind, and kind sets its default:</p>
+  <p><b>Version 1:</b> report only problems created in package code. No finding is about dependency code, Base included. Analysis still reads dependency behavior: callee writes decide <code>!</code>, callee results decide where union is created.</p>
+  <p>Known gap: <code>Float64</code> arithmetic inside Base callee that slows <code>Float32</code> loop goes unreported.</p>
+  <p><b>Later</b> (deferred design): each finding records origin, and trust is set per rule. Each rule declares kind, and kind sets its default:</p>
   <ul>
     <li><b>Blame rules</b> judge design: union policy, naming, annotation style. Inherited finding is not yours to fix. Default: trust dependencies.</li>
     <li><b>Impact rules</b> report harm to your program: <code>float-widening</code>, <code>runtime-dispatch</code>, <code>unstable-variable</code>, <code>unmarked-mutation</code>, <code>hidden-input</code>. Base code that computes in <code>Float64</code> breaks your <code>Float32</code> vectorization all the same. Default: report, name source, suggest workaround (convert, other function, barrier).</li>
     <li>Config overrides per rule: <code>"all"</code>, <code>"stdlib"</code>, <code>"none"</code>, or list of trusted packages.</li>
+    <li>Skip I/O and error-only paths in inherited findings; measure remaining noise before adding more limits.</li>
   </ul>
   <div class="scroll">
     <div class="matrix" role="table" aria-label="Which findings strictness and trust report">
@@ -447,8 +450,8 @@ footer { color: var(--muted); font-size: 0.85rem; }
     <div class="decision"><span class="status new">decided</span><h3>Annotations</h3><p><code>::Any</code> is explicit opt-out. Abstract argument types are intended.</p></div>
     <div class="decision"><span class="status new">decided</span><h3>constant-array</h3><p>Keep. It prevents pointless allocations.</p></div>
     <div class="decision"><span class="status new">decided</span><h3>Borrow checking</h3><p>Defer. Revisit for concurrency rules.</p></div>
-    <div class="decision"><span class="status new">decided</span><h3>Origin and trust</h3><p>Findings record origin: created in package, or inherited from dependency. Setting <code>trust</code> filters inherited findings.</p></div>
-    <div class="decision open"><span class="status open">proposal</span><h3>Trust per rule</h3><p>Rule kind sets default: blame rules trust dependencies; impact rules report inherited findings with source and workaround. Config overrides per rule and package.</p></div>
+    <div class="decision"><span class="status new">decided</span><h3>No findings in dependencies</h3><p>Version 1 reports only problems created in package code, Base included in exclusion. Analysis still reads dependency behavior.</p></div>
+    <div class="decision"><span class="status">deferred</span><h3>Trust per rule</h3><p>Blame rules trust dependencies; impact rules report inherited findings with source and workaround. Revisit after version 1.</p></div>
     <div class="decision open"><span class="status open">open</span><h3>Strictness wording</h3><p>Setting names <code>"proven"</code> and <code>"unproven"</code> are draft. Confirm meaning: report proven problems only, or also unproven safety.</p></div>
     <div class="decision open"><span class="status open">open</span><h3>one-letter exemptions</h3><p><code>i</code> allowed. Decide <code>j</code>, <code>k</code> for nested loops, and <code>T</code> for type parameters. Prefer role names (<code>left</code>, <code>right</code>) over <code>num1</code>, <code>num2</code>.</p></div>
     <div class="decision open"><span class="status open">open</span><h3>specialization-blowup</h3><p>Replace <code>overspecialized-anon-fun</code> with measured specialization count?</p></div>
