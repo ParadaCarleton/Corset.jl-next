@@ -288,8 +288,8 @@ Proposal: test-only oracle. Typed IR from native compiler at lint time.
 | main | `misplaced-import` | F67 Import placed in file that does not use it | `misplaced-import` |  |
 | main | `hidden-input` | F55 Hidden input: mutable global, `ScopedValue`, global RNG | `hidden-input` |  |
 | main | `non-public-access` | F66 Use of other module's internal name | `internal-access` |  |
-| main | `unmarked-mutation` | F53 Function writes argument or global without `!` | `missing-bang` |  |
-| main | `bang` | F53 Function writes argument or global without `!`<br>F54 Call has no effect and result is unused | `missing-bang`, `unused-call` | Split into missing `!` and no-op call. |
+| main | `unmarked-mutation` | F53 Function writes argument or global without `!` | `bang-convention` |  |
+| main | `bang` | F53 Function writes argument or global without `!`<br>F54 Call has no effect and result is unused | `bang-convention`, `unused-call` | Split into missing `!` and no-op call. |
 | main | `impure-anon-fun` | F56 Anonymous function impure: captures mutable state<br>F57 Closure rebinds captured variable; `Core.Box` | `boxed-capture`, `impure-lambda` | Split: impure capture, boxed capture. |
 | main | `overspecialized-anon-fun` | F30 Too many specializations on `Function` or `Type` argument | `specialization-blowup` |  |
 | main | `jscpd` | F76 Copied code block | `duplicate-code` |  |

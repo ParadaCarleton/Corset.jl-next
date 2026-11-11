@@ -12,8 +12,8 @@ FOOTGUNS = [
     (2, "syntax", "Range in brackets is one-element vector", "`[1:3]`", C, "A", ""),
     (3, "syntax", "Juxtaposition binds tighter than reader expects", "`2^2x == 2^(2x)`, `1/2x`", C, "A", ""),
     (4, "syntax", "`where` after result annotation binds result type", "`f(x::T)::T where {T}`", C, "A", "Errors, or silently binds global `T` if one exists; report both. Upstream rejected precedence change (JuliaLang/julia#21847)."),
-    (5, "numbers", "Literal or constant changes input type", "`x::Float32 * 0.5`, `x::Int32 * 2`", M, "M", ""),
-    (6, "numbers", "Float constant where irrational exists; promotes generic code", "`sqrt(2)`, `3.14159`", M, "M", "Suggest `π`, IrrationalConstants.jl (`sqrt2`)."),
+    (5, "numbers", "Literal or constant changes input type", "`x::Float32 * 0.5`, `x::Int32 * 2`", M, "D", "Applies to every argument type: marker or concrete."),
+    (6, "numbers", "Float constant where irrational exists; promotes generic code", "`sqrt(2)`, `3.14159`", M, "D", "Suggest `π`, IrrationalConstants.jl (`sqrt2`)."),
     (7, "numbers", "Signed `%` and `÷` round toward zero", "`-1 % 3 == -1`", C, "D", ""),
     (8, "numbers", "Mixed signed and unsigned division", "`div(-1, UInt(2))`", C, "D", ""),
     (9, "numbers", "Float-to-integer constructor throws on fractions", "`Int(2.5)`", C, "D", ""),
@@ -23,7 +23,7 @@ FOOTGUNS = [
     (13, "numbers", "Result annotation converts instead of checking", "`f(x)::Float64 = x` turns `Float32` into `Float64`", C, "D", "Report when inferred result needs conversion; annotation then acts as type check."),
     (14, "types", "Invariant parameter rejects intended arguments", "`f(::Vector{Real})` rejects `Vector{Float64}`", C, "C", ""),
     (15, "types", "Concrete annotation blocks generic callers", "`f(x::Float64)`, `f(x::AbstractFloat)` reject `Dual`", M, "C", ""),
-    (16, "types", "Hard-coded `Array` drops caller's array type", "`zeros(n)` inside method that got `CuArray`", M, "M", ""),
+    (16, "types", "Hard-coded `Array` drops caller's array type", "`zeros(n)` inside method that got `CuArray`", M, "D", ""),
     (17, "types", "Variable, result or closure capture with vague inferred type", "`acc = 0` then `acc += 0.5`", P, "D", "Capture may need own fix (`let`, pass as argument)."),
     (18, "types", "Struct field with vague type", "`x::Real`, `x::Vector`", P, "C", ""),
     (19, "types", "Mutable struct where immutable works", "`mutable struct`; struct of mostly `Ref` fields", P, "D", ""),
@@ -64,6 +64,7 @@ FOOTGUNS = [
     (52, "containers", "`missing` reaches condition", "`if x > 0` with `x::Union{Missing, Int}`", C, "D", ""),
     (53, "effects", "Function writes argument or global without `!`", "`normalize(v)` changes `v`", C, "E", ""),
     (54, "effects", "Call has no effect and result is unused", "`f(x)` returns `nothing`, writes nothing", C, "E", ""),
+    (86, "effects", "`!` function writes nothing; callers drop its result", "`normalize!(v)` returns new vector", C, "E", ""),
     (55, "effects", "Hidden input: mutable global, `ScopedValue`, global RNG", "`rand()` in package code", C, "E", ""),
     (56, "effects", "Anonymous function impure: captures mutable state", "`filter(x -> x in seen, xs)`, `seen::Set`", C, "E", "Named functions follow `!` convention; anonymous ones stay pure. Read-only capture counts."),
     (57, "effects", "Closure rebinds captured variable; `Core.Box`", "`n = 0; f = () -> (n += 1)`", P, "H", ""),
@@ -84,7 +85,7 @@ FOOTGUNS = [
     (72, "readability", "One-letter name", "`q = …`", R, "A", "Exempt: type names and parameters; `i`, `j`, `k` as indices."),
     (73, "readability", "Explicit `return` mixed with implicit last value", "", R, "A", "Narrow by design. Requiring `return` everywhere forces `return nothing`, which fights formatters (Runic) and creates dead code."),
     (74, "readability", "Comment where docstring belongs", "`# adds x` above function", R, "A", ""),
-    (76, "readability", "Copied code block", "", R, "G", ""),
+    (76, "readability", "Copied code block", "", R, "G", "Off by default; jscpd finds near-duplicates, needs Node."),
     (77, "readability", "File too long", "", R, "A", ""),
     (78, "readability", "Struct with too many fields", "", R, "A", ""),
     (79, "readability", "Related fields belong in nested struct, table or array", "`governor_name`, `governor_age` → `governor.name`", R, "A", ""),
@@ -139,8 +140,7 @@ FAMILY_INFO = [
     ("A", "Syntax patterns", "One tree walk per file. Checks match node shapes. Candidate base: Argus.jl (check license and API stability first)."),
     ("B", "Array lifecycle", "Local def-use per array: created, written, read before write, resized, escapes, read once."),
     ("C", "Module inspection", "Loaded package without inference: bindings, structs, signatures, method table, specialization heuristics."),
-    ("D", "Typed-IR scan", "One pass per inferred frame. One shared definition of vague type (union policy)."),
-    ("M", "Marker inference", "Infer generic methods with marker types; D scan reports mixing and lost input types. See type-disruption decision."),
+    ("D", "Typed-IR scan", "One inference per package method; markers stand in for generic arguments. One pass per inferred frame. One shared definition of vague type (union policy)."),
     ("E", "Effect and alias summary", "Per method: writes to arguments, writes to globals, result aliases global state."),
     ("H", "Scope", "Lowered scopes per file: bindings, soft scope, captures, boxes, task spawns."),
     ("G", "External tools", "Wrap tool output as findings: Aqua.jl, ExplicitImports.jl, jscpd."),
@@ -223,7 +223,7 @@ CHECKS = [
     ("matrix-function", [45], "Later."), ("conjugating-adjoint", [46], "Later."),
     ("mutable-key", [47], ""), ("iteration-mutation", [48], ""), ("dict-order", [49], "Later."),
     ("self-alias", [50], ""), ("stateful-reuse", [51], ""), ("missing-condition", [52], ""),
-    ("missing-bang", [53], "See `!` convention."), ("unused-call", [54], ""), ("hidden-input", [55], ""),
+    ("bang-convention", [53, 86], "Kinds: missing, spurious. Methods added to other module's `!` function exempt. See `!` convention."), ("unused-call", [54], ""), ("hidden-input", [55], ""),
     ("impure-lambda", [56], ""), ("boxed-capture", [57], ""), ("false-effects", [58], ""),
     ("broad-catch", [59], ""), ("duplicate-statement", [60], ""),
     ("soft-scope", [61], ""), ("try-scope", [62], ""), ("world-age", [63], ""), ("double-include", [64], ""),
@@ -232,7 +232,7 @@ CHECKS = [
     ("threadid-buffer", [68], ""), ("threaded-race", [69], ""), ("orphan-task", [70], ""),
     ("annotation", [71], ""), ("one-letter", [72], ""), ("mixed-return", [73], ""),
     ("docstring", [74, 80], "Kinds: comment above function, module without docstring."),
-    ("duplicate-code", [76], "jscpd."), ("file-length", [77], ""), ("wide-struct", [78], ""),
+    ("duplicate-code", [76], "jscpd. Off by default."), ("file-length", [77], ""), ("wide-struct", [78], ""),
     ("field-prefix", [79], ""), ("c-type", [81], ""), ("banned", [82], "One config list; each entry names its group."),
 ]
 CHECK_OF = {ident: name for name, ids, _ in CHECKS for ident in ids}
@@ -268,6 +268,7 @@ page = open(page_path).read()
 page = re.sub(r'<section id="checks">.*?</section>\n\n', "", page, flags=re.S)
 page = page.replace('<section id="confidence">', checks + '<section id="confidence">', 1)
 page = re.sub(r"<b>\d+</b> checks", f"<b>{len(CHECKS)}</b> checks", page)
+page = re.sub(r"<b>\d+</b> footguns", f"<b>{len(FOOTGUNS)}</b> footguns", page)
 open(page_path, "w").write(page)
 
 # coverage of old names goes to history markdown
