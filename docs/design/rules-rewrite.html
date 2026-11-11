@@ -148,7 +148,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
     <li>Give each finding confidence: <code>definite</code> (problem exists) or <code>possible</code> (problem not ruled out). One setting filters them.</li>
     <li>Map every finding back to source bytes. Fixers edit lossless syntax tree.</li>
     <li>Keep linter process warm. Load target package once. Infer only methods that hold candidate sites.</li>
-    <li>Read typed IR from native compiler at lint time. JET serves only as test oracle (proposal).</li>
+    <li>Read typed IR from native compiler at lint time. Other linters (JET, fatou, julia-vscode) serve only as test references.</li>
   </ul>
 </section>
 
@@ -192,7 +192,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
       <tr data-group="correctness"><td>F24</td><td>types</td><td>Methods differ only in keywords; later one overwrites</td><td><code>f(x; a)</code> and <code>f(x; b)</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>Keywords take no part in dispatch. Julia 1.10+ errors in packages; check covers scripts and explains cause.</td></tr>
       <tr data-group="composability"><td>F25</td><td>types</td><td>Type piracy</td><td><code>Base.:+(::Int, ::String)</code></td><td><span class="chip g-composability">composability</span></td><td>G</td><td></td></tr>
       <tr data-group="composability"><td>F26</td><td>types</td><td>Behavior depends on inference result</td><td><code>Core.Compiler.return_type</code></td><td><span class="chip g-composability">composability</span></td><td>A</td><td></td></tr>
-      <tr data-group="correctness"><td>F83</td><td>types</td><td>Call can never succeed</td><td>no matching method; undefined global or field</td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>Cheap: package call inferred <code>Union{}</code> without explicit <code>throw</code>. JET covers rest.</td></tr>
+      <tr data-group="correctness"><td>F83</td><td>types</td><td>Call can never succeed</td><td>no matching method; undefined global or field</td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>Package call inferred <code>Union{}</code> without explicit <code>throw</code>. JET is test reference.</td></tr>
       <tr data-group="composability"><td>F84</td><td>types</td><td>Public struct has no abstract supertype; users cannot extend</td><td><code>struct Model</code> → <code>struct Model &lt;: AbstractModel</code></td><td><span class="chip g-composability">composability</span></td><td>C</td><td>Public structs only.</td></tr>
       <tr data-group="performance"><td>F27</td><td>compile</td><td>Call resolved at run time</td><td>call on <code>Any</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td></td></tr>
       <tr data-group="performance"><td>F28</td><td>compile</td><td>Splat of variable-length collection</td><td><code>f(xs...)</code>, <code>xs::Vector</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td></td></tr>
@@ -443,7 +443,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <div class="decision"><span class="status new">decided</span><h3>Borrow checking</h3><p>Defer. Revisit for concurrency rules.</p></div>
 <div class="decision"><span class="status new">decided</span><h3>Confidence setting</h3><p><code>confidence</code> sets lowest confidence finding needs to be reported. <code>definite</code> (default): problem exists. <code>possible</code>: problem not ruled out; includes definite findings. <code>likely</code> can join between them later.</p></div>
     <div class="decision"><span class="status new">decided</span><h3><code>one-letter</code> exemptions</h3><p>Allowed: type names and type parameters (<code>T</code>, <code>N</code>); <code>i</code>, <code>j</code>, <code>k</code> as indices. Everything else needs descriptive name.</p></div>
-    <div class="decision open"><span class="status open">open</span><h3>JET</h3><p><code>never-succeeds</code> covers cheap cases in D scan. Proposal: JET only as test oracle for <code>runtime-dispatch</code> and <code>never-succeeds</code>.</p></div>
+    <div class="decision"><span class="status new">decided</span><h3>Reference linters</h3><p>JET, fatou and julia-vscode linter (JuliaWorkspaces.jl, run by julia-actions/julia-lint) run only in Corset tests, never at lint time.</p><ul><li>Tests run each reference on fixture corpus and compare findings with Corset.</li><li>Reference finding Corset misses: fix Corset, or record reason in allowlist (reference bug, different design).</li><li>Corset finding reference misses: expected. Corset is stricter by design.</li><li>Conflict is triage signal only; it never proves Corset wrong.</li></ul></div>
   </div>
 </section>
 

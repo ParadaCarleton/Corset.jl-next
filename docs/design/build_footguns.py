@@ -34,7 +34,7 @@ FOOTGUNS = [
     (24, "types", "Methods differ only in keywords; later one overwrites", "`f(x; a)` and `f(x; b)`", C, "C", "Keywords take no part in dispatch. Julia 1.10+ errors in packages; check covers scripts and explains cause."),
     (25, "types", "Type piracy", "`Base.:+(::Int, ::String)`", M, "G", ""),
     (26, "types", "Behavior depends on inference result", "`Core.Compiler.return_type`", M, "A", ""),
-    (83, "types", "Call can never succeed", "no matching method; undefined global or field", C, "D", "Cheap: package call inferred `Union{}` without explicit `throw`. JET covers rest."),
+    (83, "types", "Call can never succeed", "no matching method; undefined global or field", C, "D", "Package call inferred `Union{}` without explicit `throw`. JET is test reference."),
     (84, "types", "Public struct has no abstract supertype; users cannot extend", "`struct Model` → `struct Model <: AbstractModel`", M, "C", "Public structs only."),
     (27, "compile", "Call resolved at run time", "call on `Any`", P, "D", ""),
     (28, "compile", "Splat of variable-length collection", "`f(xs...)`, `xs::Vector`", P, "D", ""),
