@@ -306,7 +306,7 @@ Proposal: test-only oracle. Typed IR from native compiler at lint time.
 | open work | `invariant-parameter` | F14 Invariant parameter rejects intended arguments | `invariant-parameter` |  |
 | open work | `abstract-float` | F15 Overspecified type blocks generic callers | `overspecified-type` |  |
 | open work | `concrete-annotation` | F13 Result annotation converts instead of checking<br>F15 Overspecified type blocks generic callers | `overspecified-type`, `result-conversion` |  |
-| open work | `enumerated-union` | F20 Ad-hoc union of unrelated types where sum type belongs | `vague-type` |  |
+| open work | `enumerated-union` | F15 Overspecified type blocks generic callers | `overspecified-type` | Kind of `overspecified-type`: `Union{Int16, Int32, Int64}` to `Integer`. |
 | open work | `literal-array` | F16 Hard-coded `Array` drops caller's array type | `type-disruption` |  |
 | open work | `similar-array` | F16 Hard-coded `Array` drops caller's array type | `type-disruption` |  |
 | open work | `banned-name` | F82 Project-banned name or pattern | `banned` |  |
