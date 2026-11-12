@@ -1,0 +1,17 @@
+package JSON 1.13.4  julia 1.13.3  standin=false
+load_s=61.45 summary_s=127.37 ir_s=48.37
+package_methods=553 failed=2 instances=2436 ir_failures=8
+sccs=2357 max_scc=18 scc_iterations=4179
+unknown_calls=8187 resolved_dynamic=7256 foreign_unknown=1316
+memo_globals=String[] self_writes=26
+plain DEFINITE 29
+plain POSSIBLE 225
+plain NONE 181
+bang DEFINITE 12
+bang POSSIBLE 40
+bang NONE 0
+generated DEFINITE 2
+generated POSSIBLE 43
+generated NONE 19
+foreign globals written (not counted; methods): 30 ["Base.Partr.heaps_lock=39", "Base.get_sched_task=39", "Base.Partr.heaps=39", "Base.Workqueues=39", "Base.PerThreadLock=39", "Base.Ryu.DIGIT_TABLE16=33", "Base.Ryu.POW10_SPLIT_2=33", "Base.Meta.keyword_syms=3", "Base.uvhandles=3", "Cthulhu.Testing.KEYS=3", "Base.preserve_handle_lock=3", "Core.<anonymous Core.SimpleVector>=3"]
+top unknown foreign: [:jl_symbol_name => 388, :jl_is_operator => 104, :jl_has_free_typevars => 88, :jl_gc_add_ptr_finalizer => 48, :__gmpz_init2 => 48, :jl_module_globalref => 48, :jl_get_ptls_states => 48, :jl_operator_precedence => 44, :utf8proc_category => 30, :jl_type_unionall => 28]

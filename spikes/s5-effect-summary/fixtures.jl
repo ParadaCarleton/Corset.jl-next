@@ -41,6 +41,9 @@ unknown_callee(x::Vector{Int}, f::Function) = (f(x); nothing)
 reads_only(a::Vector{Int}) = sum(a)
 @noinline wrap_global() = [REGISTRY]
 write_wrapped_global() = (push!(wrap_global()[1], 1); nothing)
+@noinline maybe_alias(x::Vector{Int}, flag::Bool) = flag ? x : copy(x)
+write_maybe(x::Vector{Int}, flag::Bool) = (maybe_alias(x, flag)[1] = 0; nothing)
+lazy_string_read(s::LazyString) = String(s)
 broadcast_fresh(x::Matrix{Float64}) = x .- sum(x; dims = 1)
 store_then_write(x::Vector{Vector{Int}}) = (b = zeros(Int, 1); push!(x, b); b[1] = 5; nothing)
 end
@@ -53,6 +56,7 @@ const TARGETS = [
     (:memo, (Int,)), (:register, (Int,)), (:via_result, (Int,)), (:nonconst_global, (Int,)), (:typed_global, (Int,)),
     (:unknown_callee, (Vector{Int}, Function)), (:reads_only, (Vector{Int},)), (:broadcast_fresh, (Matrix{Float64},)),
     (:store_then_write, (Vector{Vector{Int}},)), (:write_wrapped_global, ()),
+    (:write_maybe, (Vector{Int}, Bool)), (:lazy_string_read, (LazyString,)),
 ]
 
 """Strongest write certainty on parameter `j` (1 is the function)."""
@@ -83,6 +87,8 @@ end
     @test argwrite(sums[:reads_only], 2) == NONE
     @test argwrite(sums[:broadcast_fresh], 2) == NONE    # unalias phi(x, copy(x)) must not leak copy write
     @test argwrite(sums[:store_then_write], 2) == DEFINITE
+    @test argwrite(sums[:write_maybe], 2) == POSSIBLE      # possible alias must not become definite
+    @test argwrite(sums[:lazy_string_read], 2) <= POSSIBLE # LazyString cache is lazy init
     @test gwrite(sums[:write_wrapped_global], :REGISTRY) >= POSSIBLE  # fresh result holding global
     @test gwrite(sums[:register], :REGISTRY) == DEFINITE
     @test gwrite(sums[:via_result], :REGISTRY) == DEFINITE

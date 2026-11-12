@@ -1,0 +1,17 @@
+package DataStructures 0.19.6  julia 1.13.3  standin=false
+load_s=0.03 summary_s=21.91 ir_s=7.39
+package_methods=1449 failed=0 instances=2433 ir_failures=0
+sccs=2414 max_scc=5 scc_iterations=4383
+unknown_calls=5046 resolved_dynamic=5388 foreign_unknown=322
+memo_globals=String[] self_writes=20
+plain DEFINITE 14
+plain POSSIBLE 686
+plain NONE 360
+bang DEFINITE 227
+bang POSSIBLE 103
+bang NONE 1
+generated DEFINITE 0
+generated POSSIBLE 35
+generated NONE 23
+foreign globals written (not counted; methods): 10 ["Base.Workqueues=7", "Base.Partr.heaps=7", "Base.get_sched_task=7", "Base.PerThreadLock=7", "Base.Partr.heaps_lock=5", "Base.uvhandles=3", "Base.preserve_handle_lock=3", "Base.secret_table_token=3", "Core.<anonymous Core.SimpleVector>=3", "Base._default_bit_splice=1"]
+top unknown foreign: [:jl_get_world_counter => 44, :jl_eval_globalref => 42, :jl_has_free_typevars => 28, :jl_type_unionall => 24, :__gmpz_init2 => 24, :jl_get_ptls_states => 24, :jl_gc_add_ptr_finalizer => 24, :jl_stored_inline => 14, :pointer => 12, :jl_arrayunset => 8]

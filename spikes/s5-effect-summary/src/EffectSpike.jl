@@ -77,8 +77,13 @@ function fresh!(g::Graph; tainted::Bool = false, sources::Set{Any} = Set{Any}())
     return length(g.parent)
 end
 
-"""Add source tag `src` to class of `l`."""
-tag!(g::Graph, l::Int, src)::Nothing = (l == 0 || push!(g.sources[find!(g, l)], src); nothing)
+"""Add source tag `src` to class of `l`; `:maybe` also marks every reachable class."""
+function tag!(g::Graph, l::Int, src)::Nothing
+    l == 0 && return
+    targets = src === :maybe ? reach(g, l) : [find!(g, l)]
+    foreach(r -> push!(g.sources[r], src), targets)
+    return
+end
 
 function find!(g::Graph, l::Int)::Int
     while g.parent[l] != l
@@ -110,7 +115,9 @@ function unify!(g::Graph, a::Int, b::Int)::Int
     elseif cb != 0
         g.content[ra] = cb
     end
-    return find!(g, ra)
+    r = find!(g, ra)
+    :maybe in g.sources[r] && foreach(c -> push!(g.sources[c], :maybe), reach(g, r))
+    return r
 end
 
 """Classes reachable from `l`, itself first."""
@@ -154,6 +161,7 @@ Base.@kwdef mutable struct Stats
     foreign_unknown::Int = 0
     foreign_names::Dict{Symbol, Int} = Dict{Symbol, Int}()
     task_writes_skipped::Int = 0
+    lazy_init::Int = 0
     sccs::Int = 0
     max_scc::Int = 0
     iterations::Int = 0
@@ -362,7 +370,9 @@ function transfer_call!(st::MethodState, ctx::Ctx, res::Core.SSAValue, e::Expr):
         foreach(x -> unify!(st.g, loc!(st, res), loc!(st, x)), srcs)
         bs = unique(base_of.((st,), srcs)); length(bs) == 1 && (st.bases[res] = only(bs))
     elseif f in FIELD_WRITES || f in MEMORY_WRITES
-        record!(st, args[1], loc!(st, args[1]), false, DEFINITE)
+        # write-once lazy init (LazyString, once-caches) is invisible memoization
+        lazy = f === Core.setfieldonce! || (f === Core.replacefield! && length(args) >= 3 && (t3 = argtype(args[3], st.ir); t3 isa Core.Const && t3.val === nothing))
+        lazy ? (ctx.stats.lazy_init += 1) : record!(st, args[1], loc!(st, args[1]), false, DEFINITE)
         foreach(x -> unify!(st.g, content_of!(st, args[1]), loc!(st, x)), args[2:end])
     elseif f === tuple || f === Core.svec
         c = content_of!(st, res)
@@ -473,6 +483,7 @@ function dynamic_call!(st::MethodState, ctx::Ctx, res::Core.SSAValue, ops, f)::N
     ctx.stats.resolved_dynamic += 1
     length(sums) == 1 && return apply_summary!(st, res, ops, sums[1]...)
     # several candidates: apply each, demote definite writes no candidate agrees on
+    tag!(st.g, loc!(st, res), :maybe)
     n0 = length(st.writes)
     for (m, s) in sums
         apply_summary!(st, res, ops, m, s)
@@ -483,6 +494,9 @@ function dynamic_call!(st::MethodState, ctx::Ctx, res::Core.SSAValue, ops, f)::N
     end
     return
 end
+
+"""Tag class `l` as possibly aliased unless alias certainty is definite."""
+maybe!(st::MethodState, l::Int, c::Certainty)::Nothing = (c == DEFINITE || tag!(st.g, l, :maybe); nothing)
 
 """Parameter of `m` bound by operand position `p` (operand 1 is callee)."""
 param_of(m::Method, p::Int)::Int = m.isva ? min(p, Int(m.nargs)) : p
@@ -505,21 +519,23 @@ function apply_summary!(st::MethodState, res::Core.SSAValue, ops, m::Method, s::
                 record!(st, o, l, false, e.top)
                 record!(st, o, content!(st.g, l), true, e.inner)
             end
-            e.within != NONE && (unify!(st.g, rl, l); push!(within, e.within == DEFINITE ? base_of(st, o) : nothing))
-            e.contains != NONE && rl != 0 && unify!(st.g, content!(st.g, rl), l)
+            # possible alias marks merged class, so source sets cannot promote writes to definite
+            e.within != NONE && (maybe!(st, rl, e.within); unify!(st.g, rl, l); push!(within, e.within == DEFINITE ? base_of(st, o) : nothing))
+            e.contains != NONE && rl != 0 && (c = content!(st.g, rl); tag!(st.g, c, :maybe); unify!(st.g, c, l))
         end
     end
     bs = unique(within); length(bs) == 1 && (st.bases[res] = only(bs))
     for (j, k) in s.stores, oj in opsof(j), ok in opsof(k)
-        unify!(st.g, content_of!(st, oj), loc!(st, ok))
+        c = content_of!(st, oj); tag!(st.g, c, :maybe); unify!(st.g, c, loc!(st, ok))
     end
     for (j, k) in s.merges, oj in opsof(j), ok in opsof(k)
-        unify!(st.g, loc!(st, oj), loc!(st, ok))
+        l = loc!(st, oj); tag!(st.g, l, :maybe); unify!(st.g, l, loc!(st, ok))
     end
     for (k, c) in s.globals
         push!(st.writes, WriteSite(global_loc!(st, k), true, c, k))
     end
     for (k, c) in s.result_globals
+        maybe!(st, rl, c)
         unify!(st.g, rl, global_loc!(st, k))
         c == DEFINITE && isempty(within) && (st.bases[res] = k)
     end
@@ -549,7 +565,7 @@ function summarize(st::MethodState, nparams::Int)::Summary
             inner = (r != pr && r in preach[j]) || (w.deep && (r == pr || pr in below)) ? c : NONE
             w.deep && pr in below && r != pr && (top = c)
             (top, inner) == (NONE, NONE) && continue
-            TRACE[] && max(top, inner) >= POSSIBLE && println(stderr, "  definite write arg  base=$(w.base) sources=$(g.sources[r]) deep=$(w.deep) r= pr= at %$(w.at): ", st.ir.stmts.stmt[w.at])
+            TRACE[] && max(top, inner) >= POSSIBLE && println(stderr, "  write arg  base=$(w.base) sources=$(g.sources[r]) deep=$(w.deep) r= pr= at %$(w.at): ", st.ir.stmts.stmt[w.at])
             p = params[j]
             params[j] = ParamEffect(lub(p.top, top), lub(p.inner, inner), p.within, p.contains)
         end
@@ -560,6 +576,7 @@ function summarize(st::MethodState, nparams::Int)::Summary
     end
     result_globals = Dict{GlobalKey, Certainty}()
     fresh_result = all(v -> (l = loc!(st, v); l == 0 || g.sources[find!(g, l)] == FRESH_ONLY), st.returns)
+    all_within = trues(nparams)  # definite alias needs every return to derive from parameter
     for v in st.returns
         l = loc!(st, v)
         l == 0 && continue
@@ -570,6 +587,7 @@ function summarize(st::MethodState, nparams::Int)::Summary
             pr = find!(g, ploc[j])
             within = r in preach[j] ? (b == j ? DEFINITE : POSSIBLE) : NONE
             contains = (pr != r && pr in rr) ? POSSIBLE : NONE
+            b == j || (all_within[j] = false)
             p = params[j]
             params[j] = ParamEffect(p.top, p.inner, lub(p.within, within), lub(p.contains, contains))
         end
@@ -578,6 +596,10 @@ function summarize(st::MethodState, nparams::Int)::Summary
             # result holds global object: caller treats as alias (coarse, keeps soundness)
             find!(g, st.locs[k]) in rr && !(r in kr) && (result_globals[k] = lub(get(result_globals, k, NONE), POSSIBLE))
         end
+    end
+    for j in 1:nparams
+        p = params[j]
+        p.within == DEFINITE && !all_within[j] && (params[j] = ParamEffect(p.top, p.inner, POSSIBLE, p.contains))
     end
     stores, merges = Set{Tuple{Int, Int}}(), Set{Tuple{Int, Int}}()
     for j in 1:nparams, k in 1:nparams

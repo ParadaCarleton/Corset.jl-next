@@ -1,5 +1,4 @@
 flag	name	location	opaque	writes
-MISSING!	_centralize_colwise	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:817	false	arg x=DEFINITE
 bang-possible	_colwise!	/home/user/.julia/packages/Distances/mlz7p/src/mahalanobis.jl:98	true	arg dist=POSSIBLE; arg r=POSSIBLE; arg a=POSSIBLE; arg b=POSSIBLE
 bang-possible	_pairwise!	/home/user/.julia/packages/Distances/mlz7p/src/generic.jl:192	true	arg metric=POSSIBLE; arg r=POSSIBLE; arg a=POSSIBLE
 bang-possible	_pairwise!	/home/user/.julia/packages/Distances/mlz7p/src/generic.jl:203	true	arg metric=POSSIBLE; arg r=POSSIBLE; arg a=POSSIBLE
@@ -40,7 +39,6 @@ missing?	HellingerDist	/home/user/.julia/packages/Distances/mlz7p/src/bhattachar
 missing?	JSDivergence	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:331	true	arg a=POSSIBLE; arg b=POSSIBLE
 missing?	Jaccard	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:331	true	arg a=POSSIBLE; arg b=POSSIBLE
 missing?	KLDivergence	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:331	true	arg a=POSSIBLE; arg b=POSSIBLE
-missing?	Mahalanobis	/home/user/.julia/packages/Distances/mlz7p/src/mahalanobis.jl:85	true	arg a=POSSIBLE; arg b=POSSIBLE
 missing?	MeanAbsDeviation	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:593	true	arg a=POSSIBLE; arg b=POSSIBLE
 missing?	MeanSqDeviation	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:596	true	arg a=POSSIBLE; arg b=POSSIBLE
 missing?	Minkowski	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:111	true	arg p=POSSIBLE
@@ -57,7 +55,6 @@ missing?	SpanNormDist	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:
 missing?	SphericalAngle	/home/user/.julia/packages/Distances/mlz7p/src/haversine.jl:50	true	arg x=POSSIBLE; arg y=POSSIBLE
 missing?	SqEuclidean	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:331	true	arg a=POSSIBLE; arg b=POSSIBLE
 missing?	SqEuclidean	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:84	true	arg thresh=POSSIBLE
-missing?	SqMahalanobis	/home/user/.julia/packages/Distances/mlz7p/src/mahalanobis.jl:76	true	arg a=POSSIBLE; arg b=POSSIBLE
 missing?	TotalVariation	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:331	true	arg a=POSSIBLE; arg b=POSSIBLE
 missing?	WeightedCityblock	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:103	true	arg weights=POSSIBLE
 missing?	WeightedCityblock	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:331	true	arg a=POSSIBLE; arg b=POSSIBLE
@@ -150,7 +147,7 @@ missing?	get_colwise_dims	/home/user/.julia/packages/Distances/mlz7p/src/common.
 missing?	get_common_length	/home/user/.julia/packages/Distances/mlz7p/src/common.jl:15	true	arg a=POSSIBLE; arg b=POSSIBLE
 missing?	haversine	/home/user/.julia/packages/Distances/mlz7p/src/haversine.jl:33	true	arg x=POSSIBLE; arg y=POSSIBLE
 missing?	haversine	/home/user/.julia/packages/Distances/mlz7p/src/haversine.jl:33	true	arg x=POSSIBLE; arg y=POSSIBLE
-missing?	mahalanobis	/home/user/.julia/packages/Distances/mlz7p/src/mahalanobis.jl:96	true	arg a=POSSIBLE; arg b=POSSIBLE; arg Q=POSSIBLE
+missing?	mahalanobis	/home/user/.julia/packages/Distances/mlz7p/src/mahalanobis.jl:96	true	arg Q=POSSIBLE
 missing?	minkowski	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:385	true	arg a=POSSIBLE; arg b=POSSIBLE
 missing?	norm_percol	/home/user/.julia/packages/Distances/mlz7p/src/common.jl:87	true	arg a=POSSIBLE
 missing?	pairwise	/home/user/.julia/packages/Distances/mlz7p/src/generic.jl:337	true	arg =POSSIBLE; arg metric=POSSIBLE; arg a=POSSIBLE; arg b=POSSIBLE
@@ -166,7 +163,7 @@ missing?	result_type	/home/user/.julia/packages/Distances/mlz7p/src/generic.jl:5
 missing?	result_type	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:219	true	arg dist=POSSIBLE
 missing?	result_type	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:221	true	arg dist=POSSIBLE
 missing?	result_type	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:223	true	arg dist=POSSIBLE; arg p=POSSIBLE
-missing?	sqmahalanobis	/home/user/.julia/packages/Distances/mlz7p/src/mahalanobis.jl:95	true	arg a=POSSIBLE; arg b=POSSIBLE; arg Q=POSSIBLE
+missing?	sqmahalanobis	/home/user/.julia/packages/Distances/mlz7p/src/mahalanobis.jl:95	true	arg Q=POSSIBLE
 missing?	wcityblock	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:368	true	arg a=POSSIBLE; arg b=POSSIBLE; arg w=POSSIBLE
 missing?	weuclidean	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:342	true	arg a=POSSIBLE; arg b=POSSIBLE; arg w=POSSIBLE
 missing?	whamming	/home/user/.julia/packages/Distances/mlz7p/src/metrics.jl:400	true	arg a=POSSIBLE; arg b=POSSIBLE; arg w=POSSIBLE
