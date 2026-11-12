@@ -9,8 +9,7 @@ Workspaces live in .worktrees/<name> inside repo (git-ignored); never in sibling
 
 ## Rule contract
 
-Rule is pure function: facts in, findings out. Rule imports only Corset.Facts.
-Rule reads facts only; analysis layers compute every fact once per run. Missing information: add fact to its layer.
+Each `Rule` is pure function of `Corset.Facts`. Analysis layers compute facts once per run. If more information is needed, add a fact to its layer.
 Every finding: primary span, labeled cause spans, one-line reason, fix with tier.
 Every rule: UI snapshot test with positive, negative and fix case.
 
@@ -21,5 +20,5 @@ Only support the latest Julia release.
 
 ## Confidence
 
-Doubt test: would perfect analysis still be unsure? Yes: `possible` finding. No: Corset blind spot; count it on coverage line only.
+Doubt test: can Julia compiler resolve doubt? No: doubt is in code; report finding (`possible`, or rule of its own). Yes, but Corset cannot: blind spot; count it on coverage line only.
 Details and examples: docs/design/findings.md, "Confidence and blind spots".

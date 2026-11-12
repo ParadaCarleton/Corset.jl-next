@@ -19,7 +19,7 @@ export finding, replace_fix, manual_fix, identifier_name, nodes_named, parent_of
 @enumx Precision exact line
 """Fix risk to callers; one setting picks highest tier applied automatically."""
 @enumx Tier safe likely breaking manual
-"""`definite`: problem exists. `possible`: perfect analysis would still be unsure."""
+"""`definite`: problem exists. `possible`: compiler cannot resolve doubt either."""
 @enumx Confidence definite possible
 """User-facing rule group."""
 @enumx Group correctness performance composability readability

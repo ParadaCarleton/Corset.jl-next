@@ -398,3 +398,7 @@ Principle: rule waits for layer that owns its facts. Removed syntax versions and
 ### Rename: check to rule
 
 "Check" named three things: `corset check` command, `Corset.check()` pipeline entry, and one unit of config. Unit is now "rule", as in Ruff. Command and entry point keep verb `check`. Argus wrapper `Rule` became `IndexedPattern`: it holds only pattern and root-kind index, while Argus `Rule` is whole named rule.
+
+### Doubt test: compiler as yardstick
+
+"Perfect analysis" left budgets ambiguous: dispatch over Corset's 4-candidate budget became blind spot. Compiler dispatches such call at run time, which is real code property. Test now asks whether compiler resolves doubt; Corset limits match compiler limits (`max_methods`, union splitting).

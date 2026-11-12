@@ -12,7 +12,7 @@ Noise is no longer reason for group. Each finding says how sure analysis is. One
       <div role="cell"><code>possible</code> problem</div><div class="no" role="cell">skip</div><div class="yes" role="cell">report</div>
     </div>
 
-Note: Rules with both kinds: `bang-convention` (dispatch candidates disagree on write), `type-disruption` (type branch), `unwritten-element` and `constant-array` (sites fixer cannot prove).
+Note: Rules with both kinds: `bang-convention` (dispatch candidates disagree on write, or call dispatches at run time), `type-disruption` (type branch), `unwritten-element` and `constant-array` (sites fixer cannot prove).
 
 ### Groups
 
@@ -22,18 +22,19 @@ Note: Rules with both kinds: `bang-convention` (dispatch candidates disagree on 
 
 `confidence` sets lowest confidence finding needs to be reported. `definite` (default) reports definite findings only; `possible` reports both. `likely` can join between them later.
 
-Doubt test: would perfect analysis still be unsure? Perfect analysis sees all Julia code, dependencies included. It never sees run-time values or foreign code.
+Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and method table when it compiles call. It never sees run-time values, foreign code or methods added later.
 
-| Perfect analysis | Corset | Report |
+| Compiler | Corset | Report |
 |---|---|---|
-| problem exists | proves problem | `definite` finding |
-| unsure | unsure | `possible` finding |
-| sure, problem or no problem | unsure | blind spot: coverage line only |
+| resolves; problem exists | proves problem | `definite` finding |
+| cannot resolve | cannot resolve | finding: `possible`, or rule of its own |
+| resolves | cannot resolve | blind spot: coverage line only |
 
-- `possible`: argument typed `Any` reaches methods that disagree on writing it. Run-time type decides.
-- `possible`: public function returns union from dependency. Unknown callers decide.
+- Finding: argument typed `Any` reaches methods that disagree on writing it. Compiler dispatches at run time: `bang-convention` reports `possible`, and `runtime-dispatch` reports call.
+- Finding: public function returns union from dependency. Unknown callers decide: `possible`.
 - Blind spot: syntax-only rule cannot see that `a::Vector` is 1-based, because typed layer did not run.
-- Blind spot: inference refused generated method; macro did not expand; typed finding has no source span; dispatch exceeds candidate budget.
+- Blind spot: inference refused generated method; macro did not expand; typed finding has no source span.
+- Corset limits never fall below compiler limits (`max_methods`, union splitting). Corset resolves every call compiler resolves.
 
 Coverage line ends every run and counts blind spots by cause: `analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)`. Rule that lacks fact at site reports nothing there.
 

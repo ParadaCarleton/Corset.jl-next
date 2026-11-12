@@ -149,7 +149,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Every decision is revisable. Evidence from spikes, corpus runs and users outranks earlier reasoning; see design reviews in <code>plan.md</code>.</li>
 <li>Compute each expensive step once per run. Share output with every rule.</li>
 <li>Footguns are source of truth. Rules group footguns by analysis they read. User-facing group is metadata only.</li>
-<li>Give each finding confidence: <code>definite</code> (problem exists) or <code>possible</code> (perfect analysis would still be unsure). One setting filters them. Corset blind spots go to coverage line only (<code>findings.md</code>).</li>
+<li>Give each finding confidence: <code>definite</code> (problem exists) or <code>possible</code> (compiler cannot resolve doubt either). One setting filters them. Corset blind spots go to coverage line only (<code>findings.md</code>).</li>
 <li>Map every finding back to source bytes. Fixers edit lossless syntax tree.</li>
 <li>Rule is small query over shared facts. Analysis layers compute every fact once per run; rule only reads them.</li>
 <li>Each fact has one producer. Rule never guesses later-layer fact (type, mutability, effect, ADT variant) from syntax; it waits for that layer.</li>
@@ -395,43 +395,44 @@ footer { color: var(--muted); font-size: 0.85rem; }
       <div role="cell"><code>definite</code> problem</div><div class="yes" role="cell">report</div><div class="yes" role="cell">report</div>
       <div role="cell"><code>possible</code> problem</div><div class="no" role="cell">skip</div><div class="yes" role="cell">report</div>
     </div>
-<p>Note: Rules with both kinds: <code>bang-convention</code> (dispatch candidates disagree on write), <code>type-disruption</code> (type branch), <code>unwritten-element</code> and <code>constant-array</code> (sites fixer cannot prove).</p>
+<p>Note: Rules with both kinds: <code>bang-convention</code> (dispatch candidates disagree on write, or call dispatches at run time), <code>type-disruption</code> (type branch), <code>unwritten-element</code> and <code>constant-array</code> (sites fixer cannot prove).</p>
 <div class="decision"><h3>Groups</h3>
 <p><code>correctness</code>, <code>performance</code>, <code>composability</code>, <code>readability</code>. One group per rule; <code>banned</code> entries name their own group.</p>
 </div><div class="decision"><h3>Confidence and blind spots</h3>
 <p><code>confidence</code> sets lowest confidence finding needs to be reported. <code>definite</code> (default) reports definite findings only; <code>possible</code> reports both. <code>likely</code> can join between them later.</p>
-<p>Doubt test: would perfect analysis still be unsure? Perfect analysis sees all Julia code, dependencies included. It never sees run-time values or foreign code.</p>
+<p>Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and method table when it compiles call. It never sees run-time values, foreign code or methods added later.</p>
 <div class="scroll"><table>
 <thead>
 <tr>
-<th>Perfect analysis</th>
+<th>Compiler</th>
 <th>Corset</th>
 <th>Report</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>problem exists</td>
+<td>resolves; problem exists</td>
 <td>proves problem</td>
 <td><code>definite</code> finding</td>
 </tr>
 <tr>
-<td>unsure</td>
-<td>unsure</td>
-<td><code>possible</code> finding</td>
+<td>cannot resolve</td>
+<td>cannot resolve</td>
+<td>finding: <code>possible</code>, or rule of its own</td>
 </tr>
 <tr>
-<td>sure, problem or no problem</td>
-<td>unsure</td>
+<td>resolves</td>
+<td>cannot resolve</td>
 <td>blind spot: coverage line only</td>
 </tr>
 </tbody>
 </table></div>
 <ul>
-<li><code>possible</code>: argument typed <code>Any</code> reaches methods that disagree on writing it. Run-time type decides.</li>
-<li><code>possible</code>: public function returns union from dependency. Unknown callers decide.</li>
+<li>Finding: argument typed <code>Any</code> reaches methods that disagree on writing it. Compiler dispatches at run time: <code>bang-convention</code> reports <code>possible</code>, and <code>runtime-dispatch</code> reports call.</li>
+<li>Finding: public function returns union from dependency. Unknown callers decide: <code>possible</code>.</li>
 <li>Blind spot: syntax-only rule cannot see that <code>a::Vector</code> is 1-based, because typed layer did not run.</li>
-<li>Blind spot: inference refused generated method; macro did not expand; typed finding has no source span; dispatch exceeds candidate budget.</li>
+<li>Blind spot: inference refused generated method; macro did not expand; typed finding has no source span.</li>
+<li>Corset limits never fall below compiler limits (<code>max_methods</code>, union splitting). Corset resolves every call compiler resolves.</li>
 </ul>
 <p>Coverage line ends every run and counts blind spots by cause: <code>analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)</code>. Rule that lacks fact at site reports nothing there.</p>
 </div><div class="decision"><h3>Lint levels</h3>
@@ -660,7 +661,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Same cache exemption applies to <code>hidden-input</code>: cache read is invisible to caller.</li>
 <li>Write facts come from Corset's own summary per method (S5): points-to graph over optimized IR inside method, callee summaries at calls. Compiler <code>EscapeAnalysis</code> is unsuitable: no return-alias or field-store summary.</li>
 <li>Callees are summarized through dependency code, Base included. Base summaries are cached once per Julia version.</li>
-<li>Dynamic call: join summaries of up to 4 candidates at declared signatures. All agree: definite. Candidates disagree: <code>possible</code>. More than 4 candidates: blind spot on coverage line.</li>
+<li>Dynamic call: join summaries of candidates within compiler limits (<code>max_methods</code> 3, union splitting 4 by default). All agree: definite. Disagree: <code>possible</code>. More candidates: call dispatches at run time; <code>possible</code>, and <code>runtime-dispatch</code> reports call.</li>
 <li><code>possible</code> effect findings stay off until dispatch resolution passes quality gate. S5: every <code>possible</code> verdict came from unknown callee or foreign call.</li>
 <li>Not writes caller sees: lazy-init caches (<code>Regex</code>, <code>LazyString</code>, <code>setfieldonce!</code>), task-local state, locks, writes to fresh local objects inside error paths (message building). Argument or global write before throw stays in summary: caller that catches sees it. Globals of other modules (Base logging, PCRE contexts) are kept apart and never reported.</li>
 <li>Effect summary records whether method result aliases global state. Write through such result counts as global write, so caller needs <code>!</code>.</li>
@@ -991,11 +992,11 @@ end
 </tr>
 <tr>
 <td>confidence</td>
-<td><code>definite</code>: problem exists. <code>possible</code>: perfect analysis would still be unsure.</td>
+<td><code>definite</code>: problem exists. <code>possible</code>: compiler cannot resolve doubt either.</td>
 </tr>
 <tr>
 <td>blind spot</td>
-<td>Site Corset cannot decide although perfect analysis could. Counted on coverage line; never finding.</td>
+<td>Doubt compiler resolves but Corset cannot. Counted on coverage line; never finding.</td>
 </tr>
 <tr>
 <td>level</td>
