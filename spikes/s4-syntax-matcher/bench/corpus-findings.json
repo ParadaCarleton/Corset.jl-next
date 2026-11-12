@@ -1,0 +1,140 @@
+{
+  "DataStructures": {
+    "cold_seconds": 0.075331402,
+    "files": 38,
+    "findings": 11,
+    "lines": 11472,
+    "match_seconds": 0.009886177000000003,
+    "parse_seconds": 0.012379875999999998,
+    "per_10k_lines_seconds": 0.019409042015341705,
+    "version": "0.19.6"
+  },
+  "Distances": {
+    "cold_seconds": 1.977049474,
+    "files": 11,
+    "findings": 0,
+    "lines": 2090,
+    "match_seconds": 0.002934753,
+    "parse_seconds": 0.002649671,
+    "per_10k_lines_seconds": 0.02671973205741627,
+    "version": "0.10.12"
+  },
+  "JSON": {
+    "cold_seconds": 0.020346299,
+    "files": 8,
+    "findings": 4,
+    "lines": 4448,
+    "match_seconds": 0.006098736,
+    "parse_seconds": 0.006199437,
+    "per_10k_lines_seconds": 0.027648770233812948,
+    "version": "1.13.4"
+  },
+  "findings": [
+    {
+      "file": "DataStructures/src/circ_deque.jl",
+      "footgun": 36,
+      "line": 124,
+      "rule": "one-to-length-loop",
+      "text": "for i = 1:length(D)\n        print(io, D[i])\n        i < length(D) && print(io, ',')\n    end"
+    },
+    {
+      "file": "DataStructures/src/circ_deque.jl",
+      "footgun": 36,
+      "line": 124,
+      "rule": "one-to-length",
+      "text": "1:length(D)"
+    },
+    {
+      "file": "DataStructures/src/heaps/minmax_heap.jl",
+      "footgun": 36,
+      "line": 145,
+      "rule": "one-to-length-loop",
+      "text": "for i in 1:length(A)\n        if on_minlevel(i)\n            # check that A[i] < children A[i]\n            #    and grandchildren A[i]\n            for j in children_and_grandchildren(length(A), i)\n                A[i] ≤ A[j] || return false\n            end\n        else\n            # max layer\n            for j in children_and_grandchildren(length(A), i)\n                A[i] ≥ A[j] || return false\n            end\n        end\n    end"
+    },
+    {
+      "file": "DataStructures/src/heaps/minmax_heap.jl",
+      "footgun": 36,
+      "line": 145,
+      "rule": "one-to-length",
+      "text": "1:length(A)"
+    },
+    {
+      "file": "DataStructures/src/sorted_dict.jl",
+      "footgun": 36,
+      "line": 430,
+      "rule": "one-to-length-loop",
+      "text": "firstindex(sds.vec[i]) for i=1:length(sds.vec)"
+    },
+    {
+      "file": "DataStructures/src/sorted_dict.jl",
+      "footgun": 36,
+      "line": 430,
+      "rule": "one-to-length",
+      "text": "1:length(sds.vec)"
+    },
+    {
+      "file": "DataStructures/src/sorted_multi_dict.jl",
+      "footgun": 36,
+      "line": 320,
+      "rule": "one-to-length-loop",
+      "text": "firstindex(sds.vec[k]) for k=1:length(sds.vec)"
+    },
+    {
+      "file": "DataStructures/src/sorted_multi_dict.jl",
+      "footgun": 36,
+      "line": 320,
+      "rule": "one-to-length",
+      "text": "1:length(sds.vec)"
+    },
+    {
+      "file": "DataStructures/src/sorted_set.jl",
+      "footgun": 36,
+      "line": 315,
+      "rule": "one-to-length-loop",
+      "text": "firstindex(ss.vec[k]) for k=1:length(ss.vec)"
+    },
+    {
+      "file": "DataStructures/src/sorted_set.jl",
+      "footgun": 36,
+      "line": 315,
+      "rule": "one-to-length",
+      "text": "1:length(ss.vec)"
+    },
+    {
+      "file": "DataStructures/src/trie.jl",
+      "footgun": 21,
+      "line": 92,
+      "rule": "empty-any-literal",
+      "text": "[]"
+    },
+    {
+      "file": "JSON/src/write.jl",
+      "footgun": 36,
+      "line": 1014,
+      "rule": "one-to-length-loop",
+      "text": "for j = 1:length(escbytes)\n                @inbounds buf[pos] = escbytes[j]\n                pos += 1\n            end"
+    },
+    {
+      "file": "JSON/src/write.jl",
+      "footgun": 36,
+      "line": 1014,
+      "rule": "one-to-length",
+      "text": "1:length(escbytes)"
+    },
+    {
+      "file": "JSON/ext/JSONArrowExt.jl",
+      "footgun": 36,
+      "line": 25,
+      "rule": "one-to-length-loop",
+      "text": "nms[i] => vals[i] for i in 1:length(nms)"
+    },
+    {
+      "file": "JSON/ext/JSONArrowExt.jl",
+      "footgun": 36,
+      "line": 25,
+      "rule": "one-to-length",
+      "text": "1:length(nms)"
+    }
+  ],
+  "load_seconds": 6.819401979446411
+}

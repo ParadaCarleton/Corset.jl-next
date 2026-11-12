@@ -1,0 +1,6 @@
+[deps]
+Argus = "e39743ec-b2cc-45ef-a990-b666fc093538"
+ReLint = "b3cc710f-9c33-5bdb-a03d-a94903873e97"
+
+[sources]
+ReLint = {url = "https://github.com/RelationalAI-oss/ReLint.jl"}
