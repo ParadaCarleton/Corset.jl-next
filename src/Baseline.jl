@@ -37,7 +37,7 @@ end
 """Name of innermost definition enclosing byte `byte` of `file`; empty string at top level."""
 function definition_name(file::SyntaxFile, byte::Int)::String
     enclosing = [
-        node for nodes in values(file.index) for node in nodes
+        node for node in Facts.all_nodes(file)
             if Facts.kind_name(node) in DEFINITIONS && byte in Facts.trimmed_bytes(file, node)
     ]
     isempty(enclosing) && return ""

@@ -56,7 +56,7 @@ end
 """Findings for calls in same function body after `eval` defines called function."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
-    for file in facts.files, definition in nodes_named(file, "function")
+    for file in facts.files, definition in forms(file, "function")
         body = children_of(definition)[end]
         kind_name(body) == "block" || continue
         defined = Dict{String, Any}()

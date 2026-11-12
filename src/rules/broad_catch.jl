@@ -48,7 +48,7 @@ end
 """Findings for catch clauses that swallow every error, `InterruptException` included."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
-    for file in facts.files, clause in nodes_named(file, "catch")
+    for file in facts.files, clause in forms(file, "catch")
         parts = children_of(clause)
         narrows(parts[end], identifier_name(parts[1])) && continue
         push!(

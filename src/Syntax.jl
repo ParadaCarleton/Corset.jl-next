@@ -7,12 +7,12 @@ using ..Facts: SyntaxFile
 """Parse `text` of file `path` into lossless tree with kind index and comment ranges. Parse errors stay in tree as error nodes."""
 function parse_file(path::String, text::String)::SyntaxFile
     tree = JS.parseall(SyntaxNode, text; filename = path, ignore_errors = true)
-    index = Dict{Kind, Vector{SyntaxNode}}()
+    forms, leaves = Dict{Kind, Vector{SyntaxNode}}(), Dict{Kind, Vector{SyntaxNode}}()
     walk(tree) do node
-        push!(get!(() -> SyntaxNode[], index, JS.kind(node)), node)
+        push!(get!(() -> SyntaxNode[], JS.is_leaf(node) ? leaves : forms, JS.kind(node)), node)
     end
     comments = [Int(first(token.range)):Int(last(token.range)) for token in JS.tokenize(text) if JS.kind(token) == JS.K"Comment"]
-    return SyntaxFile(path, text, tree, index, comments)
+    return SyntaxFile(path, text, tree, forms, leaves, comments)
 end
 
 """Call `visit` on `node` and every descendant, parents first."""

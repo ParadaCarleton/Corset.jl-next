@@ -34,7 +34,7 @@ normalized(file::SyntaxFile, node)::String = replace(source(file, node), r"\s+" 
 """Findings for statement equal to statement right before it; repeated calls may be intended, so `possible`."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
-    for file in facts.files, block in [nodes_named(file, "block"); nodes_named(file, "toplevel")]
+    for file in facts.files, block in [forms(file, "block"); forms(file, "toplevel")]
         statements = children_of(block)
         for (previous, statement) in zip(statements, Iterators.drop(statements, 1))
             normalized(file, previous) == normalized(file, statement) || continue

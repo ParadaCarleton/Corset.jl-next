@@ -53,7 +53,7 @@ synced(node)::Bool = any(ancestor -> kind_name(ancestor) == "macrocall" && macro
 """Findings for task-starting macros whose task is discarded outside `@sync`."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
-    for file in facts.files, call in nodes_named(file, "macrocall")
+    for file in facts.files, call in forms(file, "macrocall")
         macro_of(call) in SPAWNING && discarded(call) && !synced(call) || continue
         push!(
             found, finding(

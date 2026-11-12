@@ -60,7 +60,7 @@ function next_statement(file::SyntaxFile, index::Int)::UnitRange{Int}
     isnothing(offset) && return (index + 1):index
     target = index + offset
     stops = [
-        last(Facts.trimmed_bytes(file, node)) for nodes in values(file.index) for node in nodes
+        last(Facts.trimmed_bytes(file, node)) for node in Facts.all_nodes(file)
             if Facts.kind_name(node) != "toplevel" && first(Facts.trimmed_bytes(file, node)) == target
     ]
     return target:maximum(stops; init = target)
