@@ -25,6 +25,7 @@ module ApproxZero
 using ...Facts
 
 const NAME = Symbol("approx-zero")
+# corset: allow approx-zero -- Argus pattern source is data
 const PATTERN = IndexedPattern(
     @pattern ~or(
         {x} ≈ 0, 0 ≈ {x}, {x} ≈ 0.0, 0.0 ≈ {x},
