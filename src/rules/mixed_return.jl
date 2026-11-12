@@ -24,7 +24,7 @@ end
 ```
 
 ## Limitations
-Rule stays narrow: function ending in `if`, loop, `try` or macro call passes. Requiring `return` everywhere would force `return nothing` and fight formatters.
+Rule stays narrow: function ending in `if`, loop, `try`, macro call or `throw` passes. Requiring `return` everywhere would force `return nothing` and fight formatters.
 """
 module MixedReturn
 
@@ -33,6 +33,8 @@ using ...Facts
 const NAME = Symbol("mixed-return")
 """Final statements whose value is not plain expression; rule stays narrow there."""
 const CONTROL = Set(["if", "for", "while", "try", "let", "block", "return", "macrocall", "function", "struct", "module"])
+"""Base functions that never return; final call to one has no value."""
+const NO_RETURN = Set(["throw", "error", "rethrow"])
 
 """`return` nodes of function body `body`, skipping nested functions and closures."""
 function own_returns(body)::Vector{Any}
@@ -55,6 +57,7 @@ function run(facts::FactSet)::Vector{Finding}
         isempty(statements) && continue
         last_statement = statements[end]
         kind_name(last_statement) in CONTROL && continue
+        call_head(last_statement) in NO_RETURN && continue
         returns = own_returns(parts[2])
         isempty(returns) && continue
         push!(
