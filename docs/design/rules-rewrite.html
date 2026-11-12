@@ -511,7 +511,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Public API: exported or declared <code>public</code>. Everything else is internal.</li>
 <li><code>test/</code>, <code>docs/</code>, <code>benchmark/</code> are scripts: loading them runs them.</li>
 <li>Baseline lives in <code>corset-baseline.toml</code> at project root; <code>corset baseline</code> writes it. Entries match findings by rule, file, enclosing definition and normalized snippet hash. No line numbers, so edits elsewhere keep matches. Baselined findings stay hidden. Entry that matches no finding fails run until <code>corset baseline</code> rewrites file, like ESLint bulk suppressions.</li>
-<li><code>corset explain</code> and docs page per rule follow Clippy sections: what it does, why it is bad, example, use instead, known problems.</li>
+<li><code>corset explain</code> and docs page per rule follow Clippy sections under plain headings: Description, Rationale, Example, Alternative, Limitations. Text lives in rule module docstring; registry test enforces sections.</li>
 <li>Fixes keep surrounding style; formatting stays formatter's job (Runic, JuliaFormatter).</li>
 <li>Additive replacement for literal uses <code>oneunit(x)</code>, never <code>one(x)</code>: <code>one</code> drops units (Unitful.jl).</li>
 <li>Corset lints itself in CI from phase 1.</li>
