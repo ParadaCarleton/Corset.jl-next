@@ -26,5 +26,10 @@ jobs:
         with:
           skip: InteractiveUtils, TOML, Test
           mode: deps
+          projects: lib/CorsetLegacy
       - uses: julia-actions/julia-buildpkg@v1
+        with:
+          project: lib/CorsetLegacy
       - uses: julia-actions/julia-runtest@v1
+        with:
+          project: lib/CorsetLegacy

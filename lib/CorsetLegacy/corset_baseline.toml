@@ -269,9 +269,9 @@
 "src/rules/general.jl without_lines" = 1
 
 [struct-constant]
-"Corset.NO_CANDIDATES" = 1
-"Corset.NO_WRITES" = 1
-"Corset.RULES" = 1
+"CorsetLegacy.NO_CANDIDATES" = 1
+"CorsetLegacy.NO_WRITES" = 1
+"CorsetLegacy.RULES" = 1
 
 [unmarked-mutation]
 "src/check.jl fix_diff" = 1

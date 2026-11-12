@@ -23,5 +23,7 @@ jobs:
           version: "1.13"
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-docdeploy@v1
+        with:
+          install-package: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

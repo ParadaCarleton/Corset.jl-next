@@ -3,7 +3,7 @@
 """The `literal-array` lines of the Julia `text`."""
 function literal_array_lines(text::AbstractString)::Vector{Int}
     tree = write_tree(mktempdir(), ["source.jl" => text])
-    return [site.line for site in Corset.literal_array_sites(parsed(joinpath(tree, "source.jl")))]
+    return [site.line for site in CorsetLegacy.literal_array_sites(parsed(joinpath(tree, "source.jl")))]
 end
 
 @testset "literal-array: an array built from a literal container type" begin
@@ -28,33 +28,33 @@ end
 end
 
 @testset "type-disruption: sub-checks keep their names for levels, waivers and baselines" begin
-    @test all(in(Corset.check_names()), ("float-widening", "float64", "literal-array"))
-    @test !("type-disruption" in Corset.check_names())
-    @test Corset.level(Corset.load_config(mktempdir()), Corset.Check("literal-array", :default, "")) === :warn
-    @test Corset.level(Corset.load_config(mktempdir()), Corset.Check("float64", :pedantic, "")) === :allow
-    @test_throws ArgumentError Corset.level(Corset.load_config(mktempdir()), Corset.TypeDisruptionRule())
+    @test all(in(CorsetLegacy.check_names()), ("float-widening", "float64", "literal-array"))
+    @test !("type-disruption" in CorsetLegacy.check_names())
+    @test CorsetLegacy.level(CorsetLegacy.load_config(mktempdir()), CorsetLegacy.Check("literal-array", :default, "")) === :warn
+    @test CorsetLegacy.level(CorsetLegacy.load_config(mktempdir()), CorsetLegacy.Check("float64", :pedantic, "")) === :allow
+    @test_throws ArgumentError CorsetLegacy.level(CorsetLegacy.load_config(mktempdir()), CorsetLegacy.TypeDisruptionRule())
     source = "module Demo\nmade(n::Int) = Vector{Float32}(undef, n)\nwaived(n::Int) = Vector{Float32}(undef, n) # lint: literal-array\nend\n"
     root = package_tree("name = \"Demo\"\n[preferences.Corset.levels]\nfloat64 = \"deny\"\nfloat-widening = \"allow\"\n", ["src/Demo.jl" => source * "wide(x::Float32)::Float32 = x * 2.0\n"])
-    findings, skipped = Corset.run_rules(Corset.load_config(root), root)
+    findings, skipped = CorsetLegacy.run_rules(CorsetLegacy.load_config(root), root)
     @test [(finding.rule, finding.level, finding.site.line) for finding in findings if finding.rule in ("literal-array", "float64", "float-widening")] == [("literal-array", :warn, 2), ("float64", :deny, 5)]
     @test "float-widening" ∉ skipped
     unwaived = package_tree("name = \"Demo\"\n", ["src/Demo.jl" => "module Demo\nmade(n::Int) = Vector{Float32}(undef, n)\nend\n"])
-    findings, skipped = Corset.run_rules(Corset.load_config(unwaived), unwaived)
+    findings, skipped = CorsetLegacy.run_rules(CorsetLegacy.load_config(unwaived), unwaived)
     @test "float-widening" in skipped
 end
 
 @testset "type-disruption: check is the union of the sub-check sites" begin
     root = package_tree("name = \"Demo\"\n", ["src/Demo.jl" => "module Demo\nmade(n::Int) = Vector{Float32}(undef, n)\nend\n"])
-    context = Corset.Context(Corset.repository(Corset.load_config(root), root), ("src",), nothing)
-    by_check = Corset.grouped_sites!(Corset.TypeDisruptionRule(), context)
+    context = CorsetLegacy.Context(CorsetLegacy.repository(CorsetLegacy.load_config(root), root), ("src",), nothing)
+    by_check = CorsetLegacy.grouped_sites!(CorsetLegacy.TypeDisruptionRule(), context)
     @test sort!(collect(keys(by_check))) == ["float-widening", "float64", "literal-array"]
-    @test length(Corset.check(Corset.TypeDisruptionRule(), context)) == sum(length, values(by_check)) == 1
+    @test length(CorsetLegacy.check(CorsetLegacy.TypeDisruptionRule(), context)) == sum(length, values(by_check)) == 1
 end
 
 """The text the `literal-array` fixer leaves of `text`, and the sites it repaired."""
 function literal_arrayed(text::AbstractString)::Tuple{String, Vector{Int}}
     tree = write_tree(mktempdir(), ["source.jl" => text])
-    sites = Corset.apply_plan!(Corset.literal_array_plan(Repository(tree), (".",)), "literal-array")
+    sites = CorsetLegacy.apply_plan!(CorsetLegacy.literal_array_plan(Repository(tree), (".",)), "literal-array")
     return read(joinpath(tree, "source.jl"), String), [site.line for site in sites]
 end
 
@@ -87,8 +87,8 @@ end
     source = "module Demo\nmade(x::Vector{Float64}) = Vector{Float32}(undef, length(x))\nend\n"
     for (levels, expected) in (("", "similar(x, Float32, length(x))"), ("literal-array = \"allow\"\n", "Vector{Float32}(undef, length(x))"))
         root = package_tree("name = \"Demo\"\n[preferences.Corset.levels]\n$levels", ["src/Demo.jl" => source])
-        Corset.run_rules(Corset.load_config(root), root; fix = true)
+        CorsetLegacy.run_rules(CorsetLegacy.load_config(root), root; fix = true)
         @test occursin(expected, read(joinpath(root, "src", "Demo.jl"), String))
     end
-    @test Corset.fixable(Corset.TypeDisruptionRule())
+    @test CorsetLegacy.fixable(CorsetLegacy.TypeDisruptionRule())
 end

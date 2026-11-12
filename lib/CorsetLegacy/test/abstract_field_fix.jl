@@ -6,7 +6,7 @@ const CONCRETE_IMPORT = "using ConcreteStructs: @concrete\n\n"
 """The text the abstract-field fixer leaves of the files `files` (name => text), by name."""
 function abstract_field_fixed(files::AbstractVector{<:Pair})::Dict{String, String}
     tree = write_tree(mktempdir(), files)
-    Corset.unsafe_fix!(Corset.AbstractFieldRule(), Repository(tree), (".",))
+    CorsetLegacy.unsafe_fix!(CorsetLegacy.AbstractFieldRule(), Repository(tree), (".",))
     return Dict(name => read(joinpath(tree, name), String) for name in first.(files))
 end
 
@@ -44,7 +44,7 @@ unfixed(text::AbstractString)::Bool = abstract_field_fixed(text) == text
 
     @testset "the Project.toml lists ConcreteStructs" begin
         tree = write_tree(mktempdir(), ["Project.toml" => "name = \"P\"\n", "src/P.jl" => "struct S\n    x::Real\nend\n"])
-        Corset.unsafe_fix!(Corset.AbstractFieldRule(), Repository(tree), ("src",))
+        CorsetLegacy.unsafe_fix!(CorsetLegacy.AbstractFieldRule(), Repository(tree), ("src",))
         @test TOML.parsefile(joinpath(tree, "Project.toml"))["deps"]["ConcreteStructs"] == "2569d6c7-a4a2-43d3-a901-331e8e4be471"
     end
 
@@ -120,7 +120,7 @@ unfixed(text::AbstractString)::Bool = abstract_field_fixed(text) == text
 
     @testset "without --unsafe-fixes the fixer writes nothing" begin
         tree = write_tree(mktempdir(), ["source.jl" => "struct S\n    x::Real\nend\n"])
-        Corset.apply_fix!(Corset.AbstractFieldRule(), Repository(tree), (".",), nothing, nothing, false)
+        CorsetLegacy.apply_fix!(CorsetLegacy.AbstractFieldRule(), Repository(tree), (".",), nothing, nothing, false)
         @test read(joinpath(tree, "source.jl"), String) == "struct S\n    x::Real\nend\n"
     end
 
@@ -203,12 +203,12 @@ end
 end
 
 @testset "rewritten: edits at one offset land in a fixed order" begin
-    insertion(text::String)::Corset.ByteRewrite = Corset.ByteRewrite("f.jl", 3:2, text)
-    replacement = Corset.ByteRewrite("f.jl", 3:4, "R")
-    @test Corset.rewritten("abcdef", [insertion("1"), insertion("2")]) == "ab12cdef"
-    @test Corset.rewritten("abcdef", [insertion("2"), insertion("1")]) == "ab21cdef"
-    @test Corset.rewritten("abcdef", [replacement, insertion("1"), insertion("2")]) == "ab12Ref"
-    @test Corset.rewritten("abcdef", [insertion("1"), replacement, insertion("2")]) == "ab12Ref"
+    insertion(text::String)::CorsetLegacy.ByteRewrite = CorsetLegacy.ByteRewrite("f.jl", 3:2, text)
+    replacement = CorsetLegacy.ByteRewrite("f.jl", 3:4, "R")
+    @test CorsetLegacy.rewritten("abcdef", [insertion("1"), insertion("2")]) == "ab12cdef"
+    @test CorsetLegacy.rewritten("abcdef", [insertion("2"), insertion("1")]) == "ab21cdef"
+    @test CorsetLegacy.rewritten("abcdef", [replacement, insertion("1"), insertion("2")]) == "ab12Ref"
+    @test CorsetLegacy.rewritten("abcdef", [insertion("1"), replacement, insertion("2")]) == "ab12Ref"
 end
 
 @testset "abstract-field: a bare field of a @concrete struct is flagged, a bounded one is not" begin
@@ -221,12 +221,12 @@ end
 end
 
 @testset "abstract-field: only --unsafe-fixes runs the fixer" begin
-    @test Corset.is_base_abstract(:Real) && !Corset.is_base_abstract(:Any) && !Corset.is_base_abstract(:Int)
-    @test Set(Corset.rule_name.(filter(Corset.unsafe_fixable, Corset.RULES))) == Set(["abstract-field"])
-    @test !Corset.fixable(Corset.AbstractFieldRule())
+    @test CorsetLegacy.is_base_abstract(:Real) && !CorsetLegacy.is_base_abstract(:Any) && !CorsetLegacy.is_base_abstract(:Int)
+    @test Set(CorsetLegacy.rule_name.(filter(CorsetLegacy.unsafe_fixable, CorsetLegacy.RULES))) == Set(["abstract-field"])
+    @test !CorsetLegacy.fixable(CorsetLegacy.AbstractFieldRule())
     previewed = package_tree("name = \"Demo\"\n", ["src/Demo.jl" => "module Demo\nstruct S\n    x::Real\nend\nend\n"])
     output, code = captured_main(["check", previewed, "--no-load", "--diff", "--unsafe-fixes"])
     @test code == 1 && occursin("+@concrete struct S", output)
     @test !occursin("@concrete", first(captured_main(["check", previewed, "--no-load", "--diff"])))
-    @test_throws ArgumentError Corset.run_rules(Corset.load_config(previewed), previewed; unsafe = true)
+    @test_throws ArgumentError CorsetLegacy.run_rules(CorsetLegacy.load_config(previewed), previewed; unsafe = true)
 end

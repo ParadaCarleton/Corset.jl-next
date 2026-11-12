@@ -246,7 +246,7 @@ function relaunch(root::AbstractString, args::AbstractVector{<:AbstractString}):
         ["@", dirname(corset_project), "@stdlib", "@v#.#"],
         ifelse(Sys.iswindows(), ";", ":"),
     )
-    command = `$(Base.julia_cmd()) --startup-file=no --project=$root -e "using Corset; exit(Corset.main(ARGS))" -- $args`
+    command = `$(Base.julia_cmd()) --startup-file=no --project=$root -e "using CorsetLegacy; exit(CorsetLegacy.main(ARGS))" -- $args`
     if Sys.iswindows()
         return run(ignorestatus(command)).exitcode
     end

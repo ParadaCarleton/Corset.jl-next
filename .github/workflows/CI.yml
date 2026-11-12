@@ -10,7 +10,25 @@ concurrency:
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 jobs:
   test:
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }}
+    name: Corset - Julia ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["1.13", "pre"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+        with:
+          coverage: false
+  legacy:
+    name: CorsetLegacy - Julia ${{ matrix.version }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     # The jet rule analyzes frames on every thread; its test compares that with a serial run.
@@ -31,8 +49,14 @@ jobs:
           version: ${{ matrix.version }}
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
+        with:
+          project: lib/CorsetLegacy
       - uses: julia-actions/julia-runtest@v1
+        with:
+          project: lib/CorsetLegacy
       - uses: julia-actions/julia-processcoverage@v1
+        with:
+          directories: lib/CorsetLegacy/src
       - name: Require 100% line coverage
         if: matrix.version == '1.13'
         run: |
@@ -44,14 +68,16 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         if: matrix.version == '1.13'
         with:
+          project: lib/CorsetLegacy
           coverage: false
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v2
-      - run: fatou lint --color never src test
+      - run: fatou lint --color never lib/CorsetLegacy/src lib/CorsetLegacy/test
   corset:
+    name: corset (self-lint CorsetLegacy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,10 +88,13 @@ jobs:
           version: "1"
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
+        with:
+          project: lib/CorsetLegacy
       # TestEnv activates the test target's environment, so this step also works in packages that list
       # Corset only as a test dependency.
       - run: julia -e 'using Pkg; Pkg.add("TestEnv")'
-      - run: julia --project=. -e 'using TestEnv; TestEnv.activate(); using Corset; exit(Corset.main(ARGS))' -- check . --pedantic --deny-warnings
+      - run: julia --project=. -e 'using TestEnv; TestEnv.activate(); using CorsetLegacy; exit(CorsetLegacy.main(ARGS))' -- check . --pedantic --deny-warnings
+        working-directory: lib/CorsetLegacy
   format:
     runs-on: ubuntu-latest
     steps:

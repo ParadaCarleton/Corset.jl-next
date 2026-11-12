@@ -1,15 +1,15 @@
 # `unwritten-undef`: uninitialized arrays need a proof of a full write; written zeros, ones and fill arrays start as NaN.
 
 """The lines `unwritten-undef` reports in the one-file source `text`."""
-unwritten_lines(text::AbstractString)::Vector{Int} = site_lines(Corset.unwritten_undef_sites([parsed(joinpath(write_tree(mktempdir(), ["source.jl" => text]), "source.jl"))]))
+unwritten_lines(text::AbstractString)::Vector{Int} = site_lines(CorsetLegacy.unwritten_undef_sites([parsed(joinpath(write_tree(mktempdir(), ["source.jl" => text]), "source.jl"))]))
 
 """The `proof` of every written constant initializer in `text`, in source order."""
-proofs(text::AbstractString)::Vector{Symbol} = [initializer.proof for initializer in Corset.nan_initializers(parsed(joinpath(write_tree(mktempdir(), ["source.jl" => text]), "source.jl")).tree)]
+proofs(text::AbstractString)::Vector{Symbol} = [initializer.proof for initializer in CorsetLegacy.nan_initializers(parsed(joinpath(write_tree(mktempdir(), ["source.jl" => text]), "source.jl")).tree)]
 
 """The text the `unwritten-undef` fixer leaves of `text`."""
 function nanned(text::AbstractString)::String
     tree = write_tree(mktempdir(), ["source.jl" => text])
-    Corset.apply_plan!(Corset.unwritten_undef_plan(Repository(tree), (".",)), "unwritten-undef")
+    CorsetLegacy.apply_plan!(CorsetLegacy.unwritten_undef_plan(Repository(tree), (".",)), "unwritten-undef")
     return read(joinpath(tree, "source.jl"), String)
 end
 
@@ -54,7 +54,7 @@ end
     for constructor in ("zeros(Int, n)", "zeros(Cint, n)", "fill(0, n)", "fill(true, n)")
         @test proofs(wrapped("    x .= 1", constructor)) == [:nanless]
     end
-    @test occursin("has no NaN", only(Corset.unwritten_undef_sites([parsed(joinpath(write_tree(mktempdir(), ["source.jl" => wrapped("    x .= 1", "zeros(Int, n)")]), "source.jl"))])).detail)
+    @test occursin("has no NaN", only(CorsetLegacy.unwritten_undef_sites([parsed(joinpath(write_tree(mktempdir(), ["source.jl" => wrapped("    x .= 1", "zeros(Int, n)")]), "source.jl"))])).detail)
 end
 
 @testset "unwritten-undef: the fixer writes a NaN array of the same element type and size" begin
