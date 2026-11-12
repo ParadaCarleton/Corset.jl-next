@@ -5,7 +5,7 @@
 [[family]]
 letter = "A"
 title = "Syntax patterns"
-text = "One tree walk per file. Checks match node shapes. Candidate base: Argus.jl (check license and API stability first)."
+text = "One tree walk per file. Checks are Argus.jl patterns: syntax classes, pattern forms, templates for fixes. Walk indexes rules by pattern root kind and asks Argus to match candidate nodes only."
 
 [[family]]
 letter = "B"

@@ -8,7 +8,7 @@ Each layer is one module that produces facts. Checks read facts through one API.
 
 | Module | Job |
 |---|---|
-| `Syntax` | L1: parse files with `Base.JuliaSyntax`; index nodes by kind; array def-use (family B). |
+| `Syntax` | L1: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind; array def-use (family B). |
 | `Scope` | L2: lowering and scope facts (family H). |
 | `Load` | L3: load package; module facts (family C); Project.toml facts. |
 | `Infer` | L4: stand-in types; one inference per method; typed IR with source mapping (family D). |
