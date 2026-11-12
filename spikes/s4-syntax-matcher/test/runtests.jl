@@ -48,3 +48,13 @@ end
     b = match_pattern(q, src, S4Matcher.significant_children(parse_file(src))[1])
     @test length(sequence(b, :_xs)) == 2
 end
+
+@testset "ancestors" begin
+    @test isempty(found("function f(r, a)\n require_one_based_indexing(r, a)\n for i = 1:size(a, 2)\n end\nend"))
+    @test found("function f(r, a)\n require_one_based_indexing(r)\n for i = 1:size(a, 2)\n end\nend") == [36]
+    @test isempty(found("g(a) = (Base.require_one_based_indexing(a); [a[i] for i in 1:length(a)])"))
+end
+
+@testset "generator" begin
+    @test found("T(n[i] => v[i] for i in 1:length(n))", lintapp_shaped_rules()) == [36]
+end

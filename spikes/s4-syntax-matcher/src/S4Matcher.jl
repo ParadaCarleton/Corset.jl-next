@@ -100,7 +100,7 @@ root_kind(p::Leaf)::Kind = p.kind
 """Compile pattern source into pattern tree; throw on parse error or bare hole root."""
 function compile_pattern(source::String)::Pattern
     green = JS.parsestmt(GreenNode, source)
-    pattern = to_pattern(source, Red(green, 0))
+    pattern = to_pattern(source, unwrap_parens(Red(green, 0)))
     pattern isa Union{Node, Leaf} || throw(ArgumentError("pattern root must be concrete syntax: $source"))
     return pattern
 end
@@ -242,6 +242,20 @@ function walk(visit::F, r::Red)::Nothing where {F}
     return nothing
 end
 
+"""Call `visit(node, ancestors)` pre-order; `ancestors` holds enclosing nodes, outermost first."""
+function walk_ancestors(visit::F, r::Red, ancestors::Vector{Red} = Red[])::Nothing where {F}
+    visit(r, ancestors)
+    JS.is_leaf(r.green) && return nothing
+    push!(ancestors, r)
+    position = r.offset
+    for child in JS.children(r.green)
+        JS.is_trivia(child) || walk_ancestors(visit, Red(child, position), ancestors)
+        position += JS.span(child)
+    end
+    pop!(ancestors)
+    return nothing
+end
+
 """Name of called function: `f` in `f(x)`, `Vector` in `Vector{T}(x)`, `threadid` in `Threads.threadid()`."""
 function callee_name(src::String, r::Red)::Union{Nothing, SubString{String}}
     r = unwrap_parens(r)
@@ -253,7 +267,7 @@ function callee_name(src::String, r::Red)::Union{Nothing, SubString{String}}
     return callee_name(src, k == K"." ? last(inner) : first(inner))
 end
 
-"""Lint rule: footgun id, alternative patterns, guard on bindings, message."""
+"""Lint rule: footgun id, alternative patterns, guard `(bindings, node, ancestors) -> Bool`, message."""
 struct Rule{G}
     footgun::Int
     name::String
@@ -286,7 +300,7 @@ function run_rules(rules::Vector{<:Rule}, file::String, src::String, tree::Red):
     findings = Finding[]
     source_file = JS.SourceFile(src)
     state = MatchState(src)
-    walk(tree) do node
+    walk_ancestors(tree) do node, ancestors
         candidates = get(index, JS.kind(node), nothing)
         isnothing(candidates) && return
         for (ri, p) in candidates
@@ -294,7 +308,7 @@ function run_rules(rules::Vector{<:Rule}, file::String, src::String, tree::Red):
             match!(state, p, node) || continue
             rule = rules[ri]
             b = Bindings(src, Dict(state.singles), Dict(state.sequences))
-            rule.guard(b, node)::Bool || continue
+            rule.guard(b, node, ancestors)::Bool || continue
             rng = node_range(node)
             push!(findings, Finding(rule.footgun, rule.name, file, JS.source_line(source_file, first(rng)), rng, String(node_text(src, node))))
             break
