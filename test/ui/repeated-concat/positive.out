@@ -1,0 +1,20 @@
+performance[repeated-concat]: `result` is copied on every loop step
+ --> positive.jl:5:9
+  |
+5 |         result = vcat(result, part)
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ builds new `result` from old one
+  |
+  = why: each step copies all earlier pieces, so total work grows with square of length
+  = fix: `append!` or `push!` into `result`, or collect pieces and join once (`reduce(vcat, pieces)`)   [manual]
+  = docs: corset explain repeated-concat
+
+performance[repeated-concat]: `rows` is copied on every loop step
+  --> positive.jl:11:5
+   |
+11 |     rows = [rows; next_row()]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ builds new `rows` from old one
+   |
+   = why: each step copies all earlier pieces, so total work grows with square of length
+   = fix: `append!` or `push!` into `rows`, or collect pieces and join once (`reduce(vcat, pieces)`)   [manual]
+   = docs: corset explain repeated-concat
+

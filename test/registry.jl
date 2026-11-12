@@ -6,6 +6,8 @@ using TOML: TOML
 using Test: @test, @testset
 
 const DESIGN = joinpath(dirname(@__DIR__), "docs", "design")
+"""Families in pipeline order; check belongs to last family among its footguns."""
+const LAYER_ORDER = ["A", "B", "C", "H", "D", "E", "G"]
 
 @testset "registry matches design" begin
     footguns = Dict(entry["id"] => entry for entry in TOML.parsefile(joinpath(DESIGN, "footguns.toml"))["footgun"])
@@ -15,7 +17,7 @@ const DESIGN = joinpath(dirname(@__DIR__), "docs", "design")
         design = checks[entry.name]
         @test entry.footguns == design["footguns"]
         @test string(entry.group) == footguns[first(entry.footguns)]["group"]
-        @test string(entry.family) in [footguns[id]["family"] for id in entry.footguns]
+        @test string(entry.family) == argmax(letter -> findfirst(==(letter), LAYER_ORDER), [footguns[id]["family"] for id in entry.footguns])
     end
 end
 
