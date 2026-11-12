@@ -5,6 +5,7 @@ using ..Facts: Span, Precision, Confidence
 using ..Config: Level
 using ..Engine: Diagnostic, Report
 using ..OptOuts: NAME as OPT_OUT
+using ..Baseline: Baseline
 
 """Header word for `level`, as in rustc."""
 const HEADER = Dict(Level.deny => "error", Level.warn => "warning")
@@ -85,6 +86,17 @@ function render_all(io::IO, report::Report)::Nothing
         push!(noted, diagnostic.finding.rule)
         println(io)
     end
+    isempty(report.stale) || render_stale(io, report.stale)
+    return nothing
+end
+
+"""Write message for baseline entries no finding matches."""
+function render_stale(io::IO, stale::Vector{Baseline.Key})::Nothing
+    println(io, "error[baseline]: ", length(stale), " baseline ", length(stale) == 1 ? "entry matches" : "entries match", " no finding")
+    foreach(key -> println(io, "  - `", key.rule, "` in ", key.file, isempty(key.definition) ? "" : " ($(key.definition))"), stale)
+    println(io, "  = why: stale entry would hide later finding with same key")
+    println(io, "  = fix: run `corset baseline` to rewrite baseline")
+    println(io)
     return nothing
 end
 
