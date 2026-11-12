@@ -9,3 +9,7 @@ end
 end
 
 launcher() = @async serve()
+
+function launch()
+    @async serve()
+end

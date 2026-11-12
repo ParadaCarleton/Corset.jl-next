@@ -7,3 +7,8 @@ function start(jobs)
 end
 
 @async serve()
+
+function background()
+    @async log_forever()
+    return 1
+end
