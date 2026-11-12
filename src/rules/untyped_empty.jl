@@ -26,7 +26,6 @@ module UntypedEmpty
 using ...Facts
 
 const NAME = Symbol("untyped-empty")
-# corset: allow untyped-empty -- Argus pattern source is data
 const PATTERN = IndexedPattern(@pattern ~or([], Dict(), Set(), IdDict(), Vector(), Vector(undef, {_})))
 
 """Findings for empty containers with `Any` element type."""

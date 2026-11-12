@@ -78,7 +78,7 @@ end
 """
 Parsed source file (`syntax` stage facts): lossless tree, comment byte ranges, and code nodes indexed by kind.
 Index keeps forms (inner nodes) apart from leaves, since quoted operators like `:(=)` are leaves of form kinds.
-Index skips quoted code outside interpolation (`Syntax.walk`); tree walks still see it.
+Index skips quoted code outside interpolation and macro arguments with `{}` (`Syntax.walk`); tree walks see both.
 """
 struct SyntaxFile
     path::String

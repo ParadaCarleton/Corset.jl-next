@@ -26,7 +26,6 @@ module InferenceDependent
 using ...Facts
 
 const NAME = Symbol("inference-dependent")
-# corset: allow inference-dependent -- Argus pattern source is data
 const PATTERN = IndexedPattern(
     @pattern ~or(
         Core.Compiler.return_type({_}...), Base.return_types({_}...), Base.infer_return_type({_}...),
