@@ -23,7 +23,7 @@ uuid = "5218b696-f38b-4ac9-8b61-a12ec717816d"
 version = "0.17.8"
 
 [[deps.Corset]]
-deps = ["Argus", "Configurations", "EnumX", "JuliaSyntax", "TOML"]
+deps = ["Argus", "Configurations", "EnumX", "JuliaSyntax", "SHA", "TOML"]
 path = ".."
 uuid = "09bf9df1-bea6-4267-acd1-e930da7492cc"
 version = "0.5.0-DEV"

@@ -128,10 +128,10 @@ end
     )
     definite_only = Config.settings(nothing, Flags(), REGISTRY)
     @test isempty(Corset.Engine.diagnostics([possible], definite_only))
-    warned = Report([Diagnostic(possible, Level.warn, "test")], definite_only, Dict{String, String}())
+    warned = Report([Diagnostic(possible, Level.warn, "test")], definite_only, Dict{String, String}(), 0, [])
     @test !Corset.Engine.failed(warned)
     strict = Config.settings(nothing, Flags(; deny_warnings = true), REGISTRY)
-    @test Corset.Engine.failed(Report(warned.diagnostics, strict, Dict{String, String}()))
+    @test Corset.Engine.failed(Report(warned.diagnostics, strict, Dict{String, String}(), 0, []))
 end
 
 @testset "opt-outs" begin
@@ -151,4 +151,32 @@ end
     file = Corset.Syntax.parse_file("end.jl", "x = 1\n# corset: allow one-letter -- nothing follows\n")
     kept, problems = Corset.OptOuts.apply(Facts.FactSet([file]), Finding[], Set([Symbol("one-letter")]))
     @test isempty(kept) && [problem.kind for problem in problems] == [:unused]
+end
+
+@testset "baseline" begin
+    nested = Corset.Syntax.parse_file("d.jl", "module M\nstruct S{T} <: A\n    x::T\nend\nf(x::T)::T where {T} = x\nend\n")
+    @test Corset.Baseline.definition_name(nested, first(findfirst("x::T\nend", nested.text))) == "S"
+    @test Corset.Baseline.definition_name(nested, last(findfirst("= x", nested.text))) == "f"
+    @test Corset.Baseline.definition_name(nested, 1) == "M"
+    @test Corset.Baseline.definition_name(Corset.Syntax.parse_file("t.jl", "x = 1\n"), 1) == ""
+    directory = mktempdir(@__DIR__)
+    write(joinpath(directory, "Project.toml"), "[deps]\n")
+    source = "near(value) = value ≈ 0\nfunction far(value)\n    return value ≈ 0\nend\n"
+    write(joinpath(directory, "a.jl"), source)
+    @test Corset.Engine.baseline(directory) == 2
+    clean = Corset.check(directory)
+    @test isempty(clean.diagnostics) && clean.baselined == 2 && isempty(clean.stale) && !Corset.Engine.failed(clean)
+    write(joinpath(directory, "a.jl"), "# moved down\n\n" * source * "extra(value) = value ≈ 0\n")
+    moved = Corset.check(directory)
+    @test moved.baselined == 2
+    @test [Corset.Baseline.key(Corset.Syntax.parse_file(joinpath(directory, "a.jl"), read(joinpath(directory, "a.jl"), String)), directory, d.finding).definition for d in moved.diagnostics] == ["extra"]
+    write(joinpath(directory, "a.jl"), "near(value) = value ≈ 0\n")
+    fixed = Corset.check(directory)
+    @test fixed.baselined == 1 && [key.definition for key in fixed.stale] == ["far"] && Corset.Engine.failed(fixed)
+    @test occursin("error[baseline]: 1 baseline entry matches no finding", sprint(io -> Corset.Render.render_all(io, fixed)))
+    write(joinpath(directory, Corset.Baseline.FILE), "[[finding]]\nrule = 1\n")
+    @test_throws ConfigError Corset.check(directory)
+    write(joinpath(directory, Corset.Baseline.FILE), "[[finding]]\nrule = 1\nfile = \"a.jl\"\ndefinition = \"\"\nsnippet = \"s\"\ncount = 1\n")
+    @test_throws ConfigError Corset.check(directory)
+    rm(directory; recursive = true)
 end
