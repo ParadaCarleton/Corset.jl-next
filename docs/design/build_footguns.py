@@ -23,18 +23,19 @@ FOOTGUNS = [
     (12, "numbers", "Integer overflow wraps silently", "`typemax(Int) + 1`", C, "D", "Later; off by default. Needs value ranges."),
     (13, "numbers", "Result annotation converts instead of checking", "`f(x)::Float64 = x` turns `Float32` into `Float64`", C, "D", "Report when inferred result needs conversion; annotation then acts as type check."),
     (14, "types", "Invariant parameter rejects intended arguments", "`f(::Vector{Real})` rejects `Vector{Float64}`", C, "C", ""),
-    (15, "types", "Overspecified type blocks generic callers", "`x::Float64`, `x::AbstractFloat`, `v::AbstractVector{Float64}`, `x::Union{Int16, Int32, Int64}` reject other types", M, "C", "Overspecified: names specific number type, `AbstractFloat`, or concrete container anywhere in annotation. Kind enumerated union: union of sibling number types; fix `typejoin` (`Integer`, floats to `Real`). Union of package variants that leaves out some subtypes is deliberate and passes. Fix: type parameter. Message says annotation gains no speed: Julia compiles for each concrete argument type anyway."),
+    (15, "types", "Overspecified type blocks generic callers", "`x::Float64`, `x::AbstractFloat`, `v::AbstractVector{Float64}`, `x::Union{Int16, Int32, Int64}` reject other types", M, "C", "Overspecified: names specific number type, `AbstractFloat`, or concrete container anywhere in annotation. Kind enumerated union: union of sibling number types; fix `typejoin` (`Integer`, floats to `Real`). Union of package variants that leaves out some subtypes is deliberate and passes. Fix: type parameter. Message says annotation gains no speed: Julia compiles for each concrete argument type anyway. Exempt: concrete method beside generic method of same function (fast path)."),
     (16, "types", "Hard-coded `Array` drops caller's array type", "`zeros(n)` inside method that got `CuArray`", M, "D", ""),
     (17, "types", "Variable, result or closure capture with vague inferred type", "`acc = 0` then `acc += 0.5`", P, "D", "Capture may need own fix (`let`, pass as argument)."),
     (18, "types", "Struct field with vague type", "`x::Real`, `x::Vector`", P, "C", ""),
     (19, "types", "Mutable struct where immutable works", "`mutable struct`; struct of mostly `Ref` fields", P, "D", ""),
-    (20, "types", "Ad-hoc union of unrelated types where sum type belongs", "`Union{Circle, Square, Error}`", P, "D", ""),
+    (20, "types", "Ad-hoc union of unrelated types where sum type belongs", "`Union{Circle, Square, Error}`", R, "D", "Small unions compile fast; problem is design. Message suggests sum type."),
     (21, "types", "Empty literal has `Any` element type", "`[]`, `Dict()`", P, "A", ""),
     (22, "types", "`==` defined without `hash`", "`Dict` and `Set` disagree with `==`", C, "C", ""),
     (23, "types", "Method named like Base function without `Base.` shadows it", "`length(x::MyT) = …`", C, "C", ""),
     (24, "types", "Methods differ only in keywords; later one overwrites", "`f(x; a)` and `f(x; b)`", C, "C", "Keywords take no part in dispatch. Julia 1.10+ errors in packages; check covers scripts and explains cause."),
     (25, "types", "Type piracy", "`Base.:+(::Int, ::String)`", M, "G", ""),
     (26, "types", "Behavior depends on inference result", "`Core.Compiler.return_type`", M, "A", ""),
+    (94, "types", "Method ambiguity between package methods", "`f(::Int, ::Any)` and `f(::Any, ::Int)`", C, "G", "Aqua.jl ambiguity check; covers intersections no analyzed call reaches."),
     (83, "types", "Call can never succeed", "no matching method; undefined global or field", C, "D", "Package call inferred `Union{}` without explicit `throw`. JET is test reference."),
     (84, "types", "Public struct has no abstract supertype; users cannot extend", "`struct Model` → `struct Model <: AbstractModel`", M, "C", "Public structs only."),
     (92, "types", "Subtype misses required interface method", "`struct V <: AbstractArray` without `size`", C, "C", "Rust rejects incomplete trait impl; Julia fails at first call. Lists from Interfaces.jl or RequiredInterfaces.jl."),
@@ -45,8 +46,8 @@ FOOTGUNS = [
     (30, "compile", "Too many specializations on `Function` or `Type` argument", "one method, 500 closure types", P, "C", "Predict from source: C finds methods that specialize on argument; A counts distinct closures or types passed at package call sites."),
     (31, "arrays", "Loop over scalar runs once", "`for i in 4`, `for i in length(v)`", C, "D", ""),
     (32, "arrays", "Temporary array built only to be consumed once", "`sum(f.(x))` → `sum(f, x)`; `collect` of iterator used once", P, "B", "Enforceable part of stay-lazy goal."),
-    (33, "arrays", "Uninitialized element read before write", "`similar(x)` then `sum`", C, "B", ""),
-    (34, "arrays", "Placeholder value looks like data after partial fill", "`zeros(n)`, half written", C, "B", ""),
+    (33, "arrays", "Uninitialized element read before write", "`similar(x)` then `sum`", C, "B", "Definite only for straight-line pattern; loops, branches, aliases, views give `possible`."),
+    (34, "arrays", "Placeholder value looks like data after partial fill", "`zeros(n)`, half written", C, "B", "Definite only for straight-line pattern; loops, branches, aliases, views give `possible`."),
     (35, "arrays", "`fill` shares one mutable object", "`fill(zeros(3), n)`", C, "A", ""),
     (36, "arrays", "`1:length(A)` assumes 1-based indices", "`OffsetArray` breaks it", M, "A", ""),
     (37, "arrays", "Index safety removed without proof", "`@inbounds` on unchecked index", C, "D", ""),
@@ -145,9 +146,9 @@ print(len(FOOTGUNS))
 # families section, generated from same mapping
 FAMILY_INFO = [
     ("A", "Syntax patterns", "One tree walk per file. Checks match node shapes. Candidate base: Argus.jl (check license and API stability first)."),
-    ("B", "Array lifecycle", "Local def-use per array: created, written, read before write, resized, escapes, read once."),
+    ("B", "Array lifecycle", "Local def-use per array: created, written, read before write, resized, escapes, read once. Definite only for straight-line patterns."),
     ("C", "Module inspection", "Loaded package without inference: bindings, structs, signatures, method table, specialization heuristics."),
-    ("D", "Typed-IR scan", "One inference per package method; stand-in types replace generic arguments. One pass per inferred frame. One shared definition of vague type (union policy)."),
+    ("D", "Typed-IR scan", "One inference per package method; stand-in types replace generic arguments. One pass per inferred frame. Union policy decides which unions `ad-hoc-union` reports."),
     ("E", "Effect and alias summary", "Per method: writes to arguments, writes to globals, result aliases global state."),
     ("H", "Scope", "Lowered scopes per file: bindings, soft scope, captures, boxes, task spawns."),
     ("G", "External tools", "Wrap tool output as findings: Aqua.jl, ExplicitImports.jl, jscpd."),
@@ -215,10 +216,10 @@ CHECKS = [
     ("bool-index", [11], ""), ("overflow", [12], "Later."),
     ("result-conversion", [13], "With `annotation`, makes annotations checked."),
     ("invariant-parameter", [14], ""), ("overspecified-type", [15], ""),
-    ("vague-type", [17, 18, 20], "Union policy. Kinds: local, result, capture, field, union. Union of input type and literal type goes to `type-disruption`."),
+    ("vague-type", [17, 18], "Abstract or `Any` inferred type: real dispatch cost. Kinds: local, result, capture, field."), ("ad-hoc-union", [20], "Union policy: union of concrete types outside policy. Union of input type and literal type goes to `type-disruption`."),
     ("mutable-struct", [19], ""), ("untyped-empty", [21], "Fixer adds element type."),
     ("eq-without-hash", [22], ""), ("shadowed-base", [23], ""), ("keyword-overwrite", [24], ""),
-    ("piracy", [25], "Aqua.jl."), ("inference-dependent", [26], ""), ("never-succeeds", [83], ""),
+    ("piracy", [25], "Aqua.jl."), ("method-ambiguity", [94], "Aqua.jl."), ("inference-dependent", [26], ""), ("never-succeeds", [83], ""),
     ("closed-struct", [84], ""), ("missing-interface", [92], ""), ("iterator-traits", [93], ""), ("untested-extension", [88], ""),
     ("runtime-dispatch", [27], ""), ("dynamic-splat", [28], ""), ("growing-recursion", [29], ""),
     ("specialization-blowup", [30], ""), ("scalar-loop", [31], ""), ("temporary-array", [32], ""),
@@ -276,6 +277,13 @@ page = re.sub(r'<section id="checks">.*?</section>\n\n', "", page, flags=re.S)
 page = page.replace('<section id="confidence">', checks + '<section id="confidence">', 1)
 page = re.sub(r"<b>\d+</b> checks", f"<b>{len(CHECKS)}</b> checks", page)
 page = re.sub(r"<b>\d+</b> footguns", f"<b>{len(FOOTGUNS)}</b> footguns", page)
+def phase_count(spec: str) -> int:
+    """Count footguns a plan row covers: families listed, or deferred ones for 'later'."""
+    deferred = lambda item: "Later" in item[6]
+    if spec == "later":
+        return sum(deferred(item) for item in FOOTGUNS)
+    return sum(item[5] in spec.split() and not deferred(item) for item in FOOTGUNS)
+page = re.sub(r'<td data-count="([^"]+)">\d+</td>', lambda match: f'<td data-count="{match.group(1)}">{phase_count(match.group(1))}</td>', page)
 open(page_path, "w").write(page)
 
 # coverage of old names goes to history markdown
