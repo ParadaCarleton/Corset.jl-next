@@ -1,4 +1,5 @@
 /Manifest.toml
+/lib/*/Manifest.toml
 *.cov
 
 # Claude Code conversations symlink (machine-local, via claude-dirs)
