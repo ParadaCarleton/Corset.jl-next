@@ -1,4 +1,4 @@
-performance[untyped-empty]: `[]` has element type `Any`
+warning[untyped-empty]: `[]` has element type `Any`
  --> positive.jl:3:13
   |
 3 |     names = []
@@ -7,8 +7,9 @@ performance[untyped-empty]: `[]` has element type `Any`
   = why: every element read dispatches at run time and boxes values
   = fix: name element type: `Float64[]`, `Dict{String, Int}()`; write `Any[]` when `Any` is intended   [manual]
   = docs: corset explain untyped-empty
+  = note: warn from performance group, library preset
 
-performance[untyped-empty]: `Set()` has element type `Any`
+warning[untyped-empty]: `Set()` has element type `Any`
   --> positive.jl:10:8
    |
 10 | seen = Set()
@@ -18,7 +19,7 @@ performance[untyped-empty]: `Set()` has element type `Any`
    = fix: name element type: `Float64[]`, `Dict{String, Int}()`; write `Any[]` when `Any` is intended   [manual]
    = docs: corset explain untyped-empty
 
-performance[untyped-empty]: `Dict()` has element type `Any`
+warning[untyped-empty]: `Dict()` has element type `Any`
   --> positive.jl:11:9
    |
 11 | cache = Dict()
@@ -28,7 +29,7 @@ performance[untyped-empty]: `Dict()` has element type `Any`
    = fix: name element type: `Float64[]`, `Dict{String, Int}()`; write `Any[]` when `Any` is intended   [manual]
    = docs: corset explain untyped-empty
 
-performance[untyped-empty]: `Vector(undef, 4)` has element type `Any`
+warning[untyped-empty]: `Vector(undef, 4)` has element type `Any`
   --> positive.jl:12:9
    |
 12 | slots = Vector(undef, 4)

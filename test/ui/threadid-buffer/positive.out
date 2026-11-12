@@ -1,4 +1,4 @@
-correctness[threadid-buffer]: `counts` is indexed by thread ID
+error[threadid-buffer]: `counts` is indexed by thread ID
  --> positive.jl:7:9
   |
 7 |         counts[threadid()] += x
@@ -7,8 +7,9 @@ correctness[threadid-buffer]: `counts` is indexed by thread ID
   = why: tasks migrate between threads, so two tasks can share one slot and race
   = fix: keep state per task: chunk work and give each chunk its own buffer (OhMyThreads.jl)   [manual]
   = docs: corset explain threadid-buffer
+  = note: deny from correctness group, library preset
 
-correctness[threadid-buffer]: `scratch` is indexed by thread ID
+error[threadid-buffer]: `scratch` is indexed by thread ID
   --> positive.jl:12:1
    |
 12 | scratch[Threads.threadid()] = 0
@@ -19,7 +20,7 @@ correctness[threadid-buffer]: `scratch` is indexed by thread ID
    = fix: keep state per task: chunk work and give each chunk its own buffer (OhMyThreads.jl)   [manual]
    = docs: corset explain threadid-buffer
 
-correctness[threadid-buffer]: `totals` is indexed by thread ID
+error[threadid-buffer]: `totals` is indexed by thread ID
   --> positive.jl:15:5
    |
 15 |     totals[Threads.threadid()] += k

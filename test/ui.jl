@@ -3,11 +3,14 @@
 # Each case starts with `# runic: off`: formatter must not normalize syntax cases test.
 
 using Corset: Corset
-using Corset.Facts: FactSet, Tier
+using Corset.Facts: FactSet, Tier, Confidence
+using Corset.Config: Settings, Kind
 using Test: @test, @testset
 
 const UI = joinpath(@__DIR__, "ui")
 const BLESS = get(ENV, "CORSET_BLESS", "") == "1"
+"""Settings UI cases render under: library preset, both confidences."""
+const UI_SETTINGS = Settings(Kind.library, Confidence.possible, Tier.breaking, Dict(), false)
 
 """Compare `actual` with snapshot `path`; write it when blessing. Missing snapshot means empty expected text."""
 function snapshot(path::String, actual::String)::Bool
@@ -21,12 +24,8 @@ function run_case(name::Symbol, case::String)::Tuple{String, String}
     file = Corset.Syntax.parse_file(basename(case), text)
     entry = Corset.Rules.entry(name)
     findings = Corset.Engine.run_rules(FactSet([file]), [entry])
-    rendered = sprint() do io
-        for finding in findings
-            Corset.Render.render(io, finding, entry.group, text)
-            println(io)
-        end
-    end
+    report = Corset.Engine.Report(Corset.Engine.diagnostics(findings, UI_SETTINGS), UI_SETTINGS, Dict(file.path => text))
+    rendered = sprint(io -> Corset.Render.render_all(io, report))
     fixed = Corset.Fixes.apply_edits(text, Corset.Fixes.applicable_edits(findings, file.path, Tier.breaking))
     return rendered, fixed == text ? "" : fixed
 end

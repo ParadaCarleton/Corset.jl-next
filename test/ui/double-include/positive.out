@@ -1,4 +1,4 @@
-correctness[double-include]: `include("./geometry.jl")` includes file again
+error[double-include]: `include("./geometry.jl")` includes file again
  --> positive.jl:4:1
   |
 2 | include("geometry.jl")
@@ -10,4 +10,5 @@ correctness[double-include]: `include("./geometry.jl")` includes file again
   = why: methods are redefined and structs error or shadow; load order then decides behavior
   = fix: include each file once, from package entry file   [manual]
   = docs: corset explain double-include
+  = note: deny from correctness group, library preset
 

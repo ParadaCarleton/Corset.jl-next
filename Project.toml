@@ -5,11 +5,18 @@ authors = ["Carlos Parada <71727937+ParadaCarleton@users.noreply.github.com>"]
 
 [deps]
 Argus = "e39743ec-b2cc-45ef-a990-b666fc093538"
+Configurations = "5218b696-f38b-4ac9-8b61-a12ec717816d"
 EnumX = "4e289a0a-7415-4d19-859d-a7e5c4648b56"
 JuliaSyntax = "70703baa-626e-46a2-a12c-08ffd08c73b4"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 
 [compat]
 Argus = "0.4.2"
+Configurations = "0.17"
 EnumX = "1.0.7"
 JuliaSyntax = "1.0.2"
+TOML = "1"
 julia = "1.13"
+
+[preferences.Corset]
+kind = "library"

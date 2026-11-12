@@ -1,4 +1,4 @@
-correctness[broad-catch]: `catch` handles every error
+error[broad-catch]: `catch` handles every error
  --> positive.jl:5:5
   |
 5 |     catch
@@ -7,8 +7,9 @@ correctness[broad-catch]: `catch` handles every error
   = why: typos, `MethodError` and `InterruptException` vanish with intended errors
   = fix: handle expected type only: `e isa MyError || rethrow()`   [manual]
   = docs: corset explain broad-catch
+  = note: deny from correctness group, library preset
 
-correctness[broad-catch]: `catch` handles every error
+error[broad-catch]: `catch` handles every error
   --> positive.jl:11:1
    |
 11 | catch err
@@ -18,7 +19,7 @@ correctness[broad-catch]: `catch` handles every error
    = fix: handle expected type only: `e isa MyError || rethrow()`   [manual]
    = docs: corset explain broad-catch
 
-correctness[broad-catch]: `catch` handles every error
+error[broad-catch]: `catch` handles every error
   --> positive.jl:17:1
    |
 17 | catch err

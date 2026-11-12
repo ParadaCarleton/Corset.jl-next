@@ -1,4 +1,4 @@
-correctness[ambiguous-concat]: `[1 -2]` concatenates `-2` as new element
+error[ambiguous-concat]: `[1 -2]` concatenates `-2` as new element
  --> positive.jl:2:7
   |
 2 | row = [1 -2]
@@ -9,8 +9,9 @@ correctness[ambiguous-concat]: `[1 -2]` concatenates `-2` as new element
   = confidence: possible
   = fix: write `[1, -2]` for vector, `[1 - 2]` for arithmetic   [manual]
   = docs: corset explain ambiguous-concat
+  = note: deny from correctness group, library preset
 
-correctness[ambiguous-concat]: `[x -y]` concatenates `-y` as new element
+error[ambiguous-concat]: `[x -y]` concatenates `-y` as new element
  --> positive.jl:3:8
   |
 3 | pair = [x -y]

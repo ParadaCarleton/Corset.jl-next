@@ -1,4 +1,4 @@
-correctness[bracketed-range]: `[1:3]` is vector with one element, range `1:3`
+error[bracketed-range]: `[1:3]` is vector with one element, range `1:3`
  --> positive.jl:2:11
   |
 2 | offsets = [1:3]
@@ -8,8 +8,9 @@ correctness[bracketed-range]: `[1:3]` is vector with one element, range `1:3`
   = confidence: possible
   = fix: replace with `collect(1:3)`   [likely]
   = docs: corset explain bracketed-range
+  = note: deny from correctness group, library preset
 
-correctness[bracketed-range]: `[2:2:10]` is vector with one element, range `2:2:10`
+error[bracketed-range]: `[2:2:10]` is vector with one element, range `2:2:10`
  --> positive.jl:3:9
   |
 3 | evens = [2:2:10]

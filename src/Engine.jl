@@ -1,9 +1,24 @@
-"""Collect files, build facts, run registered rules."""
+"""Collect files, build facts, run registered rules, apply levels and confidence setting."""
 module Engine
 
-using ..Facts: FactSet, Finding, RuleEntry
+using ..Facts: FactSet, Finding, RuleEntry, Confidence
 using ..Syntax: parse_file
-using ..Rules: REGISTRY
+using ..Rules: REGISTRY, entry
+using ..Config: Config, Flags, Settings, Level, level_of, project_root
+
+"""Finding with level from settings. `source` says where level was set."""
+struct Diagnostic
+    finding::Finding
+    level::Level.T
+    source::String
+end
+
+"""Result of one run: reported diagnostics, settings that produced them, and source text per file."""
+struct Report
+    diagnostics::Vector{Diagnostic}
+    settings::Settings
+    sources::Dict{String, String}
+end
 
 """Julia files under `path` in sorted order; `path` itself when it is a file."""
 function julia_files(path::String)::Vector{String}
@@ -21,7 +36,27 @@ function run_rules(facts::FactSet, rules::Vector{RuleEntry} = REGISTRY)::Vector{
     return sort!(findings; by = finding -> (finding.primary.span.file, finding.primary.span.first_byte, finding.rule))
 end
 
-"""Findings of registered rules on every Julia file under `path`."""
-check(path::String; rules::Vector{RuleEntry} = REGISTRY)::Vector{Finding} = run_rules(facts_for(julia_files(path)), rules)
+"""Diagnostics for `findings` under `settings`: drops `allow` findings and findings below confidence setting."""
+function diagnostics(findings::Vector{Finding}, settings::Settings)::Vector{Diagnostic}
+    reported = Diagnostic[]
+    for finding in findings
+        settings.confidence == Confidence.definite && finding.confidence == Confidence.possible && continue
+        level, source = level_of(settings, entry(finding.rule))
+        level == Level.allow || push!(reported, Diagnostic(finding, level, source))
+    end
+    return reported
+end
+
+"""Whether `report` fails run: any `deny` diagnostic, or any `warn` diagnostic under `--deny warnings`."""
+failed(report::Report)::Bool = any(report.diagnostics) do diagnostic
+    diagnostic.level == Level.deny || (report.settings.deny_warnings && diagnostic.level == Level.warn)
+end
+
+"""Report for every Julia file under `path`, with config of enclosing project and command-line `flags`."""
+function check(path::String; flags::Flags = Flags())::Report
+    settings = Config.settings(project_root(path), flags, REGISTRY)
+    facts = facts_for(julia_files(path))
+    return Report(diagnostics(run_rules(facts), settings), settings, Dict(file.path => file.text for file in facts.files))
+end
 
 end

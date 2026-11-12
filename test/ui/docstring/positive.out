@@ -1,4 +1,4 @@
-readability[docstring]: comment above definition is not docstring
+warning[docstring]: comment above definition is not docstring
  --> positive.jl:6:1
   |
 5 | # Area of unit circle.
@@ -9,8 +9,9 @@ readability[docstring]: comment above definition is not docstring
   = why: help mode, Documenter and language server show docstrings; comments stay invisible
   = fix: turn comment into docstring   [safe]
   = docs: corset explain docstring
+  = note: warn from readability group, library preset
 
-readability[docstring]: comment above definition is not docstring
+warning[docstring]: comment above definition is not docstring
   --> positive.jl:12:5
    |
 10 |     # Perimeter of square
@@ -23,7 +24,7 @@ readability[docstring]: comment above definition is not docstring
    = fix: turn comment into docstring   [safe]
    = docs: corset explain docstring
 
-readability[docstring]: module `Inner` has no docstring
+warning[docstring]: module `Inner` has no docstring
   --> positive.jl:14:1
    |
 14 | module Inner

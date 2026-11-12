@@ -1,4 +1,4 @@
-readability[file-length]: file has 1001 lines
+warning[file-length]: file has 1001 lines
     --> positive.jl:1001:1
      |
 1001 | x999 = 999
@@ -7,4 +7,5 @@ readability[file-length]: file has 1001 lines
      = why: long files mix topics; readers lose track of what lives where
      = fix: split file by topic and `include` parts   [manual]
      = docs: corset explain file-length
+     = note: warn from readability group, library preset
 

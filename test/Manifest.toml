@@ -2,7 +2,7 @@
 
 julia_version = "1.13.3"
 manifest_format = "2.1"
-project_hash = "0947cec8563383c812ddb423c16b6490f5df9c53"
+project_hash = "f0b2a1a6217ee4f8b8f68295641d963403b1e7f4"
 
 [[deps.Argus]]
 deps = ["InteractiveUtils", "JuliaSyntax", "MacroTools", "RuntimeGeneratedFunctions", "Test"]
@@ -15,8 +15,15 @@ version = "0.4.2"
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 version = "1.11.0"
 
+[[deps.Configurations]]
+deps = ["ExproniconLite", "OrderedCollections", "TOML"]
+git-tree-sha1 = "e3a3332c391837afa3422f2c0bda36e0cd73d771"
+registries = "General"
+uuid = "5218b696-f38b-4ac9-8b61-a12ec717816d"
+version = "0.17.8"
+
 [[deps.Corset]]
-deps = ["Argus", "EnumX", "JuliaSyntax"]
+deps = ["Argus", "Configurations", "EnumX", "JuliaSyntax", "TOML"]
 path = ".."
 uuid = "09bf9df1-bea6-4267-acd1-e930da7492cc"
 version = "0.5.0-DEV"
@@ -37,6 +44,12 @@ git-tree-sha1 = "d2e49e7efd29719d6f28b891b0e0e159daa9d2b4"
 registries = "General"
 uuid = "e2ba6199-217a-4e67-a87a-7c52f15ade04"
 version = "0.1.11"
+
+[[deps.ExproniconLite]]
+git-tree-sha1 = "250aa1562e840b38c72b44a9ebef0f39f6b6e950"
+registries = "General"
+uuid = "55351af7-c7e9-48d6-89ff-24e801d99491"
+version = "0.10.16"
 
 [[deps.InteractiveUtils]]
 deps = ["Markdown"]
@@ -68,6 +81,12 @@ version = "0.5.16"
 deps = ["Base64", "JuliaSyntaxHighlighting", "StyledStrings"]
 uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
 version = "1.11.0"
+
+[[deps.OrderedCollections]]
+git-tree-sha1 = "b079a6affebde167dad8ffe0d670b53917fbcb68"
+registries = "General"
+uuid = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
+version = "2.0.3"
 
 [[deps.PrecompileTools]]
 deps = ["Preferences"]
