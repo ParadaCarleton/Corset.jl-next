@@ -69,7 +69,9 @@ end
 | `corset explain <rule>` | Print rule docs offline. |
 | `corset baseline [path]` | Write current findings to baseline. |
 
-Flags: `-A`, `-W`, `-D <rule or group>` set levels (Clippy style); `--deny warnings`; `--confidence definite|possible`; `--format text|json|sarif`; `--no-cache`.
+Flags: `-A`, `-W`, `-D <rule or group>` set levels and apply in order, as in rustc; `-D warnings` fails run on warnings; `--confidence definite|possible`; `--format text|json|sarif`; `--tier safe|likely|breaking` for `fix`; `--no-cache`.
+
+Install: `pkg> app add Corset` puts `corset` on PATH (Julia app); `julia -m Corset` runs same entry point. Text output ends with count line: errors, warnings, baselined. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.
 
 Exit codes: `0` no `deny` finding; `1` `deny` finding; `2` config or usage error; `101` internal error (Cargo convention).
 
