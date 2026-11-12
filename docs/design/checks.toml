@@ -324,6 +324,7 @@ footguns = [70]
 [[check]]
 name = "annotation"
 footguns = [71]
+note = "Fixer guesses types for unannotated package; see annotation transition."
 
 [[check]]
 name = "one-letter"

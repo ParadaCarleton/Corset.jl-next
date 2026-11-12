@@ -367,7 +367,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tr data-group="correctness"><td><code>threadid-buffer</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F68 Buffer indexed by <code>threadid()</code></td><td></td></tr>
 <tr data-group="correctness"><td><code>threaded-race</code></td><td><span class="chip g-correctness">correctness</span></td><td>H</td><td>F69 Unsynchronized update in threaded loop</td><td></td></tr>
 <tr data-group="correctness"><td><code>orphan-task</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F70 Task result never waited; errors vanish</td><td></td></tr>
-<tr data-group="readability"><td><code>annotation</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F71 Argument or result without type</td><td></td></tr>
+<tr data-group="readability"><td><code>annotation</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F71 Argument or result without type</td><td>Fixer guesses types for unannotated package; see annotation transition.</td></tr>
 <tr data-group="readability"><td><code>one-letter</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F72 One-letter name</td><td></td></tr>
 <tr data-group="readability"><td><code>mixed-return</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F73 Explicit <code>return</code> mixed with implicit last value</td><td></td></tr>
 <tr data-group="readability"><td><code>docstring</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F74 Comment where docstring belongs<br>F80 Module without docstring</td><td>Kinds: comment above function, module without docstring.</td></tr>
@@ -575,6 +575,16 @@ footer { color: var(--muted); font-size: 0.85rem; }
 </ul>
 </div><div class="decision"><h3>Suggested abstract type</h3>
 <p>Always suggest <code>Real</code> for floats. <code>overspecified-type</code> uses one helper: <code>float_to_real(typejoin(members))</code>. Struct field fix is type parameter (<code>x::T</code>) only. Property test: applying any fix never creates new finding. Build general mechanism only if test keeps finding conflicts.</p>
+</div><div class="decision"><h3>Annotation transition</h3>
+<p>Helps unannotated package reach full annotations. <code>annotation</code> fixer guesses types; message shows evidence for each guess.</p>
+<ul>
+<li>Evidence, strongest first: argument types at package's own call sites, inferred through annotated callers; default values; struct fields argument flows into; operations body applies (arithmetic gives <code>Number</code>, indexing and <code>length</code> give <code>AbstractArray</code>).</li>
+<li>Widen evidence to family: numbers to <code>Real</code> (<code>Integer</code> when all integer), arrays to <code>AbstractVector{&lt;:Real}</code>, struct to nearest abstract supertype; union of at most three families. Keep guess only when it holds every observed type. Scheme comes from legacy typed fixer.</li>
+<li>Result annotation: infer with chosen argument types; map stand-ins back to type parameters. Tier <code>likely</code>.</li>
+<li>Argument guess with call-site evidence: tier <code>breaking</code>, since narrower annotation can reject callers. Body-use evidence only: tier <code>manual</code>.</li>
+<li>After fix, Corset checks again: internal call that no longer matches shows as <code>never-succeeds</code>.</li>
+<li><code>application</code> and <code>script</code> presets apply <code>breaking</code> fixes automatically, so they transition in one run. <code>library</code> needs <code>--tier breaking</code>.</li>
+</ul>
 </div><div class="decision"><h3>Hard-coded arrays</h3>
 <p><code>type-disruption</code> reports hard-coded <code>Vector</code>/<code>Matrix</code>/<code>Array</code> construction everywhere, <code>zeros</code>, <code>ones</code>, <code>fill</code> included. With template array: autofix to <code>similar(template, T, dims)</code>. Without template: message teaches caller-supplied template or array type; autofix adds parameter in <code>breaking</code> tier. One shared initializer fixer serves <code>type-disruption</code>, <code>constant-array</code> and <code>unwritten-element</code>.</p>
 </div><div class="decision"><h3>Specialization count</h3>
@@ -819,7 +829,7 @@ end
 </tr>
 <tr>
 <td>4 types</td>
-<td>Stand-in inference over every package method; family D and type-disruption scan; per-method disk cache; <code>annotation</code> fixer fills result types from inference.</td>
+<td>Stand-in inference over every package method; family D and type-disruption scan; per-method disk cache; <code>annotation</code> fixer guesses argument types and fills result types (annotation transition, <code>types.md</code>).</td>
 <td>22</td>
 <td>Precision gate passes on corpus. <code>unverified-inbounds</code> agrees with julia-in-lean site verdicts.</td>
 </tr>

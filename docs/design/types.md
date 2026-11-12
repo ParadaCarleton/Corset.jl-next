@@ -72,6 +72,17 @@ One policy for inferred locals, results and struct fields; argument annotations 
 
 Always suggest `Real` for floats. `overspecified-type` uses one helper: `float_to_real(typejoin(members))`. Struct field fix is type parameter (`x::T`) only. Property test: applying any fix never creates new finding. Build general mechanism only if test keeps finding conflicts.
 
+### Annotation transition
+
+Helps unannotated package reach full annotations. `annotation` fixer guesses types; message shows evidence for each guess.
+
+- Evidence, strongest first: argument types at package's own call sites, inferred through annotated callers; default values; struct fields argument flows into; operations body applies (arithmetic gives `Number`, indexing and `length` give `AbstractArray`).
+- Widen evidence to family: numbers to `Real` (`Integer` when all integer), arrays to `AbstractVector{<:Real}`, struct to nearest abstract supertype; union of at most three families. Keep guess only when it holds every observed type. Scheme comes from legacy typed fixer.
+- Result annotation: infer with chosen argument types; map stand-ins back to type parameters. Tier `likely`.
+- Argument guess with call-site evidence: tier `breaking`, since narrower annotation can reject callers. Body-use evidence only: tier `manual`.
+- After fix, Corset checks again: internal call that no longer matches shows as `never-succeeds`.
+- `application` and `script` presets apply `breaking` fixes automatically, so they transition in one run. `library` needs `--tier breaking`.
+
 ### Hard-coded arrays
 
 `type-disruption` reports hard-coded `Vector`/`Matrix`/`Array` construction everywhere, `zeros`, `ones`, `fill` included. With template array: autofix to `similar(template, T, dims)`. Without template: message teaches caller-supplied template or array type; autofix adds parameter in `breaking` tier. One shared initializer fixer serves `type-disruption`, `constant-array` and `unwritten-element`.
