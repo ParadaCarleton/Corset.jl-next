@@ -22,14 +22,16 @@ function main()::Nothing
                 counts[x.footgun] = get(counts, x.footgun, 0) + 1
                 x.footgun in (10, 35, 68) && push!(samples, "F$(x.footgun) $(x.file):$(x.line)  $(first(x.text, 80))")
             end
-            parse_s += (time_ns() - t0) / 1e9 - (time_ns() - t1) / 1e9
-            match_s += (time_ns() - t1) / 1e9
+            parse_s += (time_ns() - t0) / 1.0e9 - (time_ns() - t1) / 1.0e9
+            match_s += (time_ns() - t1) / 1.0e9
         catch err
             push!(failures, "$f: $(sprint(showerror, err)[1:min(end, 200)])")
         end
     end
-    println("packages=", length(roots), " files=", length(files), " lines=", lines, " parse=", round(parse_s; digits = 2), "s match=", round(match_s; digits = 2),
-        "s per10k=", round((parse_s + match_s) * 1e4 / lines * 1e3; digits = 1), "ms failures=", length(failures))
+    println(
+        "packages=", length(roots), " files=", length(files), " lines=", lines, " parse=", round(parse_s; digits = 2), "s match=", round(match_s; digits = 2),
+        "s per10k=", round((parse_s + match_s) * 1.0e4 / lines * 1.0e3; digits = 1), "ms failures=", length(failures)
+    )
     println("findings by footgun: ", sort(collect(counts)))
     foreach(println, first(failures, 10))
     foreach(println, samples)

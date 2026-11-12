@@ -18,8 +18,8 @@ function run_corpus(rules::Vector{Rule}, sources::Vector{Pair{String, String}}):
         t1 = time_ns()
         append!(findings, run_rules(rules, file, src, tree))
         t2 = time_ns()
-        parse_seconds += (t1 - t0) / 1e9
-        match_seconds += (t2 - t1) / 1e9
+        parse_seconds += (t1 - t0) / 1.0e9
+        match_seconds += (t2 - t1) / 1.0e9
     end
     return parse_seconds, match_seconds, findings
 end
@@ -38,11 +38,15 @@ function main(out::Union{Nothing, String})::Nothing
         match_s = minimum(r[2] for r in runs)
         findings = last(runs)[3]
         append!(all_findings, [Finding(f.footgun, f.rule, "$(m)/$(f.file)", f.line, f.range, f.text) for f in findings])
-        report[string(m)] = Dict("version" => string(pkgversion(m)), "files" => length(sources), "lines" => lines,
+        report[string(m)] = Dict(
+            "version" => string(pkgversion(m)), "files" => length(sources), "lines" => lines,
             "cold_seconds" => cold, "parse_seconds" => parse_s, "match_seconds" => match_s,
-            "per_10k_lines_seconds" => (parse_s + match_s) * 1e4 / lines, "findings" => length(findings))
-        println(rpad(string(m), 15), " lines=", lines, " cold=", round(cold; digits = 3), "s parse=", round(parse_s * 1e3; digits = 1),
-            "ms match=", round(match_s * 1e3; digits = 1), "ms per10k=", round((parse_s + match_s) * 1e4 / lines * 1e3; digits = 1), "ms findings=", length(findings))
+            "per_10k_lines_seconds" => (parse_s + match_s) * 1.0e4 / lines, "findings" => length(findings)
+        )
+        println(
+            rpad(string(m), 15), " lines=", lines, " cold=", round(cold; digits = 3), "s parse=", round(parse_s * 1.0e3; digits = 1),
+            "ms match=", round(match_s * 1.0e3; digits = 1), "ms per10k=", round((parse_s + match_s) * 1.0e4 / lines * 1.0e3; digits = 1), "ms findings=", length(findings)
+        )
     end
     for f in all_findings
         println("F", f.footgun, " ", f.rule, " ", f.file, ":", f.line, "  ", f.text)

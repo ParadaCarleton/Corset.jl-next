@@ -10,6 +10,12 @@ lines = sum(count(==('\n'), s) for (_, s) in sources)
 trees = [parse_file(s) for (_, s) in sources]
 for k in (1, 4, 10, 20)
     rules = reduce(vcat, [footgun_rules() for _ in 1:k])
-    seconds = minimum(@elapsed(for ((f, s), t) in zip(sources, trees); run_rules(rules, f, s, t); end) for _ in 1:10)
-    println("rules=", length(rules), " match per10k=", round(seconds * 1e4 / lines * 1e3; digits = 1), "ms")
+    seconds = minimum(
+        @elapsed(
+            for ((f, s), t) in zip(sources, trees)
+                run_rules(rules, f, s, t)
+            end
+        ) for _ in 1:10
+    )
+    println("rules=", length(rules), " match per10k=", round(seconds * 1.0e4 / lines * 1.0e3; digits = 1), "ms")
 end

@@ -28,25 +28,37 @@ one_to_length_guard(b::Bindings, ::Red, ancestors::Vector{Red})::Bool = !one_bas
 """Rules: F10, F21, F35, F36, F68."""
 function footgun_rules()::Vector{Rule}
     return Rule[
-        Rule(10, "approx-zero", ["_x ≈ _z", "_z ≈ _x", "_x ≉ _z", "_z ≉ _x", "isapprox(_x, _z)", "isapprox(_z, _x)"], zero_guard,
-            "approximate compare to zero without `atol` is always false"),
-        Rule(21, "empty-any-literal", ["[]", "Dict()", "Set()", "IdDict()", "Vector()", "Any[]"], always,
-            "empty literal has `Any` element type"),
-        Rule(35, "fill-shared-mutable", ["fill(_ctor(_args...), _dims...)", "fill([_xs...], _dims...)"],
+        Rule(
+            10, "approx-zero", ["_x ≈ _z", "_z ≈ _x", "_x ≉ _z", "_z ≉ _x", "isapprox(_x, _z)", "isapprox(_z, _x)"], zero_guard,
+            "approximate compare to zero without `atol` is always false"
+        ),
+        Rule(
+            21, "empty-any-literal", ["[]", "Dict()", "Set()", "IdDict()", "Vector()", "Any[]"], always,
+            "empty literal has `Any` element type"
+        ),
+        Rule(
+            35, "fill-shared-mutable", ["fill(_ctor(_args...), _dims...)", "fill([_xs...], _dims...)"],
             (b, _, _) -> !haskey(b.singles, :_ctor) || callee_name(b.src, b[:_ctor]) in MUTABLE_CONSTRUCTORS,
-            "`fill` shares one mutable object"),
-        Rule(36, "one-to-length", ["1:length(_a)", "1:size(_a, _d)", "1:lastindex(_a)"], one_to_length_guard,
-            "`1:length(A)` assumes 1-based indices"),
-        Rule(68, "threadid-buffer", ["_buf[threadid()]", "_buf[Threads.threadid()]", "_buf[Base.Threads.threadid()]"], always,
-            "buffer indexed by `threadid()`"),
+            "`fill` shares one mutable object"
+        ),
+        Rule(
+            36, "one-to-length", ["1:length(_a)", "1:size(_a, _d)", "1:lastindex(_a)"], one_to_length_guard,
+            "`1:length(A)` assumes 1-based indices"
+        ),
+        Rule(
+            68, "threadid-buffer", ["_buf[threadid()]", "_buf[Threads.threadid()]", "_buf[Base.Threads.threadid()]"], always,
+            "buffer indexed by `threadid()`"
+        ),
     ]
 end
 
 """LintApp-shaped F36: `for i in 1:length(a)` whose body indexes `a[i]`."""
 function lintapp_shaped_rules()::Vector{Rule}
     return Rule[
-        Rule(36, "one-to-length-loop", ["for _i in 1:length(_a)\n_body...\nend", "for _i in 1:size(_a, _d)\n_body...\nend", "(_body for _i in 1:length(_a))", "(_body for _i in 1:size(_a, _d))"],
+        Rule(
+            36, "one-to-length-loop", ["for _i in 1:length(_a)\n_body...\nend", "for _i in 1:size(_a, _d)\n_body...\nend", "(_body for _i in 1:length(_a))", "(_body for _i in 1:size(_a, _d))"],
             (b, node, ancestors) -> contains_match(INDEX_USE, b, node; fixed = [:_a, :_i]) && !one_based_checked(b, ancestors),
-            "`1:length(A)` loop indexes `A`"),
+            "`1:length(A)` loop indexes `A`"
+        ),
     ]
 end
