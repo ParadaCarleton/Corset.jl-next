@@ -434,11 +434,11 @@ footer { color: var(--muted); font-size: 0.85rem; }
 </ul>
 <p>Coverage line ends every run and counts blind spots by cause: <code>analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)</code>. Rule that lacks fact at site reports nothing there.</p>
 </div><div class="decision"><h3>Lint levels</h3>
-<p>Clippy model: each group and each rule has level <code>allow</code>, <code>warn</code> or <code>deny</code>; rule level overrides group level. <code>deny</code> findings fail run; <code>--deny warnings</code> makes warnings fail too. Baseline findings never fail run.</p>
+<p>Clippy model: each group and each rule has level <code>allow</code>, <code>warn</code> or <code>deny</code>; rule level overrides group level from any source. Command-line flags beat config; config beats preset. <code>deny</code> findings fail run; <code>--deny warnings</code> makes warnings fail too. Baseline findings never fail run.</p>
 </div><div class="decision"><h3>Opt-out comments</h3>
 <p><code># corset: allow &lt;rule&gt; -- &lt;reason&gt;</code>. Reason is required. Opt-out that suppresses nothing is error, like Rust <code>#[expect]</code>. Scope by position: end of line covers line; line above function, struct or block covers that item; top of file covers file.</p>
 </div><div class="decision"><h3>Config</h3>
-<p><code>[preferences.Corset]</code> table in Project.toml, read through Preferences.jl. Scripts without Project.toml use defaults and command-line flags.</p>
+<p><code>[preferences.Corset]</code> table in target Project.toml; <code>[Corset]</code> table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: <code>kind</code>, <code>confidence</code>, <code>fix_tier</code>, <code>levels</code> (group or rule name to level). Unknown key, value or name is config error (exit 2). Scripts without Project.toml use defaults and command-line flags.</p>
 </div><div class="decision"><h3>Project kind</h3>
 <p>Preset over groups and fix tier. Answers &quot;who uses this code?&quot;</p>
 <div class="scroll"><table>
@@ -481,7 +481,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 </ul>
 </div><div class="decision"><h3>Messages</h3>
 <p>Model: Rust compiler errors. Each finding carries primary span, labeled cause spans, one-line reason, fix with tier, and docs link. Analyses record cause spans (where union is created, where literal enters), so rules can name cause. Span has precision: exact bytes or line only. Renderer marks whole line for line precision.</p>
-<pre><code>performance[vague-type]: `acc` changes type inside loop
+<pre><code>warning[vague-type]: `acc` changes type inside loop
   --&gt; src/stats.jl:12:9
    |
 10 |     acc = 0
@@ -493,8 +493,10 @@ footer { color: var(--muted); font-size: 0.85rem; }
    = why: later uses cannot compile for one type; each one dispatches at run time
    = fix: start from element type: `acc = zero(eltype(xs))`   [safe]
    = docs: corset explain vague-type
+   = note: warn from performance group, library preset
 </code></pre>
 <ul>
+<li>Header names level as rustc does: <code>error</code> for <code>deny</code>, <code>warning</code> for <code>warn</code>. Note line says where level was set, once per rule per run.</li>
 <li>Same structure feeds SARIF: related locations and fixes.</li>
 <li><code>corset explain &lt;rule&gt;</code> prints footgun, example and fix offline.</li>
 <li>Opt-out hint names exact comment: <code># corset: allow vague-type -- &lt;reason&gt;</code>.</li>
@@ -740,7 +742,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 </tr>
 <tr>
 <td><code>Config</code></td>
-<td>Preferences.jl table, presets, command-line overrides.</td>
+<td>Project.toml and LocalPreferences.toml tables, presets, command-line flags; level per rule.</td>
 </tr>
 <tr>
 <td><code>CLI</code></td>
@@ -758,7 +760,8 @@ struct Finding
     primary::Label; causes::Vector{Label}; why::String
     fix::Union{Fix, Nothing}
 end
-struct CheckEntry
+struct Diagnostic finding::Finding; level::Level; source::String end   # source: where level was set
+struct RuleEntry
     name::Symbol; group::Group; footguns::Vector{Int}; stage::Stage
     run::Function                                            # (facts::Facts) -&gt; Vector{Finding}
 end
@@ -1000,6 +1003,10 @@ end
 <tr>
 <td>level</td>
 <td><code>allow</code>, <code>warn</code> or <code>deny</code> per group or rule.</td>
+</tr>
+<tr>
+<td>diagnostic</td>
+<td>Finding with level applied; what Corset reports.</td>
 </tr>
 <tr>
 <td>fix tier</td>
