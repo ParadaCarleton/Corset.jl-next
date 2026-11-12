@@ -45,7 +45,7 @@ end
 """Findings for C type aliases used outside C interface code."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
-    for file in facts.files, node in nodes_named(file, "Identifier")
+    for file in facts.files, node in leaves(file, "Identifier")
         name = identifier_name(node)
         haskey(C_TYPES, name) && !in_c_context(node) || continue
         push!(

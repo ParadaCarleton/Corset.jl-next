@@ -43,7 +43,7 @@ const MIN_PREFIX_FIELDS = 3
 """Findings for groups of at least `MIN_PREFIX_FIELDS` fields sharing `prefix_` stem."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
-    for file in facts.files, definition in nodes_named(file, "struct")
+    for file in facts.files, definition in forms(file, "struct")
         groups = Dict{String, Vector{Any}}()
         for node in struct_fields(definition)
             name = identifier_name(node)

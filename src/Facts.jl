@@ -12,8 +12,8 @@ using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
 export Precision, Tier, Confidence, Group, Stage
 export Span, Label, Edit, Fix, Finding, RuleEntry
 export SyntaxFile, FactSet, IndexedPattern, Match
-export @pattern, matches, binding, span, source, nodes_of_kind, children_of, kind_name
-export finding, replace_fix, manual_fix, identifier_name, nodes_named, parent_of, ancestors, descendants, call_head, leaf_value
+export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
+export finding, replace_fix, manual_fix, identifier_name, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, struct_fields
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
@@ -75,12 +75,16 @@ struct RuleEntry
     run::Function
 end
 
-"""Parsed source file: lossless tree, nodes indexed by kind, and comment byte ranges (`syntax` stage facts)."""
+"""
+Parsed source file (`syntax` stage facts): lossless tree, comment byte ranges, and nodes indexed by kind.
+Index keeps forms (inner nodes) apart from leaves, since quoted operators like `:(=)` are leaves of form kinds.
+"""
 struct SyntaxFile
     path::String
     text::String
     tree::SyntaxNode
-    index::Dict{Kind, Vector{SyntaxNode}}
+    forms::Dict{Kind, Vector{SyntaxNode}}
+    leaves::Dict{Kind, Vector{SyntaxNode}}
     comments::Vector{UnitRange{Int}}
 end
 
@@ -131,18 +135,22 @@ struct Match
     bindings::BindingSet
 end
 
-"""Nodes of `file` with kind `kind`, in source order."""
-nodes_of_kind(file::SyntaxFile, kind::Kind)::Vector{SyntaxNode} = get(file.index, kind, SyntaxNode[])
+"""Forms (inner nodes) of `file` whose kind is named `name` (`"="`, `"catch"`), in source order."""
+forms(file::SyntaxFile, name::String)::Vector{SyntaxNode} = get(file.forms, Kind(name), SyntaxNode[])
+
+"""Leaves of `file` whose kind is named `name` (`"Identifier"`, `"Integer"`), in source order."""
+leaves(file::SyntaxFile, name::String)::Vector{SyntaxNode} = get(file.leaves, Kind(name), SyntaxNode[])
+
+"""Every node of `file`: forms, then leaves."""
+all_nodes(file::SyntaxFile)::Vector{SyntaxNode} = [node for index in (file.forms, file.leaves) for nodes in values(index) for node in nodes]
 
 """Every match of `indexed` in `file`, in source order. Tries only nodes whose kind and call head pattern root can take."""
 function matches(file::SyntaxFile, indexed::IndexedPattern)::Vector{Match}
     found = Match[]
     if isnothing(indexed.roots)
-        for nodes in values(file.index), node in nodes
-            try_match!(found, indexed, node)
-        end
+        foreach(node -> try_match!(found, indexed, node), all_nodes(file))
     else
-        for (kind, heads) in indexed.roots, node in nodes_of_kind(file, kind)
+        for (kind, heads) in indexed.roots, index in (file.forms, file.leaves), node in get(index, kind, SyntaxNode[])
             isnothing(heads) || call_head(node) in heads || continue
             try_match!(found, indexed, node)
         end
@@ -187,9 +195,6 @@ end
 
 """Name of identifier `node`; `nothing` for other kinds."""
 identifier_name(node::SyntaxNode)::Union{Nothing, String} = kind_name(node) == "Identifier" ? string(node.val) : nothing
-
-"""Nodes of `file` whose kind is named `name` (`"catch"`, `"Identifier"`), in source order."""
-nodes_named(file::SyntaxFile, name::String)::Vector{SyntaxNode} = nodes_of_kind(file, Kind(name))
 
 """Parent of `node`; `nothing` at root."""
 parent_of(node::SyntaxNode)::Union{Nothing, SyntaxNode} = node.parent

@@ -56,8 +56,8 @@ end
     @test IndexedPattern(@pattern ~or(f({x}), g({x}))).roots[Corset.Syntax.JS.K"call"] == Set(["f", "g"])
     file = Corset.Syntax.parse_file("f.jl", "g(1)\n")
     @test length(Facts.matches(file, IndexedPattern(@pattern {x}))) > 1
-    @test Facts.identifier_name(Facts.nodes_of_kind(file, Corset.Syntax.JS.K"Integer")[1]) === nothing
-    @test isempty(Facts.children_of(Facts.nodes_of_kind(file, Corset.Syntax.JS.K"Integer")[1]))
+    @test Facts.identifier_name(only(Facts.leaves(file, "Integer"))) === nothing
+    @test isempty(Facts.children_of(only(Facts.leaves(file, "Integer"))))
 end
 
 @testset "engine" begin

@@ -39,7 +39,7 @@ const MAX_FIELDS = 15
 """Findings for structs with more than `MAX_FIELDS` fields."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
-    for file in facts.files, definition in nodes_named(file, "struct")
+    for file in facts.files, definition in forms(file, "struct")
         fields = struct_fields(definition)
         length(fields) > MAX_FIELDS || continue
         push!(

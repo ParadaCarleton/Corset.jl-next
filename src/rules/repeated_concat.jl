@@ -40,7 +40,7 @@ in_loop(node)::Bool = any(ancestor -> kind_name(ancestor) in ("for", "while"), a
 """Findings for `a = vcat(a, …)` and `a = [a; …]` inside loops: each step copies whole `a`."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
-    for file in facts.files, assignment in nodes_named(file, "=")
+    for file in facts.files, assignment in forms(file, "=")
         target, value = children_of(assignment)[1], children_of(assignment)[end]
         name = identifier_name(target)
         isnothing(name) && continue

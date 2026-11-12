@@ -21,6 +21,24 @@ const STAGES = [entry["name"] for entry in TOML.parsefile(joinpath(DESIGN, "stag
     end
 end
 
+@testset "rules tolerate quoted operators" begin
+    # Quoted syntactic operators parse as leaves of form kinds; `:(.=)` parses as `.` form around `=` leaf.
+    text = """
+    ops = [:(=), :(::), :(->), :(&&), :(||), :(.=), :(+=), :(<:), :(>:), :(.), :(\$), :(...)]
+    function quoted(expression)
+        expression.head === :(=) && return :(::)
+        return expression
+    end
+    """
+    file = Corset.Syntax.parse_file("quoted.jl", text)
+    @test length(Corset.Facts.forms(file, "=")) == 1
+    @test length(Corset.Facts.leaves(file, "=")) == 3
+    facts = Corset.Facts.FactSet([file])
+    for entry in Corset.Rules.REGISTRY
+        @test entry.run(facts) isa Vector{Corset.Facts.Finding}
+    end
+end
+
 @testset "registry in name order" begin
     @test issorted([entry.name for entry in Corset.Rules.REGISTRY])
 end

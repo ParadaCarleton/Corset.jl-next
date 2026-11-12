@@ -43,7 +43,7 @@ end
 """Binding sites in `file`: parameters, assignment targets, loop and `let` variables, each with loop flag."""
 function binding_sites(file::SyntaxFile)::Vector{Tuple{Any, Bool}}
     sites = Tuple{Any, Bool}[]
-    for definition in nodes_named(file, "function")
+    for definition in forms(file, "function")
         signature = children_of(definition)[1]
         while kind_name(signature) in ("where", "::")
             signature = children_of(signature)[1]
@@ -54,12 +54,12 @@ function binding_sites(file::SyntaxFile)::Vector{Tuple{Any, Bool}}
             append!(sites, ((node, false) for node in group))
         end
     end
-    for assignment in nodes_named(file, "=")
+    for assignment in forms(file, "=")
         parent = parent_of(assignment)
         kind_name(parent) in ("call", "parameters", "function") && continue
         push!(sites, (children_of(assignment)[1], kind_name(parent) in ("iteration", "for")))
     end
-    for clause in nodes_named(file, "in")
+    for clause in forms(file, "in")
         kind_name(parent_of(clause)) == "iteration" && push!(sites, (children_of(clause)[1], true))
     end
     return sites

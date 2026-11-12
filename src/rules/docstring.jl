@@ -56,7 +56,7 @@ end
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
-        for definition in [nodes_named(file, "function"); nodes_named(file, "struct")]
+        for definition in [forms(file, "function"); forms(file, "struct")]
             documented(definition) && continue
             lines = comment_lines_above(file.text, span(file, definition).first_byte)
             isempty(lines) && continue
@@ -72,7 +72,7 @@ function run(facts::FactSet)::Vector{Finding}
                 )
             )
         end
-        for definition in nodes_named(file, "module")
+        for definition in forms(file, "module")
             documented(definition) && continue
             push!(
                 found, finding(

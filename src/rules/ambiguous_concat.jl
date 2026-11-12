@@ -38,7 +38,7 @@ end
 """Findings for one-row concatenation with signed element after space; matrix may be intended, so `possible`."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
-    for file in facts.files, row in nodes_named(file, "hcat")
+    for file in facts.files, row in forms(file, "hcat")
         elements = children_of(row)
         for (previous, element) in zip(elements, Iterators.drop(elements, 1))
             signed_after_space(file, element) || continue
