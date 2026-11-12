@@ -10,8 +10,8 @@ end
 
 """Line of statement `pc` in `ci`, or `fallback` when debug info lacks it."""
 function stmt_line(ci::Core.CodeInfo, pc::Int, fallback::Int)::Int
-    lins = Base.IRShow.buildLineInfoNode(ci.debuginfo, nothing, pc)
-    return isempty(lins) ? fallback : Int(last(lins).line)
+    line_nodes = Base.IRShow.buildLineInfoNode(ci.debuginfo, nothing, pc)
+    return isempty(line_nodes) ? fallback : Int(last(line_nodes).line)
 end
 
 """Walk `ci` and nested method bodies; collect boxed captures, slot/global name clashes."""
