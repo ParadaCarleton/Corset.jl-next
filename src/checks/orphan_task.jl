@@ -11,14 +11,15 @@ const SPAWNING = Set(["@spawn", "@async"])
 macro_of(node)::Union{Nothing, String} =
     (name = children_of(node)[1]; leaf_value(isempty(children_of(name)) ? name : children_of(name)[end]))
 
-"""Whether `node` sits in statement position: direct child of block or file, not last statement of block."""
+"""Whether value of `node` is dropped: statement in file or loop body, or non-last statement of other block."""
 function discarded(node)::Bool
     parent = parent_of(node)
     isnothing(parent) && return false
     kind_name(parent) == "toplevel" && return true
     kind_name(parent) == "block" || return false
-    statements = children_of(parent)
-    return statements[end] !== node
+    owner = parent_of(parent)
+    !isnothing(owner) && kind_name(owner) in ("for", "while") && return true
+    return children_of(parent)[end] !== node
 end
 
 """Whether `node` sits inside `@sync`, which waits for tasks started in its body."""

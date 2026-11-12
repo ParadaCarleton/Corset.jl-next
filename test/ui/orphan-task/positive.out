@@ -1,3 +1,13 @@
+correctness[orphan-task]: task from `@spawn` is never waited
+ --> positive.jl:4:9
+  |
+4 |         Threads.@spawn run(job)
+  |         ^^^^^^^^^^^^^^^^^^^^^^^ task discarded
+  |
+  = why: exception inside task is stored in task; nobody reads it, so failure stays silent
+  = fix: keep task and `wait` or `fetch` it, or wrap starts in `@sync`   [manual]
+  = docs: corset explain orphan-task
+
 correctness[orphan-task]: task from `@async` is never waited
  --> positive.jl:9:1
   |
