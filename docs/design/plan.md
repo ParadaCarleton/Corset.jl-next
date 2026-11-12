@@ -43,6 +43,7 @@ Design is draft until code proves it. Revisit at each checkpoint:
 
 - After phase 0: spike results confirm or replace stand-in inference, scope layer, syntax matcher and effect summary. Rewrite affected parts before phase 1.
 - After first release: corpus findings and real use test footgun list, levels, presets and messages.
+- After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (`types.md`).
 - Before each later phase: reread parts that phase builds on; question decisions that no longer fit.
 - Each review: adversarial pass by second model on changed parts; log findings and outcomes in `rules-rewrite-history.md`.
 - Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.

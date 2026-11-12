@@ -82,6 +82,7 @@ Helps unannotated package reach full annotations. `annotation` fixer guesses typ
 - Argument guess with call-site evidence: tier `breaking`, since narrower annotation can reject callers. Body-use evidence only: tier `manual`.
 - After fix, Corset checks again: internal call that no longer matches shows as `never-succeeds`.
 - `application` and `script` presets apply `breaking` fixes automatically, so they transition in one run. `library` needs `--tier breaking`.
+- Revisit after phase 4: evidence ranking, widening and tiers are first guesses. Measure on corpus how many guesses survive review; adjust. Candidate extra sources: docstring signatures, opt-in run-time type trace, LLM handoff for `manual` guesses.
 
 ### Hard-coded arrays
 

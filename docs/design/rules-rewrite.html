@@ -585,6 +585,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Argument guess with call-site evidence: tier <code>breaking</code>, since narrower annotation can reject callers. Body-use evidence only: tier <code>manual</code>.</li>
 <li>After fix, Corset checks again: internal call that no longer matches shows as <code>never-succeeds</code>.</li>
 <li><code>application</code> and <code>script</code> presets apply <code>breaking</code> fixes automatically, so they transition in one run. <code>library</code> needs <code>--tier breaking</code>.</li>
+<li>Revisit after phase 4: evidence ranking, widening and tiers are first guesses. Measure on corpus how many guesses survive review; adjust. Candidate extra sources: docstring signatures, opt-in run-time type trace, LLM handoff for <code>manual</code> guesses.</li>
 </ul>
 </div><div class="decision"><h3>Hard-coded arrays</h3>
 <p><code>type-disruption</code> reports hard-coded <code>Vector</code>/<code>Matrix</code>/<code>Array</code> construction everywhere, <code>zeros</code>, <code>ones</code>, <code>fill</code> included. With template array: autofix to <code>similar(template, T, dims)</code>. Without template: message teaches caller-supplied template or array type; autofix adds parameter in <code>breaking</code> tier. One shared initializer fixer serves <code>type-disruption</code>, <code>constant-array</code> and <code>unwritten-element</code>.</p>
@@ -878,6 +879,7 @@ end
 <ul>
 <li>After phase 0: spike results confirm or replace stand-in inference, scope layer, syntax matcher and effect summary. Rewrite affected parts before phase 1.</li>
 <li>After first release: corpus findings and real use test footgun list, levels, presets and messages.</li>
+<li>After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (<code>types.md</code>).</li>
 <li>Before each later phase: reread parts that phase builds on; question decisions that no longer fit.</li>
 <li>Each review: adversarial pass by second model on changed parts; log findings and outcomes in <code>rules-rewrite-history.md</code>.</li>
 <li>Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.</li>
