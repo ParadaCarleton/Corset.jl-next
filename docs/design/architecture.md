@@ -9,7 +9,7 @@ Each layer is one module that produces facts. Checks read facts through one API.
 | Module | Job |
 |---|---|
 | `Syntax` | L1: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind; array def-use (family B). |
-| `Scope` | L2: lowering and scope facts (family H). JuliaLowering vendored at pinned julia commit on 1.13; `Base.JuliaLowering` from 1.14. Own replacement expansions for common Base macros keep byte positions. |
+| `Scope` | L2: lowering and scope facts (family H). JuliaLowering vendored at pinned julia commit on 1.13; `Base.JuliaLowering` from 1.14. Own replacement expansions for common Base macros keep byte positions. Soft scope: before lowering each form, declare earlier top-level assigned globals as `global x::Any`, in include order; order-sensitive fixtures. |
 | `Load` | L3: load package; module facts (family C); Project.toml facts. |
 | `Infer` | L4: stand-in types; one inference per method; typed IR with source mapping (family D). Mapping: vendored TypedSyntax.jl algorithm on L1 tree; no CodeTracking. |
 | `Effects` | L5: effect and alias summary per method (family E). |
@@ -99,7 +99,7 @@ Loading runs code. Typed families (C, D, E, G) run only on package with `name`; 
 
 ### Reference linters
 
-JET, fatou, LintApp.jl (`julialint`, julia-vscode linter) and ReLint.jl run only in Corset tests, never at lint time. All four are MIT: copy their check code where it already implements our footgun, keeping license notice.
+JET, fatou, LintApp.jl (`julialint`, julia-vscode linter; its checks live in JuliaWorkspaces, vendored StaticLint) and ReLint.jl run only in Corset tests, never at lint time. All four are MIT: copy their check code where it already implements our footgun, keeping license notice.
 
 - Tests run each reference on fixture corpus and compare findings with Corset. `julialint` emits JSON and SARIF.
 - Reference finding Corset misses: fix Corset, or record reason in allowlist (reference bug, different design).

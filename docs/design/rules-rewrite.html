@@ -171,7 +171,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 
 <section id="footguns">
 <h2>Footguns</h2><p>Source of truth for rewrite. Each line names one problem Corset prevents. Data: <code>footguns.toml</code>.</p><div class="filter" role="group" aria-label="Filter footguns by group"><button type="button" data-filter="all" aria-pressed="true">all</button><button type="button" data-filter="correctness" aria-pressed="false">correctness</button><button type="button" data-filter="performance" aria-pressed="false">performance</button><button type="button" data-filter="composability" aria-pressed="false">composability</button><button type="button" data-filter="readability" aria-pressed="false">readability</button></div><div class="scroll"><table data-table><thead><tr><th>ID</th><th>Area</th><th>Footgun</th><th>Example</th><th>Group</th><th>Family</th><th>Note</th></tr></thead><tbody>
-<tr data-group="correctness"><td>F1</td><td>syntax</td><td>Space before minus in array literal concatenates</td><td><code>[1 -2]</code> is 1×2 matrix</td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
+<tr data-group="correctness"><td>F1</td><td>syntax</td><td>Space before minus in array literal concatenates</td><td><code>[1 -2]</code> is 1×2 matrix</td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>Needs whitespace: check reads source bytes between elements, since Argus patterns ignore trivia.</td></tr>
 <tr data-group="correctness"><td>F2</td><td>syntax</td><td>Range in brackets is one-element vector</td><td><code>[1:3]</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
 <tr data-group="correctness"><td>F3</td><td>syntax</td><td>Juxtaposition binds tighter than reader expects</td><td><code>2^2x == 2^(2x)</code>, <code>1/2x</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
 <tr data-group="correctness"><td>F4</td><td>syntax</td><td><code>where</code> after result annotation binds result type</td><td><code>f(x::T)::T where {T}</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>Errors, or silently binds global <code>T</code> if one exists; report both. Upstream rejected precedence change (JuliaLang/julia#21847).</td></tr>
@@ -212,7 +212,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tr data-group="correctness"><td>F33</td><td>arrays</td><td>Uninitialized element read before write</td><td><code>similar(x)</code> then <code>sum</code></td><td><span class="chip g-correctness">correctness</span></td><td>B</td><td>Definite only for straight-line pattern; loops, branches, aliases, views give <code>possible</code>.</td></tr>
 <tr data-group="correctness"><td>F34</td><td>arrays</td><td>Placeholder value looks like data after partial fill</td><td><code>zeros(n)</code>, half written</td><td><span class="chip g-correctness">correctness</span></td><td>B</td><td>Definite only for straight-line pattern; loops, branches, aliases, views give <code>possible</code>.</td></tr>
 <tr data-group="correctness"><td>F35</td><td>arrays</td><td><code>fill</code> shares one mutable object</td><td><code>fill(zeros(3), n)</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
-<tr data-group="composability"><td>F36</td><td>arrays</td><td><code>1:length(A)</code> assumes 1-based indices</td><td><code>OffsetArray</code> breaks it</td><td><span class="chip g-composability">composability</span></td><td>A</td><td></td></tr>
+<tr data-group="composability"><td>F36</td><td>arrays</td><td><code>1:length(A)</code> assumes 1-based indices</td><td><code>OffsetArray</code> breaks it</td><td><span class="chip g-composability">composability</span></td><td>A</td><td>Syntax-only finding is <code>possible</code>: custom array type may define 1-based indexing (S4: <code>CircularDeque</code>). <code>definite</code> needs type or index-trait evidence.</td></tr>
 <tr data-group="correctness"><td>F37</td><td>arrays</td><td>Index safety removed without proof</td><td><code>@inbounds</code> on unchecked index</td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td></td></tr>
 <tr data-group="correctness"><td>F38</td><td>arrays</td><td>String indexed by character count</td><td><code>s[i]</code> for <code>i in 1:length(s)</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td></td></tr>
 <tr data-group="performance"><td>F39</td><td>arrays</td><td>Never-written constant array allocates</td><td><code>ones(n)</code> read only</td><td><span class="chip g-performance">performance</span></td><td>B</td><td></td></tr>
@@ -274,8 +274,8 @@ footer { color: var(--muted); font-size: 0.85rem; }
       <div class="layer"><div class="id">L1<small>syntax</small></div><div class="what">Lossless syntax tree, index by node kind<small>JuliaSyntax · per file · milliseconds</small></div><div class="fams"><span class="fam">A</span><span class="fam">B</span></div></div>
       <div class="divider">package code runs below · same process, target environment</div>
       <div class="layer"><div class="id">L3<small>module</small></div><div class="what">Loaded package: bindings, structs, method table<small>one load per run · cached by Manifest hash</small></div><div class="fams"><span class="fam">C</span></div></div>
-      <div class="layer"><div class="id">L2<small>scope</small></div><div class="what">Lowering with scope resolution and source positions<small>JuliaLowering · per top-level form, include order · macros need L3</small></div><div class="fams"><span class="fam">H</span><span class="fam">B</span></div></div>
-      <div class="layer"><div class="id">L4<small>types</small></div><div class="what">Typed IR for every package method<small>native inference cache · signatures from annotations · no package tests needed</small></div><div class="fams"><span class="fam">D</span></div></div>
+      <div class="layer"><div class="id">L2<small>scope</small></div><div class="what">Lowering with scope resolution and source positions<small>JuliaLowering · per top-level form, include order · macros need L3</small></div><div class="fams"><span class="fam">H</span></div></div>
+      <div class="layer"><div class="id">L4<small>types</small></div><div class="what">Typed IR for every eligible package method<small>native inference cache · signatures from annotations · no package tests needed</small></div><div class="fams"><span class="fam">D</span></div></div>
       <div class="layer"><div class="id">L5<small>flow</small></div><div class="what">Effect and alias summary per method<small>own points-to summary inside method + callee summaries · bottom-up, Base included</small></div><div class="fams"><span class="fam">E</span></div></div>
       <div class="arrow" aria-hidden="true">↓</div>
       <div class="sink">
@@ -544,7 +544,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li><strong>No downstream consequence, no finding</strong>: disruption is correct when every use converts value back before it matters. Indexing converts index to <code>Int</code>, so <code>heapleft(i::Integer) = 2i</code> feeding <code>a[heapleft(i)]</code> is fine. Store into concrete field or element type also converts.
 <ul>
 <li>Exact rule: follow disrupted value through returns into package call sites; exempt when every path ends in conversion. Public function with unknown callers: report as <code>possible</code>.</li>
-<li>First version: exempt values whose uses are only indexing (<code>getindex</code>, <code>setindex!</code>, <code>view</code>). Range bound counts as indexing only when range and its elements are used only for indexing (<code>a[lo:2i]</code>, <code>for j in 1:2i; a[j]; end</code>). Revisit after phase 4: replace with exact rule.</li>
+<li>First version: exempt values whose uses are only indexing (<code>getindex</code>, <code>setindex!</code>, <code>view</code>). Range bound counts as indexing only when range and its elements are used only for indexing (<code>a[lo:2i]</code>, <code>for j in 1:2i; a[j]; end</code>). Fixtures: range used only for indexing (exempt); range returned, stored or iterated for values (reported). Revisit after phase 4: replace with exact rule.</li>
 </ul>
 </li>
 <li>Definite: narrowest Base type of kind gives concrete counterexample. Promotion rules of user number types are out of scope.</li>
@@ -624,7 +624,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Callees are summarized through dependency code, Base included. Base summaries are cached once per Julia version.</li>
 <li>Dynamic call: join summaries of up to 4 candidates at declared signatures; definite only when all agree. Else unknown callee: <code>possible</code>, reason recorded for coverage line.</li>
 <li><code>possible</code> effect findings stay off until dispatch resolution passes quality gate. S5: every <code>possible</code> verdict came from unknown callee or foreign call.</li>
-<li>Not writes caller sees: lazy-init caches (<code>Regex</code>, <code>LazyString</code>, <code>setfieldonce!</code>), task-local state, locks, writes inside error paths. Globals of other modules (Base logging, PCRE contexts) are kept apart and never reported.</li>
+<li>Not writes caller sees: lazy-init caches (<code>Regex</code>, <code>LazyString</code>, <code>setfieldonce!</code>), task-local state, locks, writes to fresh local objects inside error paths (message building). Argument or global write before throw stays in summary: caller that catches sees it. Globals of other modules (Base logging, PCRE contexts) are kept apart and never reported.</li>
 <li>Effect summary records whether method result aliases global state. Write through such result counts as global write, so caller needs <code>!</code>.</li>
 <li>Requirement propagates: caller of <code>!</code> function on global state needs <code>!</code> too.</li>
 <li>Full ownership (borrow) checking is deferred. Revisit for concurrency rules.</li>
@@ -655,7 +655,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 </tr>
 <tr>
 <td><code>Scope</code></td>
-<td>L2: lowering and scope facts (family H). JuliaLowering vendored at pinned julia commit on 1.13; <code>Base.JuliaLowering</code> from 1.14. Own replacement expansions for common Base macros keep byte positions.</td>
+<td>L2: lowering and scope facts (family H). JuliaLowering vendored at pinned julia commit on 1.13; <code>Base.JuliaLowering</code> from 1.14. Own replacement expansions for common Base macros keep byte positions. Soft scope: before lowering each form, declare earlier top-level assigned globals as <code>global x::Any</code>, in include order; order-sensitive fixtures.</td>
 </tr>
 <tr>
 <td><code>Load</code></td>
@@ -792,7 +792,7 @@ end
 <li>Later: warm daemon keeps Salsa tables and loaded package, so edit costs only its dependents.</li>
 </ul>
 </div><div class="decision"><h3>Reference linters</h3>
-<p>JET, fatou, LintApp.jl (<code>julialint</code>, julia-vscode linter) and ReLint.jl run only in Corset tests, never at lint time. All four are MIT: copy their check code where it already implements our footgun, keeping license notice.</p>
+<p>JET, fatou, LintApp.jl (<code>julialint</code>, julia-vscode linter; its checks live in JuliaWorkspaces, vendored StaticLint) and ReLint.jl run only in Corset tests, never at lint time. All four are MIT: copy their check code where it already implements our footgun, keeping license notice.</p>
 <ul>
 <li>Tests run each reference on fixture corpus and compare findings with Corset. <code>julialint</code> emits JSON and SARIF.</li>
 <li>Reference finding Corset misses: fix Corset, or record reason in allowlist (reference bug, different design).</li>
@@ -842,7 +842,7 @@ end
 </tr>
 <tr>
 <td>4 types</td>
-<td>Stand-in inference over every package method; family D and type-disruption scan; per-method disk cache; <code>annotation</code> fixer guesses argument types and fills result types (annotation transition, <code>types.md</code>).</td>
+<td>Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); family D and type-disruption scan; per-method disk cache; <code>annotation</code> fixer guesses argument types and fills result types (annotation transition, <code>types.md</code>).</td>
 <td>22</td>
 <td>Precision gate passes on corpus. <code>unverified-inbounds</code> agrees with julia-in-lean site verdicts.</td>
 </tr>
@@ -871,8 +871,8 @@ end
 <li><strong>S1 stand-in inference</strong> (done, works with limits): every corpus method infers; 2 generated functions refused. Differential check right on 12 fixtures. Re-dispatch on real types separates stand-in gaps. Found real bug (<code>DataStructures.empty(::DefaultDictBase)</code>).</li>
 <li><strong>S2 source mapping</strong> (done, works with limits): 65% of findable statements map to exact bytes; about 2% of checked spans wrong. Code macros write maps to line only.</li>
 <li><strong>S3 scope layer</strong> (done, works with limits): JuliaLowering at julia commit <code>f0188d597b</code> lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload. <code>Meta.lower</code> fallback dropped.</li>
-<li><strong>S4 syntax matcher</strong> (done, <code>spikes/s4-syntax-matcher/REPORT.md</code>): Argus.jl 0.4.2 is MIT. Use Argus behind thin wrapper so matcher stays swappable. Argus searches whole tree once per rule (about 8× slower than kind-indexed walk); own walk with root-kind index removes most of gap.</li>
-<li><strong>S5 effect summary</strong> (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). <code>possible</code> covers 70–90% of methods, all from unknown callees. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.</li>
+<li><strong>S4 syntax matcher</strong> (done, <code>spikes/s4-syntax-matcher/REPORT.md</code>): Argus.jl 0.4.2 is MIT. Use Argus behind thin wrapper so matcher stays swappable. Argus searches whole tree once per rule (about 8× slower than kind-indexed walk); own walk with root-kind index should remove most of gap. Unmeasured: benchmark candidate-node design at planned rule count first in phase 2.</li>
+<li><strong>S5 effect summary</strong> (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). <code>possible</code> covers 75%, 55% and 52% of methods (Distances, DataStructures, JSON), all from unknown callees or unknown foreign calls. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.</li>
 </ul>
 </div><div class="decision"><h3>Quality gate</h3>
 <p>Check is on by default only when all hold:</p>
@@ -885,7 +885,7 @@ end
 <li>Run time stays inside budget in CI perf test.</li>
 </ul>
 <p>Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.</p>
-<p>Legacy baseline (S4, warm, whole process): Distances 9.4 s, DataStructures 16–19 s, JSON 33–37 s. Main risk: stand-in inference, 7–17 s cold per package (S1); precompile workload and per-method disk cache must close gap.</p>
+<p>Legacy baseline (S4, warm, whole process): Distances 9.4 s, DataStructures 16–19 s, JSON 33–37 s. Remeasure legacy in same scope (startup and target load subtracted) before comparing. Main risks: stand-in inference, 7–17 s cold per package (S1); effect summary, 17–22 s uncached (S5). Precompile workload, Base summary cache and per-method disk cache must close gap; effects phase gets own budget once Base cache exists.</p>
 <p>Repository bar: 100% line coverage; mutation testing on check code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).</p>
 </div><div class="decision"><h3>Design reviews</h3>
 <p>Design is draft until code proves it. Revisit at each checkpoint:</p>

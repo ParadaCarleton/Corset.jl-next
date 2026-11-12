@@ -23,7 +23,7 @@
 - Callees are summarized through dependency code, Base included. Base summaries are cached once per Julia version.
 - Dynamic call: join summaries of up to 4 candidates at declared signatures; definite only when all agree. Else unknown callee: `possible`, reason recorded for coverage line.
 - `possible` effect findings stay off until dispatch resolution passes quality gate. S5: every `possible` verdict came from unknown callee or foreign call.
-- Not writes caller sees: lazy-init caches (`Regex`, `LazyString`, `setfieldonce!`), task-local state, locks, writes inside error paths. Globals of other modules (Base logging, PCRE contexts) are kept apart and never reported.
+- Not writes caller sees: lazy-init caches (`Regex`, `LazyString`, `setfieldonce!`), task-local state, locks, writes to fresh local objects inside error paths (message building). Argument or global write before throw stays in summary: caller that catches sees it. Globals of other modules (Base logging, PCRE contexts) are kept apart and never reported.
 - Effect summary records whether method result aliases global state. Write through such result counts as global write, so caller needs `!`.
 - Requirement propagates: caller of `!` function on global state needs `!` too.
 - Full ownership (borrow) checking is deferred. Revisit for concurrency rules.

@@ -364,3 +364,19 @@ Spike reports: `spikes/s1-stand-in-inference` to `spikes/s5-effect-summary`, fil
 | S5 | `possible` comes only from unknown callees | `possible` effect findings off until dispatch resolution passes gate. |
 | S5 | Exemption list incomplete | Lazy-init caches, task-local state, locks, error paths, other modules' globals exempt; IO decided by declared type. |
 | S5 | Error-only `!` method flagged spurious | Exempt from F86. |
+
+### Phase 0 review: adversarial pass
+
+| # | Finding | Outcome |
+|---|---|---|
+| 1 | Syntax-only F36 can be false `definite` (`CircularDeque`) | Fixed: syntax-only F36 is `possible`. |
+| 2 | Error-path exemption hides write before caught throw | Fixed: only fresh local objects exempt; argument and global writes stay. |
+| 3 | 5× target compares different scopes; effects too slow | Fixed: remeasure legacy in same scope; effects phase gets own budget. |
+| 4 | Argus candidate-node speed unmeasured | Fixed: benchmark first in phase 2. |
+| 5 | Range exemption rests on open S1 question | Fixtures added. Rejected "keep possible": exemption covers only uses proven index-only; rest reports as before. |
+| 6 | Family B on L1 and L2 | Fixed: B on L1 only. |
+| 7 | Soft-scope predeclaration missing | Fixed: Scope contract declares globals in include order. |
+| 8 | "Every package method" overstates coverage | Fixed: eligible methods; coverage line counts rest. |
+| 9 | F1 needs whitespace; Argus ignores trivia | Fixed: F1 reads source bytes. |
+| 10 | S5 percentage wrong | Fixed: per-package shares. |
+| 11 | LintApp check source stale | Fixed: JuliaWorkspaces named. |

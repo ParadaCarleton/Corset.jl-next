@@ -34,7 +34,7 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
   - Escape test: own data-flow pass follows value to returns and stores. Escape analysis tracks heap objects only, so it cannot decide this.
   - **No downstream consequence, no finding**: disruption is correct when every use converts value back before it matters. Indexing converts index to `Int`, so `heapleft(i::Integer) = 2i` feeding `a[heapleft(i)]` is fine. Store into concrete field or element type also converts.
     - Exact rule: follow disrupted value through returns into package call sites; exempt when every path ends in conversion. Public function with unknown callers: report as `possible`.
-    - First version: exempt values whose uses are only indexing (`getindex`, `setindex!`, `view`). Range bound counts as indexing only when range and its elements are used only for indexing (`a[lo:2i]`, `for j in 1:2i; a[j]; end`). Revisit after phase 4: replace with exact rule.
+    - First version: exempt values whose uses are only indexing (`getindex`, `setindex!`, `view`). Range bound counts as indexing only when range and its elements are used only for indexing (`a[lo:2i]`, `for j in 1:2i; a[j]; end`). Fixtures: range used only for indexing (exempt); range returned, stored or iterated for values (reported). Revisit after phase 4: replace with exact rule.
   - Definite: narrowest Base type of kind gives concrete counterexample. Promotion rules of user number types are out of scope.
   - Overspecified argument types (`x::Int32`, `v::AbstractVector{Float64}`) are rare in libraries: `overspecified-type` reports them.
   - Branch on type (`x isa Float64`, `T === Float32`): report as `possible`.
