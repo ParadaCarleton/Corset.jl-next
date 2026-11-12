@@ -22,7 +22,7 @@ const STAGES = [entry["name"] for entry in TOML.parsefile(joinpath(DESIGN, "stag
 end
 
 @testset "rules tolerate quoted operators" begin
-    # Quoted syntactic operators parse as leaves of form kinds; `:(.=)` parses as `.` form around `=` leaf.
+    # Quoted syntactic operators parse as leaves of form kinds; index skips them as quoted code, tree walks see them.
     text = """
     ops = [:(=), :(::), :(->), :(&&), :(||), :(.=), :(+=), :(<:), :(>:), :(.), :(\$), :(...)]
     function quoted(expression)
@@ -32,7 +32,7 @@ end
     """
     file = Corset.Syntax.parse_file("quoted.jl", text)
     @test length(Corset.Facts.forms(file, "=")) == 1
-    @test length(Corset.Facts.leaves(file, "=")) == 3
+    @test isempty(Corset.Facts.leaves(file, "="))
     facts = Corset.Facts.FactSet([file])
     for entry in Corset.Rules.REGISTRY
         @test entry.run(facts) isa Vector{Corset.Facts.Finding}

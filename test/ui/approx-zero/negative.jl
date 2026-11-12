@@ -5,3 +5,7 @@ end
 
 x ≈ 1
 abs(x) < 1.0e-8
+
+# Quoted code and DSL macro arguments are data.
+expression = :(x ≈ 0)
+pattern = @pattern {x} ≈ 0

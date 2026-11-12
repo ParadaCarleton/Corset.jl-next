@@ -58,6 +58,9 @@ end
     @test length(Facts.matches(file, IndexedPattern(@pattern {x}))) > 1
     @test Facts.identifier_name(only(Facts.leaves(file, "Integer"))) === nothing
     @test isempty(Facts.children_of(only(Facts.leaves(file, "Integer"))))
+    text = "a = :(b = 1)\nc = :(f(\$(d = 2)))\n@dsl {e} = 3\n@test (g = 4)\nquote quote \$(h = 5) end end\n"
+    quoted = Corset.Syntax.parse_file("q.jl", text)
+    @test [Facts.source(quoted, node) for node in Facts.forms(quoted, "=")] == ["a = :(b = 1)", "c = :(f(\$(d = 2)))", "d = 2", "g = 4"]
 end
 
 @testset "engine" begin
