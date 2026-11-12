@@ -72,7 +72,7 @@ function run_prefix(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const WIDE = RuleEntry(Symbol("wide-struct"), Group.readability, [78], Family.A, run_wide)
-const PREFIX = RuleEntry(Symbol("field-prefix"), Group.readability, [79], Family.A, run_prefix)
+const WIDE = RuleEntry(Symbol("wide-struct"), Group.readability, [78], Stage.syntax, run_wide)
+const PREFIX = RuleEntry(Symbol("field-prefix"), Group.readability, [79], Stage.syntax, run_prefix)
 
 end

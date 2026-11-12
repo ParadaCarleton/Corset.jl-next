@@ -6,10 +6,10 @@ Never hand-edit `rules-rewrite.html`.
 | File | Holds |
 |---|---|
 | `principles.md` | Principles, non-goals |
-| `footguns.toml` | Footgun catalog: ID, text, example, group, family, note. IDs stable; never reuse |
+| `footguns.toml` | Footgun catalog: ID, text, example, group, stage, note. IDs stable; never reuse |
 | `rules.toml` | Rules: name, footguns, note. Each footgun in exactly one rule; one group per rule |
-| `families.toml` | Analysis families A to H |
-| `pipeline.md` | Layers L1 to L5 and diagram |
+| `stages.toml` | Analysis stages in pipeline order |
+| `pipeline.md` | Stage order and diagram |
 | `findings.md` | Groups, confidence, levels, opt-outs, config, project kind, fix tiers, messages, macro output, conventions |
 | `types.md` | Stand-in types, type-disruption, arguments without stand-in, annotations, union policy, Moshi, arrays |
 | `effects.md` | `!` convention, effect summary |

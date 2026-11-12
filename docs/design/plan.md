@@ -2,24 +2,24 @@
 
 Phases, spikes, quality gate and speed budget.
 
-Draft. Spikes retire risks first. Each later phase ships usable rules. Phase order follows layer cost: syntax needs no package load, so it works on every project.
+Draft. Spikes retire risks first. Each later phase ships usable rules. Phase order follows stage cost: syntax needs no package load, so it works on every project.
 
 | Phase | Builds | Footguns | Exit |
 |---|---|---|---|
-| 0 spikes | S1 stand-in inference · S2 source mapping · S3 scope layer · S4 syntax matcher · S5 effect API. Measure legacy Corset on corpus as speed baseline. | — | Each spike works on Julia 1.13, or fallback is chosen. |
+| 0 spikes | S1 stand-in inference · S2 source mapping · S3 scope stage · S4 syntax matcher · S5 effect API. Measure legacy Corset on corpus as speed baseline. | — | Each spike works on Julia 1.13, or fallback is chosen. |
 | 1 skeleton | Julia app `corset`; facts API and rule contract; config, project kind, groups, confidence, fix tiers; finding type with cause spans; message renderer; `corset explain`; opt-outs; baseline; text, JSON, SARIF output; disk cache for syntax findings; fixer engine on lossless tree; UI snapshot tests and other harnesses. | — | One rule runs end to end: report, opt-out, baseline, fix, SARIF, cached rerun. |
-| 2 syntax | Families A and B. Copy ReLint.jl rules (Argus patterns) and LintApp.jl rules (in JuliaWorkspaces) where they exist. | {{count:A B}} | Works on scripts. Reference comparison clean or allowlisted. **First release.** |
-| 3 module | Package load in target environment; families C and G. | {{count:C G}} | Load and rules run on every corpus package. |
-| 4 types | Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); family D and type-disruption scan; per-method disk cache; `annotation` fixer guesses argument types and fills result types (annotation transition, `types.md`). | {{count:D}} | Precision gate passes on corpus. `unverified-inbounds` agrees with julia-in-lean site verdicts. |
-| 5 effects | Effect and alias summary; family E; `!` convention flow. | {{count:E}} | Flow fixtures pass, IO, RNG and memo exemptions included. |
-| 6 scope | Family H on scope layer chosen in S3. | {{count:H}} | Scope fixtures pass on packages and scripts. |
+| 2 syntax | Stages `syntax` and `lifecycle`. Copy ReLint.jl rules (Argus patterns) and LintApp.jl rules (in JuliaWorkspaces) where they exist. | {{count:syntax lifecycle}} | Works on scripts. Reference comparison clean or allowlisted. **First release.** |
+| 3 module | Package load in target environment; stages `package` and `external`. | {{count:package external}} | Load and rules run on every corpus package. |
+| 4 types | Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); `inference` stage and type-disruption scan; per-method disk cache; `annotation` fixer guesses argument types and fills result types (annotation transition, `types.md`). | {{count:inference}} | Precision gate passes on corpus. `unverified-inbounds` agrees with julia-in-lean site verdicts. |
+| 5 effects | `effects` stage: effect and alias summary; `!` convention flow. | {{count:effects}} | Flow fixtures pass, IO, RNG and memo exemptions included. |
+| 6 scope | `scope` stage on JuliaLowering (S3). | {{count:scope}} | Scope fixtures pass on packages and scripts. |
 | later | F12, F45, F46, F49 (off by default); string and dict stand-in types; language server mode; dimension-aware stand-in for `Number` (catches `x + 1` on Unitful quantity); nursery group for rules before quality gate; upstream F89 and F90 logic to Moshi `verify/` (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for `manual` fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking. | {{count:later}} | — |
 
 ### Spikes
 
 - **S1 stand-in inference** (done, works with limits): every corpus method infers; 2 generated functions refused. Differential check right on 12 fixtures. Re-dispatch on real types separates stand-in blind spots. Found real bug (`DataStructures.empty(::DefaultDictBase)`).
 - **S2 source mapping** (done, works with limits): 65% of findable statements map to exact bytes; about 2% of checked spans wrong. Code macros write maps to line only.
-- **S3 scope layer** (done, works with limits): JuliaLowering at julia commit `f0188d597b` lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload in Corset. `Meta.lower` fallback dropped.
+- **S3 scope stage** (done, works with limits): JuliaLowering at julia commit `f0188d597b` lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload in Corset. `Meta.lower` fallback dropped.
 - **S4 syntax matcher** (done, `spikes/s4-syntax-matcher/REPORT.md`): Argus.jl 0.4.2 is MIT. Use Argus behind thin wrapper so matcher stays swappable. Argus searches whole tree once per rule (about 8× slower than kind-indexed walk); own walk with root-kind index should remove most of gap. Unmeasured: benchmark candidate-node design at planned rule count first in phase 2.
 - **S5 effect summary** (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). `possible` covers 75%, 55% and 52% of methods (Distances, DataStructures, JSON), all from unknown callees or unknown foreign calls. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.
 
@@ -44,7 +44,7 @@ Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packa
 
 Design is draft until code proves it. Revisit at each checkpoint:
 
-- After phase 0: spike results confirm or replace stand-in inference, scope layer, syntax matcher and effect summary. Rewrite affected parts before phase 1.
+- After phase 0: spike results confirm or replace stand-in inference, scope stage, syntax matcher and effect summary. Rewrite affected parts before phase 1.
 - After first release: corpus findings and real use test footgun list, levels, presets and messages.
 - After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (`types.md`). Replace indexing exemption of `type-disruption` with exact conversion rule.
 - Before each later phase: reread parts that phase builds on; question decisions that no longer fit.

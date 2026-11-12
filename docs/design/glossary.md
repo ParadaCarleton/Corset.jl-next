@@ -7,8 +7,7 @@ Terms this design coins.
 | footgun | One problem Corset prevents. Source of truth; ID like F17. |
 | rule | Pure function from facts to findings. Unit of config, opt-out and level. Covers one or more footguns. Argus.jl `Rule` is different; Corset uses only Argus patterns. |
 | kind | Variant inside rule, with own message and fix. |
-| layer | Data Corset computes, L1 syntax to L5 effects. |
-| family | Analysis on layer output that rules share (A to H). |
+| stage | Analysis step that computes facts once per run: `syntax`, `lifecycle`, `package`, `scope`, `inference`, `effects`, `external`. Rule belongs to last stage it reads. |
 | fact | Analysis output that rules read. |
 | stand-in type | Type Corset defines to stand for whatever type caller passes, so inference sees concrete type. |
 | generic argument | Annotation callers can fill with many types: `x::Real`, `x::T`. |

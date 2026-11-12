@@ -9,7 +9,7 @@ using Argus: Argus, @pattern, Pattern, BindingSet, syntax_match
 using EnumX: @enumx
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
 
-export Precision, Tier, Confidence, Group, Family
+export Precision, Tier, Confidence, Group, Stage
 export Span, Label, Edit, Fix, Finding, RuleEntry
 export SyntaxFile, FactSet, IndexedPattern, Match
 export @pattern, matches, binding, span, source, nodes_of_kind, children_of, kind_name
@@ -23,8 +23,8 @@ export finding, replace_fix, manual_fix, identifier_name, nodes_named, parent_of
 @enumx Confidence definite possible
 """User-facing rule group."""
 @enumx Group correctness performance composability readability
-"""Analysis family that computes facts rule reads."""
-@enumx Family A B C D E G H
+"""Analysis stage that computes facts rule reads, in pipeline order."""
+@enumx Stage syntax lifecycle package scope inference effects external
 
 """Byte range `first_byte:last_byte` of `file`, 1-based and inclusive."""
 struct Span
@@ -70,11 +70,11 @@ struct RuleEntry
     name::Symbol
     group::Group.T
     footguns::Vector{Int}
-    family::Family.T
+    stage::Stage.T
     run::Function
 end
 
-"""Parsed source file: lossless tree plus nodes indexed by kind (family A facts)."""
+"""Parsed source file: lossless tree plus nodes indexed by kind (`syntax` stage facts)."""
 struct SyntaxFile
     path::String
     text::String

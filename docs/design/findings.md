@@ -32,7 +32,7 @@ Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and meth
 
 - Finding: argument typed `Any` reaches methods that disagree on writing it. Compiler dispatches at run time: `bang-convention` reports `possible`, and `runtime-dispatch` reports call.
 - Finding: public function returns union from dependency. Unknown callers decide: `possible`.
-- Blind spot: syntax-only rule cannot see that `a::Vector` is 1-based, because typed layer did not run.
+- Blind spot: syntax-only rule cannot see that `a::Vector` is 1-based, because `inference` stage did not run.
 - Blind spot: inference refused generated method; macro did not expand; typed finding has no source span.
 - Corset limits never fall below compiler limits (`max_methods`, union splitting). Corset resolves every call compiler resolves.
 
@@ -97,7 +97,7 @@ performance[vague-type]: `acc` changes type inside loop
 
 ### Macro output
 
-Findings inside macro expansions are reported, other packages' macros included: message marks them upstream and points at call site. Own macro: one finding at definition, with call-site count. Fixes never edit generated code. Syntax families see source as written; findings in expanded code come from families after load. Code passed through macro (`@inbounds`, `@views`) maps to exact bytes. Code macro writes itself (`@kwdef`, macro body, `@generated`) maps to nearest line inside definition: call site. Julia 1.13 lowering keeps no call-site provenance (S2); JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.
+Findings inside macro expansions are reported, other packages' macros included: message marks them upstream and points at call site. Own macro: one finding at definition, with call-site count. Fixes never edit generated code. Syntax stages see source as written; findings in expanded code come from stages after load. Code passed through macro (`@inbounds`, `@views`) maps to exact bytes. Code macro writes itself (`@kwdef`, macro body, `@generated`) maps to nearest line inside definition: call site. Julia 1.13 lowering keeps no call-site provenance (S2); JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.
 
 ### Conventions
 

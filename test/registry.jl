@@ -1,13 +1,13 @@
 # Registry agrees with design data, and rule files keep rule contract.
 
 using Corset: Corset
-using Corset.Facts: Group, Family
+using Corset.Facts: Group, Stage
 using TOML: TOML
 using Test: @test, @testset
 
 const DESIGN = joinpath(dirname(@__DIR__), "docs", "design")
-"""Families in pipeline order; rule belongs to last family among its footguns."""
-const LAYER_ORDER = ["A", "B", "C", "H", "D", "E", "G"]
+"""Stage names in pipeline order; rule belongs to last stage among its footguns."""
+const STAGES = [entry["name"] for entry in TOML.parsefile(joinpath(DESIGN, "stages.toml"))["stage"]]
 
 @testset "registry matches design" begin
     footguns = Dict(entry["id"] => entry for entry in TOML.parsefile(joinpath(DESIGN, "footguns.toml"))["footgun"])
@@ -17,7 +17,7 @@ const LAYER_ORDER = ["A", "B", "C", "H", "D", "E", "G"]
         design = rules[entry.name]
         @test entry.footguns == design["footguns"]
         @test string(entry.group) == footguns[first(entry.footguns)]["group"]
-        @test string(entry.family) == argmax(letter -> findfirst(==(letter), LAYER_ORDER), [footguns[id]["family"] for id in entry.footguns])
+        @test string(entry.stage) == argmax(name -> findfirst(==(name), STAGES), [footguns[id]["stage"] for id in entry.footguns])
     end
 end
 

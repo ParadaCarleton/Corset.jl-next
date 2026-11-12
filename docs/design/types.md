@@ -11,7 +11,7 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 - Package abstract type (`s::Shape`): infer once per concrete subtype package defines, with stand-ins for its parameters.
 - Function argument: stand-in function returns `Any` (inference barrier). Method stable under that assumption is exempt: stable whenever `f` is. Problems method causes itself are reported. Code after `f`'s result stays analyzed; values from that result give no findings. Opaque result type truncated frames in S1.
 - No stand-in yet (`AbstractString`, `AbstractDict`, abstract type without package subtype) and explicit `::Any`: no findings from that argument's data.
-- Unannotated method reached from analyzed caller is analyzed through caller inference: family D keeps explicit worklist of package frames reached from stand-in callers. Unannotated method nothing calls is skipped; `annotation` reports it. Expect low coverage on unannotated packages (Distances: 165 of 283 methods) until `annotation` fixer runs.
+- Unannotated method reached from analyzed caller is analyzed through caller inference: `inference` stage keeps explicit worklist of package frames reached from stand-in callers. Unannotated method nothing calls is skipped; `annotation` reports it. Expect low coverage on unannotated packages (Distances: 165 of 283 methods) until `annotation` fixer runs.
 - Method Corset cannot analyze is blind spot: coverage line counts it with reason.
 
 ### `type-disruption` engine
@@ -27,7 +27,7 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 
 - **Stand-in types**: types Corset defines to stand for whatever type caller passes, so inference sees concrete type. Numbers: float stand-in and integer stand-in; arrays: stand-in array type. Each is ordinary well-behaved type, and promotes like narrowest real type of its kind: float stand-in absorbs `Int` and loses to `Float64`, like `Float32`; integer stand-in loses to `Int`, like `Int32`. Base code runs on them unchanged.
 - **Inference**: infer each package method with stand-in types in place of generic arguments (`::Real`, `T <: Real`, `AbstractArray{T}`). Use native inference and its cache. No JET, no Cthulhu, no custom interpreter.
-- **Scan** (family D, package methods only):
+- **Scan** (`inference` stage, package methods only):
   - Literal, constant, global or type name meets input (stand-in, or overspecified argument type): report when converting it to input type would change type of escaping value: returned, or written to argument or global. Intermediate that does not escape (`Float32(x * 0.5)`) goes to `intermediate-widening` (performance). Each site gets one finding.
   - Examples: `x::Int32 * 2` (Int64 vs Int32) and `x::Float32 * 0.5` (Float64 vs Float32) and `Float64(x)` on `Float32` are reported. `x::Float32 * 2` and `x::Int32 / 2` (Float64 either way) pass.
   - Generic `x::Real` runs both number stand-ins, so `x * 2` is reported through integer case.
@@ -94,4 +94,4 @@ Helps unannotated package reach full annotations. `annotation` fixer guesses typ
 
 ### Specialization count
 
-`specialization-blowup` predicts from source: C finds methods that specialize on `Function` or `Type` argument; A counts distinct closures or types passed at package call sites.
+`specialization-blowup` predicts from source: `package` stage finds methods that specialize on `Function` or `Type` argument; `syntax` stage counts distinct closures or types passed at package call sites.
