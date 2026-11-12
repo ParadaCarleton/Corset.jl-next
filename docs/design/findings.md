@@ -12,11 +12,11 @@ Noise is no longer reason for group. Each finding says how sure analysis is. One
       <div role="cell"><code>possible</code> problem</div><div class="no" role="cell">skip</div><div class="yes" role="cell">report</div>
     </div>
 
-Note: Checks with both kinds: `bang-convention` (dispatch candidates disagree on write), `type-disruption` (type branch), `unwritten-element` and `constant-array` (sites fixer cannot prove).
+Note: Rules with both kinds: `bang-convention` (dispatch candidates disagree on write), `type-disruption` (type branch), `unwritten-element` and `constant-array` (sites fixer cannot prove).
 
 ### Groups
 
-`correctness`, `performance`, `composability`, `readability`. One group per check; `banned` entries name their own group.
+`correctness`, `performance`, `composability`, `readability`. One group per rule; `banned` entries name their own group.
 
 ### Confidence and blind spots
 
@@ -32,18 +32,18 @@ Doubt test: would perfect analysis still be unsure? Perfect analysis sees all Ju
 
 - `possible`: argument typed `Any` reaches methods that disagree on writing it. Run-time type decides.
 - `possible`: public function returns union from dependency. Unknown callers decide.
-- Blind spot: syntax-only check cannot see that `a::Vector` is 1-based, because typed layer did not run.
+- Blind spot: syntax-only rule cannot see that `a::Vector` is 1-based, because typed layer did not run.
 - Blind spot: inference refused generated method; macro did not expand; typed finding has no source span; dispatch exceeds candidate budget.
 
-Coverage line ends every run and counts blind spots by cause: `analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)`. Check that lacks fact at site reports nothing there.
+Coverage line ends every run and counts blind spots by cause: `analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)`. Rule that lacks fact at site reports nothing there.
 
 ### Lint levels
 
-Clippy model: each group and each check has level `allow`, `warn` or `deny`; check level overrides group level. `deny` findings fail run; `--deny warnings` makes warnings fail too. Baseline findings never fail run.
+Clippy model: each group and each rule has level `allow`, `warn` or `deny`; rule level overrides group level. `deny` findings fail run; `--deny warnings` makes warnings fail too. Baseline findings never fail run.
 
 ### Opt-out comments
 
-`# corset: allow <check> -- <reason>`. Reason is required. Opt-out that suppresses nothing is error, like Rust `#[expect]`. Scope by position: end of line covers line; line above function, struct or block covers that item; top of file covers file.
+`# corset: allow <rule> -- <reason>`. Reason is required. Opt-out that suppresses nothing is error, like Rust `#[expect]`. Scope by position: end of line covers line; line above function, struct or block covers that item; top of file covers file.
 
 ### Config
 
@@ -73,7 +73,7 @@ Each fix declares tier by risk to callers; one setting picks highest tier applie
 
 ### Messages
 
-Model: Rust compiler errors. Each finding carries primary span, labeled cause spans, one-line reason, fix with tier, and docs link. Analyses record cause spans (where union is created, where literal enters), so checks can name cause. Span has precision: exact bytes or line only. Renderer marks whole line for line precision.
+Model: Rust compiler errors. Each finding carries primary span, labeled cause spans, one-line reason, fix with tier, and docs link. Analyses record cause spans (where union is created, where literal enters), so rules can name cause. Span has precision: exact bytes or line only. Renderer marks whole line for line precision.
 
 ```
 performance[vague-type]: `acc` changes type inside loop
@@ -91,7 +91,7 @@ performance[vague-type]: `acc` changes type inside loop
 ```
 
 - Same structure feeds SARIF: related locations and fixes.
-- `corset explain <check>` prints footgun, example and fix offline.
+- `corset explain <rule>` prints footgun, example and fix offline.
 - Opt-out hint names exact comment: `# corset: allow vague-type -- <reason>`.
 
 ### Macro output
@@ -103,12 +103,12 @@ Findings inside macro expansions are reported, other packages' macros included: 
 - Corset supports only latest Julia release, for running and for fixes.
 - Public API: exported or declared `public`. Everything else is internal.
 - `test/`, `docs/`, `benchmark/` are scripts: loading them runs them.
-- Baseline matches findings by check, file, enclosing definition and normalized snippet hash. No line numbers, so edits elsewhere keep matches.
-- `corset explain` and docs page per check follow Clippy sections: what it does, why it is bad, example, use instead, known problems.
+- Baseline matches findings by rule, file, enclosing definition and normalized snippet hash. No line numbers, so edits elsewhere keep matches.
+- `corset explain` and docs page per rule follow Clippy sections: what it does, why it is bad, example, use instead, known problems.
 - Fixes keep surrounding style; formatting stays formatter's job (Runic, JuliaFormatter).
 - Additive replacement for literal uses `oneunit(x)`, never `one(x)`: `one` drops units (Unitful.jl).
 - Corset lints itself in CI from phase 1.
-- Renamed check keeps old name as alias that warns, so opt-out comments survive renames (Clippy renamed-lints list).
+- Renamed rule keeps old name as alias that warns, so opt-out comments survive renames (Clippy renamed-lints list).
 
 ### `one-letter` exemptions
 

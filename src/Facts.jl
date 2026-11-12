@@ -1,7 +1,7 @@
 """
-Fact types and query API. Only module check code may import.
+Fact types and query API. Only module rule code may import.
 
-Analyses build facts once per run; checks read them through this module and return `Finding`s.
+Analyses build facts once per run; rules read them through this module and return `Finding`s.
 """
 module Facts
 
@@ -10,8 +10,8 @@ using EnumX: @enumx
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
 
 export Precision, Tier, Confidence, Group, Family
-export Span, Label, Edit, Fix, Finding, CheckEntry
-export SyntaxFile, FactSet, Rule, Match
+export Span, Label, Edit, Fix, Finding, RuleEntry
+export SyntaxFile, FactSet, IndexedPattern, Match
 export @pattern, matches, binding, span, source, nodes_of_kind, children_of, kind_name
 export finding, replace_fix, manual_fix, identifier_name, nodes_named, parent_of, ancestors, descendants, call_head, leaf_value
 
@@ -19,11 +19,11 @@ export finding, replace_fix, manual_fix, identifier_name, nodes_named, parent_of
 @enumx Precision exact line
 """Fix risk to callers; one setting picks highest tier applied automatically."""
 @enumx Tier safe likely breaking manual
-"""`definite`: problem exists. `possible`: analysis could not rule problem out."""
+"""`definite`: problem exists. `possible`: perfect analysis would still be unsure."""
 @enumx Confidence definite possible
-"""User-facing check group."""
+"""User-facing rule group."""
 @enumx Group correctness performance composability readability
-"""Analysis family that computes facts check reads."""
+"""Analysis family that computes facts rule reads."""
 @enumx Family A B C D E G H
 
 """Byte range `first_byte:last_byte` of `file`, 1-based and inclusive."""
@@ -55,7 +55,7 @@ end
 
 """One problem at one place. `message` is headline; `why` explains harm."""
 struct Finding
-    check::Symbol
+    rule::Symbol
     kind::Symbol
     confidence::Confidence.T
     message::String
@@ -65,8 +65,8 @@ struct Finding
     fix::Union{Fix, Nothing}
 end
 
-"""Registry entry: check metadata plus pure function `run(facts::FactSet)::Vector{Finding}`."""
-struct CheckEntry
+"""Registry entry: rule metadata plus pure function `run(facts::FactSet)::Vector{Finding}`."""
+struct RuleEntry
     name::Symbol
     group::Group.T
     footguns::Vector{Int}
@@ -91,22 +91,22 @@ end
 Argus pattern plus filter on root nodes it can match: kind, then call head for `call` roots.
 `nothing` filter means pattern variable sits at root; head set `nothing` means any head.
 """
-struct Rule
+struct IndexedPattern
     pattern::Pattern
     roots::Union{Nothing, Dict{Kind, Union{Nothing, Set{String}}}}
 end
 
-"""Rule for `pattern`, indexed by root alternatives."""
-function Rule(pattern::Pattern)
+"""`pattern` indexed by root alternatives, so matcher tries only candidate nodes."""
+function IndexedPattern(pattern::Pattern)
     alternatives = root_alternatives(pattern.src)
-    any(node -> startswith(kind_name(node), "~"), alternatives) && return Rule(pattern, nothing)
+    any(node -> startswith(kind_name(node), "~"), alternatives) && return IndexedPattern(pattern, nothing)
     roots = Dict{Kind, Union{Nothing, Set{String}}}()
     for node in alternatives
         kind, head = JS.kind(node), call_head(node)
         previous = get(roots, kind, Set{String}())
         roots[kind] = isnothing(head) || isnothing(previous) ? nothing : push!(previous, head)
     end
-    return Rule(pattern, roots)
+    return IndexedPattern(pattern, roots)
 end
 
 """Root nodes of pattern, with `~or` alternatives flattened."""
@@ -123,7 +123,7 @@ end
 """Name of node kind as string; Argus pattern forms start with `~`."""
 kind_name(node)::String = string(JS.kind(node))
 
-"""Successful match of rule at `node` with its pattern variable bindings."""
+"""Successful match of pattern at `node` with its pattern variable bindings."""
 struct Match
     node::SyntaxNode
     bindings::BindingSet
@@ -132,25 +132,25 @@ end
 """Nodes of `file` with kind `kind`, in source order."""
 nodes_of_kind(file::SyntaxFile, kind::Kind)::Vector{SyntaxNode} = get(file.index, kind, SyntaxNode[])
 
-"""Every match of `rule` in `file`, in source order. Tries only nodes whose kind and call head rule root can take."""
-function matches(file::SyntaxFile, rule::Rule)::Vector{Match}
+"""Every match of `indexed` in `file`, in source order. Tries only nodes whose kind and call head pattern root can take."""
+function matches(file::SyntaxFile, indexed::IndexedPattern)::Vector{Match}
     found = Match[]
-    if isnothing(rule.roots)
+    if isnothing(indexed.roots)
         for nodes in values(file.index), node in nodes
-            try_match!(found, rule, node)
+            try_match!(found, indexed, node)
         end
     else
-        for (kind, heads) in rule.roots, node in nodes_of_kind(file, kind)
+        for (kind, heads) in indexed.roots, node in nodes_of_kind(file, kind)
             isnothing(heads) || call_head(node) in heads || continue
-            try_match!(found, rule, node)
+            try_match!(found, indexed, node)
         end
     end
     return sort!(found; by = match -> JS.first_byte(match.node))
 end
 
-"""Push match of `rule` at `node` to `found` when pattern matches."""
-function try_match!(found::Vector{Match}, rule::Rule, node::SyntaxNode)::Nothing
-    result = syntax_match(rule.pattern, node)
+"""Push match of `indexed` at `node` to `found` when pattern matches."""
+function try_match!(found::Vector{Match}, indexed::IndexedPattern, node::SyntaxNode)::Nothing
+    result = syntax_match(indexed.pattern, node)
     result isa BindingSet && push!(found, Match(node, result))
     return nothing
 end
@@ -218,12 +218,12 @@ leaf_value(node::SyntaxNode)::Union{Nothing, String} = JS.is_leaf(node) ? string
 """Children of `node`; empty for leaf."""
 children_of(node::SyntaxNode)::Vector{SyntaxNode} = JS.is_leaf(node) ? SyntaxNode[] : collect(JS.children(node))
 
-"""Finding of `check` with primary label at `node` of `file`."""
+"""Finding of `rule` with primary label at `node` of `file`."""
 function finding(
-        check::Symbol, file::SyntaxFile, node::SyntaxNode; kind::Symbol, confidence::Confidence.T, message::String,
+        rule::Symbol, file::SyntaxFile, node::SyntaxNode; kind::Symbol, confidence::Confidence.T, message::String,
         label::String, why::String, fix::Union{Fix, Nothing}, causes::Vector{Label} = Label[],
     )::Finding
-    return Finding(check, kind, confidence, message, Label(span(file, node), label), causes, why, fix)
+    return Finding(rule, kind, confidence, message, Label(span(file, node), label), causes, why, fix)
 end
 
 """Fix replacing `node` of `file` with `replacement`."""

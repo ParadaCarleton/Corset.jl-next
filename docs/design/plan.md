@@ -2,18 +2,18 @@
 
 Phases, spikes, quality gate and speed budget.
 
-Draft. Spikes retire risks first. Each later phase ships usable checks. Phase order follows layer cost: syntax needs no package load, so it works on every project.
+Draft. Spikes retire risks first. Each later phase ships usable rules. Phase order follows layer cost: syntax needs no package load, so it works on every project.
 
 | Phase | Builds | Footguns | Exit |
 |---|---|---|---|
 | 0 spikes | S1 stand-in inference · S2 source mapping · S3 scope layer · S4 syntax matcher · S5 effect API. Measure legacy Corset on corpus as speed baseline. | — | Each spike works on Julia 1.13, or fallback is chosen. |
-| 1 skeleton | Julia app `corset`; facts API and check contract; config, project kind, groups, confidence, fix tiers; finding type with cause spans; message renderer; `corset explain`; opt-outs; baseline; text, JSON, SARIF output; disk cache for syntax findings; fixer engine on lossless tree; UI snapshot tests and other harnesses. | — | One check runs end to end: report, opt-out, baseline, fix, SARIF, cached rerun. |
-| 2 syntax | Families A and B. Copy ReLint.jl rules (Argus patterns) and LintApp.jl checks (in JuliaWorkspaces) where they exist. | {{count:A B}} | Works on scripts. Reference comparison clean or allowlisted. **First release.** |
-| 3 module | Package load in target environment; families C and G. | {{count:C G}} | Load and checks run on every corpus package. |
+| 1 skeleton | Julia app `corset`; facts API and rule contract; config, project kind, groups, confidence, fix tiers; finding type with cause spans; message renderer; `corset explain`; opt-outs; baseline; text, JSON, SARIF output; disk cache for syntax findings; fixer engine on lossless tree; UI snapshot tests and other harnesses. | — | One rule runs end to end: report, opt-out, baseline, fix, SARIF, cached rerun. |
+| 2 syntax | Families A and B. Copy ReLint.jl rules (Argus patterns) and LintApp.jl rules (in JuliaWorkspaces) where they exist. | {{count:A B}} | Works on scripts. Reference comparison clean or allowlisted. **First release.** |
+| 3 module | Package load in target environment; families C and G. | {{count:C G}} | Load and rules run on every corpus package. |
 | 4 types | Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); family D and type-disruption scan; per-method disk cache; `annotation` fixer guesses argument types and fills result types (annotation transition, `types.md`). | {{count:D}} | Precision gate passes on corpus. `unverified-inbounds` agrees with julia-in-lean site verdicts. |
 | 5 effects | Effect and alias summary; family E; `!` convention flow. | {{count:E}} | Flow fixtures pass, IO, RNG and memo exemptions included. |
 | 6 scope | Family H on scope layer chosen in S3. | {{count:H}} | Scope fixtures pass on packages and scripts. |
-| later | F12, F45, F46, F49 (off by default); string and dict stand-in types; language server mode; dimension-aware stand-in for `Number` (catches `x + 1` on Unitful quantity); nursery group for checks before quality gate; upstream F89 and F90 logic to Moshi `verify/` (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for `manual` fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking. | {{count:later}} | — |
+| later | F12, F45, F46, F49 (off by default); string and dict stand-in types; language server mode; dimension-aware stand-in for `Number` (catches `x + 1` on Unitful quantity); nursery group for rules before quality gate; upstream F89 and F90 logic to Moshi `verify/` (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for `manual` fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking. | {{count:later}} | — |
 
 ### Spikes
 
@@ -25,10 +25,10 @@ Draft. Spikes retire risks first. Each later phase ships usable checks. Phase or
 
 ### Quality gate
 
-Check is on by default only when all hold:
+Rule is on by default only when all hold:
 
 - Fixture per footgun: positive, negative, and fix result.
-- Any false `definite` finding blocks check: it is check bug. At least 90% of sampled `possible` findings are real problems.
+- Any false `definite` finding blocks rule: it is rule bug. At least 90% of sampled `possible` findings are real problems.
 - `definite` typed finding needs validated span: callee at mapped node matches IR callee; mismatch demotes span to line precision.
 - Property tests (Supposition.jl): fix creates no new finding; fix is idempotent. `safe` fix: fixture behaves same before and after (differential run).
 - Message shows cause span and concrete fix; reviewed on corpus sample.
@@ -38,7 +38,7 @@ Speed budget (draft): time from Corset ready to findings out; Julia startup and 
 
 Legacy baseline (S4, warm, whole process): Distances 9.4 s, DataStructures 16–19 s, JSON 33–37 s. Remeasure legacy in same scope (startup and target load subtracted) before comparing. Main risks: stand-in inference, 7–17 s cold per package (S1); effect summary, 17–22 s uncached (S5). Corset precompile workload, Base summary cache and per-method disk cache must close gap; effects phase gets own budget once Base cache exists.
 
-Repository bar: 100% line coverage; mutation testing on check code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).
+Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).
 
 ### Design reviews
 

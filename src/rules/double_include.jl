@@ -4,7 +4,7 @@ module DoubleInclude
 using ...Facts
 
 const NAME = Symbol("double-include")
-const RULE = Rule(@pattern include({path}))
+const PATTERN = IndexedPattern(@pattern include({path}))
 
 """Literal path of `include` argument, resolved against including file; `nothing` for computed path."""
 function included_path(file::SyntaxFile, argument)::Union{Nothing, String}
@@ -18,7 +18,7 @@ end
 function run(facts::FactSet)::Vector{Finding}
     first_seen = Dict{String, Label}()
     found = Finding[]
-    for file in facts.files, match in matches(file, RULE)
+    for file in facts.files, match in matches(file, PATTERN)
         path = included_path(file, binding(match, :path))
         isnothing(path) && continue
         if !haskey(first_seen, path)
@@ -37,6 +37,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = CheckEntry(NAME, Group.correctness, [64], Family.A, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [64], Family.A, run)
 
 end

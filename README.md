@@ -42,3 +42,10 @@ ln -s /path/to/Corset.jl/skill ~/.claude/skills/corset
 # for one project
 mkdir -p .claude/skills && cp -r /path/to/Corset.jl/skill .claude/skills/corset
 ```
+
+## Acknowledgments
+
+- [Clippy](https://github.com/rust-lang/rust-clippy) and the Rust compiler set the model for Corset's design: rule levels, opt-out comments, UI snapshot tests, `explain` pages and error-message format. Corset rules read shared analysis facts the way Clippy lints read compiler results.
+- [Argus.jl](https://github.com/iuliadmtru/Argus.jl) matches syntax patterns for syntax rules.
+- [JuliaSyntax.jl](https://github.com/JuliaLang/JuliaSyntax.jl) parses source into the lossless tree that rules and fixers use.
+- [ExplicitImports.jl](https://github.com/JuliaTesting/ExplicitImports.jl) finds implicit imports and internal access.

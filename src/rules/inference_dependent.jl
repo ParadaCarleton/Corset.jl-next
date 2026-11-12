@@ -4,7 +4,7 @@ module InferenceDependent
 using ...Facts
 
 const NAME = Symbol("inference-dependent")
-const RULE = Rule(
+const PATTERN = IndexedPattern(
     @pattern ~or(
         Core.Compiler.return_type({_}...), Base.return_types({_}...), Base.infer_return_type({_}...),
         Base.promote_op({_}...), Core.Compiler.infer_return_type({_}...),
@@ -20,10 +20,10 @@ function run(facts::FactSet)::Vector{Finding}
             label = "value can change with Julia version or compiler heuristics",
             why = "inference may widen result at any time; code then takes other branch or allocates other type",
             fix = manual_fix("compute type from values (`typeof(f(x))`), or document fallback for wide result"),
-        ) for file in facts.files for match in matches(file, RULE)
+        ) for file in facts.files for match in matches(file, PATTERN)
     ]
 end
 
-const ENTRY = CheckEntry(NAME, Group.composability, [26], Family.A, run)
+const ENTRY = RuleEntry(NAME, Group.composability, [26], Family.A, run)
 
 end

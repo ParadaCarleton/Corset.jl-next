@@ -18,7 +18,7 @@ DESIGN = Path(__file__).resolve().parent
 GROUPS = ("correctness", "performance", "composability", "readability")
 # (file or generated table, section id) in page order
 ORDER = [("principles.md", "principles"), ("footguns", "footguns"), ("pipeline.md", "pipeline"), ("families", "families"),
-         ("checks", "checks"), ("findings.md", "findings"), ("types.md", "types"), ("effects.md", "effects"),
+         ("rules", "rules"), ("findings.md", "findings"), ("types.md", "types"), ("effects.md", "effects"),
          ("architecture.md", "architecture"), ("plan.md", "plan"), ("glossary.md", "glossary")]
 
 
@@ -26,17 +26,17 @@ def load(name: str, table: str) -> list[dict]:
     return tomllib.loads((DESIGN / name).read_text())[table]
 
 
-footguns, checks, families = load("footguns.toml", "footgun"), load("checks.toml", "check"), load("families.toml", "family")
+footguns, rules, families = load("footguns.toml", "footgun"), load("rules.toml", "rule"), load("families.toml", "family")
 by_id = {footgun["id"]: footgun for footgun in footguns}
 assert len(by_id) == len(footguns), "footgun IDs must be unique"
-owner = Counter(ident for check in checks for ident in check["footguns"])
-assert set(owner) == set(by_id) and all(count == 1 for count in owner.values()), "each footgun belongs to exactly one check"
-for check in checks:
-    assert len({by_id[ident]["group"] for ident in check["footguns"]}) == 1, f"{check['name']}: one group per check"
+owner = Counter(ident for rule in rules for ident in rule["footguns"])
+assert set(owner) == set(by_id) and all(count == 1 for count in owner.values()), "each footgun belongs to exactly one rule"
+for rule in rules:
+    assert len({by_id[ident]["group"] for ident in rule["footguns"]}) == 1, f"{rule['name']}: one group per rule"
 assert {footgun["family"] for footgun in footguns} <= {family["letter"] for family in families}, "unknown family letter"
-for check in checks:
-    letters = {by_id[ident]["family"] for ident in check["footguns"]}
-    assert len(letters) == 1 or not letters & {"A", "B"}, f"{check['name']}: syntax family mixed with later family"
+for rule in rules:
+    letters = {by_id[ident]["family"] for ident in rule["footguns"]}
+    assert len(letters) == 1 or not letters & {"A", "B"}, f"{rule['name']}: syntax family mixed with later family"
 
 
 def code(text: str) -> str:
@@ -78,19 +78,19 @@ def families_section() -> str:
         chips = "".join(f'<span class="chip g-{f["group"]}" title="{html.escape(f["text"].replace("`", ""))}">F{f["id"]}</span>'
                         for f in footguns if f["family"] == family["letter"])
         cards.append(f'<div class="family"><h3><span>{family["letter"]}</span>{family["title"]}</h3><p>{code(family["text"])}</p><div class="rules">{chips}</div></div>')
-    return ("<h2>Analysis families</h2><p>Each family is one analysis. Checks inside family share its code and output. Chips are footgun IDs; hover for text. Data: <code>families.toml</code>.</p>"
+    return ("<h2>Analysis families</h2><p>Each family is one analysis. Rules inside family share its code and output. Chips are footgun IDs; hover for text. Data: <code>families.toml</code>.</p>"
             f'<div class="families">{"".join(cards)}</div>')
 
 
-def checks_section() -> str:
+def rules_section() -> str:
     rows = []
-    for check in checks:
-        group = by_id[check["footguns"][0]]["group"]
-        letters = " ".join(sorted({by_id[ident]["family"] for ident in check["footguns"]}))
-        listed = "<br>".join(f"F{ident} {code(by_id[ident]['text'])}" for ident in check["footguns"])
-        rows.append((group, [f"<code>{check['name']}</code>", chip(group), letters, listed, code(check.get("note", ""))]))
-    return ("<h2>Checks</h2><p>Check is unit of config, opt-out and group. It covers one footgun, or several with same group and same analysis. Data: <code>checks.toml</code>.</p>"
-            + filter_bar("Filter checks by group") + table(["Check", "Group", "Family", "Footguns", "Note"], rows, True))
+    for rule in rules:
+        group = by_id[rule["footguns"][0]]["group"]
+        letters = " ".join(sorted({by_id[ident]["family"] for ident in rule["footguns"]}))
+        listed = "<br>".join(f"F{ident} {code(by_id[ident]['text'])}" for ident in rule["footguns"])
+        rows.append((group, [f"<code>{rule['name']}</code>", chip(group), letters, listed, code(rule.get("note", ""))]))
+    return ("<h2>Rules</h2><p>Rule is unit of config, opt-out and group. It covers one footgun, or several with same group and same analysis. Data: <code>rules.toml</code>.</p>"
+            + filter_bar("Filter rules by group") + table(["Rule", "Group", "Family", "Footguns", "Note"], rows, True))
 
 
 def phase_count(spec: str) -> int:
@@ -117,7 +117,7 @@ def markdown_section(name: str) -> str:
     return cards(rendered)
 
 
-GENERATED = {"footguns": footguns_section, "families": families_section, "checks": checks_section}
+GENERATED = {"footguns": footguns_section, "families": families_section, "rules": rules_section}
 sections = "\n\n".join(f'<section id="{ident}">\n{GENERATED[part]() if part in GENERATED else markdown_section(part)}\n</section>' for part, ident in ORDER)
 nav = " · ".join(f'<a href="#{ident}">{ident}</a>' for _, ident in ORDER)
 page = f"""<!doctype html>
@@ -134,8 +134,8 @@ page = f"""<!doctype html>
 <header>
   <div class="eyebrow">Corset.jl · design · generated from docs/design parts</div>
   <h1>Corset Rewrite Plan</h1>
-  <p class="lede">Footguns, checks, shared analyses and decisions for rewrite of Corset. Source files: <code>docs/design/README.md</code> lists them. Old rule names live in <code>rules-rewrite-history.md</code>.</p>
-  <div class="meta"><span><b>{len(footguns)}</b> footguns</span><span><b>{len(checks)}</b> checks</span><span><b>{len(families)}</b> analysis families</span></div>
+  <p class="lede">Footguns, rules, shared analyses and decisions for rewrite of Corset. Source files: <code>docs/design/README.md</code> lists them. Legacy rule names live in <code>rules-rewrite-history.md</code>.</p>
+  <div class="meta"><span><b>{len(footguns)}</b> footguns</span><span><b>{len(rules)}</b> rules</span><span><b>{len(families)}</b> analysis families</span></div>
   <nav class="note">{nav}</nav>
 </header>
 
@@ -159,4 +159,4 @@ for (const group of document.querySelectorAll('.filter')) {{
 </html>
 """
 (DESIGN / "rules-rewrite.html").write_text(page)
-print(f"{len(footguns)} footguns, {len(checks)} checks, {len(families)} families")
+print(f"{len(footguns)} footguns, {len(rules)} rules, {len(families)} families")

@@ -1,4 +1,4 @@
-"""`wide-struct` (F78) and `field-prefix` (F79): struct shape checks on field lists."""
+"""`wide-struct` (F78) and `field-prefix` (F79): struct shape rules on field lists."""
 module StructShape
 
 using ...Facts
@@ -72,7 +72,7 @@ function run_prefix(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const WIDE = CheckEntry(Symbol("wide-struct"), Group.readability, [78], Family.A, run_wide)
-const PREFIX = CheckEntry(Symbol("field-prefix"), Group.readability, [79], Family.A, run_prefix)
+const WIDE = RuleEntry(Symbol("wide-struct"), Group.readability, [78], Family.A, run_wide)
+const PREFIX = RuleEntry(Symbol("field-prefix"), Group.readability, [79], Family.A, run_prefix)
 
 end
