@@ -9,6 +9,9 @@ Rules every design choice follows, and what Corset does not do.
 - Give each finding confidence: `definite` (problem exists) or `possible` (problem not ruled out). One setting filters them.
 - Map every finding back to source bytes. Fixers edit lossless syntax tree.
 - Check is small query over shared facts. It never parses, lowers, loads or infers by itself.
+- Each fact has one producer. Check never guesses later-layer fact (type, mutability, effect, ADT variant) from syntax; it waits for that layer.
+- Check belongs to last layer its findings need. One check never mixes syntax footguns (families A, B) with later footguns.
+- Fixer may read later layers when they ran. Otherwise its fix is `manual`.
 - Every finding explains itself: cause spans, one-line reason, concrete fix. Rust compiler errors set bar.
 - Cache findings on disk. Unchanged code is never analyzed twice, across restarts too.
 - Keep linter process warm. Load target package once. Infer each package method once; every typed check shares result.

@@ -349,7 +349,8 @@ area = "arrays"
 text = "`fill` shares one mutable object"
 example = "`fill(zeros(3), n)`"
 group = "correctness"
-family = "A"
+family = "D"
+note = "Inferred value type decides mutability; syntax list of mutable constructors would guess it. Fix tier `manual`: comprehension also changes code that shares on purpose."
 
 [[footgun]]
 id = 36
@@ -357,8 +358,8 @@ area = "arrays"
 text = "`1:length(A)` assumes 1-based indices"
 example = "`OffsetArray` breaks it"
 group = "composability"
-family = "A"
-note = "Syntax-only finding is `possible`: custom array type may define 1-based indexing (S4: `CircularDeque`). `definite` needs type or index-trait evidence."
+family = "D"
+note = "Inferred `axes` type decides: `OneTo` gives no finding (`Array`, S4 `CircularDeque`); argument of abstract array type gives `definite`."
 
 [[footgun]]
 id = 37
@@ -406,8 +407,8 @@ area = "arrays"
 text = "Inner loop over non-first index"
 example = "`for i, j; A[i, j]`"
 group = "performance"
-family = "A"
-note = "Possible only."
+family = "D"
+note = "Array type decides memory order: `Adjoint` and `PermutedDimsArray` reverse it. Possible only: loop length is unknown."
 
 [[footgun]]
 id = 43
@@ -498,8 +499,8 @@ area = "containers"
 text = "`@match` misses variant of Moshi ADT"
 example = "no arm for `Shape.Circle`, no catch-all"
 group = "correctness"
-family = "A"
-note = "Moshi emits runtime `error(\"matching non-exhaustive\")`. Variants from `@data` (C). Fix tier `manual`."
+family = "C"
+note = "Moshi emits runtime `error(\"matching non-exhaustive\")`. Variants come from loaded `@data` type. Fix tier `manual`."
 
 [[footgun]]
 id = 90
@@ -507,7 +508,7 @@ area = "containers"
 text = "Unreachable `@match` arm"
 example = "arm after pattern that covers it"
 group = "correctness"
-family = "A"
+family = "C"
 
 [[footgun]]
 id = 91
@@ -515,7 +516,7 @@ area = "containers"
 text = "Catch-all arm on own ADT hides later variants"
 example = "`_ => …` in `@match` on package ADT"
 group = "correctness"
-family = "A"
+family = "C"
 note = "Clippy `wildcard_enum_match_arm`. Default level `allow`."
 
 [[footgun]]
