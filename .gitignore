@@ -5,3 +5,4 @@
 .claude/chats
 /docs/build/
 /docs/Manifest.toml
+.worktrees/
