@@ -49,3 +49,9 @@ mkdir -p .claude/skills && cp -r /path/to/Corset.jl/skill .claude/skills/corset
 - [Argus.jl](https://github.com/iuliadmtru/Argus.jl) matches syntax patterns for syntax rules.
 - [JuliaSyntax.jl](https://github.com/JuliaLang/JuliaSyntax.jl) parses source into the lossless tree that rules and fixers use.
 - [ExplicitImports.jl](https://github.com/JuliaTesting/ExplicitImports.jl) finds implicit imports and internal access.
+
+## License
+
+Corset is free for noncommercial use under [PolyForm Noncommercial 1.0.0](LICENSE).
+Universities, public research institutes and other noncommercial organizations qualify, whatever their funding.
+Commercial use needs a separate license; contact [ParadaCarleton](https://github.com/ParadaCarleton).
