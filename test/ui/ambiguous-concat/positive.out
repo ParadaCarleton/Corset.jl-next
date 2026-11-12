@@ -1,0 +1,24 @@
+correctness[ambiguous-concat]: `[1 -2]` concatenates `-2` as new element
+ --> positive.jl:2:7
+  |
+2 | row = [1 -2]
+  |       ^^^^^^ 1×2 matrix
+  |          -- separate element
+  |
+  = why: space before sign starts new element; `1 - 2` would subtract
+  = confidence: possible
+  = fix: write `[1, -2]` for vector, `[1 - 2]` for arithmetic   [manual]
+  = docs: corset explain ambiguous-concat
+
+correctness[ambiguous-concat]: `[x -y]` concatenates `-y` as new element
+ --> positive.jl:3:8
+  |
+3 | pair = [x -y]
+  |        ^^^^^^ 1×2 matrix
+  |           -- separate element
+  |
+  = why: space before sign starts new element; `x - y` would subtract
+  = confidence: possible
+  = fix: write `[x, -y]` for vector, `[x - y]` for arithmetic   [manual]
+  = docs: corset explain ambiguous-concat
+

@@ -1,0 +1,10 @@
+correctness[orphan-task]: task from `@async` is never waited
+ --> positive.jl:9:1
+  |
+9 | @async serve()
+  | ^^^^^^^^^^^^^^ task discarded
+  |
+  = why: exception inside task is stored in task; nobody reads it, so failure stays silent
+  = fix: keep task and `wait` or `fetch` it, or wrap starts in `@sync`   [manual]
+  = docs: corset explain orphan-task
+

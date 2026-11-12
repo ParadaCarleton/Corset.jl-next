@@ -19,9 +19,13 @@ const DESIGN = joinpath(dirname(@__DIR__), "docs", "design")
     end
 end
 
+@testset "registry in name order" begin
+    @test issorted([entry.name for entry in Corset.Checks.REGISTRY])
+end
+
 @testset "check files import only Facts" begin
     directory = joinpath(dirname(@__DIR__), "src", "checks")
-    for name in readdir(directory)
+    for name in filter(endswith(".jl"), readdir(directory))
         imports = filter(line -> occursin(r"^\s*(using|import)\b", line), readlines(joinpath(directory, name)))
         @test imports == ["using ...Facts"]
     end

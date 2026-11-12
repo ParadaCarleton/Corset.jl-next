@@ -1,0 +1,13 @@
+correctness[double-include]: `include("./geometry.jl")` includes file again
+ --> positive.jl:4:1
+  |
+2 | include("geometry.jl")
+  | ---------------------- first included here
+3 | include("solvers.jl")
+4 | include("./geometry.jl")
+  | ^^^^^^^^^^^^^^^^^^^^^^^^ second copy of every definition
+  |
+  = why: methods are redefined and structs error or shadow; load order then decides behavior
+  = fix: include each file once, from package entry file   [manual]
+  = docs: corset explain double-include
+

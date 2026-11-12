@@ -47,6 +47,10 @@ end
 @testset "facts" begin
     @test isnothing(Rule(@pattern {x}).roots)
     @test isnothing(Rule(@pattern ~or(f({x}), {y})).roots)
+    mixed = Rule(@pattern ~or(f({x}), g({x}), [], {a}.b({x}), h({x})))
+    @test mixed.roots[Corset.Syntax.JS.K"call"] === nothing
+    @test mixed.roots[Corset.Syntax.JS.K"vect"] === nothing
+    @test Rule(@pattern ~or(f({x}), g({x}))).roots[Corset.Syntax.JS.K"call"] == Set(["f", "g"])
     file = Corset.Syntax.parse_file("f.jl", "g(1)\n")
     @test length(Facts.matches(file, Rule(@pattern {x}))) > 1
     @test Facts.identifier_name(Facts.nodes_of_kind(file, Corset.Syntax.JS.K"Integer")[1]) === nothing

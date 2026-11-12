@@ -1,0 +1,22 @@
+correctness[juxtaposition]: `1/2x` means `1/(2x)`
+ --> positive.jl:2:19
+  |
+2 | half_inverse(x) = 1/2x
+  |                   ^^^^ parsed as `1/(2x)`
+  |                     -- one factor
+  |
+  = why: juxtaposition binds tighter than `/`; readers often read left to right
+  = fix: replace with `1/(2x)`   [safe]
+  = docs: corset explain juxtaposition
+
+correctness[juxtaposition]: `2^2r` means `2^(2r)`
+ --> positive.jl:3:13
+  |
+3 | growth(r) = 2^2r
+  |             ^^^^ parsed as `2^(2r)`
+  |               -- one factor
+  |
+  = why: juxtaposition binds tighter than `^`; readers often read left to right
+  = fix: replace with `2^(2r)`   [safe]
+  = docs: corset explain juxtaposition
+
