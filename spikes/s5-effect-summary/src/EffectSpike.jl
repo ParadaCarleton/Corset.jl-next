@@ -43,10 +43,11 @@ struct Summary
     direct::Set{GlobalKey}              # globals written by own statements
     result_globals::Dict{GlobalKey, Certainty}
     opaque::Bool                        # unknown callee, foreign call or untracked pointer
+    fresh_result::Bool                  # result always allocated inside call
 end
 
 bottom_summary(nparams::Int)::Summary = Summary(fill(NO_EFFECT, nparams), Set{Tuple{Int, Int}}(), Set{Tuple{Int, Int}}(),
-    Dict{GlobalKey, Certainty}(), Set{GlobalKey}(), Dict{GlobalKey, Certainty}(), false)
+    Dict{GlobalKey, Certainty}(), Set{GlobalKey}(), Dict{GlobalKey, Certainty}(), false, true)
 
 Base.:(==)(a::Summary, b::Summary)::Bool = all(getfield(a, f) == getfield(b, f) for f in fieldnames(Summary))
 
@@ -56,7 +57,7 @@ lub(a::Dict{GlobalKey, Certainty}, b::Dict{GlobalKey, Certainty})::Dict{GlobalKe
 function lub(a::Summary, b::Summary)::Summary
     length(a.params) == length(b.params) || error("summary arity mismatch")
     return Summary(lub.(a.params, b.params), a.stores ∪ b.stores, a.merges ∪ b.merges, lub(a.globals, b.globals),
-        a.direct ∪ b.direct, lub(a.result_globals, b.result_globals), a.opaque || b.opaque)
+        a.direct ∪ b.direct, lub(a.result_globals, b.result_globals), a.opaque || b.opaque, a.fresh_result && b.fresh_result)
 end
 
 # ---------------------------------------------------------------- points-to graph
@@ -90,7 +91,9 @@ end
 """Content class of `l`, created on demand."""
 function content!(g::Graph, l::Int)::Int
     r = find!(g, l)
-    g.content[r] == 0 && (c = fresh!(g; tainted = g.tainted[r], sources = setdiff(g.sources[r], (:fresh,))); g.content[r] = c)
+    # content of pure-fresh object is fresh until something is stored (store unifies sources)
+    inherited = g.sources[r] == Set{Any}([:fresh]) ? Set{Any}([:fresh]) : setdiff(g.sources[r], (:fresh,))
+    g.content[r] == 0 && (c = fresh!(g; tainted = g.tainted[r], sources = inherited); g.content[r] = c)
     return find!(g, g.content[r])
 end
 
@@ -125,6 +128,8 @@ end
 
 # ---------------------------------------------------------------- per-method state
 
+const FRESH_ONLY = Set{Any}([:fresh])
+
 const Base_ = Union{Nothing, Int, GlobalKey}  # must-derive source: parameter index or global
 
 struct WriteSite
@@ -132,7 +137,13 @@ struct WriteSite
     deep::Bool
     cert::Certainty
     base::Base_
+    at::Int  # statement index, for tracing
 end
+
+WriteSite(loc::Int, deep::Bool, cert::Certainty, base::Base_) = WriteSite(loc, deep, cert, base, CURRENT_STMT[])
+
+const CURRENT_STMT = Ref(0)
+const TRACE = Ref(false)
 
 """Counters across one run."""
 Base.@kwdef mutable struct Stats
@@ -170,7 +181,10 @@ function tracked(t)::Bool
     return true
 end
 
-typeof_operand(st::MethodState, x)::Any = CC.widenconst(CC.argextype(x, st.ir))
+"""IR type of operand `x`; `Any` for operands IR does not type (nested expressions)."""
+argtype(x, ir::CC.IRCode)::Any = x isa Expr ? Any : CC.argextype(x, ir)
+
+typeof_operand(st::MethodState, x)::Any = CC.widenconst(argtype(x, st.ir))
 
 """Reverse map from constant mutable object to its binding, filled once per run."""
 const CONST_NAMES = IdDict{Any, GlobalKey}()
@@ -198,7 +212,7 @@ const_key(v)::GlobalKey = get(CONST_NAMES, v, GlobalKey(Core, Symbol("<anonymous
 """Class of operand `x`; zero when `x` cannot alias."""
 function loc!(st::MethodState, x)::Int
     if x isa Core.Argument || x isa Core.SSAValue
-        tracked(CC.argextype(x, st.ir)) || return 0
+        tracked(argtype(x, st.ir)) || return 0
         return get!(st.locs, x) do
             x isa Core.Argument ? fresh!(st.g; sources = Set{Any}([x.n])) : fresh!(st.g)
         end
@@ -229,9 +243,12 @@ end
 
 function record!(st::MethodState, x, loc::Int, deep::Bool, cert::Certainty)::Nothing
     (loc == 0 || cert == NONE) && return
-    if x !== nothing && typeof_operand(st, x) <: Task
-        return  # task-local state: RNG and task storage
+    if x !== nothing && typeof_operand(st, x) <: Union{Task, Regex}
+        return  # task-local state (RNG, task storage); lazy Regex compile cache
     end
+    # object allocated here and not yet reachable from parameter or global: invisible to caller;
+    # a later store that exposes it is itself a recorded write
+    st.g.sources[find!(st.g, loc)] == FRESH_ONLY && return
     b = base_of(st, x)
     b isa GlobalKey && cert == DEFINITE && push!(st.direct, b)
     push!(st.writes, WriteSite(loc, deep, cert, b))
@@ -260,13 +277,26 @@ const FOREIGN = Dict{Symbol, Tuple{Vector{Int}, Union{Symbol, Vector{Int}}}}(
     :jl_genericmemory_owner => (Int[], [1]), :jl_value_ptr => (Int[], [1]), :jl_ptr_to_array_1d => (Int[], [2]),
     :jl_array_ptr => (Int[], [1]), :jl_genericmemory_slice => (Int[], [1]),
     :jl_genericmemory_copy_slice => (Int[], :fresh), :jl_genericmemory_copy => (Int[], :fresh),
+    :jl_eqtable_put => ([1], [1]), :jl_eqtable_pop => ([1], :bits), :jl_eqtable_get => (Int[], [1]),
+    :jl_idtable_rehash => (Int[], :fresh), :jl_cstr_to_string => (Int[], :fresh), :malloc => (Int[], :fresh),
 )
+
+# Runtime, scheduler, GC and libuv calls: write task, thread or OS state only (task and IO exemptions).
+for name in (:jl_rethrow, :jl_sigatomic_begin, :jl_sigatomic_end, :jl_cpu_suspend, :jl_cpu_wake, :jl_gc_safepoint,
+        :jl_threadpoolid, :jl_threadid, :jl_get_next_task, :jl_set_next_task, :jl_process_events, :jl_iolock_begin,
+        :jl_iolock_end, :jl_set_task_tid, :jl_get_task_tid, :jl_gc_is_in_finalizer, :jl_hrtime, :jl_get_ptls_rng,
+        :jl_set_ptls_rng, :jl_gc_enable_finalizers_internal, :jl_gc_disable_finalizers_internal,
+        :jl_gc_run_pending_finalizers, :jl_wakeup_thread, :jl_wakeup_threadpool, :jl_get_task_threadpoolid,
+        :jl_task_get_next, :jl_switch, :jl_new_task, :jl_safe_printf, :uv_err_name, :uv_strerror, :utf8proc_charwidth,
+        :uv_handle_set_data, :uv_req_set_data, :uv_req_get_data, :jl_uv_write, :free, :jl_set_precompile_field_replace)
+    FOREIGN[name] = (Int[], :bits)
+end
 
 foreign_name(x)::Union{Nothing, Symbol} =
     x isa QuoteNode ? foreign_name(x.value) : x isa Symbol ? x :
     (x isa Expr && x.head === :tuple) ? foreign_name(first(x.args)) : x isa Tuple ? foreign_name(first(x)) : nothing
 
-const_value(st::MethodState, x) = (t = CC.argextype(x, st.ir); t isa Core.Const ? t.val : nothing)
+const_value(st::MethodState, x) = (t = argtype(x, st.ir); t isa Core.Const ? t.val : nothing)
 
 # ---------------------------------------------------------------- statements
 
@@ -298,8 +328,10 @@ end
 
 function transfer_expr!(st::MethodState, ctx::Ctx, res::Core.SSAValue, e::Expr)::Nothing
     if e.head === :new || e.head === :splatnew
+        # content first: fields hold exactly stored operands, not fresh objects
+        c = content_of!(st, res)
+        foreach(x -> unify!(st.g, c, loc!(st, x)), e.args[2:end])
         tag!(st.g, loc!(st, res), :fresh)
-        foreach(x -> unify!(st.g, content_of!(st, res), loc!(st, x)), e.args[2:end])
     elseif e.head === :invoke
         ci = e.args[1]
         mi = ci isa Core.CodeInstance ? CC.get_ci_mi(ci) : ci
@@ -318,11 +350,13 @@ end
 content_of!(st::MethodState, x)::Int = (l = loc!(st, x); l == 0 ? 0 : content!(st.g, l))
 
 function transfer_call!(st::MethodState, ctx::Ctx, res::Core.SSAValue, e::Expr)::Nothing
-    f = CC.singleton_type(CC.argextype(e.args[1], st.ir))
+    f = CC.singleton_type(argtype(e.args[1], st.ir))
     args = e.args[2:end]
     if f === getfield || f === Core.getproperty || f === Core.memoryrefget
         isempty(args) && return
-        unify!(st.g, loc!(st, res), content_of!(st, args[1])); st.bases[res] = base_of(st, args[1])
+        # pointer field points into object's own storage; other fields load referenced objects
+        target = typeof_operand(st, res) <: Ptr ? loc!(st, args[1]) : content_of!(st, args[1])
+        unify!(st.g, loc!(st, res), target); st.bases[res] = base_of(st, args[1])
     elseif f === Core.memoryrefnew || f === Core.ifelse || f === Core.compilerbarrier
         srcs = f === Core.ifelse ? args[2:3] : f === Core.compilerbarrier ? args[2:2] : args[1:1]
         foreach(x -> unify!(st.g, loc!(st, res), loc!(st, x)), srcs)
@@ -330,9 +364,12 @@ function transfer_call!(st::MethodState, ctx::Ctx, res::Core.SSAValue, e::Expr):
     elseif f in FIELD_WRITES || f in MEMORY_WRITES
         record!(st, args[1], loc!(st, args[1]), false, DEFINITE)
         foreach(x -> unify!(st.g, content_of!(st, args[1]), loc!(st, x)), args[2:end])
-    elseif f === tuple || f === Core.svec || f === Core.memorynew
+    elseif f === tuple || f === Core.svec
+        c = content_of!(st, res)
+        foreach(x -> unify!(st.g, c, loc!(st, x)), args)
         tag!(st.g, loc!(st, res), :fresh)
-        foreach(x -> unify!(st.g, content_of!(st, res), loc!(st, x)), args)
+    elseif f === Core.memorynew
+        tag!(st.g, loc!(st, res), :fresh)
     elseif f === getglobal || f in GLOBAL_WRITES
         m, n = const_value(st, args[1]), const_value(st, get(args, 2, nothing))
         if m isa Module && n isa Symbol
@@ -407,22 +444,31 @@ end
 
 const MAX_CANDIDATES = 4
 
-"""Generic call with dispatch at run time: join summaries of matching methods, else unknown."""
-function dynamic_call!(st::MethodState, ctx::Ctx, res::Core.SSAValue, ops, f)::Nothing
-    f === nothing && return unknown_call!(st, ctx, res, ops)
-    tt = Tuple{(typeof_operand(st, x) for x in ops)...}
-    matches = try
+"""
+Candidate instances for call type `tt`, at each method's declared signature.
+Specializing on call types grows signatures without bound (vararg, nested closures); declared ones stay finite.
+"""
+function candidate_instances(tt::Type)::Union{Nothing, Vector{Tuple{Method, Core.MethodInstance}}}
+    ms = try
         Base._methods_by_ftype(tt, MAX_CANDIDATES, Base.get_world_counter())
     catch
         nothing
     end
-    (matches === nothing || isempty(matches)) && return unknown_call!(st, ctx, res, ops)
+    (ms === nothing || isempty(ms)) && return nothing
+    return [(m.method, declared_instance(m.method)) for m in ms]
+end
+
+"""Generic call with dispatch at run time: join summaries of matching methods, else unknown."""
+function dynamic_call!(st::MethodState, ctx::Ctx, res::Core.SSAValue, ops, f)::Nothing
+    f === nothing && return unknown_call!(st, ctx, res, ops)
+    tt = Tuple{(typeof_operand(st, x) for x in ops)...}
+    cands = candidate_instances(tt)
+    cands === nothing && return unknown_call!(st, ctx, res, ops)
     sums = Tuple{Method, Summary}[]
-    for m in matches
-        mi = CC.specialize_method(m)
-        s = mi === nothing ? nothing : ctx.summary(mi)
+    for (m, mi) in cands
+        s = ctx.summary(mi)
         s === nothing && return unknown_call!(st, ctx, res, ops)
-        push!(sums, (m.method, s))
+        push!(sums, (m, s))
     end
     ctx.stats.resolved_dynamic += 1
     length(sums) == 1 && return apply_summary!(st, res, ops, sums[1]...)
@@ -433,7 +479,7 @@ function dynamic_call!(st::MethodState, ctx::Ctx, res::Core.SSAValue, ops, f)::N
     end
     for k in (n0 + 1):length(st.writes)
         w = st.writes[k]
-        w.cert == DEFINITE && (st.writes[k] = WriteSite(w.loc, w.deep, POSSIBLE, w.base))
+        w.cert == DEFINITE && (st.writes[k] = WriteSite(w.loc, w.deep, POSSIBLE, w.base, w.at))
     end
     return
 end
@@ -478,6 +524,7 @@ function apply_summary!(st::MethodState, res::Core.SSAValue, ops, m::Method, s::
         c == DEFINITE && isempty(within) && (st.bases[res] = k)
     end
     st.opaque |= s.opaque
+    s.fresh_result && rl != 0 && isempty(within) && tag!(st.g, rl, :fresh)
     return
 end
 
@@ -502,6 +549,7 @@ function summarize(st::MethodState, nparams::Int)::Summary
             inner = (r != pr && r in preach[j]) || (w.deep && (r == pr || pr in below)) ? c : NONE
             w.deep && pr in below && r != pr && (top = c)
             (top, inner) == (NONE, NONE) && continue
+            TRACE[] && max(top, inner) >= POSSIBLE && println(stderr, "  definite write arg  base=$(w.base) sources=$(g.sources[r]) deep=$(w.deep) r= pr= at %$(w.at): ", st.ir.stmts.stmt[w.at])
             p = params[j]
             params[j] = ParamEffect(lub(p.top, top), lub(p.inner, inner), p.within, p.contains)
         end
@@ -511,6 +559,7 @@ function summarize(st::MethodState, nparams::Int)::Summary
         end
     end
     result_globals = Dict{GlobalKey, Certainty}()
+    fresh_result = all(v -> (l = loc!(st, v); l == 0 || g.sources[find!(g, l)] == FRESH_ONLY), st.returns)
     for v in st.returns
         l = loc!(st, v)
         l == 0 && continue
@@ -526,6 +575,8 @@ function summarize(st::MethodState, nparams::Int)::Summary
         end
         for (k, kr) in gkeys
             r in kr && (result_globals[k] = lub(get(result_globals, k, NONE), b == k ? DEFINITE : POSSIBLE))
+            # result holds global object: caller treats as alias (coarse, keeps soundness)
+            find!(g, st.locs[k]) in rr && !(r in kr) && (result_globals[k] = lub(get(result_globals, k, NONE), POSSIBLE))
         end
     end
     stores, merges = Set{Tuple{Int, Int}}(), Set{Tuple{Int, Int}}()
@@ -534,14 +585,39 @@ function summarize(st::MethodState, nparams::Int)::Summary
         pj, pk = find!(g, ploc[j]), find!(g, ploc[k])
         pj == pk ? push!(merges, (j, k)) : pk in preach[j] && push!(stores, (j, k))
     end
-    return Summary(params, stores, merges, globals, st.direct, result_globals, st.opaque)
+    return Summary(params, stores, merges, globals, st.direct, result_globals, st.opaque, fresh_result)
+end
+
+"""
+Blocks that always end in `unreachable` (error paths). Writes there build error messages or logs.
+Gap: a write to an argument before a caught throw is lost.
+"""
+function throw_blocks(ir::CC.IRCode)::Set{Int}
+    blocks = ir.cfg.blocks
+    throws = Set{Int}(b for b in eachindex(blocks)
+        if (t = ir.stmts.stmt[last(blocks[b].stmts)]; t isa Core.ReturnNode && !isdefined(t, :val)))
+    changed = true
+    while changed
+        changed = false
+        for b in eachindex(blocks)
+            b in throws && continue
+            succs = blocks[b].succs
+            !isempty(succs) && all(in(throws), succs) && (push!(throws, b); changed = true)
+        end
+    end
+    return throws
 end
 
 """Summary of one IR body given callee summaries."""
 function analyze(ir::CC.IRCode, ctx::Ctx)::Summary
     st = MethodState(ir, Graph(), Dict{Any, Int}(), Dict{Any, Base_}(), WriteSite[], Set{GlobalKey}(), false, Any[])
-    for (i, stmt) in enumerate(ir.stmts.stmt)
-        transfer!(st, ctx, i, stmt)
+    throws = throw_blocks(ir)
+    for (b, block) in enumerate(ir.cfg.blocks)
+        b in throws && continue
+        for i in block.stmts
+            CURRENT_STMT[] = i
+            transfer!(st, ctx, i, ir.stmts.stmt[i])
+        end
     end
     return summarize(st, length(ir.argtypes))
 end
@@ -552,14 +628,26 @@ end
 function get_ir(mi::Core.MethodInstance, stats::Stats)::Union{Nothing, CC.IRCode}
     mi.def isa Method || return nothing
     t0 = time()
-    r = try
-        Base.code_ircode_by_type(mi.specTypes; optimize_until = nothing)
+    ir = try
+        first(CC.typeinf_ircode(CC.NativeInterpreter(), mi, nothing))
     catch
         nothing
     end
-    stats.ir_seconds += time() - t0
-    (r === nothing || length(r) != 1) && (stats.ir_failures += 1; return nothing)
-    return first(only(r))
+    dt = time() - t0
+    stats.ir_seconds += dt
+    dt > 2 && (println(stderr, "slow ir ", round(dt; digits = 1), "s ", mi); flush(stderr))
+    ir isa CC.IRCode || (stats.ir_failures += 1; return nothing)
+    return ir
+end
+
+"""Method instance for `m` at its declared signature; type variables stay free."""
+function declared_instance(m::Method)::Core.MethodInstance
+    tvars = Any[]
+    sig = m.sig
+    while sig isa UnionAll
+        push!(tvars, sig.var); sig = sig.body
+    end
+    return CC.specialize_method(m, m.sig, Core.svec(tvars...))
 end
 
 """Callee instances an IR body may reach: static invokes and resolved dynamic candidates."""
@@ -572,15 +660,11 @@ function callees(ir::CC.IRCode)::Vector{Core.MethodInstance}
             mi = ci isa Core.CodeInstance ? CC.get_ci_mi(ci) : ci
             mi isa Core.MethodInstance && push!(out, mi)
         elseif stmt.head === :call
-            f = CC.singleton_type(CC.argextype(stmt.args[1], ir))
+            f = CC.singleton_type(argtype(stmt.args[1], ir))
             (f === nothing || f isa Core.Builtin) && continue
-            tt = Tuple{(CC.widenconst(CC.argextype(x, ir)) for x in stmt.args)...}
-            ms = try Base._methods_by_ftype(tt, MAX_CANDIDATES, Base.get_world_counter()) catch; nothing end
-            ms === nothing && continue
-            for m in ms
-                mi = CC.specialize_method(m)
-                mi === nothing || push!(out, mi)
-            end
+            tt = Tuple{(CC.widenconst(argtype(x, ir)) for x in stmt.args)...}
+            cands = candidate_instances(tt)
+            cands === nothing || append!(out, last.(cands))
         end
     end
     return unique!(out)
@@ -626,6 +710,8 @@ function strongconnect!(eng::Engine, v::Core.MethodInstance)::Nothing
         return
     end
     eng.stats.instances += 1
+    eng.stats.instances % 100 == 0 && (println(stderr, "instances=", eng.stats.instances, " ir_s=", round(eng.stats.ir_seconds; digits = 1),
+        " depth=", length(eng.stack), " at ", v); flush(stderr))
     eng.irs[v] = ir
     push!(eng.stack, v); eng.onstack[v] = true
     eng.summaries[v] = bottom_summary(length(ir.argtypes))
@@ -672,6 +758,6 @@ function on_big_stack(f::Function)
     return fetch(t)
 end
 
-export Certainty, NONE, POSSIBLE, DEFINITE, GlobalKey, ParamEffect, Summary, Engine, summary!, index_constants!, on_big_stack
+export analyze, Ctx, lookup, get_ir, TRACE, declared_instance, Certainty, NONE, POSSIBLE, DEFINITE, GlobalKey, ParamEffect, Summary, Engine, summary!, index_constants!, on_big_stack
 
 end
