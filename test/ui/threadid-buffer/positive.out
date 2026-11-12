@@ -1,0 +1,20 @@
+correctness[threadid-buffer]: `counts` is indexed by thread ID
+ --> positive.jl:6:9
+  |
+6 |         counts[threadid()] += x
+  |         ^^^^^^^^^^^^^^^^^^ task may switch thread between read and write
+  |
+  = why: tasks migrate between threads, so two tasks can share one slot and race
+  = fix: keep state per task: chunk work and give each chunk its own buffer (OhMyThreads.jl)   [manual]
+  = docs: corset explain threadid-buffer
+
+correctness[threadid-buffer]: `scratch` is indexed by thread ID
+  --> positive.jl:11:1
+   |
+11 | scratch[Threads.threadid()] = 0
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^ task may switch thread between read and write
+   |
+   = why: tasks migrate between threads, so two tasks can share one slot and race
+   = fix: keep state per task: chunk work and give each chunk its own buffer (OhMyThreads.jl)   [manual]
+   = docs: corset explain threadid-buffer
+
