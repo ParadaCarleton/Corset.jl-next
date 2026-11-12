@@ -13,7 +13,7 @@ export Precision, Tier, Confidence, Group, Family
 export Span, Label, Edit, Fix, Finding, CheckEntry
 export SyntaxFile, FactSet, Rule, Match
 export @pattern, matches, binding, span, source, nodes_of_kind, children_of, kind_name
-export finding, replace_fix, manual_fix, identifier_name
+export finding, replace_fix, manual_fix, identifier_name, nodes_named, parent_of, ancestors, descendants, call_head, leaf_value
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
 @enumx Precision exact line
@@ -185,6 +185,35 @@ end
 
 """Name of identifier `node`; `nothing` for other kinds."""
 identifier_name(node::SyntaxNode)::Union{Nothing, String} = kind_name(node) == "Identifier" ? string(node.val) : nothing
+
+"""Nodes of `file` whose kind is named `name` (`"catch"`, `"Identifier"`), in source order."""
+nodes_named(file::SyntaxFile, name::String)::Vector{SyntaxNode} = nodes_of_kind(file, Kind(name))
+
+"""Parent of `node`; `nothing` at root."""
+parent_of(node::SyntaxNode)::Union{Nothing, SyntaxNode} = node.parent
+
+"""Strict ancestors of `node`, nearest first."""
+function ancestors(node::SyntaxNode)::Vector{SyntaxNode}
+    found = SyntaxNode[]
+    current = node.parent
+    while !isnothing(current)
+        push!(found, current)
+        current = current.parent
+    end
+    return found
+end
+
+"""`node` and every descendant, parents first."""
+function descendants(node::SyntaxNode)::Vector{SyntaxNode}
+    found = SyntaxNode[node]
+    for child in children_of(node)
+        append!(found, descendants(child))
+    end
+    return found
+end
+
+"""Value of leaf `node` as string (`"@ccall"` for macro name); `nothing` for inner node."""
+leaf_value(node::SyntaxNode)::Union{Nothing, String} = JS.is_leaf(node) ? string(node.val) : nothing
 
 """Children of `node`; empty for leaf."""
 children_of(node::SyntaxNode)::Vector{SyntaxNode} = JS.is_leaf(node) ? SyntaxNode[] : collect(JS.children(node))

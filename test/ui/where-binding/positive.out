@@ -1,0 +1,22 @@
+correctness[where-binding]: `where` binds result type `T`, not method
+ --> positive.jl:1:1
+  |
+1 | same(x::T)::T where {T} = x
+  | ^^^^^^^^^^^^^^^^^^^^^^^ `where` attaches to result annotation
+  |             ----------- parsed as `T where …`
+  |
+  = why: method gets no type parameter: call errors, or uses global of same name
+  = fix: replace with `(same(x::T)::T) where {T}`   [safe]
+  = docs: corset explain where-binding
+
+correctness[where-binding]: `where` binds result type `T`, not method
+ --> positive.jl:2:1
+  |
+2 | first_of(v::Vector{T})::T where T = v[1]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `where` attaches to result annotation
+  |                         --------- parsed as `T where …`
+  |
+  = why: method gets no type parameter: call errors, or uses global of same name
+  = fix: replace with `(first_of(v::Vector{T})::T) where T`   [safe]
+  = docs: corset explain where-binding
+
