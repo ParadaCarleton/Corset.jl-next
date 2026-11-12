@@ -3,10 +3,10 @@
 
 using Test: @testset, @test
 using Supposition: Supposition, Data, @check
-using Corset: Corset
+using CorsetLegacy: CorsetLegacy
 using TOML: TOML
 
-const SYNTAX = Corset.SYNTAX
+const SYNTAX = CorsetLegacy.SYNTAX
 
 # The rules whose fixers the generator below exercises.
 const GENERATED_FIXERS = Set(["misplaced-import", "quadratic-vcat", "where-return"])
@@ -282,7 +282,7 @@ The tokens of `text` a fixer must keep, in order: all but import statements, the
 follow one on its line, blanks, and the parentheses the where-return fixer adds.
 """
 function significant_tokens(text::String)::Vector{String}
-    imports = SYNTAX.byte_range.(Corset.import_nodes(SYNTAX.parseall(SYNTAX.SyntaxNode, text)))
+    imports = SYNTAX.byte_range.(CorsetLegacy.import_nodes(SYNTAX.parseall(SYNTAX.SyntaxNode, text)))
     tokens = SYNTAX.tokenize(text)
     classes = token_class.(tokens, text, (imports,))
     previous = Iterators.flatten(((false,), accumulate(follows_import, classes; init = false)))
@@ -306,7 +306,7 @@ file_texts(root::String, files::AbstractVector{GeneratedFile})::Vector{String} =
 
 """The Project.toml of a generated package: it turns on exactly the fixable rules, at `deny`."""
 function fixer_project()::String
-    levels = Dict(check.name => ifelse(Corset.fixable(rule), "deny", "allow") for rule in Corset.RULES for check in Corset.checks(rule))
+    levels = Dict(check.name => ifelse(CorsetLegacy.fixable(rule), "deny", "allow") for rule in CorsetLegacy.RULES for check in CorsetLegacy.checks(rule))
     return sprint(TOML.print, Dict("preferences" => Dict("Corset" => Dict("levels" => levels))))
 end
 
@@ -327,14 +327,14 @@ function fix_keeps_properties(package::PackageShape)::Bool
     chmod.(paths, ifelse.([file.read_only for file in files], 0o444, 0o644))
     modes = filemode.(paths)
     write(joinpath(root, "Project.toml"), fixer_project())
-    config = Corset.load_config(root)
-    findings, _ = Corset.run_rules(config, root; fix = true)
+    config = CorsetLegacy.load_config(root)
+    findings, _ = CorsetLegacy.run_rules(config, root; fix = true)
     fixed = file_texts(root, files)
     SYNTAX.parseall.(SYNTAX.SyntaxNode, fixed)
     loaded = Module()
     Base.include(loaded, joinpath(root, "src", "Generated.jl"))
     rules = [finding.rule for finding in findings]
-    second, _ = Corset.run_rules(config, root; fix = true)
+    second, _ = CorsetLegacy.run_rules(config, root; fix = true)
     return filemode.(paths) == modes &&
         significant_tokens.([file.text for file in expected]) == significant_tokens.(fixed) &&
         all(subsequence.([file.pinned for file in files], split.(fixed, '\n'))) &&
@@ -347,7 +347,7 @@ function fix_keeps_properties(package::PackageShape)::Bool
 end
 
 @testset "fixers: generated packages keep every fixer property" begin
-    @test Set(Corset.rule_name.(filter(Corset.fixable, Corset.RULES))) == union(GENERATED_FIXERS, EXAMPLE_FIXERS)
+    @test Set(CorsetLegacy.rule_name.(filter(CorsetLegacy.fixable, CorsetLegacy.RULES))) == union(GENERATED_FIXERS, EXAMPLE_FIXERS)
     report = @check max_examples = 300 db = false function fixed_package(package = PACKAGE_SHAPES)
         fix_keeps_properties(package)
     end

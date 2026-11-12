@@ -1,7 +1,7 @@
-# `Corset.Entries`: entry signatures from compiled specializations, concrete declarations, a test
+# `CorsetLegacy.Entries`: entry signatures from compiled specializations, concrete declarations, a test
 # trace and a configured function. Each source is tested through its own API, with no rule run.
 
-using Corset.Entries: Entries, entry_signatures
+using CorsetLegacy.Entries: Entries, entry_signatures
 
 const ENTRY_DEMO = "module EntryDemo\ntwice(x) = 2x\nnamed(x::Symbol) = x\nend\n"
 
@@ -39,8 +39,8 @@ end
     scope = Entries.trace_scope(demo)
     @test isnothing(Entries.traced_type(scope, "precompile(Tuple{typeof(EntryDemo.twice), Main.TypeOnlyTheTestsDefine})"))
     @test_throws InterruptException Entries.traced_type(scope, "precompile(Tuple{throw(InterruptException())})")
-    @test !Entries.defines(Corset.Package(demo), nothing)
-    @test !Entries.defines(Corset.Package(demo), Tuple{typeof(demo.twice), Number})
+    @test !Entries.defines(CorsetLegacy.Package(demo), nothing)
+    @test !Entries.defines(CorsetLegacy.Package(demo), Tuple{typeof(demo.twice), Number})
 end
 
 @testset "Entries: the tests source traces a package's test run" begin

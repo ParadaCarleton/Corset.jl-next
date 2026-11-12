@@ -3,7 +3,7 @@
 """The text the `abstract-float` fixer leaves of `text`."""
 function realized(text::AbstractString)::String
     tree = write_tree(mktempdir(), ["source.jl" => text])
-    Corset.apply_plan!(Corset.abstract_float_plan(Repository(tree), (".",)), "abstract-float")
+    CorsetLegacy.apply_plan!(CorsetLegacy.abstract_float_plan(Repository(tree), (".",)), "abstract-float")
     return read(joinpath(tree, "source.jl"), String)
 end
 

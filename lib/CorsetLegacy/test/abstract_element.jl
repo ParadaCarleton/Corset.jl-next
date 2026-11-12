@@ -8,7 +8,7 @@ end
 """The texts `abstract-element` reports for `text`, resolving type names in `scope`."""
 function abstract_texts(text::AbstractString, scope::Module = Base)::Vector{String}
     tree = write_tree(mktempdir(), ["source.jl" => text])
-    return [SubString(site.detail, 2, findnext('`', site.detail, 2) - 1) for site in Corset.abstract_elements(parsed(joinpath(tree, "source.jl")), scope)]
+    return [SubString(site.detail, 2, findnext('`', site.detail, 2) - 1) for site in CorsetLegacy.abstract_elements(parsed(joinpath(tree, "source.jl")), scope)]
 end
 
 @testset "abstract-element: a container with an abstract element, key or value type is reported" begin
@@ -55,12 +55,12 @@ end
 end
 
 @testset "abstract-element: a site takes a # lint: opt-out and the rule is pedantic" begin
-    sites = found_in(source -> Corset.abstract_elements(source, Base), "abstract-element")
+    sites = found_in(source -> CorsetLegacy.abstract_elements(source, Base), "abstract-element")
     @test length(sites) == 1
-    @test Corset.level(Corset.load_config(mktempdir()), Corset.AbstractElementRule()) === :allow
+    @test CorsetLegacy.level(CorsetLegacy.load_config(mktempdir()), CorsetLegacy.AbstractElementRule()) === :allow
     waived = "f() = Set{Real}() # lint: abstract-element  mixed reals by design\ng() = Vector{Real}()\n"
     tree = write_tree(mktempdir(), ["source.jl" => waived])
     source = parsed(joinpath(tree, "source.jl"))
-    kept, _ = Corset.unopted(Corset.abstract_elements(source, Base), "abstract-element")
+    kept, _ = CorsetLegacy.unopted(CorsetLegacy.abstract_elements(source, Base), "abstract-element")
     @test [site.line for site in kept] == [2]
 end

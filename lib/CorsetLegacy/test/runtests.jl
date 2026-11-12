@@ -3,8 +3,8 @@
 using Test: @testset, @test, @test_logs, @test_throws
 using JET: JET
 using TOML: TOML
-using Corset: Corset
-using Corset: CONCRETE_RETURN_FIX, Repository, Site, Source, ratchet!, offenders!, @call_sites, @opt_sites, float64_ops, undefined_names, abstract_fields, unstable_variables,
+using CorsetLegacy: CorsetLegacy
+using CorsetLegacy: CONCRETE_RETURN_FIX, Repository, Site, Source, ratchet!, offenders!, @call_sites, @opt_sites, float64_ops, undefined_names, abstract_fields, unstable_variables,
     c_type_sites, impure_anon_funs, concrete_arguments, concrete_returns, fatou_sites, float64_sites, hidden_inputs,
     jscpd_sites, misplaced_imports, missing_annotations, module_structs, non_public_accesses, nothing_returns,
     one_letter_sites, present_directories, range_guards, repeated_prefix, repeated_statements,
@@ -47,7 +47,7 @@ chain_body(index::Integer)::String =
     index == 20 ? "value" : (iseven(index) ? "value < 0 ? value + \"one\" : " : "") * "link$(index + 1)(value) + 1"
 
 """The frames `entry_frames` keeps from the twenty `link<index>(::Int)` of module `chain`."""
-chain_frames(chain::Module)::Vector{Corset.Inferred} =
+chain_frames(chain::Module)::Vector{CorsetLegacy.Inferred} =
     entry_frames(Type[Tuple{typeof(getglobal(chain, Symbol(:link, index))), Int} for index in 1:20], chain)
 
 """The lines of `sites`."""
@@ -62,17 +62,17 @@ function load_fixture(root::AbstractString)::Module
 end
 
 """The signatures of the methods of `mod` whose argument types are all concrete: a fixed workload that needs no call."""
-concrete_signatures(mod::Module)::Vector{Type} = Type[method.sig for method in Corset.module_methods(mod) if Base.isdispatchtuple(method.sig)]
+concrete_signatures(mod::Module)::Vector{Type} = Type[method.sig for method in CorsetLegacy.module_methods(mod) if Base.isdispatchtuple(method.sig)]
 
 """The files `repository_sources` finds under `src` of `repository`, relative to `root`."""
 relative_sources(repository::Repository, root::AbstractString)::Vector{String} = [relpath(file, root) for file in repository_sources(repository, ("src",))]
 
 """Apply the misplaced-import fixer to the files under `directories` of `repository`."""
-place_imports!(repository::Repository, directories::Tuple{Vararg{String}})::Vector{Site} = Corset.fix!(Corset.MisplacedImportRule(), repository, directories)
+place_imports!(repository::Repository, directories::Tuple{Vararg{String}})::Vector{Site} = CorsetLegacy.fix!(CorsetLegacy.MisplacedImportRule(), repository, directories)
 
 """The `misplaced_imports` sites of `directories` in `repository` that no `# lint:` comment opts out."""
 kept_imports(repository::Repository, directories::Tuple{Vararg{String}})::Vector{Site} =
-    first(Corset.unopted(misplaced_imports(repository, directories), "misplaced-import"))
+    first(CorsetLegacy.unopted(misplaced_imports(repository, directories), "misplaced-import"))
 
 """The text `place_imports!` leaves in `files` (name => text) written into a fresh tree, which then has no misplaced import."""
 function placed(files::AbstractVector{<:Pair})::Dict{String, String}
@@ -89,14 +89,14 @@ tree_texts(root::AbstractString)::Dict{String, String} =
 """The text the where-return fixer leaves of `text`, written to a fresh file."""
 function where_fixed(text::AbstractString)::String
     tree = write_tree(mktempdir(), ["source.jl" => text])
-    Corset.fix!(Corset.WhereReturnRule(), Repository(tree), (".",))
+    CorsetLegacy.fix!(CorsetLegacy.WhereReturnRule(), Repository(tree), (".",))
     return read(joinpath(tree, "source.jl"), String)
 end
 
 """The text the quadratic-vcat fixer leaves of `text`, written to a fresh file."""
 function flatten_fixed(text::AbstractString)::String
     tree = write_tree(mktempdir(), ["source.jl" => text])
-    Corset.fix!(Corset.QuadraticVcatRule(), Repository(tree), (".",))
+    CorsetLegacy.fix!(CorsetLegacy.QuadraticVcatRule(), Repository(tree), (".",))
     return read(joinpath(tree, "source.jl"), String)
 end
 
@@ -119,22 +119,22 @@ end
 """Every reflection the module rules make on `mod`."""
 function reflect_all(mod::Module)::Nothing
     structs = module_structs(mod)
-    Corset.defined_methods(Corset.Package(mod))
+    CorsetLegacy.defined_methods(CorsetLegacy.Package(mod))
     abstract_fields.(structs)
     repeated_prefix.(structs)
     impure_anon_funs(Repository(pwd()), mod)
     return nothing
 end
 
-@testset "Corset" begin
+@testset "CorsetLegacy" begin
     @testset "a Repository is strict by default" begin
         repository = Repository(".")
         @test repository.root == abspath(".")
         @test isnothing(repository.baseline)
         @test repository.one_letter_exempt == ()
         @test repository.skipped_directories == ()
-        @test repository.file_line_limit == Corset.DEFAULT_FILE_LINE_LIMIT
-        @test repository.struct_field_limit == Corset.DEFAULT_STRUCT_FIELD_LIMIT
+        @test repository.file_line_limit == CorsetLegacy.DEFAULT_FILE_LINE_LIMIT
+        @test repository.struct_field_limit == CorsetLegacy.DEFAULT_STRUCT_FIELD_LIMIT
         @test !repository.strict_captures
         @test isempty(repository.forbidden_patterns)
     end
@@ -172,7 +172,7 @@ end
 
     @testset "a `-begin` with no `-end` below it throws, naming its file and line" begin
         root = write_tree(mktempdir(), ["open.jl" => "x = 1\n# lint: annotation-begin\ny = 2\n# lint: bang-end\n"])
-        @test_throws Corset.UsageError offenders!(Repository(root), "annotation", [Site("x", joinpath(root, "open.jl"), 3, "")])
+        @test_throws CorsetLegacy.UsageError offenders!(Repository(root), "annotation", [Site("x", joinpath(root, "open.jl"), 3, "")])
         @test_throws r"open\.jl:2: `# lint: annotation-begin` has no `# lint: annotation-end`" offenders!(Repository(root), "annotation", [Site("x", joinpath(root, "open.jl"), 3, "")])
     end
 
@@ -196,11 +196,11 @@ end
 
     @testset "32k sites group by place and by key in under 5 s, each group's details sorted" begin
         sites = [Site("file$(index % 50).jl f$(index ÷ 2)", "/r/src/file$(index % 50).jl", index ÷ 2, "local `x$index`::Any") for index in 1:32_000]
-        Corset.one_per_line(sites[1:10])
-        Corset.detail_lines(sites[1:10])
-        @test (@elapsed Corset.one_per_line(sites)) + (@elapsed Corset.detail_lines(sites)) < 5
-        @test length(Corset.one_per_line(sites)) == 32_000
-        @test Corset.detail_lines([sites; Site("file2.jl f1", "", 0, "local `w`::Any")])["file2.jl f1"] == "local `w`::Any; local `x2`::Any"
+        CorsetLegacy.one_per_line(sites[1:10])
+        CorsetLegacy.detail_lines(sites[1:10])
+        @test (@elapsed CorsetLegacy.one_per_line(sites)) + (@elapsed CorsetLegacy.detail_lines(sites)) < 5
+        @test length(CorsetLegacy.one_per_line(sites)) == 32_000
+        @test CorsetLegacy.detail_lines([sites; Site("file2.jl f1", "", 0, "local `w`::Any")])["file2.jl f1"] == "local `w`::Any; local `x2`::Any"
     end
 
     @testset "a key names its file by the path from the repository root: two util.jl files differ" begin
@@ -208,22 +208,22 @@ end
         repository = Repository(root)
         keys = [site.key for path in ("src/util.jl", "ext/X/util.jl") for site in float64_sites(Source(repository, joinpath(root, path)))]
         @test keys == ["src/util.jl", "ext/X/util.jl"]
-        @test Corset.file_key(repository, joinpath(root, "ext", "X", "util.jl")) == "ext/X/util.jl"
+        @test CorsetLegacy.file_key(repository, joinpath(root, "ext", "X", "util.jl")) == "ext/X/util.jl"
     end
 
     @testset "a Context parses each file once: its rules and opt-outs read no file after" begin
         text = "struct Point # lint: annotation\n    x::Float64\nend\nf(x) = x\nusing A: B\n"
         root = write_tree(mktempdir(), ["src/point.jl" => text])
-        context = Corset.Context(Repository(root), ("src",), nothing)
+        context = CorsetLegacy.Context(Repository(root), ("src",), nothing)
         rm(joinpath(root, "src"); recursive = true)
         source = only(context.sources)
-        file_rules = [rule for rule in Corset.RULES if rule isa Corset.FileRule]
-        @test sum(length(Corset.check(rule, context, source)) for rule in file_rules) > 0
-        misplaced = only(rule for rule in Corset.RULES if Corset.rule_name(rule) == "misplaced-import")
-        @test site_keys(Corset.check(misplaced, context)) == ["src/point.jl B"]
-        @test Corset.declared(context) == [Corset.StructDeclaration(:Point, source.path, 1)]
+        file_rules = [rule for rule in CorsetLegacy.RULES if rule isa CorsetLegacy.FileRule]
+        @test sum(length(CorsetLegacy.check(rule, context, source)) for rule in file_rules) > 0
+        misplaced = only(rule for rule in CorsetLegacy.RULES if CorsetLegacy.rule_name(rule) == "misplaced-import")
+        @test site_keys(CorsetLegacy.check(misplaced, context)) == ["src/point.jl B"]
+        @test CorsetLegacy.declared(context) == [CorsetLegacy.StructDeclaration(:Point, source.path, 1)]
         sites = [Site("Point", source.path, 1, ""), Site("f", source.path, 4, "")]
-        @test first(Corset.unopted(sites, "annotation", context.comments)) == [last(sites)]
+        @test first(CorsetLegacy.unopted(sites, "annotation", context.comments)) == [last(sites)]
     end
 
     @testset "a Context reads the opt-outs of its frames' files once, for every typed rule" begin
@@ -231,7 +231,7 @@ end
         opted = Module(:Opted)
         Base.include(opted, joinpath(root, "opted.jl"))
         inferred = entry_frames(Type[Tuple{typeof(opted.opted), Array{Any, 1}}], opted)
-        context = Corset.Context(Repository(root), (), nothing; inferred)
+        context = CorsetLegacy.Context(Repository(root), (), nothing; inferred)
         rm(joinpath(root, "opted.jl"))
         @test isempty(runtime_dispatches(context.repository, inferred; context.comments))
         @test !isempty(runtime_dispatches(context.repository, inferred))
@@ -281,7 +281,7 @@ end
         @test first(sites).detail == "`JuliaSyntax` is not public in `Base`"
         offending = @test_logs (:info, r"1 site\(s\) opted out") (:error, r"Base\.JuliaSyntax = 1 ") offenders!(Repository(dirname(path)), "non-public-access", sites)
         @test offending == ["Base.JuliaSyntax", "Base.uniontypes"]
-        @test "Base.JuliaSyntax" in site_keys(non_public_accesses(Corset))
+        @test "Base.JuliaSyntax" in site_keys(non_public_accesses(CorsetLegacy))
     end
 
     @testset "non-public-access: a module whose submodule is in another file reads the file of its `module` block" begin
@@ -294,12 +294,12 @@ end
         )
         holder = Module(:Holder)
         Base.include(holder, joinpath(tree, "outer.jl"))
-        @test Corset.entry_file(holder.Outer) == joinpath(tree, "outer.jl")
-        @test Corset.entry_file(holder.Outer.Inner) == joinpath(tree, "inner.jl")
+        @test CorsetLegacy.entry_file(holder.Outer) == joinpath(tree, "outer.jl")
+        @test CorsetLegacy.entry_file(holder.Outer.Inner) == joinpath(tree, "inner.jl")
         @test [(basename(site.file), site.line) for site in non_public_accesses(holder.Outer)] == [("outer.jl", 3), ("inner.jl", 2)]
         split = Module(:Split)
         Base.include(split, joinpath(tree, "split.jl"))
-        @test_throws Corset.UsageError Corset.entry_file(split)
+        @test_throws CorsetLegacy.UsageError CorsetLegacy.entry_file(split)
     end
 
     @testset "unstable-variable: a local variable that infers no concrete type" begin
@@ -307,8 +307,8 @@ end
         @test isempty(unstable_variables(Repository(mktempdir()), inferred))
         @test occursin(r"^local `holder`::Vector.*Any", only(unstable_variables(repository, inferred)).detail)
         twins = [Site("k", "f", 3, "local `a`::Any"), Site("k", "f", 3, "local `b`::Any"), Site("k", "f", 3, "local `a`::Integer"), Site("k", "f", 4, "local `c`::Any")]
-        @test [site.detail for site in Corset.one_per_line(twins)] == ["local `a`::Any; local `a`::Integer; local `b`::Any", "local `c`::Any"]
-        @test [site.detail for site in Corset.one_per_line(reverse(twins))] == ["local `c`::Any", "local `a`::Any; local `a`::Integer; local `b`::Any"]
+        @test [site.detail for site in CorsetLegacy.one_per_line(twins)] == ["local `a`::Any; local `a`::Integer; local `b`::Any", "local `c`::Any"]
+        @test [site.detail for site in CorsetLegacy.one_per_line(reverse(twins))] == ["local `c`::Any", "local `a`::Any; local `a`::Integer; local `b`::Any"]
     end
 
     @testset "bang: a function that always returns nothing has a name ending in !" begin
@@ -324,10 +324,10 @@ end
         @test sites["fixture.jl boxed"].detail == "holds a Core.Box: a captured variable is rebound"
         @test occursin("unverified", sites["fixture.jl lineless"].detail)
         @test sites["fixture.jl reader"].detail == "captures Vector{Int64}, not plain immutable data"
-        overspecialized = only(Corset.overspecialized_anon_funs(repository, fixture))
+        overspecialized = only(CorsetLegacy.overspecialized_anon_funs(repository, fixture))
         @test overspecialized.key == "fixture.jl kinded"
         @test occursin("{Int64}, so it compiles once per value", overspecialized.detail)
-        @test isempty(Corset.unstable_anon_funs(repository, fixture))
+        @test isempty(CorsetLegacy.unstable_anon_funs(repository, fixture))
         @testset "strict_captures also reports a capture of plain immutable data" begin
             strict = Repository(root; strict_captures = true)
             strict_sites = Dict(site.key => site for site in impure_anon_funs(strict, fixture))
@@ -336,15 +336,15 @@ end
             @test !haskey(strict_sites, "fixture.jl field_reader")
         end
         @testset "plain immutable data is a non-function bits value, a String or Symbol, or an immutable composite of them" begin
-            @test all(Corset.plain_capture, (Int, Float32, Char, String, Symbol, Nothing, Tuple{Int, String}, @NamedTuple{name::String}, Union{Nothing, String}))
-            @test !any(Corset.plain_capture, (Vector{Int}, Dict{Int, Int}, SubArray{Int, 1, Vector{Int}, Tuple{UnitRange{Int}}, true}, DataType, typeof(sin), Module, Real, Union{Int, Vector{Int}}))
-            @test !Corset.plain_capture(TypeVar(:T))
+            @test all(CorsetLegacy.plain_capture, (Int, Float32, Char, String, Symbol, Nothing, Tuple{Int, String}, @NamedTuple{name::String}, Union{Nothing, String}))
+            @test !any(CorsetLegacy.plain_capture, (Vector{Int}, Dict{Int, Int}, SubArray{Int, 1, Vector{Int}, Tuple{UnitRange{Int}}, true}, DataType, typeof(sin), Module, Real, Union{Int, Vector{Int}}))
+            @test !CorsetLegacy.plain_capture(TypeVar(:T))
         end
         @testset "each capture that is not plain data has one kind of fault" begin
-            @test Corset.capture_kind.([Int, Vector{Int}, Module, Union{Int, Vector{Int}}, typeof(sin), Type{Int}, Real, Union{Int, Real}]) ==
+            @test CorsetLegacy.capture_kind.([Int, Vector{Int}, Module, Union{Int, Vector{Int}}, typeof(sin), Type{Int}, Real, Union{Int, Real}]) ==
                 [:plain, :impure, :impure, :impure, :overspecialized, :overspecialized, :unstable, :unstable]
-            @test Corset.capture_detail(:unstable, Real) == "captures Real, a type inference left abstract"
-            @test Corset.instance_faults(Vector) == [:unstable => "built where the types of its captures are unknown"]
+            @test CorsetLegacy.capture_detail(:unstable, Real) == "captures Real, a type inference left abstract"
+            @test CorsetLegacy.instance_faults(Vector) == [:unstable => "built where the types of its captures are unknown"]
         end
         @testset "a closure built without line numbers sits at the function that creates it" begin
             fixture_lines = readlines(joinpath(root, "fixture.jl"))
@@ -356,7 +356,7 @@ end
     @testset "abstract-field, repeated-prefix: struct fields" begin
         structs = Dict(nameof(type) => type for type in module_structs(fixture))
         @test Set(keys(structs)) == Set([:Holder, :Plain, :SolverControls, :Tally, :Wide])
-        @test nameof.(Corset.mutable_structs(fixture)) == [:Tally]
+        @test nameof.(CorsetLegacy.mutable_structs(fixture)) == [:Tally]
         @test abstract_fields(structs[:Holder]) == [:held]
         @test isempty(abstract_fields(structs[:Plain]))
         @test repeated_prefix(structs[:SolverControls]) == "solver"
@@ -366,42 +366,42 @@ end
     end
 
     @testset "wide-struct: more fields than the repository's struct_field_limit" begin
-        wide(limit::Integer) = nameof.(filter(Base.Fix2(Corset.wider_struct, limit), module_structs(fixture)))
+        wide(limit::Integer) = nameof.(filter(Base.Fix2(CorsetLegacy.wider_struct, limit), module_structs(fixture)))
         @test isempty(wide(2))
         @test wide(1) == [:Wide]
-        @test_throws Corset.UsageError Repository(root; struct_field_limit = 0)
+        @test_throws CorsetLegacy.UsageError Repository(root; struct_field_limit = 0)
     end
 
     @testset "struct-constant: a constant that holds a struct of the package" begin
-        @test site_keys(Corset.struct_holding_constants(fixture)) == [string(fixture, ".DEFAULT_PLAIN")]
+        @test site_keys(CorsetLegacy.struct_holding_constants(fixture)) == [string(fixture, ".DEFAULT_PLAIN")]
         plain = fixture.Plain
-        @test all(Base.Fix2(Corset.names_own_struct, fixture), (TypeVar(:T, plain), Vector{<:plain}, Union{Nothing, plain}, Tuple{Vararg{plain}}))
-        @test !Corset.names_own_struct(Union{}, fixture) && !Corset.names_own_struct(Tuple{Vararg}, fixture)
-        @test Corset.holds_own_struct(plain, fixture, 1) && !Corset.holds_own_struct(Int, fixture, 1)
+        @test all(Base.Fix2(CorsetLegacy.names_own_struct, fixture), (TypeVar(:T, plain), Vector{<:plain}, Union{Nothing, plain}, Tuple{Vararg{plain}}))
+        @test !CorsetLegacy.names_own_struct(Union{}, fixture) && !CorsetLegacy.names_own_struct(Tuple{Vararg}, fixture)
+        @test CorsetLegacy.holds_own_struct(plain, fixture, 1) && !CorsetLegacy.holds_own_struct(Int, fixture, 1)
     end
 
     @testset "derived-constant: a docstring and a callee qualified by the package name" begin
         documented = last(Meta.parseall("\"\"\"A limit.\"\"\"\nconst LIMIT = Fixture.reads_limit(1)\n").args)
-        @test Corset.is_constant(Corset.undocumented(documented))
-        @test Corset.calls_own_function(last(Corset.undocumented(documented).args[1].args), fixture)
-        @test !Corset.own_callee(:(Base.reads_limit), fixture) && !Corset.own_callee(1, fixture)
+        @test CorsetLegacy.is_constant(CorsetLegacy.undocumented(documented))
+        @test CorsetLegacy.calls_own_function(last(CorsetLegacy.undocumented(documented).args[1].args), fixture)
+        @test !CorsetLegacy.own_callee(:(Base.reads_limit), fixture) && !CorsetLegacy.own_callee(1, fixture)
     end
 
     @testset "derived-constant: a constant computed by a function of the package" begin
         fixture_source = parsed(joinpath(root, "fixture.jl"))
-        @test site_keys(Corset.derived_constants(fixture_source, fixture)) == ["fixture.jl DERIVED_LIMIT"]
-        @test isempty(Corset.derived_constant_sites(nothing, fixture_source))
+        @test site_keys(CorsetLegacy.derived_constants(fixture_source, fixture)) == ["fixture.jl DERIVED_LIMIT"]
+        @test isempty(CorsetLegacy.derived_constant_sites(nothing, fixture_source))
     end
 
     @testset "forbidden-pattern: matching lines, minus the `unless` match and the skipped files" begin
         text = "stay_sets = 128\nExplicitCounts(stay_sets = 4)\nfield_draws = 8\n"
         tree = write_tree(mktempdir(), ["a.jl" => text, "skip.jl" => text])
-        forbidden = Corset.ForbiddenPattern("count-literal", r"\b(stay_sets|field_draws)\s*=\s*\d", "name the count", r"ExplicitCounts\(", ("skip.jl",))
+        forbidden = CorsetLegacy.ForbiddenPattern("count-literal", r"\b(stay_sets|field_draws)\s*=\s*\d", "name the count", r"ExplicitCounts\(", ("skip.jl",))
         repository = Repository(tree; forbidden_patterns = (forbidden,))
-        sites = Corset.forbidden_pattern_sites(repository, Source(repository, joinpath(tree, "a.jl")))
+        sites = CorsetLegacy.forbidden_pattern_sites(repository, Source(repository, joinpath(tree, "a.jl")))
         @test site_keys(sites) == ["a.jl count-literal", "a.jl count-literal"]
         @test site_lines(sites) == [1, 3]
-        @test isempty(Corset.forbidden_pattern_sites(repository, Source(repository, joinpath(tree, "skip.jl"))))
+        @test isempty(CorsetLegacy.forbidden_pattern_sites(repository, Source(repository, joinpath(tree, "skip.jl"))))
     end
 
     @testset "a struct is placed at its `struct` line, below its docstring" begin
@@ -409,13 +409,13 @@ end
         lines = readlines(path)
         locations = struct_locations([parsed(path)])
         @test Set(locations) == Set(
-            Corset.StructDeclaration.(
+            CorsetLegacy.StructDeclaration.(
                 [:Documented, :Counter, :Plain, Symbol("Odd Name")],
                 path,
                 findfirst.([startswith("struct Documented"), endswith("struct Counter"), startswith("struct Plain"), startswith("struct var\"Odd Name\"")], (lines,)),
             ),
         )
-        @test issorted(locations; by = Corset.declaration_name)
+        @test issorted(locations; by = CorsetLegacy.declaration_name)
         snippet = Module(:Snippet)
         Base.include(snippet, path)
         sites = [struct_site(Base.unwrap_unionall(getglobal(snippet, name)), locations) for name in (:Documented, :Counter)]
@@ -455,12 +455,12 @@ end
     @testset "jet rule: report_call on the frames, one site per report in the package" begin
         # The rule reads only frames in the repository's files: the fixture's own directory.
         fixture_repository = Repository(dirname(string(first(inferred).method.file)))
-        sites = Corset.call_report_sites(fixture_repository, inferred, fixture)
+        sites = CorsetLegacy.call_report_sites(fixture_repository, inferred, fixture)
         broken = filter(site -> site.key == "fixture.jl broken MethodErrorReport", sites)
         @test !isempty(broken)
         @test all(site -> site.line == 60 && !isempty(site.detail), broken)
         @test allunique(sites)
-        @test isempty(Corset.call_report_sites(fixture_repository, filter(item -> item.method.name === :reads_limit, inferred), fixture))
+        @test isempty(CorsetLegacy.call_report_sites(fixture_repository, filter(item -> item.method.name === :reads_limit, inferred), fixture))
         # `sum` of strings fails inside Base (`add_sum`, `reduce_empty`): JET reports it, the package's rule does not.
         # The method is in a repository file, so the rule analyzes it; both reports are raised inside Base.
         summed_tree = write_tree(mktempdir(), ["total.jl" => "total(words::Vector{String})::String = sum(words)\n"])
@@ -468,7 +468,7 @@ end
         Base.include(holder, joinpath(summed_tree, "total.jl"))
         signature = Tuple{typeof(holder.total), Vector{String}}
         @test !isempty(JET.get_reports(JET.report_call(signature)))
-        @test isempty(Corset.call_report_sites(Repository(summed_tree), entry_frames(Type[signature], holder), holder))
+        @test isempty(CorsetLegacy.call_report_sites(Repository(summed_tree), entry_frames(Type[signature], holder), holder))
         # A call that fails on one branch of a union split (`+(::Nothing, ::Int)` on an unchecked `findfirst`)
         # counts like any other; a frame whose file is outside the repository does not.
         split_source = """
@@ -479,13 +479,13 @@ end
         split = Module(:Split)
         Base.include(split, joinpath(split_tree, "split.jl"))
         split_frames = entry_frames(Type[Tuple{typeof(split.first_after), Vector{Int}}, Tuple{typeof(split.mismatched), Int}], split)
-        @test Set(site_keys(Corset.call_report_sites(Repository(split_tree), split_frames, split))) ==
+        @test Set(site_keys(CorsetLegacy.call_report_sites(Repository(split_tree), split_frames, split))) ==
             Set(["split.jl first_after MethodErrorReport", "split.jl mismatched MethodErrorReport"])
-        @test isempty(Corset.call_report_sites(Repository(mktempdir()), split_frames, split))
+        @test isempty(CorsetLegacy.call_report_sites(Repository(mktempdir()), split_frames, split))
         # A module rule reads the loaded package through `loaded_module`; with none, `can_run` skips it.
-        @test_throws ArgumentError Corset.loaded_module(Corset.Context(Repository(mktempdir()), (), nothing))
-        @test Corset.installed(Corset.JET_ID)
-        @test !Corset.installed(Base.PkgId(Base.UUID("00000000-0000-0000-0000-000000000001"), "NotInstalled"))
+        @test_throws ArgumentError CorsetLegacy.loaded_module(CorsetLegacy.Context(Repository(mktempdir()), (), nothing))
+        @test CorsetLegacy.installed(CorsetLegacy.JET_ID)
+        @test !CorsetLegacy.installed(Base.PkgId(Base.UUID("00000000-0000-0000-0000-000000000001"), "NotInstalled"))
     end
 
     @testset "jet rule: frames analyzed on several threads give the serial sites, in the serial order" begin
@@ -501,8 +501,8 @@ end
             threaded_module, serial_module = Module(:Chain), Module(:Chain)
             Base.include(threaded_module, joinpath(chain_tree, "chain.jl"))
             Base.include(serial_module, joinpath(chain_tree, "chain.jl"))
-            threaded = Corset.call_report_sites(Repository(chain_tree), chain_frames(threaded_module), threaded_module)
-            reports = Corset.FrameReports(Repository(chain_tree), JET, Corset.Package(serial_module))
+            threaded = CorsetLegacy.call_report_sites(Repository(chain_tree), chain_frames(threaded_module), threaded_module)
+            reports = CorsetLegacy.FrameReports(Repository(chain_tree), JET, CorsetLegacy.Package(serial_module))
             serial = unique!(collect(Site, Iterators.flatten(reports.(chain_frames(serial_module)))))
             @test length(serial) == 9
             @test threaded == serial
@@ -510,12 +510,12 @@ end
     end
 
     @testset "under --code-coverage entry_frames warns once and ratchet! throws, since the frames differ from users' code" begin
-        @test_logs (:warn, r"--code-coverage") Corset.warn_coverage!(1)
-        @test_logs (:warn, r"--code-coverage") Corset.warn_coverage!(2)
-        @test_logs Corset.warn_coverage!(0)
-        @test isnothing(Corset.warn_coverage!(0))
+        @test_logs (:warn, r"--code-coverage") CorsetLegacy.warn_coverage!(1)
+        @test_logs (:warn, r"--code-coverage") CorsetLegacy.warn_coverage!(2)
+        @test_logs CorsetLegacy.warn_coverage!(0)
+        @test isnothing(CorsetLegacy.warn_coverage!(0))
         @test_throws r"refuses to run under --code-coverage" ratchet!(Repository(mktempdir()), "rule", Site[]; coverage = 1)
-        @test isnothing(Corset.refuse_coverage(0))
+        @test isnothing(CorsetLegacy.refuse_coverage(0))
     end
 
     @testset "recursion-limit: a call inference cuts off, whose argument types nest deeper each time" begin
@@ -535,14 +535,14 @@ end
         # The walk stops at the cut: each `grow` frame would otherwise inline a deeper one, forever.
         frames = entry_frames(Type[Tuple{typeof(recursive.start), Int}], recursive)
         @test [frame.method.name for frame in frames] == [:start]
-        sites = Corset.recursion_limits(Repository(tree), frames, recursive)
+        sites = CorsetLegacy.recursion_limits(Repository(tree), frames, recursive)
         @test site_keys(sites) == ["recursive.jl start"]
         @test site_lines(sites) == [3]
         @test occursin("grow", only(sites).detail)
         settled = entry_frames(Type[Tuple{typeof(recursive.fib), Int}, Tuple{typeof(recursive.ping), Int}], recursive)
         @test Set(frame.method.name for frame in settled) == Set([:fib, :ping, :pong])
-        @test isempty(Corset.recursion_limits(Repository(tree), settled, recursive))
-        @test !Corset.cut_off(:(f(x)))
+        @test isempty(CorsetLegacy.recursion_limits(Repository(tree), settled, recursive))
+        @test !CorsetLegacy.cut_off(:(f(x)))
     end
 
     @testset "float64_ops: Float64 operations in optimized IR" begin
@@ -552,10 +552,10 @@ end
 
     @testset "float64_line: a double operand of a listed operation, matched as whole words" begin
         for line in ("%2 = sitofp i64 %0 to double", "%2 = uitofp i64 %0 to double", "%2 = fneg double %1", "%3 = call double @julia_f_1(double %0)")
-            @test Corset.float64_line(line)
+            @test CorsetLegacy.float64_line(line)
         end
         for line in ("%3 = call i64 @julia_double_it_12(i64 %0)", "%2 = load double, ptr @julia_callback_3", "%2 = fneg float %1")
-            @test !Corset.float64_line(line)
+            @test !CorsetLegacy.float64_line(line)
         end
     end
 
@@ -604,7 +604,7 @@ end
     end
 
     @testset "invariant-parameter: an abstract type parameter without <:" begin
-        sites = found_in(source -> Corset.invariant_parameters(source, Base), "invariant-parameter")
+        sites = found_in(source -> CorsetLegacy.invariant_parameters(source, Base), "invariant-parameter")
         @test site_keys(sites) == ["source.jl summed", "source.jl nested", "source.jl bounded", "source.jl optional"]
         @test first(sites).detail == "`AbstractVector{Real}` takes only the parameter `Real` itself; write `AbstractVector{<:Real}`"
         @test sites[2].detail == "`Vector{Real}` takes only the parameter `Real` itself; write `Vector{<:Real}`"
@@ -614,17 +614,17 @@ end
         Base.include(holder, joinpath(root, "nested.jl"))
         source = parsed(joinpath(root, "nested.jl"))
         compiled = collect(Method, methods(holder.Outer.Inner.listed))
-        @test site_keys(Corset.invariant_parameters(source, holder, compiled)) == ["nested.jl listed"]
-        @test site_keys(Corset.invariant_parameters(source, holder)) == ["nested.jl listed"]
-        @test isempty(Corset.invariant_parameters(source, Base))
+        @test site_keys(CorsetLegacy.invariant_parameters(source, holder, compiled)) == ["nested.jl listed"]
+        @test site_keys(CorsetLegacy.invariant_parameters(source, holder)) == ["nested.jl listed"]
+        @test isempty(CorsetLegacy.invariant_parameters(source, Base))
         split = write_tree(mktempdir(), ["main.jl" => "module Outer\nmodule Inner\nabstract type Element end\ninclude(\"part.jl\")\nend\nend\n", "part.jl" => "listed(items::AbstractVector{Element})::Int = 1\n"])
         included = Module(:Included)
         Base.include(included, joinpath(split, "main.jl"))
         part = parsed(joinpath(split, "part.jl"))
-        @test site_keys(Corset.invariant_parameters(part, included, collect(Method, methods(included.Outer.Inner.listed)))) == ["part.jl listed"]
-        @test Corset.resolved_type(:(Base.Float32), Base) === Float32
-        @test Corset.resolved_type(QuoteNode(:name), Base) === :name
-        @test all(isa.(Corset.resolved_type.([:(Base.missing_name), :(Int{Float64}), :(Vector{Int, Int, Int}), :(f(x)), 1.5], (Base,)), Corset.Unresolved))
+        @test site_keys(CorsetLegacy.invariant_parameters(part, included, collect(Method, methods(included.Outer.Inner.listed)))) == ["part.jl listed"]
+        @test CorsetLegacy.resolved_type(:(Base.Float32), Base) === Float32
+        @test CorsetLegacy.resolved_type(QuoteNode(:name), Base) === :name
+        @test all(isa.(CorsetLegacy.resolved_type.([:(Base.missing_name), :(Int{Float64}), :(Vector{Int, Int, Int}), :(f(x)), 1.5], (Base,)), CorsetLegacy.Unresolved))
     end
 
     @testset "float64: Float64 tokens and untyped float literals" begin
@@ -636,7 +636,7 @@ end
     end
 
     @testset "ref: Ref and RefValue outside a ccall" begin
-        @test site_lines(Corset.ref_sites(parsed(snippet_file("ref")))) == [1, 2, 5]
+        @test site_lines(CorsetLegacy.ref_sites(parsed(snippet_file("ref")))) == [1, 2, 5]
     end
 
     @testset "annotation: every argument and result annotated" begin
@@ -652,10 +652,10 @@ end
     @testset "file-length: a file past the repository's line limit, reported as a whole" begin
         path = joinpath(mktempdir(), "three.jl")
         write(path, "a = 1\nb = 2\nc = 3\n")
-        @test Corset.long_file_sites(Repository(dirname(path); file_line_limit = 3), parsed(path)) == Site[]
-        @test Corset.long_file_sites(Repository(dirname(path); file_line_limit = 2), parsed(path)) ==
+        @test CorsetLegacy.long_file_sites(Repository(dirname(path); file_line_limit = 3), parsed(path)) == Site[]
+        @test CorsetLegacy.long_file_sites(Repository(dirname(path); file_line_limit = 2), parsed(path)) ==
             [Site("three.jl", path, 0, "3 lines, over 2")]
-        @test_throws Corset.UsageError Repository(dirname(path); file_line_limit = 0)
+        @test_throws CorsetLegacy.UsageError Repository(dirname(path); file_line_limit = 0)
     end
 
     @testset "fatou: findings of the real `fatou lint` (from mise.toml)" begin
@@ -667,7 +667,7 @@ end
         path = ENV["PATH"]
         try
             ENV["PATH"] = mktempdir()
-            @test_throws Corset.UsageError fatou_sites(Repository(tree), ("src",))
+            @test_throws CorsetLegacy.UsageError fatou_sites(Repository(tree), ("src",))
         finally
             ENV["PATH"] = path
         end
@@ -686,7 +686,7 @@ end
         symlink(tree, link)
         @test jscpd_sites(Repository(link; skipped_directories = ("vendor",)), (".",)) == [Site("copies.jl copies.jl", joinpath(link, "copies.jl"), 8, 14, "")]
         # A directory outside the root would key files by `../`; it throws instead.
-        @test_throws Corset.UsageError jscpd_sites(Repository(joinpath(tree, "vendor")), ("..",))
+        @test_throws CorsetLegacy.UsageError jscpd_sites(Repository(joinpath(tree, "vendor")), ("..",))
         @testset "a jscpd that writes no report, or none on PATH, is an error" begin
             path = ENV["PATH"]
             broken = write_tree(mktempdir(), ["jscpd" => "#!/bin/sh\nexit 1\n"])
@@ -695,7 +695,7 @@ end
                 ENV["PATH"] = "$broken:$path"
                 @test_throws ErrorException jscpd_sites(Repository(tree), (".",))
                 ENV["PATH"] = mktempdir()
-                @test_throws Corset.UsageError jscpd_sites(Repository(tree), (".",))
+                @test_throws CorsetLegacy.UsageError jscpd_sites(Repository(tree), (".",))
             finally
                 ENV["PATH"] = path
             end
@@ -731,8 +731,8 @@ end
     end
 
     @testset "hidden-input: a regex constant is not state; a global stream is" begin
-        @test !Corset.is_hidden_input(GlobalRef(Corset, :OPT_OUT))
-        @test Corset.is_hidden_input(GlobalRef(Base, :stdout))
+        @test !CorsetLegacy.is_hidden_input(GlobalRef(CorsetLegacy, :OPT_OUT))
+        @test CorsetLegacy.is_hidden_input(GlobalRef(Base, :stdout))
     end
 
     @testset "hidden-input: an `@main` entry point hands the process streams down; a site sits on its read's line" begin
@@ -759,15 +759,15 @@ end
         # A `main` that `@main` does not mark is no entry point.
         @test [(site.key, site.line) for site in hidden_inputs(Repository(tree), holder.Plain)] == [("stdout", 12)]
         file = joinpath(tree, "cli.jl")
-        @test Corset.read_line(joinpath(tree, "missing.jl"), 6, :stderr) == 6
-        @test Corset.read_line(file, 999, :stderr) == 999
-        @test Corset.read_line(file, 6, :no_such_name) == 6
+        @test CorsetLegacy.read_line(joinpath(tree, "missing.jl"), 6, :stderr) == 6
+        @test CorsetLegacy.read_line(file, 999, :stderr) == 999
+        @test CorsetLegacy.read_line(file, 6, :no_such_name) == 6
     end
 
     @testset "unstable-variable: a homogeneous variadic tuple is concrete in use, a bare Tuple is not" begin
-        @test !Corset.unstable_variable_type(Tuple{Vararg{String}})
-        @test Corset.unstable_variable_type(Tuple)
-        @test Corset.unstable_variable_type(Tuple{Vararg{Real}})
+        @test !CorsetLegacy.unstable_variable_type(Tuple{Vararg{String}})
+        @test CorsetLegacy.unstable_variable_type(Tuple)
+        @test CorsetLegacy.unstable_variable_type(Tuple{Vararg{Real}})
     end
 end
 
@@ -794,7 +794,7 @@ end
         opted_file = "# lint: where-return-file  deliberate\n$broken"
         files = ["line.jl" => opted_line * broken, "block.jl" => opted_block * broken, "file.jl" => opted_file, "plain.jl" => broken]
         tree = write_tree(mktempdir(), files)
-        fixed_sites = Corset.fix!(Corset.WhereReturnRule(), Repository(tree), (".",))
+        fixed_sites = CorsetLegacy.fix!(CorsetLegacy.WhereReturnRule(), Repository(tree), (".",))
         @test sort!([(basename(site.file), site.line) for site in fixed_sites]) == [("block.jl", 4), ("line.jl", 2), ("plain.jl", 1)]
         @test tree_texts(tree) == Dict(
             "line.jl" => opted_line * fixed, "block.jl" => opted_block * fixed, "file.jl" => opted_file, "plain.jl" => fixed,
@@ -804,7 +804,7 @@ end
         broken = "f(x::T)::Vector{T} where {T} = [x]\n"
         tree = write_tree(mktempdir(), ["a/first.jl" => broken, "b/second.jl" => broken])
         chmod(joinpath(tree, "b"), 0o555)
-        @test_throws SystemError Corset.fix!(Corset.WhereReturnRule(), Repository(tree), (".",))
+        @test_throws SystemError CorsetLegacy.fix!(CorsetLegacy.WhereReturnRule(), Repository(tree), (".",))
         chmod(joinpath(tree, "b"), 0o755)
         @test tree_texts(tree) == Dict("a/first.jl" => broken, "b/second.jl" => broken)
     end
@@ -852,7 +852,7 @@ end
         fixed = "x = collect(Int, Iterators.flatten(xs))\n"
         spanning = "y = reduce(\n    vcat, ys; # lint: quadratic-vcat  deliberate\n    init = Int[])\n"
         tree = write_tree(mktempdir(), ["line.jl" => spanning * broken, "plain.jl" => broken])
-        fixed_sites = Corset.fix!(Corset.QuadraticVcatRule(), Repository(tree), (".",))
+        fixed_sites = CorsetLegacy.fix!(CorsetLegacy.QuadraticVcatRule(), Repository(tree), (".",))
         @test sort!([(basename(site.file), site.line) for site in fixed_sites]) == [("line.jl", 4), ("plain.jl", 1)]
         @test tree_texts(tree) == Dict("line.jl" => spanning * fixed, "plain.jl" => fixed)
     end
@@ -978,7 +978,7 @@ end
         child = "module Sub\nusing A: k\nend\n"
         main = "module P\ninclude(\"child.jl\")\nimport .Sub.k\nq() = k\nend\n"
         @test placed(["main.jl" => main, "child.jl" => child]) == Dict("main.jl" => main, "child.jl" => child)
-        @test Corset.relayed_names(only(Corset.import_nodes(Corset.SYNTAX.parseall(Corset.SYNTAX.SyntaxNode, "using A: f")))) == String[]
+        @test CorsetLegacy.relayed_names(only(CorsetLegacy.import_nodes(CorsetLegacy.SYNTAX.parseall(CorsetLegacy.SYNTAX.SyntaxNode, "using A: f")))) == String[]
     end
     @testset "a moved import lands after the file's last top-level import, outside its module blocks" begin
         inner = "module Inner\nusing B: b\nh() = b\nend\n"
@@ -1043,7 +1043,7 @@ end
     @testset "include paths resolve as undefined_names resolves them: joinpath without @__DIR__ too" begin
         files = ["main.jl" => "using A: a\ninclude(joinpath(\"sub\", \"child.jl\"))\n", "sub/child.jl" => "g() = a\n"]
         @test placed(files)["sub/child.jl"] == "using A: a\ng() = a\n"
-        @test Corset.included_path(:(joinpath("sub", @__DIR__, "x.jl")), "/root") == "/root/x.jl"
+        @test CorsetLegacy.included_path(:(joinpath("sub", @__DIR__, "x.jl")), "/root") == "/root/x.jl"
     end
 end
 
@@ -1061,114 +1061,114 @@ end
 
 @testset "rule helpers read every shape of input" begin
     @testset "a callee is the type its method is called on, through a type variable bound" begin
-        @test Corset.callee_name(only(methods(Shapes.Callable()))) === Shapes.Callable.name
-        @test Corset.callee_name(TypeVar(:T, Shapes.Callable)) === Shapes.Callable.name
-        @test Corset.callee_name(Vector) === Vector.body.name
-        @test isnothing(Corset.callee_name(Union{Shapes.Left, Shapes.Right}))
+        @test CorsetLegacy.callee_name(only(methods(Shapes.Callable()))) === Shapes.Callable.name
+        @test CorsetLegacy.callee_name(TypeVar(:T, Shapes.Callable)) === Shapes.Callable.name
+        @test CorsetLegacy.callee_name(Vector) === Vector.body.name
+        @test isnothing(CorsetLegacy.callee_name(Union{Shapes.Left, Shapes.Right}))
     end
     @testset "a missing binding hides no input" begin
-        @test !Corset.is_hidden_input(GlobalRef(Main, :no_such_binding_anywhere))
-        @test isempty(Corset.method_hidden_inputs(first(methods(Core.tuple))))
+        @test !CorsetLegacy.is_hidden_input(GlobalRef(Main, :no_such_binding_anywhere))
+        @test isempty(CorsetLegacy.method_hidden_inputs(first(methods(Core.tuple))))
     end
     @testset "an anonymous function's own method is keyed by its file alone" begin
         anonymous = only(methods(values -> values))
-        @test Corset.method_key(Repository(@__DIR__), anonymous) == "runtests.jl anonymous function"
-        @test Corset.method_key(Repository(dirname(@__DIR__)), anonymous) == "test/runtests.jl anonymous function"
+        @test CorsetLegacy.method_key(Repository(@__DIR__), anonymous) == "runtests.jl anonymous function"
+        @test CorsetLegacy.method_key(Repository(dirname(@__DIR__)), anonymous) == "test/runtests.jl anonymous function"
     end
     @testset "unstable variable types: unions, containers, tuples and Type" begin
         concrete = (Union{}, Union{Int, String}, Type{Int}, Vector{Int}, Dict{String, Int}, Tuple{Int, Float64}, Tuple{Vararg{Int}})
-        @test !any(Corset.unstable_variable_type, concrete)
-        @test Corset.unstable_variable_type(Union{Int, Float64, String, Char, Symbol})
+        @test !any(CorsetLegacy.unstable_variable_type, concrete)
+        @test CorsetLegacy.unstable_variable_type(Union{Int, Float64, String, Char, Symbol})
         for element in (Any, Number)
-            @test Corset.unstable_variable_type(element)
-            @test Corset.unstable_variable_type(Union{Int, element})
-            @test Corset.unstable_variable_type(Vector{element})
-            @test Corset.unstable_variable_type(Dict{String, element})
-            @test Corset.unstable_variable_type(Tuple{Int, element})
-            @test Corset.unstable_variable_type(Tuple{Vararg{element}})
-            @test Corset.holds_abstract(Tuple{element})
+            @test CorsetLegacy.unstable_variable_type(element)
+            @test CorsetLegacy.unstable_variable_type(Union{Int, element})
+            @test CorsetLegacy.unstable_variable_type(Vector{element})
+            @test CorsetLegacy.unstable_variable_type(Dict{String, element})
+            @test CorsetLegacy.unstable_variable_type(Tuple{Int, element})
+            @test CorsetLegacy.unstable_variable_type(Tuple{Vararg{element}})
+            @test CorsetLegacy.holds_abstract(Tuple{element})
         end
     end
     @testset "declared field types: abstract at any depth" begin
-        @test Corset.holds_abstract(Vector{Vector})
-        @test !Corset.holds_abstract(Vector{Int})
+        @test CorsetLegacy.holds_abstract(Vector{Vector})
+        @test !CorsetLegacy.holds_abstract(Vector{Int})
     end
     @testset "a word shared by most fields is the prefix the type should say once" begin
-        @test Corset.repeated_prefix(Shapes.Control) == "step"
+        @test CorsetLegacy.repeated_prefix(Shapes.Control) == "step"
     end
     @testset "nodes of another kind are no range guard and call no exp" begin
-        @test !Corset.is_range_guard(:name)
-        @test !Corset.calls_exp(:name)
+        @test !CorsetLegacy.is_range_guard(:name)
+        @test !CorsetLegacy.calls_exp(:name)
     end
     @testset "a definition without a body marker starts at the line it was found" begin
-        @test Corset.definition_line(Expr(:call, :f), 7) == 7
+        @test CorsetLegacy.definition_line(Expr(:call, :f), 7) == 7
     end
     @testset "a testset names the code inside it" begin
-        @test Corset.testset_name(Meta.parse("@testset \"a b\" begin end")) === Symbol("a b")
-        @test isnothing(Corset.testset_name(Meta.parse("@testset begin end")))
+        @test CorsetLegacy.testset_name(Meta.parse("@testset \"a b\" begin end")) === Symbol("a b")
+        @test isnothing(CorsetLegacy.testset_name(Meta.parse("@testset begin end")))
         path = tempname() * ".jl"
         write(path, "@testset \"inside\" begin\n    f(a) = 1\nend\n")
         @test any(item.enclosing === :inside for item in parsed(path).located)
     end
     @testset "concrete containers: bare, in a Union, and not a type at all" begin
-        @test Corset.is_concrete_container(Meta.parse("Union{Vector, Nothing}"))
-        @test !Corset.is_concrete_container(Meta.parse("a.b"))
-        @test !Corset.is_concrete_container(1)
+        @test CorsetLegacy.is_concrete_container(Meta.parse("Union{Vector, Nothing}"))
+        @test !CorsetLegacy.is_concrete_container(Meta.parse("a.b"))
+        @test !CorsetLegacy.is_concrete_container(1)
     end
     @testset "annotated arguments: keyword, keyword-section and splat forms" begin
-        @test Corset.annotated_arguments(Expr(:kw, :(x::Int), 1)) == [(:x, :Int)]
-        @test Corset.annotated_arguments(Expr(:parameters, :(k::Int))) == [(:k, :Int)]
-        @test Corset.annotated_arguments(Expr(:parameters, Expr(:kw, :(k::Int), 1))) == [(:k, :Int)]
-        @test Corset.annotated_arguments(Expr(:..., :(rest::Int))) == [(:rest, :Int)]
-        @test isempty(Corset.annotated_arguments(Expr(:parameters, :plain)))
+        @test CorsetLegacy.annotated_arguments(Expr(:kw, :(x::Int), 1)) == [(:x, :Int)]
+        @test CorsetLegacy.annotated_arguments(Expr(:parameters, :(k::Int))) == [(:k, :Int)]
+        @test CorsetLegacy.annotated_arguments(Expr(:parameters, Expr(:kw, :(k::Int), 1))) == [(:k, :Int)]
+        @test CorsetLegacy.annotated_arguments(Expr(:..., :(rest::Int))) == [(:rest, :Int)]
+        @test isempty(CorsetLegacy.annotated_arguments(Expr(:parameters, :plain)))
     end
     @testset "result types: unknown names, literals and non-types are no package struct" begin
-        @test !Corset.package_type(:NoSuchTypeAnywhere, Main)
-        @test !Corset.package_type(1, Main)
-        @test !Corset.mentions_variable(1, (:E,))
-        @test isnothing(Corset.type_head(Meta.parse("a.b")))
-        @test isnothing(Corset.type_head(1))
-        @test !Corset.constructs_own_type(:(x = 1))
+        @test !CorsetLegacy.package_type(:NoSuchTypeAnywhere, Main)
+        @test !CorsetLegacy.package_type(1, Main)
+        @test !CorsetLegacy.mentions_variable(1, (:E,))
+        @test isnothing(CorsetLegacy.type_head(Meta.parse("a.b")))
+        @test isnothing(CorsetLegacy.type_head(1))
+        @test !CorsetLegacy.constructs_own_type(:(x = 1))
     end
     @testset "untyped arguments: defaults and literals" begin
-        @test Corset.untyped_argument(Expr(:kw, :x, 1))
-        @test !Corset.untyped_argument(1)
+        @test CorsetLegacy.untyped_argument(Expr(:kw, :x, 1))
+        @test !CorsetLegacy.untyped_argument(1)
     end
     @testset "bound names: defaults, tuples and field targets" begin
-        @test Corset.bound_names(Expr(:kw, :x, 1)) == [:x]
-        @test Corset.bound_names(Expr(:tuple, :a, :b)) == [:a, :b]
-        @test isempty(Corset.bound_names(Meta.parse("a.b")))
-        @test Corset.one_letter_names(Meta.parse("try\n1\ncatch e\n2\nend"), ()) == [:e]
+        @test CorsetLegacy.bound_names(Expr(:kw, :x, 1)) == [:x]
+        @test CorsetLegacy.bound_names(Expr(:tuple, :a, :b)) == [:a, :b]
+        @test isempty(CorsetLegacy.bound_names(Meta.parse("a.b")))
+        @test CorsetLegacy.one_letter_names(Meta.parse("try\n1\ncatch e\n2\nend"), ()) == [:e]
     end
 end
 
 @testset "defined_methods finds methods added to another module's function" begin
     external = Module(:ExternalExtension)
     Base.eval(external, :(Base.length(::Type{Val{:corset_probe}})::Int = 1))
-    defined = Corset.defined_methods(Corset.Package(external))
+    defined = CorsetLegacy.defined_methods(CorsetLegacy.Package(external))
     @test any(method -> method.name === :length && method.module === external, defined)
 end
 
 @testset "closure reflection follows nested closures and macro-made code" begin
     closure_chain = Module(:ClosureChain)
     Base.include(closure_chain, joinpath(FIXTURES, "closure_module.txt"))
-    package = Corset.Package(closure_chain)
-    defined = Corset.defined_methods(package)
-    namers = Corset.closure_namers(package, defined)
+    package = CorsetLegacy.Package(closure_chain)
+    defined = CorsetLegacy.defined_methods(package)
+    namers = CorsetLegacy.closure_namers(package, defined)
     @testset "a nested closure is defined by the function that holds the outermost one" begin
-        @test Set(Corset.closure_definer(name, namers).name for name in keys(namers)) == Set([:nested, :recursive, :twice])
-        @test length(Corset.live_closures(package, defined)) == length(namers)
+        @test Set(CorsetLegacy.closure_definer(name, namers).name for name in keys(namers)) == Set([:nested, :recursive, :twice])
+        @test length(CorsetLegacy.live_closures(package, defined)) == length(namers)
     end
     @testset "code from a macro sits at the method's line, and a bare argument slot too" begin
         method = only(methods(closure_chain.uses_macro))
-        code = Corset.lowered(method)
-        @test any(index -> Corset.statement_line(code, method, index) == method.line, eachindex(code.code))
-        @test Corset.slot_line(code, method, 2) == method.line
+        code = CorsetLegacy.lowered(method)
+        @test any(index -> CorsetLegacy.statement_line(code, method, index) == method.line, eachindex(code.code))
+        @test CorsetLegacy.slot_line(code, method, 2) == method.line
     end
     @testset "a builtin has no lowered code and returns no argument's call" begin
-        @test isnothing(Corset.lowered(first(methods(Core.tuple))))
-        @test isempty(Corset.created_closures(first(methods(Core.tuple)), Corset.Package(Corset)))
-        @test !Corset.returns_argument_call(first(methods(Core.tuple)))
+        @test isnothing(CorsetLegacy.lowered(first(methods(Core.tuple))))
+        @test isempty(CorsetLegacy.created_closures(first(methods(Core.tuple)), CorsetLegacy.Package(CorsetLegacy)))
+        @test !CorsetLegacy.returns_argument_call(first(methods(Core.tuple)))
     end
 end
 
@@ -1300,7 +1300,7 @@ end
         Tuple{typeof(Mutation.passed_pointer), Ptr{UInt8}},
     ]
     inferred = entry_frames(seeds, Mutation)
-    sites = Corset.unmarked_mutations(Repository(@__DIR__), inferred)
+    sites = CorsetLegacy.unmarked_mutations(Repository(@__DIR__), inferred)
     details = Dict(last(split(site.key)) => site.detail for site in sites)
     @testset "a write through an argument, an alias, a field, an element or a callee is reported" begin
         for name in ("direct", "aliased", "setprop", "viafield", "helper", "outer", "far_helper", "far_outer", "viaindex", "stashed")
@@ -1313,10 +1313,10 @@ end
         @test details["describe"] == "writes argument `io` but its name has no `!`"
         @test details["guarded"] == "writes argument `gate` but its name has no `!`"
         @test !haskey(details, "log_to")
-        @test !Corset.writable(IOStream) && !Corset.writable(Base.PipeEndpoint) && !Corset.writable(Base.DevNull)
-        @test Corset.writable(IOBuffer) && Corset.writable(Base.BufferStream) && Corset.writable(Base.LibuvStream)
-        @test Corset.writable(IO) && Corset.writable(IOContext{IOBuffer}) && Corset.writable(ReentrantLock)
-        @test !Corset.writable(IOContext{IOStream}) && Corset.writable(IOContext)
+        @test !CorsetLegacy.writable(IOStream) && !CorsetLegacy.writable(Base.PipeEndpoint) && !CorsetLegacy.writable(Base.DevNull)
+        @test CorsetLegacy.writable(IOBuffer) && CorsetLegacy.writable(Base.BufferStream) && CorsetLegacy.writable(Base.LibuvStream)
+        @test CorsetLegacy.writable(IO) && CorsetLegacy.writable(IOContext{IOBuffer}) && CorsetLegacy.writable(ReentrantLock)
+        @test !CorsetLegacy.writable(IOContext{IOStream}) && CorsetLegacy.writable(IOContext)
     end
     @testset "a method declaring an abstract IO writes its caller's stream; a concrete in-memory declaration flags" begin
         @test !haskey(details, "render") && !haskey(details, "render_into") && !haskey(details, "log_context")
@@ -1326,9 +1326,9 @@ end
         @test details["length"] == "adds a writing method to `Base.length`, which callers expect not to write: it writes argument `box`"
         @test details["iterate"] == "adds a writing method to `Base.iterate`, which callers expect not to write: it writes argument `box`"
         @test !haskey(details, "show")
-        render = only(Corset.typed_frames(Tuple{typeof(Mutation.render), IOBuffer, Mutation.Box}))
-        @test Corset.argument_writes(render, Corset.WriteWalk(Dict{Core.MethodInstance, Corset.Inferred}()), (), Corset.CandidateSearch(Corset.Inferred[])).written == [2]
-        @test Corset.declared_io(render.method, 2) && !Corset.declared_io(render.method, 3) && !Corset.declared_io(render.method, 9)
+        render = only(CorsetLegacy.typed_frames(Tuple{typeof(Mutation.render), IOBuffer, Mutation.Box}))
+        @test CorsetLegacy.argument_writes(render, CorsetLegacy.WriteWalk(Dict{Core.MethodInstance, CorsetLegacy.Inferred}()), (), CorsetLegacy.CandidateSearch(CorsetLegacy.Inferred[])).written == [2]
+        @test CorsetLegacy.declared_io(render.method, 2) && !CorsetLegacy.declared_io(render.method, 3) && !CorsetLegacy.declared_io(render.method, 9)
     end
     @testset "fresh memory, reads, a rebound local and a `!` function are not reported" begin
         for name in ("rebound", "viahelper", "fresh", "readonly", "addup", "reads", "bangwrite!", "countdown", "memwrite!", "fieldread", "opaqueglobal")
@@ -1336,19 +1336,19 @@ end
         end
     end
     @testset "a summary is made once per instance and limit; one cut short by recursion is not kept" begin
-        walk = Corset.WriteWalk(Dict{Core.MethodInstance, Corset.Inferred}(item.code.parent => item for item in inferred))
-        search = Corset.CandidateSearch(inferred)
+        walk = CorsetLegacy.WriteWalk(Dict{Core.MethodInstance, CorsetLegacy.Inferred}(item.code.parent => item for item in inferred))
+        search = CorsetLegacy.CandidateSearch(inferred)
         far = only(item for item in inferred if item.method.name === :far_outer)
-        summary = Corset.argument_writes(far, walk, (far.code.parent,), search)
+        summary = CorsetLegacy.argument_writes(far, walk, (far.code.parent,), search)
         @test summary.written == [2] && !summary.cut
         @test haskey(walk.summaries, (far.code.parent, search.limit)) && length(walk.summaries) == 2
-        @test Corset.argument_writes(far, walk, (), search) === summary
+        @test CorsetLegacy.argument_writes(far, walk, (), search) === summary
         @test !haskey(walk.summaries, (far.code.parent, 0))
         countdown = only(item for item in inferred if item.method.name === :countdown)
-        @test Corset.argument_writes(countdown, walk, (countdown.code.parent,), search).cut
+        @test CorsetLegacy.argument_writes(countdown, walk, (countdown.code.parent,), search).cut
         @test !haskey(walk.summaries, (countdown.code.parent, search.limit))
-        estate = Corset.escape_state(far.ir, far.method.nargs)
-        no_writes = Corset.invoked_writes(Expr(:invoke, "no instance", identity), estate, walk, (), search)
+        estate = CorsetLegacy.escape_state(far.ir, far.method.nargs)
+        no_writes = CorsetLegacy.invoked_writes(Expr(:invoke, "no instance", identity), estate, walk, (), search)
         @test all(isempty, (no_writes.written, no_writes.dispatched, no_writes.foreign, no_writes.writers)) && !no_writes.cut
     end
     @testset "Base.:! is no `!` name; a varargs callee writes every operand it gathers" begin
@@ -1363,7 +1363,7 @@ end
     @testset "jl_genericmemory_copyto may write its destination and reads its source" begin
         @test !haskey(details, "copied") && !haskey(details, "joined")
         @test details["copied_into"] == "argument `names` reaches a `ccall` and may be written"
-        @test Corset.foreign_positions(Expr(:call, :pointer), 2) == [1, 2]
+        @test CorsetLegacy.foreign_positions(Expr(:call, :pointer), 2) == [1, 2]
     end
     @testset "a C call or unsafe_store! through a pointer into an argument writes it" begin
         @test details["zero_filled"] == "argument `buffer` reaches a `ccall` and may be written"
@@ -1375,18 +1375,18 @@ end
         for name in ("measured", "string_cleared", "passed_pointer")
             @test !haskey(details, name)
         end
-        @test Corset.traced_operands(Core.PiNode(Core.SSAValue(1), Ptr{UInt8})) == [Core.SSAValue(1)]
+        @test CorsetLegacy.traced_operands(Core.PiNode(Core.SSAValue(1), Ptr{UInt8})) == [Core.SSAValue(1)]
         edges = collect(Any, (Core.SSAValue(1), Core.SSAValue(2)))
-        @test Corset.traced_operands(Core.PhiNode(Int32[1, 2], edges)) == edges
-        @test isempty(Corset.traced_operands(Core.PhiNode(Int32[1, 2], similar(edges))))
-        @test isempty(Corset.traced_operands(GlobalRef(Base, :nothing)))
+        @test CorsetLegacy.traced_operands(Core.PhiNode(Int32[1, 2], edges)) == edges
+        @test isempty(CorsetLegacy.traced_operands(Core.PhiNode(Int32[1, 2], similar(edges))))
+        @test isempty(CorsetLegacy.traced_operands(GlobalRef(Base, :nothing)))
     end
     @testset "a logical-mask copy of the paths isdir reads writes none of them" begin
         @test !haskey(details, "missing_paths")
     end
     @testset "Base.sort and Base.replace copy before they write" begin
         for signature in (Tuple{typeof(sort), vector}, Tuple{typeof(replace), vector, Pair{Int, Int}})
-            writes = Corset.argument_writes(only(Corset.typed_frames(signature)), Corset.WriteWalk(Dict{Core.MethodInstance, Corset.Inferred}()), (), Corset.CandidateSearch(Corset.Inferred[]))
+            writes = CorsetLegacy.argument_writes(only(CorsetLegacy.typed_frames(signature)), CorsetLegacy.WriteWalk(Dict{Core.MethodInstance, CorsetLegacy.Inferred}()), (), CorsetLegacy.CandidateSearch(CorsetLegacy.Inferred[]))
             @test isempty(writes.written) && isempty(writes.dispatched) && isempty(writes.foreign)
         end
     end
@@ -1414,12 +1414,12 @@ sites_named(sites::AbstractVector{Site}, name::AbstractString)::Vector{Site} = [
     @testset "a noinline dynamic callee reached only through an :invoke edge is reported" begin
         control = only(sites_named(dispatches, "dispatching_control"))
         @test control.line == 2 && occursin("dispatches", control.detail) && occursin("+", control.detail)
-        @test isempty(sites_named(runtime_dispatches(repository, reduce(vcat, Corset.typed_frames.(seeds))), "dispatching_control"))
+        @test isempty(sites_named(runtime_dispatches(repository, reduce(vcat, CorsetLegacy.typed_frames.(seeds))), "dispatching_control"))
         @test widened["invoking_control"] == "returns Any"
     end
     @testset "a statement's opt-out covers its line, a method's opt-out its whole body" begin
         @test [site.line for site in sites_named(dispatches, "line_exempt")] == [7, 8]
-        @test [site.line for site in first(Corset.unopted(sites_named(dispatches, "line_exempt"), "runtime-dispatch"))] == [8]
+        @test [site.line for site in first(CorsetLegacy.unopted(sites_named(dispatches, "line_exempt"), "runtime-dispatch"))] == [8]
         @test isempty(sites_named(dispatches, "exempt")) && !haskey(widened, "widened_exempt") && haskey(widened, "exempt")
     end
     @testset "a splat through Core._apply_iterate dispatches; a small concrete union compiles concretely" begin
@@ -1453,40 +1453,40 @@ candidate_seeds()::Vector{Type} = Type[
 ]
 
 """The frame of `caller` among `inferred`, and its one runtime-dispatch statement."""
-function dispatch_statement(inferred::AbstractVector{Corset.Inferred}, caller::Function)::Tuple{Corset.Inferred, Expr}
+function dispatch_statement(inferred::AbstractVector{CorsetLegacy.Inferred}, caller::Function)::Tuple{CorsetLegacy.Inferred, Expr}
     item = only([item for item in inferred if item.method.name === nameof(caller)])
-    return item, only(filter(Base.Fix2(Corset.dispatches, item.ir), item.ir.stmts.stmt))
+    return item, only(filter(Base.Fix2(CorsetLegacy.dispatches, item.ir), item.ir.stmts.stmt))
 end
 
 @testset "call_candidates lists a runtime dispatch's methods within its budget" begin
     inferred = entry_frames(candidate_seeds(), Candidates)
-    search = Corset.CandidateSearch(inferred)
+    search = CorsetLegacy.CandidateSearch(inferred)
     item, statement = dispatch_statement(inferred, Candidates.inspect)
     @testset "four methods within the default budget are all inferred, each once" begin
-        listed = Corset.call_candidates(statement, item.ir, search)
+        listed = CorsetLegacy.call_candidates(statement, item.ir, search)
         @test listed.complete && Set(frame.method for frame in listed.frames) == Set(methods(Candidates.measure))
         known = length(search.frames)
-        again = Corset.call_candidates(statement, item.ir, search)
+        again = CorsetLegacy.call_candidates(statement, item.ir, search)
         @test length(search.frames) == known && all(again.frames .=== listed.frames)
     end
     @testset "a budget cut, a zero budget and a splat list nothing and stay incomplete" begin
         for limit in (0, 3)
-            cut = Corset.call_candidates(statement, item.ir, Corset.CandidateSearch(inferred; candidate_limit = limit))
+            cut = CorsetLegacy.call_candidates(statement, item.ir, CorsetLegacy.CandidateSearch(inferred; candidate_limit = limit))
             @test !cut.complete && isempty(cut.frames)
         end
         splat, splat_statement = dispatch_statement(inferred, Candidates.splatted)
-        no_candidates = Corset.call_candidates(splat_statement, splat.ir, search)
+        no_candidates = CorsetLegacy.call_candidates(splat_statement, splat.ir, search)
         @test isempty(no_candidates.frames) && !no_candidates.complete
     end
     @testset "a candidate inference cannot type leaves the others and marks the list incomplete" begin
         broken, broken_statement = dispatch_statement(inferred, Candidates.breaks)
-        partial = Corset.call_candidates(broken_statement, broken.ir, search)
+        partial = CorsetLegacy.call_candidates(broken_statement, broken.ir, search)
         @test !partial.complete && length(partial.frames) == 3
     end
     @testset "a negative budget throws, and a candidate is named by module, file and line" begin
-        @test_throws ArgumentError Corset.CandidateSearch(inferred; candidate_limit = -1)
+        @test_throws ArgumentError CorsetLegacy.CandidateSearch(inferred; candidate_limit = -1)
         tally = only(methods(Candidates.tally, (Candidates.Circle, Candidates.Counter)))
-        @test Corset.candidate_name(tally) == "$(Candidates).tally at candidates_module.txt:$(tally.line)"
+        @test CorsetLegacy.candidate_name(tally) == "$(Candidates).tally at candidates_module.txt:$(tally.line)"
     end
 end
 
@@ -1496,13 +1496,13 @@ end
     "The details of `unmarked_mutations` at `limit`, by function name."
     details(limit::Integer)::Dict{String, String} = Dict(
         last(split(site.key)) => site.detail
-            for site in Corset.unmarked_mutations(repository, inferred; search = Corset.CandidateSearch(inferred; candidate_limit = limit))
+            for site in CorsetLegacy.unmarked_mutations(repository, inferred; search = CorsetLegacy.CandidateSearch(inferred; candidate_limit = limit))
     )
-    resolved = details(Corset.DEFAULT_CANDIDATE_LIMIT)
+    resolved = details(CorsetLegacy.DEFAULT_CANDIDATE_LIMIT)
     may_write = "argument `counter` reaches a runtime dispatch (`runtime-dispatch`) and may be written"
     @testset "candidates that write nothing clear the site; a writing one makes it definite and is named" begin
         @test !haskey(resolved, "inspect")
-        @test resolved["record"] == "writes argument `counter` but its name has no `!` (runtime-dispatch candidate `$(Corset.candidate_name(first(methods(Candidates.tally, (Candidates.Circle, Candidates.Counter)))))` writes it)"
+        @test resolved["record"] == "writes argument `counter` but its name has no `!` (runtime-dispatch candidate `$(CorsetLegacy.candidate_name(first(methods(Candidates.tally, (Candidates.Circle, Candidates.Counter)))))` writes it)"
         @test startswith(resolved["spread"], "writes argument `counter`") && occursin("gathered", resolved["spread"])
     end
     @testset "a budget cut keeps the conservative report" begin
@@ -1518,8 +1518,8 @@ end
     end
     @testset "a varargs candidate gathers the trailing operands into its last argument" begin
         gathered = only(methods(Candidates.gathered, (Candidates.Circle, Vararg{Candidates.Counter})))
-        @test Corset.candidate_argument.((gathered,), 2:5) == [2, 3, 3, 3]
-        @test Corset.candidate_argument(only(methods(Candidates.inspect)), 5) == 5
+        @test CorsetLegacy.candidate_argument.((gathered,), 2:5) == [2, 3, 3, 3]
+        @test CorsetLegacy.candidate_argument(only(methods(Candidates.inspect)), 5) == 5
     end
 end
 
@@ -1545,9 +1545,9 @@ end
     "The `float_widenings` sites at `limit`, by function name."
     widenings(limit::Integer)::Dict{String, Site} = Dict(
         last(split(site.key)) => site
-            for site in Corset.float_widenings(repository, inferred; search = Corset.CandidateSearch(inferred; candidate_limit = limit))
+            for site in CorsetLegacy.float_widenings(repository, inferred; search = CorsetLegacy.CandidateSearch(inferred; candidate_limit = limit))
     )
-    found = widenings(Corset.DEFAULT_CANDIDATE_LIMIT)
+    found = widenings(CorsetLegacy.DEFAULT_CANDIDATE_LIMIT)
     @testset "a literal, a conversion, a float global, a callee and a returned literal widen, and name their source" begin
         # Julia 1.13 names the type `Base.Float64`; 1.14 names the binding `Core.Float64`.
         @test endswith(found["scaled"].detail, ".Float64` makes a Float64; the widest float argument is Float32")
@@ -1568,7 +1568,7 @@ end
     end
     @testset "a dispatch: a wide candidate is definite, narrow ones clear it, a budget cut may widen" begin
         grow = only(methods(Floats.grow, (Float32,)))
-        @test found["grown"].detail == "dispatches `$(GlobalRef(Floats, :grow))`; candidate `$(Corset.candidate_name(grow))` returns a float wider than Float32"
+        @test found["grown"].detail == "dispatches `$(GlobalRef(Floats, :grow))`; candidate `$(CorsetLegacy.candidate_name(grow))` returns a float wider than Float32"
         @test !haskey(found, "kept")
         for limit in (0, 3)
             cut = widenings(limit)
@@ -1579,27 +1579,27 @@ end
     @testset "a dispatch whose operand types hold no float of the method's is skipped" begin
         @test !haskey(widenings(0), "signed_only")
         item, statement = dispatch_statement(inferred, Floats.signed_only)
-        @test isnothing(Corset.dispatch_widening(statement, item.ir, Corset.float_budget(item), Corset.CandidateSearch(inferred; candidate_limit = 0)))
+        @test isnothing(CorsetLegacy.dispatch_widening(statement, item.ir, CorsetLegacy.float_budget(item), CorsetLegacy.CandidateSearch(inferred; candidate_limit = 0)))
     end
     @testset "held_floats reads parameters, unions and type variables, to a depth limit" begin
-        @test Corset.held_floats(Tuple{Int, Complex{Float16}}, 0) == [Float16]
-        @test Set(Corset.held_floats(Union{Float32, Vector{Float64}}, 0)) == Set([Float32, Float64])
-        @test isempty(Corset.held_floats(Vector{T} where {T}, 0)) && isempty(Corset.held_floats(Float32, 5))
-        @test isempty(Corset.value_floats(Type{Float64}))
+        @test CorsetLegacy.held_floats(Tuple{Int, Complex{Float16}}, 0) == [Float16]
+        @test Set(CorsetLegacy.held_floats(Union{Float32, Vector{Float64}}, 0)) == Set([Float32, Float64])
+        @test isempty(CorsetLegacy.held_floats(Vector{T} where {T}, 0)) && isempty(CorsetLegacy.held_floats(Float32, 5))
+        @test isempty(CorsetLegacy.value_floats(Type{Float64}))
     end
     @testset "a φ merging a literal widens; a plain call is named by its callee" begin
         @test found["merged"].detail == "`0.0` makes a Float64; the widest float argument is Float32"
-        @test Corset.callee_label(Expr(:call, GlobalRef(Base, :sqrt))) == "Base.sqrt"
-        @test Corset.callee_label(GlobalRef(Base, :pi)) == "GlobalRef"
+        @test CorsetLegacy.callee_label(Expr(:call, GlobalRef(Base, :sqrt))) == "Base.sqrt"
+        @test CorsetLegacy.callee_label(GlobalRef(Base, :pi)) == "GlobalRef"
     end
 end
 
 @testset "entry_frames walks :invoke and inlined edges from the seeds and reads nothing the session ran" begin
     outer_call = Tuple{typeof(Probe.outer), Probe.Marker}
     inner_call = Tuple{typeof(Probe.inner), Probe.Marker}
-    probe = Corset.Package(Probe)
+    probe = CorsetLegacy.Package(Probe)
     "The signatures `frames` were inferred over."
-    frame_signatures(frames::AbstractVector{Corset.Inferred})::Vector{Type} = Type[frame.code.parent.specTypes for frame in frames]
+    frame_signatures(frames::AbstractVector{CorsetLegacy.Inferred})::Vector{Type} = Type[frame.code.parent.specTypes for frame in frames]
     @testset "a noinline callee is followed, the seed is kept, and the answer does not depend on what ran" begin
         cold = frame_signatures(entry_frames(Type[outer_call], Probe))
         Probe.outer(Probe.Marker())
@@ -1614,12 +1614,12 @@ end
         @test frame_signatures(entry_frames(Type[inner_call], Probe)) == Type[inner_call]
     end
     @testset "a method inference cannot type, a generator that throws, has no frame" begin
-        @test isempty(Corset.typed_frames(Tuple{typeof(Probe.failing_generator), Probe.Marker}))
+        @test isempty(CorsetLegacy.typed_frames(Tuple{typeof(Probe.failing_generator), Probe.Marker}))
     end
     @testset "frame_callees keeps the callees naming the target and drops the others" begin
-        ir = only(Corset.typed_frames(outer_call)).ir
+        ir = only(CorsetLegacy.typed_frames(outer_call)).ir
         @test [callee.specTypes for callee in frame_callees(ir, probe)] == Type[inner_call]
-        @test isempty(frame_callees(ir, Corset.Package(Corset)))
+        @test isempty(frame_callees(ir, CorsetLegacy.Package(CorsetLegacy)))
     end
     @testset "mentions_module reads unions, where-types and nested parameters, to a depth limit" begin
         @test mentions_module(Probe.Marker, probe, 0)
@@ -1638,7 +1638,7 @@ end
         @test invoked_instance(instance) === instance
         @test invoked_instance(instance.cache) === instance
         @test invoked_instance("neither") === nothing
-        @test Corset.own_instance(instance) == [instance] && isempty(Corset.own_instance(:toplevel))
+        @test CorsetLegacy.own_instance(instance) == [instance] && isempty(CorsetLegacy.own_instance(:toplevel))
         @test logging_call(Expr(:call, GlobalRef(Base.CoreLogging, :handle_message)))
         @test logging_call(Expr(:call, Base.CoreLogging.handle_message))
         @test !logging_call(Expr(:call, :plain))
@@ -1747,7 +1747,7 @@ include("fixer_properties.jl")
         (String[], String[])
     # Imports of whole modules, destructuring, `where` return types, parametric structs and body imports are all definitions.
     forms = write_scan(
-        "using Corset\nimport Test\nusing NoSuchModuleAnywhere\nleft, (right, _) = 1, (2, 3)\ntyped_binding::Int = 1\nfunction no_methods end\n" *
+        "using CorsetLegacy\nimport Test\nusing NoSuchModuleAnywhere\nleft, (right, _) = 1, (2, 3)\ntyped_binding::Int = 1\nfunction no_methods end\n" *
             "function typed(x::T)::Int where {T}\n 1\nend\nstruct Wrapped{T} <: Any end\n" *
             "@testset \"f\" begin\n using Test: @test\n @test typed(left) + right + typed_binding == 4 && no_methods isa Function\n @test Wrapped{Int} isa Type\n" *
             " @test Test.detect_ambiguities isa Function && undefined_names isa Function\n @test include(joinpath(@__DIR__, left)) == 1\nend\n",
@@ -1765,7 +1765,7 @@ end
 """The text the concrete-arg fixer leaves of `text`, written to a fresh file."""
 function concrete_arg_fixed(text::AbstractString)::String
     tree = write_tree(mktempdir(), ["source.jl" => text])
-    Corset.fix!(Corset.ConcreteArgRule(), Repository(tree), (".",))
+    CorsetLegacy.fix!(CorsetLegacy.ConcreteArgRule(), Repository(tree), (".",))
     return read(joinpath(tree, "source.jl"), String)
 end
 
@@ -1780,18 +1780,18 @@ end
     @test concrete_arg_fixed("f(x::Base.Vector{Int}) = 1\n") == "f(x::Base.Vector{Int}) = 1\n"
     fixed = concrete_arg_fixed("f(x::Vector{Int}, y::Array)::Int = 1\n")
     tree = write_tree(mktempdir(), ["source.jl" => fixed])
-    @test isempty(Corset.concrete_arguments(Corset.Source(Repository(tree), joinpath(tree, "source.jl"))))
+    @test isempty(CorsetLegacy.concrete_arguments(CorsetLegacy.Source(Repository(tree), joinpath(tree, "source.jl"))))
 end
 
 """The text the typed fixers of `rule` leave of `text`, a module `T`, after loading it and inferring the calls `signatures` name."""
-function typed_fixed(rule::Corset.Rule, text::AbstractString, signatures::Function; unsafe::Bool = false)::Tuple{String, Module}
+function typed_fixed(rule::CorsetLegacy.Rule, text::AbstractString, signatures::Function; unsafe::Bool = false)::Tuple{String, Module}
     tree = write_tree(mktempdir(), ["src/T.jl" => text])
     path = joinpath(tree, "src", "T.jl")
     loaded = Module(:Loaded)
     Base.include(loaded, path)
     mod = loaded.T
-    frames = reduce(vcat, Corset.typed_frames.(signatures(mod)))
-    Corset.fix!(rule, Repository(tree), ("src",), mod, frames, unsafe)
+    frames = reduce(vcat, CorsetLegacy.typed_frames.(signatures(mod)))
+    CorsetLegacy.fix!(rule, Repository(tree), ("src",), mod, frames, unsafe)
     return read(path, String), mod
 end
 
@@ -1813,7 +1813,7 @@ end
         Tuple{typeof(mod.wrapped), Int}, Tuple{typeof(mod.twice), Float32}, Tuple{typeof(mod.keep), Int}, Tuple{typeof(mod.half), Int},
         Tuple{typeof(mod.same), Int}, Tuple{typeof(mod.constant), Int}, Tuple{typeof(mod.ok), Int},
     ]
-    fixed, _ = typed_fixed(Corset.AnnotationRule(), source, signatures)
+    fixed, _ = typed_fixed(CorsetLegacy.AnnotationRule(), source, signatures)
     @test occursin("twice(x) = x + x", fixed)
     @test occursin("keep(x::Int)::typeof(x) = x", fixed)
     @test occursin("half(x::Number) = x / 2", fixed)
@@ -1840,7 +1840,7 @@ end
     signatures(mod) = Type[
         Tuple{typeof(mod.twice), Float32}, Tuple{typeof(mod.norm2), Vector{Float32}, Float32}, Tuple{typeof(mod.mk), Int}, Tuple{typeof(mod.generic), Int, Int},
     ]
-    fixed, _ = typed_fixed(Corset.AnnotationRule(), source, signatures; unsafe = true)
+    fixed, _ = typed_fixed(CorsetLegacy.AnnotationRule(), source, signatures; unsafe = true)
     @test occursin("twice(x::Real)::typeof(x) = x + x", fixed)
     @test occursin("norm2(v::AbstractVector{<:Real}, w::Real)::typeof(w)", fixed)
     @test occursin("mk(n::Real) = zeros", fixed)
@@ -1852,8 +1852,8 @@ end
     tree = write_tree(mktempdir(), ["src/T.jl" => "module T\nkeep(x::Int) = x\nend\n", "Project.toml" => "name = \"T\"\n"])
     loaded = Module(:Loaded)
     Base.include(loaded, joinpath(tree, "src", "T.jl"))
-    frames = Corset.typed_frames(Tuple{typeof(loaded.T.keep), Int})
-    diff = Corset.fix_diff(Corset.load_config(tree), tree, loaded.T, frames, false)
+    frames = CorsetLegacy.typed_frames(Tuple{typeof(loaded.T.keep), Int})
+    diff = CorsetLegacy.fix_diff(CorsetLegacy.load_config(tree), tree, loaded.T, frames, false)
     @test occursin("+keep(x::Int)::typeof(x) = x", diff)
 end
 
@@ -1866,11 +1866,11 @@ end
     end
     """
     signatures(mod) = Type[Tuple{typeof(mod.keep), Vector{Float32}}, Tuple{typeof(mod.view_of), Vector{Float32}}, Tuple{typeof(mod.zeros_of), Int}]
-    fixed, _ = typed_fixed(Corset.ConcreteReturnRule(), source, signatures)
+    fixed, _ = typed_fixed(CorsetLegacy.ConcreteReturnRule(), source, signatures)
     @test occursin("keep(x::Vector{Float32})::typeof(x) = x", fixed)
     @test occursin("view_of(x::Vector{Float32})::Vector{Float32} = view", fixed)
     @test occursin("zeros_of(n::Int)::AbstractVector{<:Real} = zeros", fixed)
-    unsafe_fixed, _ = typed_fixed(Corset.ConcreteReturnRule(), source, signatures; unsafe = true)
+    unsafe_fixed, _ = typed_fixed(CorsetLegacy.ConcreteReturnRule(), source, signatures; unsafe = true)
     @test !occursin("view_of(x::Vector{Float32})::Vector{Float32}", unsafe_fixed)
 end
 
@@ -1900,12 +1900,12 @@ end
         Tuple{typeof(mod.keyed), Int}, Tuple{typeof(mod.spread), Int, Int}, Tuple{typeof(mod.flag), Bool}, Tuple{typeof(mod.label), String}, Tuple{typeof(mod.boxed), Int}, Tuple{typeof(mod.measure), mod.Shapes.Box},
         Tuple{typeof(mod.anything), Int}, Tuple{typeof(mod.maybe), Bool}, Tuple{Type{mod.Shapes.Box}, Float64},
     ]
-    safe, _ = typed_fixed(Corset.AnnotationRule(), source, signatures)
+    safe, _ = typed_fixed(CorsetLegacy.AnnotationRule(), source, signatures)
     @test occursin("Box(x::Float64)::Box = ", safe) && occursin("anything(x::Int)::AbstractVector = ", safe) && occursin("flag(b) = b", safe) && occursin("keyed(x::Int; y = 1) = x", safe) && occursin("spread(xs::Int...) = length(xs)", safe)
     loaded = Module(:Names)
     Base.include_string(loaded, source)
-    @test Corset.resolved_name(loaded.T.Shapes.Box, loaded.T) == "Box"
-    unsafe_fixed, _ = typed_fixed(Corset.AnnotationRule(), source, signatures; unsafe = true)
+    @test CorsetLegacy.resolved_name(loaded.T.Shapes.Box, loaded.T) == "Box"
+    unsafe_fixed, _ = typed_fixed(CorsetLegacy.AnnotationRule(), source, signatures; unsafe = true)
     for written in ("flag(b::Bool)::typeof(b) = b", "label(s::AbstractString)::typeof(s) = s", "boxed(n::Real) = ", "measure(b) = b.side", "maybe(on::Bool) = on")
         @test occursin(written, unsafe_fixed)
     end
@@ -1915,29 +1915,29 @@ end
     tree = write_tree(mktempdir(), ["src/T.jl" => "module T\nkeep(x::Int) = x\nend\n"])
     loaded = Module(:Loaded)
     Base.include(loaded, joinpath(tree, "src", "T.jl"))
-    frames = Corset.typed_frames(Tuple{typeof(loaded.T.keep), Int})
-    places = Corset.frames_by_place(frames)
-    source = only(Corset.directory_sources(Repository(tree), ("src",)))
-    definition = only(Corset.typed_definitions(source, places, places, places))
-    undeclared = Corset.TypedDefinition(definition.node, definition.call, definition.spine, definition.frames, definition.observed, Corset.Inferred[])
-    @test Corset.result_text(undeclared, loaded.T, false) == ""
-    @test Corset.result_text(definition, loaded.T, false) == "typeof(x)"
+    frames = CorsetLegacy.typed_frames(Tuple{typeof(loaded.T.keep), Int})
+    places = CorsetLegacy.frames_by_place(frames)
+    source = only(CorsetLegacy.directory_sources(Repository(tree), ("src",)))
+    definition = only(CorsetLegacy.typed_definitions(source, places, places, places))
+    undeclared = CorsetLegacy.TypedDefinition(definition.node, definition.call, definition.spine, definition.frames, definition.observed, CorsetLegacy.Inferred[])
+    @test CorsetLegacy.result_text(undeclared, loaded.T, false) == ""
+    @test CorsetLegacy.result_text(definition, loaded.T, false) == "typeof(x)"
 end
 
 @testset "run_rules with fix runs the typed fixers when the package and its frames are given" begin
     tree = write_tree(mktempdir(), ["src/T.jl" => "module T\nkeep(x::Int) = x\nend\n", "Project.toml" => "name = \"T\"\n"])
     loaded = Module(:Loaded)
     Base.include(loaded, joinpath(tree, "src", "T.jl"))
-    frames = Corset.typed_frames(Tuple{typeof(loaded.T.keep), Int})
-    Corset.run_rules(Corset.load_config(tree), tree; mod = loaded.T, frames, fix = true)
+    frames = CorsetLegacy.typed_frames(Tuple{typeof(loaded.T.keep), Int})
+    CorsetLegacy.run_rules(CorsetLegacy.load_config(tree), tree; mod = loaded.T, frames, fix = true)
     @test occursin("keep(x::Int)::typeof(x) = x", read(joinpath(tree, "src", "T.jl"), String))
 end
 
 @testset "annotation: unsafe mode writes Union results" begin
     source = "module T\npick(flag::Bool, a::Int) = flag ? a : nothing\nend\n"
     signatures(mod) = Type[Tuple{typeof(mod.pick), Bool, Int}]
-    safe, _ = typed_fixed(Corset.AnnotationRule(), source, signatures)
+    safe, _ = typed_fixed(CorsetLegacy.AnnotationRule(), source, signatures)
     @test occursin("pick(flag::Bool, a::Int) = flag", safe)
-    unsafe_fixed, _ = typed_fixed(Corset.AnnotationRule(), source, signatures; unsafe = true)
+    unsafe_fixed, _ = typed_fixed(CorsetLegacy.AnnotationRule(), source, signatures; unsafe = true)
     @test occursin("::Union{Nothing, Int", unsafe_fixed)
 end

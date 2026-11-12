@@ -5,7 +5,7 @@ using Supposition: Supposition, Data, @check
 """The number of `abstract-float` sites in `text`."""
 function float_site_count(text::AbstractString)::Int
     tree = write_tree(mktempdir(), ["source.jl" => text])
-    return length(Corset.abstract_floats(parsed(joinpath(tree, "source.jl"))))
+    return length(CorsetLegacy.abstract_floats(parsed(joinpath(tree, "source.jl"))))
 end
 
 # Each syntax that annotates `AbstractFloat`, with how many sites it holds.
@@ -54,7 +54,7 @@ const FLOAT_BODIES = (
         @test float_site_count(text) == count
     end
     @test all(float_site_count(text) == 0 for text in FLOAT_PASSES)
-    sites = found_in(Corset.abstract_floats, "abstract-float")
+    sites = found_in(CorsetLegacy.abstract_floats, "abstract-float")
     @test [site.line for site in sites] == [1, 2, 3]
     @test all(occursin("write `Real`", site.detail) for site in sites)
 end
@@ -72,9 +72,9 @@ end
 end
 
 @testset "abstract-float: the rule is pedantic and an opt-out comment silences it" begin
-    @test Corset.level(Corset.load_config(mktempdir()), Corset.AbstractFloatRule()) === :allow
+    @test CorsetLegacy.level(CorsetLegacy.load_config(mktempdir()), CorsetLegacy.AbstractFloatRule()) === :allow
     path = joinpath(write_tree(mktempdir(), ["source.jl" => "f(x::AbstractFloat) = x # lint: abstract-float  dispatch splits floats from integers\n"]), "source.jl")
-    kept, opted = Corset.unopted(Corset.abstract_floats(parsed(path)), "abstract-float")
+    kept, opted = CorsetLegacy.unopted(CorsetLegacy.abstract_floats(parsed(path)), "abstract-float")
     @test isempty(kept) && opted == 1
 end
 

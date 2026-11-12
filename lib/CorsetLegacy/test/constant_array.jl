@@ -4,13 +4,13 @@
 function usages(text::AbstractString)::Vector{Pair{String, Symbol}}
     tree = write_tree(mktempdir(), ["source.jl" => text])
     source = parsed(joinpath(tree, "source.jl"))
-    return [call.name => call.usage for call in Corset.constant_array_calls(source.tree, Corset.written_in([source]))]
+    return [call.name => call.usage for call in CorsetLegacy.constant_array_calls(source.tree, CorsetLegacy.written_in([source]))]
 end
 
 """The text the `constant-array` fixer leaves of `text`."""
 function filled(text::AbstractString)::String
     tree = write_tree(mktempdir(), ["source.jl" => text])
-    Corset.apply_plan!(Corset.constant_array_plan(Repository(tree), (".",)), "constant-array")
+    CorsetLegacy.apply_plan!(CorsetLegacy.constant_array_plan(Repository(tree), (".",)), "constant-array")
     return read(joinpath(tree, "source.jl"), String)
 end
 
@@ -101,14 +101,14 @@ end
         @test isempty(usages(text))
         @test Meta.parseall(text) isa Expr
     end
-    @test Corset.level(Corset.load_config(mktempdir()), Corset.ConstantArrayRule()) === :allow
-    @test Corset.fixable(Corset.ConstantArrayRule())
+    @test CorsetLegacy.level(CorsetLegacy.load_config(mktempdir()), CorsetLegacy.ConstantArrayRule()) === :allow
+    @test CorsetLegacy.fixable(CorsetLegacy.ConstantArrayRule())
 end
 
 """The text of the `constant-array` fixer on the files `files` (name => text) of one tree, as name => text."""
 function filled_tree(files::AbstractVector{<:Pair{String, String}})::Vector{Pair{String, String}}
     tree = write_tree(mktempdir(), files)
-    Corset.apply_plan!(Corset.constant_array_plan(Repository(tree), (".",)), "constant-array")
+    CorsetLegacy.apply_plan!(CorsetLegacy.constant_array_plan(Repository(tree), (".",)), "constant-array")
     return [name => read(joinpath(tree, name), String) for (name, _) in files]
 end
 
@@ -194,20 +194,20 @@ end
 end
 
 @testset "constant-array: an array stored under a name some code writes through is written" begin
-    sources_of(files) = Corset.directory_sources(Repository(write_tree(mktempdir(), files)), (".",))
+    sources_of(files) = CorsetLegacy.directory_sources(Repository(write_tree(mktempdir(), files)), (".",))
     builder = "m(n) = (; sizes = zeros(Int, n), flags = fill(false, n))\n"
-    @test length(Corset.constant_array_sites(sources_of(["a.jl" => builder]))) == 2
-    field_write = Corset.constant_array_sites(sources_of(["a.jl" => builder, "b.jl" => "g(m) = (m.sizes[1] = 2)\n"]))
+    @test length(CorsetLegacy.constant_array_sites(sources_of(["a.jl" => builder]))) == 2
+    field_write = CorsetLegacy.constant_array_sites(sources_of(["a.jl" => builder, "b.jl" => "g(m) = (m.sizes[1] = 2)\n"]))
     @test length(field_write) == 1
     @test occursin("`fill`", only(field_write).detail)
-    argument_write = Corset.constant_array_sites(sources_of(["a.jl" => builder, "b.jl" => "g(flags) = fill!(flags, true)\n"]))
+    argument_write = CorsetLegacy.constant_array_sites(sources_of(["a.jl" => builder, "b.jl" => "g(flags) = fill!(flags, true)\n"]))
     @test occursin("`zeros`", only(argument_write).detail)
     keyword = "make(n) = Holder(buffer = zeros(n))\n"
-    @test length(Corset.constant_array_sites(sources_of(["a.jl" => keyword]))) == 1
-    @test isempty(Corset.constant_array_sites(sources_of(["a.jl" => keyword, "b.jl" => "g(h) = (h.buffer .= 0)\n"])))
+    @test length(CorsetLegacy.constant_array_sites(sources_of(["a.jl" => keyword]))) == 1
+    @test isempty(CorsetLegacy.constant_array_sites(sources_of(["a.jl" => keyword, "b.jl" => "g(h) = (h.buffer .= 0)\n"])))
     local_name = "make(n) = begin\n    fresh = fill(false, n)\n    return Holder(fresh)\nend\n"
-    @test length(Corset.constant_array_sites(sources_of(["a.jl" => local_name]))) == 1
-    @test isempty(Corset.constant_array_sites(sources_of(["a.jl" => local_name, "b.jl" => "mark(job) = (job.fresh[1] = true)\n"])))
+    @test length(CorsetLegacy.constant_array_sites(sources_of(["a.jl" => local_name]))) == 1
+    @test isempty(CorsetLegacy.constant_array_sites(sources_of(["a.jl" => local_name, "b.jl" => "mark(job) = (job.fresh[1] = true)\n"])))
     kept = "make(n) = (; sizes = zeros(Int, n))\n"
     @test Dict(filled_tree(["a.jl" => kept, "b.jl" => "g(m) = (m.sizes[1] = 2)\n"]))["a.jl"] == kept
 end
@@ -225,18 +225,18 @@ end
 
 @testset "constant-array: a broadcast operator is no field access" begin
     @test usages("f(a, b) = a .+ b\ng(a, b) = (a .= b .* 2)\n") == []
-    @test Corset.written_names(parsed(joinpath(write_tree(mktempdir(), ["s.jl" => "g(a, b) = (a .= b .* 2)\n"]), "s.jl")).tree) == [:variable => "a"]
+    @test CorsetLegacy.written_names(parsed(joinpath(write_tree(mktempdir(), ["s.jl" => "g(a, b) = (a .= b .* 2)\n"]), "s.jl")).tree) == [:variable => "a"]
 end
 
 @testset "constant-array: a field assignment, a local name, a CRLF project and a shebang" begin
-    sources_of(files) = Corset.directory_sources(Repository(write_tree(mktempdir(), files)), (".",))
+    sources_of(files) = CorsetLegacy.directory_sources(Repository(write_tree(mktempdir(), files)), (".",))
     field_target = "make(n) = begin\n    s = Holder()\n    s.buf = zeros(n)\n    return s\nend\n"
-    @test length(Corset.constant_array_sites(sources_of(["a.jl" => field_target]))) == 1
-    @test isempty(Corset.constant_array_sites(sources_of(["a.jl" => field_target, "b.jl" => "g(s) = (s.buf[1] = 2)\n"])))
+    @test length(CorsetLegacy.constant_array_sites(sources_of(["a.jl" => field_target]))) == 1
+    @test isempty(CorsetLegacy.constant_array_sites(sources_of(["a.jl" => field_target, "b.jl" => "g(s) = (s.buf[1] = 2)\n"])))
     @test Dict(filled_tree(["a.jl" => field_target, "b.jl" => "g(s) = (s.buf[1] = 2)\n"]))["a.jl"] == field_target
     local_out = "make(n) = begin\n    out = zeros(n)\n    return Holder(out)\nend\n"
-    @test length(Corset.constant_array_sites(sources_of(["a.jl" => local_out, "b.jl" => "g(out) = (out[1] = 2)\n"]))) == 1
-    @test isempty(Corset.constant_array_sites(sources_of(["a.jl" => local_out, "b.jl" => "g(job) = (job.out[1] = 2)\n"])))
+    @test length(CorsetLegacy.constant_array_sites(sources_of(["a.jl" => local_out, "b.jl" => "g(out) = (out[1] = 2)\n"]))) == 1
+    @test isempty(CorsetLegacy.constant_array_sites(sources_of(["a.jl" => local_out, "b.jl" => "g(job) = (job.out[1] = 2)\n"])))
     source = "f(n) = sum(zeros(n))\n"
     for project in ("name = \"D\"\r\n\r\n[deps]\r\nA = \"11111111-1111-1111-1111-111111111111\"\r\n", "name = \"D\"\n\n[deps] # packages\nA = \"11111111-1111-1111-1111-111111111111\"\n")
         fixed = Dict(filled_tree(["Project.toml" => project, "src/demo.jl" => source]))
@@ -251,7 +251,7 @@ end
 @testset "constant-array: a Project.toml the fixer cannot extend fails loud, before any file changes" begin
     project = "name = \"D\"\nnote = \"\"\"\n[deps]\n\"\"\"\n"
     tree = write_tree(mktempdir(), ["Project.toml" => project, "src/demo.jl" => "f(n) = sum(zeros(n))\n"])
-    plan = Corset.constant_array_plan(Repository(tree), (".",))
-    @test_throws ArgumentError Corset.apply_plan!(plan, "constant-array")
+    plan = CorsetLegacy.constant_array_plan(Repository(tree), (".",))
+    @test_throws ArgumentError CorsetLegacy.apply_plan!(plan, "constant-array")
     @test read(joinpath(tree, "src/demo.jl"), String) == "f(n) = sum(zeros(n))\n"
 end

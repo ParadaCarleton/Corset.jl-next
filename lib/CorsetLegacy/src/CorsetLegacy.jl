@@ -5,7 +5,7 @@ reports one rule's. By default every site fails; a `Repository` given a baseline
 its per-rule counts there instead, failing on new offenders and lowering the counts when offenders go
 away. The caller picks the rules, the module and source files they read, and their limits.
 """
-module Corset
+module CorsetLegacy
 
 export Repository,
     Site,
