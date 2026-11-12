@@ -5,6 +5,7 @@ using ..Facts: FactSet, Finding, RuleEntry, Confidence
 using ..Syntax: parse_file
 using ..Rules: REGISTRY, entry
 using ..Config: Config, Flags, Settings, Level, level_of, project_root
+using ..OptOuts: OptOuts
 
 """Finding with level from settings. `source` says where level was set."""
 struct Diagnostic
@@ -52,11 +53,14 @@ failed(report::Report)::Bool = any(report.diagnostics) do diagnostic
     diagnostic.level == Level.deny || (report.settings.deny_warnings && diagnostic.level == Level.warn)
 end
 
-"""Report for every Julia file under `path`, with config of enclosing project and command-line `flags`."""
+"""Report for every Julia file under `path`, with config of enclosing project and command-line `flags`. Opt-out comments apply first."""
 function check(path::String; flags::Flags = Flags())::Report
     settings = Config.settings(project_root(path), flags, REGISTRY)
     facts = facts_for(julia_files(path))
-    return Report(diagnostics(run_rules(facts), settings), settings, Dict(file.path => file.text for file in facts.files))
+    kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
+    reported = [diagnostics(kept, settings); [Diagnostic(problem, Level.deny, OptOuts.SOURCE) for problem in problems]]
+    sort!(reported; by = diagnostic -> (diagnostic.finding.primary.span.file, diagnostic.finding.primary.span.first_byte, diagnostic.finding.rule))
+    return Report(reported, settings, Dict(file.path => file.text for file in facts.files))
 end
 
 end

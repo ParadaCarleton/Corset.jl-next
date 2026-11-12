@@ -11,6 +11,7 @@ warning[mixed-return]: function mixes `return` with implicit last value
   = fix: replace with `return x == 0 ? 0 : 1`   [safe]
   = docs: corset explain mixed-return
   = note: warn from readability group, library preset
+  = note: opt out with `# corset: allow mixed-return -- <reason>`
 
 warning[mixed-return]: function mixes `return` with implicit last value
   --> positive.jl:13:5

@@ -8,6 +8,7 @@ warning[repeated-concat]: `result` is copied on every loop step
   = fix: `append!` or `push!` into `result`, or collect pieces and join once (`reduce(vcat, pieces)`)   [manual]
   = docs: corset explain repeated-concat
   = note: warn from performance group, library preset
+  = note: opt out with `# corset: allow repeated-concat -- <reason>`
 
 warning[repeated-concat]: `rows` is copied on every loop step
   --> positive.jl:11:5

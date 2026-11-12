@@ -436,7 +436,8 @@ footer { color: var(--muted); font-size: 0.85rem; }
 </div><div class="decision"><h3>Lint levels</h3>
 <p>Clippy model: each group and each rule has level <code>allow</code>, <code>warn</code> or <code>deny</code>; rule level overrides group level from any source. Command-line flags beat config; config beats preset. <code>deny</code> findings fail run; <code>--deny warnings</code> makes warnings fail too. Baseline findings never fail run.</p>
 </div><div class="decision"><h3>Opt-out comments</h3>
-<p><code># corset: allow &lt;rule&gt; -- &lt;reason&gt;</code>. Reason is required. Opt-out that suppresses nothing is error, like Rust <code>#[expect]</code>. Scope by position: end of line covers line; line above function, struct or block covers that item; top of file covers file.</p>
+<p>Modeled on Rust lint attributes. <code># corset: allow &lt;rule&gt;, &lt;rule&gt; -- &lt;reason&gt;</code>; reason is required. After code, comment covers that line. On own line, it covers next statement: function, struct, block or expression. <code># corset: allow-file &lt;rule&gt; -- &lt;reason&gt;</code> before first code covers file, like Rust inner attribute <code>#![allow]</code>.</p>
+<p>Malformed comment, unknown rule, late <code>allow-file</code>, and opt-out that suppresses nothing are errors; they always fail run, like unfulfilled <code>#[expect]</code> under <code>-D warnings</code>. Opt-outs apply to findings before levels and confidence filter, so config change never orphans opt-out.</p>
 </div><div class="decision"><h3>Config</h3>
 <p><code>[preferences.Corset]</code> table in target Project.toml; <code>[Corset]</code> table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: <code>kind</code>, <code>confidence</code>, <code>fix_tier</code>, <code>levels</code> (group or rule name to level). Unknown key, value or name is config error (exit 2). Scripts without Project.toml use defaults and command-line flags.</p>
 </div><div class="decision"><h3>Project kind</h3>
@@ -494,12 +495,13 @@ footer { color: var(--muted); font-size: 0.85rem; }
    = fix: start from element type: `acc = zero(eltype(xs))`   [safe]
    = docs: corset explain vague-type
    = note: warn from performance group, library preset
+   = note: opt out with `# corset: allow vague-type -- &lt;reason&gt;`
 </code></pre>
 <ul>
 <li>Header names level as rustc does: <code>error</code> for <code>deny</code>, <code>warning</code> for <code>warn</code>. Note line says where level was set, once per rule per run.</li>
 <li>Same structure feeds SARIF: related locations and fixes.</li>
 <li><code>corset explain &lt;rule&gt;</code> prints footgun, example and fix offline.</li>
-<li>Opt-out hint names exact comment: <code># corset: allow vague-type -- &lt;reason&gt;</code>.</li>
+<li>Opt-out hint names exact comment, once per rule per run: <code># corset: allow vague-type -- &lt;reason&gt;</code>.</li>
 </ul>
 </div><div class="decision"><h3>Macro output</h3>
 <p>Findings inside macro expansions are reported, other packages' macros included: message marks them upstream and points at call site. Own macro: one finding at definition, with call-site count. Fixes never edit generated code. Syntax stages see source as written; findings in expanded code come from stages after load. Code passed through macro (<code>@inbounds</code>, <code>@views</code>) maps to exact bytes. Code macro writes itself (<code>@kwdef</code>, macro body, <code>@generated</code>) maps to nearest line inside definition: call site. Julia 1.13 lowering keeps no call-site provenance (S2); JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.</p>

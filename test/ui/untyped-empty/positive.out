@@ -8,6 +8,7 @@ warning[untyped-empty]: `[]` has element type `Any`
   = fix: name element type: `Float64[]`, `Dict{String, Int}()`; write `Any[]` when `Any` is intended   [manual]
   = docs: corset explain untyped-empty
   = note: warn from performance group, library preset
+  = note: opt out with `# corset: allow untyped-empty -- <reason>`
 
 warning[untyped-empty]: `Set()` has element type `Any`
   --> positive.jl:10:8

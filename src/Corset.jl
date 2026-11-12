@@ -10,6 +10,7 @@ include("Syntax.jl")
 include("Rules.jl")
 include("Config.jl")
 include("Fixes.jl")
+include("OptOuts.jl")
 include("Engine.jl")
 include("Render.jl")
 

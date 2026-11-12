@@ -10,6 +10,7 @@ error[world-age]: `helper` is called in world older than its definition
   = fix: replace with `Base.invokelatest(helper)`   [safe]
   = docs: corset explain world-age
   = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow world-age -- <reason>`
 
 error[world-age]: `scaled` is called in world older than its definition
   --> positive.jl:12:12

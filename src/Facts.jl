@@ -74,12 +74,13 @@ struct RuleEntry
     run::Function
 end
 
-"""Parsed source file: lossless tree plus nodes indexed by kind (`syntax` stage facts)."""
+"""Parsed source file: lossless tree, nodes indexed by kind, and comment byte ranges (`syntax` stage facts)."""
 struct SyntaxFile
     path::String
     text::String
     tree::SyntaxNode
     index::Dict{Kind, Vector{SyntaxNode}}
+    comments::Vector{UnitRange{Int}}
 end
 
 """Facts of one run."""

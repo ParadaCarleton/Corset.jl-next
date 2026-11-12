@@ -8,4 +8,5 @@ warning[wide-struct]: struct `Settings` has 16 fields
   = fix: group related fields into nested structs   [manual]
   = docs: corset explain wide-struct
   = note: warn from readability group, library preset
+  = note: opt out with `# corset: allow wide-struct -- <reason>`
 

@@ -133,3 +133,22 @@ end
     strict = Config.settings(nothing, Flags(; deny_warnings = true), REGISTRY)
     @test Corset.Engine.failed(Report(warned.diagnostics, strict, Dict{String, String}()))
 end
+
+@testset "opt-outs" begin
+    report = Corset.check(joinpath(@__DIR__, "optout", "cases.jl"))
+    lines = Dict(path => Corset.Render.line_starts(text) for (path, text) in report.sources)
+    located = [
+        (diagnostic.finding.rule, diagnostic.finding.kind, searchsortedlast(lines[diagnostic.finding.primary.span.file], diagnostic.finding.primary.span.first_byte))
+            for diagnostic in report.diagnostics
+    ]
+    optout = Symbol("opt-out")
+    @test located == [
+        (Symbol("approx-zero"), :literal_zero, 10), (optout, :unused, 11), (optout, :no_reason, 12), (optout, :unknown_rule, 13),
+        (optout, :malformed, 14), (optout, :late_file, 15),
+    ]
+    @test all(diagnostic.level == Level.deny for diagnostic in report.diagnostics)
+    @test occursin("= note: deny from opt-out check, always on", sprint(io -> Corset.Render.render_all(io, report)))
+    file = Corset.Syntax.parse_file("end.jl", "x = 1\n# corset: allow one-letter -- nothing follows\n")
+    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file]), Finding[], Set([Symbol("one-letter")]))
+    @test isempty(kept) && [problem.kind for problem in problems] == [:unused]
+end
