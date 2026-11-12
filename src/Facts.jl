@@ -24,7 +24,7 @@ export finding, replace_fix, manual_fix, identifier_name, nodes_named, parent_of
 """User-facing rule group."""
 @enumx Group correctness performance composability readability
 """Analysis stage that computes facts rule reads, in pipeline order."""
-@enumx Stage syntax lifecycle package scope inference effects external
+@enumx Stage syntax package scope inference effects lifecycle external
 
 """Byte range `first_byte:last_byte` of `file`, 1-based and inclusive."""
 struct Span

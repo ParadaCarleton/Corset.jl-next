@@ -406,3 +406,7 @@ Principle: rule waits for layer that owns its facts. Removed syntax versions and
 ### Rename: families and layers to stages
 
 Letters and layer numbers became one list of named stages. Map for older text: A and L1 `syntax`; B `lifecycle`; C and L3 `package`; H and L2 `scope`; D and L4 `inference`; E and L5 `effects`; G `external`.
+
+### `lifecycle` after `effects`
+
+Array rules hinge on whether callee writes array. Syntax alone treats every call as escape, or needs hand-written list of non-writing Base functions. `lifecycle` now reads callee writes from `effects` summaries and ships in phase 5; scripts get it with definitions-only load.

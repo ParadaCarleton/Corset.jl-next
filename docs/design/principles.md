@@ -10,7 +10,7 @@ Principles behind every design choice, and what Corset does not do.
 - Map every finding back to source bytes. Fixers edit lossless syntax tree.
 - Rule is small query over shared facts. Analysis stages compute every fact once per run; rule only reads them.
 - Each fact has one producer. Rule never guesses later-stage fact (type, mutability, effect, ADT variant) from syntax; it waits for that stage.
-- Rule belongs to last stage its findings need. One rule never mixes footguns of syntax stages (`syntax`, `lifecycle`) with later footguns.
+- Rule belongs to last stage its findings need. One rule never mixes `syntax` footguns with footguns of later stages.
 - Fixer may read later stages when they ran. Otherwise its fix is `manual`.
 - Every finding explains itself: cause spans, one-line reason, concrete fix. Rust compiler errors set bar.
 - Cache findings on disk. Unchanged code is never analyzed twice, across restarts too.

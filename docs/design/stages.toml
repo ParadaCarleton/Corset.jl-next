@@ -8,11 +8,6 @@ title = "Syntax patterns"
 text = "One tree walk per file. Rules are Argus.jl patterns: syntax classes, pattern forms, templates for fixes. Walk indexes rules by pattern root kind and asks Argus to match candidate nodes only. Names read as written: Base export name means Base binding; `shadowed-base` reports package method that breaks this."
 
 [[stage]]
-name = "lifecycle"
-title = "Array lifecycle"
-text = "Local def-use per array: created, written, read before write, resized, escapes, read once. Definite only for straight-line patterns."
-
-[[stage]]
 name = "package"
 title = "Loaded package"
 text = "Loaded package without inference: bindings, structs, signatures, method table, specialization heuristics."
@@ -31,6 +26,11 @@ text = "One inference per package method; stand-in types replace generic argumen
 name = "effects"
 title = "Effect and alias summary"
 text = "Per method: writes to arguments, writes to globals, result aliases global state. Own points-to summary over optimized IR, bottom-up through callees, Base and dependencies included."
+
+[[stage]]
+name = "lifecycle"
+title = "Array lifecycle"
+text = "Local def-use per array: created, written, read before write, resized, escapes, read once. Callee writes come from `effects` summaries, so passing array to non-writing callee is no escape. Definite only for straight-line patterns."
 
 [[stage]]
 name = "external"
