@@ -1,0 +1,20 @@
+readability[c-type]: C type `Cuint` outside C call
+ --> positive.jl:2:41
+  |
+2 | function checksum(data::Vector{UInt8})::Cuint
+  |                                         ^^^^^ names `UInt32` on this platform
+  |
+  = why: reader must know C ABI to see Julia type; width can change by platform
+  = fix: use Julia type (`UInt32`), or keep `Cuint` only in `ccall` signatures   [manual]
+  = docs: corset explain c-type
+
+readability[c-type]: C type `Csize_t` outside C call
+ --> positive.jl:3:12
+  |
+3 |     total::Csize_t = 0
+  |            ^^^^^^^ names `UInt` on this platform
+  |
+  = why: reader must know C ABI to see Julia type; width can change by platform
+  = fix: use Julia type (`UInt`), or keep `Csize_t` only in `ccall` signatures   [manual]
+  = docs: corset explain c-type
+

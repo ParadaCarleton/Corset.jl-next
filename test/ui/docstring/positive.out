@@ -1,0 +1,35 @@
+readability[docstring]: comment above definition is not docstring
+ --> positive.jl:6:1
+  |
+5 | # Area of unit circle.
+  | ---------------------- comment
+6 | function area()
+  | ^^^^^^^^^^^^^^^ definition without docstring
+  |
+  = why: help mode, Documenter and language server show docstrings; comments stay invisible
+  = fix: turn comment into docstring   [safe]
+  = docs: corset explain docstring
+
+readability[docstring]: comment above definition is not docstring
+  --> positive.jl:12:5
+   |
+10 |     # Perimeter of square
+   | ------------------------- comment
+11 |     # with side `s`.
+12 |     perimeter(s) = 4s
+   |     ^^^^^^^^^^^^^^^^^ definition without docstring
+   |
+   = why: help mode, Documenter and language server show docstrings; comments stay invisible
+   = fix: turn comment into docstring   [safe]
+   = docs: corset explain docstring
+
+readability[docstring]: module `Inner` has no docstring
+  --> positive.jl:14:1
+   |
+14 | module Inner
+   | ^^^^^^^^^^^^ undocumented module
+   |
+   = why: users reach package through module help first
+   = fix: add docstring above `module`: what package does, main entry points   [manual]
+   = docs: corset explain docstring
+

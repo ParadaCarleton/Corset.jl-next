@@ -1,0 +1,22 @@
+correctness[bracketed-range]: `[1:3]` is vector with one element, range `1:3`
+ --> positive.jl:2:11
+  |
+2 | offsets = [1:3]
+  |           ^^^^^ one-element vector
+  |
+  = why: code that expects numbers gets range; `length` is 1
+  = confidence: possible
+  = fix: replace with `collect(1:3)`   [likely]
+  = docs: corset explain bracketed-range
+
+correctness[bracketed-range]: `[2:2:10]` is vector with one element, range `2:2:10`
+ --> positive.jl:3:9
+  |
+3 | evens = [2:2:10]
+  |         ^^^^^^^^ one-element vector
+  |
+  = why: code that expects numbers gets range; `length` is 1
+  = confidence: possible
+  = fix: replace with `collect(2:2:10)`   [likely]
+  = docs: corset explain bracketed-range
+
