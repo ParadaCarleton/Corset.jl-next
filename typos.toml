@@ -1,2 +1,6 @@
 [default]
 locale = "en-us"
+
+# Vendored bug records keep upstream identifiers and wording.
+[files]
+extend-exclude = ["docs/design/julia-in-lean/"]
