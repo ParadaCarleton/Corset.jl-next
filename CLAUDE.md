@@ -1,6 +1,8 @@
 # Corset
 
-Rewrite in progress; rewrite lives in src/. Legacy code lives in lib/CorsetLegacy: idea source only; fix legacy bugs only as stopgap. Delete legacy feature once rewrite replaces it.
+Rewrite in progress; rewrite lives in src/.
+This repo (ParadaCarleton/Corset.jl-private) is private. Public repo ParadaCarleton/Corset.jl holds legacy Corset only; push rewrite work to this repo alone.
+Legacy code lives in lib/CorsetLegacy: idea source only; fix legacy bugs only as stopgap. Delete legacy feature once rewrite replaces it.
 Design: docs/design/README.md indexes parts. Read only parts task needs before changing architecture or rules.
 Edit design parts (*.md, *.toml), then run `uv run docs/design/build.py`. Never hand-edit rules-rewrite.html.
 Footgun IDs are stable; never reuse removed ID. Legacy rule names live only in rules-rewrite-history.md.
