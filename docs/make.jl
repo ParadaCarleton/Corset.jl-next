@@ -7,7 +7,8 @@ makedocs(;
     authors = "Carlos Parada",
     modules = [CorsetLegacy],
     checkdocs_ignored_modules = [CorsetLegacy.WorkloadPackage],
-    format = Documenter.HTML(canonical = "https://paradacarleton.github.io/Corset.jl/stable"),
+    # Long module prefixes push internals/source past the 200 KiB default.
+    format = Documenter.HTML(canonical = "https://paradacarleton.github.io/Corset.jl/stable", size_threshold = 300 * 2^10),
     pages = [
         "Home" => "index.md", "Guide" => "guide.md", "CLI" => "cli.md", "Rules" => "rules.md", "API" => "api.md",
         "Internals" => ["Source rules" => "internals/source.md", "Typed-code rules" => "internals/typed.md", "Array rules" => "internals/arrays.md", "Runner" => "internals/runner.md", "Fixers" => "internals/fixers.md"],
