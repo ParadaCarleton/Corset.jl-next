@@ -149,7 +149,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Every decision is revisable. Evidence from spikes, corpus runs and users outranks earlier reasoning; see design reviews in <code>plan.md</code>.</li>
 <li>Compute each expensive step once per run. Share output with every rule.</li>
 <li>Footguns are source of truth. Checks group footguns by analysis they read. User-facing group is metadata only.</li>
-<li>Give each finding confidence: <code>definite</code> (problem exists) or <code>possible</code> (problem not ruled out). One setting filters them.</li>
+<li>Give each finding confidence: <code>definite</code> (problem exists) or <code>possible</code> (perfect analysis would still be unsure). One setting filters them. Corset blind spots go to coverage line only (<code>findings.md</code>).</li>
 <li>Map every finding back to source bytes. Fixers edit lossless syntax tree.</li>
 <li>Check is small query over shared facts. It never parses, lowers, loads or infers by itself.</li>
 <li>Each fact has one producer. Check never guesses later-layer fact (type, mutability, effect, ADT variant) from syntax; it waits for that layer.</li>
@@ -163,7 +163,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <h2>Non-goals</h2>
 <ul>
 <li>Formatting: Runic or JuliaFormatter own it.</li>
-<li>Running package tests, or reading signatures from them.</li>
+<li>Relying on package tests or precompile workloads. Facts come from source, type annotations, loaded module and inference. Package without tests or workloads gets full analysis. Code that ran before Corset changes speed only, never findings.</li>
 <li>Findings in dependency code, Base included. Analysis reads dependency code freely (callee summaries, inference); only findings stay inside package. Code that macros expand into package counts as package code.</li>
 <li>Julia versions older than latest release.</li>
 <li>Security sandbox around package code. Corset loads code its user chose to lint.</li>
@@ -202,7 +202,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tr data-group="composability"><td>F25</td><td>types</td><td>Type piracy</td><td><code>Base.:+(::Int, ::String)</code></td><td><span class="chip g-composability">composability</span></td><td>G</td><td></td></tr>
 <tr data-group="composability"><td>F26</td><td>types</td><td>Behavior depends on inference result</td><td><code>Core.Compiler.return_type</code></td><td><span class="chip g-composability">composability</span></td><td>A</td><td></td></tr>
 <tr data-group="correctness"><td>F94</td><td>types</td><td>Method ambiguity between package methods</td><td><code>f(::Int, ::Any)</code> and <code>f(::Any, ::Int)</code></td><td><span class="chip g-correctness">correctness</span></td><td>G</td><td>Aqua.jl ambiguity check; covers intersections no analyzed call reaches.</td></tr>
-<tr data-group="correctness"><td>F83</td><td>types</td><td>Call can never succeed</td><td>no matching method; undefined global or field</td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>Package call inferred <code>Union{}</code> without explicit <code>throw</code>. Re-dispatch failing call on narrow real types (<code>Float32</code>, <code>Int32</code>, <code>Array</code>): success means stand-in gap, listed in coverage. Report at deepest package frame only. Signature that works only with <code>Int</code>, <code>Float64</code> or <code>Vector</code>: <code>possible</code>. JET is test reference.</td></tr>
+<tr data-group="correctness"><td>F83</td><td>types</td><td>Call can never succeed</td><td>no matching method; undefined global or field</td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>Package call inferred <code>Union{}</code> without explicit <code>throw</code>. Re-dispatch failing call on narrow real types (<code>Float32</code>, <code>Int32</code>, <code>Array</code>): success means stand-in blind spot, counted on coverage line. Report at deepest package frame only. Signature that works only with <code>Int</code>, <code>Float64</code> or <code>Vector</code>: <code>possible</code>. JET is test reference.</td></tr>
 <tr data-group="composability"><td>F84</td><td>types</td><td>Public struct has no abstract supertype; users cannot extend</td><td><code>struct Model</code> → <code>struct Model &lt;: AbstractModel</code></td><td><span class="chip g-composability">composability</span></td><td>C</td><td>Public structs only.</td></tr>
 <tr data-group="correctness"><td>F92</td><td>types</td><td>Subtype misses required interface method</td><td><code>struct V &lt;: AbstractArray</code> without <code>size</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>Rust rejects incomplete trait impl; Julia fails at first call. Lists from Interfaces.jl or RequiredInterfaces.jl.</td></tr>
 <tr data-group="performance"><td>F93</td><td>types</td><td>Iterator misses size and element traits</td><td><code>iterate</code> without <code>IteratorSize</code>, <code>eltype</code>, <code>length</code></td><td><span class="chip g-performance">performance</span></td><td>C</td><td><code>collect</code> and friends take slow, vague paths.</td></tr>
@@ -395,11 +395,45 @@ footer { color: var(--muted); font-size: 0.85rem; }
       <div role="cell"><code>definite</code> problem</div><div class="yes" role="cell">report</div><div class="yes" role="cell">report</div>
       <div role="cell"><code>possible</code> problem</div><div class="no" role="cell">skip</div><div class="yes" role="cell">report</div>
     </div>
-<p>Note: Checks with both kinds: <code>bang-convention</code> (dispatch past candidate budget may write), <code>type-disruption</code> (type branch), <code>unwritten-element</code> and <code>constant-array</code> (sites fixer cannot prove).</p>
+<p>Note: Checks with both kinds: <code>bang-convention</code> (dispatch candidates disagree on write), <code>type-disruption</code> (type branch), <code>unwritten-element</code> and <code>constant-array</code> (sites fixer cannot prove).</p>
 <div class="decision"><h3>Groups</h3>
 <p><code>correctness</code>, <code>performance</code>, <code>composability</code>, <code>readability</code>. One group per check; <code>banned</code> entries name their own group.</p>
-</div><div class="decision"><h3>Confidence setting</h3>
-<p><code>confidence</code> sets lowest confidence finding needs to be reported. <code>definite</code> (default): problem exists. <code>possible</code>: analysis ran and could not rule problem out; includes definite findings. Gaps in Corset itself are never <code>possible</code> findings; coverage line lists them. <code>likely</code> can join between them later.</p>
+</div><div class="decision"><h3>Confidence and blind spots</h3>
+<p><code>confidence</code> sets lowest confidence finding needs to be reported. <code>definite</code> (default) reports definite findings only; <code>possible</code> reports both. <code>likely</code> can join between them later.</p>
+<p>Doubt test: would perfect analysis still be unsure? Perfect analysis sees all Julia code, dependencies included. It never sees run-time values or foreign code.</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Perfect analysis</th>
+<th>Corset</th>
+<th>Report</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>problem exists</td>
+<td>proves problem</td>
+<td><code>definite</code> finding</td>
+</tr>
+<tr>
+<td>unsure</td>
+<td>unsure</td>
+<td><code>possible</code> finding</td>
+</tr>
+<tr>
+<td>sure, problem or no problem</td>
+<td>unsure</td>
+<td>blind spot: coverage line only</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><code>possible</code>: argument typed <code>Any</code> reaches methods that disagree on writing it. Run-time type decides.</li>
+<li><code>possible</code>: public function returns union from dependency. Unknown callers decide.</li>
+<li>Blind spot: syntax-only check cannot see that <code>a::Vector</code> is 1-based, because typed layer did not run.</li>
+<li>Blind spot: inference refused generated method; macro did not expand; typed finding has no source span; dispatch exceeds candidate budget.</li>
+</ul>
+<p>Coverage line ends every run and counts blind spots by cause: <code>analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)</code>. Check that lacks fact at site reports nothing there.</p>
 </div><div class="decision"><h3>Lint levels</h3>
 <p>Clippy model: each group and each check has level <code>allow</code>, <code>warn</code> or <code>deny</code>; check level overrides group level. <code>deny</code> findings fail run; <code>--deny warnings</code> makes warnings fail too. Baseline findings never fail run.</p>
 </div><div class="decision"><h3>Opt-out comments</h3>
@@ -496,7 +530,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Function argument: stand-in function returns <code>Any</code> (inference barrier). Method stable under that assumption is exempt: stable whenever <code>f</code> is. Problems method causes itself are reported. Code after <code>f</code>'s result stays analyzed; values from that result give no findings. Opaque result type truncated frames in S1.</li>
 <li>No stand-in yet (<code>AbstractString</code>, <code>AbstractDict</code>, abstract type without package subtype) and explicit <code>::Any</code>: no findings from that argument's data.</li>
 <li>Unannotated method reached from analyzed caller is analyzed through caller inference: family D keeps explicit worklist of package frames reached from stand-in callers. Unannotated method nothing calls is skipped; <code>annotation</code> reports it. Expect low coverage on unannotated packages (Distances: 165 of 283 methods) until <code>annotation</code> fixer runs.</li>
-<li>Analysis gaps never become findings. Run ends with coverage line: methods not analyzed and reason.</li>
+<li>Method Corset cannot analyze is blind spot: coverage line counts it with reason.</li>
 </ul>
 </div><div class="decision"><h3><code>type-disruption</code> engine</h3>
 <p><strong>Principle: values from outside inputs are weak.</strong> Literals, constants and globals must not change result type. Inputs combine by normal promotion. Same rule as NumPy 2 for Python scalars.</p>
@@ -601,7 +635,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 </div><div class="decision"><h3>Hard-coded arrays</h3>
 <p><code>type-disruption</code> reports hard-coded <code>Vector</code>/<code>Matrix</code>/<code>Array</code> construction everywhere, <code>zeros</code>, <code>ones</code>, <code>fill</code> included. With template array: autofix to <code>similar(template, T, dims)</code>. Without template: message teaches caller-supplied template or array type; autofix adds parameter in <code>breaking</code> tier. One shared initializer fixer serves <code>type-disruption</code>, <code>constant-array</code> and <code>unwritten-element</code>.</p>
 </div><div class="decision"><h3>Specialization count</h3>
-<p><code>specialization-blowup</code> predicts from source: C finds methods that specialize on <code>Function</code> or <code>Type</code> argument; A counts distinct closures or types passed at package call sites. Compiled-instance count from precompile workload: later, opt-in.</p>
+<p><code>specialization-blowup</code> predicts from source: C finds methods that specialize on <code>Function</code> or <code>Type</code> argument; A counts distinct closures or types passed at package call sites.</p>
 </div>
 </section>
 
@@ -626,7 +660,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Same cache exemption applies to <code>hidden-input</code>: cache read is invisible to caller.</li>
 <li>Write facts come from Corset's own summary per method (S5): points-to graph over optimized IR inside method, callee summaries at calls. Compiler <code>EscapeAnalysis</code> is unsuitable: no return-alias or field-store summary.</li>
 <li>Callees are summarized through dependency code, Base included. Base summaries are cached once per Julia version.</li>
-<li>Dynamic call: join summaries of up to 4 candidates at declared signatures; definite only when all agree. Else unknown callee: <code>possible</code>, reason recorded for coverage line.</li>
+<li>Dynamic call: join summaries of up to 4 candidates at declared signatures. All agree: definite. Candidates disagree: <code>possible</code>. More than 4 candidates: blind spot on coverage line.</li>
 <li><code>possible</code> effect findings stay off until dispatch resolution passes quality gate. S5: every <code>possible</code> verdict came from unknown callee or foreign call.</li>
 <li>Not writes caller sees: lazy-init caches (<code>Regex</code>, <code>LazyString</code>, <code>setfieldonce!</code>), task-local state, locks, writes to fresh local objects inside error paths (message building). Argument or global write before throw stays in summary: caller that catches sees it. Globals of other modules (Base logging, PCRE contexts) are kept apart and never reported.</li>
 <li>Effect summary records whether method result aliases global state. Write through such result counts as global write, so caller needs <code>!</code>.</li>
@@ -864,7 +898,7 @@ end
 </tr>
 <tr>
 <td>later</td>
-<td>F12, F45, F46, F49 (off by default); compiled-instance specialization count; string and dict stand-in types; language server mode; dimension-aware stand-in for <code>Number</code> (catches <code>x + 1</code> on Unitful quantity); nursery group for checks before quality gate; upstream F89 and F90 logic to Moshi <code>verify/</code> (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for <code>manual</code> fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking.</td>
+<td>F12, F45, F46, F49 (off by default); string and dict stand-in types; language server mode; dimension-aware stand-in for <code>Number</code> (catches <code>x + 1</code> on Unitful quantity); nursery group for checks before quality gate; upstream F89 and F90 logic to Moshi <code>verify/</code> (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for <code>manual</code> fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking.</td>
 <td>4</td>
 <td>—</td>
 </tr>
@@ -872,9 +906,9 @@ end
 </table></div>
 <div class="decision"><h3>Spikes</h3>
 <ul>
-<li><strong>S1 stand-in inference</strong> (done, works with limits): every corpus method infers; 2 generated functions refused. Differential check right on 12 fixtures. Re-dispatch on real types separates stand-in gaps. Found real bug (<code>DataStructures.empty(::DefaultDictBase)</code>).</li>
+<li><strong>S1 stand-in inference</strong> (done, works with limits): every corpus method infers; 2 generated functions refused. Differential check right on 12 fixtures. Re-dispatch on real types separates stand-in blind spots. Found real bug (<code>DataStructures.empty(::DefaultDictBase)</code>).</li>
 <li><strong>S2 source mapping</strong> (done, works with limits): 65% of findable statements map to exact bytes; about 2% of checked spans wrong. Code macros write maps to line only.</li>
-<li><strong>S3 scope layer</strong> (done, works with limits): JuliaLowering at julia commit <code>f0188d597b</code> lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload. <code>Meta.lower</code> fallback dropped.</li>
+<li><strong>S3 scope layer</strong> (done, works with limits): JuliaLowering at julia commit <code>f0188d597b</code> lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload in Corset. <code>Meta.lower</code> fallback dropped.</li>
 <li><strong>S4 syntax matcher</strong> (done, <code>spikes/s4-syntax-matcher/REPORT.md</code>): Argus.jl 0.4.2 is MIT. Use Argus behind thin wrapper so matcher stays swappable. Argus searches whole tree once per rule (about 8× slower than kind-indexed walk); own walk with root-kind index should remove most of gap. Unmeasured: benchmark candidate-node design at planned rule count first in phase 2.</li>
 <li><strong>S5 effect summary</strong> (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). <code>possible</code> covers 75%, 55% and 52% of methods (Distances, DataStructures, JSON), all from unknown callees or unknown foreign calls. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.</li>
 </ul>
@@ -889,7 +923,7 @@ end
 <li>Run time stays inside budget in CI perf test.</li>
 </ul>
 <p>Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.</p>
-<p>Legacy baseline (S4, warm, whole process): Distances 9.4 s, DataStructures 16–19 s, JSON 33–37 s. Remeasure legacy in same scope (startup and target load subtracted) before comparing. Main risks: stand-in inference, 7–17 s cold per package (S1); effect summary, 17–22 s uncached (S5). Precompile workload, Base summary cache and per-method disk cache must close gap; effects phase gets own budget once Base cache exists.</p>
+<p>Legacy baseline (S4, warm, whole process): Distances 9.4 s, DataStructures 16–19 s, JSON 33–37 s. Remeasure legacy in same scope (startup and target load subtracted) before comparing. Main risks: stand-in inference, 7–17 s cold per package (S1); effect summary, 17–22 s uncached (S5). Corset precompile workload, Base summary cache and per-method disk cache must close gap; effects phase gets own budget once Base cache exists.</p>
 <p>Repository bar: 100% line coverage; mutation testing on check code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).</p>
 </div><div class="decision"><h3>Design reviews</h3>
 <p>Design is draft until code proves it. Revisit at each checkpoint:</p>
@@ -957,7 +991,11 @@ end
 </tr>
 <tr>
 <td>confidence</td>
-<td><code>definite</code>: problem exists. <code>possible</code>: analysis ran and could not rule it out.</td>
+<td><code>definite</code>: problem exists. <code>possible</code>: perfect analysis would still be unsure.</td>
+</tr>
+<tr>
+<td>blind spot</td>
+<td>Site Corset cannot decide although perfect analysis could. Counted on coverage line; never finding.</td>
 </tr>
 <tr>
 <td>level</td>
@@ -981,7 +1019,7 @@ end
 </tr>
 <tr>
 <td>coverage line</td>
-<td>End-of-run summary of methods Corset could not analyze, and why.</td>
+<td>End-of-run count of blind spots by cause.</td>
 </tr>
 </tbody>
 </table></div>

@@ -6,7 +6,7 @@ Rules every design choice follows, and what Corset does not do.
 - Every decision is revisable. Evidence from spikes, corpus runs and users outranks earlier reasoning; see design reviews in `plan.md`.
 - Compute each expensive step once per run. Share output with every rule.
 - Footguns are source of truth. Checks group footguns by analysis they read. User-facing group is metadata only.
-- Give each finding confidence: `definite` (problem exists) or `possible` (problem not ruled out). One setting filters them.
+- Give each finding confidence: `definite` (problem exists) or `possible` (perfect analysis would still be unsure). One setting filters them. Corset blind spots go to coverage line only (`findings.md`).
 - Map every finding back to source bytes. Fixers edit lossless syntax tree.
 - Check is small query over shared facts. It never parses, lowers, loads or infers by itself.
 - Each fact has one producer. Check never guesses later-layer fact (type, mutability, effect, ADT variant) from syntax; it waits for that layer.
@@ -20,7 +20,7 @@ Rules every design choice follows, and what Corset does not do.
 ## Non-goals
 
 - Formatting: Runic or JuliaFormatter own it.
-- Running package tests, or reading signatures from them.
+- Relying on package tests or precompile workloads. Facts come from source, type annotations, loaded module and inference. Package without tests or workloads gets full analysis. Code that ran before Corset changes speed only, never findings.
 - Findings in dependency code, Base included. Analysis reads dependency code freely (callee summaries, inference); only findings stay inside package. Code that macros expand into package counts as package code.
 - Julia versions older than latest release.
 - Security sandbox around package code. Corset loads code its user chose to lint.

@@ -12,7 +12,7 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 - Function argument: stand-in function returns `Any` (inference barrier). Method stable under that assumption is exempt: stable whenever `f` is. Problems method causes itself are reported. Code after `f`'s result stays analyzed; values from that result give no findings. Opaque result type truncated frames in S1.
 - No stand-in yet (`AbstractString`, `AbstractDict`, abstract type without package subtype) and explicit `::Any`: no findings from that argument's data.
 - Unannotated method reached from analyzed caller is analyzed through caller inference: family D keeps explicit worklist of package frames reached from stand-in callers. Unannotated method nothing calls is skipped; `annotation` reports it. Expect low coverage on unannotated packages (Distances: 165 of 283 methods) until `annotation` fixer runs.
-- Analysis gaps never become findings. Run ends with coverage line: methods not analyzed and reason.
+- Method Corset cannot analyze is blind spot: coverage line counts it with reason.
 
 ### `type-disruption` engine
 
@@ -94,4 +94,4 @@ Helps unannotated package reach full annotations. `annotation` fixer guesses typ
 
 ### Specialization count
 
-`specialization-blowup` predicts from source: C finds methods that specialize on `Function` or `Type` argument; A counts distinct closures or types passed at package call sites. Compiled-instance count from precompile workload: later, opt-in.
+`specialization-blowup` predicts from source: C finds methods that specialize on `Function` or `Type` argument; A counts distinct closures or types passed at package call sites.

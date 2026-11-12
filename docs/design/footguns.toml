@@ -246,7 +246,7 @@ text = "Call can never succeed"
 example = "no matching method; undefined global or field"
 group = "correctness"
 family = "D"
-note = "Package call inferred `Union{}` without explicit `throw`. Re-dispatch failing call on narrow real types (`Float32`, `Int32`, `Array`): success means stand-in gap, listed in coverage. Report at deepest package frame only. Signature that works only with `Int`, `Float64` or `Vector`: `possible`. JET is test reference."
+note = "Package call inferred `Union{}` without explicit `throw`. Re-dispatch failing call on narrow real types (`Float32`, `Int32`, `Array`): success means stand-in blind spot, counted on coverage line. Report at deepest package frame only. Signature that works only with `Int`, `Float64` or `Vector`: `possible`. JET is test reference."
 
 [[footgun]]
 id = 84
