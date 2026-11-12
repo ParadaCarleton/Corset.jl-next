@@ -43,8 +43,8 @@ end
 end
 
 @testset "facts" begin
-    @test isnothing(Rule(@pattern {x}).root_kinds)
-    @test isnothing(Rule(@pattern ~or(f({x}), {y})).root_kinds)
+    @test isnothing(Rule(@pattern {x}).roots)
+    @test isnothing(Rule(@pattern ~or(f({x}), {y})).roots)
     file = Corset.Syntax.parse_file("f.jl", "g(1)\n")
     @test length(Facts.matches(file, Rule(@pattern {x}))) > 1
     @test Facts.identifier_name(Facts.nodes_of_kind(file, Corset.Syntax.JS.K"Integer")[1]) === nothing

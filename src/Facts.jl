@@ -87,22 +87,37 @@ struct FactSet
     files::Vector{SyntaxFile}
 end
 
-"""Argus pattern plus kinds its root can take; `nothing` means any kind."""
+"""
+Argus pattern plus filter on root nodes it can match: kind, then call head for `call` roots.
+`nothing` filter means pattern variable sits at root; head set `nothing` means any head.
+"""
 struct Rule
     pattern::Pattern
-    root_kinds::Union{Nothing, Vector{Kind}}
+    roots::Union{Nothing, Dict{Kind, Union{Nothing, Set{String}}}}
 end
 
-"""Rule for `pattern`, indexed by kinds of its root alternatives."""
-Rule(pattern::Pattern) = Rule(pattern, root_kinds(pattern.src))
+"""Rule for `pattern`, indexed by root alternatives."""
+function Rule(pattern::Pattern)
+    alternatives = root_alternatives(pattern.src)
+    any(node -> startswith(kind_name(node), "~"), alternatives) && return Rule(pattern, nothing)
+    roots = Dict{Kind, Union{Nothing, Set{String}}}()
+    for node in alternatives
+        kind, head = JS.kind(node), call_head(node)
+        previous = get(roots, kind, Set{String}())
+        roots[kind] = isnothing(head) || isnothing(previous) ? nothing : push!(previous, head)
+    end
+    return Rule(pattern, roots)
+end
 
-"""Kinds `node` of pattern can match at root; `nothing` when pattern variable sits at root."""
-function root_kinds(node)::Union{Nothing, Vector{Kind}}
-    name = kind_name(node)
-    name == "~or" || return startswith(name, "~") ? nothing : [JS.kind(node)]
-    alternatives = map(root_kinds, JS.children(node))
-    any(isnothing, alternatives) && return nothing
-    return unique(reduce(vcat, alternatives))
+"""Root nodes of pattern, with `~or` alternatives flattened."""
+root_alternatives(node)::Vector{Any} =
+    kind_name(node) == "~or" ? reduce(vcat, map(root_alternatives, JS.children(node))) : Any[node]
+
+"""Function name of call `node` (operator for infix call); `nothing` for other nodes or computed callee."""
+function call_head(node)::Union{Nothing, String}
+    kind_name(node) == "call" || return nothing
+    callee = JS.children(node)[JS.is_infix_op_call(node) ? 2 : 1]
+    return kind_name(callee) == "Identifier" ? string(callee.val) : nothing
 end
 
 """Name of node kind as string; Argus pattern forms start with `~`."""
@@ -117,16 +132,27 @@ end
 """Nodes of `file` with kind `kind`, in source order."""
 nodes_of_kind(file::SyntaxFile, kind::Kind)::Vector{SyntaxNode} = get(file.index, kind, SyntaxNode[])
 
-"""Every match of `rule` in `file`, in source order. Tries only nodes whose kind rule root can take."""
+"""Every match of `rule` in `file`, in source order. Tries only nodes whose kind and call head rule root can take."""
 function matches(file::SyntaxFile, rule::Rule)::Vector{Match}
-    candidates = isnothing(rule.root_kinds) ? reduce(vcat, values(file.index); init = SyntaxNode[]) :
-        reduce(vcat, (nodes_of_kind(file, kind) for kind in rule.root_kinds); init = SyntaxNode[])
     found = Match[]
-    for node in sort!(unique!(candidates); by = JS.first_byte)
-        result = syntax_match(rule.pattern, node)
-        result isa BindingSet && push!(found, Match(node, result))
+    if isnothing(rule.roots)
+        for nodes in values(file.index), node in nodes
+            try_match!(found, rule, node)
+        end
+    else
+        for (kind, heads) in rule.roots, node in nodes_of_kind(file, kind)
+            isnothing(heads) || call_head(node) in heads || continue
+            try_match!(found, rule, node)
+        end
     end
-    return found
+    return sort!(found; by = match -> JS.first_byte(match.node))
+end
+
+"""Push match of `rule` at `node` to `found` when pattern matches."""
+function try_match!(found::Vector{Match}, rule::Rule, node::SyntaxNode)::Nothing
+    result = syntax_match(rule.pattern, node)
+    result isa BindingSet && push!(found, Match(node, result))
+    return nothing
 end
 
 """Syntax node bound to pattern variable `name` in `match`."""
