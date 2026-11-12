@@ -1,0 +1,243 @@
+
+== Main.Cases.Settings(; tolerance, steps) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:41  [plain]
+  %1 other            foreign_line          line 41    Main.Cases.:(var"#Settings#4")
+  %2 call             foreign_line          line 41    (%1)(1.0e-8, 10, _1)
+  %3 return           foreign_line          line 41    return %2
+
+== Main.Cases.Settings(tolerance, steps) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:42  [plain]
+  %1 call             line_only           line 42    Core.fieldtype(_1, 1)
+  %2 other            line_only           line 42    _2
+  %3 other            line_only           line 42    _5 = %2
+  %4 call             line_only           line 42    _5 isa %1
+  %5 control          line_only           line 42    goto %7 if not %4
+  %6 control          missing             line 0    goto %8
+  %7 call             line_only           line 42    _5 = Base.convert(%1, _5)
+  %8 other            line_only           line 42    _5
+  %9 call             line_only           line 42    Core.fieldtype(_1, 2)
+  %10 other           line_only           line 42    _3
+  %11 other           line_only           line 42    _4 = %10
+  %12 call            line_only           line 42    _4 isa %9
+  %13 control         line_only           line 42    goto %15 if not %12
+  %14 control         missing             line 0    goto %16
+  %15 call            line_only           line 42    _4 = Base.convert(%9, _4)
+  %16 other           line_only           line 42    _4
+  %17 new             line_only           line 42    %new(_1, %8, %16)
+  %18 return          line_only           line 42    return %17
+
+== Main.Cases.Settings(tolerance::Float64, steps::Int64) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:42  [plain]
+  %1 new              line_only           line 42    %new(_1, _2, _3)
+  %2 return           line_only           line 42    return %1
+
+== double_eval(x::Float64) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:61  [macro_defined]
+  %1 other            exact     @eval     "*"    Main.Cases.:*
+  %2 call             exact     @eval     "x * \$factor"    (%1)(_2, 2)
+  %3 return           missing             line 0    return %2
+
+== broadcast_call(xs::Vector{Float64}) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:8  [plain]
+  %1 other            exact               "+"    Main.Cases.:+
+  %2 other            exact               "*"    Main.Cases.:*
+  %3 broadcast        exact               "xs .* 2"    Base.broadcasted(%2, _2, 2)
+  %4 broadcast        line_only           line 9    Base.broadcasted(%1, %3, 1)
+  %5 broadcast        exact               "xs .* 2 .+ 1"    _3 = Base.materialize(%4)
+  %6 other            exact               "sum"    Main.Cases.sum
+  %7 other            exact               "ys"    _3
+  %8 call             exact               "sum(ys)"    (%6)(%7)
+  %9 return           line_only           line 10    return %8
+
+== var"#keyword_method#1"(scale::Float64, ::typeof(Main.Cases.keyword_method), x::Float64) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:13  [kwbody]
+  %1 other            line_only           line 14    nothing
+  %2 other            exact               "*"    Main.Cases.:*
+  %3 call             exact               " x * scale"    (%2)(_4, _2)
+  %4 return           line_only           line 14    return %3
+
+== package_macro(xs::Vector{Float64}) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:50  [plain]
+  %1 other            line_only @twice    line 51    Main.Cases.push!
+  %2 call             line_only @twice    line 51    (%1)(_2, 1.0)
+  %3 other            exact               "push!"    Main.Cases.push!
+  %4 call             foreign_line          line 47    (%3)(_2, 1.0)
+  %5 other            exact               "xs"    _2
+  %6 return           line_only           line 52    return %5
+
+== var"#5#6"(N, ::Any, xs) @ Main.Cases none:0  [kwbody]
+  %1 other            missing             line 0    nothing
+  %2 other            missing             line 56    Main.Cases.Expr
+  %3 other            missing             line 56    (:call, :+)
+  %4 other            missing             line 56    Main.Cases.:(var"#8#9")
+  %5 new              missing             line 56    _5 = %new(%4)
+  %6 other            missing             line 56    _5
+  %7 other            missing             line 56    Main.Cases.:(:)
+  %8 call             missing             line 56    (%7)(1, _2)
+  %9 call             missing             line 56    Base.Generator(%6, %8)
+  %10 call            missing             line 56    Core._apply_iterate(Base.iterate, %2, %3, %9)
+  %11 return          missing             line 56    return %10
+  %12 other           missing             line 56    Core.Const(:(Core._expr(:block, $(QuoteNode(:(#= /home/user/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:55 =#))), nothing)))
+  %13 other           missing             line 0    Core.Const(:(return %12))
+
+== plain_call(x::Float64) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:6  [plain]
+  %1 other            exact               "+"    Main.Cases.:+
+  %2 other            exact               "sqrt"    Main.Cases.sqrt
+  %3 other            exact               "abs"    Main.Cases.abs
+  %4 call             exact               "abs(x)"    (%3)(_2)
+  %5 call             exact               "sqrt(abs(x))"    (%2)(%4)
+  %6 call             exact               "sqrt(abs(x)) + 1"    (%1)(%5, 1)
+  %7 return           missing             line 0    return %6
+
+== generated_sum(xs::NTuple{N, Float64}) where N @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:55  [generated]
+  %1 other            exact               "+"    Main.Cases.:+
+  %2 call             exact               " 1:N"    Base.getindex(_2, 1)
+  %3 call             missing             line 0    Base.getindex(_2, 2)
+  %4 call             missing             line 0    Base.getindex(_2, 3)
+  %5 call             missing             line 0    (%1)(%2, %3, %4)
+  %6 return           missing             line 0    return %5
+
+== kwcall(::NamedTuple, ::Type{Main.Cases.Settings}) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:41  [kwcall]
+  %1 other            foreign_line          line 41    Core.NewvarNode(:(_4))
+  %2 other            foreign_line          line 41    Core.NewvarNode(:(_5))
+  %3 other            foreign_line          line 41    Core.NewvarNode(:(_6))
+  %4 call             foreign_line          line 41    Core.isdefined(_2, :tolerance)
+  %5 control          foreign_line          line 41    goto %8 if not %4
+  %6 call             foreign_line          line 41    _6 = Core.getfield(_2, :tolerance)
+  %7 control          missing             line 0    goto %9
+  %8 other            foreign_line          line 41    _6 = 1.0e-8
+  %9 other            foreign_line          line 41    _6
+  %10 call            foreign_line          line 41    Core.isdefined(_2, :steps)
+  %11 control         foreign_line          line 41    goto %14 if not %10
+  %12 call            foreign_line          line 41    _6 = Core.getfield(_2, :steps)
+  %13 control         missing             line 0    goto %15
+  %14 other           foreign_line          line 41    _6 = 10
+  %15 other           foreign_line          line 41    _6
+  %16 call            foreign_line          line 41    Base.keys(_2)
+  %17 other           foreign_line          line 41    (:tolerance, :steps)
+  %18 call            foreign_line          line 41    Base.diff_names(%16, %17)
+  %19 call            foreign_line          line 41    Base.isempty(%18)
+  %20 control         foreign_line          line 41    goto %22 if not %19
+  %21 control         missing             line 0    goto %23
+  %22 call            foreign_line          line 41    Base.kwerr(_2, _3)
+  %23 other           foreign_line          line 41    Main.Cases.:(var"#Settings#4")
+  %24 call            foreign_line          line 41    (%23)(%9, %15, _3)
+  %25 return          foreign_line          line 41    return %24
+
+== kwcall(::NamedTuple, ::typeof(Main.Cases.keyword_method), x::Float64) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:13  [kwcall]
+  %1 other            line_only           line 13    Core.NewvarNode(:(_5))
+  %2 other            line_only           line 13    Core.NewvarNode(:(_6))
+  %3 call             exact               " x * scale"    Core.isdefined(_2, :scale)
+  %4 control          line_only           line 13    goto %15 if not %3
+  %5 call             exact               " x * scale"    Core.getfield(_2, :scale)
+  %6 other            line_only           line 13    Main.Cases.Float64
+  %7 call             exact               "return x * scale"    %5 isa %6
+  %8 control          line_only           line 13    goto %10 if not %7
+  %9 control          missing             line 0    goto %13
+  %10 other           line_only           line 13    Main.Cases.Float64
+  %11 new             line_only           line 13    %new(Core.TypeError, Symbol("keyword argument"), :scale, %10, %5)
+  %12 call            line_only           line 13    Core.throw(%11)
+  %13 other           exact               " x * scale"    _6 = %5
+  %14 control         missing             line 0    goto %16
+  %15 other           line_only           line 13    _6 = 2.0
+  %16 other           line_only           line 13    _6
+  %17 call            line_only           line 13    Base.keys(_2)
+  %18 other           line_only           line 13    (:scale,)
+  %19 call            line_only           line 13    Base.diff_names(%17, %18)
+  %20 call            line_only           line 13    Base.isempty(%19)
+  %21 control         line_only           line 13    goto %23 if not %20
+  %22 control         missing             line 0    goto %24
+  %23 call            line_only           line 13    Base.kwerr(_2, _3, _4)
+  %24 other           line_only           line 13    Main.Cases.:(var"#keyword_method#1")
+  %25 call            exact               " x * scale"    (%24)(%16, _3, _4)
+  %26 return          line_only           line 13    return %25
+
+== do_block(xs::Vector{Float64}) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:17  [plain]
+  %1 other            exact               "map"    Main.Cases.map
+  %2 other            line_only           line 18    Main.Cases.:(var"#do_block##0#do_block##1")
+  %3 new              line_only           line 18    _3 = %new(%2)
+  %4 other            line_only           line 18    _3
+  %5 call             exact               "map(xs) do x\n        x + 1\n    end"    (%1)(%4, _2)
+  %6 return           line_only           line 18    return %5
+
+== closure(xs::Vector{Float64}, shift::Float64) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:23  [plain]
+  %1 other            line_only           line 24    Main.Cases.:(var"#closure##0#closure##1")
+  %2 call             line_only           line 24    Core._typeof_captured_variable(_3)
+  %3 call             line_only           line 24    Core.apply_type(%1, %2)
+  %4 new              line_only           line 24    _4 = %new(%3, _3)
+  %5 other            line_only           line 24    _4
+  %6 other            line_only           line 24    _5 = %5
+  %7 other            exact               "add_shift"    _5
+  %8 broadcast        line_only           line 25    Base.broadcasted(%7, _2)
+  %9 broadcast        exact               "add_shift.(xs)"    Base.materialize(%8)
+  %10 return          line_only           line 25    return %9
+
+== (::Main.Cases.var"#8#9")(i) @ Main.Cases none:0  [closure]
+  %1 call             missing             line 0    Core._expr(:ref, :xs, _2)
+  %2 return           missing             line 0    return %1
+
+== var"#Settings#4"(tolerance, steps, ::Type{Main.Cases.Settings}) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:41  [kwbody]
+  %1 other            foreign_line          line 41    nothing
+  %2 other            foreign_line          line 41    Main.Cases.Settings
+  %3 call             foreign_line          line 41    (%2)(_2, _3)
+  %4 return           missing             line 0    return %3
+
+== inbounds_loop(xs::Vector{Float64}) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:28  [plain]
+  %1 other            line_only           line 29    Core.NewvarNode(:(_4))
+  %2 other            exact               "0"    _5 = 0
+  %3 other            line_only @inbounds line 30    nothing
+  %4 other            exact     @inbounds "eachindex"    Main.Cases.eachindex
+  %5 call             exact     @inbounds "eachindex(xs)"    (%4)(_2)
+  %6 lowering_call    exact     @inbounds " i in eachindex(xs)"    _3 = Base.iterate(%5)
+  %7 other            line_only @inbounds line 30    _3
+  %8 lowering_call    line_only @inbounds line 30    %7 === nothing
+  %9 lowering_call    line_only @inbounds line 30    Base.not_int(%8)
+  %10 control         line_only @inbounds line 30    goto %25 if not %9
+  %11 other           line_only @inbounds line 30    _3
+  %12 call            exact     @inbounds "i"    _6 = Core.getfield(%11, 1)
+  %13 call            line_only @inbounds line 30    Core.getfield(%11, 2)
+  %14 other           exact     @inbounds "+"    Main.Cases.:+
+  %15 other           exact     @inbounds "acc"    _5
+  %16 other           exact     @inbounds "i"    _6
+  %17 call            exact     @inbounds "xs[i]"    Base.getindex(_2, %16)
+  %18 call            exact     @inbounds "acc += xs[i]"    _5 = (%14)(%15, %17)
+  %19 lowering_call   line_only @inbounds line 32    _3 = Base.iterate(%5, %13)
+  %20 other           line_only @inbounds line 32    _3
+  %21 lowering_call   line_only @inbounds line 32    %20 === nothing
+  %22 lowering_call   line_only @inbounds line 32    Base.not_int(%21)
+  %23 control         line_only @inbounds line 32    goto %25 if not %22
+  %24 control         line_only @inbounds line 32    goto %11
+  %25 other           line_only @inbounds line 32    _4 = nothing
+  %26 other           line_only @inbounds line 32    nothing
+  %27 other           line_only @inbounds line 32    _4
+  %28 other           exact               "acc"    _5
+  %29 return          line_only           line 33    return %28
+
+== triple_eval(x::Float64) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:61  [macro_defined]
+  %1 other            exact     @eval     "*"    Main.Cases.:*
+  %2 call             exact     @eval     "x * \$factor"    (%1)(_2, 3)
+  %3 return           missing             line 0    return %2
+
+== var"@twice"(__source__::LineNumberNode, __module__::Module, ex) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:46  [plain]
+  %1 other            line_only           line 47    nothing
+  %2 other            line_only           line 47    Main.Cases.esc
+  %3 call             line_only           line 47    Core._expr(:block, _4, $(QuoteNode(:(#= /home/user/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:47 =#))), _4)
+  %4 call             line_only           line 47    (%2)(%3)
+  %5 return           line_only           line 47    return %4
+
+== keyword_method(x::Float64; scale) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:13  [plain]
+  %1 other            line_only           line 13    Main.Cases.:(var"#keyword_method#1")
+  %2 call             exact               " x * scale"    (%1)(2.0, _1, _2)
+  %3 return           line_only           line 13    return %2
+
+== views_slice(xs::Matrix{Float64}) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:36  [plain]
+  %1 other            exact     @views    ":"    Main.Cases.:(:)
+  %2 call             exact     @views    "xs[:, 1]"    _3 = (Base.maybeview)(_2, %1, 1)
+  %3 other            exact               "sum"    Main.Cases.sum
+  %4 other            exact               "column"    _3
+  %5 call             exact               "sum(column)"    (%3)(%4)
+  %6 return           line_only           line 38    return %5
+
+== (::Main.Cases.var"#do_block##0#do_block##1")(x) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:19  [closure]
+  %1 other            line_only           line 19    Main.Cases.:+
+  %2 call             line_only           line 19    (%1)(_2, 1)
+  %3 return           missing             line 0    return %2
+
+== (::Main.Cases.var"#closure##0#closure##1")(x) @ Main.Cases ~/Projects/Corset.jl/.worktrees/spike-s2/spikes/s2-source-mapping/cases.jl:24  [closure]
+  %1 other            line_only           line 24    Main.Cases.:+
+  %2 call             line_only           line 24    Core.getfield(_1, :shift)
+  %3 call             line_only           line 24    (%1)(_2, %2)
+  %4 return           missing             line 0    return %3
