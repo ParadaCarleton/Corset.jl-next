@@ -8,10 +8,10 @@ Principles behind every design choice, and what Corset does not do.
 - Footguns are source of truth. Rules group footguns by analysis they read. User-facing group is metadata only.
 - Give each finding confidence: `definite` (problem exists) or `possible` (compiler cannot resolve doubt either). One setting filters them. Corset blind spots go to coverage line only (`findings.md`).
 - Map every finding back to source bytes. Fixers edit lossless syntax tree.
-- Rule is small query over shared facts. Analysis layers compute every fact once per run; rule only reads them.
-- Each fact has one producer. Rule never guesses later-layer fact (type, mutability, effect, ADT variant) from syntax; it waits for that layer.
-- Rule belongs to last layer its findings need. One rule never mixes syntax footguns (families A, B) with later footguns.
-- Fixer may read later layers when they ran. Otherwise its fix is `manual`.
+- Rule is small query over shared facts. Analysis stages compute every fact once per run; rule only reads them.
+- Each fact has one producer. Rule never guesses later-stage fact (type, mutability, effect, ADT variant) from syntax; it waits for that stage.
+- Rule belongs to last stage its findings need. One rule never mixes footguns of syntax stages (`syntax`, `lifecycle`) with later footguns.
+- Fixer may read later stages when they ran. Otherwise its fix is `manual`.
 - Every finding explains itself: cause spans, one-line reason, concrete fix. Rust compiler errors set bar.
 - Cache findings on disk. Unchanged code is never analyzed twice, across restarts too.
 - Keep linter process warm. Load target package once. Infer each package method once; every typed rule shares result.

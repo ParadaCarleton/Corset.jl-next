@@ -67,6 +67,6 @@ function run(facts::FactSet)::Vector{Finding}
     return sort!(found; by = finding -> finding.primary.span.first_byte)
 end
 
-const ENTRY = RuleEntry(NAME, Group.readability, [72], Family.A, run)
+const ENTRY = RuleEntry(NAME, Group.readability, [72], Stage.syntax, run)
 
 end

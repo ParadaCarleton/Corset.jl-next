@@ -1,4 +1,4 @@
-"""L1: parse files with JuliaSyntax and index nodes by kind (family A facts)."""
+"""`syntax` stage: parse files with JuliaSyntax and index nodes by kind."""
 module Syntax
 
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind

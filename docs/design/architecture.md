@@ -4,19 +4,20 @@ Code layout, process model, cache, tests, command line.
 
 ### Code layout
 
-Each layer is one module that produces facts. Rules read facts through one API. Engine is only module that knows order.
+Each stage is one module that produces facts. Rules read facts through one API. Engine is only module that knows order.
 
 | Module | Job |
 |---|---|
-| `Syntax` | L1: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind; array def-use (family B). |
-| `Scope` | L2: lowering and scope facts (family H). JuliaLowering vendored at pinned julia commit on 1.13; `Base.JuliaLowering` from 1.14. Own replacement expansions for common Base macros keep byte positions. Soft scope: before lowering each form, declare earlier top-level assigned globals as `global x::Any`, in include order; order-sensitive fixtures. |
-| `Load` | L3: load package; module facts (family C); Project.toml facts. |
-| `Infer` | L4: stand-in types; one inference per method; typed IR with source mapping (family D). Mapping: vendored TypedSyntax.jl algorithm on L1 tree; no CodeTracking. |
-| `Effects` | L5: effect and alias summary per method (family E). |
-| `External` | Family G: Aqua.jl, ExplicitImports.jl, jscpd output as facts. |
+| `Syntax` | `syntax` stage: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind. |
+| `Lifecycle` | `lifecycle` stage: local def-use per array. |
+| `Scope` | `scope` stage: lowering and scope facts. JuliaLowering vendored at pinned julia commit on 1.13; `Base.JuliaLowering` from 1.14. Own replacement expansions for common Base macros keep byte positions. Soft scope: before lowering each form, declare earlier top-level assigned globals as `global x::Any`, in include order; order-sensitive fixtures. |
+| `Package` | `package` stage: load package; module facts; Project.toml facts. |
+| `Inference` | `inference` stage: stand-in types; one inference per method; typed IR with source mapping. Mapping: vendored TypedSyntax.jl algorithm on syntax tree; no CodeTracking. |
+| `Effects` | `effects` stage: effect and alias summary per method. |
+| `External` | `external` stage: Aqua.jl, ExplicitImports.jl, jscpd output as facts. |
 | `Facts` | Fact types and query API. Only module rule code may import. |
 | `Rules` | One pure function per rule; registry as data. |
-| `Engine` | Salsa.jl query graph: pick layers that enabled rules need; run them; apply levels, confidence, opt-outs, baseline. |
+| `Engine` | Salsa.jl query graph: pick stages that enabled rules need; run them; apply levels, confidence, opt-outs, baseline. |
 | `Fix` | Apply edits to lossless tree; filter by tier. |
 | `Report` | Render text, JSON, SARIF; `explain`. |
 | `Cache` | Disk cache keys and storage. |
@@ -36,7 +37,7 @@ struct Finding
     fix::Union{Fix, Nothing}
 end
 struct CheckEntry
-    name::Symbol; group::Group; footguns::Vector{Int}; family::Family
+    name::Symbol; group::Group; footguns::Vector{Int}; stage::Stage
     run::Function                                            # (facts::Facts) -> Vector{Finding}
 end
 ```
@@ -75,14 +76,14 @@ Exit codes: `0` no `deny` finding; `1` `deny` finding; `2` config or usage error
 
 Main goal of rewrite: clean structure. Legacy implemented each rule on its own, so analyses repeated and code grew.
 
-- Analysis (family) computes facts once per run: syntax index, array def-use, scopes, module facts, typed IR, effect summary.
+- Each stage computes facts once per run: syntax index, array def-use, scopes, module facts, typed IR, effect summary.
 - Rule is one pure function: facts in, findings out. Rule code imports only facts API; test enforces it.
 - Rule that needs new information adds fact to its analysis. Long rule signals missing fact.
-- Registry is data: name, group, footguns, family, fix tier. Docs page per rule comes from footgun table.
+- Registry is data: name, group, footguns, stage, fix tier. Docs page per rule comes from footgun table.
 
 ### Package load
 
-Loading runs code. Typed families (C, D, E, G) run only on package with `name`; Julia apps qualify. Scripts and nameless environments get A, B and H. Extensions are analyzed with test dependencies installed and their triggers loaded; `untested-extension` reports trigger missing from them. Later: definitions-only load for scripts.
+Loading runs code. Stages after package load (`package`, `inference`, `effects`, `external`) run only on package with `name`; Julia apps qualify. Scripts and nameless environments get `syntax`, `lifecycle` and `scope`. Extensions are analyzed with test dependencies installed and their triggers loaded; `untested-extension` reports trigger missing from them. Later: definitions-only load for scripts.
 
 ### Incremental runs and disk cache
 
@@ -92,8 +93,8 @@ Loading runs code. Typed families (C, D, E, G) run only on package with `name`; 
 - Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.
 - Location: user cache directory, one entry set per project. CI saves it between runs.
 - Global key: Julia version, Corset version, config hash, Manifest hash, preferences, active extensions. Any change clears all entries.
-- Syntax families: findings per file, keyed by file content hash.
-- Typed families: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. `@generated` method depends on whole package.
+- Syntax stages: findings per file, keyed by file content hash.
+- Typed stages: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. `@generated` method depends on whole package.
 - Run parses every file (cheap) and computes keys. Nothing changed: no package load; cached findings print. Otherwise load package and infer only invalid methods.
 - Later: warm daemon keeps Salsa tables and loaded package, so edit costs only its dependents.
 

@@ -18,6 +18,6 @@ function run(facts::FactSet)::Vector{Finding}
     ]
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [2], Family.A, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [2], Stage.syntax, run)
 
 end

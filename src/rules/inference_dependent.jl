@@ -24,6 +24,6 @@ function run(facts::FactSet)::Vector{Finding}
     ]
 end
 
-const ENTRY = RuleEntry(NAME, Group.composability, [26], Family.A, run)
+const ENTRY = RuleEntry(NAME, Group.composability, [26], Stage.syntax, run)
 
 end

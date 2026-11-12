@@ -402,3 +402,7 @@ Principle: rule waits for layer that owns its facts. Removed syntax versions and
 ### Doubt test: compiler as yardstick
 
 "Perfect analysis" left budgets ambiguous: dispatch over Corset's 4-candidate budget became blind spot. Compiler dispatches such call at run time, which is real code property. Test now asks whether compiler resolves doubt; Corset limits match compiler limits (`max_methods`, union splitting).
+
+### Rename: families and layers to stages
+
+Letters and layer numbers became one list of named stages. Map for older text: A and L1 `syntax`; B `lifecycle`; C and L3 `package`; H and L2 `scope`; D and L4 `inference`; E and L5 `effects`; G `external`.
