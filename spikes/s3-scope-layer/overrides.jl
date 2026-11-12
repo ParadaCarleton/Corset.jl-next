@@ -14,12 +14,14 @@ first_arg(ctx::MacroContext, exs::SyntaxTree...)::SyntaxTree = exs[1]
 """Expand `@doc str def` to `def`; signature-only docs bind nothing and expand to empty block."""
 function doc(ctx::MacroContext, exs::SyntaxTree...)::SyntaxTree
     target = exs[end]
-    JL.head(target) in (:call, :where) ? (@ast ctx ctx.macrocall [:block]) : passthrough(ctx, exs...)
+    return JL.head(target) in (:call, :where) ? (@ast ctx ctx.macrocall [:block]) : passthrough(ctx, exs...)
 end
 (::typeof(Core.var"@doc"))(ctx::MacroContext, exs::SyntaxTree...) = doc(ctx, exs...)
 
-for m in (Base.var"@inline", Base.var"@noinline", Base.var"@inbounds", Base.var"@propagate_inbounds",
-          Base.var"@simd", Base.var"@views", Base.var"@boundscheck", Base.var"@fastmath")
+for m in (
+        Base.var"@inline", Base.var"@noinline", Base.var"@inbounds", Base.var"@propagate_inbounds",
+        Base.var"@simd", Base.var"@views", Base.var"@boundscheck", Base.var"@fastmath",
+    )
     @eval (::typeof($m))(ctx::MacroContext, exs::SyntaxTree...) = passthrough(ctx, exs...)
 end
 (::typeof(Base.var"@assert"))(ctx::MacroContext, exs::SyntaxTree...) = first_arg(ctx, exs...)

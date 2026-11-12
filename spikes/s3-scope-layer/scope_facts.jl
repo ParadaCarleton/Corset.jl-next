@@ -36,23 +36,23 @@ mutable struct Provenance
     exact::Int
     coarse::Int
     line_only::Int
-    line_only_by_macro::Dict{String,Int}
+    line_only_by_macro::Dict{String, Int}
 end
-Provenance() = Provenance(0, 0, 0, Dict{String,Int}())
+Provenance() = Provenance(0, 0, 0, Dict{String, Int}())
 
 """Classify provenance of `st` named `name` and return (file, bytes, line)."""
-function locate(st::JL.SyntaxTree)::Tuple{String,UnitRange{Int},Int}
+function locate(st::JL.SyntaxTree)::Tuple{String, UnitRange{Int}, Int}
     src = JS.sourceref(st)
     src isa JS.SourceRef || return (string(src.file), 1:0, src.line)
     sf = JS.sourcefile(src)
     rng = JS.byte_range(src)
-    (something(sf.filename, "?"), rng, JS.source_line(sf, first(rng)))
+    return (something(sf.filename, "?"), rng, JS.source_line(sf, first(rng)))
 end
 
 """Name of outermost macro that produced `st`, or empty string."""
 function macro_of(st::JL.SyntaxTree)::String
     mp = JS.macro_prov_end(st)
-    isnothing(mp) ? "" : string(JL.est_to_expr(mp[1]))
+    return isnothing(mp) ? "" : string(JL.est_to_expr(mp[1]))
 end
 
 """Count reference provenance classes for every user binding id leaf in `ex`."""
@@ -73,7 +73,7 @@ function count_refs!(prov::Provenance, ctx, ex::JL.SyntaxTree)::Nothing
     elseif !JS.is_leaf(ex)
         foreach(c -> count_refs!(prov, ctx, c), JS.children(ex))
     end
-    nothing
+    return nothing
 end
 
 """Run lowering passes on `form` in `mod`; return result, declaring top-level globals in `mod`."""
@@ -82,7 +82,7 @@ function lower_form(form::JL.SyntaxTree, mod::Module, prov::Provenance; full::Bo
     world = Base.get_world_counter()
     stage = :macroexpand
     t0 = time()
-    try
+    return try
         ex1 = JL.expand_forms_1(JL.rebase_layers(form, mod), world, true)
         stage = :desugar
         ctx2, ex2 = JL.expand_forms_2(ex1, world)
@@ -99,8 +99,12 @@ function lower_form(form::JL.SyntaxTree, mod::Module, prov::Provenance; full::Bo
         for b in ctx3.bindings.info
             b.is_internal && continue
             f, rng, ln = locate(b.node_id)
-            push!(facts, BindingFact(b.name, b.kind, f, rng, ln, b.is_captured, JL.is_boxed(b),
-                b.is_ambiguous_local, b.is_used_undef, b.is_assigned, macro_of(b.node_id)))
+            push!(
+                facts, BindingFact(
+                    b.name, b.kind, f, rng, ln, b.is_captured, JL.is_boxed(b),
+                    b.is_ambiguous_local, b.is_used_undef, b.is_assigned, macro_of(b.node_id)
+                )
+            )
             # Declare top-level globals so later forms see soft-scope ambiguity; runs no user code.
             b.kind === :global && b.is_assigned && b.mod === mod && isempty(macro_of(b.node_id)) &&
                 Base.binding_kind(mod, Symbol(b.name)) in (Base.PARTITION_KIND_GUARD, Base.PARTITION_KIND_DECLARED) &&
@@ -115,27 +119,29 @@ function lower_form(form::JL.SyntaxTree, mod::Module, prov::Provenance; full::Bo
 end
 
 """Return string path when `form` is `include("lit")`, else nothing."""
-function include_path(form::JL.SyntaxTree)::Union{Nothing,String}
+function include_path(form::JL.SyntaxTree)::Union{Nothing, String}
     JS.head(form) === :call && JS.numchildren(form) == 2 || return nothing
     callee, arg = JS.children(form)
     JS.head(callee) === :identifier && JS.sourcetext(JS.sourceref(callee)) == "include" || return nothing
     JS.head(arg) === :value && arg.value isa AbstractString || return nothing
-    string(arg.value)
+    return string(arg.value)
 end
 
 """Child module `name` of `parent`: real one when loaded, else fresh sandbox."""
 function child_module(parent::Module, name::Symbol)::Module
     isdefined(parent, name) && getfield(parent, name) isa Module && return getfield(parent, name)
     m = Core.eval(parent, :(module $name end))
-    m
+    return m
 end
 
 """Lower every top-level form of `path` in `mod`, following literal includes."""
-function lower_file!(results::Vector{FormResult}, prov::Provenance, path::String, mod::Module;
-                     eval_imports::Bool, full::Bool)::Nothing
+function lower_file!(
+        results::Vector{FormResult}, prov::Provenance, path::String, mod::Module;
+        eval_imports::Bool, full::Bool
+    )::Nothing
     code = read(path, String)
-    st = JS.parseall(JL.SyntaxTree, code; filename=path, version=v"1.13", ignore_warnings=true)
-    walk!(results, prov, JS.children(st), mod, dirname(path); eval_imports, full)
+    st = JS.parseall(JL.SyntaxTree, code; filename = path, version = v"1.13", ignore_warnings = true)
+    return walk!(results, prov, JS.children(st), mod, dirname(path); eval_imports, full)
 end
 
 function walk!(results, prov, forms, mod::Module, dir::String; eval_imports::Bool, full::Bool)::Nothing
@@ -144,7 +150,7 @@ function walk!(results, prov, forms, mod::Module, dir::String; eval_imports::Boo
         if k === :toplevel
             walk!(results, prov, JS.children(form), mod, dir; eval_imports, full)
         elseif k === :module
-            name = Symbol(JS.sourcetext(JS.sourceref(form[end-1])))
+            name = Symbol(JS.sourcetext(JS.sourceref(form[end - 1])))
             walk!(results, prov, JS.children(form[end]), child_module(mod, name), dir; eval_imports, full)
         elseif (inc = include_path(form)) !== nothing
             lower_file!(results, prov, joinpath(dir, inc), mod; eval_imports, full)
@@ -162,7 +168,7 @@ function walk!(results, prov, forms, mod::Module, dir::String; eval_imports::Boo
             push!(results, lower_form(form, mod, prov; full))
         end
     end
-    nothing
+    return nothing
 end
 
 end
