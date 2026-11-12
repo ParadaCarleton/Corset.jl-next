@@ -109,7 +109,7 @@ Findings inside macro expansions are reported, other packages' macros included: 
 - Corset supports only latest Julia release, for running and for fixes.
 - Public API: exported or declared `public`. Everything else is internal.
 - `test/`, `docs/`, `benchmark/` are scripts: loading them runs them.
-- Baseline matches findings by rule, file, enclosing definition and normalized snippet hash. No line numbers, so edits elsewhere keep matches.
+- Baseline lives in `corset-baseline.toml` at project root; `corset baseline` writes it. Entries match findings by rule, file, enclosing definition and normalized snippet hash. No line numbers, so edits elsewhere keep matches. Baselined findings stay hidden. Entry that matches no finding fails run until `corset baseline` rewrites file, like ESLint bulk suppressions.
 - `corset explain` and docs page per rule follow Clippy sections: what it does, why it is bad, example, use instead, known problems.
 - Fixes keep surrounding style; formatting stays formatter's job (Runic, JuliaFormatter).
 - Additive replacement for literal uses `oneunit(x)`, never `one(x)`: `one` drops units (Unitful.jl).
