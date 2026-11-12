@@ -255,7 +255,8 @@ Proposal: test-only oracle. Typed IR from native compiler at lint time.
 
 ## Coverage of old rules
 
-<!-- coverage -->
+Frozen: footgun and check names as of design split. Current catalog lives in footguns.toml and checks.toml.
+
 | Source | Old rule | Footguns | Check | Note |
 |---|---|---|---|---|
 | main | `unstable-variable` | F17 Variable, result or closure capture with vague inferred type | `vague-type` |  |
@@ -318,7 +319,7 @@ Proposal: test-only oracle. Typed IR from native compiler at lint time.
 | open work | `silent-existence-filter` | — | — | Dropped: reasonable code. |
 | open work | `any-supertype` | F84 Public struct has no abstract supertype; users cannot extend | `closed-struct` | Extensibility. |
 | open work | `dims-keyword` | F32 Temporary array built only to be consumed once | `temporary-array` | Stay-lazy goal; `dims` itself fine. |
-<!-- /coverage -->
+
 
 ## Adversarial review findings
 

@@ -1,0 +1,766 @@
+# Generated tables read this file. Run `uv run docs/design/build.py` after edits.
+
+# One problem Corset prevents per entry. IDs are stable; never reuse removed ID.
+
+[[footgun]]
+id = 1
+area = "syntax"
+text = "Space before minus in array literal concatenates"
+example = "`[1 -2]` is 1×2 matrix"
+group = "correctness"
+family = "A"
+
+[[footgun]]
+id = 2
+area = "syntax"
+text = "Range in brackets is one-element vector"
+example = "`[1:3]`"
+group = "correctness"
+family = "A"
+
+[[footgun]]
+id = 3
+area = "syntax"
+text = "Juxtaposition binds tighter than reader expects"
+example = "`2^2x == 2^(2x)`, `1/2x`"
+group = "correctness"
+family = "A"
+
+[[footgun]]
+id = 4
+area = "syntax"
+text = "`where` after result annotation binds result type"
+example = "`f(x::T)::T where {T}`"
+group = "correctness"
+family = "A"
+note = "Errors, or silently binds global `T` if one exists; report both. Upstream rejected precedence change (JuliaLang/julia#21847)."
+
+[[footgun]]
+id = 5
+area = "numbers"
+text = "Literal or constant changes input type"
+example = "`x::Float32 * 0.5`, `x::Int32 * 2`"
+group = "composability"
+family = "D"
+note = "Report when converting literal to input type would change type of escaping value. Applies to generic and overspecified arguments."
+
+[[footgun]]
+id = 6
+area = "numbers"
+text = "Float constant where irrational exists; promotes generic code"
+example = "`sqrt(2)`, `3.14159`"
+group = "composability"
+family = "D"
+note = "Suggest `π`, IrrationalConstants.jl (`sqrt2`)."
+
+[[footgun]]
+id = 87
+area = "numbers"
+text = "Literal widens intermediate that does not escape"
+example = "`Float32(x * 0.5)` computes in `Float64`"
+group = "performance"
+family = "D"
+note = "Same test as F5; slow on GPU. Fix changes rounding, so tier `likely`."
+
+[[footgun]]
+id = 7
+area = "numbers"
+text = "Signed `%` and `÷` round toward zero"
+example = "`-1 % 3 == -1`"
+group = "correctness"
+family = "D"
+
+[[footgun]]
+id = 8
+area = "numbers"
+text = "Mixed signed and unsigned division"
+example = "`div(-1, UInt(2))`"
+group = "correctness"
+family = "D"
+
+[[footgun]]
+id = 9
+area = "numbers"
+text = "Float-to-integer constructor throws on fractions"
+example = "`Int(2.5)`"
+group = "correctness"
+family = "D"
+
+[[footgun]]
+id = 10
+area = "numbers"
+text = "Approximate compare to zero without `atol` is always false"
+example = "`x ≈ 0`"
+group = "correctness"
+family = "A"
+
+[[footgun]]
+id = 11
+area = "numbers"
+text = "`Bool` used as index"
+example = "`v[true]`"
+group = "correctness"
+family = "D"
+
+[[footgun]]
+id = 12
+area = "numbers"
+text = "Integer overflow wraps silently"
+example = "`typemax(Int) + 1`"
+group = "correctness"
+family = "D"
+note = "Later; off by default. Needs value ranges."
+
+[[footgun]]
+id = 13
+area = "numbers"
+text = "Result annotation converts instead of checking"
+example = "`f(x)::Float64 = x` turns `Float32` into `Float64`"
+group = "correctness"
+family = "D"
+note = "Report when inferred result needs conversion; annotation then acts as type check."
+
+[[footgun]]
+id = 14
+area = "types"
+text = "Invariant parameter rejects intended arguments"
+example = "`f(::Vector{Real})` rejects `Vector{Float64}`"
+group = "correctness"
+family = "C"
+
+[[footgun]]
+id = 15
+area = "types"
+text = "Overspecified type blocks generic callers"
+example = "`x::Float64`, `x::AbstractFloat`, `v::AbstractVector{Float64}`, `x::Union{Int16, Int32, Int64}` reject other types"
+group = "composability"
+family = "C"
+note = "Overspecified: names specific number type, `AbstractFloat`, or concrete container anywhere in annotation. Kind enumerated union: union of sibling number types; fix `typejoin` (`Integer`, floats to `Real`). Union of package variants that leaves out some subtypes is deliberate and passes. Fix: type parameter. Message says annotation gains no speed: Julia compiles for each concrete argument type anyway. Exempt: concrete method beside generic method of same function (fast path)."
+
+[[footgun]]
+id = 16
+area = "types"
+text = "Hard-coded `Array` drops caller's array type"
+example = "`zeros(n)` inside method that got `CuArray`"
+group = "composability"
+family = "D"
+
+[[footgun]]
+id = 17
+area = "types"
+text = "Variable, result or closure capture with vague inferred type"
+example = "`acc = 0` then `acc += 0.5`"
+group = "performance"
+family = "D"
+note = "Capture may need own fix (`let`, pass as argument)."
+
+[[footgun]]
+id = 18
+area = "types"
+text = "Struct field with vague type"
+example = "`x::Real`, `x::Vector`"
+group = "performance"
+family = "C"
+
+[[footgun]]
+id = 19
+area = "types"
+text = "Mutable struct where immutable works"
+example = "`mutable struct`; struct of mostly `Ref` fields"
+group = "performance"
+family = "D"
+
+[[footgun]]
+id = 20
+area = "types"
+text = "Ad-hoc union of unrelated types where sum type belongs"
+example = "`Union{Circle, Square, Error}`"
+group = "readability"
+family = "D"
+note = "Small unions compile fast; problem is design. Message suggests Moshi.jl ADT."
+
+[[footgun]]
+id = 21
+area = "types"
+text = "Empty literal has `Any` element type"
+example = "`[]`, `Dict()`"
+group = "performance"
+family = "A"
+
+[[footgun]]
+id = 22
+area = "types"
+text = "`==` defined without `hash`"
+example = "`Dict` and `Set` disagree with `==`"
+group = "correctness"
+family = "C"
+
+[[footgun]]
+id = 23
+area = "types"
+text = "Method named like Base function without `Base.` shadows it"
+example = "`length(x::MyT) = …`"
+group = "correctness"
+family = "C"
+note = "Julia 1.13 raises no error: module gets separate function, so `length([1, 2])` there throws `MethodError`."
+
+[[footgun]]
+id = 24
+area = "types"
+text = "Methods differ only in keywords; later one overwrites"
+example = "`f(x; a)` and `f(x; b)`"
+group = "correctness"
+family = "C"
+note = "Keywords take no part in dispatch. Julia 1.10+ errors in packages; check covers scripts and explains cause."
+
+[[footgun]]
+id = 25
+area = "types"
+text = "Type piracy"
+example = "`Base.:+(::Int, ::String)`"
+group = "composability"
+family = "G"
+
+[[footgun]]
+id = 26
+area = "types"
+text = "Behavior depends on inference result"
+example = "`Core.Compiler.return_type`"
+group = "composability"
+family = "A"
+
+[[footgun]]
+id = 94
+area = "types"
+text = "Method ambiguity between package methods"
+example = "`f(::Int, ::Any)` and `f(::Any, ::Int)`"
+group = "correctness"
+family = "G"
+note = "Aqua.jl ambiguity check; covers intersections no analyzed call reaches."
+
+[[footgun]]
+id = 83
+area = "types"
+text = "Call can never succeed"
+example = "no matching method; undefined global or field"
+group = "correctness"
+family = "D"
+note = "Package call inferred `Union{}` without explicit `throw`. JET is test reference."
+
+[[footgun]]
+id = 84
+area = "types"
+text = "Public struct has no abstract supertype; users cannot extend"
+example = "`struct Model` → `struct Model <: AbstractModel`"
+group = "composability"
+family = "C"
+note = "Public structs only."
+
+[[footgun]]
+id = 92
+area = "types"
+text = "Subtype misses required interface method"
+example = "`struct V <: AbstractArray` without `size`"
+group = "correctness"
+family = "C"
+note = "Rust rejects incomplete trait impl; Julia fails at first call. Lists from Interfaces.jl or RequiredInterfaces.jl."
+
+[[footgun]]
+id = 93
+area = "types"
+text = "Iterator misses size and element traits"
+example = "`iterate` without `IteratorSize`, `eltype`, `length`"
+group = "performance"
+family = "C"
+note = "`collect` and friends take slow, vague paths."
+
+[[footgun]]
+id = 27
+area = "compile"
+text = "Call resolved at run time"
+example = "call on `Any`"
+group = "performance"
+family = "D"
+
+[[footgun]]
+id = 28
+area = "compile"
+text = "Splat of variable-length collection"
+example = "`f(xs...)`, `xs::Vector`"
+group = "performance"
+family = "D"
+
+[[footgun]]
+id = 29
+area = "compile"
+text = "Recursion with argument types that nest each call"
+example = "`f(x) = f((x,))`"
+group = "performance"
+family = "D"
+
+[[footgun]]
+id = 30
+area = "compile"
+text = "Too many specializations on `Function` or `Type` argument"
+example = "one method, 500 closure types"
+group = "performance"
+family = "C"
+note = "Predict from source: C finds methods that specialize on argument; A counts distinct closures or types passed at package call sites."
+
+[[footgun]]
+id = 31
+area = "arrays"
+text = "Loop over scalar runs once"
+example = "`for i in 4`, `for i in length(v)`"
+group = "correctness"
+family = "D"
+
+[[footgun]]
+id = 32
+area = "arrays"
+text = "Temporary array built only to be consumed once"
+example = "`sum(f.(x))` → `sum(f, x)`; `collect` of iterator used once"
+group = "performance"
+family = "B"
+note = "Enforceable part of stay-lazy goal."
+
+[[footgun]]
+id = 33
+area = "arrays"
+text = "Uninitialized element read before write"
+example = "`similar(x)` then `sum`"
+group = "correctness"
+family = "B"
+note = "Definite only for straight-line pattern; loops, branches, aliases, views give `possible`."
+
+[[footgun]]
+id = 34
+area = "arrays"
+text = "Placeholder value looks like data after partial fill"
+example = "`zeros(n)`, half written"
+group = "correctness"
+family = "B"
+note = "Definite only for straight-line pattern; loops, branches, aliases, views give `possible`."
+
+[[footgun]]
+id = 35
+area = "arrays"
+text = "`fill` shares one mutable object"
+example = "`fill(zeros(3), n)`"
+group = "correctness"
+family = "A"
+
+[[footgun]]
+id = 36
+area = "arrays"
+text = "`1:length(A)` assumes 1-based indices"
+example = "`OffsetArray` breaks it"
+group = "composability"
+family = "A"
+
+[[footgun]]
+id = 37
+area = "arrays"
+text = "Index safety removed without proof"
+example = "`@inbounds` on unchecked index"
+group = "correctness"
+family = "D"
+
+[[footgun]]
+id = 38
+area = "arrays"
+text = "String indexed by character count"
+example = "`s[i]` for `i in 1:length(s)`"
+group = "correctness"
+family = "D"
+
+[[footgun]]
+id = 39
+area = "arrays"
+text = "Never-written constant array allocates"
+example = "`ones(n)` read only"
+group = "performance"
+family = "B"
+
+[[footgun]]
+id = 40
+area = "arrays"
+text = "Read-only slice copies"
+example = "`sum(A[:, i])`"
+group = "performance"
+family = "B"
+
+[[footgun]]
+id = 41
+area = "arrays"
+text = "Broadcast rebinds preallocated buffer"
+example = "`x = f.(y)`"
+group = "performance"
+family = "B"
+
+[[footgun]]
+id = 42
+area = "arrays"
+text = "Inner loop over non-first index"
+example = "`for i, j; A[i, j]`"
+group = "performance"
+family = "A"
+note = "Possible only."
+
+[[footgun]]
+id = 43
+area = "arrays"
+text = "Search inside loop over same collection"
+example = "`x in v` per element of `v`"
+group = "performance"
+family = "D"
+
+[[footgun]]
+id = 44
+area = "arrays"
+text = "Fold concatenates one piece at a time"
+example = "`reduce(vcat, parts)` in loop"
+group = "performance"
+family = "A"
+
+[[footgun]]
+id = 45
+area = "arrays"
+text = "Matrix function where elementwise was meant"
+example = "`exp(A)`"
+group = "correctness"
+family = "D"
+note = "Later; off by default."
+
+[[footgun]]
+id = 46
+area = "arrays"
+text = "Adjoint conjugates complex data"
+example = "`v'` on `ComplexF64`"
+group = "correctness"
+family = "D"
+note = "Later; off by default."
+
+[[footgun]]
+id = 47
+area = "containers"
+text = "Mutable key mutated after insert"
+example = "`Dict{Vector{Int}, …}`"
+group = "correctness"
+family = "D"
+
+[[footgun]]
+id = 48
+area = "containers"
+text = "Container mutated while iterating"
+example = "`delete!(d, k)` in `for k in keys(d)`"
+group = "correctness"
+family = "E"
+
+[[footgun]]
+id = 49
+area = "containers"
+text = "Code relies on `Dict` order"
+example = "`Dict` iterated into output"
+group = "correctness"
+family = "D"
+note = "Later; off by default."
+
+[[footgun]]
+id = 50
+area = "containers"
+text = "Same container passed twice to mutating call"
+example = "`append!(a, a)`"
+group = "correctness"
+family = "E"
+
+[[footgun]]
+id = 51
+area = "containers"
+text = "`Iterators.Stateful` consumed twice"
+example = "`isempty(s)` then `for x in s`"
+group = "correctness"
+family = "E"
+
+[[footgun]]
+id = 52
+area = "containers"
+text = "`missing` reaches condition"
+example = "`if x > 0` with `x::Union{Missing, Int}`"
+group = "correctness"
+family = "D"
+
+[[footgun]]
+id = 89
+area = "containers"
+text = "`@match` misses variant of Moshi ADT"
+example = "no arm for `Shape.Circle`, no catch-all"
+group = "correctness"
+family = "A"
+note = "Moshi emits runtime `error(\"matching non-exhaustive\")`. Variants from `@data` (C). Fix tier `manual`."
+
+[[footgun]]
+id = 90
+area = "containers"
+text = "Unreachable `@match` arm"
+example = "arm after pattern that covers it"
+group = "correctness"
+family = "A"
+
+[[footgun]]
+id = 91
+area = "containers"
+text = "Catch-all arm on own ADT hides later variants"
+example = "`_ => …` in `@match` on package ADT"
+group = "correctness"
+family = "A"
+note = "Clippy `wildcard_enum_match_arm`. Default level `allow`."
+
+[[footgun]]
+id = 53
+area = "effects"
+text = "Function writes argument or global without `!`"
+example = "`normalize(v)` changes `v`"
+group = "correctness"
+family = "E"
+
+[[footgun]]
+id = 54
+area = "effects"
+text = "Call has no effect and result is unused"
+example = "`f(x)` returns `nothing`, writes nothing"
+group = "correctness"
+family = "E"
+
+[[footgun]]
+id = 86
+area = "effects"
+text = "`!` function writes nothing; callers drop its result"
+example = "`normalize!(v)` returns new vector"
+group = "correctness"
+family = "E"
+
+[[footgun]]
+id = 55
+area = "effects"
+text = "Hidden input: mutable global, `ScopedValue`, global RNG"
+example = "`rand()` in package code"
+group = "correctness"
+family = "E"
+
+[[footgun]]
+id = 56
+area = "effects"
+text = "Anonymous function impure: captures mutable state"
+example = "`filter(x -> x in seen, xs)`, `seen::Set`"
+group = "correctness"
+family = "E"
+note = "Named functions follow `!` convention; anonymous ones stay pure. Read-only capture counts."
+
+[[footgun]]
+id = 57
+area = "effects"
+text = "Closure rebinds captured variable; `Core.Box`"
+example = "`n = 0; f = () -> (n += 1)`"
+group = "performance"
+family = "H"
+
+[[footgun]]
+id = 58
+area = "effects"
+text = "`@assume_effects` claim false"
+example = "`:consistent` on body that reads global"
+group = "correctness"
+family = "E"
+
+[[footgun]]
+id = 59
+area = "effects"
+text = "Catch handles every error"
+example = "`catch; end`"
+group = "correctness"
+family = "A"
+
+[[footgun]]
+id = 60
+area = "effects"
+text = "Same statement twice in block"
+example = "copy-paste duplicate"
+group = "correctness"
+family = "A"
+
+[[footgun]]
+id = 61
+area = "scope"
+text = "Top-level loop assigns global; REPL and file differ"
+example = "`for …; total += x; end` in script"
+group = "correctness"
+family = "H"
+
+[[footgun]]
+id = 62
+area = "scope"
+text = "Variable first assigned in `try` read after it"
+example = "`try; y = f(); end; y`"
+group = "correctness"
+family = "H"
+
+[[footgun]]
+id = 63
+area = "scope"
+text = "Function defined by `eval` called in same world"
+example = "`@eval g() = 1; g()`"
+group = "correctness"
+family = "H"
+
+[[footgun]]
+id = 64
+area = "scope"
+text = "Same file included twice"
+example = "two copies of module"
+group = "correctness"
+family = "A"
+
+[[footgun]]
+id = 65
+area = "modules"
+text = "Name reached through bare `using`"
+example = "two packages export `solve`"
+group = "composability"
+family = "G"
+
+[[footgun]]
+id = 66
+area = "modules"
+text = "Use of other module's internal name"
+example = "`Base._foo`"
+group = "composability"
+family = "G"
+
+[[footgun]]
+id = 67
+area = "modules"
+text = "Import placed in file that does not use it"
+example = "`using LinearAlgebra` in `src/Pkg.jl` for `src/solve.jl`"
+group = "readability"
+family = "G"
+
+[[footgun]]
+id = 88
+area = "modules"
+text = "Extension trigger package missing from test dependencies"
+example = "`[weakdeps]` names `CUDA`; tests never load it"
+group = "correctness"
+family = "C"
+note = "Reads Project.toml; no load needed. Untested extension also cannot be analyzed."
+
+[[footgun]]
+id = 68
+area = "concurrency"
+text = "Buffer indexed by `threadid()`"
+example = "`bufs[threadid()]`"
+group = "correctness"
+family = "A"
+
+[[footgun]]
+id = 69
+area = "concurrency"
+text = "Unsynchronized update in threaded loop"
+example = "`acc += x` in `@threads`"
+group = "correctness"
+family = "H"
+
+[[footgun]]
+id = 70
+area = "concurrency"
+text = "Task result never waited; errors vanish"
+example = "`@spawn work()`"
+group = "correctness"
+family = "A"
+
+[[footgun]]
+id = 71
+area = "readability"
+text = "Argument or result without type"
+example = "`f(x) = …`"
+group = "readability"
+family = "A"
+note = "With result-conversion check, annotations act as type checks. Fixer fills result type from inference. `::Any` opts out."
+
+[[footgun]]
+id = 72
+area = "readability"
+text = "One-letter name"
+example = "`q = …`"
+group = "readability"
+family = "A"
+note = "Exempt: type names and parameters; `i`, `j`, `k` as indices."
+
+[[footgun]]
+id = 73
+area = "readability"
+text = "Explicit `return` mixed with implicit last value"
+group = "readability"
+family = "A"
+note = "Narrow by design. Requiring `return` everywhere forces `return nothing`, which fights formatters (Runic) and creates dead code."
+
+[[footgun]]
+id = 74
+area = "readability"
+text = "Comment where docstring belongs"
+example = "`# adds x` above function"
+group = "readability"
+family = "A"
+
+[[footgun]]
+id = 76
+area = "readability"
+text = "Copied code block"
+group = "readability"
+family = "G"
+note = "Off by default; jscpd finds near-duplicates, needs Node."
+
+[[footgun]]
+id = 77
+area = "readability"
+text = "File too long"
+group = "readability"
+family = "A"
+
+[[footgun]]
+id = 78
+area = "readability"
+text = "Struct with too many fields"
+group = "readability"
+family = "A"
+
+[[footgun]]
+id = 79
+area = "readability"
+text = "Related fields belong in nested struct, table or array"
+example = "`governor_name`, `governor_age` → `governor.name`"
+group = "readability"
+family = "A"
+
+[[footgun]]
+id = 80
+area = "readability"
+text = "Module without docstring"
+group = "readability"
+family = "A"
+
+[[footgun]]
+id = 81
+area = "readability"
+text = "C types outside C calls"
+example = "`Cint`"
+group = "readability"
+family = "A"
+
+[[footgun]]
+id = 82
+area = "readability"
+text = "Project-banned name or pattern"
+example = "config list"
+group = "readability"
+family = "A"

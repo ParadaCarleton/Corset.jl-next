@@ -1,0 +1,38 @@
+# Generated tables read this file. Run `uv run docs/design/build.py` after edits.
+
+# Analysis families: one shared analysis each.
+
+[[family]]
+letter = "A"
+title = "Syntax patterns"
+text = "One tree walk per file. Checks match node shapes. Candidate base: Argus.jl (check license and API stability first)."
+
+[[family]]
+letter = "B"
+title = "Array lifecycle"
+text = "Local def-use per array: created, written, read before write, resized, escapes, read once. Definite only for straight-line patterns."
+
+[[family]]
+letter = "C"
+title = "Module inspection"
+text = "Loaded package without inference: bindings, structs, signatures, method table, specialization heuristics."
+
+[[family]]
+letter = "D"
+title = "Typed-IR scan"
+text = "One inference per package method; stand-in types replace generic arguments. One pass per inferred frame. Union policy decides which unions `ad-hoc-union` reports."
+
+[[family]]
+letter = "E"
+title = "Effect and alias summary"
+text = "Per method: writes to arguments, writes to globals, result aliases global state."
+
+[[family]]
+letter = "H"
+title = "Scope"
+text = "Lowered scopes per file: bindings, soft scope, captures, boxes, task spawns."
+
+[[family]]
+letter = "G"
+title = "External tools"
+text = "Wrap tool output as findings: Aqua.jl, ExplicitImports.jl, jscpd."
