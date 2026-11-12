@@ -24,7 +24,7 @@ function run_case(name::Symbol, case::String)::Tuple{String, String}
     file = Corset.Syntax.parse_file(basename(case), text)
     entry = Corset.Rules.entry(name)
     findings = Corset.Engine.run_rules(FactSet([file]), [entry])
-    report = Corset.Engine.Report(Corset.Engine.diagnostics(findings, UI_SETTINGS), UI_SETTINGS, Dict(file.path => text), 0, [])
+    report = Corset.Engine.Report(Corset.Engine.diagnostics(findings, UI_SETTINGS), UI_SETTINGS, dirname(case), Dict(file.path => text), 0, [])
     rendered = sprint(io -> Corset.Render.render_all(io, report))
     fixed = Corset.Fixes.apply_edits(text, Corset.Fixes.applicable_edits(findings, file.path, Tier.breaking))
     return rendered, fixed == text ? "" : fixed

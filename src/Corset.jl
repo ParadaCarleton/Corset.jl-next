@@ -14,7 +14,14 @@ include("OptOuts.jl")
 include("Baseline.jl")
 include("Engine.jl")
 include("Render.jl")
+include("Output.jl")
+include("CLI.jl")
 
 using .Engine: check
+
+"""Command-line entry point for `corset` app and `julia -m Corset`."""
+function (@main)(args::Vector{String})::Cint
+    return CLI.execute(args, stdout, stderr)
+end
 
 end

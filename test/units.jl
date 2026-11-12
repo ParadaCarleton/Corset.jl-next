@@ -128,10 +128,10 @@ end
     )
     definite_only = Config.settings(nothing, Flags(), REGISTRY)
     @test isempty(Corset.Engine.diagnostics([possible], definite_only))
-    warned = Report([Diagnostic(possible, Level.warn, "test")], definite_only, Dict{String, String}(), 0, [])
+    warned = Report([Diagnostic(possible, Level.warn, "test")], definite_only, @__DIR__, Dict{String, String}(), 0, [])
     @test !Corset.Engine.failed(warned)
     strict = Config.settings(nothing, Flags(; deny_warnings = true), REGISTRY)
-    @test Corset.Engine.failed(Report(warned.diagnostics, strict, Dict{String, String}(), 0, []))
+    @test Corset.Engine.failed(Report(warned.diagnostics, strict, @__DIR__, Dict{String, String}(), 0, []))
 end
 
 @testset "opt-outs" begin
