@@ -3,5 +3,13 @@ uuid = "09bf9df1-bea6-4267-acd1-e930da7492cc"
 version = "0.5.0-DEV"
 authors = ["Carlos Parada <71727937+ParadaCarleton@users.noreply.github.com>"]
 
+[deps]
+Argus = "e39743ec-b2cc-45ef-a990-b666fc093538"
+EnumX = "4e289a0a-7415-4d19-859d-a7e5c4648b56"
+JuliaSyntax = "70703baa-626e-46a2-a12c-08ffd08c73b4"
+
 [compat]
+Argus = "0.4.2"
+EnumX = "1.0.7"
+JuliaSyntax = "1.0.2"
 julia = "1.13"

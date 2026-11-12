@@ -1,6 +1,7 @@
-using Corset: Corset
-using Test: @test, @testset
+using Test: @testset
 
 @testset "Corset" begin
-    @test Corset isa Module
+    include("units.jl")
+    include("registry.jl")
+    include("ui.jl")
 end
