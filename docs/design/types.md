@@ -32,6 +32,9 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
   - Examples: `x::Int32 * 2` (Int64 vs Int32) and `x::Float32 * 0.5` (Float64 vs Float32) and `Float64(x)` on `Float32` are reported. `x::Float32 * 2` and `x::Int32 / 2` (Float64 either way) pass.
   - Generic `x::Real` runs both number stand-ins, so `x * 2` is reported through integer case.
   - Escape test: own data-flow pass follows value to returns and stores. Escape analysis tracks heap objects only, so it cannot decide this.
+  - **No downstream consequence, no finding**: disruption is correct when every use converts value back before it matters. Indexing converts index to `Int`, so `heapleft(i::Integer) = 2i` feeding `a[heapleft(i)]` is fine. Store into concrete field or element type also converts.
+    - Exact rule: follow disrupted value through returns into package call sites; exempt when every path ends in conversion. Public function with unknown callers: report as `possible`.
+    - First version: exempt values whose uses are only indexing (`getindex`, `setindex!`, `view`) or range bounds. Revisit after phase 4: replace with exact rule.
   - Definite: narrowest Base type of kind gives concrete counterexample. Promotion rules of user number types are out of scope.
   - Overspecified argument types (`x::Int32`, `v::AbstractVector{Float64}`) are rare in libraries: `overspecified-type` reports them.
   - Branch on type (`x isa Float64`, `T === Float32`): report as `possible`.
