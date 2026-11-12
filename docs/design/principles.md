@@ -18,7 +18,7 @@ Rules every design choice follows, and what Corset does not do.
 
 - Formatting: Runic or JuliaFormatter own it.
 - Running package tests, or reading signatures from them.
-- Analyzing dependency code, Base included. Code that macros expand into package counts as package code.
+- Findings in dependency code, Base included. Analysis reads dependency code freely (callee summaries, inference); only findings stay inside package. Code that macros expand into package counts as package code.
 - Julia versions older than latest release.
 - Security sandbox around package code. Corset loads code its user chose to lint.
 - Version 1: language server; race and ownership analysis. Shape checks F68–F70 stay.

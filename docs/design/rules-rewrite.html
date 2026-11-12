@@ -161,7 +161,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <ul>
 <li>Formatting: Runic or JuliaFormatter own it.</li>
 <li>Running package tests, or reading signatures from them.</li>
-<li>Analyzing dependency code, Base included. Code that macros expand into package counts as package code.</li>
+<li>Findings in dependency code, Base included. Analysis reads dependency code freely (callee summaries, inference); only findings stay inside package. Code that macros expand into package counts as package code.</li>
 <li>Julia versions older than latest release.</li>
 <li>Security sandbox around package code. Corset loads code its user chose to lint.</li>
 <li>Version 1: language server; race and ownership analysis. Shape checks F68–F70 stay.</li>

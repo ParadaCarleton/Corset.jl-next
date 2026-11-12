@@ -16,6 +16,6 @@ Every check: UI snapshot test with positive, negative and fix case.
 
 ## Scope
 
-Never read or run package tests. Never analyze dependency code.
+Never read or run package tests. Report findings only in package code; analysis may read dependency code, Base included.
 Support only latest Julia release.
 Analysis gaps never become findings; coverage line reports them.
