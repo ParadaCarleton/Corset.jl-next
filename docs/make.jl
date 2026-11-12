@@ -1,12 +1,12 @@
-using Documenter, Corset
+using Documenter, CorsetLegacy
 
-DocMeta.setdocmeta!(Corset, :DocTestSetup, :(using Corset); recursive = true)
+DocMeta.setdocmeta!(CorsetLegacy, :DocTestSetup, :(using CorsetLegacy); recursive = true)
 
 makedocs(;
     sitename = "Corset.jl",
     authors = "Carlos Parada",
-    modules = [Corset],
-    checkdocs_ignored_modules = [Corset.WorkloadPackage],
+    modules = [CorsetLegacy],
+    checkdocs_ignored_modules = [CorsetLegacy.WorkloadPackage],
     format = Documenter.HTML(canonical = "https://paradacarleton.github.io/Corset.jl/stable"),
     pages = [
         "Home" => "index.md", "Guide" => "guide.md", "CLI" => "cli.md", "Rules" => "rules.md", "API" => "api.md",
