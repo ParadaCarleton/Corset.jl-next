@@ -1,0 +1,11 @@
+WARNING: Detected access to binding `Main.DataStructures` in a world prior to its definition world.
+  Julia 1.12 has introduced more strict world age semantics for global bindings.
+  !!! This code may malfunction under Revise.
+  !!! This code will error in future versions of Julia.
+Hint: Add an appropriate `invokelatest` around the access to this binding.
+To make this warning an error, and hence obtain a stack trace, use `julia --depwarn=error`.
+target=DataStructures mode=loaded forms=1223 ok=1223 failed=0 seconds=1.14
+facts: boxed=3 softscope_local=0 local_and_global=52
+  boxed traverse_tree line=330
+  boxed traverse_tree_inorder line=400
+  boxed traverse_tree_inorder line=218

@@ -1,0 +1,4 @@
+target=Distances mode=sandbox forms=271 full_ok=267 scope_ok=271 failed_scope=0 seconds=1.56 lower_seconds=0.88
+refs exact=3385 coarse=42 line_only=3630
+  fail x2  linearize: cannot set type for imported binding Distances.pairwise.
+  fail x2  linearize: cannot set type for imported binding Distances.pairwise!.
