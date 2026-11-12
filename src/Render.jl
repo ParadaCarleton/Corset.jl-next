@@ -9,11 +9,14 @@ line_starts(text::String)::Vector{Int} = [1; findall(==(UInt8('\n')), codeunits(
 """Text of line `line` without its newline."""
 function line_text(text::String, starts::Vector{Int}, line::Int)::String
     stop = line < length(starts) ? starts[line + 1] - 2 : ncodeunits(text)
-    return chopsuffix(text[starts[line]:thisind(text, max(stop, starts[line] - 1))], "\r")
+    return replace(chopsuffix(text[starts[line]:thisind(text, max(stop, starts[line] - 1))], "\r"), '\t' => TAB)
 end
 
 """Display width of `text` between byte `first` and byte `stop`, inclusive."""
-width_between(text::String, first::Int, stop::Int)::Int = stop < first ? 0 : textwidth(text[first:thisind(text, stop)])
+width_between(text::String, first::Int, stop::Int)::Int = stop < first ? 0 : textwidth(replace(text[first:thisind(text, stop)], '\t' => TAB))
+
+"""Tab stop used for source lines; renderer expands tabs so underlines align."""
+const TAB = "    "
 
 """1-based display column of byte `byte` on line `line`."""
 column(text::String, starts::Vector{Int}, line::Int, byte::Int)::Int = width_between(text, starts[line], byte - 1) + 1

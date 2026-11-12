@@ -1,3 +1,4 @@
+# runic: off
 function load(path)
     try
         return read(path, String)
@@ -11,5 +12,14 @@ try
     run_job()
 catch err
     @error "job failed"
+    rethrow()
+end
+
+try
+    work()
+catch err
+    if err isa KeyError
+        return nothing
+    end
     rethrow()
 end

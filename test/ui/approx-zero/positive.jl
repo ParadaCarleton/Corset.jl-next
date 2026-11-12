@@ -1,3 +1,4 @@
+# runic: off
 function near_zero(x)
     return x ≈ 0
 end

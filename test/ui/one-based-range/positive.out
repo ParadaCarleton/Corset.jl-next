@@ -1,7 +1,7 @@
 composability[one-based-range]: `1:length(a)` assumes indices start at 1
- --> positive.jl:3:14
+ --> positive.jl:4:14
   |
-3 |     for i in 1:length(a)
+4 |     for i in 1:length(a)
   |              ^^^^^^^^^^^ breaks on arrays with other first index
   |
   = why: arrays such as `OffsetArray` index from other values; this range then reads wrong elements or throws
@@ -10,24 +10,35 @@ composability[one-based-range]: `1:length(a)` assumes indices start at 1
   = docs: corset explain one-based-range
 
 composability[one-based-range]: `1:size(m, 2)` assumes indices start at 1
- --> positive.jl:9:29
-  |
-9 | cols(m) = [m[:, j] for j in 1:size(m, 2)]
-  |                             ^^^^^^^^^^^^ breaks on arrays with other first index
-  |
-  = why: arrays such as `OffsetArray` index from other values; this range then reads wrong elements or throws
-  = confidence: possible
-  = fix: replace with `axes(m, 2)`   [likely]
-  = docs: corset explain one-based-range
+  --> positive.jl:10:29
+   |
+10 | cols(m) = [m[:, j] for j in 1:size(m, 2)]
+   |                             ^^^^^^^^^^^^ breaks on arrays with other first index
+   |
+   = why: arrays such as `OffsetArray` index from other values; this range then reads wrong elements or throws
+   = confidence: possible
+   = fix: replace with `axes(m, 2)`   [likely]
+   = docs: corset explain one-based-range
 
 composability[one-based-range]: `1:lastindex(a)` assumes indices start at 1
-  --> positive.jl:10:18
+  --> positive.jl:11:18
    |
-10 | last_part(a) = a[1:lastindex(a)]
+11 | last_part(a) = a[1:lastindex(a)]
    |                  ^^^^^^^^^^^^^^ breaks on arrays with other first index
    |
    = why: arrays such as `OffsetArray` index from other values; this range then reads wrong elements or throws
    = confidence: possible
    = fix: replace with `eachindex(a)`   [likely]
+   = docs: corset explain one-based-range
+
+composability[one-based-range]: `1:length(a)` assumes indices start at 1
+  --> positive.jl:13:15
+   |
+13 | ids = collect(1:length(a))
+   |               ^^^^^^^^^^^ breaks on arrays with other first index
+   |
+   = why: arrays such as `OffsetArray` index from other values; this range then reads wrong elements or throws
+   = confidence: possible
+   = fix: use `eachindex(a)` if range indexes array   [manual]
    = docs: corset explain one-based-range
 

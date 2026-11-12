@@ -6,11 +6,24 @@ using ...Facts
 const NAME = Symbol("threadid-buffer")
 const RULE = Rule(@pattern ~or({buffer}[threadid()], {buffer}[Threads.threadid()], {buffer}[Base.Threads.threadid()]))
 
-"""Findings for indexing by current thread ID."""
+"""Macros that run body on several tasks."""
+const THREADED = Set(["@threads", "@spawn", "@async"])
+
+"""Whether `node` sits inside threaded macro call (`@threads`, `Threads.@threads`, `@spawn`)."""
+function threaded(node)::Bool
+    return any(ancestors(node)) do ancestor
+        kind_name(ancestor) == "macrocall" || return false
+        name = children_of(ancestor)[1]
+        return leaf_value(isempty(children_of(name)) ? name : children_of(name)[end]) in THREADED
+    end
+end
+
+"""Findings for indexing by current thread ID: `definite` inside threaded macro, else `possible`."""
 function run(facts::FactSet)::Vector{Finding}
     return [
         finding(
-            NAME, file, match.node; kind = :threadid_index, confidence = Confidence.definite,
+            NAME, file, match.node; kind = :threadid_index,
+            confidence = threaded(match.node) ? Confidence.definite : Confidence.possible,
             message = "`$(source(file, binding(match, :buffer)))` is indexed by thread ID",
             label = "task may switch thread between read and write",
             why = "tasks migrate between threads, so two tasks can share one slot and race",

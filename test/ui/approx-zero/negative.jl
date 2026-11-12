@@ -1,3 +1,4 @@
+# runic: off
 function near_zero(x, tol)
     return isapprox(x, 0; atol = tol)
 end

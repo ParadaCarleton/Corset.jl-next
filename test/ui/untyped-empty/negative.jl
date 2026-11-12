@@ -1,3 +1,4 @@
+# runic: off
 names = String[]
 seen = Set{Int}()
 cache = Dict{Symbol, Float64}()

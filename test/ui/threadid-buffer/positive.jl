@@ -1,3 +1,4 @@
+# runic: off
 using Base.Threads: @threads, threadid
 
 function count_all(xs)
@@ -9,3 +10,7 @@ function count_all(xs)
 end
 
 scratch[Threads.threadid()] = 0
+
+Threads.@threads for k in 1:4
+    totals[Threads.threadid()] += k
+end

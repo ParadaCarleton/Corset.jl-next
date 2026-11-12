@@ -1,3 +1,4 @@
+# runic: off
 function total(a)
     s = zero(eltype(a))
     for i in eachindex(a)

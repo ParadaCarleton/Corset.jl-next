@@ -4,17 +4,23 @@ module BroadCatch
 using ...Facts
 
 const NAME = Symbol("broad-catch")
-"""Calls that narrow or pass on caught error."""
-const NARROWING = Set(["rethrow", "throw", "isa", "error"])
+"""Calls that pass error on."""
+const PASSING = Set(["rethrow", "throw", "error"])
 
-"""Whether handler block `block` tests error type or passes error on."""
-narrows(block)::Bool = any(node -> call_head(node) in NARROWING, descendants(block))
+"""Whether handler `block` passes error on, or tests type of caught variable `variable` (`nothing`: no variable)."""
+function narrows(block, variable::Union{Nothing, String})::Bool
+    return any(descendants(block)) do node
+        call_head(node) in PASSING ||
+            (call_head(node) == "isa" && !isnothing(variable) && identifier_name(children_of(node)[1]) == variable)
+    end
+end
 
 """Findings for catch clauses that swallow every error, `InterruptException` included."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, clause in nodes_named(file, "catch")
-        narrows(children_of(clause)[end]) && continue
+        parts = children_of(clause)
+        narrows(parts[end], identifier_name(parts[1])) && continue
         push!(
             found, finding(
                 NAME, file, clause; kind = :untyped_catch, confidence = Confidence.definite,

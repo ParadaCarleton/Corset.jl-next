@@ -1,3 +1,4 @@
+# runic: off
 function collect_names(people)
     names = []
     for p in people

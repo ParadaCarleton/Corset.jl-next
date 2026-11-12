@@ -1,7 +1,7 @@
 correctness[approx-zero]: `x ≈ 0` is true only when `x == 0`
- --> positive.jl:2:12
+ --> positive.jl:3:12
   |
-2 |     return x ≈ 0
+3 |     return x ≈ 0
   |            ^^^^^ relative tolerance scales with zero
   |
   = why: `isapprox` defaults to relative tolerance; relative to zero, no nonzero value is close
@@ -9,9 +9,9 @@ correctness[approx-zero]: `x ≈ 0` is true only when `x == 0`
   = docs: corset explain approx-zero
 
 correctness[approx-zero]: `isapprox(0.0, residual(x))` is true only when `residual(x) == 0`
- --> positive.jl:5:1
+ --> positive.jl:6:1
   |
-5 | isapprox(0.0, residual(x))
+6 | isapprox(0.0, residual(x))
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^ relative tolerance scales with zero
   |
   = why: `isapprox` defaults to relative tolerance; relative to zero, no nonzero value is close

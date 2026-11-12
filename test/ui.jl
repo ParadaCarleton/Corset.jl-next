@@ -1,5 +1,6 @@
 # UI snapshot tests, as in Clippy: test/ui/<check>/<case>.jl, rendered output in <case>.out,
 # fixed source in <case>.fixed.jl. Set CORSET_BLESS=1 to rewrite snapshots.
+# Each case starts with `# runic: off`: formatter must not normalize syntax cases test.
 
 using Corset: Corset
 using Corset.Facts: FactSet, Tier
@@ -36,6 +37,7 @@ end
     @test "positive.jl" in cases
     @test "negative.jl" in cases
     for case in cases
+        @test startswith(read(joinpath(directory, case), String), "# runic: off\n")
         rendered, fixed = run_case(Symbol(check), joinpath(directory, case))
         stem = joinpath(directory, chopsuffix(case, ".jl"))
         @test snapshot(stem * ".out", rendered)

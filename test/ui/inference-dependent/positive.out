@@ -1,7 +1,7 @@
 composability[inference-dependent]: result of `Core.Compiler.return_type` depends on compiler inference
- --> positive.jl:1:21
+ --> positive.jl:2:21
   |
-1 | elementtype(f, x) = Core.Compiler.return_type(f, Tuple{typeof(x)})
+2 | elementtype(f, x) = Core.Compiler.return_type(f, Tuple{typeof(x)})
   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ value can change with Julia version or compiler heuristics
   |
   = why: inference may widen result at any time; code then takes other branch or allocates other type
@@ -9,9 +9,9 @@ composability[inference-dependent]: result of `Core.Compiler.return_type` depend
   = docs: corset explain inference-dependent
 
 composability[inference-dependent]: result of `Base.promote_op` depends on compiler inference
- --> positive.jl:2:25
+ --> positive.jl:3:25
   |
-2 | result_type(op, a, b) = Base.promote_op(op, eltype(a), eltype(b))
+3 | result_type(op, a, b) = Base.promote_op(op, eltype(a), eltype(b))
   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ value can change with Julia version or compiler heuristics
   |
   = why: inference may widen result at any time; code then takes other branch or allocates other type

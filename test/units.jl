@@ -40,6 +40,8 @@ end
     multi_line = render(sample_finding(1:9))
     @test occursin("  | ^^^^^ primary", multi_line)
     @test Corset.Render.line_text("x\r\n", [1, 4], 1) == "x"
+    tabbed = "\ty = 1\n"
+    @test occursin("1 |     y = 1\n  |     ^ primary", sprint(io -> Corset.Render.render(io, sample_finding(2:2), Group.readability, tabbed)))
 end
 
 @testset "facts" begin
