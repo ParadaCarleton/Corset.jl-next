@@ -44,7 +44,9 @@ Clippy model: each group and each rule has level `allow`, `warn` or `deny`; rule
 
 ### Opt-out comments
 
-`# corset: allow <rule> -- <reason>`. Reason is required. Opt-out that suppresses nothing is error, like Rust `#[expect]`. Scope by position: end of line covers line; line above function, struct or block covers that item; top of file covers file.
+Modeled on Rust lint attributes. `# corset: allow <rule>, <rule> -- <reason>`; reason is required. After code, comment covers that line. On own line, it covers next statement: function, struct, block or expression. `# corset: allow-file <rule> -- <reason>` before first code covers file, like Rust inner attribute `#![allow]`.
+
+Malformed comment, unknown rule, late `allow-file`, and opt-out that suppresses nothing are errors; they always fail run, like unfulfilled `#[expect]` under `-D warnings`. Opt-outs apply to findings before levels and confidence filter, so config change never orphans opt-out.
 
 ### Config
 
@@ -90,12 +92,13 @@ warning[vague-type]: `acc` changes type inside loop
    = fix: start from element type: `acc = zero(eltype(xs))`   [safe]
    = docs: corset explain vague-type
    = note: warn from performance group, library preset
+   = note: opt out with `# corset: allow vague-type -- <reason>`
 ```
 
 - Header names level as rustc does: `error` for `deny`, `warning` for `warn`. Note line says where level was set, once per rule per run.
 - Same structure feeds SARIF: related locations and fixes.
 - `corset explain <rule>` prints footgun, example and fix offline.
-- Opt-out hint names exact comment: `# corset: allow vague-type -- <reason>`.
+- Opt-out hint names exact comment, once per rule per run: `# corset: allow vague-type -- <reason>`.
 
 ### Macro output
 
