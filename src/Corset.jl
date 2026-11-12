@@ -20,7 +20,7 @@ include("CLI.jl")
 using .Engine: check
 
 """Command-line entry point for `corset` app and `julia -m Corset`."""
-function (@main)(args::Vector{String})::Cint
+function (@main)(args::Vector{String})::Int
     return CLI.execute(args, stdout, stderr)
 end
 

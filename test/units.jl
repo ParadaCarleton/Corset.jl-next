@@ -75,6 +75,19 @@ end
     rm(directory; recursive = true)
 end
 
+@testset "pipeline runs on legacy sources" begin
+    # Real code finds crashes that fixtures miss; replace this corpus once legacy code is deleted.
+    directory = mktempdir(@__DIR__)
+    cp(joinpath(dirname(@__DIR__), "lib", "CorsetLegacy", "src"), joinpath(directory, "src"))
+    write(joinpath(directory, "Project.toml"), "name = \"Corpus\"\n\n[preferences.Corset]\nkind = \"library\"\n")
+    report = Corset.check(directory)
+    @test !isempty(report.diagnostics)
+    @test isnothing(Corset.Render.render_all(devnull, report))
+    @test length(Corset.Output.json_report(report)["diagnostics"]) == length(report.diagnostics)
+    @test length(only(Corset.Output.sarif_report(report, "0")["runs"])["results"]) == length(report.diagnostics)
+    rm(directory; recursive = true)
+end
+
 const CONFIG = joinpath(@__DIR__, "config")
 
 """Settings of config fixture `name` with command-line `flags`."""

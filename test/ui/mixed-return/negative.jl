@@ -15,3 +15,8 @@ function make()
     helper() = (return 1)
     helper
 end
+
+function checked(x)
+    x > 0 && return x
+    throw(ArgumentError("x must be positive"))
+end
