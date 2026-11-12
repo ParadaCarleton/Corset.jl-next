@@ -6,7 +6,7 @@ Principles behind every design choice, and what Corset does not do.
 - Every decision is revisable. Evidence from spikes, corpus runs and users outranks earlier reasoning; see design reviews in `plan.md`.
 - Compute each expensive step once per run. Share output with every rule.
 - Footguns are source of truth. Rules group footguns by analysis they read. User-facing group is metadata only.
-- Give each finding confidence: `definite` (problem exists) or `possible` (perfect analysis would still be unsure). One setting filters them. Corset blind spots go to coverage line only (`findings.md`).
+- Give each finding confidence: `definite` (problem exists) or `possible` (compiler cannot resolve doubt either). One setting filters them. Corset blind spots go to coverage line only (`findings.md`).
 - Map every finding back to source bytes. Fixers edit lossless syntax tree.
 - Rule is small query over shared facts. Analysis layers compute every fact once per run; rule only reads them.
 - Each fact has one producer. Rule never guesses later-layer fact (type, mutability, effect, ADT variant) from syntax; it waits for that layer.
