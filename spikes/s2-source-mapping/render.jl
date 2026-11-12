@@ -71,8 +71,10 @@ function vague_slots(io::IO, m::Method)::Nothing
         name = src.slotnames[slot]
         cause = statement_label(mappings, file, writes[1][1], "starts as $first_type")
         primary = statement_label(mappings, file, writes[other][1], "becomes $(writes[other][2])")
-        primary === nothing || cause === nothing || render(io, "performance[vague-type]: `$name` changes type inside loop", primary, [cause],
-            "later uses cannot compile for one type; each one dispatches at run time")
+        primary === nothing || cause === nothing || render(
+            io, "performance[vague-type]: `$name` changes type inside loop", primary, [cause],
+            "later uses cannot compile for one type; each one dispatches at run time"
+        )
     end
     return nothing
 end

@@ -87,7 +87,7 @@ function enclosing_macro(root::SyntaxNode, line::Integer)::String
             first_line <= line <= last_line || return
             best = string(Expr(children(node)[1]))
         end
-        is_leaf(node) || foreach(walk, children(node))
+        return is_leaf(node) || foreach(walk, children(node))
     end
     walk(root)
     return best
@@ -131,7 +131,7 @@ function definition_node(tree::SyntaxNode, m::Method)::Union{SyntaxNode, Nothing
         if anonymous ? (lambda || named) : (named && !lambda && source_line(node) == m.line)
             best = node
         end
-        is_leaf(node) || foreach(walk, children(node))
+        return is_leaf(node) || foreach(walk, children(node))
     end
     walk(tree)
     # Default constructors and macro-made methods have no function node; use first node on line.
@@ -169,11 +169,15 @@ function callee_name(src::CodeInfo, stmt)::Union{Symbol, Nothing}
 end
 
 """Callee names that lowering inserts; source text need not spell them."""
-const LOWERED_NAMES = Set([:getindex, :setindex!, :iterate, :indexed_iterate, :convert, :getproperty, :setproperty!,
-    :typeassert, :isa, :(===), :not_int, :broadcasted, :materialize, :materialize!, :Generator, :tuple, :apply_type,
-    :kwcall, :getfield, :isdefined, :_apply_iterate, :vect, :hcat, :vcat, :hvcat, :typed_vcat, :typed_hcat, :(:),
-    :maybeview, :view, :dotview, :firstindex, :lastindex, :kwerr, :keys, :diff_names, :isempty, :_typeof_captured_variable,
-    :fieldtype, :throw, :string, :cconvert, :unsafe_convert, :_expr, :merge, :structdiff, :pairs, :NamedTuple, :ifelse])
+const LOWERED_NAMES = Set(
+    [
+        :getindex, :setindex!, :iterate, :indexed_iterate, :convert, :getproperty, :setproperty!,
+        :typeassert, :isa, :(===), :not_int, :broadcasted, :materialize, :materialize!, :Generator, :tuple, :apply_type,
+        :kwcall, :getfield, :isdefined, :_apply_iterate, :vect, :hcat, :vcat, :hvcat, :typed_vcat, :typed_hcat, :(:),
+        :maybeview, :view, :dotview, :firstindex, :lastindex, :kwerr, :keys, :diff_names, :isempty, :_typeof_captured_variable,
+        :fieldtype, :throw, :string, :cconvert, :unsafe_convert, :_expr, :merge, :structdiff, :pairs, :NamedTuple, :ifelse,
+    ]
+)
 
 """Callee text of call node with qualification and dots stripped."""
 function node_callee(node)::String

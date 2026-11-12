@@ -39,7 +39,7 @@ function views_slice(xs::Matrix{Float64})
 end
 
 @kwdef struct Settings
-    tolerance::Float64 = 1e-8
+    tolerance::Float64 = 1.0e-8
     steps::Int = 10
 end
 
