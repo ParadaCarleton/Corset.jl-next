@@ -812,7 +812,8 @@ end
 </tr>
 </tbody>
 </table></div>
-<p>Flags: <code>-A</code>, <code>-W</code>, <code>-D &lt;rule or group&gt;</code> set levels (Clippy style); <code>--deny warnings</code>; <code>--confidence definite|possible</code>; <code>--format text|json|sarif</code>; <code>--no-cache</code>.</p>
+<p>Flags: <code>-A</code>, <code>-W</code>, <code>-D &lt;rule or group&gt;</code> set levels and apply in order, as in rustc; <code>-D warnings</code> fails run on warnings; <code>--confidence definite|possible</code>; <code>--format text|json|sarif</code>; <code>--tier safe|likely|breaking</code> for <code>fix</code>; <code>--no-cache</code>.</p>
+<p>Install: <code>pkg&gt; app add Corset</code> puts <code>corset</code> on PATH (Julia app); <code>julia -m Corset</code> runs same entry point. Text output ends with count line: errors, warnings, baselined. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.</p>
 <p>Exit codes: <code>0</code> no <code>deny</code> finding; <code>1</code> <code>deny</code> finding; <code>2</code> config or usage error; <code>101</code> internal error (Cargo convention).</p>
 </div><div class="decision"><h3>Rule contract</h3>
 <p>Main goal of rewrite: clean structure. Legacy implemented each rule on its own, so analyses repeated and code grew.</p>

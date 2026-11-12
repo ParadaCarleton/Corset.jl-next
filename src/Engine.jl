@@ -6,6 +6,7 @@ using ..Syntax: parse_file
 using ..Rules: REGISTRY, entry
 using ..Config: Config, Flags, Settings, Level, level_of, project_root
 using ..OptOuts: OptOuts
+using ..Fixes: Fixes
 using ..Baseline: Baseline
 
 """Finding with level from settings. `source` says where level was set."""
@@ -15,10 +16,11 @@ struct Diagnostic
     source::String
 end
 
-"""Result of one run: reported diagnostics, settings, source text per file, baselined count and stale baseline keys."""
+"""Result of one run: diagnostics, settings, project root, source text per file, baselined count and stale baseline keys."""
 struct Report
     diagnostics::Vector{Diagnostic}
     settings::Settings
+    root::String
     sources::Dict{String, String}
     baselined::Int
     stale::Vector{Baseline.Key}
@@ -86,7 +88,7 @@ function check(path::String; flags::Flags = Flags())::Report
     reported = [analysis.leveled[.!covered]; analysis.problems]
     sort!(reported; by = diagnostic -> (diagnostic.finding.primary.span.file, diagnostic.finding.primary.span.first_byte, diagnostic.finding.rule))
     sources = Dict(file.path => file.text for file in analysis.facts.files)
-    return Report(reported, analysis.settings, sources, count(covered), stale)
+    return Report(reported, analysis.settings, analysis.root, sources, count(covered), stale)
 end
 
 """Write baseline at project root of `path` from every reported finding; return entry count."""
@@ -94,6 +96,20 @@ function baseline(path::String; flags::Flags = Flags())::Int
     analysis = analyze(path, flags)
     Baseline.write_baseline(analysis.root, analysis.keys)
     return length(analysis.keys)
+end
+
+"""Apply fixes of reported findings under `path` up to fix tier; return number of edits applied."""
+function fix!(path::String; flags::Flags = Flags())::Int
+    report = check(path; flags)
+    findings = [diagnostic.finding for diagnostic in report.diagnostics]
+    applied = 0
+    for (file, text) in report.sources
+        edits = Fixes.applicable_edits(findings, file, report.settings.tier)
+        isempty(edits) && continue
+        write(file, Fixes.apply_edits(text, edits))
+        applied += length(edits)
+    end
+    return applied
 end
 
 end

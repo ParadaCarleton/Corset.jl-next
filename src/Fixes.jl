@@ -3,13 +3,22 @@ module Fixes
 
 using ..Facts: Finding, Edit, Tier
 
-"""Edits of `findings` in `file` whose fix tier is at most `tier`; `manual` fixes never apply."""
+"""Whether edits `left` and `right` touch same bytes."""
+overlap(left::Edit, right::Edit)::Bool = left.span.first_byte <= right.span.last_byte && right.span.first_byte <= left.span.last_byte
+
+"""
+Edits of `findings` in `file` whose fix tier is at most `tier`; `manual` fixes never apply.
+Fix whose edits overlap edit chosen earlier is skipped whole; next fix run applies it.
+"""
 function applicable_edits(findings::Vector{Finding}, file::String, tier::Tier.T)::Vector{Edit}
     allowed = tier == Tier.manual ? Tier.breaking : tier
-    return [
-        edit for finding in findings if !isnothing(finding.fix) && finding.fix.tier <= allowed
-            for edit in finding.fix.edits if edit.span.file == file
-    ]
+    chosen = Edit[]
+    for finding in findings
+        (isnothing(finding.fix) || finding.fix.tier > allowed) && continue
+        edits = filter(edit -> edit.span.file == file, finding.fix.edits)
+        any(edit -> any(other -> overlap(edit, other), chosen), edits) || append!(chosen, edits)
+    end
+    return chosen
 end
 
 """`text` with `edits` applied. Overlapping edits throw: two fixes would fight over same bytes."""

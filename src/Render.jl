@@ -90,6 +90,14 @@ function render_all(io::IO, report::Report)::Nothing
     return nothing
 end
 
+"""Write closing line: counts of errors, warnings and baselined findings."""
+function render_summary(io::IO, report::Report)::Nothing
+    errors = count(diagnostic -> diagnostic.level == Level.deny, report.diagnostics) + length(report.stale)
+    warnings = count(diagnostic -> diagnostic.level == Level.warn, report.diagnostics)
+    println(io, "corset: ", errors, errors == 1 ? " error, " : " errors, ", warnings, warnings == 1 ? " warning, " : " warnings, ", report.baselined, " baselined")
+    return nothing
+end
+
 """Write message for baseline entries no finding matches."""
 function render_stale(io::IO, stale::Vector{Baseline.Key})::Nothing
     println(io, "error[baseline]: ", length(stale), " baseline ", length(stale) == 1 ? "entry matches" : "entries match", " no finding")
