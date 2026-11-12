@@ -1,0 +1,6 @@
+target=JSON mode=sandbox forms=450 full_ok=434 scope_ok=434 failed_scope=16 seconds=2.81 lower_seconds=2.02
+refs exact=8253 coarse=84 line_only=2981
+  fail x6  macroexpand: MacroExpansionError: Macro not found / UndefVarError: `@checkn` not defined in `Main.Sandb
+  fail x5  macroexpand: MacroExpansionError: Macro not found / UndefVarError: `@nextbyte` not defined in `Main.San
+  fail x4  macroexpand: MacroExpansionError: Macro not found / UndefVarError: `@_applyvalue` not defined in `Main.
+  fail x1  macroexpand: MacroExpansionError: Macro not found / UndefVarError: `@jsonlines_checks` not defined in `

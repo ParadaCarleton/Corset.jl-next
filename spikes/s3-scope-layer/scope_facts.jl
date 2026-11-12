@@ -36,7 +36,9 @@ mutable struct Provenance
     exact::Int
     coarse::Int
     line_only::Int
+    line_only_by_macro::Dict{String,Int}
 end
+Provenance() = Provenance(0, 0, 0, Dict{String,Int}())
 
 """Classify provenance of `st` named `name` and return (file, bytes, line)."""
 function locate(st::JL.SyntaxTree)::Tuple{String,UnitRange{Int},Int}
@@ -61,6 +63,8 @@ function count_refs!(prov::Provenance, ctx, ex::JL.SyntaxTree)::Nothing
         src = JS.sourceref(ex)
         if !(src isa JS.SourceRef)
             prov.line_only += 1
+            m = macro_of(ex)
+            prov.line_only_by_macro[m] = get(prov.line_only_by_macro, m, 0) + 1
         elseif JS.sourcetext(src) == b.name
             prov.exact += 1
         else
@@ -95,10 +99,11 @@ function lower_form(form::JL.SyntaxTree, mod::Module, prov::Provenance; full::Bo
         for b in ctx3.bindings.info
             b.is_internal && continue
             f, rng, ln = locate(b.node_id)
-            push!(facts, BindingFact(b.name, b.kind, f, rng, ln, b.is_captured, b.is_captured && !b.unboxed,
+            push!(facts, BindingFact(b.name, b.kind, f, rng, ln, b.is_captured, JL.is_boxed(b),
                 b.is_ambiguous_local, b.is_used_undef, b.is_assigned, macro_of(b.node_id)))
             # Declare top-level globals so later forms see soft-scope ambiguity; runs no user code.
             b.kind === :global && b.is_assigned && b.mod === mod && isempty(macro_of(b.node_id)) &&
+                Base.binding_kind(mod, Symbol(b.name)) in (Base.PARTITION_KIND_GUARD, Base.PARTITION_KIND_DECLARED) &&
                 Core.eval(mod, Expr(:global, Expr(:(::), Symbol(b.name), Any)))
         end
         FormResult(file, line, true, stage, "", time() - t0, facts)
@@ -114,8 +119,8 @@ function include_path(form::JL.SyntaxTree)::Union{Nothing,String}
     JS.head(form) === :call && JS.numchildren(form) == 2 || return nothing
     callee, arg = JS.children(form)
     JS.head(callee) === :identifier && JS.sourcetext(JS.sourceref(callee)) == "include" || return nothing
-    JS.head(arg) === :string && JS.numchildren(arg) == 1 && JS.head(arg[1]) === :value || return nothing
-    string(arg[1].value)
+    JS.head(arg) === :value && arg.value isa AbstractString || return nothing
+    string(arg.value)
 end
 
 """Child module `name` of `parent`: real one when loaded, else fresh sandbox."""
@@ -146,7 +151,13 @@ function walk!(results, prov, forms, mod::Module, dir::String; eval_imports::Boo
         else
             if eval_imports && k in (:using, :import)
                 # Imports bring macros into scope; this loads dependencies.
-                Core.eval(mod, JL.est_to_expr(form))
+                try
+                    Core.eval(mod, JL.est_to_expr(form))
+                catch err
+                    file, _, line = locate(form)
+                    push!(results, FormResult(file, line, false, :import, first(split(sprint(showerror, err), '\n')), 0.0, BindingFact[]))
+                    continue
+                end
             end
             push!(results, lower_form(form, mod, prov; full))
         end

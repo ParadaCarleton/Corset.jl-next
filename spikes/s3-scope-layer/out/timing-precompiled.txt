@@ -1,0 +1,6 @@
+Distances loaded run1 1.49s compile=1.41
+Distances loaded run2 0.06s compile=0.0
+DataStructures loaded run1 1.66s compile=1.46
+DataStructures loaded run2 0.17s compile=0.0
+JSON loaded run1 1.87s compile=1.77
+JSON loaded run2 0.11s compile=0.0

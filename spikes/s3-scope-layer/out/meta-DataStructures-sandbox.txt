@@ -1,0 +1,6 @@
+WARNING: Imported binding Tokens.IntSemiToken was undeclared at import time during import to DataStructures.
+target=DataStructures mode=sandbox forms=1223 ok=1214 failed=9 seconds=1.78
+  fail x6  LoadError: UndefVarError: `@invariant` not defined in `Main.Sandbox.DataStructures`
+  fail x2  LoadError: UndefVarError: `@delegate` not defined in `Main.Sandbox.DataStructures`
+  fail x1  LoadError: UndefVarError: `@delegate_return_parent` not defined in `Main.Sandbox.DataStruc
+facts: boxed=3 softscope_local=0 local_and_global=52
