@@ -19,7 +19,7 @@ pkg> add Corset
 Write a module with two problems.
 
 ```@setup first
-using CorsetLegacy: Repository, offenders!, hidden_inputs, unstable_variables, entry_frames
+using Corset: Repository, offenders!, hidden_inputs, unstable_variables, entry_frames
 root = mktempdir()
 mkpath(joinpath(root, "src"))
 write(joinpath(root, "src", "Demo.jl"), """

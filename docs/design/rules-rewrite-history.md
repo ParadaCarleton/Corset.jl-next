@@ -1,7 +1,7 @@
 # Corset rewrite: old rule names
 
 Record of rules on main, ideas from open work, and early decisions that use old names.
-Design page `rules-rewrite.html` replaces them with footguns and rules. Rewrite called rules "checks" until rename below.
+Design page `rules-rewrite.html` replaces them with footguns and checks.
 
 ## Rules on main, kept or changed
 
@@ -255,9 +255,9 @@ Proposal: test-only oracle. Typed IR from native compiler at lint time.
 
 ## Coverage of old rules
 
-Frozen: footgun and check names as of design split. Current catalog lives in footguns.toml and rules.toml.
+Frozen: footgun and check names as of design split. Current catalog lives in footguns.toml and checks.toml.
 
-| Source | Legacy rule | Footguns | Rule | Note |
+| Source | Old rule | Footguns | Check | Note |
 |---|---|---|---|---|
 | main | `unstable-variable` | F17 Variable, result or closure capture with vague inferred type | `vague-type` |  |
 | main | `unstable-return` | F17 Variable, result or closure capture with vague inferred type | `vague-type` |  |
@@ -380,33 +380,3 @@ Spike reports: `spikes/s1-stand-in-inference` to `spikes/s5-effect-summary`, fil
 | 9 | F1 needs whitespace; Argus ignores trivia | Fixed: F1 reads source bytes. |
 | 10 | S5 percentage wrong | Fixed: per-package shares. |
 | 11 | LintApp check source stale | Fixed: JuliaWorkspaces named. |
-
-### Layer audit after first family A checks
-
-Principle: rule waits for layer that owns its facts. Removed syntax versions and fixtures stay in `main` at `3cb1383` (`src/checks`, `test/ui`).
-
-| Rule | Problem | Outcome |
-|---|---|---|
-| `quadratic` | Grouped F43 (D) with F44 (A); syntax scan ignored collection type | Split: `loop-search` (F43, D), `repeated-concat` (F44, A). Syntax scan removed. |
-| `shared-fill` | Constructor list guessed mutability | F35 moves to D. Fix tier `manual`: comprehension changes code that shares on purpose, and `fill(x, -1)` throws where comprehension returns empty. |
-| `one-based-range` | Syntax `possible` reported missing type facts as finding; `Vector` argument is always 1-based | F36 moves to D. |
-| `loop-order` | Memory order depends on array type (`Adjoint`) | F42 moves to D. |
-| `non-exhaustive-match`, `unreachable-arm`, `wildcard-arm` | Variants need loaded ADT | F89–F91 move to C. |
-| `c-type` | Local variable named `Cint` gives false finding | Kept in A. `Cint === Int32`, so only syntax sees alias. Import `Cint as CI` still names `Cint` in import line. |
-| `untyped-empty`, `annotation` | Fixer needs inferred element or argument type | Detection stays A. Fixer reads L4 when it ran; otherwise fix is `manual`. |
-
-### Rename: check to rule
-
-"Check" named three things: `corset check` command, `Corset.check()` pipeline entry, and one unit of config. Unit is now "rule", as in Ruff. Command and entry point keep verb `check`. Argus wrapper `Rule` became `IndexedPattern`: it holds only pattern and root-kind index, while Argus `Rule` is whole named rule.
-
-### Doubt test: compiler as yardstick
-
-"Perfect analysis" left budgets ambiguous: dispatch over Corset's 4-candidate budget became blind spot. Compiler dispatches such call at run time, which is real code property. Test now asks whether compiler resolves doubt; Corset limits match compiler limits (`max_methods`, union splitting).
-
-### Rename: families and layers to stages
-
-Letters and layer numbers became one list of named stages. Map for older text: A and L1 `syntax`; B `lifecycle`; C and L3 `package`; H and L2 `scope`; D and L4 `inference`; E and L5 `effects`; G `external`.
-
-### `lifecycle` after `effects`
-
-Array rules hinge on whether callee writes array. Syntax alone treats every call as escape, or needs hand-written list of non-writing Base functions. `lifecycle` now reads callee writes from `effects` summaries and ships in phase 5; scripts get it with definitions-only load.

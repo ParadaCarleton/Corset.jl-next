@@ -28,7 +28,7 @@ These see inferred types, bindings and closures. They need `using MyPackage`. Th
 inferred types take their signatures from the caller: `entry_frames(signatures, MyPackage)` infers the
 package's methods those signatures reach, so the result is the same on every run. Submodules and
 loaded extensions count as the package. The `corset` command line seeds that walk from
-`CorsetLegacy.Entries` (see `--entries` in the CLI page). An opt-out on a method's first line covers
+`Corset.Entries` (see `--entries` in the CLI page). An opt-out on a method's first line covers
 every site these rules find in that method.
 
 ### `hidden-input`: `hidden_inputs(repository, mod)`

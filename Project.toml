@@ -1,22 +1,38 @@
 name = "Corset"
 uuid = "09bf9df1-bea6-4267-acd1-e930da7492cc"
-version = "0.5.0-DEV"
+version = "0.4.0"
 authors = ["Carlos Parada <71727937+ParadaCarleton@users.noreply.github.com>"]
 
 [deps]
-Argus = "e39743ec-b2cc-45ef-a990-b666fc093538"
+ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
 Configurations = "5218b696-f38b-4ac9-8b61-a12ec717816d"
-EnumX = "4e289a0a-7415-4d19-859d-a7e5c4648b56"
-JuliaSyntax = "70703baa-626e-46a2-a12c-08ffd08c73b4"
+ExplicitImports = "7d51a73a-1435-4ff3-83d9-f097790105c7"
+InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+OhMyThreads = "67456a42-1dca-4109-a031-0a68de7e3ad5"
+PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+diffutils_jll = "11f5bf75-d780-529b-b59b-a3a04c974070"
 
 [compat]
-Argus = "0.4.2"
-Configurations = "0.17"
-EnumX = "1.0.7"
-JuliaSyntax = "1.0.2"
+ArgParse = "1"
+Configurations = "0.17.6"
+ExplicitImports = "~1.15"
+InteractiveUtils = "1"
+JSON = "1"
+OhMyThreads = "0.8"
+PrecompileTools = "1"
 TOML = "1"
+Test = "1"
+diffutils_jll = "3.12.0"
 julia = "1.13"
 
+[apps.corset]
+
 [preferences.Corset]
-kind = "library"
+baseline = "corset_baseline.toml"
+struct_field_limit = 14
+
+    [preferences.Corset.levels]
+    concrete-return = "allow"

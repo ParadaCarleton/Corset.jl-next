@@ -4,24 +4,23 @@ Code layout, process model, cache, tests, command line.
 
 ### Code layout
 
-Each stage is one module that produces facts. Rules read facts through one API. Engine is only module that knows order.
+Each layer is one module that produces facts. Checks read facts through one API. Engine is only module that knows order.
 
 | Module | Job |
 |---|---|
-| `Syntax` | `syntax` stage: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind. |
-| `Scope` | `scope` stage: lowering and scope facts. JuliaLowering vendored at pinned julia commit on 1.13; `Base.JuliaLowering` from 1.14. Own replacement expansions for common Base macros keep byte positions. Soft scope: before lowering each form, declare earlier top-level assigned globals as `global x::Any`, in include order; order-sensitive fixtures. |
-| `Package` | `package` stage: load package; module facts; Project.toml facts. |
-| `Inference` | `inference` stage: stand-in types; one inference per method; typed IR with source mapping. Mapping: vendored TypedSyntax.jl algorithm on syntax tree; no CodeTracking. |
-| `Effects` | `effects` stage: effect and alias summary per method. |
-| `Lifecycle` | `lifecycle` stage: local def-use per array; callee writes from `effects`. |
-| `External` | `external` stage: Aqua.jl, ExplicitImports.jl, jscpd output as facts. |
-| `Facts` | Fact types and query API. Only module rule code may import. |
-| `Rules` | One pure function per rule; registry as data. |
-| `Engine` | Salsa.jl query graph: pick stages that enabled rules need; run them; apply levels, confidence, opt-outs, baseline. |
+| `Syntax` | L1: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind; array def-use (family B). |
+| `Scope` | L2: lowering and scope facts (family H). JuliaLowering vendored at pinned julia commit on 1.13; `Base.JuliaLowering` from 1.14. Own replacement expansions for common Base macros keep byte positions. Soft scope: before lowering each form, declare earlier top-level assigned globals as `global x::Any`, in include order; order-sensitive fixtures. |
+| `Load` | L3: load package; module facts (family C); Project.toml facts. |
+| `Infer` | L4: stand-in types; one inference per method; typed IR with source mapping (family D). Mapping: vendored TypedSyntax.jl algorithm on L1 tree; no CodeTracking. |
+| `Effects` | L5: effect and alias summary per method (family E). |
+| `External` | Family G: Aqua.jl, ExplicitImports.jl, jscpd output as facts. |
+| `Facts` | Fact types and query API. Only module check code may import. |
+| `Checks` | One pure function per check; registry as data. |
+| `Engine` | Salsa.jl query graph: pick layers that enabled checks need; run them; apply levels, confidence, opt-outs, baseline. |
 | `Fix` | Apply edits to lossless tree; filter by tier. |
 | `Report` | Render text, JSON, SARIF; `explain`. |
 | `Cache` | Disk cache keys and storage. |
-| `Config` | Project.toml and LocalPreferences.toml tables, presets, command-line flags; level per rule. |
+| `Config` | Preferences.jl table, presets, command-line overrides. |
 | `CLI` | Julia app entry point. |
 
 ### Core types
@@ -32,13 +31,12 @@ struct Label    span::Span; text::String end
 struct Edit     span::Span; replacement::String end
 struct Fix      edits::Vector{Edit}; tier::Tier end           # Tier: safe likely breaking manual
 struct Finding
-    rule::Symbol; kind::Symbol; confidence::Confidence      # definite possible
+    check::Symbol; kind::Symbol; confidence::Confidence      # definite possible
     primary::Label; causes::Vector{Label}; why::String
     fix::Union{Fix, Nothing}
 end
-struct Diagnostic finding::Finding; level::Level; source::String end   # source: where level was set
-struct RuleEntry
-    name::Symbol; group::Group; footguns::Vector{Int}; stage::Stage
+struct CheckEntry
+    name::Symbol; group::Group; footguns::Vector{Int}; family::Family
     run::Function                                            # (facts::Facts) -> Vector{Finding}
 end
 ```
@@ -54,11 +52,11 @@ end
 
 ### Tests
 
-- UI tests, as in Clippy: `test/ui/<rule>/<case>.jl` with snapshot of full rendered output and fixed source. Bless command updates snapshots; CI fails on diff.
+- UI tests, as in Clippy: `test/ui/<check>/<case>.jl` with snapshot of full rendered output and fixed source. Bless command updates snapshots; CI fails on diff.
 - Each footgun: positive case, negative case, fix case.
 - Property tests (Supposition.jl): fix creates no new finding; fix is idempotent. `safe` fix: fixture behaves same before and after (differential run).
 - Reference comparison: JET, fatou, LintApp.jl, ReLint.jl on fixtures, with allowlist.
-- 100% line coverage; mutation testing on rule code.
+- 100% line coverage; mutation testing on check code.
 
 ### Command line
 
@@ -66,25 +64,25 @@ end
 |---|---|
 | `corset check [path]` | Report findings. |
 | `corset fix [path] [--tier T]` | Apply fixes up to tier (default from preset), then check again. |
-| `corset explain <rule>` | Print rule docs offline. |
+| `corset explain <check>` | Print check docs offline. |
 | `corset baseline [path]` | Write current findings to baseline. |
 
-Flags: `-A`, `-W`, `-D <rule or group>` set levels (Clippy style); `--deny warnings`; `--confidence definite|possible`; `--format text|json|sarif`; `--no-cache`.
+Flags: `-A`, `-W`, `-D <check or group>` set levels (Clippy style); `--deny warnings`; `--confidence definite|possible`; `--format text|json|sarif`; `--no-cache`.
 
 Exit codes: `0` no `deny` finding; `1` `deny` finding; `2` config or usage error; `101` internal error (Cargo convention).
 
-### Rule contract
+### Check contract
 
 Main goal of rewrite: clean structure. Legacy implemented each rule on its own, so analyses repeated and code grew.
 
-- Each stage computes facts once per run: syntax index, array def-use, scopes, module facts, typed IR, effect summary.
-- Rule is one pure function: facts in, findings out. Rule code imports only facts API; test enforces it.
-- Rule that needs new information adds fact to its analysis. Long rule signals missing fact.
-- Registry is data: name, group, footguns, stage, fix tier. Docs page per rule comes from footgun table.
+- Analysis (family) computes facts once per run: syntax index, array def-use, scopes, module facts, typed IR, effect summary.
+- Check is one pure function: facts in, findings out. Check code imports only facts API; test enforces it.
+- Check that needs new information adds fact to its analysis. Long check signals missing fact.
+- Registry is data: name, group, footguns, family, fix tier. Docs page per check comes from footgun table.
 
 ### Package load
 
-Loading runs code. Stages after package load (`package`, `inference`, `effects`, `lifecycle`, `external`) run only on package with `name`; Julia apps qualify. Scripts and nameless environments get `syntax` and `scope`. Extensions are analyzed with test dependencies installed and their triggers loaded; `untested-extension` reports trigger missing from them. Later: definitions-only load for scripts.
+Loading runs code. Typed families (C, D, E, G) run only on package with `name`; Julia apps qualify. Scripts and nameless environments get A, B and H. Extensions are analyzed with test dependencies installed and their triggers loaded; `untested-extension` reports trigger missing from them. Later: definitions-only load for scripts.
 
 ### Incremental runs and disk cache
 
@@ -94,14 +92,14 @@ Loading runs code. Stages after package load (`package`, `inference`, `effects`,
 - Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.
 - Location: user cache directory, one entry set per project. CI saves it between runs.
 - Global key: Julia version, Corset version, config hash, Manifest hash, preferences, active extensions. Any change clears all entries.
-- `syntax` stage: findings per file, keyed by file content hash.
-- Typed stages: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. `@generated` method depends on whole package.
+- Syntax families: findings per file, keyed by file content hash.
+- Typed families: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. `@generated` method depends on whole package.
 - Run parses every file (cheap) and computes keys. Nothing changed: no package load; cached findings print. Otherwise load package and infer only invalid methods.
 - Later: warm daemon keeps Salsa tables and loaded package, so edit costs only its dependents.
 
 ### Reference linters
 
-JET, fatou, LintApp.jl (`julialint`, julia-vscode linter; its rules live in JuliaWorkspaces, vendored StaticLint) and ReLint.jl run only in Corset tests, never at lint time. All four are MIT: copy their rule code where it already implements our footgun, keeping license notice.
+JET, fatou, LintApp.jl (`julialint`, julia-vscode linter; its checks live in JuliaWorkspaces, vendored StaticLint) and ReLint.jl run only in Corset tests, never at lint time. All four are MIT: copy their check code where it already implements our footgun, keeping license notice.
 
 - Tests run each reference on fixture corpus and compare findings with Corset. `julialint` emits JSON and SARIF.
 - Reference finding Corset misses: fix Corset, or record reason in allowlist (reference bug, different design).

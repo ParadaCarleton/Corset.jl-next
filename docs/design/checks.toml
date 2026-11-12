@@ -1,0 +1,366 @@
+# Generated tables read this file. Run `uv run docs/design/build.py` after edits.
+
+# Check: unit of config, opt-out and group. Each footgun in exactly one check.
+
+[[check]]
+name = "ambiguous-concat"
+footguns = [1]
+
+[[check]]
+name = "bracketed-range"
+footguns = [2]
+
+[[check]]
+name = "juxtaposition"
+footguns = [3]
+
+[[check]]
+name = "where-binding"
+footguns = [4]
+note = "Fixer adds parentheses."
+
+[[check]]
+name = "intermediate-widening"
+footguns = [87]
+note = "Sites where widened type escapes go to `type-disruption`."
+
+[[check]]
+name = "type-disruption"
+footguns = [5, 6, 16]
+note = "Stand-in engine. Kinds: literal, float constant, array type."
+
+[[check]]
+name = "signed-division"
+footguns = [7, 8]
+
+[[check]]
+name = "inexact-conversion"
+footguns = [9]
+
+[[check]]
+name = "approx-zero"
+footguns = [10]
+
+[[check]]
+name = "bool-index"
+footguns = [11]
+
+[[check]]
+name = "overflow"
+footguns = [12]
+note = "Later."
+
+[[check]]
+name = "result-conversion"
+footguns = [13]
+note = "With `annotation`, makes annotations checked."
+
+[[check]]
+name = "invariant-parameter"
+footguns = [14]
+
+[[check]]
+name = "overspecified-type"
+footguns = [15]
+
+[[check]]
+name = "vague-type"
+footguns = [17, 18]
+note = "Abstract or `Any` inferred type: real dispatch cost. Kinds: local, result, capture, field."
+
+[[check]]
+name = "ad-hoc-union"
+footguns = [20]
+note = "Union policy: union of concrete types outside policy. Union of input type and literal type goes to `type-disruption`."
+
+[[check]]
+name = "mutable-struct"
+footguns = [19]
+
+[[check]]
+name = "untyped-empty"
+footguns = [21]
+note = "Fixer adds element type."
+
+[[check]]
+name = "eq-without-hash"
+footguns = [22]
+
+[[check]]
+name = "shadowed-base"
+footguns = [23]
+
+[[check]]
+name = "keyword-overwrite"
+footguns = [24]
+
+[[check]]
+name = "piracy"
+footguns = [25]
+note = "Aqua.jl."
+
+[[check]]
+name = "method-ambiguity"
+footguns = [94]
+note = "Aqua.jl."
+
+[[check]]
+name = "inference-dependent"
+footguns = [26]
+
+[[check]]
+name = "never-succeeds"
+footguns = [83]
+
+[[check]]
+name = "closed-struct"
+footguns = [84]
+
+[[check]]
+name = "missing-interface"
+footguns = [92]
+
+[[check]]
+name = "iterator-traits"
+footguns = [93]
+
+[[check]]
+name = "untested-extension"
+footguns = [88]
+
+[[check]]
+name = "runtime-dispatch"
+footguns = [27]
+
+[[check]]
+name = "dynamic-splat"
+footguns = [28]
+
+[[check]]
+name = "growing-recursion"
+footguns = [29]
+
+[[check]]
+name = "specialization-blowup"
+footguns = [30]
+
+[[check]]
+name = "scalar-loop"
+footguns = [31]
+
+[[check]]
+name = "temporary-array"
+footguns = [32]
+
+[[check]]
+name = "unwritten-element"
+footguns = [33, 34]
+note = "Kinds: undef read, placeholder read."
+
+[[check]]
+name = "shared-fill"
+footguns = [35]
+
+[[check]]
+name = "one-based-range"
+footguns = [36]
+note = "Fixer: `eachindex`."
+
+[[check]]
+name = "unverified-inbounds"
+footguns = [37]
+
+[[check]]
+name = "string-index"
+footguns = [38]
+
+[[check]]
+name = "constant-array"
+footguns = [39]
+note = "Fixer: FillArrays.jl."
+
+[[check]]
+name = "slice-copy"
+footguns = [40]
+
+[[check]]
+name = "broadcast-rebind"
+footguns = [41]
+
+[[check]]
+name = "loop-order"
+footguns = [42]
+note = "Possible only."
+
+[[check]]
+name = "quadratic"
+footguns = [43, 44]
+note = "Kinds: scan, concatenation."
+
+[[check]]
+name = "matrix-function"
+footguns = [45]
+note = "Later."
+
+[[check]]
+name = "conjugating-adjoint"
+footguns = [46]
+note = "Later."
+
+[[check]]
+name = "mutable-key"
+footguns = [47]
+
+[[check]]
+name = "iteration-mutation"
+footguns = [48]
+
+[[check]]
+name = "dict-order"
+footguns = [49]
+note = "Later."
+
+[[check]]
+name = "self-alias"
+footguns = [50]
+
+[[check]]
+name = "stateful-reuse"
+footguns = [51]
+
+[[check]]
+name = "missing-condition"
+footguns = [52]
+
+[[check]]
+name = "non-exhaustive-match"
+footguns = [89]
+
+[[check]]
+name = "unreachable-arm"
+footguns = [90]
+
+[[check]]
+name = "wildcard-arm"
+footguns = [91]
+note = "Default `allow`."
+
+[[check]]
+name = "bang-convention"
+footguns = [53, 86]
+note = "Kinds: missing, spurious. Methods added to other module's `!` function exempt. See `!` convention."
+
+[[check]]
+name = "unused-call"
+footguns = [54]
+
+[[check]]
+name = "hidden-input"
+footguns = [55]
+
+[[check]]
+name = "impure-lambda"
+footguns = [56]
+
+[[check]]
+name = "boxed-capture"
+footguns = [57]
+
+[[check]]
+name = "false-effects"
+footguns = [58]
+
+[[check]]
+name = "broad-catch"
+footguns = [59]
+
+[[check]]
+name = "duplicate-statement"
+footguns = [60]
+
+[[check]]
+name = "soft-scope"
+footguns = [61]
+
+[[check]]
+name = "try-scope"
+footguns = [62]
+
+[[check]]
+name = "world-age"
+footguns = [63]
+
+[[check]]
+name = "double-include"
+footguns = [64]
+
+[[check]]
+name = "implicit-import"
+footguns = [65]
+note = "ExplicitImports.jl."
+
+[[check]]
+name = "internal-access"
+footguns = [66]
+note = "ExplicitImports.jl."
+
+[[check]]
+name = "misplaced-import"
+footguns = [67]
+note = "Fixer moves imports."
+
+[[check]]
+name = "threadid-buffer"
+footguns = [68]
+
+[[check]]
+name = "threaded-race"
+footguns = [69]
+
+[[check]]
+name = "orphan-task"
+footguns = [70]
+
+[[check]]
+name = "annotation"
+footguns = [71]
+note = "Fixer guesses types for unannotated package; see annotation transition."
+
+[[check]]
+name = "one-letter"
+footguns = [72]
+
+[[check]]
+name = "mixed-return"
+footguns = [73]
+
+[[check]]
+name = "docstring"
+footguns = [74, 80]
+note = "Kinds: comment above function, module without docstring."
+
+[[check]]
+name = "duplicate-code"
+footguns = [76]
+note = "jscpd. Off by default."
+
+[[check]]
+name = "file-length"
+footguns = [77]
+
+[[check]]
+name = "wide-struct"
+footguns = [78]
+
+[[check]]
+name = "field-prefix"
+footguns = [79]
+
+[[check]]
+name = "c-type"
+footguns = [81]
+
+[[check]]
+name = "banned"
+footguns = [82]
+note = "One config list; each entry names its group."

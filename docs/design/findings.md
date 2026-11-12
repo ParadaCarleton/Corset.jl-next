@@ -12,43 +12,27 @@ Noise is no longer reason for group. Each finding says how sure analysis is. One
       <div role="cell"><code>possible</code> problem</div><div class="no" role="cell">skip</div><div class="yes" role="cell">report</div>
     </div>
 
-Note: Rules with both kinds: `bang-convention` (dispatch candidates disagree on write, or call dispatches at run time), `type-disruption` (type branch), `unwritten-element` and `constant-array` (sites fixer cannot prove).
+Note: Checks with both kinds: `bang-convention` (dispatch past candidate budget may write), `type-disruption` (type branch), `unwritten-element` and `constant-array` (sites fixer cannot prove).
 
 ### Groups
 
-`correctness`, `performance`, `composability`, `readability`. One group per rule; `banned` entries name their own group.
+`correctness`, `performance`, `composability`, `readability`. One group per check; `banned` entries name their own group.
 
-### Confidence and blind spots
+### Confidence setting
 
-`confidence` sets lowest confidence finding needs to be reported. `definite` (default) reports definite findings only; `possible` reports both. `likely` can join between them later.
-
-Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and method table when it compiles call. It never sees run-time values, foreign code or methods added later.
-
-| Compiler | Corset | Report |
-|---|---|---|
-| resolves; problem exists | proves problem | `definite` finding |
-| cannot resolve | cannot resolve | finding: `possible`, or rule of its own |
-| resolves | cannot resolve | blind spot: coverage line only |
-
-- Finding: argument typed `Any` reaches methods that disagree on writing it. Compiler dispatches at run time: `bang-convention` reports `possible`, and `runtime-dispatch` reports call.
-- Finding: public function returns union from dependency. Unknown callers decide: `possible`.
-- Blind spot: syntax-only rule cannot see that `a::Vector` is 1-based, because `inference` stage did not run.
-- Blind spot: inference refused generated method; macro did not expand; typed finding has no source span.
-- Corset limits never fall below compiler limits (`max_methods`, union splitting). Corset resolves every call compiler resolves.
-
-Coverage line ends every run and counts blind spots by cause: `analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)`. Rule that lacks fact at site reports nothing there.
+`confidence` sets lowest confidence finding needs to be reported. `definite` (default): problem exists. `possible`: analysis ran and could not rule problem out; includes definite findings. Gaps in Corset itself are never `possible` findings; coverage line lists them. `likely` can join between them later.
 
 ### Lint levels
 
-Clippy model: each group and each rule has level `allow`, `warn` or `deny`; rule level overrides group level from any source. Command-line flags beat config; config beats preset. `deny` findings fail run; `--deny warnings` makes warnings fail too. Baseline findings never fail run.
+Clippy model: each group and each check has level `allow`, `warn` or `deny`; check level overrides group level. `deny` findings fail run; `--deny warnings` makes warnings fail too. Baseline findings never fail run.
 
 ### Opt-out comments
 
-`# corset: allow <rule> -- <reason>`. Reason is required. Opt-out that suppresses nothing is error, like Rust `#[expect]`. Scope by position: end of line covers line; line above function, struct or block covers that item; top of file covers file.
+`# corset: allow <check> -- <reason>`. Reason is required. Opt-out that suppresses nothing is error, like Rust `#[expect]`. Scope by position: end of line covers line; line above function, struct or block covers that item; top of file covers file.
 
 ### Config
 
-`[preferences.Corset]` table in target Project.toml; `[Corset]` table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: `kind`, `confidence`, `fix_tier`, `levels` (group or rule name to level). Unknown key, value or name is config error (exit 2). Scripts without Project.toml use defaults and command-line flags.
+`[preferences.Corset]` table in Project.toml, read through Preferences.jl. Scripts without Project.toml use defaults and command-line flags.
 
 ### Project kind
 
@@ -74,10 +58,10 @@ Each fix declares tier by risk to callers; one setting picks highest tier applie
 
 ### Messages
 
-Model: Rust compiler errors. Each finding carries primary span, labeled cause spans, one-line reason, fix with tier, and docs link. Analyses record cause spans (where union is created, where literal enters), so rules can name cause. Span has precision: exact bytes or line only. Renderer marks whole line for line precision.
+Model: Rust compiler errors. Each finding carries primary span, labeled cause spans, one-line reason, fix with tier, and docs link. Analyses record cause spans (where union is created, where literal enters), so checks can name cause. Span has precision: exact bytes or line only. Renderer marks whole line for line precision.
 
 ```
-warning[vague-type]: `acc` changes type inside loop
+performance[vague-type]: `acc` changes type inside loop
   --> src/stats.jl:12:9
    |
 10 |     acc = 0
@@ -89,29 +73,27 @@ warning[vague-type]: `acc` changes type inside loop
    = why: later uses cannot compile for one type; each one dispatches at run time
    = fix: start from element type: `acc = zero(eltype(xs))`   [safe]
    = docs: corset explain vague-type
-   = note: warn from performance group, library preset
 ```
 
-- Header names level as rustc does: `error` for `deny`, `warning` for `warn`. Note line says where level was set, once per rule per run.
 - Same structure feeds SARIF: related locations and fixes.
-- `corset explain <rule>` prints footgun, example and fix offline.
+- `corset explain <check>` prints footgun, example and fix offline.
 - Opt-out hint names exact comment: `# corset: allow vague-type -- <reason>`.
 
 ### Macro output
 
-Findings inside macro expansions are reported, other packages' macros included: message marks them upstream and points at call site. Own macro: one finding at definition, with call-site count. Fixes never edit generated code. Syntax stages see source as written; findings in expanded code come from stages after load. Code passed through macro (`@inbounds`, `@views`) maps to exact bytes. Code macro writes itself (`@kwdef`, macro body, `@generated`) maps to nearest line inside definition: call site. Julia 1.13 lowering keeps no call-site provenance (S2); JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.
+Findings inside macro expansions are reported, other packages' macros included: message marks them upstream and points at call site. Own macro: one finding at definition, with call-site count. Fixes never edit generated code. Syntax families see source as written; findings in expanded code come from families after load. Code passed through macro (`@inbounds`, `@views`) maps to exact bytes. Code macro writes itself (`@kwdef`, macro body, `@generated`) maps to nearest line inside definition: call site. Julia 1.13 lowering keeps no call-site provenance (S2); JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.
 
 ### Conventions
 
 - Corset supports only latest Julia release, for running and for fixes.
 - Public API: exported or declared `public`. Everything else is internal.
 - `test/`, `docs/`, `benchmark/` are scripts: loading them runs them.
-- Baseline matches findings by rule, file, enclosing definition and normalized snippet hash. No line numbers, so edits elsewhere keep matches.
-- `corset explain` and docs page per rule follow Clippy sections: what it does, why it is bad, example, use instead, known problems.
+- Baseline matches findings by check, file, enclosing definition and normalized snippet hash. No line numbers, so edits elsewhere keep matches.
+- `corset explain` and docs page per check follow Clippy sections: what it does, why it is bad, example, use instead, known problems.
 - Fixes keep surrounding style; formatting stays formatter's job (Runic, JuliaFormatter).
 - Additive replacement for literal uses `oneunit(x)`, never `one(x)`: `one` drops units (Unitful.jl).
 - Corset lints itself in CI from phase 1.
-- Renamed rule keeps old name as alias that warns, so opt-out comments survive renames (Clippy renamed-lints list).
+- Renamed check keeps old name as alias that warns, so opt-out comments survive renames (Clippy renamed-lints list).
 
 ### `one-letter` exemptions
 

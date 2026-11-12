@@ -62,11 +62,13 @@ header { display: grid; gap: 12px; }
 /* pipeline diagram */
 .scroll { overflow-x: auto; min-width: 0; }
 .pipeline { display: grid; gap: 8px; min-width: 640px; }
-.layer { display: grid; grid-template-columns: 130px 1fr; gap: 16px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; }
+.layer { display: grid; grid-template-columns: 130px 1fr 230px; gap: 16px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; }
 .layer .id { font-family: var(--mono); font-weight: 600; color: var(--accent); }
 .layer .id small { display: block; font-weight: 400; color: var(--muted); font-size: 0.75rem; }
 .layer .what { font-size: 0.95rem; }
 .layer .what small { color: var(--muted); display: block; font-size: 0.85rem; }
+.fams { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.fam { font-family: var(--mono); font-size: 0.78rem; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; color: var(--fg); }
 .divider { display: flex; align-items: center; gap: 12px; color: var(--g-correct); font-family: var(--mono); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
 .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px dashed var(--g-correct); }
 .arrow { text-align: center; color: var(--muted); font-family: var(--mono); line-height: 1; }
@@ -74,13 +76,13 @@ header { display: grid; gap: 12px; }
 .sink div { border: 1px solid var(--accent); border-radius: 8px; padding: 10px 14px; font-size: 0.9rem; background: var(--surface); }
 .sink b { display: block; font-family: var(--mono); font-size: 0.82rem; color: var(--accent); }
 
-/* stages */
-.stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 12px; }
-.stage { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
-.stage h3 { display: flex; gap: 10px; align-items: baseline; }
-.stage h3 span { font-family: var(--mono); color: var(--accent); font-size: 1rem; }
-.stage p { font-size: 0.88rem; color: var(--muted); }
-.stage .rules { display: flex; flex-wrap: wrap; gap: 5px; }
+/* families */
+.families { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 12px; }
+.family { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.family h3 { display: flex; gap: 10px; align-items: baseline; }
+.family h3 span { font-family: var(--mono); color: var(--accent); font-size: 1rem; }
+.family p { font-size: 0.88rem; color: var(--muted); }
+.family .rules { display: flex; flex-wrap: wrap; gap: 5px; }
 .legend { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 0.85rem; color: var(--muted); }
 
 /* tables */
@@ -92,6 +94,7 @@ table { width: 100%; border-collapse: collapse; font-size: 0.92rem; min-width: 7
 th { text-align: left; font-family: var(--mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 2px solid var(--line); }
 td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 td:first-child { font-family: var(--mono); font-size: 0.84rem; white-space: nowrap; }
+td.fam-col { font-family: var(--mono); text-align: center; color: var(--accent); }
 .note { color: var(--muted); font-size: 0.86rem; }
 tr[hidden] { display: none; }
 
@@ -133,151 +136,147 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <header>
   <div class="eyebrow">Corset.jl · design · generated from docs/design parts</div>
   <h1>Corset Rewrite Plan</h1>
-  <p class="lede">Footguns, rules, shared analyses and decisions for rewrite of Corset. Source files: <code>docs/design/README.md</code> lists them. Legacy rule names live in <code>rules-rewrite-history.md</code>.</p>
-  <div class="meta"><span><b>92</b> footguns</span><span><b>85</b> rules</span><span><b>7</b> analysis stages</span></div>
-  <nav class="note"><a href="#principles">principles</a> · <a href="#footguns">footguns</a> · <a href="#pipeline">pipeline</a> · <a href="#stages">stages</a> · <a href="#rules">rules</a> · <a href="#findings">findings</a> · <a href="#types">types</a> · <a href="#effects">effects</a> · <a href="#architecture">architecture</a> · <a href="#plan">plan</a> · <a href="#glossary">glossary</a></nav>
+  <p class="lede">Footguns, checks, shared analyses and decisions for rewrite of Corset. Source files: <code>docs/design/README.md</code> lists them. Old rule names live in <code>rules-rewrite-history.md</code>.</p>
+  <div class="meta"><span><b>92</b> footguns</span><span><b>84</b> checks</span><span><b>7</b> analysis families</span></div>
+  <nav class="note"><a href="#principles">principles</a> · <a href="#footguns">footguns</a> · <a href="#pipeline">pipeline</a> · <a href="#families">families</a> · <a href="#checks">checks</a> · <a href="#findings">findings</a> · <a href="#types">types</a> · <a href="#effects">effects</a> · <a href="#architecture">architecture</a> · <a href="#plan">plan</a> · <a href="#glossary">glossary</a></nav>
 </header>
 
 <section id="principles">
 <h2>Principles</h2>
-<p>Principles behind every design choice, and what Corset does not do.</p>
+<p>Rules every design choice follows, and what Corset does not do.</p>
 <ul>
 <li>When unsure, do what Rust and Clippy do.</li>
 <li>Every decision is revisable. Evidence from spikes, corpus runs and users outranks earlier reasoning; see design reviews in <code>plan.md</code>.</li>
 <li>Compute each expensive step once per run. Share output with every rule.</li>
-<li>Footguns are source of truth. Rules group footguns by analysis they read. User-facing group is metadata only.</li>
-<li>Give each finding confidence: <code>definite</code> (problem exists) or <code>possible</code> (compiler cannot resolve doubt either). One setting filters them. Corset blind spots go to coverage line only (<code>findings.md</code>).</li>
+<li>Footguns are source of truth. Checks group footguns by analysis they read. User-facing group is metadata only.</li>
+<li>Give each finding confidence: <code>definite</code> (problem exists) or <code>possible</code> (problem not ruled out). One setting filters them.</li>
 <li>Map every finding back to source bytes. Fixers edit lossless syntax tree.</li>
-<li>Rule is small query over shared facts. Analysis stages compute every fact once per run; rule only reads them.</li>
-<li>Each fact has one producer. Rule never guesses later-stage fact (type, mutability, effect, ADT variant) from syntax; it waits for that stage.</li>
-<li>Rule belongs to last stage its findings need. One rule never mixes <code>syntax</code> footguns with footguns of later stages.</li>
-<li>Fixer may read later stages when they ran. Otherwise its fix is <code>manual</code>.</li>
+<li>Check is small query over shared facts. It never parses, lowers, loads or infers by itself.</li>
 <li>Every finding explains itself: cause spans, one-line reason, concrete fix. Rust compiler errors set bar.</li>
 <li>Cache findings on disk. Unchanged code is never analyzed twice, across restarts too.</li>
-<li>Keep linter process warm. Load target package once. Infer each package method once; every typed rule shares result.</li>
+<li>Keep linter process warm. Load target package once. Infer each package method once; every typed check shares result.</li>
 <li>Read typed IR from native compiler at lint time. Other linters (JET, fatou, LintApp.jl, ReLint.jl) serve only as test references and code sources.</li>
 </ul>
 <h2>Non-goals</h2>
 <ul>
 <li>Formatting: Runic or JuliaFormatter own it.</li>
-<li>Relying on package tests or precompile workloads. Facts come from source, type annotations, loaded module and inference. Package without tests or workloads gets full analysis. Code that ran before Corset changes speed only, never findings.</li>
+<li>Running package tests, or reading signatures from them.</li>
 <li>Findings in dependency code, Base included. Analysis reads dependency code freely (callee summaries, inference); only findings stay inside package. Code that macros expand into package counts as package code.</li>
 <li>Julia versions older than latest release.</li>
 <li>Security sandbox around package code. Corset loads code its user chose to lint.</li>
-<li>Version 1: language server; race and ownership analysis. Shape rules F68–F70 stay.</li>
+<li>Version 1: language server; race and ownership analysis. Shape checks F68–F70 stay.</li>
 </ul>
 
 </section>
 
 <section id="footguns">
-<h2>Footguns</h2><p>Source of truth for rewrite. Each line names one problem Corset prevents. Data: <code>footguns.toml</code>.</p><div class="filter" role="group" aria-label="Filter footguns by group"><button type="button" data-filter="all" aria-pressed="true">all</button><button type="button" data-filter="correctness" aria-pressed="false">correctness</button><button type="button" data-filter="performance" aria-pressed="false">performance</button><button type="button" data-filter="composability" aria-pressed="false">composability</button><button type="button" data-filter="readability" aria-pressed="false">readability</button></div><div class="scroll"><table data-table><thead><tr><th>ID</th><th>Area</th><th>Footgun</th><th>Example</th><th>Group</th><th>Stage</th><th>Note</th></tr></thead><tbody>
-<tr data-group="correctness"><td>F1</td><td>syntax</td><td>Space before minus in array literal concatenates</td><td><code>[1 -2]</code> is 1×2 matrix</td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>Needs whitespace: rule reads source bytes between elements, since Argus patterns ignore trivia.</td></tr>
-<tr data-group="correctness"><td>F2</td><td>syntax</td><td>Range in brackets is one-element vector</td><td><code>[1:3]</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td></td></tr>
-<tr data-group="correctness"><td>F3</td><td>syntax</td><td>Juxtaposition binds tighter than reader expects</td><td><code>2^2x == 2^(2x)</code>, <code>1/2x</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td></td></tr>
-<tr data-group="correctness"><td>F4</td><td>syntax</td><td><code>where</code> after result annotation binds result type</td><td><code>f(x::T)::T where {T}</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>Errors, or silently binds global <code>T</code> if one exists; report both. Upstream rejected precedence change (JuliaLang/julia#21847).</td></tr>
-<tr data-group="composability"><td>F5</td><td>numbers</td><td>Literal or constant changes input type</td><td><code>x::Float32 * 0.5</code>, <code>x::Int32 * 2</code></td><td><span class="chip g-composability">composability</span></td><td>inference</td><td>Report when converting literal to input type would change type of escaping value. Applies to generic and overspecified arguments.</td></tr>
-<tr data-group="composability"><td>F6</td><td>numbers</td><td>Float constant where irrational exists; promotes generic code</td><td><code>sqrt(2)</code>, <code>3.14159</code></td><td><span class="chip g-composability">composability</span></td><td>inference</td><td>Suggest <code>π</code>, IrrationalConstants.jl (<code>sqrt2</code>).</td></tr>
-<tr data-group="performance"><td>F87</td><td>numbers</td><td>Literal widens intermediate that does not escape</td><td><code>Float32(x * 0.5)</code> computes in <code>Float64</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td>Same test as F5; slow on GPU. Fix changes rounding, so tier <code>likely</code>.</td></tr>
-<tr data-group="correctness"><td>F7</td><td>numbers</td><td>Signed <code>%</code> and <code>÷</code> round toward zero</td><td><code>-1 % 3 == -1</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
-<tr data-group="correctness"><td>F8</td><td>numbers</td><td>Mixed signed and unsigned division</td><td><code>div(-1, UInt(2))</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
-<tr data-group="correctness"><td>F9</td><td>numbers</td><td>Float-to-integer constructor throws on fractions</td><td><code>Int(2.5)</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
-<tr data-group="correctness"><td>F10</td><td>numbers</td><td>Approximate compare to zero without <code>atol</code> is always false</td><td><code>x ≈ 0</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td></td></tr>
-<tr data-group="correctness"><td>F11</td><td>numbers</td><td><code>Bool</code> used as index</td><td><code>v[true]</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
-<tr data-group="correctness"><td>F12</td><td>numbers</td><td>Integer overflow wraps silently</td><td><code>typemax(Int) + 1</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>Later; off by default. Needs value ranges.</td></tr>
-<tr data-group="correctness"><td>F13</td><td>numbers</td><td>Result annotation converts instead of checking</td><td><code>f(x)::Float64 = x</code> turns <code>Float32</code> into <code>Float64</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>Report when inferred result needs conversion; annotation then acts as type check.</td></tr>
-<tr data-group="correctness"><td>F14</td><td>types</td><td>Invariant parameter rejects intended arguments</td><td><code>f(::Vector{Real})</code> rejects <code>Vector{Float64}</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td></td></tr>
-<tr data-group="composability"><td>F15</td><td>types</td><td>Overspecified type blocks generic callers</td><td><code>x::Float64</code>, <code>x::AbstractFloat</code>, <code>v::AbstractVector{Float64}</code>, <code>x::Union{Int16, Int32, Int64}</code> reject other types</td><td><span class="chip g-composability">composability</span></td><td>package</td><td>Overspecified: names specific number type, <code>AbstractFloat</code>, or concrete container anywhere in annotation. Kind enumerated union: union of sibling number types; fix <code>typejoin</code> (<code>Integer</code>, floats to <code>Real</code>). Union of package variants that leaves out some subtypes is deliberate and passes. Fix: type parameter. Message says annotation gains no speed: Julia compiles for each concrete argument type anyway. Exempt: concrete method beside generic method of same function (fast path).</td></tr>
-<tr data-group="composability"><td>F16</td><td>types</td><td>Hard-coded <code>Array</code> drops caller's array type</td><td><code>zeros(n)</code> inside method that got <code>CuArray</code></td><td><span class="chip g-composability">composability</span></td><td>inference</td><td></td></tr>
-<tr data-group="performance"><td>F17</td><td>types</td><td>Variable, result or closure capture with vague inferred type</td><td><code>acc = 0</code> then <code>acc += 0.5</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td>Capture may need own fix (<code>let</code>, pass as argument).</td></tr>
-<tr data-group="performance"><td>F18</td><td>types</td><td>Struct field with vague type</td><td><code>x::Real</code>, <code>x::Vector</code></td><td><span class="chip g-performance">performance</span></td><td>package</td><td></td></tr>
-<tr data-group="performance"><td>F19</td><td>types</td><td>Mutable struct where immutable works</td><td><code>mutable struct</code>; struct of mostly <code>Ref</code> fields</td><td><span class="chip g-performance">performance</span></td><td>inference</td><td></td></tr>
-<tr data-group="readability"><td>F20</td><td>types</td><td>Ad-hoc union of unrelated types where sum type belongs</td><td><code>Union{Circle, Square, Error}</code></td><td><span class="chip g-readability">readability</span></td><td>inference</td><td>Small unions compile fast; problem is design. Message suggests Moshi.jl ADT.</td></tr>
-<tr data-group="performance"><td>F21</td><td>types</td><td>Empty literal has <code>Any</code> element type</td><td><code>[]</code>, <code>Dict()</code></td><td><span class="chip g-performance">performance</span></td><td>syntax</td><td></td></tr>
-<tr data-group="correctness"><td>F22</td><td>types</td><td><code>==</code> defined without <code>hash</code></td><td><code>Dict</code> and <code>Set</code> disagree with <code>==</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td></td></tr>
-<tr data-group="correctness"><td>F23</td><td>types</td><td>Method named like Base function without <code>Base.</code> shadows it</td><td><code>length(x::MyT) = …</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>Julia 1.13 raises no error: module gets separate function, so <code>length([1, 2])</code> there throws <code>MethodError</code>.</td></tr>
-<tr data-group="correctness"><td>F24</td><td>types</td><td>Methods differ only in keywords; later one overwrites</td><td><code>f(x; a)</code> and <code>f(x; b)</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>Keywords take no part in dispatch. Julia 1.10+ errors in packages; rule covers scripts and explains cause.</td></tr>
-<tr data-group="composability"><td>F25</td><td>types</td><td>Type piracy</td><td><code>Base.:+(::Int, ::String)</code></td><td><span class="chip g-composability">composability</span></td><td>external</td><td></td></tr>
-<tr data-group="composability"><td>F26</td><td>types</td><td>Behavior depends on inference result</td><td><code>Core.Compiler.return_type</code></td><td><span class="chip g-composability">composability</span></td><td>syntax</td><td></td></tr>
-<tr data-group="correctness"><td>F94</td><td>types</td><td>Method ambiguity between package methods</td><td><code>f(::Int, ::Any)</code> and <code>f(::Any, ::Int)</code></td><td><span class="chip g-correctness">correctness</span></td><td>external</td><td>Aqua.jl ambiguity check; covers intersections no analyzed call reaches.</td></tr>
-<tr data-group="correctness"><td>F83</td><td>types</td><td>Call can never succeed</td><td>no matching method; undefined global or field</td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>Package call inferred <code>Union{}</code> without explicit <code>throw</code>. Re-dispatch failing call on narrow real types (<code>Float32</code>, <code>Int32</code>, <code>Array</code>): success means stand-in blind spot, counted on coverage line. Report at deepest package frame only. Signature that works only with <code>Int</code>, <code>Float64</code> or <code>Vector</code>: <code>possible</code>. JET is test reference.</td></tr>
-<tr data-group="composability"><td>F84</td><td>types</td><td>Public struct has no abstract supertype; users cannot extend</td><td><code>struct Model</code> → <code>struct Model &lt;: AbstractModel</code></td><td><span class="chip g-composability">composability</span></td><td>package</td><td>Public structs only.</td></tr>
-<tr data-group="correctness"><td>F92</td><td>types</td><td>Subtype misses required interface method</td><td><code>struct V &lt;: AbstractArray</code> without <code>size</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>Rust rejects incomplete trait impl; Julia fails at first call. Lists from Interfaces.jl or RequiredInterfaces.jl.</td></tr>
-<tr data-group="performance"><td>F93</td><td>types</td><td>Iterator misses size and element traits</td><td><code>iterate</code> without <code>IteratorSize</code>, <code>eltype</code>, <code>length</code></td><td><span class="chip g-performance">performance</span></td><td>package</td><td><code>collect</code> and friends take slow, vague paths.</td></tr>
-<tr data-group="performance"><td>F27</td><td>compile</td><td>Call resolved at run time</td><td>call on <code>Any</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td></td></tr>
-<tr data-group="performance"><td>F28</td><td>compile</td><td>Splat of variable-length collection</td><td><code>f(xs...)</code>, <code>xs::Vector</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td></td></tr>
-<tr data-group="performance"><td>F29</td><td>compile</td><td>Recursion with argument types that nest each call</td><td><code>f(x) = f((x,))</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td></td></tr>
-<tr data-group="performance"><td>F30</td><td>compile</td><td>Too many specializations on <code>Function</code> or <code>Type</code> argument</td><td>one method, 500 closure types</td><td><span class="chip g-performance">performance</span></td><td>package</td><td>Predict from source: <code>package</code> stage finds methods that specialize on argument; <code>syntax</code> stage counts distinct closures or types passed at package call sites.</td></tr>
-<tr data-group="correctness"><td>F31</td><td>arrays</td><td>Loop over scalar runs once</td><td><code>for i in 4</code>, <code>for i in length(v)</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
-<tr data-group="performance"><td>F32</td><td>arrays</td><td>Temporary array built only to be consumed once</td><td><code>sum(f.(x))</code> → <code>sum(f, x)</code>; <code>collect</code> of iterator used once</td><td><span class="chip g-performance">performance</span></td><td>lifecycle</td><td>Enforceable part of stay-lazy goal.</td></tr>
-<tr data-group="correctness"><td>F33</td><td>arrays</td><td>Uninitialized element read before write</td><td><code>similar(x)</code> then <code>sum</code></td><td><span class="chip g-correctness">correctness</span></td><td>lifecycle</td><td>Definite only for straight-line pattern; loops, branches, aliases, views give <code>possible</code>.</td></tr>
-<tr data-group="correctness"><td>F34</td><td>arrays</td><td>Placeholder value looks like data after partial fill</td><td><code>zeros(n)</code>, half written</td><td><span class="chip g-correctness">correctness</span></td><td>lifecycle</td><td>Definite only for straight-line pattern; loops, branches, aliases, views give <code>possible</code>.</td></tr>
-<tr data-group="correctness"><td>F35</td><td>arrays</td><td><code>fill</code> shares one mutable object</td><td><code>fill(zeros(3), n)</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>Inferred value type decides mutability; syntax list of mutable constructors would guess it. Fix tier <code>manual</code>: comprehension also changes code that shares on purpose.</td></tr>
-<tr data-group="composability"><td>F36</td><td>arrays</td><td><code>1:length(A)</code> assumes 1-based indices</td><td><code>OffsetArray</code> breaks it</td><td><span class="chip g-composability">composability</span></td><td>inference</td><td>Inferred <code>axes</code> type decides: <code>OneTo</code> gives no finding (<code>Array</code>, S4 <code>CircularDeque</code>); argument of abstract array type gives <code>definite</code>.</td></tr>
-<tr data-group="correctness"><td>F37</td><td>arrays</td><td>Index safety removed without proof</td><td><code>@inbounds</code> on unchecked index</td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
-<tr data-group="correctness"><td>F38</td><td>arrays</td><td>String indexed by character count</td><td><code>s[i]</code> for <code>i in 1:length(s)</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
-<tr data-group="performance"><td>F39</td><td>arrays</td><td>Never-written constant array allocates</td><td><code>ones(n)</code> read only</td><td><span class="chip g-performance">performance</span></td><td>lifecycle</td><td></td></tr>
-<tr data-group="performance"><td>F40</td><td>arrays</td><td>Read-only slice copies</td><td><code>sum(A[:, i])</code></td><td><span class="chip g-performance">performance</span></td><td>lifecycle</td><td></td></tr>
-<tr data-group="performance"><td>F41</td><td>arrays</td><td>Broadcast rebinds preallocated buffer</td><td><code>x = f.(y)</code></td><td><span class="chip g-performance">performance</span></td><td>lifecycle</td><td></td></tr>
-<tr data-group="performance"><td>F42</td><td>arrays</td><td>Inner loop over non-first index</td><td><code>for i, j; A[i, j]</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td>Array type decides memory order: <code>Adjoint</code> and <code>PermutedDimsArray</code> reverse it. Possible only: loop length is unknown.</td></tr>
-<tr data-group="performance"><td>F43</td><td>arrays</td><td>Search inside loop over same collection</td><td><code>x in v</code> per element of <code>v</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td></td></tr>
-<tr data-group="performance"><td>F44</td><td>arrays</td><td>Fold concatenates one piece at a time</td><td><code>reduce(vcat, parts)</code> in loop</td><td><span class="chip g-performance">performance</span></td><td>syntax</td><td></td></tr>
-<tr data-group="correctness"><td>F45</td><td>arrays</td><td>Matrix function where elementwise was meant</td><td><code>exp(A)</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>Later; off by default.</td></tr>
-<tr data-group="correctness"><td>F46</td><td>arrays</td><td>Adjoint conjugates complex data</td><td><code>v'</code> on <code>ComplexF64</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>Later; off by default.</td></tr>
-<tr data-group="correctness"><td>F47</td><td>containers</td><td>Mutable key mutated after insert</td><td><code>Dict{Vector{Int}, …}</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
-<tr data-group="correctness"><td>F48</td><td>containers</td><td>Container mutated while iterating</td><td><code>delete!(d, k)</code> in <code>for k in keys(d)</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td></td></tr>
-<tr data-group="correctness"><td>F49</td><td>containers</td><td>Code relies on <code>Dict</code> order</td><td><code>Dict</code> iterated into output</td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>Later; off by default.</td></tr>
-<tr data-group="correctness"><td>F50</td><td>containers</td><td>Same container passed twice to mutating call</td><td><code>append!(a, a)</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td></td></tr>
-<tr data-group="correctness"><td>F51</td><td>containers</td><td><code>Iterators.Stateful</code> consumed twice</td><td><code>isempty(s)</code> then <code>for x in s</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td></td></tr>
-<tr data-group="correctness"><td>F52</td><td>containers</td><td><code>missing</code> reaches condition</td><td><code>if x &gt; 0</code> with <code>x::Union{Missing, Int}</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
-<tr data-group="correctness"><td>F89</td><td>containers</td><td><code>@match</code> misses variant of Moshi ADT</td><td>no arm for <code>Shape.Circle</code>, no catch-all</td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>Moshi emits runtime <code>error("matching non-exhaustive")</code>. Variants come from loaded <code>@data</code> type. Fix tier <code>manual</code>.</td></tr>
-<tr data-group="correctness"><td>F90</td><td>containers</td><td>Unreachable <code>@match</code> arm</td><td>arm after pattern that covers it</td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td></td></tr>
-<tr data-group="correctness"><td>F91</td><td>containers</td><td>Catch-all arm on own ADT hides later variants</td><td><code>_ =&gt; …</code> in <code>@match</code> on package ADT</td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>Clippy <code>wildcard_enum_match_arm</code>. Default level <code>allow</code>.</td></tr>
-<tr data-group="correctness"><td>F53</td><td>effects</td><td>Function writes argument or global without <code>!</code></td><td><code>normalize(v)</code> changes <code>v</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td></td></tr>
-<tr data-group="correctness"><td>F54</td><td>effects</td><td>Call has no effect and result is unused</td><td><code>f(x)</code> returns <code>nothing</code>, writes nothing</td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td></td></tr>
-<tr data-group="correctness"><td>F86</td><td>effects</td><td><code>!</code> function writes nothing; callers drop its result</td><td><code>normalize!(v)</code> returns new vector</td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>Method whose body only throws (<code>pop!(::SortedSet) = error(...)</code>) is exempt.</td></tr>
-<tr data-group="correctness"><td>F55</td><td>effects</td><td>Hidden input: mutable global, <code>ScopedValue</code>, global RNG</td><td><code>rand()</code> in package code</td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td></td></tr>
-<tr data-group="correctness"><td>F56</td><td>effects</td><td>Anonymous function impure: captures mutable state</td><td><code>filter(x -&gt; x in seen, xs)</code>, <code>seen::Set</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>Named functions follow <code>!</code> convention; anonymous ones stay pure. Read-only capture counts.</td></tr>
-<tr data-group="performance"><td>F57</td><td>effects</td><td>Closure rebinds captured variable; <code>Core.Box</code></td><td><code>n = 0; f = () -&gt; (n += 1)</code></td><td><span class="chip g-performance">performance</span></td><td>scope</td><td></td></tr>
-<tr data-group="correctness"><td>F58</td><td>effects</td><td><code>@assume_effects</code> claim false</td><td><code>:consistent</code> on body that reads global</td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td></td></tr>
-<tr data-group="correctness"><td>F59</td><td>effects</td><td>Catch handles every error</td><td><code>catch; end</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td></td></tr>
-<tr data-group="correctness"><td>F60</td><td>effects</td><td>Same statement twice in block</td><td>copy-paste duplicate</td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td></td></tr>
-<tr data-group="correctness"><td>F61</td><td>scope</td><td>Top-level loop assigns global; REPL and file differ</td><td><code>for …; total += x; end</code> in script</td><td><span class="chip g-correctness">correctness</span></td><td>scope</td><td></td></tr>
-<tr data-group="correctness"><td>F62</td><td>scope</td><td>Variable first assigned in <code>try</code> read after it</td><td><code>try; y = f(); end; y</code></td><td><span class="chip g-correctness">correctness</span></td><td>scope</td><td></td></tr>
-<tr data-group="correctness"><td>F63</td><td>scope</td><td>Function defined by <code>eval</code> called in same world</td><td><code>@eval g() = 1; g()</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>Syntactic; needs no scope facts (S3).</td></tr>
-<tr data-group="correctness"><td>F64</td><td>scope</td><td>Same file included twice</td><td>two copies of module</td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td></td></tr>
-<tr data-group="composability"><td>F65</td><td>modules</td><td>Name reached through bare <code>using</code></td><td>two packages export <code>solve</code></td><td><span class="chip g-composability">composability</span></td><td>external</td><td></td></tr>
-<tr data-group="composability"><td>F66</td><td>modules</td><td>Use of other module's internal name</td><td><code>Base._foo</code></td><td><span class="chip g-composability">composability</span></td><td>external</td><td></td></tr>
-<tr data-group="readability"><td>F67</td><td>modules</td><td>Import placed in file that does not use it</td><td><code>using LinearAlgebra</code> in <code>src/Pkg.jl</code> for <code>src/solve.jl</code></td><td><span class="chip g-readability">readability</span></td><td>external</td><td></td></tr>
-<tr data-group="correctness"><td>F88</td><td>modules</td><td>Extension trigger package missing from test dependencies</td><td><code>[weakdeps]</code> names <code>CUDA</code>; tests never load it</td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>Reads Project.toml; no load needed. Untested extension also cannot be analyzed.</td></tr>
-<tr data-group="correctness"><td>F68</td><td>concurrency</td><td>Buffer indexed by <code>threadid()</code></td><td><code>bufs[threadid()]</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td></td></tr>
-<tr data-group="correctness"><td>F69</td><td>concurrency</td><td>Unsynchronized update in threaded loop</td><td><code>acc += x</code> in <code>@threads</code></td><td><span class="chip g-correctness">correctness</span></td><td>scope</td><td></td></tr>
-<tr data-group="correctness"><td>F70</td><td>concurrency</td><td>Task result never waited; errors vanish</td><td><code>@spawn work()</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td></td></tr>
-<tr data-group="readability"><td>F71</td><td>readability</td><td>Argument or result without type</td><td><code>f(x) = …</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>With result-conversion rule, annotations act as type checks. Fixer fills result type from inference. <code>::Any</code> opts out.</td></tr>
-<tr data-group="readability"><td>F72</td><td>readability</td><td>One-letter name</td><td><code>q = …</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>Exempt: type names and parameters; <code>i</code>, <code>j</code>, <code>k</code> as indices.</td></tr>
-<tr data-group="readability"><td>F73</td><td>readability</td><td>Explicit <code>return</code> mixed with implicit last value</td><td></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>Narrow by design. Requiring <code>return</code> everywhere forces <code>return nothing</code>, which fights formatters (Runic) and creates dead code.</td></tr>
-<tr data-group="readability"><td>F74</td><td>readability</td><td>Comment where docstring belongs</td><td><code># adds x</code> above function</td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td></td></tr>
-<tr data-group="readability"><td>F76</td><td>readability</td><td>Copied code block</td><td></td><td><span class="chip g-readability">readability</span></td><td>external</td><td>Off by default; jscpd finds near-duplicates, needs Node.</td></tr>
-<tr data-group="readability"><td>F77</td><td>readability</td><td>File too long</td><td></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td></td></tr>
-<tr data-group="readability"><td>F78</td><td>readability</td><td>Struct with too many fields</td><td></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td></td></tr>
-<tr data-group="readability"><td>F79</td><td>readability</td><td>Related fields belong in nested struct, table or array</td><td><code>governor_name</code>, <code>governor_age</code> → <code>governor.name</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td></td></tr>
-<tr data-group="readability"><td>F80</td><td>readability</td><td>Module without docstring</td><td></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td></td></tr>
-<tr data-group="readability"><td>F81</td><td>readability</td><td>C types outside C calls</td><td><code>Cint</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td></td></tr>
-<tr data-group="readability"><td>F82</td><td>readability</td><td>Project-banned name or pattern</td><td>config list</td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td></td></tr>
+<h2>Footguns</h2><p>Source of truth for rewrite. Each line names one problem Corset prevents. Data: <code>footguns.toml</code>.</p><div class="filter" role="group" aria-label="Filter footguns by group"><button type="button" data-filter="all" aria-pressed="true">all</button><button type="button" data-filter="correctness" aria-pressed="false">correctness</button><button type="button" data-filter="performance" aria-pressed="false">performance</button><button type="button" data-filter="composability" aria-pressed="false">composability</button><button type="button" data-filter="readability" aria-pressed="false">readability</button></div><div class="scroll"><table data-table><thead><tr><th>ID</th><th>Area</th><th>Footgun</th><th>Example</th><th>Group</th><th>Family</th><th>Note</th></tr></thead><tbody>
+<tr data-group="correctness"><td>F1</td><td>syntax</td><td>Space before minus in array literal concatenates</td><td><code>[1 -2]</code> is 1×2 matrix</td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>Needs whitespace: check reads source bytes between elements, since Argus patterns ignore trivia.</td></tr>
+<tr data-group="correctness"><td>F2</td><td>syntax</td><td>Range in brackets is one-element vector</td><td><code>[1:3]</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
+<tr data-group="correctness"><td>F3</td><td>syntax</td><td>Juxtaposition binds tighter than reader expects</td><td><code>2^2x == 2^(2x)</code>, <code>1/2x</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
+<tr data-group="correctness"><td>F4</td><td>syntax</td><td><code>where</code> after result annotation binds result type</td><td><code>f(x::T)::T where {T}</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>Errors, or silently binds global <code>T</code> if one exists; report both. Upstream rejected precedence change (JuliaLang/julia#21847).</td></tr>
+<tr data-group="composability"><td>F5</td><td>numbers</td><td>Literal or constant changes input type</td><td><code>x::Float32 * 0.5</code>, <code>x::Int32 * 2</code></td><td><span class="chip g-composability">composability</span></td><td>D</td><td>Report when converting literal to input type would change type of escaping value. Applies to generic and overspecified arguments.</td></tr>
+<tr data-group="composability"><td>F6</td><td>numbers</td><td>Float constant where irrational exists; promotes generic code</td><td><code>sqrt(2)</code>, <code>3.14159</code></td><td><span class="chip g-composability">composability</span></td><td>D</td><td>Suggest <code>π</code>, IrrationalConstants.jl (<code>sqrt2</code>).</td></tr>
+<tr data-group="performance"><td>F87</td><td>numbers</td><td>Literal widens intermediate that does not escape</td><td><code>Float32(x * 0.5)</code> computes in <code>Float64</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td>Same test as F5; slow on GPU. Fix changes rounding, so tier <code>likely</code>.</td></tr>
+<tr data-group="correctness"><td>F7</td><td>numbers</td><td>Signed <code>%</code> and <code>÷</code> round toward zero</td><td><code>-1 % 3 == -1</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td></td></tr>
+<tr data-group="correctness"><td>F8</td><td>numbers</td><td>Mixed signed and unsigned division</td><td><code>div(-1, UInt(2))</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td></td></tr>
+<tr data-group="correctness"><td>F9</td><td>numbers</td><td>Float-to-integer constructor throws on fractions</td><td><code>Int(2.5)</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td></td></tr>
+<tr data-group="correctness"><td>F10</td><td>numbers</td><td>Approximate compare to zero without <code>atol</code> is always false</td><td><code>x ≈ 0</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
+<tr data-group="correctness"><td>F11</td><td>numbers</td><td><code>Bool</code> used as index</td><td><code>v[true]</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td></td></tr>
+<tr data-group="correctness"><td>F12</td><td>numbers</td><td>Integer overflow wraps silently</td><td><code>typemax(Int) + 1</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>Later; off by default. Needs value ranges.</td></tr>
+<tr data-group="correctness"><td>F13</td><td>numbers</td><td>Result annotation converts instead of checking</td><td><code>f(x)::Float64 = x</code> turns <code>Float32</code> into <code>Float64</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>Report when inferred result needs conversion; annotation then acts as type check.</td></tr>
+<tr data-group="correctness"><td>F14</td><td>types</td><td>Invariant parameter rejects intended arguments</td><td><code>f(::Vector{Real})</code> rejects <code>Vector{Float64}</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td></td></tr>
+<tr data-group="composability"><td>F15</td><td>types</td><td>Overspecified type blocks generic callers</td><td><code>x::Float64</code>, <code>x::AbstractFloat</code>, <code>v::AbstractVector{Float64}</code>, <code>x::Union{Int16, Int32, Int64}</code> reject other types</td><td><span class="chip g-composability">composability</span></td><td>C</td><td>Overspecified: names specific number type, <code>AbstractFloat</code>, or concrete container anywhere in annotation. Kind enumerated union: union of sibling number types; fix <code>typejoin</code> (<code>Integer</code>, floats to <code>Real</code>). Union of package variants that leaves out some subtypes is deliberate and passes. Fix: type parameter. Message says annotation gains no speed: Julia compiles for each concrete argument type anyway. Exempt: concrete method beside generic method of same function (fast path).</td></tr>
+<tr data-group="composability"><td>F16</td><td>types</td><td>Hard-coded <code>Array</code> drops caller's array type</td><td><code>zeros(n)</code> inside method that got <code>CuArray</code></td><td><span class="chip g-composability">composability</span></td><td>D</td><td></td></tr>
+<tr data-group="performance"><td>F17</td><td>types</td><td>Variable, result or closure capture with vague inferred type</td><td><code>acc = 0</code> then <code>acc += 0.5</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td>Capture may need own fix (<code>let</code>, pass as argument).</td></tr>
+<tr data-group="performance"><td>F18</td><td>types</td><td>Struct field with vague type</td><td><code>x::Real</code>, <code>x::Vector</code></td><td><span class="chip g-performance">performance</span></td><td>C</td><td></td></tr>
+<tr data-group="performance"><td>F19</td><td>types</td><td>Mutable struct where immutable works</td><td><code>mutable struct</code>; struct of mostly <code>Ref</code> fields</td><td><span class="chip g-performance">performance</span></td><td>D</td><td></td></tr>
+<tr data-group="readability"><td>F20</td><td>types</td><td>Ad-hoc union of unrelated types where sum type belongs</td><td><code>Union{Circle, Square, Error}</code></td><td><span class="chip g-readability">readability</span></td><td>D</td><td>Small unions compile fast; problem is design. Message suggests Moshi.jl ADT.</td></tr>
+<tr data-group="performance"><td>F21</td><td>types</td><td>Empty literal has <code>Any</code> element type</td><td><code>[]</code>, <code>Dict()</code></td><td><span class="chip g-performance">performance</span></td><td>A</td><td></td></tr>
+<tr data-group="correctness"><td>F22</td><td>types</td><td><code>==</code> defined without <code>hash</code></td><td><code>Dict</code> and <code>Set</code> disagree with <code>==</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td></td></tr>
+<tr data-group="correctness"><td>F23</td><td>types</td><td>Method named like Base function without <code>Base.</code> shadows it</td><td><code>length(x::MyT) = …</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>Julia 1.13 raises no error: module gets separate function, so <code>length([1, 2])</code> there throws <code>MethodError</code>.</td></tr>
+<tr data-group="correctness"><td>F24</td><td>types</td><td>Methods differ only in keywords; later one overwrites</td><td><code>f(x; a)</code> and <code>f(x; b)</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>Keywords take no part in dispatch. Julia 1.10+ errors in packages; check covers scripts and explains cause.</td></tr>
+<tr data-group="composability"><td>F25</td><td>types</td><td>Type piracy</td><td><code>Base.:+(::Int, ::String)</code></td><td><span class="chip g-composability">composability</span></td><td>G</td><td></td></tr>
+<tr data-group="composability"><td>F26</td><td>types</td><td>Behavior depends on inference result</td><td><code>Core.Compiler.return_type</code></td><td><span class="chip g-composability">composability</span></td><td>A</td><td></td></tr>
+<tr data-group="correctness"><td>F94</td><td>types</td><td>Method ambiguity between package methods</td><td><code>f(::Int, ::Any)</code> and <code>f(::Any, ::Int)</code></td><td><span class="chip g-correctness">correctness</span></td><td>G</td><td>Aqua.jl ambiguity check; covers intersections no analyzed call reaches.</td></tr>
+<tr data-group="correctness"><td>F83</td><td>types</td><td>Call can never succeed</td><td>no matching method; undefined global or field</td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>Package call inferred <code>Union{}</code> without explicit <code>throw</code>. Re-dispatch failing call on narrow real types (<code>Float32</code>, <code>Int32</code>, <code>Array</code>): success means stand-in gap, listed in coverage. Report at deepest package frame only. Signature that works only with <code>Int</code>, <code>Float64</code> or <code>Vector</code>: <code>possible</code>. JET is test reference.</td></tr>
+<tr data-group="composability"><td>F84</td><td>types</td><td>Public struct has no abstract supertype; users cannot extend</td><td><code>struct Model</code> → <code>struct Model &lt;: AbstractModel</code></td><td><span class="chip g-composability">composability</span></td><td>C</td><td>Public structs only.</td></tr>
+<tr data-group="correctness"><td>F92</td><td>types</td><td>Subtype misses required interface method</td><td><code>struct V &lt;: AbstractArray</code> without <code>size</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>Rust rejects incomplete trait impl; Julia fails at first call. Lists from Interfaces.jl or RequiredInterfaces.jl.</td></tr>
+<tr data-group="performance"><td>F93</td><td>types</td><td>Iterator misses size and element traits</td><td><code>iterate</code> without <code>IteratorSize</code>, <code>eltype</code>, <code>length</code></td><td><span class="chip g-performance">performance</span></td><td>C</td><td><code>collect</code> and friends take slow, vague paths.</td></tr>
+<tr data-group="performance"><td>F27</td><td>compile</td><td>Call resolved at run time</td><td>call on <code>Any</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td></td></tr>
+<tr data-group="performance"><td>F28</td><td>compile</td><td>Splat of variable-length collection</td><td><code>f(xs...)</code>, <code>xs::Vector</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td></td></tr>
+<tr data-group="performance"><td>F29</td><td>compile</td><td>Recursion with argument types that nest each call</td><td><code>f(x) = f((x,))</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td></td></tr>
+<tr data-group="performance"><td>F30</td><td>compile</td><td>Too many specializations on <code>Function</code> or <code>Type</code> argument</td><td>one method, 500 closure types</td><td><span class="chip g-performance">performance</span></td><td>C</td><td>Predict from source: C finds methods that specialize on argument; A counts distinct closures or types passed at package call sites.</td></tr>
+<tr data-group="correctness"><td>F31</td><td>arrays</td><td>Loop over scalar runs once</td><td><code>for i in 4</code>, <code>for i in length(v)</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td></td></tr>
+<tr data-group="performance"><td>F32</td><td>arrays</td><td>Temporary array built only to be consumed once</td><td><code>sum(f.(x))</code> → <code>sum(f, x)</code>; <code>collect</code> of iterator used once</td><td><span class="chip g-performance">performance</span></td><td>B</td><td>Enforceable part of stay-lazy goal.</td></tr>
+<tr data-group="correctness"><td>F33</td><td>arrays</td><td>Uninitialized element read before write</td><td><code>similar(x)</code> then <code>sum</code></td><td><span class="chip g-correctness">correctness</span></td><td>B</td><td>Definite only for straight-line pattern; loops, branches, aliases, views give <code>possible</code>.</td></tr>
+<tr data-group="correctness"><td>F34</td><td>arrays</td><td>Placeholder value looks like data after partial fill</td><td><code>zeros(n)</code>, half written</td><td><span class="chip g-correctness">correctness</span></td><td>B</td><td>Definite only for straight-line pattern; loops, branches, aliases, views give <code>possible</code>.</td></tr>
+<tr data-group="correctness"><td>F35</td><td>arrays</td><td><code>fill</code> shares one mutable object</td><td><code>fill(zeros(3), n)</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
+<tr data-group="composability"><td>F36</td><td>arrays</td><td><code>1:length(A)</code> assumes 1-based indices</td><td><code>OffsetArray</code> breaks it</td><td><span class="chip g-composability">composability</span></td><td>A</td><td>Syntax-only finding is <code>possible</code>: custom array type may define 1-based indexing (S4: <code>CircularDeque</code>). <code>definite</code> needs type or index-trait evidence.</td></tr>
+<tr data-group="correctness"><td>F37</td><td>arrays</td><td>Index safety removed without proof</td><td><code>@inbounds</code> on unchecked index</td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td></td></tr>
+<tr data-group="correctness"><td>F38</td><td>arrays</td><td>String indexed by character count</td><td><code>s[i]</code> for <code>i in 1:length(s)</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td></td></tr>
+<tr data-group="performance"><td>F39</td><td>arrays</td><td>Never-written constant array allocates</td><td><code>ones(n)</code> read only</td><td><span class="chip g-performance">performance</span></td><td>B</td><td></td></tr>
+<tr data-group="performance"><td>F40</td><td>arrays</td><td>Read-only slice copies</td><td><code>sum(A[:, i])</code></td><td><span class="chip g-performance">performance</span></td><td>B</td><td></td></tr>
+<tr data-group="performance"><td>F41</td><td>arrays</td><td>Broadcast rebinds preallocated buffer</td><td><code>x = f.(y)</code></td><td><span class="chip g-performance">performance</span></td><td>B</td><td></td></tr>
+<tr data-group="performance"><td>F42</td><td>arrays</td><td>Inner loop over non-first index</td><td><code>for i, j; A[i, j]</code></td><td><span class="chip g-performance">performance</span></td><td>A</td><td>Possible only.</td></tr>
+<tr data-group="performance"><td>F43</td><td>arrays</td><td>Search inside loop over same collection</td><td><code>x in v</code> per element of <code>v</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td></td></tr>
+<tr data-group="performance"><td>F44</td><td>arrays</td><td>Fold concatenates one piece at a time</td><td><code>reduce(vcat, parts)</code> in loop</td><td><span class="chip g-performance">performance</span></td><td>A</td><td></td></tr>
+<tr data-group="correctness"><td>F45</td><td>arrays</td><td>Matrix function where elementwise was meant</td><td><code>exp(A)</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>Later; off by default.</td></tr>
+<tr data-group="correctness"><td>F46</td><td>arrays</td><td>Adjoint conjugates complex data</td><td><code>v'</code> on <code>ComplexF64</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>Later; off by default.</td></tr>
+<tr data-group="correctness"><td>F47</td><td>containers</td><td>Mutable key mutated after insert</td><td><code>Dict{Vector{Int}, …}</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td></td></tr>
+<tr data-group="correctness"><td>F48</td><td>containers</td><td>Container mutated while iterating</td><td><code>delete!(d, k)</code> in <code>for k in keys(d)</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td></td></tr>
+<tr data-group="correctness"><td>F49</td><td>containers</td><td>Code relies on <code>Dict</code> order</td><td><code>Dict</code> iterated into output</td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>Later; off by default.</td></tr>
+<tr data-group="correctness"><td>F50</td><td>containers</td><td>Same container passed twice to mutating call</td><td><code>append!(a, a)</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td></td></tr>
+<tr data-group="correctness"><td>F51</td><td>containers</td><td><code>Iterators.Stateful</code> consumed twice</td><td><code>isempty(s)</code> then <code>for x in s</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td></td></tr>
+<tr data-group="correctness"><td>F52</td><td>containers</td><td><code>missing</code> reaches condition</td><td><code>if x &gt; 0</code> with <code>x::Union{Missing, Int}</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td></td></tr>
+<tr data-group="correctness"><td>F89</td><td>containers</td><td><code>@match</code> misses variant of Moshi ADT</td><td>no arm for <code>Shape.Circle</code>, no catch-all</td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>Moshi emits runtime <code>error("matching non-exhaustive")</code>. Variants from <code>@data</code> (C). Fix tier <code>manual</code>.</td></tr>
+<tr data-group="correctness"><td>F90</td><td>containers</td><td>Unreachable <code>@match</code> arm</td><td>arm after pattern that covers it</td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
+<tr data-group="correctness"><td>F91</td><td>containers</td><td>Catch-all arm on own ADT hides later variants</td><td><code>_ =&gt; …</code> in <code>@match</code> on package ADT</td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>Clippy <code>wildcard_enum_match_arm</code>. Default level <code>allow</code>.</td></tr>
+<tr data-group="correctness"><td>F53</td><td>effects</td><td>Function writes argument or global without <code>!</code></td><td><code>normalize(v)</code> changes <code>v</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td></td></tr>
+<tr data-group="correctness"><td>F54</td><td>effects</td><td>Call has no effect and result is unused</td><td><code>f(x)</code> returns <code>nothing</code>, writes nothing</td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td></td></tr>
+<tr data-group="correctness"><td>F86</td><td>effects</td><td><code>!</code> function writes nothing; callers drop its result</td><td><code>normalize!(v)</code> returns new vector</td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>Method whose body only throws (<code>pop!(::SortedSet) = error(...)</code>) is exempt.</td></tr>
+<tr data-group="correctness"><td>F55</td><td>effects</td><td>Hidden input: mutable global, <code>ScopedValue</code>, global RNG</td><td><code>rand()</code> in package code</td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td></td></tr>
+<tr data-group="correctness"><td>F56</td><td>effects</td><td>Anonymous function impure: captures mutable state</td><td><code>filter(x -&gt; x in seen, xs)</code>, <code>seen::Set</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>Named functions follow <code>!</code> convention; anonymous ones stay pure. Read-only capture counts.</td></tr>
+<tr data-group="performance"><td>F57</td><td>effects</td><td>Closure rebinds captured variable; <code>Core.Box</code></td><td><code>n = 0; f = () -&gt; (n += 1)</code></td><td><span class="chip g-performance">performance</span></td><td>H</td><td></td></tr>
+<tr data-group="correctness"><td>F58</td><td>effects</td><td><code>@assume_effects</code> claim false</td><td><code>:consistent</code> on body that reads global</td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td></td></tr>
+<tr data-group="correctness"><td>F59</td><td>effects</td><td>Catch handles every error</td><td><code>catch; end</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
+<tr data-group="correctness"><td>F60</td><td>effects</td><td>Same statement twice in block</td><td>copy-paste duplicate</td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
+<tr data-group="correctness"><td>F61</td><td>scope</td><td>Top-level loop assigns global; REPL and file differ</td><td><code>for …; total += x; end</code> in script</td><td><span class="chip g-correctness">correctness</span></td><td>H</td><td></td></tr>
+<tr data-group="correctness"><td>F62</td><td>scope</td><td>Variable first assigned in <code>try</code> read after it</td><td><code>try; y = f(); end; y</code></td><td><span class="chip g-correctness">correctness</span></td><td>H</td><td></td></tr>
+<tr data-group="correctness"><td>F63</td><td>scope</td><td>Function defined by <code>eval</code> called in same world</td><td><code>@eval g() = 1; g()</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>Syntactic; needs no scope facts (S3).</td></tr>
+<tr data-group="correctness"><td>F64</td><td>scope</td><td>Same file included twice</td><td>two copies of module</td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
+<tr data-group="composability"><td>F65</td><td>modules</td><td>Name reached through bare <code>using</code></td><td>two packages export <code>solve</code></td><td><span class="chip g-composability">composability</span></td><td>G</td><td></td></tr>
+<tr data-group="composability"><td>F66</td><td>modules</td><td>Use of other module's internal name</td><td><code>Base._foo</code></td><td><span class="chip g-composability">composability</span></td><td>G</td><td></td></tr>
+<tr data-group="readability"><td>F67</td><td>modules</td><td>Import placed in file that does not use it</td><td><code>using LinearAlgebra</code> in <code>src/Pkg.jl</code> for <code>src/solve.jl</code></td><td><span class="chip g-readability">readability</span></td><td>G</td><td></td></tr>
+<tr data-group="correctness"><td>F88</td><td>modules</td><td>Extension trigger package missing from test dependencies</td><td><code>[weakdeps]</code> names <code>CUDA</code>; tests never load it</td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>Reads Project.toml; no load needed. Untested extension also cannot be analyzed.</td></tr>
+<tr data-group="correctness"><td>F68</td><td>concurrency</td><td>Buffer indexed by <code>threadid()</code></td><td><code>bufs[threadid()]</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
+<tr data-group="correctness"><td>F69</td><td>concurrency</td><td>Unsynchronized update in threaded loop</td><td><code>acc += x</code> in <code>@threads</code></td><td><span class="chip g-correctness">correctness</span></td><td>H</td><td></td></tr>
+<tr data-group="correctness"><td>F70</td><td>concurrency</td><td>Task result never waited; errors vanish</td><td><code>@spawn work()</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td></td></tr>
+<tr data-group="readability"><td>F71</td><td>readability</td><td>Argument or result without type</td><td><code>f(x) = …</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>With result-conversion check, annotations act as type checks. Fixer fills result type from inference. <code>::Any</code> opts out.</td></tr>
+<tr data-group="readability"><td>F72</td><td>readability</td><td>One-letter name</td><td><code>q = …</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>Exempt: type names and parameters; <code>i</code>, <code>j</code>, <code>k</code> as indices.</td></tr>
+<tr data-group="readability"><td>F73</td><td>readability</td><td>Explicit <code>return</code> mixed with implicit last value</td><td></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>Narrow by design. Requiring <code>return</code> everywhere forces <code>return nothing</code>, which fights formatters (Runic) and creates dead code.</td></tr>
+<tr data-group="readability"><td>F74</td><td>readability</td><td>Comment where docstring belongs</td><td><code># adds x</code> above function</td><td><span class="chip g-readability">readability</span></td><td>A</td><td></td></tr>
+<tr data-group="readability"><td>F76</td><td>readability</td><td>Copied code block</td><td></td><td><span class="chip g-readability">readability</span></td><td>G</td><td>Off by default; jscpd finds near-duplicates, needs Node.</td></tr>
+<tr data-group="readability"><td>F77</td><td>readability</td><td>File too long</td><td></td><td><span class="chip g-readability">readability</span></td><td>A</td><td></td></tr>
+<tr data-group="readability"><td>F78</td><td>readability</td><td>Struct with too many fields</td><td></td><td><span class="chip g-readability">readability</span></td><td>A</td><td></td></tr>
+<tr data-group="readability"><td>F79</td><td>readability</td><td>Related fields belong in nested struct, table or array</td><td><code>governor_name</code>, <code>governor_age</code> → <code>governor.name</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td></td></tr>
+<tr data-group="readability"><td>F80</td><td>readability</td><td>Module without docstring</td><td></td><td><span class="chip g-readability">readability</span></td><td>A</td><td></td></tr>
+<tr data-group="readability"><td>F81</td><td>readability</td><td>C types outside C calls</td><td><code>Cint</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td></td></tr>
+<tr data-group="readability"><td>F82</td><td>readability</td><td>Project-banned name or pattern</td><td>config list</td><td><span class="chip g-readability">readability</span></td><td>A</td><td></td></tr>
 </tbody></table></div>
 </section>
 
 <section id="pipeline">
 <h2>Pipeline</h2>
-<p>Analysis stages Corset computes, in pipeline order. Each stage computes facts once per run; rules read them.</p>
-<p>Stages run top to bottom. Rule declares last stage it reads. Engine computes only stages that selected rules need. <code>scope</code> runs after <code>package</code>: macro expansion needs evaluated imports and package macros (S3). Scripts: <code>scope</code> evaluates imports only; unresolved macros go to coverage line.</p>
-<div class="pipeline" role="img" aria-label="Analysis stages from syntax tree to effect summary, then findings, confidence filter, report and fix">
-      <div class="layer"><div class="id">syntax</div><div class="what">Lossless syntax tree, index by node kind<small>JuliaSyntax · per file · milliseconds</small></div></div>
+<p>Layers Corset computes, and which analysis family reads each.</p>
+<p>Layers run top to bottom. Check declares lowest layer it needs. Engine computes only layers that selected checks need. L2 runs after L3: macro expansion needs evaluated imports and package macros (S3). Scripts: L2 evaluates imports only; unresolved macros go to coverage line.</p>
+<div class="pipeline" role="img" aria-label="Analysis layers from syntax tree to dataflow, then findings, confidence filter, report and fix">
+      <div class="layer"><div class="id">L1<small>syntax</small></div><div class="what">Lossless syntax tree, index by node kind<small>JuliaSyntax · per file · milliseconds</small></div><div class="fams"><span class="fam">A</span><span class="fam">B</span></div></div>
       <div class="divider">package code runs below · same process, target environment</div>
-      <div class="layer"><div class="id">package</div><div class="what">Loaded package: bindings, structs, method table<small>one load per run · cached by Manifest hash</small></div></div>
-      <div class="layer"><div class="id">scope</div><div class="what">Lowering with scope resolution and source positions<small>JuliaLowering · per top-level form, include order · macros need package</small></div></div>
-      <div class="layer"><div class="id">inference</div><div class="what">Typed IR for every eligible package method<small>native inference cache · signatures from annotations · no package tests needed</small></div></div>
-      <div class="layer"><div class="id">effects</div><div class="what">Effect and alias summary per method<small>own points-to summary inside method + callee summaries · bottom-up, Base included</small></div></div>
-      <div class="layer"><div class="id">lifecycle</div><div class="what">Local def-use per array<small>syntax tree plus callee write summaries · per method</small></div></div>
+      <div class="layer"><div class="id">L3<small>module</small></div><div class="what">Loaded package: bindings, structs, method table<small>one load per run · cached by Manifest hash</small></div><div class="fams"><span class="fam">C</span></div></div>
+      <div class="layer"><div class="id">L2<small>scope</small></div><div class="what">Lowering with scope resolution and source positions<small>JuliaLowering · per top-level form, include order · macros need L3</small></div><div class="fams"><span class="fam">H</span></div></div>
+      <div class="layer"><div class="id">L4<small>types</small></div><div class="what">Typed IR for every eligible package method<small>native inference cache · signatures from annotations · no package tests needed</small></div><div class="fams"><span class="fam">D</span></div></div>
+      <div class="layer"><div class="id">L5<small>flow</small></div><div class="what">Effect and alias summary per method<small>own points-to summary inside method + callee summaries · bottom-up, Base included</small></div><div class="fams"><span class="fam">E</span></div></div>
       <div class="arrow" aria-hidden="true">↓</div>
       <div class="sink">
         <div><b>findings</b>span · rule · message · confidence · fix</div>
@@ -285,101 +284,100 @@ footer { color: var(--muted); font-size: 0.85rem; }
         <div><b>output</b>report · baseline · fixer batch</div>
       </div>
     </div>
-<p>Note: <code>external</code> stage (Aqua.jl, ExplicitImports.jl, jscpd) runs beside pipeline and reads source directories.</p>
+<p>Note: Family G (external tools) runs beside pipeline and reads source directories.</p>
 
 </section>
 
-<section id="stages">
-<h2>Analysis stages</h2><p>Each stage computes facts once per run, in pipeline order. Rule belongs to last stage it reads. Chips are footgun IDs; hover for text. Data: <code>stages.toml</code>.</p><div class="stages"><div class="stage"><h3><span>syntax</span>Syntax patterns</h3><p>One tree walk per file. Rules are Argus.jl patterns: syntax classes, pattern forms, templates for fixes. Walk indexes rules by pattern root kind and asks Argus to match candidate nodes only. Names read as written: Base export name means Base binding; <code>shadowed-base</code> reports package method that breaks this.</p><div class="rules"><span class="chip g-correctness" title="Space before minus in array literal concatenates">F1</span><span class="chip g-correctness" title="Range in brackets is one-element vector">F2</span><span class="chip g-correctness" title="Juxtaposition binds tighter than reader expects">F3</span><span class="chip g-correctness" title="where after result annotation binds result type">F4</span><span class="chip g-correctness" title="Approximate compare to zero without atol is always false">F10</span><span class="chip g-performance" title="Empty literal has Any element type">F21</span><span class="chip g-composability" title="Behavior depends on inference result">F26</span><span class="chip g-performance" title="Fold concatenates one piece at a time">F44</span><span class="chip g-correctness" title="Catch handles every error">F59</span><span class="chip g-correctness" title="Same statement twice in block">F60</span><span class="chip g-correctness" title="Function defined by eval called in same world">F63</span><span class="chip g-correctness" title="Same file included twice">F64</span><span class="chip g-correctness" title="Buffer indexed by threadid()">F68</span><span class="chip g-correctness" title="Task result never waited; errors vanish">F70</span><span class="chip g-readability" title="Argument or result without type">F71</span><span class="chip g-readability" title="One-letter name">F72</span><span class="chip g-readability" title="Explicit return mixed with implicit last value">F73</span><span class="chip g-readability" title="Comment where docstring belongs">F74</span><span class="chip g-readability" title="File too long">F77</span><span class="chip g-readability" title="Struct with too many fields">F78</span><span class="chip g-readability" title="Related fields belong in nested struct, table or array">F79</span><span class="chip g-readability" title="Module without docstring">F80</span><span class="chip g-readability" title="C types outside C calls">F81</span><span class="chip g-readability" title="Project-banned name or pattern">F82</span></div></div><div class="stage"><h3><span>package</span>Loaded package</h3><p>Loaded package without inference: bindings, structs, signatures, method table, specialization heuristics.</p><div class="rules"><span class="chip g-correctness" title="Invariant parameter rejects intended arguments">F14</span><span class="chip g-composability" title="Overspecified type blocks generic callers">F15</span><span class="chip g-performance" title="Struct field with vague type">F18</span><span class="chip g-correctness" title="== defined without hash">F22</span><span class="chip g-correctness" title="Method named like Base function without Base. shadows it">F23</span><span class="chip g-correctness" title="Methods differ only in keywords; later one overwrites">F24</span><span class="chip g-composability" title="Public struct has no abstract supertype; users cannot extend">F84</span><span class="chip g-correctness" title="Subtype misses required interface method">F92</span><span class="chip g-performance" title="Iterator misses size and element traits">F93</span><span class="chip g-performance" title="Too many specializations on Function or Type argument">F30</span><span class="chip g-correctness" title="@match misses variant of Moshi ADT">F89</span><span class="chip g-correctness" title="Unreachable @match arm">F90</span><span class="chip g-correctness" title="Catch-all arm on own ADT hides later variants">F91</span><span class="chip g-correctness" title="Extension trigger package missing from test dependencies">F88</span></div></div><div class="stage"><h3><span>scope</span>Scope</h3><p>Lowered scopes per top-level form, in include order, after package load: bindings, soft scope, captures, boxes, task spawns.</p><div class="rules"><span class="chip g-performance" title="Closure rebinds captured variable; Core.Box">F57</span><span class="chip g-correctness" title="Top-level loop assigns global; REPL and file differ">F61</span><span class="chip g-correctness" title="Variable first assigned in try read after it">F62</span><span class="chip g-correctness" title="Unsynchronized update in threaded loop">F69</span></div></div><div class="stage"><h3><span>inference</span>Typed IR</h3><p>One inference per package method; stand-in types replace generic arguments. One pass per inferred frame. Union policy decides which unions <code>ad-hoc-union</code> reports.</p><div class="rules"><span class="chip g-composability" title="Literal or constant changes input type">F5</span><span class="chip g-composability" title="Float constant where irrational exists; promotes generic code">F6</span><span class="chip g-performance" title="Literal widens intermediate that does not escape">F87</span><span class="chip g-correctness" title="Signed % and ÷ round toward zero">F7</span><span class="chip g-correctness" title="Mixed signed and unsigned division">F8</span><span class="chip g-correctness" title="Float-to-integer constructor throws on fractions">F9</span><span class="chip g-correctness" title="Bool used as index">F11</span><span class="chip g-correctness" title="Integer overflow wraps silently">F12</span><span class="chip g-correctness" title="Result annotation converts instead of checking">F13</span><span class="chip g-composability" title="Hard-coded Array drops caller&#x27;s array type">F16</span><span class="chip g-performance" title="Variable, result or closure capture with vague inferred type">F17</span><span class="chip g-performance" title="Mutable struct where immutable works">F19</span><span class="chip g-readability" title="Ad-hoc union of unrelated types where sum type belongs">F20</span><span class="chip g-correctness" title="Call can never succeed">F83</span><span class="chip g-performance" title="Call resolved at run time">F27</span><span class="chip g-performance" title="Splat of variable-length collection">F28</span><span class="chip g-performance" title="Recursion with argument types that nest each call">F29</span><span class="chip g-correctness" title="Loop over scalar runs once">F31</span><span class="chip g-correctness" title="fill shares one mutable object">F35</span><span class="chip g-composability" title="1:length(A) assumes 1-based indices">F36</span><span class="chip g-correctness" title="Index safety removed without proof">F37</span><span class="chip g-correctness" title="String indexed by character count">F38</span><span class="chip g-performance" title="Inner loop over non-first index">F42</span><span class="chip g-performance" title="Search inside loop over same collection">F43</span><span class="chip g-correctness" title="Matrix function where elementwise was meant">F45</span><span class="chip g-correctness" title="Adjoint conjugates complex data">F46</span><span class="chip g-correctness" title="Mutable key mutated after insert">F47</span><span class="chip g-correctness" title="Code relies on Dict order">F49</span><span class="chip g-correctness" title="missing reaches condition">F52</span></div></div><div class="stage"><h3><span>effects</span>Effect and alias summary</h3><p>Per method: writes to arguments, writes to globals, result aliases global state. Own points-to summary over optimized IR, bottom-up through callees, Base and dependencies included.</p><div class="rules"><span class="chip g-correctness" title="Container mutated while iterating">F48</span><span class="chip g-correctness" title="Same container passed twice to mutating call">F50</span><span class="chip g-correctness" title="Iterators.Stateful consumed twice">F51</span><span class="chip g-correctness" title="Function writes argument or global without !">F53</span><span class="chip g-correctness" title="Call has no effect and result is unused">F54</span><span class="chip g-correctness" title="! function writes nothing; callers drop its result">F86</span><span class="chip g-correctness" title="Hidden input: mutable global, ScopedValue, global RNG">F55</span><span class="chip g-correctness" title="Anonymous function impure: captures mutable state">F56</span><span class="chip g-correctness" title="@assume_effects claim false">F58</span></div></div><div class="stage"><h3><span>lifecycle</span>Array lifecycle</h3><p>Local def-use per array: created, written, read before write, resized, escapes, read once. Callee writes come from <code>effects</code> summaries, so passing array to non-writing callee is no escape. Definite only for straight-line patterns.</p><div class="rules"><span class="chip g-performance" title="Temporary array built only to be consumed once">F32</span><span class="chip g-correctness" title="Uninitialized element read before write">F33</span><span class="chip g-correctness" title="Placeholder value looks like data after partial fill">F34</span><span class="chip g-performance" title="Never-written constant array allocates">F39</span><span class="chip g-performance" title="Read-only slice copies">F40</span><span class="chip g-performance" title="Broadcast rebinds preallocated buffer">F41</span></div></div><div class="stage"><h3><span>external</span>External tools</h3><p>Wrap tool output as findings: Aqua.jl, ExplicitImports.jl, jscpd.</p><div class="rules"><span class="chip g-composability" title="Type piracy">F25</span><span class="chip g-correctness" title="Method ambiguity between package methods">F94</span><span class="chip g-composability" title="Name reached through bare using">F65</span><span class="chip g-composability" title="Use of other module&#x27;s internal name">F66</span><span class="chip g-readability" title="Import placed in file that does not use it">F67</span><span class="chip g-readability" title="Copied code block">F76</span></div></div></div>
+<section id="families">
+<h2>Analysis families</h2><p>Each family is one analysis. Checks inside family share its code and output. Chips are footgun IDs; hover for text. Data: <code>families.toml</code>.</p><div class="families"><div class="family"><h3><span>A</span>Syntax patterns</h3><p>One tree walk per file. Checks are Argus.jl patterns: syntax classes, pattern forms, templates for fixes. Walk indexes rules by pattern root kind and asks Argus to match candidate nodes only.</p><div class="rules"><span class="chip g-correctness" title="Space before minus in array literal concatenates">F1</span><span class="chip g-correctness" title="Range in brackets is one-element vector">F2</span><span class="chip g-correctness" title="Juxtaposition binds tighter than reader expects">F3</span><span class="chip g-correctness" title="where after result annotation binds result type">F4</span><span class="chip g-correctness" title="Approximate compare to zero without atol is always false">F10</span><span class="chip g-performance" title="Empty literal has Any element type">F21</span><span class="chip g-composability" title="Behavior depends on inference result">F26</span><span class="chip g-correctness" title="fill shares one mutable object">F35</span><span class="chip g-composability" title="1:length(A) assumes 1-based indices">F36</span><span class="chip g-performance" title="Inner loop over non-first index">F42</span><span class="chip g-performance" title="Fold concatenates one piece at a time">F44</span><span class="chip g-correctness" title="@match misses variant of Moshi ADT">F89</span><span class="chip g-correctness" title="Unreachable @match arm">F90</span><span class="chip g-correctness" title="Catch-all arm on own ADT hides later variants">F91</span><span class="chip g-correctness" title="Catch handles every error">F59</span><span class="chip g-correctness" title="Same statement twice in block">F60</span><span class="chip g-correctness" title="Function defined by eval called in same world">F63</span><span class="chip g-correctness" title="Same file included twice">F64</span><span class="chip g-correctness" title="Buffer indexed by threadid()">F68</span><span class="chip g-correctness" title="Task result never waited; errors vanish">F70</span><span class="chip g-readability" title="Argument or result without type">F71</span><span class="chip g-readability" title="One-letter name">F72</span><span class="chip g-readability" title="Explicit return mixed with implicit last value">F73</span><span class="chip g-readability" title="Comment where docstring belongs">F74</span><span class="chip g-readability" title="File too long">F77</span><span class="chip g-readability" title="Struct with too many fields">F78</span><span class="chip g-readability" title="Related fields belong in nested struct, table or array">F79</span><span class="chip g-readability" title="Module without docstring">F80</span><span class="chip g-readability" title="C types outside C calls">F81</span><span class="chip g-readability" title="Project-banned name or pattern">F82</span></div></div><div class="family"><h3><span>B</span>Array lifecycle</h3><p>Local def-use per array: created, written, read before write, resized, escapes, read once. Definite only for straight-line patterns.</p><div class="rules"><span class="chip g-performance" title="Temporary array built only to be consumed once">F32</span><span class="chip g-correctness" title="Uninitialized element read before write">F33</span><span class="chip g-correctness" title="Placeholder value looks like data after partial fill">F34</span><span class="chip g-performance" title="Never-written constant array allocates">F39</span><span class="chip g-performance" title="Read-only slice copies">F40</span><span class="chip g-performance" title="Broadcast rebinds preallocated buffer">F41</span></div></div><div class="family"><h3><span>C</span>Module inspection</h3><p>Loaded package without inference: bindings, structs, signatures, method table, specialization heuristics.</p><div class="rules"><span class="chip g-correctness" title="Invariant parameter rejects intended arguments">F14</span><span class="chip g-composability" title="Overspecified type blocks generic callers">F15</span><span class="chip g-performance" title="Struct field with vague type">F18</span><span class="chip g-correctness" title="== defined without hash">F22</span><span class="chip g-correctness" title="Method named like Base function without Base. shadows it">F23</span><span class="chip g-correctness" title="Methods differ only in keywords; later one overwrites">F24</span><span class="chip g-composability" title="Public struct has no abstract supertype; users cannot extend">F84</span><span class="chip g-correctness" title="Subtype misses required interface method">F92</span><span class="chip g-performance" title="Iterator misses size and element traits">F93</span><span class="chip g-performance" title="Too many specializations on Function or Type argument">F30</span><span class="chip g-correctness" title="Extension trigger package missing from test dependencies">F88</span></div></div><div class="family"><h3><span>D</span>Typed-IR scan</h3><p>One inference per package method; stand-in types replace generic arguments. One pass per inferred frame. Union policy decides which unions <code>ad-hoc-union</code> reports.</p><div class="rules"><span class="chip g-composability" title="Literal or constant changes input type">F5</span><span class="chip g-composability" title="Float constant where irrational exists; promotes generic code">F6</span><span class="chip g-performance" title="Literal widens intermediate that does not escape">F87</span><span class="chip g-correctness" title="Signed % and ÷ round toward zero">F7</span><span class="chip g-correctness" title="Mixed signed and unsigned division">F8</span><span class="chip g-correctness" title="Float-to-integer constructor throws on fractions">F9</span><span class="chip g-correctness" title="Bool used as index">F11</span><span class="chip g-correctness" title="Integer overflow wraps silently">F12</span><span class="chip g-correctness" title="Result annotation converts instead of checking">F13</span><span class="chip g-composability" title="Hard-coded Array drops caller&#x27;s array type">F16</span><span class="chip g-performance" title="Variable, result or closure capture with vague inferred type">F17</span><span class="chip g-performance" title="Mutable struct where immutable works">F19</span><span class="chip g-readability" title="Ad-hoc union of unrelated types where sum type belongs">F20</span><span class="chip g-correctness" title="Call can never succeed">F83</span><span class="chip g-performance" title="Call resolved at run time">F27</span><span class="chip g-performance" title="Splat of variable-length collection">F28</span><span class="chip g-performance" title="Recursion with argument types that nest each call">F29</span><span class="chip g-correctness" title="Loop over scalar runs once">F31</span><span class="chip g-correctness" title="Index safety removed without proof">F37</span><span class="chip g-correctness" title="String indexed by character count">F38</span><span class="chip g-performance" title="Search inside loop over same collection">F43</span><span class="chip g-correctness" title="Matrix function where elementwise was meant">F45</span><span class="chip g-correctness" title="Adjoint conjugates complex data">F46</span><span class="chip g-correctness" title="Mutable key mutated after insert">F47</span><span class="chip g-correctness" title="Code relies on Dict order">F49</span><span class="chip g-correctness" title="missing reaches condition">F52</span></div></div><div class="family"><h3><span>E</span>Effect and alias summary</h3><p>Per method: writes to arguments, writes to globals, result aliases global state. Own points-to summary over optimized IR, bottom-up through callees, Base and dependencies included.</p><div class="rules"><span class="chip g-correctness" title="Container mutated while iterating">F48</span><span class="chip g-correctness" title="Same container passed twice to mutating call">F50</span><span class="chip g-correctness" title="Iterators.Stateful consumed twice">F51</span><span class="chip g-correctness" title="Function writes argument or global without !">F53</span><span class="chip g-correctness" title="Call has no effect and result is unused">F54</span><span class="chip g-correctness" title="! function writes nothing; callers drop its result">F86</span><span class="chip g-correctness" title="Hidden input: mutable global, ScopedValue, global RNG">F55</span><span class="chip g-correctness" title="Anonymous function impure: captures mutable state">F56</span><span class="chip g-correctness" title="@assume_effects claim false">F58</span></div></div><div class="family"><h3><span>H</span>Scope</h3><p>Lowered scopes per top-level form, in include order, after package load: bindings, soft scope, captures, boxes, task spawns.</p><div class="rules"><span class="chip g-performance" title="Closure rebinds captured variable; Core.Box">F57</span><span class="chip g-correctness" title="Top-level loop assigns global; REPL and file differ">F61</span><span class="chip g-correctness" title="Variable first assigned in try read after it">F62</span><span class="chip g-correctness" title="Unsynchronized update in threaded loop">F69</span></div></div><div class="family"><h3><span>G</span>External tools</h3><p>Wrap tool output as findings: Aqua.jl, ExplicitImports.jl, jscpd.</p><div class="rules"><span class="chip g-composability" title="Type piracy">F25</span><span class="chip g-correctness" title="Method ambiguity between package methods">F94</span><span class="chip g-composability" title="Name reached through bare using">F65</span><span class="chip g-composability" title="Use of other module&#x27;s internal name">F66</span><span class="chip g-readability" title="Import placed in file that does not use it">F67</span><span class="chip g-readability" title="Copied code block">F76</span></div></div></div>
 </section>
 
-<section id="rules">
-<h2>Rules</h2><p>Rule is unit of config, opt-out and group. It covers one footgun, or several with same group and same analysis. Data: <code>rules.toml</code>.</p><div class="filter" role="group" aria-label="Filter rules by group"><button type="button" data-filter="all" aria-pressed="true">all</button><button type="button" data-filter="correctness" aria-pressed="false">correctness</button><button type="button" data-filter="performance" aria-pressed="false">performance</button><button type="button" data-filter="composability" aria-pressed="false">composability</button><button type="button" data-filter="readability" aria-pressed="false">readability</button></div><div class="scroll"><table data-table><thead><tr><th>Rule</th><th>Group</th><th>Stage</th><th>Footguns</th><th>Note</th></tr></thead><tbody>
-<tr data-group="correctness"><td><code>ambiguous-concat</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F1 Space before minus in array literal concatenates</td><td></td></tr>
-<tr data-group="correctness"><td><code>bracketed-range</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F2 Range in brackets is one-element vector</td><td></td></tr>
-<tr data-group="correctness"><td><code>juxtaposition</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F3 Juxtaposition binds tighter than reader expects</td><td></td></tr>
-<tr data-group="correctness"><td><code>where-binding</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F4 <code>where</code> after result annotation binds result type</td><td>Fixer adds parentheses.</td></tr>
-<tr data-group="performance"><td><code>intermediate-widening</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td>F87 Literal widens intermediate that does not escape</td><td>Sites where widened type escapes go to <code>type-disruption</code>.</td></tr>
-<tr data-group="composability"><td><code>type-disruption</code></td><td><span class="chip g-composability">composability</span></td><td>inference</td><td>F5 Literal or constant changes input type<br>F6 Float constant where irrational exists; promotes generic code<br>F16 Hard-coded <code>Array</code> drops caller's array type</td><td>Stand-in engine. Kinds: literal, float constant, array type.</td></tr>
-<tr data-group="correctness"><td><code>signed-division</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F7 Signed <code>%</code> and <code>÷</code> round toward zero<br>F8 Mixed signed and unsigned division</td><td></td></tr>
-<tr data-group="correctness"><td><code>inexact-conversion</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F9 Float-to-integer constructor throws on fractions</td><td></td></tr>
-<tr data-group="correctness"><td><code>approx-zero</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F10 Approximate compare to zero without <code>atol</code> is always false</td><td></td></tr>
-<tr data-group="correctness"><td><code>bool-index</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F11 <code>Bool</code> used as index</td><td></td></tr>
-<tr data-group="correctness"><td><code>overflow</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F12 Integer overflow wraps silently</td><td>Later.</td></tr>
-<tr data-group="correctness"><td><code>result-conversion</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F13 Result annotation converts instead of checking</td><td>With <code>annotation</code>, makes annotations checked.</td></tr>
-<tr data-group="correctness"><td><code>invariant-parameter</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>F14 Invariant parameter rejects intended arguments</td><td></td></tr>
-<tr data-group="composability"><td><code>overspecified-type</code></td><td><span class="chip g-composability">composability</span></td><td>package</td><td>F15 Overspecified type blocks generic callers</td><td></td></tr>
-<tr data-group="performance"><td><code>vague-type</code></td><td><span class="chip g-performance">performance</span></td><td>inference package</td><td>F17 Variable, result or closure capture with vague inferred type<br>F18 Struct field with vague type</td><td>Abstract or <code>Any</code> inferred type: real dispatch cost. Kinds: local, result, capture, field.</td></tr>
-<tr data-group="readability"><td><code>ad-hoc-union</code></td><td><span class="chip g-readability">readability</span></td><td>inference</td><td>F20 Ad-hoc union of unrelated types where sum type belongs</td><td>Union policy: union of concrete types outside policy. Union of input type and literal type goes to <code>type-disruption</code>.</td></tr>
-<tr data-group="performance"><td><code>mutable-struct</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td>F19 Mutable struct where immutable works</td><td></td></tr>
-<tr data-group="performance"><td><code>untyped-empty</code></td><td><span class="chip g-performance">performance</span></td><td>syntax</td><td>F21 Empty literal has <code>Any</code> element type</td><td>Fixer adds element type.</td></tr>
-<tr data-group="correctness"><td><code>eq-without-hash</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>F22 <code>==</code> defined without <code>hash</code></td><td></td></tr>
-<tr data-group="correctness"><td><code>shadowed-base</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>F23 Method named like Base function without <code>Base.</code> shadows it</td><td></td></tr>
-<tr data-group="correctness"><td><code>keyword-overwrite</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>F24 Methods differ only in keywords; later one overwrites</td><td></td></tr>
-<tr data-group="composability"><td><code>piracy</code></td><td><span class="chip g-composability">composability</span></td><td>external</td><td>F25 Type piracy</td><td>Aqua.jl.</td></tr>
-<tr data-group="correctness"><td><code>method-ambiguity</code></td><td><span class="chip g-correctness">correctness</span></td><td>external</td><td>F94 Method ambiguity between package methods</td><td>Aqua.jl.</td></tr>
-<tr data-group="composability"><td><code>inference-dependent</code></td><td><span class="chip g-composability">composability</span></td><td>syntax</td><td>F26 Behavior depends on inference result</td><td></td></tr>
-<tr data-group="correctness"><td><code>never-succeeds</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F83 Call can never succeed</td><td></td></tr>
-<tr data-group="composability"><td><code>closed-struct</code></td><td><span class="chip g-composability">composability</span></td><td>package</td><td>F84 Public struct has no abstract supertype; users cannot extend</td><td></td></tr>
-<tr data-group="correctness"><td><code>missing-interface</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>F92 Subtype misses required interface method</td><td></td></tr>
-<tr data-group="performance"><td><code>iterator-traits</code></td><td><span class="chip g-performance">performance</span></td><td>package</td><td>F93 Iterator misses size and element traits</td><td></td></tr>
-<tr data-group="correctness"><td><code>untested-extension</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>F88 Extension trigger package missing from test dependencies</td><td></td></tr>
-<tr data-group="performance"><td><code>runtime-dispatch</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td>F27 Call resolved at run time</td><td></td></tr>
-<tr data-group="performance"><td><code>dynamic-splat</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td>F28 Splat of variable-length collection</td><td></td></tr>
-<tr data-group="performance"><td><code>growing-recursion</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td>F29 Recursion with argument types that nest each call</td><td></td></tr>
-<tr data-group="performance"><td><code>specialization-blowup</code></td><td><span class="chip g-performance">performance</span></td><td>package</td><td>F30 Too many specializations on <code>Function</code> or <code>Type</code> argument</td><td></td></tr>
-<tr data-group="correctness"><td><code>scalar-loop</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F31 Loop over scalar runs once</td><td></td></tr>
-<tr data-group="performance"><td><code>temporary-array</code></td><td><span class="chip g-performance">performance</span></td><td>lifecycle</td><td>F32 Temporary array built only to be consumed once</td><td></td></tr>
-<tr data-group="correctness"><td><code>unwritten-element</code></td><td><span class="chip g-correctness">correctness</span></td><td>lifecycle</td><td>F33 Uninitialized element read before write<br>F34 Placeholder value looks like data after partial fill</td><td>Kinds: undef read, placeholder read.</td></tr>
-<tr data-group="correctness"><td><code>shared-fill</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F35 <code>fill</code> shares one mutable object</td><td>Fix tier <code>manual</code>.</td></tr>
-<tr data-group="composability"><td><code>one-based-range</code></td><td><span class="chip g-composability">composability</span></td><td>inference</td><td>F36 <code>1:length(A)</code> assumes 1-based indices</td><td>Fixer: <code>eachindex</code>.</td></tr>
-<tr data-group="correctness"><td><code>unverified-inbounds</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F37 Index safety removed without proof</td><td></td></tr>
-<tr data-group="correctness"><td><code>string-index</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F38 String indexed by character count</td><td></td></tr>
-<tr data-group="performance"><td><code>constant-array</code></td><td><span class="chip g-performance">performance</span></td><td>lifecycle</td><td>F39 Never-written constant array allocates</td><td>Fixer: FillArrays.jl.</td></tr>
-<tr data-group="performance"><td><code>slice-copy</code></td><td><span class="chip g-performance">performance</span></td><td>lifecycle</td><td>F40 Read-only slice copies</td><td></td></tr>
-<tr data-group="performance"><td><code>broadcast-rebind</code></td><td><span class="chip g-performance">performance</span></td><td>lifecycle</td><td>F41 Broadcast rebinds preallocated buffer</td><td></td></tr>
-<tr data-group="performance"><td><code>loop-order</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td>F42 Inner loop over non-first index</td><td>Possible only.</td></tr>
-<tr data-group="performance"><td><code>loop-search</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td>F43 Search inside loop over same collection</td><td></td></tr>
-<tr data-group="performance"><td><code>repeated-concat</code></td><td><span class="chip g-performance">performance</span></td><td>syntax</td><td>F44 Fold concatenates one piece at a time</td><td></td></tr>
-<tr data-group="correctness"><td><code>matrix-function</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F45 Matrix function where elementwise was meant</td><td>Later.</td></tr>
-<tr data-group="correctness"><td><code>conjugating-adjoint</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F46 Adjoint conjugates complex data</td><td>Later.</td></tr>
-<tr data-group="correctness"><td><code>mutable-key</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F47 Mutable key mutated after insert</td><td></td></tr>
-<tr data-group="correctness"><td><code>iteration-mutation</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F48 Container mutated while iterating</td><td></td></tr>
-<tr data-group="correctness"><td><code>dict-order</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F49 Code relies on <code>Dict</code> order</td><td>Later.</td></tr>
-<tr data-group="correctness"><td><code>self-alias</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F50 Same container passed twice to mutating call</td><td></td></tr>
-<tr data-group="correctness"><td><code>stateful-reuse</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F51 <code>Iterators.Stateful</code> consumed twice</td><td></td></tr>
-<tr data-group="correctness"><td><code>missing-condition</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F52 <code>missing</code> reaches condition</td><td></td></tr>
-<tr data-group="correctness"><td><code>non-exhaustive-match</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>F89 <code>@match</code> misses variant of Moshi ADT</td><td></td></tr>
-<tr data-group="correctness"><td><code>unreachable-arm</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>F90 Unreachable <code>@match</code> arm</td><td></td></tr>
-<tr data-group="correctness"><td><code>wildcard-arm</code></td><td><span class="chip g-correctness">correctness</span></td><td>package</td><td>F91 Catch-all arm on own ADT hides later variants</td><td>Default <code>allow</code>.</td></tr>
-<tr data-group="correctness"><td><code>bang-convention</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F53 Function writes argument or global without <code>!</code><br>F86 <code>!</code> function writes nothing; callers drop its result</td><td>Kinds: missing, spurious. Methods added to other module's <code>!</code> function exempt. See <code>!</code> convention.</td></tr>
-<tr data-group="correctness"><td><code>unused-call</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F54 Call has no effect and result is unused</td><td></td></tr>
-<tr data-group="correctness"><td><code>hidden-input</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F55 Hidden input: mutable global, <code>ScopedValue</code>, global RNG</td><td></td></tr>
-<tr data-group="correctness"><td><code>impure-lambda</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F56 Anonymous function impure: captures mutable state</td><td></td></tr>
-<tr data-group="performance"><td><code>boxed-capture</code></td><td><span class="chip g-performance">performance</span></td><td>scope</td><td>F57 Closure rebinds captured variable; <code>Core.Box</code></td><td></td></tr>
-<tr data-group="correctness"><td><code>false-effects</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F58 <code>@assume_effects</code> claim false</td><td></td></tr>
-<tr data-group="correctness"><td><code>broad-catch</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F59 Catch handles every error</td><td></td></tr>
-<tr data-group="correctness"><td><code>duplicate-statement</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F60 Same statement twice in block</td><td></td></tr>
-<tr data-group="correctness"><td><code>soft-scope</code></td><td><span class="chip g-correctness">correctness</span></td><td>scope</td><td>F61 Top-level loop assigns global; REPL and file differ</td><td></td></tr>
-<tr data-group="correctness"><td><code>try-scope</code></td><td><span class="chip g-correctness">correctness</span></td><td>scope</td><td>F62 Variable first assigned in <code>try</code> read after it</td><td></td></tr>
-<tr data-group="correctness"><td><code>world-age</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F63 Function defined by <code>eval</code> called in same world</td><td></td></tr>
-<tr data-group="correctness"><td><code>double-include</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F64 Same file included twice</td><td></td></tr>
-<tr data-group="composability"><td><code>implicit-import</code></td><td><span class="chip g-composability">composability</span></td><td>external</td><td>F65 Name reached through bare <code>using</code></td><td>ExplicitImports.jl.</td></tr>
-<tr data-group="composability"><td><code>internal-access</code></td><td><span class="chip g-composability">composability</span></td><td>external</td><td>F66 Use of other module's internal name</td><td>ExplicitImports.jl.</td></tr>
-<tr data-group="readability"><td><code>misplaced-import</code></td><td><span class="chip g-readability">readability</span></td><td>external</td><td>F67 Import placed in file that does not use it</td><td>Fixer moves imports.</td></tr>
-<tr data-group="correctness"><td><code>threadid-buffer</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F68 Buffer indexed by <code>threadid()</code></td><td></td></tr>
-<tr data-group="correctness"><td><code>threaded-race</code></td><td><span class="chip g-correctness">correctness</span></td><td>scope</td><td>F69 Unsynchronized update in threaded loop</td><td></td></tr>
-<tr data-group="correctness"><td><code>orphan-task</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F70 Task result never waited; errors vanish</td><td></td></tr>
-<tr data-group="readability"><td><code>annotation</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F71 Argument or result without type</td><td>Fixer guesses types for unannotated package; see annotation transition.</td></tr>
-<tr data-group="readability"><td><code>one-letter</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F72 One-letter name</td><td></td></tr>
-<tr data-group="readability"><td><code>mixed-return</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F73 Explicit <code>return</code> mixed with implicit last value</td><td></td></tr>
-<tr data-group="readability"><td><code>docstring</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F74 Comment where docstring belongs<br>F80 Module without docstring</td><td>Kinds: comment above function, module without docstring.</td></tr>
-<tr data-group="readability"><td><code>duplicate-code</code></td><td><span class="chip g-readability">readability</span></td><td>external</td><td>F76 Copied code block</td><td>jscpd. Off by default.</td></tr>
-<tr data-group="readability"><td><code>file-length</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F77 File too long</td><td></td></tr>
-<tr data-group="readability"><td><code>wide-struct</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F78 Struct with too many fields</td><td></td></tr>
-<tr data-group="readability"><td><code>field-prefix</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F79 Related fields belong in nested struct, table or array</td><td></td></tr>
-<tr data-group="readability"><td><code>c-type</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F81 C types outside C calls</td><td></td></tr>
-<tr data-group="readability"><td><code>banned</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F82 Project-banned name or pattern</td><td>One config list; each entry names its group.</td></tr>
+<section id="checks">
+<h2>Checks</h2><p>Check is unit of config, opt-out and group. It covers one footgun, or several with same group and same analysis. Data: <code>checks.toml</code>.</p><div class="filter" role="group" aria-label="Filter checks by group"><button type="button" data-filter="all" aria-pressed="true">all</button><button type="button" data-filter="correctness" aria-pressed="false">correctness</button><button type="button" data-filter="performance" aria-pressed="false">performance</button><button type="button" data-filter="composability" aria-pressed="false">composability</button><button type="button" data-filter="readability" aria-pressed="false">readability</button></div><div class="scroll"><table data-table><thead><tr><th>Check</th><th>Group</th><th>Family</th><th>Footguns</th><th>Note</th></tr></thead><tbody>
+<tr data-group="correctness"><td><code>ambiguous-concat</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F1 Space before minus in array literal concatenates</td><td></td></tr>
+<tr data-group="correctness"><td><code>bracketed-range</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F2 Range in brackets is one-element vector</td><td></td></tr>
+<tr data-group="correctness"><td><code>juxtaposition</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F3 Juxtaposition binds tighter than reader expects</td><td></td></tr>
+<tr data-group="correctness"><td><code>where-binding</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F4 <code>where</code> after result annotation binds result type</td><td>Fixer adds parentheses.</td></tr>
+<tr data-group="performance"><td><code>intermediate-widening</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td>F87 Literal widens intermediate that does not escape</td><td>Sites where widened type escapes go to <code>type-disruption</code>.</td></tr>
+<tr data-group="composability"><td><code>type-disruption</code></td><td><span class="chip g-composability">composability</span></td><td>D</td><td>F5 Literal or constant changes input type<br>F6 Float constant where irrational exists; promotes generic code<br>F16 Hard-coded <code>Array</code> drops caller's array type</td><td>Stand-in engine. Kinds: literal, float constant, array type.</td></tr>
+<tr data-group="correctness"><td><code>signed-division</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F7 Signed <code>%</code> and <code>÷</code> round toward zero<br>F8 Mixed signed and unsigned division</td><td></td></tr>
+<tr data-group="correctness"><td><code>inexact-conversion</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F9 Float-to-integer constructor throws on fractions</td><td></td></tr>
+<tr data-group="correctness"><td><code>approx-zero</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F10 Approximate compare to zero without <code>atol</code> is always false</td><td></td></tr>
+<tr data-group="correctness"><td><code>bool-index</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F11 <code>Bool</code> used as index</td><td></td></tr>
+<tr data-group="correctness"><td><code>overflow</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F12 Integer overflow wraps silently</td><td>Later.</td></tr>
+<tr data-group="correctness"><td><code>result-conversion</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F13 Result annotation converts instead of checking</td><td>With <code>annotation</code>, makes annotations checked.</td></tr>
+<tr data-group="correctness"><td><code>invariant-parameter</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>F14 Invariant parameter rejects intended arguments</td><td></td></tr>
+<tr data-group="composability"><td><code>overspecified-type</code></td><td><span class="chip g-composability">composability</span></td><td>C</td><td>F15 Overspecified type blocks generic callers</td><td></td></tr>
+<tr data-group="performance"><td><code>vague-type</code></td><td><span class="chip g-performance">performance</span></td><td>C D</td><td>F17 Variable, result or closure capture with vague inferred type<br>F18 Struct field with vague type</td><td>Abstract or <code>Any</code> inferred type: real dispatch cost. Kinds: local, result, capture, field.</td></tr>
+<tr data-group="readability"><td><code>ad-hoc-union</code></td><td><span class="chip g-readability">readability</span></td><td>D</td><td>F20 Ad-hoc union of unrelated types where sum type belongs</td><td>Union policy: union of concrete types outside policy. Union of input type and literal type goes to <code>type-disruption</code>.</td></tr>
+<tr data-group="performance"><td><code>mutable-struct</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td>F19 Mutable struct where immutable works</td><td></td></tr>
+<tr data-group="performance"><td><code>untyped-empty</code></td><td><span class="chip g-performance">performance</span></td><td>A</td><td>F21 Empty literal has <code>Any</code> element type</td><td>Fixer adds element type.</td></tr>
+<tr data-group="correctness"><td><code>eq-without-hash</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>F22 <code>==</code> defined without <code>hash</code></td><td></td></tr>
+<tr data-group="correctness"><td><code>shadowed-base</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>F23 Method named like Base function without <code>Base.</code> shadows it</td><td></td></tr>
+<tr data-group="correctness"><td><code>keyword-overwrite</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>F24 Methods differ only in keywords; later one overwrites</td><td></td></tr>
+<tr data-group="composability"><td><code>piracy</code></td><td><span class="chip g-composability">composability</span></td><td>G</td><td>F25 Type piracy</td><td>Aqua.jl.</td></tr>
+<tr data-group="correctness"><td><code>method-ambiguity</code></td><td><span class="chip g-correctness">correctness</span></td><td>G</td><td>F94 Method ambiguity between package methods</td><td>Aqua.jl.</td></tr>
+<tr data-group="composability"><td><code>inference-dependent</code></td><td><span class="chip g-composability">composability</span></td><td>A</td><td>F26 Behavior depends on inference result</td><td></td></tr>
+<tr data-group="correctness"><td><code>never-succeeds</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F83 Call can never succeed</td><td></td></tr>
+<tr data-group="composability"><td><code>closed-struct</code></td><td><span class="chip g-composability">composability</span></td><td>C</td><td>F84 Public struct has no abstract supertype; users cannot extend</td><td></td></tr>
+<tr data-group="correctness"><td><code>missing-interface</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>F92 Subtype misses required interface method</td><td></td></tr>
+<tr data-group="performance"><td><code>iterator-traits</code></td><td><span class="chip g-performance">performance</span></td><td>C</td><td>F93 Iterator misses size and element traits</td><td></td></tr>
+<tr data-group="correctness"><td><code>untested-extension</code></td><td><span class="chip g-correctness">correctness</span></td><td>C</td><td>F88 Extension trigger package missing from test dependencies</td><td></td></tr>
+<tr data-group="performance"><td><code>runtime-dispatch</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td>F27 Call resolved at run time</td><td></td></tr>
+<tr data-group="performance"><td><code>dynamic-splat</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td>F28 Splat of variable-length collection</td><td></td></tr>
+<tr data-group="performance"><td><code>growing-recursion</code></td><td><span class="chip g-performance">performance</span></td><td>D</td><td>F29 Recursion with argument types that nest each call</td><td></td></tr>
+<tr data-group="performance"><td><code>specialization-blowup</code></td><td><span class="chip g-performance">performance</span></td><td>C</td><td>F30 Too many specializations on <code>Function</code> or <code>Type</code> argument</td><td></td></tr>
+<tr data-group="correctness"><td><code>scalar-loop</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F31 Loop over scalar runs once</td><td></td></tr>
+<tr data-group="performance"><td><code>temporary-array</code></td><td><span class="chip g-performance">performance</span></td><td>B</td><td>F32 Temporary array built only to be consumed once</td><td></td></tr>
+<tr data-group="correctness"><td><code>unwritten-element</code></td><td><span class="chip g-correctness">correctness</span></td><td>B</td><td>F33 Uninitialized element read before write<br>F34 Placeholder value looks like data after partial fill</td><td>Kinds: undef read, placeholder read.</td></tr>
+<tr data-group="correctness"><td><code>shared-fill</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F35 <code>fill</code> shares one mutable object</td><td></td></tr>
+<tr data-group="composability"><td><code>one-based-range</code></td><td><span class="chip g-composability">composability</span></td><td>A</td><td>F36 <code>1:length(A)</code> assumes 1-based indices</td><td>Fixer: <code>eachindex</code>.</td></tr>
+<tr data-group="correctness"><td><code>unverified-inbounds</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F37 Index safety removed without proof</td><td></td></tr>
+<tr data-group="correctness"><td><code>string-index</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F38 String indexed by character count</td><td></td></tr>
+<tr data-group="performance"><td><code>constant-array</code></td><td><span class="chip g-performance">performance</span></td><td>B</td><td>F39 Never-written constant array allocates</td><td>Fixer: FillArrays.jl.</td></tr>
+<tr data-group="performance"><td><code>slice-copy</code></td><td><span class="chip g-performance">performance</span></td><td>B</td><td>F40 Read-only slice copies</td><td></td></tr>
+<tr data-group="performance"><td><code>broadcast-rebind</code></td><td><span class="chip g-performance">performance</span></td><td>B</td><td>F41 Broadcast rebinds preallocated buffer</td><td></td></tr>
+<tr data-group="performance"><td><code>loop-order</code></td><td><span class="chip g-performance">performance</span></td><td>A</td><td>F42 Inner loop over non-first index</td><td>Possible only.</td></tr>
+<tr data-group="performance"><td><code>quadratic</code></td><td><span class="chip g-performance">performance</span></td><td>A D</td><td>F43 Search inside loop over same collection<br>F44 Fold concatenates one piece at a time</td><td>Kinds: scan, concatenation.</td></tr>
+<tr data-group="correctness"><td><code>matrix-function</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F45 Matrix function where elementwise was meant</td><td>Later.</td></tr>
+<tr data-group="correctness"><td><code>conjugating-adjoint</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F46 Adjoint conjugates complex data</td><td>Later.</td></tr>
+<tr data-group="correctness"><td><code>mutable-key</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F47 Mutable key mutated after insert</td><td></td></tr>
+<tr data-group="correctness"><td><code>iteration-mutation</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F48 Container mutated while iterating</td><td></td></tr>
+<tr data-group="correctness"><td><code>dict-order</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F49 Code relies on <code>Dict</code> order</td><td>Later.</td></tr>
+<tr data-group="correctness"><td><code>self-alias</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F50 Same container passed twice to mutating call</td><td></td></tr>
+<tr data-group="correctness"><td><code>stateful-reuse</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F51 <code>Iterators.Stateful</code> consumed twice</td><td></td></tr>
+<tr data-group="correctness"><td><code>missing-condition</code></td><td><span class="chip g-correctness">correctness</span></td><td>D</td><td>F52 <code>missing</code> reaches condition</td><td></td></tr>
+<tr data-group="correctness"><td><code>non-exhaustive-match</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F89 <code>@match</code> misses variant of Moshi ADT</td><td></td></tr>
+<tr data-group="correctness"><td><code>unreachable-arm</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F90 Unreachable <code>@match</code> arm</td><td></td></tr>
+<tr data-group="correctness"><td><code>wildcard-arm</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F91 Catch-all arm on own ADT hides later variants</td><td>Default <code>allow</code>.</td></tr>
+<tr data-group="correctness"><td><code>bang-convention</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F53 Function writes argument or global without <code>!</code><br>F86 <code>!</code> function writes nothing; callers drop its result</td><td>Kinds: missing, spurious. Methods added to other module's <code>!</code> function exempt. See <code>!</code> convention.</td></tr>
+<tr data-group="correctness"><td><code>unused-call</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F54 Call has no effect and result is unused</td><td></td></tr>
+<tr data-group="correctness"><td><code>hidden-input</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F55 Hidden input: mutable global, <code>ScopedValue</code>, global RNG</td><td></td></tr>
+<tr data-group="correctness"><td><code>impure-lambda</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F56 Anonymous function impure: captures mutable state</td><td></td></tr>
+<tr data-group="performance"><td><code>boxed-capture</code></td><td><span class="chip g-performance">performance</span></td><td>H</td><td>F57 Closure rebinds captured variable; <code>Core.Box</code></td><td></td></tr>
+<tr data-group="correctness"><td><code>false-effects</code></td><td><span class="chip g-correctness">correctness</span></td><td>E</td><td>F58 <code>@assume_effects</code> claim false</td><td></td></tr>
+<tr data-group="correctness"><td><code>broad-catch</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F59 Catch handles every error</td><td></td></tr>
+<tr data-group="correctness"><td><code>duplicate-statement</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F60 Same statement twice in block</td><td></td></tr>
+<tr data-group="correctness"><td><code>soft-scope</code></td><td><span class="chip g-correctness">correctness</span></td><td>H</td><td>F61 Top-level loop assigns global; REPL and file differ</td><td></td></tr>
+<tr data-group="correctness"><td><code>try-scope</code></td><td><span class="chip g-correctness">correctness</span></td><td>H</td><td>F62 Variable first assigned in <code>try</code> read after it</td><td></td></tr>
+<tr data-group="correctness"><td><code>world-age</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F63 Function defined by <code>eval</code> called in same world</td><td></td></tr>
+<tr data-group="correctness"><td><code>double-include</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F64 Same file included twice</td><td></td></tr>
+<tr data-group="composability"><td><code>implicit-import</code></td><td><span class="chip g-composability">composability</span></td><td>G</td><td>F65 Name reached through bare <code>using</code></td><td>ExplicitImports.jl.</td></tr>
+<tr data-group="composability"><td><code>internal-access</code></td><td><span class="chip g-composability">composability</span></td><td>G</td><td>F66 Use of other module's internal name</td><td>ExplicitImports.jl.</td></tr>
+<tr data-group="readability"><td><code>misplaced-import</code></td><td><span class="chip g-readability">readability</span></td><td>G</td><td>F67 Import placed in file that does not use it</td><td>Fixer moves imports.</td></tr>
+<tr data-group="correctness"><td><code>threadid-buffer</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F68 Buffer indexed by <code>threadid()</code></td><td></td></tr>
+<tr data-group="correctness"><td><code>threaded-race</code></td><td><span class="chip g-correctness">correctness</span></td><td>H</td><td>F69 Unsynchronized update in threaded loop</td><td></td></tr>
+<tr data-group="correctness"><td><code>orphan-task</code></td><td><span class="chip g-correctness">correctness</span></td><td>A</td><td>F70 Task result never waited; errors vanish</td><td></td></tr>
+<tr data-group="readability"><td><code>annotation</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F71 Argument or result without type</td><td>Fixer guesses types for unannotated package; see annotation transition.</td></tr>
+<tr data-group="readability"><td><code>one-letter</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F72 One-letter name</td><td></td></tr>
+<tr data-group="readability"><td><code>mixed-return</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F73 Explicit <code>return</code> mixed with implicit last value</td><td></td></tr>
+<tr data-group="readability"><td><code>docstring</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F74 Comment where docstring belongs<br>F80 Module without docstring</td><td>Kinds: comment above function, module without docstring.</td></tr>
+<tr data-group="readability"><td><code>duplicate-code</code></td><td><span class="chip g-readability">readability</span></td><td>G</td><td>F76 Copied code block</td><td>jscpd. Off by default.</td></tr>
+<tr data-group="readability"><td><code>file-length</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F77 File too long</td><td></td></tr>
+<tr data-group="readability"><td><code>wide-struct</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F78 Struct with too many fields</td><td></td></tr>
+<tr data-group="readability"><td><code>field-prefix</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F79 Related fields belong in nested struct, table or array</td><td></td></tr>
+<tr data-group="readability"><td><code>c-type</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F81 C types outside C calls</td><td></td></tr>
+<tr data-group="readability"><td><code>banned</code></td><td><span class="chip g-readability">readability</span></td><td>A</td><td>F82 Project-banned name or pattern</td><td>One config list; each entry names its group.</td></tr>
 </tbody></table></div>
 </section>
 
@@ -393,52 +391,17 @@ footer { color: var(--muted); font-size: 0.85rem; }
       <div role="cell"><code>definite</code> problem</div><div class="yes" role="cell">report</div><div class="yes" role="cell">report</div>
       <div role="cell"><code>possible</code> problem</div><div class="no" role="cell">skip</div><div class="yes" role="cell">report</div>
     </div>
-<p>Note: Rules with both kinds: <code>bang-convention</code> (dispatch candidates disagree on write, or call dispatches at run time), <code>type-disruption</code> (type branch), <code>unwritten-element</code> and <code>constant-array</code> (sites fixer cannot prove).</p>
+<p>Note: Checks with both kinds: <code>bang-convention</code> (dispatch past candidate budget may write), <code>type-disruption</code> (type branch), <code>unwritten-element</code> and <code>constant-array</code> (sites fixer cannot prove).</p>
 <div class="decision"><h3>Groups</h3>
-<p><code>correctness</code>, <code>performance</code>, <code>composability</code>, <code>readability</code>. One group per rule; <code>banned</code> entries name their own group.</p>
-</div><div class="decision"><h3>Confidence and blind spots</h3>
-<p><code>confidence</code> sets lowest confidence finding needs to be reported. <code>definite</code> (default) reports definite findings only; <code>possible</code> reports both. <code>likely</code> can join between them later.</p>
-<p>Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and method table when it compiles call. It never sees run-time values, foreign code or methods added later.</p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>Compiler</th>
-<th>Corset</th>
-<th>Report</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>resolves; problem exists</td>
-<td>proves problem</td>
-<td><code>definite</code> finding</td>
-</tr>
-<tr>
-<td>cannot resolve</td>
-<td>cannot resolve</td>
-<td>finding: <code>possible</code>, or rule of its own</td>
-</tr>
-<tr>
-<td>resolves</td>
-<td>cannot resolve</td>
-<td>blind spot: coverage line only</td>
-</tr>
-</tbody>
-</table></div>
-<ul>
-<li>Finding: argument typed <code>Any</code> reaches methods that disagree on writing it. Compiler dispatches at run time: <code>bang-convention</code> reports <code>possible</code>, and <code>runtime-dispatch</code> reports call.</li>
-<li>Finding: public function returns union from dependency. Unknown callers decide: <code>possible</code>.</li>
-<li>Blind spot: syntax-only rule cannot see that <code>a::Vector</code> is 1-based, because <code>inference</code> stage did not run.</li>
-<li>Blind spot: inference refused generated method; macro did not expand; typed finding has no source span.</li>
-<li>Corset limits never fall below compiler limits (<code>max_methods</code>, union splitting). Corset resolves every call compiler resolves.</li>
-</ul>
-<p>Coverage line ends every run and counts blind spots by cause: <code>analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)</code>. Rule that lacks fact at site reports nothing there.</p>
+<p><code>correctness</code>, <code>performance</code>, <code>composability</code>, <code>readability</code>. One group per check; <code>banned</code> entries name their own group.</p>
+</div><div class="decision"><h3>Confidence setting</h3>
+<p><code>confidence</code> sets lowest confidence finding needs to be reported. <code>definite</code> (default): problem exists. <code>possible</code>: analysis ran and could not rule problem out; includes definite findings. Gaps in Corset itself are never <code>possible</code> findings; coverage line lists them. <code>likely</code> can join between them later.</p>
 </div><div class="decision"><h3>Lint levels</h3>
-<p>Clippy model: each group and each rule has level <code>allow</code>, <code>warn</code> or <code>deny</code>; rule level overrides group level from any source. Command-line flags beat config; config beats preset. <code>deny</code> findings fail run; <code>--deny warnings</code> makes warnings fail too. Baseline findings never fail run.</p>
+<p>Clippy model: each group and each check has level <code>allow</code>, <code>warn</code> or <code>deny</code>; check level overrides group level. <code>deny</code> findings fail run; <code>--deny warnings</code> makes warnings fail too. Baseline findings never fail run.</p>
 </div><div class="decision"><h3>Opt-out comments</h3>
-<p><code># corset: allow &lt;rule&gt; -- &lt;reason&gt;</code>. Reason is required. Opt-out that suppresses nothing is error, like Rust <code>#[expect]</code>. Scope by position: end of line covers line; line above function, struct or block covers that item; top of file covers file.</p>
+<p><code># corset: allow &lt;check&gt; -- &lt;reason&gt;</code>. Reason is required. Opt-out that suppresses nothing is error, like Rust <code>#[expect]</code>. Scope by position: end of line covers line; line above function, struct or block covers that item; top of file covers file.</p>
 </div><div class="decision"><h3>Config</h3>
-<p><code>[preferences.Corset]</code> table in target Project.toml; <code>[Corset]</code> table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: <code>kind</code>, <code>confidence</code>, <code>fix_tier</code>, <code>levels</code> (group or rule name to level). Unknown key, value or name is config error (exit 2). Scripts without Project.toml use defaults and command-line flags.</p>
+<p><code>[preferences.Corset]</code> table in Project.toml, read through Preferences.jl. Scripts without Project.toml use defaults and command-line flags.</p>
 </div><div class="decision"><h3>Project kind</h3>
 <p>Preset over groups and fix tier. Answers &quot;who uses this code?&quot;</p>
 <div class="scroll"><table>
@@ -480,8 +443,8 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li><code>manual</code>: needs human choice (new name, sum type). Shown, never applied. Later: prompt for choice in CLI, or hand off to LLM.</li>
 </ul>
 </div><div class="decision"><h3>Messages</h3>
-<p>Model: Rust compiler errors. Each finding carries primary span, labeled cause spans, one-line reason, fix with tier, and docs link. Analyses record cause spans (where union is created, where literal enters), so rules can name cause. Span has precision: exact bytes or line only. Renderer marks whole line for line precision.</p>
-<pre><code>warning[vague-type]: `acc` changes type inside loop
+<p>Model: Rust compiler errors. Each finding carries primary span, labeled cause spans, one-line reason, fix with tier, and docs link. Analyses record cause spans (where union is created, where literal enters), so checks can name cause. Span has precision: exact bytes or line only. Renderer marks whole line for line precision.</p>
+<pre><code>performance[vague-type]: `acc` changes type inside loop
   --&gt; src/stats.jl:12:9
    |
 10 |     acc = 0
@@ -493,27 +456,25 @@ footer { color: var(--muted); font-size: 0.85rem; }
    = why: later uses cannot compile for one type; each one dispatches at run time
    = fix: start from element type: `acc = zero(eltype(xs))`   [safe]
    = docs: corset explain vague-type
-   = note: warn from performance group, library preset
 </code></pre>
 <ul>
-<li>Header names level as rustc does: <code>error</code> for <code>deny</code>, <code>warning</code> for <code>warn</code>. Note line says where level was set, once per rule per run.</li>
 <li>Same structure feeds SARIF: related locations and fixes.</li>
-<li><code>corset explain &lt;rule&gt;</code> prints footgun, example and fix offline.</li>
+<li><code>corset explain &lt;check&gt;</code> prints footgun, example and fix offline.</li>
 <li>Opt-out hint names exact comment: <code># corset: allow vague-type -- &lt;reason&gt;</code>.</li>
 </ul>
 </div><div class="decision"><h3>Macro output</h3>
-<p>Findings inside macro expansions are reported, other packages' macros included: message marks them upstream and points at call site. Own macro: one finding at definition, with call-site count. Fixes never edit generated code. Syntax stages see source as written; findings in expanded code come from stages after load. Code passed through macro (<code>@inbounds</code>, <code>@views</code>) maps to exact bytes. Code macro writes itself (<code>@kwdef</code>, macro body, <code>@generated</code>) maps to nearest line inside definition: call site. Julia 1.13 lowering keeps no call-site provenance (S2); JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.</p>
+<p>Findings inside macro expansions are reported, other packages' macros included: message marks them upstream and points at call site. Own macro: one finding at definition, with call-site count. Fixes never edit generated code. Syntax families see source as written; findings in expanded code come from families after load. Code passed through macro (<code>@inbounds</code>, <code>@views</code>) maps to exact bytes. Code macro writes itself (<code>@kwdef</code>, macro body, <code>@generated</code>) maps to nearest line inside definition: call site. Julia 1.13 lowering keeps no call-site provenance (S2); JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.</p>
 </div><div class="decision"><h3>Conventions</h3>
 <ul>
 <li>Corset supports only latest Julia release, for running and for fixes.</li>
 <li>Public API: exported or declared <code>public</code>. Everything else is internal.</li>
 <li><code>test/</code>, <code>docs/</code>, <code>benchmark/</code> are scripts: loading them runs them.</li>
-<li>Baseline matches findings by rule, file, enclosing definition and normalized snippet hash. No line numbers, so edits elsewhere keep matches.</li>
-<li><code>corset explain</code> and docs page per rule follow Clippy sections: what it does, why it is bad, example, use instead, known problems.</li>
+<li>Baseline matches findings by check, file, enclosing definition and normalized snippet hash. No line numbers, so edits elsewhere keep matches.</li>
+<li><code>corset explain</code> and docs page per check follow Clippy sections: what it does, why it is bad, example, use instead, known problems.</li>
 <li>Fixes keep surrounding style; formatting stays formatter's job (Runic, JuliaFormatter).</li>
 <li>Additive replacement for literal uses <code>oneunit(x)</code>, never <code>one(x)</code>: <code>one</code> drops units (Unitful.jl).</li>
 <li>Corset lints itself in CI from phase 1.</li>
-<li>Renamed rule keeps old name as alias that warns, so opt-out comments survive renames (Clippy renamed-lints list).</li>
+<li>Renamed check keeps old name as alias that warns, so opt-out comments survive renames (Clippy renamed-lints list).</li>
 </ul>
 </div><div class="decision"><h3><code>one-letter</code> exemptions</h3>
 <p>Allowed: type names and type parameters (<code>T</code>, <code>N</code>); <code>i</code>, <code>j</code>, <code>k</code> as indices. Everything else needs descriptive name.</p>
@@ -530,8 +491,8 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Package abstract type (<code>s::Shape</code>): infer once per concrete subtype package defines, with stand-ins for its parameters.</li>
 <li>Function argument: stand-in function returns <code>Any</code> (inference barrier). Method stable under that assumption is exempt: stable whenever <code>f</code> is. Problems method causes itself are reported. Code after <code>f</code>'s result stays analyzed; values from that result give no findings. Opaque result type truncated frames in S1.</li>
 <li>No stand-in yet (<code>AbstractString</code>, <code>AbstractDict</code>, abstract type without package subtype) and explicit <code>::Any</code>: no findings from that argument's data.</li>
-<li>Unannotated method reached from analyzed caller is analyzed through caller inference: <code>inference</code> stage keeps explicit worklist of package frames reached from stand-in callers. Unannotated method nothing calls is skipped; <code>annotation</code> reports it. Expect low coverage on unannotated packages (Distances: 165 of 283 methods) until <code>annotation</code> fixer runs.</li>
-<li>Method Corset cannot analyze is blind spot: coverage line counts it with reason.</li>
+<li>Unannotated method reached from analyzed caller is analyzed through caller inference: family D keeps explicit worklist of package frames reached from stand-in callers. Unannotated method nothing calls is skipped; <code>annotation</code> reports it. Expect low coverage on unannotated packages (Distances: 165 of 283 methods) until <code>annotation</code> fixer runs.</li>
+<li>Analysis gaps never become findings. Run ends with coverage line: methods not analyzed and reason.</li>
 </ul>
 </div><div class="decision"><h3><code>type-disruption</code> engine</h3>
 <p><strong>Principle: values from outside inputs are weak.</strong> Literals, constants and globals must not change result type. Inputs combine by normal promotion. Same rule as NumPy 2 for Python scalars.</p>
@@ -574,7 +535,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <ul>
 <li><strong>Stand-in types</strong>: types Corset defines to stand for whatever type caller passes, so inference sees concrete type. Numbers: float stand-in and integer stand-in; arrays: stand-in array type. Each is ordinary well-behaved type, and promotes like narrowest real type of its kind: float stand-in absorbs <code>Int</code> and loses to <code>Float64</code>, like <code>Float32</code>; integer stand-in loses to <code>Int</code>, like <code>Int32</code>. Base code runs on them unchanged.</li>
 <li><strong>Inference</strong>: infer each package method with stand-in types in place of generic arguments (<code>::Real</code>, <code>T &lt;: Real</code>, <code>AbstractArray{T}</code>). Use native inference and its cache. No JET, no Cthulhu, no custom interpreter.</li>
-<li><strong>Scan</strong> (<code>inference</code> stage, package methods only):
+<li><strong>Scan</strong> (family D, package methods only):
 <ul>
 <li>Literal, constant, global or type name meets input (stand-in, or overspecified argument type): report when converting it to input type would change type of escaping value: returned, or written to argument or global. Intermediate that does not escape (<code>Float32(x * 0.5)</code>) goes to <code>intermediate-widening</code> (performance). Each site gets one finding.</li>
 <li>Examples: <code>x::Int32 * 2</code> (Int64 vs Int32) and <code>x::Float32 * 0.5</code> (Float64 vs Float32) and <code>Float64(x)</code> on <code>Float32</code> are reported. <code>x::Float32 * 2</code> and <code>x::Int32 / 2</code> (Float64 either way) pass.</li>
@@ -597,7 +558,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li><strong>Cost</strong> (S1 spike): number stand-ins about 200 lines; mixing check (differential, escape, filters, classifier) about 360; signature mapping about 190. Source mapping: vendored TypedSyntax.jl algorithm (S2).</li>
 <li><strong>Stand-in fidelity</strong>: stand-in copies every <code>Float32</code> and <code>Int32</code> special case that changes result type (irrational rule, <code>irrationals.jl</code>). Stand-in test suite runs <code>Test.detect_ambiguities</code> against Base.</li>
 <li><strong>No tests</strong>: stand-in types come from annotations; see <strong>Arguments without stand-in</strong>.</li>
-<li>Syntax rule stays for hard-coded <code>Array</code> without template. Shared fix helper finds in-scope type source (<code>T</code>, <code>eltype(x)</code>, template array).</li>
+<li>Syntax check stays for hard-coded <code>Array</code> without template. Shared fix helper finds in-scope type source (<code>T</code>, <code>eltype(x)</code>, template array).</li>
 </ul>
 </div><div class="decision"><h3>Annotations</h3>
 <p><code>::Any</code> is explicit opt-out. Abstract argument types are intended. <code>result-conversion</code> reports result annotation that converts, so annotations act as checks.</p>
@@ -636,7 +597,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 </div><div class="decision"><h3>Hard-coded arrays</h3>
 <p><code>type-disruption</code> reports hard-coded <code>Vector</code>/<code>Matrix</code>/<code>Array</code> construction everywhere, <code>zeros</code>, <code>ones</code>, <code>fill</code> included. With template array: autofix to <code>similar(template, T, dims)</code>. Without template: message teaches caller-supplied template or array type; autofix adds parameter in <code>breaking</code> tier. One shared initializer fixer serves <code>type-disruption</code>, <code>constant-array</code> and <code>unwritten-element</code>.</p>
 </div><div class="decision"><h3>Specialization count</h3>
-<p><code>specialization-blowup</code> predicts from source: <code>package</code> stage finds methods that specialize on <code>Function</code> or <code>Type</code> argument; <code>syntax</code> stage counts distinct closures or types passed at package call sites.</p>
+<p><code>specialization-blowup</code> predicts from source: C finds methods that specialize on <code>Function</code> or <code>Type</code> argument; A counts distinct closures or types passed at package call sites. Compiled-instance count from precompile workload: later, opt-in.</p>
 </div>
 </section>
 
@@ -661,7 +622,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Same cache exemption applies to <code>hidden-input</code>: cache read is invisible to caller.</li>
 <li>Write facts come from Corset's own summary per method (S5): points-to graph over optimized IR inside method, callee summaries at calls. Compiler <code>EscapeAnalysis</code> is unsuitable: no return-alias or field-store summary.</li>
 <li>Callees are summarized through dependency code, Base included. Base summaries are cached once per Julia version.</li>
-<li>Dynamic call: join summaries of candidates within compiler limits (<code>max_methods</code> 3, union splitting 4 by default). All agree: definite. Disagree: <code>possible</code>. More candidates: call dispatches at run time; <code>possible</code>, and <code>runtime-dispatch</code> reports call.</li>
+<li>Dynamic call: join summaries of up to 4 candidates at declared signatures; definite only when all agree. Else unknown callee: <code>possible</code>, reason recorded for coverage line.</li>
 <li><code>possible</code> effect findings stay off until dispatch resolution passes quality gate. S5: every <code>possible</code> verdict came from unknown callee or foreign call.</li>
 <li>Not writes caller sees: lazy-init caches (<code>Regex</code>, <code>LazyString</code>, <code>setfieldonce!</code>), task-local state, locks, writes to fresh local objects inside error paths (message building). Argument or global write before throw stays in summary: caller that catches sees it. Globals of other modules (Base logging, PCRE contexts) are kept apart and never reported.</li>
 <li>Effect summary records whether method result aliases global state. Write through such result counts as global write, so caller needs <code>!</code>.</li>
@@ -679,7 +640,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <h2>Architecture</h2>
 <p>Code layout, process model, cache, tests, command line.</p>
 <div class="decision"><h3>Code layout</h3>
-<p>Each stage is one module that produces facts. Rules read facts through one API. Engine is only module that knows order.</p>
+<p>Each layer is one module that produces facts. Checks read facts through one API. Engine is only module that knows order.</p>
 <div class="scroll"><table>
 <thead>
 <tr>
@@ -690,43 +651,39 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tbody>
 <tr>
 <td><code>Syntax</code></td>
-<td><code>syntax</code> stage: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind.</td>
+<td>L1: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind; array def-use (family B).</td>
 </tr>
 <tr>
 <td><code>Scope</code></td>
-<td><code>scope</code> stage: lowering and scope facts. JuliaLowering vendored at pinned julia commit on 1.13; <code>Base.JuliaLowering</code> from 1.14. Own replacement expansions for common Base macros keep byte positions. Soft scope: before lowering each form, declare earlier top-level assigned globals as <code>global x::Any</code>, in include order; order-sensitive fixtures.</td>
+<td>L2: lowering and scope facts (family H). JuliaLowering vendored at pinned julia commit on 1.13; <code>Base.JuliaLowering</code> from 1.14. Own replacement expansions for common Base macros keep byte positions. Soft scope: before lowering each form, declare earlier top-level assigned globals as <code>global x::Any</code>, in include order; order-sensitive fixtures.</td>
 </tr>
 <tr>
-<td><code>Package</code></td>
-<td><code>package</code> stage: load package; module facts; Project.toml facts.</td>
+<td><code>Load</code></td>
+<td>L3: load package; module facts (family C); Project.toml facts.</td>
 </tr>
 <tr>
-<td><code>Inference</code></td>
-<td><code>inference</code> stage: stand-in types; one inference per method; typed IR with source mapping. Mapping: vendored TypedSyntax.jl algorithm on syntax tree; no CodeTracking.</td>
+<td><code>Infer</code></td>
+<td>L4: stand-in types; one inference per method; typed IR with source mapping (family D). Mapping: vendored TypedSyntax.jl algorithm on L1 tree; no CodeTracking.</td>
 </tr>
 <tr>
 <td><code>Effects</code></td>
-<td><code>effects</code> stage: effect and alias summary per method.</td>
-</tr>
-<tr>
-<td><code>Lifecycle</code></td>
-<td><code>lifecycle</code> stage: local def-use per array; callee writes from <code>effects</code>.</td>
+<td>L5: effect and alias summary per method (family E).</td>
 </tr>
 <tr>
 <td><code>External</code></td>
-<td><code>external</code> stage: Aqua.jl, ExplicitImports.jl, jscpd output as facts.</td>
+<td>Family G: Aqua.jl, ExplicitImports.jl, jscpd output as facts.</td>
 </tr>
 <tr>
 <td><code>Facts</code></td>
-<td>Fact types and query API. Only module rule code may import.</td>
+<td>Fact types and query API. Only module check code may import.</td>
 </tr>
 <tr>
-<td><code>Rules</code></td>
-<td>One pure function per rule; registry as data.</td>
+<td><code>Checks</code></td>
+<td>One pure function per check; registry as data.</td>
 </tr>
 <tr>
 <td><code>Engine</code></td>
-<td>Salsa.jl query graph: pick stages that enabled rules need; run them; apply levels, confidence, opt-outs, baseline.</td>
+<td>Salsa.jl query graph: pick layers that enabled checks need; run them; apply levels, confidence, opt-outs, baseline.</td>
 </tr>
 <tr>
 <td><code>Fix</code></td>
@@ -742,7 +699,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 </tr>
 <tr>
 <td><code>Config</code></td>
-<td>Project.toml and LocalPreferences.toml tables, presets, command-line flags; level per rule.</td>
+<td>Preferences.jl table, presets, command-line overrides.</td>
 </tr>
 <tr>
 <td><code>CLI</code></td>
@@ -756,13 +713,12 @@ struct Label    span::Span; text::String end
 struct Edit     span::Span; replacement::String end
 struct Fix      edits::Vector{Edit}; tier::Tier end           # Tier: safe likely breaking manual
 struct Finding
-    rule::Symbol; kind::Symbol; confidence::Confidence      # definite possible
+    check::Symbol; kind::Symbol; confidence::Confidence      # definite possible
     primary::Label; causes::Vector{Label}; why::String
     fix::Union{Fix, Nothing}
 end
-struct Diagnostic finding::Finding; level::Level; source::String end   # source: where level was set
-struct RuleEntry
-    name::Symbol; group::Group; footguns::Vector{Int}; stage::Stage
+struct CheckEntry
+    name::Symbol; group::Group; footguns::Vector{Int}; family::Family
     run::Function                                            # (facts::Facts) -&gt; Vector{Finding}
 end
 </code></pre>
@@ -777,11 +733,11 @@ end
 </ul>
 </div><div class="decision"><h3>Tests</h3>
 <ul>
-<li>UI tests, as in Clippy: <code>test/ui/&lt;rule&gt;/&lt;case&gt;.jl</code> with snapshot of full rendered output and fixed source. Bless command updates snapshots; CI fails on diff.</li>
+<li>UI tests, as in Clippy: <code>test/ui/&lt;check&gt;/&lt;case&gt;.jl</code> with snapshot of full rendered output and fixed source. Bless command updates snapshots; CI fails on diff.</li>
 <li>Each footgun: positive case, negative case, fix case.</li>
 <li>Property tests (Supposition.jl): fix creates no new finding; fix is idempotent. <code>safe</code> fix: fixture behaves same before and after (differential run).</li>
 <li>Reference comparison: JET, fatou, LintApp.jl, ReLint.jl on fixtures, with allowlist.</li>
-<li>100% line coverage; mutation testing on rule code.</li>
+<li>100% line coverage; mutation testing on check code.</li>
 </ul>
 </div><div class="decision"><h3>Command line</h3>
 <div class="scroll"><table>
@@ -801,8 +757,8 @@ end
 <td>Apply fixes up to tier (default from preset), then check again.</td>
 </tr>
 <tr>
-<td><code>corset explain &lt;rule&gt;</code></td>
-<td>Print rule docs offline.</td>
+<td><code>corset explain &lt;check&gt;</code></td>
+<td>Print check docs offline.</td>
 </tr>
 <tr>
 <td><code>corset baseline [path]</code></td>
@@ -810,18 +766,18 @@ end
 </tr>
 </tbody>
 </table></div>
-<p>Flags: <code>-A</code>, <code>-W</code>, <code>-D &lt;rule or group&gt;</code> set levels (Clippy style); <code>--deny warnings</code>; <code>--confidence definite|possible</code>; <code>--format text|json|sarif</code>; <code>--no-cache</code>.</p>
+<p>Flags: <code>-A</code>, <code>-W</code>, <code>-D &lt;check or group&gt;</code> set levels (Clippy style); <code>--deny warnings</code>; <code>--confidence definite|possible</code>; <code>--format text|json|sarif</code>; <code>--no-cache</code>.</p>
 <p>Exit codes: <code>0</code> no <code>deny</code> finding; <code>1</code> <code>deny</code> finding; <code>2</code> config or usage error; <code>101</code> internal error (Cargo convention).</p>
-</div><div class="decision"><h3>Rule contract</h3>
+</div><div class="decision"><h3>Check contract</h3>
 <p>Main goal of rewrite: clean structure. Legacy implemented each rule on its own, so analyses repeated and code grew.</p>
 <ul>
-<li>Each stage computes facts once per run: syntax index, array def-use, scopes, module facts, typed IR, effect summary.</li>
-<li>Rule is one pure function: facts in, findings out. Rule code imports only facts API; test enforces it.</li>
-<li>Rule that needs new information adds fact to its analysis. Long rule signals missing fact.</li>
-<li>Registry is data: name, group, footguns, stage, fix tier. Docs page per rule comes from footgun table.</li>
+<li>Analysis (family) computes facts once per run: syntax index, array def-use, scopes, module facts, typed IR, effect summary.</li>
+<li>Check is one pure function: facts in, findings out. Check code imports only facts API; test enforces it.</li>
+<li>Check that needs new information adds fact to its analysis. Long check signals missing fact.</li>
+<li>Registry is data: name, group, footguns, family, fix tier. Docs page per check comes from footgun table.</li>
 </ul>
 </div><div class="decision"><h3>Package load</h3>
-<p>Loading runs code. Stages after package load (<code>package</code>, <code>inference</code>, <code>effects</code>, <code>lifecycle</code>, <code>external</code>) run only on package with <code>name</code>; Julia apps qualify. Scripts and nameless environments get <code>syntax</code> and <code>scope</code>. Extensions are analyzed with test dependencies installed and their triggers loaded; <code>untested-extension</code> reports trigger missing from them. Later: definitions-only load for scripts.</p>
+<p>Loading runs code. Typed families (C, D, E, G) run only on package with <code>name</code>; Julia apps qualify. Scripts and nameless environments get A, B and H. Extensions are analyzed with test dependencies installed and their triggers loaded; <code>untested-extension</code> reports trigger missing from them. Later: definitions-only load for scripts.</p>
 </div><div class="decision"><h3>Incremental runs and disk cache</h3>
 <ul>
 <li>Engine runs on Salsa.jl (julia-vscode, MIT; JuliaWorkspaces.jl uses it): inputs are file texts and Project.toml; derived queries are parse trees, facts and findings. Edit recomputes only dependents; early cutoff stops at unchanged facts.</li>
@@ -830,13 +786,13 @@ end
 <li>Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.</li>
 <li>Location: user cache directory, one entry set per project. CI saves it between runs.</li>
 <li>Global key: Julia version, Corset version, config hash, Manifest hash, preferences, active extensions. Any change clears all entries.</li>
-<li><code>syntax</code> stage: findings per file, keyed by file content hash.</li>
-<li>Typed stages: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. <code>@generated</code> method depends on whole package.</li>
+<li>Syntax families: findings per file, keyed by file content hash.</li>
+<li>Typed families: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. <code>@generated</code> method depends on whole package.</li>
 <li>Run parses every file (cheap) and computes keys. Nothing changed: no package load; cached findings print. Otherwise load package and infer only invalid methods.</li>
 <li>Later: warm daemon keeps Salsa tables and loaded package, so edit costs only its dependents.</li>
 </ul>
 </div><div class="decision"><h3>Reference linters</h3>
-<p>JET, fatou, LintApp.jl (<code>julialint</code>, julia-vscode linter; its rules live in JuliaWorkspaces, vendored StaticLint) and ReLint.jl run only in Corset tests, never at lint time. All four are MIT: copy their rule code where it already implements our footgun, keeping license notice.</p>
+<p>JET, fatou, LintApp.jl (<code>julialint</code>, julia-vscode linter; its checks live in JuliaWorkspaces, vendored StaticLint) and ReLint.jl run only in Corset tests, never at lint time. All four are MIT: copy their check code where it already implements our footgun, keeping license notice.</p>
 <ul>
 <li>Tests run each reference on fixture corpus and compare findings with Corset. <code>julialint</code> emits JSON and SARIF.</li>
 <li>Reference finding Corset misses: fix Corset, or record reason in allowlist (reference bug, different design).</li>
@@ -849,7 +805,7 @@ end
 <section id="plan">
 <h2>Build plan</h2>
 <p>Phases, spikes, quality gate and speed budget.</p>
-<p>Draft. Spikes retire risks first. Each later phase ships usable rules. Phase order follows stage cost: syntax needs no package load, so it works on every project.</p>
+<p>Draft. Spikes retire risks first. Each later phase ships usable checks. Phase order follows layer cost: syntax needs no package load, so it works on every project.</p>
 <div class="scroll"><table>
 <thead>
 <tr>
@@ -862,49 +818,49 @@ end
 <tbody>
 <tr>
 <td>0 spikes</td>
-<td>S1 stand-in inference · S2 source mapping · S3 scope stage · S4 syntax matcher · S5 effect API. Measure legacy Corset on corpus as speed baseline.</td>
+<td>S1 stand-in inference · S2 source mapping · S3 scope layer · S4 syntax matcher · S5 effect API. Measure legacy Corset on corpus as speed baseline.</td>
 <td>—</td>
 <td>Each spike works on Julia 1.13, or fallback is chosen.</td>
 </tr>
 <tr>
 <td>1 skeleton</td>
-<td>Julia app <code>corset</code>; facts API and rule contract; config, project kind, groups, confidence, fix tiers; finding type with cause spans; message renderer; <code>corset explain</code>; opt-outs; baseline; text, JSON, SARIF output; disk cache for syntax findings; fixer engine on lossless tree; UI snapshot tests and other harnesses.</td>
+<td>Julia app <code>corset</code>; facts API and check contract; config, project kind, groups, confidence, fix tiers; finding type with cause spans; message renderer; <code>corset explain</code>; opt-outs; baseline; text, JSON, SARIF output; disk cache for syntax findings; fixer engine on lossless tree; UI snapshot tests and other harnesses.</td>
 <td>—</td>
-<td>One rule runs end to end: report, opt-out, baseline, fix, SARIF, cached rerun.</td>
+<td>One check runs end to end: report, opt-out, baseline, fix, SARIF, cached rerun.</td>
 </tr>
 <tr>
 <td>2 syntax</td>
-<td><code>syntax</code> stage. Copy ReLint.jl rules (Argus patterns) and LintApp.jl rules (in JuliaWorkspaces) where they exist.</td>
-<td>24</td>
+<td>Families A and B. Copy ReLint.jl rules (Argus patterns) and LintApp.jl checks (in JuliaWorkspaces) where they exist.</td>
+<td>36</td>
 <td>Works on scripts. Reference comparison clean or allowlisted. <strong>First release.</strong></td>
 </tr>
 <tr>
 <td>3 module</td>
-<td>Package load in target environment; stages <code>package</code> and <code>external</code>.</td>
-<td>20</td>
-<td>Load and rules run on every corpus package.</td>
+<td>Package load in target environment; families C and G.</td>
+<td>17</td>
+<td>Load and checks run on every corpus package.</td>
 </tr>
 <tr>
 <td>4 types</td>
-<td>Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); <code>inference</code> stage and type-disruption scan; per-method disk cache; <code>annotation</code> fixer guesses argument types and fills result types (annotation transition, <code>types.md</code>).</td>
-<td>25</td>
+<td>Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); family D and type-disruption scan; per-method disk cache; <code>annotation</code> fixer guesses argument types and fills result types (annotation transition, <code>types.md</code>).</td>
+<td>22</td>
 <td>Precision gate passes on corpus. <code>unverified-inbounds</code> agrees with julia-in-lean site verdicts.</td>
 </tr>
 <tr>
 <td>5 effects</td>
-<td><code>effects</code> stage: effect and alias summary; <code>lifecycle</code> stage reads callee writes from it; <code>!</code> convention flow.</td>
-<td>15</td>
+<td>Effect and alias summary; family E; <code>!</code> convention flow.</td>
+<td>9</td>
 <td>Flow fixtures pass, IO, RNG and memo exemptions included.</td>
 </tr>
 <tr>
 <td>6 scope</td>
-<td><code>scope</code> stage on JuliaLowering (S3).</td>
+<td>Family H on scope layer chosen in S3.</td>
 <td>4</td>
 <td>Scope fixtures pass on packages and scripts.</td>
 </tr>
 <tr>
 <td>later</td>
-<td>F12, F45, F46, F49 (off by default); string and dict stand-in types; language server mode; dimension-aware stand-in for <code>Number</code> (catches <code>x + 1</code> on Unitful quantity); nursery group for rules before quality gate; upstream F89 and F90 logic to Moshi <code>verify/</code> (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for <code>manual</code> fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking.</td>
+<td>F12, F45, F46, F49 (off by default); compiled-instance specialization count; string and dict stand-in types; language server mode; dimension-aware stand-in for <code>Number</code> (catches <code>x + 1</code> on Unitful quantity); nursery group for checks before quality gate; upstream F89 and F90 logic to Moshi <code>verify/</code> (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for <code>manual</code> fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking.</td>
 <td>4</td>
 <td>—</td>
 </tr>
@@ -912,33 +868,32 @@ end
 </table></div>
 <div class="decision"><h3>Spikes</h3>
 <ul>
-<li><strong>S1 stand-in inference</strong> (done, works with limits): every corpus method infers; 2 generated functions refused. Differential check right on 12 fixtures. Re-dispatch on real types separates stand-in blind spots. Found real bug (<code>DataStructures.empty(::DefaultDictBase)</code>).</li>
+<li><strong>S1 stand-in inference</strong> (done, works with limits): every corpus method infers; 2 generated functions refused. Differential check right on 12 fixtures. Re-dispatch on real types separates stand-in gaps. Found real bug (<code>DataStructures.empty(::DefaultDictBase)</code>).</li>
 <li><strong>S2 source mapping</strong> (done, works with limits): 65% of findable statements map to exact bytes; about 2% of checked spans wrong. Code macros write maps to line only.</li>
-<li><strong>S3 scope stage</strong> (done, works with limits): JuliaLowering at julia commit <code>f0188d597b</code> lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload in Corset. <code>Meta.lower</code> fallback dropped.</li>
+<li><strong>S3 scope layer</strong> (done, works with limits): JuliaLowering at julia commit <code>f0188d597b</code> lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload. <code>Meta.lower</code> fallback dropped.</li>
 <li><strong>S4 syntax matcher</strong> (done, <code>spikes/s4-syntax-matcher/REPORT.md</code>): Argus.jl 0.4.2 is MIT. Use Argus behind thin wrapper so matcher stays swappable. Argus searches whole tree once per rule (about 8× slower than kind-indexed walk); own walk with root-kind index should remove most of gap. Unmeasured: benchmark candidate-node design at planned rule count first in phase 2.</li>
 <li><strong>S5 effect summary</strong> (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). <code>possible</code> covers 75%, 55% and 52% of methods (Distances, DataStructures, JSON), all from unknown callees or unknown foreign calls. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.</li>
 </ul>
 </div><div class="decision"><h3>Quality gate</h3>
-<p>Rule is on by default only when all hold:</p>
+<p>Check is on by default only when all hold:</p>
 <ul>
 <li>Fixture per footgun: positive, negative, and fix result.</li>
-<li>Any false <code>definite</code> finding blocks rule: it is rule bug. At least 90% of sampled <code>possible</code> findings are real problems.</li>
+<li>Any false <code>definite</code> finding blocks check: it is check bug. At least 90% of sampled <code>possible</code> findings are real problems.</li>
 <li><code>definite</code> typed finding needs validated span: callee at mapped node matches IR callee; mismatch demotes span to line precision.</li>
 <li>Property tests (Supposition.jl): fix creates no new finding; fix is idempotent. <code>safe</code> fix: fixture behaves same before and after (differential run).</li>
 <li>Message shows cause span and concrete fix; reviewed on corpus sample.</li>
 <li>Run time stays inside budget in CI perf test.</li>
 </ul>
 <p>Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.</p>
-<p>Legacy baseline (S4, warm, whole process): Distances 9.4 s, DataStructures 16–19 s, JSON 33–37 s. Remeasure legacy in same scope (startup and target load subtracted) before comparing. Main risks: stand-in inference, 7–17 s cold per package (S1); effect summary, 17–22 s uncached (S5). Corset precompile workload, Base summary cache and per-method disk cache must close gap; effects phase gets own budget once Base cache exists.</p>
-<p>Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).</p>
+<p>Legacy baseline (S4, warm, whole process): Distances 9.4 s, DataStructures 16–19 s, JSON 33–37 s. Remeasure legacy in same scope (startup and target load subtracted) before comparing. Main risks: stand-in inference, 7–17 s cold per package (S1); effect summary, 17–22 s uncached (S5). Precompile workload, Base summary cache and per-method disk cache must close gap; effects phase gets own budget once Base cache exists.</p>
+<p>Repository bar: 100% line coverage; mutation testing on check code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).</p>
 </div><div class="decision"><h3>Design reviews</h3>
 <p>Design is draft until code proves it. Revisit at each checkpoint:</p>
 <ul>
-<li>After phase 0: spike results confirm or replace stand-in inference, scope stage, syntax matcher and effect summary. Rewrite affected parts before phase 1.</li>
+<li>After phase 0: spike results confirm or replace stand-in inference, scope layer, syntax matcher and effect summary. Rewrite affected parts before phase 1.</li>
 <li>After first release: corpus findings and real use test footgun list, levels, presets and messages.</li>
 <li>After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (<code>types.md</code>). Replace indexing exemption of <code>type-disruption</code> with exact conversion rule.</li>
 <li>Before each later phase: reread parts that phase builds on; question decisions that no longer fit.</li>
-<li>Before phase 5: decide whether <code>lifecycle</code> def-use runs on syntax tree or reuses <code>effects</code> points-to graph over IR (one producer per fact).</li>
 <li>Each review: adversarial pass by second model on changed parts; log findings and outcomes in <code>rules-rewrite-history.md</code>.</li>
 <li>Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.</li>
 </ul>
@@ -961,20 +916,24 @@ end
 <td>One problem Corset prevents. Source of truth; ID like F17.</td>
 </tr>
 <tr>
-<td>rule</td>
-<td>Pure function from facts to findings. Unit of config, opt-out and level. Covers one or more footguns. Argus.jl <code>Rule</code> is different; Corset uses only Argus patterns.</td>
+<td>check</td>
+<td>Unit of config, opt-out and group. Covers one or more footguns.</td>
 </tr>
 <tr>
 <td>kind</td>
-<td>Variant inside rule, with own message and fix.</td>
+<td>Variant inside check, with own message and fix.</td>
 </tr>
 <tr>
-<td>stage</td>
-<td>Analysis step that computes facts once per run: <code>syntax</code>, <code>package</code>, <code>scope</code>, <code>inference</code>, <code>effects</code>, <code>lifecycle</code>, <code>external</code>. Rule belongs to last stage it reads.</td>
+<td>layer</td>
+<td>Data Corset computes, L1 syntax to L5 effects.</td>
+</tr>
+<tr>
+<td>family</td>
+<td>Analysis on layer output that checks share (A to H).</td>
 </tr>
 <tr>
 <td>fact</td>
-<td>Analysis output that rules read.</td>
+<td>Analysis output that checks read.</td>
 </tr>
 <tr>
 <td>stand-in type</td>
@@ -994,19 +953,11 @@ end
 </tr>
 <tr>
 <td>confidence</td>
-<td><code>definite</code>: problem exists. <code>possible</code>: compiler cannot resolve doubt either.</td>
-</tr>
-<tr>
-<td>blind spot</td>
-<td>Doubt compiler resolves but Corset cannot. Counted on coverage line; never finding.</td>
+<td><code>definite</code>: problem exists. <code>possible</code>: analysis ran and could not rule it out.</td>
 </tr>
 <tr>
 <td>level</td>
-<td><code>allow</code>, <code>warn</code> or <code>deny</code> per group or rule.</td>
-</tr>
-<tr>
-<td>diagnostic</td>
-<td>Finding with level applied; what Corset reports.</td>
+<td><code>allow</code>, <code>warn</code> or <code>deny</code> per group or check.</td>
 </tr>
 <tr>
 <td>fix tier</td>
@@ -1022,11 +973,11 @@ end
 </tr>
 <tr>
 <td>opt-out</td>
-<td><code># corset: allow &lt;rule&gt; -- &lt;reason&gt;</code> comment.</td>
+<td><code># corset: allow &lt;check&gt; -- &lt;reason&gt;</code> comment.</td>
 </tr>
 <tr>
 <td>coverage line</td>
-<td>End-of-run count of blind spots by cause.</td>
+<td>End-of-run summary of methods Corset could not analyze, and why.</td>
 </tr>
 </tbody>
 </table></div>

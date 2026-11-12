@@ -121,5 +121,5 @@ Keys:
 
 - `0`: Clean run (no deny-level findings, or no findings when `--deny-warnings` is set).
 - `1`: One or more findings failed the run, or `--diff` detected rewrites.
-- `2`: Usage error or invalid configuration (`CorsetLegacy.UsageError`), such as an unknown rule, a bad flag, a configured directory that does not exist or a missing `fatou`; also a failing test run under `--entries tests` or a bad `entry_points` file (`CorsetLegacy.Entries.SourceError`).
+- `2`: Usage error or invalid configuration (`Corset.UsageError`), such as an unknown rule, a bad flag, a configured directory that does not exist or a missing `fatou`; also a failing test run under `--entries tests` or a bad `entry_points` file (`Corset.Entries.SourceError`).
 - `3`: Internal error: any other exception, so Corset itself failed. The error and its backtrace go to standard error.
