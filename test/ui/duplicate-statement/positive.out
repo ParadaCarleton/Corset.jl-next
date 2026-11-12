@@ -1,0 +1,26 @@
+correctness[duplicate-statement]: statement repeats one before it
+ --> positive.jl:4:5
+  |
+3 |     state.ready = true
+  |     ------------------ first copy
+4 |     state.ready = true
+  |     ^^^^^^^^^^^^^^^^^^ same as previous statement
+  |
+  = why: copy-paste slip: second copy redoes work, or was meant to differ
+  = confidence: possible
+  = fix: delete repeated statement, or change it to intended one   [manual]
+  = docs: corset explain duplicate-statement
+
+correctness[duplicate-statement]: statement repeats one before it
+ --> positive.jl:9:1
+  |
+8 | x = load()
+  | ---------- first copy
+9 | x = load()
+  | ^^^^^^^^^^ same as previous statement
+  |
+  = why: copy-paste slip: second copy redoes work, or was meant to differ
+  = confidence: possible
+  = fix: delete repeated statement, or change it to intended one   [manual]
+  = docs: corset explain duplicate-statement
+
