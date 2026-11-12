@@ -1,0 +1,16 @@
+mul_int   svec(IntStandIn)                         int_literal *(2) returned  Int64 vs IntStandIn
+mul_half  svec(FloatStandIn)                       float_literal *(0.5) returned  Float64 vs FloatStandIn
+narrowed  svec(FloatStandIn)                       float_literal *(0.5) intermediate  Float64 vs FloatStandIn
+div_int   svec(IntStandIn)                         int_literal /(2) no_change  Float64 vs Float64
+mul_float svec(FloatStandIn)                       int_literal *(2) no_change  FloatStandIn vs FloatStandIn
+to_f64    svec(FloatStandIn)                       type_name Float64(Float64) returned  Float64 vs FloatStandIn
+loop      svec(IntStandIn, Int64)                  int_literal +(1) returned  Int64 vs IntStandIn
+acc       svec(ArrayStandIn{IntStandIn, 1})        int_literal φ(0) returned  Int64 vs IntStandIn
+index     svec(ArrayStandIn{FloatStandIn, 1})      int_literal getindex(1) not_operand  FloatStandIn vs Union{}
+index     svec(ArrayStandIn{FloatStandIn, 1})      int_literal getindex(2) not_operand  FloatStandIn vs Union{}
+index     svec(ArrayStandIn{IntStandIn, 1})        int_literal getindex(1) no_change  IntStandIn vs IntStandIn
+index     svec(ArrayStandIn{IntStandIn, 1})        int_literal getindex(2) no_change  IntStandIn vs IntStandIn
+scaled    svec(IntStandIn)                         constant *(3) returned  Int64 vs IntStandIn
+store!    svec(ArrayStandIn{IntStandIn, 1}, IntStandIn) int_literal *(2) intermediate  Int64 vs IntStandIn
+store!    svec(ArrayStandIn{IntStandIn, 1}, IntStandIn) int_literal setindex!(1) no_change  ArrayStandIn{IntStandIn, 1} vs ArrayStandIn{IntStandIn, 1}
+range_to  svec(IntStandIn)                         int_literal Colon()(1) returned  UnitRange{Int64} vs UnitRange{IntStandIn}

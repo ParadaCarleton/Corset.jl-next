@@ -1,0 +1,50 @@
+package Distances 0.10.12; julia 1.13.3
+load_s 0.01; scan_s 16.56; methods 283; signatures 1201; inferred_signatures 1201; generated_methods 0; methods_reached_through_callers 74; maxrss_mb 508
+
+# method status (own signature)
+inferred_declared_types_only 165
+inferred_with_stand_in 118
+
+# signature skips
+
+# argument notes (methods with note)
+no_stand_in 48
+package_abstract 44
+struct_parameters_filled 31
+array_without_stand_in 1
+
+# Union{} calls by class
+explicit_throw 566
+opaque_in_callee 17
+callee_throws 9
+stand_in_gap_ok 4
+undecided_abstract_args 1
+
+# literal sites (kind, escape)
+(:int_literal, :no_change) 682
+(:int_literal, :not_operand) 46
+(:int_literal, :intermediate) 26
+
+# escaping findings
+
+# real never-succeeds candidates
+
+# stand-in gaps and other ignored Union{} calls (distinct calls)
+opaque_in_callee result_type(Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}, ArrayStandIn{FloatStandIn, 2}, ArrayStandIn{FloatStandIn, 2}) 5
+callee_throws Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}(FunctionStandIn(), FunctionStandIn(), FunctionStandIn())(SubArray{FloatStandIn, 1, ArrayStandIn{FloatStandIn, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}, SubArray{FloatStandIn, 1, ArrayStandIn{FloatStandIn, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}) 3
+opaque_in_callee result_type(Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}, Any, Any) 3
+opaque_in_callee result_type(Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}, Type{FloatStandIn}, Type{FloatStandIn}) 3
+stand_in_gap_ok eigmin(ArrayStandIn{FloatStandIn, 2},) 2
+stand_in_gap_ok eigmin(ArrayStandIn{IntStandIn, 2},) 2
+callee_throws Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}(FunctionStandIn(), FunctionStandIn(), FunctionStandIn())(Any, Any) 2
+callee_throws Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}(FunctionStandIn(), FunctionStandIn(), FunctionStandIn())(ArrayStandIn{FloatStandIn, 1}, SubArray{FloatStandIn, 1, ArrayStandIn{FloatStandIn, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}) 1
+opaque_in_callee #pairwise#4(Any, typeof(pairwise), Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}, ArrayStandIn{FloatStandIn, 2}) 1
+opaque_in_callee #pairwise#3(Any, typeof(pairwise), Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}, ArrayStandIn{FloatStandIn, 2}, ArrayStandIn{FloatStandIn, 2}) 1
+undecided_abstract_args _apply_iterate(typeof(iterate), Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}, Tuple{Any, Any}) 1
+opaque_in_callee result_type(Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}, ArrayStandIn{FloatStandIn, 1}, ArrayStandIn{FloatStandIn, 2}) 1
+opaque_in_callee #pairwise#4(Nothing, typeof(pairwise), Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}, ArrayStandIn{FloatStandIn, 2}) 1
+callee_throws Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}(FunctionStandIn(), FunctionStandIn(), FunctionStandIn())(SubArray{FloatStandIn, 1, ArrayStandIn{FloatStandIn, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}, ArrayStandIn{FloatStandIn, 1}) 1
+opaque_in_callee #pairwise#3(Nothing, typeof(pairwise), Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}, ArrayStandIn{FloatStandIn, 2}, ArrayStandIn{FloatStandIn, 2}) 1
+callee_throws haversine_error(SphericalAngle,) 1
+callee_throws haversine_error(Haversine,) 1
+opaque_in_callee result_type(Bregman{FunctionStandIn, FunctionStandIn, FunctionStandIn}, ArrayStandIn{FloatStandIn, 2}, ArrayStandIn{FloatStandIn, 1}) 1
