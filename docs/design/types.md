@@ -9,9 +9,9 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 ### Arguments without stand-in
 
 - Package abstract type (`s::Shape`): infer once per concrete subtype package defines, with stand-ins for its parameters.
-- Function argument: stand-in function returns opaque stand-in result. Method stable under that assumption is exempt: stable whenever `f` is. Problems method causes itself are reported. Code that uses `f`'s result past that point is not analyzed.
+- Function argument: stand-in function returns `Any` (inference barrier). Method stable under that assumption is exempt: stable whenever `f` is. Problems method causes itself are reported. Code after `f`'s result stays analyzed; values from that result give no findings. Opaque result type truncated frames in S1.
 - No stand-in yet (`AbstractString`, `AbstractDict`, abstract type without package subtype) and explicit `::Any`: no findings from that argument's data.
-- Unannotated method reached from analyzed caller is analyzed through caller inference. Unannotated method nothing calls is skipped; `annotation` reports it.
+- Unannotated method reached from analyzed caller is analyzed through caller inference: family D keeps explicit worklist of package frames reached from stand-in callers. Unannotated method nothing calls is skipped; `annotation` reports it. Expect low coverage on unannotated packages (Distances: 165 of 283 methods) until `annotation` fixer runs.
 - Analysis gaps never become findings. Run ends with coverage line: methods not analyzed and reason.
 
 ### `type-disruption` engine
@@ -34,14 +34,15 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
   - Escape test: own data-flow pass follows value to returns and stores. Escape analysis tracks heap objects only, so it cannot decide this.
   - **No downstream consequence, no finding**: disruption is correct when every use converts value back before it matters. Indexing converts index to `Int`, so `heapleft(i::Integer) = 2i` feeding `a[heapleft(i)]` is fine. Store into concrete field or element type also converts.
     - Exact rule: follow disrupted value through returns into package call sites; exempt when every path ends in conversion. Public function with unknown callers: report as `possible`.
-    - First version: exempt values whose uses are only indexing (`getindex`, `setindex!`, `view`) or range bounds. Revisit after phase 4: replace with exact rule.
+    - First version: exempt values whose uses are only indexing (`getindex`, `setindex!`, `view`). Range bound counts as indexing only when range and its elements are used only for indexing (`a[lo:2i]`, `for j in 1:2i; a[j]; end`). Revisit after phase 4: replace with exact rule.
   - Definite: narrowest Base type of kind gives concrete counterexample. Promotion rules of user number types are out of scope.
   - Overspecified argument types (`x::Int32`, `v::AbstractVector{Float64}`) are rare in libraries: `overspecified-type` reports them.
   - Branch on type (`x isa Float64`, `T === Float32`): report as `possible`.
 - **Why stand-in type**: Base has fast paths for `Float32` and `Float64`. Real float probe takes them; stand-in type takes only generic path, same as user number type.
 - **Base**: assume Base callees preserve types; analysis is sound only modulo Base. Optional concrete probes (`Int32`, `Float32`) catch Base-caused widening such as `middle(::Int32)` → `Float64`. Collect real Base widening bugs for upstream report.
 - **Scope**: version 1 covers numbers and arrays (F5, F6, F16). Strings and dicts need only new stand-in type and result rule; engine stays same. Interfaces.jl can declare each kind's contract.
-- **Cost** (rough estimate, unbuilt): number stand-in type 100–200 lines (promotion, conversion, arithmetic, comparison, `one`/`zero`, `float`, math functions); expect to add methods until inference runs clean on real packages. Mixing check 100–200 lines. Source mapping through TypedSyntax.jl.
+- **Cost** (S1 spike): number stand-ins about 200 lines; mixing check (differential, escape, filters, classifier) about 360; signature mapping about 190. Source mapping: vendored TypedSyntax.jl algorithm (S2).
+- **Stand-in fidelity**: stand-in copies every `Float32` and `Int32` special case that changes result type (irrational rule, `irrationals.jl`). Stand-in test suite runs `Test.detect_ambiguities` against Base.
 - **No tests**: stand-in types come from annotations; see **Arguments without stand-in**.
 - Syntax check stays for hard-coded `Array` without template. Shared fix helper finds in-scope type source (`T`, `eltype(x)`, template array).
 

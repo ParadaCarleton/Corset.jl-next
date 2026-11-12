@@ -245,7 +245,7 @@ text = "Call can never succeed"
 example = "no matching method; undefined global or field"
 group = "correctness"
 family = "D"
-note = "Package call inferred `Union{}` without explicit `throw`. JET is test reference."
+note = "Package call inferred `Union{}` without explicit `throw`. Re-dispatch failing call on narrow real types (`Float32`, `Int32`, `Array`): success means stand-in gap, listed in coverage. Report at deepest package frame only. Signature that works only with `Int`, `Float64` or `Vector`: `possible`. JET is test reference."
 
 [[footgun]]
 id = 84
@@ -539,6 +539,7 @@ text = "`!` function writes nothing; callers drop its result"
 example = "`normalize!(v)` returns new vector"
 group = "correctness"
 family = "E"
+note = "Method whose body only throws (`pop!(::SortedSet) = error(...)`) is exempt."
 
 [[footgun]]
 id = 55
@@ -611,7 +612,8 @@ area = "scope"
 text = "Function defined by `eval` called in same world"
 example = "`@eval g() = 1; g()`"
 group = "correctness"
-family = "H"
+family = "A"
+note = "Syntactic; needs no scope facts (S3)."
 
 [[footgun]]
 id = 64

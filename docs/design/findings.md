@@ -58,7 +58,7 @@ Each fix declares tier by risk to callers; one setting picks highest tier applie
 
 ### Messages
 
-Model: Rust compiler errors. Each finding carries primary span, labeled cause spans, one-line reason, fix with tier, and docs link. Analyses record cause spans (where union is created, where literal enters), so checks can name cause.
+Model: Rust compiler errors. Each finding carries primary span, labeled cause spans, one-line reason, fix with tier, and docs link. Analyses record cause spans (where union is created, where literal enters), so checks can name cause. Span has precision: exact bytes or line only. Renderer marks whole line for line precision.
 
 ```
 performance[vague-type]: `acc` changes type inside loop
@@ -81,7 +81,7 @@ performance[vague-type]: `acc` changes type inside loop
 
 ### Macro output
 
-Findings inside macro expansions are reported, other packages' macros included: message marks them upstream and points at call site. Own macro: one finding at definition, with call-site count. Fixes never edit generated code. Syntax families see source as written; findings in expanded code come from families after load, placed by lowering provenance. Location without source mapping goes to coverage line.
+Findings inside macro expansions are reported, other packages' macros included: message marks them upstream and points at call site. Own macro: one finding at definition, with call-site count. Fixes never edit generated code. Syntax families see source as written; findings in expanded code come from families after load. Code passed through macro (`@inbounds`, `@views`) maps to exact bytes. Code macro writes itself (`@kwdef`, macro body, `@generated`) maps to nearest line inside definition: call site. Julia 1.13 lowering keeps no call-site provenance (S2); JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.
 
 ### Conventions
 

@@ -25,12 +25,12 @@ text = "One inference per package method; stand-in types replace generic argumen
 [[family]]
 letter = "E"
 title = "Effect and alias summary"
-text = "Per method: writes to arguments, writes to globals, result aliases global state."
+text = "Per method: writes to arguments, writes to globals, result aliases global state. Own points-to summary over optimized IR, bottom-up through callees, Base and dependencies included."
 
 [[family]]
 letter = "H"
 title = "Scope"
-text = "Lowered scopes per file: bindings, soft scope, captures, boxes, task spawns."
+text = "Lowered scopes per top-level form, in include order, after package load: bindings, soft scope, captures, boxes, task spawns."
 
 [[family]]
 letter = "G"

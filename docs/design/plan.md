@@ -17,11 +17,11 @@ Draft. Spikes retire risks first. Each later phase ships usable checks. Phase or
 
 ### Spikes
 
-- **S1 stand-in inference**: float, integer, array and function stand-in types; per-subtype inference for package abstract types; infer every method of three corpus packages. Measure stand-in gaps, run time and count of integer-literal findings. `never-succeeds` must ignore calls that fail only because stand-in type lacks method.
-- **S2 source mapping**: TypedSyntax.jl maps typed findings to bytes, macro output included.
-- **S3 scope layer**: JuliaLowering does not ship with Julia 1.13 and is not registered; it lives in JuliaLang/julia as `1.0.0-DEV`. Try it from source. Fallback: `Meta.lower` per top-level form, with line positions only.
+- **S1 stand-in inference** (done, works with limits): every corpus method infers; 2 generated functions refused. Differential check right on 12 fixtures. Re-dispatch on real types separates stand-in gaps. Found real bug (`DataStructures.empty(::DefaultDictBase)`).
+- **S2 source mapping** (done, works with limits): 65% of findable statements map to exact bytes; about 2% of checked spans wrong. Code macros write maps to line only.
+- **S3 scope layer** (done, works with limits): JuliaLowering at julia commit `f0188d597b` lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload. `Meta.lower` fallback dropped.
 - **S4 syntax matcher** (done, `spikes/s4-syntax-matcher/REPORT.md`): Argus.jl 0.4.2 is MIT. Use Argus behind thin wrapper so matcher stays swappable. Argus searches whole tree once per rule (about 8× slower than kind-indexed walk); own walk with root-kind index removes most of gap.
-- **S5 effect summary**: Julia reports no per-argument writes, so build own summary bottom-up over call graph: escape analysis inside method, callee summaries at calls. Unknown callee gives `possible`. Internal API; pin per Julia minor version.
+- **S5 effect summary** (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). `possible` covers 70–90% of methods, all from unknown callees. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.
 
 ### Quality gate
 
@@ -29,11 +29,14 @@ Check is on by default only when all hold:
 
 - Fixture per footgun: positive, negative, and fix result.
 - Any false `definite` finding blocks check: it is check bug. At least 90% of sampled `possible` findings are real problems.
+- `definite` typed finding needs validated span: callee at mapped node matches IR callee; mismatch demotes span to line precision.
 - Property tests (Supposition.jl): fix creates no new finding; fix is idempotent. `safe` fix: fixture behaves same before and after (differential run).
 - Message shows cause span and concrete fix; reviewed on corpus sample.
 - Run time stays inside budget in CI perf test.
 
-Speed budget (draft): full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines after startup; rerun with no changes under 1 s.
+Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.
+
+Legacy baseline (S4, warm, whole process): Distances 9.4 s, DataStructures 16–19 s, JSON 33–37 s. Main risk: stand-in inference, 7–17 s cold per package (S1); precompile workload and per-method disk cache must close gap.
 
 Repository bar: 100% line coverage; mutation testing on check code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).
 

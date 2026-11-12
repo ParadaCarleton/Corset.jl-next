@@ -9,9 +9,9 @@ Each layer is one module that produces facts. Checks read facts through one API.
 | Module | Job |
 |---|---|
 | `Syntax` | L1: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind; array def-use (family B). |
-| `Scope` | L2: lowering and scope facts (family H). |
+| `Scope` | L2: lowering and scope facts (family H). JuliaLowering vendored at pinned julia commit on 1.13; `Base.JuliaLowering` from 1.14. Own replacement expansions for common Base macros keep byte positions. |
 | `Load` | L3: load package; module facts (family C); Project.toml facts. |
-| `Infer` | L4: stand-in types; one inference per method; typed IR with source mapping (family D). |
+| `Infer` | L4: stand-in types; one inference per method; typed IR with source mapping (family D). Mapping: vendored TypedSyntax.jl algorithm on L1 tree; no CodeTracking. |
 | `Effects` | L5: effect and alias summary per method (family E). |
 | `External` | Family G: Aqua.jl, ExplicitImports.jl, jscpd output as facts. |
 | `Facts` | Fact types and query API. Only module check code may import. |
@@ -26,7 +26,7 @@ Each layer is one module that produces facts. Checks read facts through one API.
 ### Core types
 
 ```
-struct Span     file::String; first_byte::Int; last_byte::Int end
+struct Span     file::String; first_byte::Int; last_byte::Int; precision::Precision end  # exact or line
 struct Label    span::Span; text::String end
 struct Edit     span::Span; replacement::String end
 struct Fix      edits::Vector{Edit}; tier::Tier end           # Tier: safe likely breaking manual

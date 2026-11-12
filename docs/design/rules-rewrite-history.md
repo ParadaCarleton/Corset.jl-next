@@ -340,3 +340,27 @@ Codex reviewed design page; each finding with its outcome.
 | 11 | 90% gate contradicts `definite`; fixes not behavior-checked | Fixed: false definite blocks check; `safe` fixes run before and after. |
 | 12 | Concurrency non-goal contradicts phases; stale counts | Fixed: non-goal is race and ownership analysis; counts generated. |
 | 13 | Method ambiguity missing | Fixed: F94 `method-ambiguity` (Aqua.jl). |
+
+## Phase 0 design review
+
+Spike reports: `spikes/s1-stand-in-inference` to `spikes/s5-effect-summary`, file `REPORT.md` each.
+
+| Spike | Finding | Outcome |
+|---|---|---|
+| S1 | Opaque function result truncates frames | Function stand-in returns `Any`. |
+| S1 | Unannotated entry points leave most methods without stand-in | Family D keeps explicit worklist of frames reached from stand-in callers. |
+| S1 | `Union{}` alone cannot drive `never-succeeds` | Re-dispatch on real types; deepest frame only; `Int`-only signatures `possible`. |
+| S1 | Integer-literal findings were all index arithmetic | Disruption converted away downstream is exempt; first version exempts indexing. Exact rule after phase 4. |
+| S1 | Stand-in loses `Float32` special cases | Stand-in copies result-type special cases; ambiguity test. |
+| S2 | Lowering keeps no call-site provenance on 1.13 | Macro-written code maps to nearest in-definition line. |
+| S2 | Not every finding has byte span | `Span` gains precision; definite typed finding needs validated span. |
+| S2 | CodeTracking front end loses closures and offsets | Vendor TypedSyntax mapping algorithm onto L1 tree. |
+| S3 | Macro expansion needs loaded package | L2 runs after L3; lowering per top-level form in include order. |
+| S3 | Base macros give lines only | Own replacement expansions for common Base macros; precompile workload. |
+| S3 | F63 needs no scope facts | F63 moves to family A. |
+| S4 | Argus.jl is MIT; slower by search order | Use Argus behind own root-kind walk; upstream index later (owner approves PR). |
+| S4 | 5× legacy budget includes Julia startup | Budget measures Corset ready to findings out; startup and target load excluded. |
+| S5 | Callee summaries need dependency code | Rule reworded: analysis reads dependency code; findings stay in package. Base summaries cached per Julia version. |
+| S5 | `possible` comes only from unknown callees | `possible` effect findings off until dispatch resolution passes gate. |
+| S5 | Exemption list incomplete | Lazy-init caches, task-local state, locks, error paths, other modules' globals exempt; IO decided by declared type. |
+| S5 | Error-only `!` method flagged spurious | Exempt from F86. |
