@@ -8,11 +8,7 @@ MISSING!	iterate	/home/user/.julia/packages/DataStructures/IwRP2/src/priorityque
 MISSING!	left_rotate	/home/user/.julia/packages/DataStructures/IwRP2/src/avl_tree.jl:83	true	arg z=DEFINITE
 MISSING!	rb_transplant	/home/user/.julia/packages/DataStructures/IwRP2/src/red_black_tree.jl:312	true	arg tree=DEFINITE; arg u=POSSIBLE; arg v=POSSIBLE
 MISSING!	right_rotate	/home/user/.julia/packages/DataStructures/IwRP2/src/avl_tree.jl:100	true	arg z=DEFINITE
-MISSING!	show	/home/user/.julia/packages/DataStructures/IwRP2/src/deque.jl:178	true	arg d=DEFINITE
-MISSING!	union	/home/user/.julia/packages/DataStructures/IwRP2/src/sorted_set.jl:359	true	arg m1=DEFINITE; arg others=POSSIBLE
 SPURIOUS!	pop!	/home/user/.julia/packages/DataStructures/IwRP2/src/sorted_set.jl:232	false	
-SPURIOUS!	popmax!	/home/user/.julia/packages/DataStructures/IwRP2/src/heaps/minmax_heap.jl:231	true	
-SPURIOUS!	popmin!	/home/user/.julia/packages/DataStructures/IwRP2/src/heaps/minmax_heap.jl:205	true	
 bang-possible	_find_root_impl!	/home/user/.julia/packages/DataStructures/IwRP2/src/disjoint_set.jl:61	true	arg parents=POSSIBLE
 bang-possible	_minmax_heap_bubble_up!	/home/user/.julia/packages/DataStructures/IwRP2/src/heaps/minmax_heap.jl:62	true	arg A=POSSIBLE; arg o=POSSIBLE
 bang-possible	_minmax_heap_trickle_down!	/home/user/.julia/packages/DataStructures/IwRP2/src/heaps/minmax_heap.jl:81	true	arg A=POSSIBLE; arg o=POSSIBLE
@@ -106,6 +102,8 @@ bang-possible	popfirst!	/home/user/.julia/packages/DataStructures/IwRP2/src/dequ
 bang-possible	popfirst!	/home/user/.julia/packages/DataStructures/IwRP2/src/queue.jl:80	true	arg s=POSSIBLE
 bang-possible	popfirst!	/home/user/.julia/packages/DataStructures/IwRP2/src/sorted_set.jl:224	true	arg m=POSSIBLE
 bang-possible	poplast!	/home/user/.julia/packages/DataStructures/IwRP2/src/sorted_set.jl:244	true	arg m=POSSIBLE
+bang-possible	popmax!	/home/user/.julia/packages/DataStructures/IwRP2/src/heaps/minmax_heap.jl:231	true	arg h=POSSIBLE
+bang-possible	popmin!	/home/user/.julia/packages/DataStructures/IwRP2/src/heaps/minmax_heap.jl:205	true	arg h=POSSIBLE
 bang-possible	push!	/home/user/.julia/packages/DataStructures/IwRP2/src/accumulator.jl:84	true	arg ct=POSSIBLE; arg x=POSSIBLE
 bang-possible	push!	/home/user/.julia/packages/DataStructures/IwRP2/src/accumulator.jl:85	true	arg ct=POSSIBLE; arg x=POSSIBLE
 bang-possible	push!	/home/user/.julia/packages/DataStructures/IwRP2/src/accumulator.jl:88	true	arg ct=POSSIBLE; arg x=POSSIBLE
@@ -794,6 +792,7 @@ missing?	setdiff	/home/user/.julia/packages/DataStructures/IwRP2/src/sorted_set.
 missing?	setdiff	/home/user/.julia/packages/DataStructures/IwRP2/src/sparse_int_set.jl:174	true	arg ns=POSSIBLE; global DataStructures.NULL_INT_PAGE=POSSIBLE
 missing?	show	/home/user/.julia/packages/DataStructures/IwRP2/src/accumulator.jl:242	true	arg acc=POSSIBLE
 missing?	show	/home/user/.julia/packages/DataStructures/IwRP2/src/circ_deque.jl:122	true	arg D=POSSIBLE
+missing?	show	/home/user/.julia/packages/DataStructures/IwRP2/src/deque.jl:178	true	arg d=POSSIBLE
 missing?	show	/home/user/.julia/packages/DataStructures/IwRP2/src/deque.jl:52	true	arg blk=POSSIBLE
 missing?	show	/home/user/.julia/packages/DataStructures/IwRP2/src/heaps/mutable_binary_heap.jl:194	true	arg h=POSSIBLE
 missing?	show	/home/user/.julia/packages/DataStructures/IwRP2/src/list.jl:24	true	arg l=POSSIBLE
@@ -824,6 +823,7 @@ missing?	traverse_tree_inorder	/home/user/.julia/packages/DataStructures/IwRP2/s
 missing?	union	/home/user/.julia/packages/DataStructures/IwRP2/src/accumulator.jl:215	true	arg a=POSSIBLE; arg c=POSSIBLE
 missing?	union	/home/user/.julia/packages/DataStructures/IwRP2/src/accumulator.jl:216	true	arg a=POSSIBLE
 missing?	union	/home/user/.julia/packages/DataStructures/IwRP2/src/int_set.jl:90	true	arg ns=POSSIBLE
+missing?	union	/home/user/.julia/packages/DataStructures/IwRP2/src/sorted_set.jl:359	true	arg m1=POSSIBLE; arg others=POSSIBLE
 missing?	union	/home/user/.julia/packages/DataStructures/IwRP2/src/sorted_set.jl:367	true	arg s1=POSSIBLE; arg others=POSSIBLE
 missing?	union	/home/user/.julia/packages/DataStructures/IwRP2/src/sparse_int_set.jl:151	true	arg ns=POSSIBLE; global DataStructures.NULL_INT_PAGE=POSSIBLE
 missing?	values	/home/user/.julia/packages/DataStructures/IwRP2/src/delegate.jl:21	true	arg args=POSSIBLE
