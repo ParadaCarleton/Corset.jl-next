@@ -36,3 +36,13 @@ Check is on by default only when all hold:
 Speed budget (draft): full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines after startup; rerun with no changes under 1 s.
 
 Repository bar: 100% line coverage; mutation testing on check code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).
+
+### Design reviews
+
+Design is draft until code proves it. Revisit at each checkpoint:
+
+- After phase 0: spike results confirm or replace stand-in inference, scope layer, syntax matcher and effect summary. Rewrite affected parts before phase 1.
+- After first release: corpus findings and real use test footgun list, levels, presets and messages.
+- Before each later phase: reread parts that phase builds on; question decisions that no longer fit.
+- Each review: adversarial pass by second model on changed parts; log findings and outcomes in `rules-rewrite-history.md`.
+- Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.

@@ -3,6 +3,7 @@
 Rules every design choice follows, and what Corset does not do.
 
 - When unsure, do what Rust and Clippy do.
+- Every decision is revisable. Evidence from spikes, corpus runs and users outranks earlier reasoning; see design reviews in `plan.md`.
 - Compute each expensive step once per run. Share output with every rule.
 - Footguns are source of truth. Checks group footguns by analysis they read. User-facing group is metadata only.
 - Give each finding confidence: `definite` (problem exists) or `possible` (problem not ruled out). One setting filters them.

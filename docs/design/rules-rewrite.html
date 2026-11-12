@@ -146,6 +146,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <p>Rules every design choice follows, and what Corset does not do.</p>
 <ul>
 <li>When unsure, do what Rust and Clippy do.</li>
+<li>Every decision is revisable. Evidence from spikes, corpus runs and users outranks earlier reasoning; see design reviews in <code>plan.md</code>.</li>
 <li>Compute each expensive step once per run. Share output with every rule.</li>
 <li>Footguns are source of truth. Checks group footguns by analysis they read. User-facing group is metadata only.</li>
 <li>Give each finding confidence: <code>definite</code> (problem exists) or <code>possible</code> (problem not ruled out). One setting filters them.</li>
@@ -872,6 +873,15 @@ end
 </ul>
 <p>Speed budget (draft): full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines after startup; rerun with no changes under 1 s.</p>
 <p>Repository bar: 100% line coverage; mutation testing on check code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).</p>
+</div><div class="decision"><h3>Design reviews</h3>
+<p>Design is draft until code proves it. Revisit at each checkpoint:</p>
+<ul>
+<li>After phase 0: spike results confirm or replace stand-in inference, scope layer, syntax matcher and effect summary. Rewrite affected parts before phase 1.</li>
+<li>After first release: corpus findings and real use test footgun list, levels, presets and messages.</li>
+<li>Before each later phase: reread parts that phase builds on; question decisions that no longer fit.</li>
+<li>Each review: adversarial pass by second model on changed parts; log findings and outcomes in <code>rules-rewrite-history.md</code>.</li>
+<li>Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.</li>
+</ul>
 </div>
 </section>
 
