@@ -18,7 +18,7 @@ function package_methods(pkg::Module)::Vector{Method}
     Base.visit(Core.methodtable) do m
         m isa Method && m.module in mods && push!(found, m)
     end
-    found
+    return found
 end
 
 function collect_submodules!(mods::Set{Module}, m::Module)::Nothing
@@ -29,9 +29,10 @@ function collect_submodules!(mods::Set{Module}, m::Module)::Nothing
             push!(mods, sub); collect_submodules!(mods, sub)
         end
     end
+    return
 end
 
-in_package(T, mods::Set{Module})::Bool = parentmodule(Base.unwrap_unionall(T)) in mods
+in_package(T, mods::Set{Module})::Bool = (U = Base.unwrap_unionall(T); U isa DataType && parentmodule(U) in mods)
 
 "Concrete types package defines below abstract `T`, parameters filled from bounds."
 function concrete_subtypes(T, mods::Set{Module}, notes::Vector{Symbol}, depth::Int)::Vector{Any}
@@ -45,7 +46,7 @@ function concrete_subtypes(T, mods::Set{Module}, notes::Vector{Symbol}, depth::I
             filled isa Type && filled <: T && push!(found, filled)
         end
     end
-    found
+    return found
 end
 
 "Fill free parameters of `S` from their bounds; keep a parameter free when no stand-in fits."
@@ -60,16 +61,20 @@ function fill_parameters(S, mods::Set{Module}, notes::Vector{Symbol}, depth::Int
         if isempty(cands)
             push!(free, tv); body = body.body
         else
-            body = try body{first(cands)} catch; (push!(free, tv); body.body) end
+            body = try
+                body{first(cands)}
+            catch
+                (push!(free, tv); body.body)
+            end
         end
     end
-    isempty(free) ? body : foldr((tv, b) -> UnionAll(tv, b), free; init = body)
+    return isempty(free) ? body : foldr((tv, b) -> UnionAll(tv, b), free; init = body)
 end
 
 "Stand-in candidates for type variable `tv` from its upper bound."
 function typevar_candidates(tv::TypeVar, mods::Set{Module}, notes::Vector{Symbol}, depth::Int)::Vector{Any}
     tv.ub === Any && return Any[]
-    argument_candidates(tv.ub, mods, notes, depth)
+    return argument_candidates(tv.ub, mods, notes, depth)
 end
 
 "Concrete candidates for one argument type; empty when no stand-in applies."
@@ -110,7 +115,7 @@ function argument_candidates(A, mods::Set{Module}, notes::Vector{Symbol}, depth:
     end
     A isa Type && Type <: A && return Any[]
     push!(notes, :no_stand_in)
-    Any[]
+    return Any[]
 end
 
 const MAX_COMBINATIONS = 8
@@ -141,7 +146,7 @@ function stand_in_signatures(m::Method, mods::Set{Module})::Tuple{Vector{Any}, V
         length(sigs) >= MAX_COMBINATIONS && break
     end
     length(sigs) > MAX_COMBINATIONS && resize!(sigs, MAX_COMBINATIONS)
-    sigs, notes
+    return sigs, notes
 end
 
 "Substitute chosen values for type variables; free variables stay wrapped."
@@ -159,7 +164,7 @@ function instantiate(sig, vars::Vector{TypeVar}, vals::Vector{Any})
             end
         end
     end
-    foldr((tv, b) -> UnionAll(tv, b), free; init = body)
+    return foldr((tv, b) -> UnionAll(tv, b), free; init = body)
 end
 
 substitute(T, tv::TypeVar, v) = ccall(:jl_instantiate_unionall, Any, (Any, Any), UnionAll(tv, T), v)
@@ -187,7 +192,7 @@ function expand_arguments(sig, mods::Set{Module}, notes::Vector{Symbol})::Vector
         end
         push!(out, t)
     end
-    out
+    return out
 end
 
 end

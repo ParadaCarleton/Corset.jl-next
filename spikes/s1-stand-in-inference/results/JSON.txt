@@ -1,0 +1,48 @@
+package JSON 1.13.4; julia 1.13.3
+load_s 0.07; scan_s 9.33; methods 553; signatures 593; inferred_signatures 591; generated_methods 2; methods_reached_through_callers 1; maxrss_mb 463
+
+# method status (own signature)
+inferred_declared_types_only 525
+inferred_with_stand_in 26
+failed 2
+
+# signature skips
+inference_refused 2
+
+# argument notes (methods with note)
+no_stand_in 221
+struct_parameters_filled 108
+package_abstract 33
+array_without_stand_in 13
+number_without_stand_in 5
+
+# Union{} calls by class
+explicit_throw 84
+callee_throws 31
+undecided_abstract_args 1
+stand_in_gap_ok 1
+
+# literal sites (kind, escape)
+(:int_literal, :no_change) 4
+(:type_name, :intermediate) 3
+(:int_literal, :intermediate) 2
+
+# escaping findings
+
+# real never-succeeds candidates
+
+# stand-in gaps and other ignored Union{} calls (distinct calls)
+callee_throws invalid(JSON.Error, Any, Int64, String) 15
+callee_throws invalid_escape(Ptr{UInt8}, Int64) 4
+callee_throws invalid(JSON.Error, Any, Int64, Type{Any}) 2
+callee_throws toodeep(Int64, Int32) 2
+callee_throws _invalid(Any, Any, Int64, String) 1
+callee_throws _root_omit_throw() 1
+callee_throws invalid(JSON.Error, Any, Int64, Type) 1
+callee_throws float_style_throw(Any,) 1
+stand_in_gap_ok parse(Type{FloatStandIn}, AbstractString) 1
+callee_throws _jsonlines_pretty_throw() 1
+undecided_abstract_args _invalid(Any, Any, Int64, Any) 1
+callee_throws enum_argument_error(Symbol, IntStandIn) 1
+callee_throws nanhint(Int64,) 1
+callee_throws float_precision_throw(Any, Any) 1

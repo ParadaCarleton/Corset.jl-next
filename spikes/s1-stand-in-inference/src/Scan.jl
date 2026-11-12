@@ -21,7 +21,7 @@ function infer_method(m::Method, tt)::Union{Tuple{CC.IRCode, Any}, Symbol}
     end
     ir, rt = result
     ir === nothing && return :inference_refused
-    (ir, rt)
+    return (ir, rt)
 end
 
 world() = Base.get_world_counter()
@@ -34,7 +34,7 @@ function dispatch_status(tt)::Symbol
     ms = Base._methods_by_ftype(tt, -1, world())
     (ms === nothing || isempty(ms)) && return :no_method
     any(m -> m.fully_covers, ms) || return :partial
-    try
+    return try
         which(tt); :ok
     catch
         :ambiguous
@@ -43,7 +43,7 @@ end
 
 "Return type of `f` on `types`; builtins use their transfer function, keeping constants."
 function return_type(f, types::Vector{Any})
-    if f isa Core.Builtin
+    return if f isa Core.Builtin
         Base.invoke_default_compiler(:builtin_tfunction, CC.NativeInterpreter(), f, types, nothing)
     else
         try
@@ -54,9 +54,14 @@ function return_type(f, types::Vector{Any})
     end
 end
 
-model_arg(t) = t isa CC.Const ? (t.val isa NumberStandIn ? CC.Const(t.val.model) : t) : model_type(CC.widenconst(t))
+"Replace stand-ins by the types most callers pass: `Int`, `Float64`, `Vector`."
+default_type(T) = T === IntStandIn ? Int : T === FloatStandIn ? Float64 :
+    T isa DataType && T <: ArrayStandIn ? Array{default_type(T.parameters[1]), T.parameters[2]} : T
 
-const THROWERS = (throw, error, rethrow, Core.throw_methoderror)
+model_arg(t) = !(t isa CC.Const) ? model_type(CC.widenconst(t)) : t.val isa NumberStandIn ? CC.Const(t.val.model) :
+    t.val isa Type ? CC.Const(model_type(t.val)) : t
+
+const THROWERS = (throw, error, rethrow, Core.throw_methoderror, Base.kwerr)
 is_thrower(f)::Bool = f in THROWERS || (f isa Function && startswith(string(nameof(f)), "throw")) ||
     (f isa Function && startswith(string(nameof(f)), "_throw"))
 
@@ -92,8 +97,16 @@ function classify_bottoms(ir::CC.IRCode)::Vector{BottomCall}
         if any(t -> has_stand_in(t) && (t <: OpaqueResult || occursin("OpaqueResult", string(t))), wide)
             push!(found, BottomCall(i, :opaque_result, name, wide)); continue
         end
-        f === nothing && (push!(found, BottomCall(i, :unknown_callee, name, wide)); continue)
+        f === nothing && (push!(found, BottomCall(i, :undecided_unknown_callee, name, wide)); continue)
         standin = any(has_stand_in, wide)
+        if f === Core._apply_iterate && length(types) >= 2
+            inner = types[2] isa CC.Const ? types[2].val : CC.singleton_type(CC.widenconst(types[2]))
+            if inner !== nothing && (is_thrower(inner) || inner === Base.kwerr)
+                push!(found, BottomCall(i, :explicit_throw, string(inner), wide)); continue
+            end
+            any(t -> !isconcretetype(t), wide[3:end]) &&
+                (push!(found, BottomCall(i, :undecided_abstract_args, name, wide)); continue)
+        end
         if f isa Core.Builtin
             cls = standin && return_type(f, Any[model_arg(t) for t in types]) !== Union{} ? :stand_in_gap_builtin : :builtin
             push!(found, BottomCall(i, cls, name, wide)); continue
@@ -106,10 +119,20 @@ function classify_bottoms(ir::CC.IRCode)::Vector{BottomCall}
                 push!(found, BottomCall(i, Symbol(:stand_in_gap_, status), name, wide)); continue
             end
         end
-        cls = status === :ok ? :callee_throws : Symbol(:real_, status)
+        # Function stand-in reaching callee: failure is past opaque boundary, outside analysis.
+        if standin && status === :no_method
+            # Works with Int/Float64 but neither stand-in nor narrowest type: signature overpromises.
+            dargs = Any[default_type(CC.widenconst(t)) for t in types]
+            if dispatch_status(Tuple{typeof(f), dargs...}) === :ok
+                push!(found, BottomCall(i, :only_default_type_works, name, wide)); continue
+            end
+        end
+        cls = any(t -> occursin("FunctionStandIn", string(t)), wide) ? :opaque_in_callee :
+            status === :partial ? :undecided_abstract_args :
+            status === :ok ? :callee_throws : Symbol(:real_, status)
         push!(found, BottomCall(i, cls, name, wide))
     end
-    found
+    return found
 end
 
 "Literal, constant or type name meeting input; result of the differential."
@@ -145,8 +168,9 @@ function literal_sites(ir::CC.IRCode)::Vector{LiteralSite}
         # Type name applied to input: Float64(x), convert(Float64, x), Int(x).
         T = f isa Type ? f : (f === convert && !isempty(types) && types[1] isa CC.Const ? types[1].val : nothing)
         if T isa Type && T <: Number && isconcretetype(T) && T !== S && !(T <: NumberStandIn) &&
-           any(t -> CC.widenconst(t) <: NumberStandIn, types)
-            target = T <: AbstractFloat ? FloatStandIn : S === IntStandIn ? IntStandIn : nothing
+                any(t -> CC.widenconst(t) <: NumberStandIn, types)
+            # Same kind only: Float64(x::AbstractFloat), Int(x::Integer); kind changes are intended.
+            target = T <: AbstractFloat && S === FloatStandIn ? FloatStandIn : T <: Signed && S === IntStandIn ? IntStandIn : nothing
             target === nothing && continue
             push!(sites, differential(ir, i, (i, 0), :type_name, string(f), string(T), S, target))
             continue
@@ -161,7 +185,7 @@ function literal_sites(ir::CC.IRCode)::Vector{LiteralSite}
             push!(sites, differential(ir, i, (i, j), kind, string(f), repr(v), S, S))
         end
     end
-    sites
+    return sites
 end
 
 "Number literal or constant eligible as weak value, or `nothing`."
@@ -169,11 +193,13 @@ function weak_literal(a)
     lv = literal_value(a)
     lv === nothing && return nothing
     v = something(lv)
-    (v isa NumberStandIn || v isa AbstractIrrational || v isa Bool) ? nothing : v
+    return (v isa NumberStandIn || v isa AbstractIrrational || v isa Bool) ? nothing : v
 end
 
-literal_phi(ir::CC.IRCode, k::Int, v)::Bool = (st = ir.stmts[k][:stmt]; st isa Core.PhiNode &&
-    any(n -> isassigned(st.values, n) && weak_literal(st.values[n]) == v, eachindex(st.values)))
+literal_phi(ir::CC.IRCode, k::Int, v)::Bool = (
+    st = ir.stmts[k][:stmt]; st isa Core.PhiNode &&
+        any(n -> isassigned(st.values, n) && weak_literal(st.values[n]) == v, eachindex(st.values))
+)
 
 "Statements reachable from `k` through SSA uses, `k` included."
 function reachable(ir::CC.IRCode, k::Int)::Set{Int}
@@ -188,7 +214,7 @@ function reachable(ir::CC.IRCode, k::Int)::Set{Int}
             any(x -> x isa Core.SSAValue && x.id in seen, ops) && (push!(seen, u); changed = true)
         end
     end
-    seen
+    return seen
 end
 
 "Literal phi operands (`s = 0` before loop) whose phi value meets a stand-in in some call."
@@ -205,17 +231,19 @@ function phi_sites(ir::CC.IRCode, k::Int, phi::Core.PhiNode, stand_ins::Vector):
         v = weak_literal(phi.values[n])
         v === nothing && continue
         # One source literal appears in several phis (loop head, loop exit); override all reachable copies.
-        any(k2 -> k2 < k && literal_phi(ir, k2, v) && k in reachable(ir, k2), 1:k-1) && continue
-        slots = [(k2, n2) for k2 in sort!(collect(reachable(ir, k))) if ir.stmts[k2][:stmt] isa Core.PhiNode
-                 for n2 in eachindex(ir.stmts[k2][:stmt].values)
-                 if isassigned(ir.stmts[k2][:stmt].values, n2) && weak_literal(ir.stmts[k2][:stmt].values[n2]) == v]
+        any(k2 -> k2 < k && literal_phi(ir, k2, v) && k in reachable(ir, k2), 1:(k - 1)) && continue
+        slots = [
+            (k2, n2) for k2 in sort!(collect(reachable(ir, k))) if ir.stmts[k2][:stmt] isa Core.PhiNode
+                for n2 in eachindex(ir.stmts[k2][:stmt].values)
+                if isassigned(ir.stmts[k2][:stmt].values, n2) && weak_literal(ir.stmts[k2][:stmt].values[n2]) == v
+        ]
         for S in stand_ins
             v isa AbstractFloat && S === IntStandIn && continue
             kind = v isa Integer ? :int_literal : :float_literal
             push!(out, differential(ir, k, slots, kind, "φ", repr(v), S, S))
         end
     end
-    out
+    return out
 end
 
 """
@@ -236,8 +264,12 @@ function propagate(ir::CC.IRCode, site::Int, slots::Vector{Tuple{Int, Int}}, ove
             ns = [n for n in eachindex(stmt.values) if isassigned(stmt.values, n)]
             (k == site || any(s -> s[1] == k, slots) || any(n -> touched(stmt.values[n]), ns)) || continue
             # Optimistic start: back-edge operands not yet computed contribute nothing on pass 1.
-            live = [n for n in ns if !(pass == 1 && stmt.values[n] isa Core.SSAValue && stmt.values[n].id > k &&
-                                       !haskey(d, stmt.values[n].id))]
+            live = [
+                n for n in ns if !(
+                        pass == 1 && stmt.values[n] isa Core.SSAValue && stmt.values[n].id > k &&
+                        !haskey(d, stmt.values[n].id)
+                    )
+            ]
             d[k] = reduce(CC.tmerge, (CC.widenconst(operand(k, n, stmt.values[n])) for n in live); init = Union{})
         elseif stmt isa Core.PiNode && touched(stmt.val)
             d[k] = typeintersect(CC.widenconst(operand(k, 1, stmt.val)), CC.widenconst(stmt.typ))
@@ -247,7 +279,7 @@ function propagate(ir::CC.IRCode, site::Int, slots::Vector{Tuple{Int, Int}}, ove
             d[k] = CC.widenconst(return_type(f, Any[operand(k, n, x) for (n, x) in enumerate(stmt.args[2:end])]))
         end
     end
-    d
+    return d
 end
 
 "Element or field type a store converts to, or `nothing` when store keeps value type."
@@ -258,16 +290,23 @@ function store_target_type(ir::CC.IRCode, f, args)
         return isconcretetype(E) ? E : nothing
     elseif f in (setfield!, setproperty!) && length(args) >= 2
         name = CC.argextype(args[2], ir)
-        name isa CC.Const && T isa DataType && isconcretetype(T) || return nothing
-        F = try fieldtype(T, name.val) catch; return nothing end
+        U = Base.unwrap_unionall(T)
+        name isa CC.Const && U isa DataType && isstructtype(U) || return nothing
+        F = try
+            fieldtype(U, name.val)
+        catch
+            return nothing
+        end
         return isconcretetype(F) ? F : nothing
     end
-    nothing
+    return nothing
 end
 
 "Differential on one site: compare escaping types with and without the override."
-function differential(ir::CC.IRCode, site::Int, slot::Union{Tuple{Int, Int}, Vector{Tuple{Int, Int}}}, kind::Symbol, fname::String, lit::String,
-                      S::Type, override)::LiteralSite
+function differential(
+        ir::CC.IRCode, site::Int, slot::Union{Tuple{Int, Int}, Vector{Tuple{Int, Int}}}, kind::Symbol, fname::String, lit::String,
+        S::Type, override
+    )::LiteralSite
     slots = slot isa Tuple ? [slot] : slot
     orig = propagate(ir, site, slots, nothing)
     cf = propagate(ir, site, slots, override)
@@ -280,8 +319,11 @@ function differential(ir::CC.IRCode, site::Int, slot::Union{Tuple{Int, Int}, Vec
     for k in 1:length(ir.stmts)
         stmt = ir.stmts[k][:stmt]
         if stmt isa Core.ReturnNode && isdefined(stmt, :val) && stmt.val isa Core.SSAValue &&
-           haskey(cf, stmt.val.id) && cf[stmt.val.id] != orig[stmt.val.id]
-            return LiteralSite(site, kind, fname, lit, S, orig[stmt.val.id], cf[stmt.val.id], :returned)
+                haskey(cf, stmt.val.id) && cf[stmt.val.id] != orig[stmt.val.id]
+            ec = cf[stmt.val.id]
+            # Counterfactual that breaks later code (constructor rejects it) decides nothing.
+            ec in (Any, Union{}) && return LiteralSite(site, kind, fname, lit, S, orig[stmt.val.id], ec, :not_operand)
+            return LiteralSite(site, kind, fname, lit, S, orig[stmt.val.id], ec, :returned)
         elseif stmt isa Expr && stmt.head === :call && length(stmt.args) >= 3 && stmt.args[2] isa Core.Argument
             f = callee(ir, stmt.args[1])
             f in (setindex!, setfield!, setproperty!, push!) || continue
@@ -291,12 +333,32 @@ function differential(ir::CC.IRCode, site::Int, slot::Union{Tuple{Int, Int}, Vec
             escape, eo, ec = :stored, orig[v.id], cf[v.id]
         end
     end
-    LiteralSite(site, kind, fname, lit, S, eo, ec, escape)
+    return LiteralSite(site, kind, fname, lit, S, eo, ec, escape)
 end
+
+"Package callees reached from `ir` with stand-in argument types: `(method, signature)` pairs."
+function package_callees(ir::CC.IRCode, mods::Set{Module})::Vector{Tuple{Method, Any}}
+    out = Tuple{Method, Any}[]
+    for i in 1:length(ir.stmts)
+        stmt = ir.stmts[i][:stmt]
+        stmt isa Expr && stmt.head === :call || continue
+        ft = CC.widenconst(CC.argextype(stmt.args[1], ir))
+        types = Any[CC.widenconst(CC.argextype(a, ir)) for a in stmt.args[2:end]]
+        any(has_stand_in, types) || continue
+        tt = Tuple{ft, types...}
+        isconcretetype(tt) || continue
+        ms = Base._methods_by_ftype(tt, 1, world())
+        (ms isa Vector && length(ms) == 1) || continue
+        m = ms[1].method
+        m.module in mods && push!(out, (m, tt))
+    end
+    return out
+end
+export package_callees
 
 "Source line of statement `i`, best effort."
 function stmt_line(ir::CC.IRCode, i::Int)::String
-    try
+    return try
         stack = Base.IRShow.buildLineInfoNode(ir.debuginfo, nothing, i)
         isempty(stack) && return "?"
         node = last(stack)

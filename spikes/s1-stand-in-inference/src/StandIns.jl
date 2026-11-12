@@ -49,14 +49,18 @@ wrap(r) = r
 FloatStandIn(x::FloatStandIn) = x
 IntStandIn(x::IntStandIn) = x
 for (S, M) in ((FloatStandIn, Float32), (IntStandIn, Int32))
-    for T in (Bool, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128,
-              Float16, Float32, Float64, BigInt, BigFloat, Rational, Irrational)
+    for T in (
+            Bool, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128,
+            Float16, Float32, Float64, BigInt, BigFloat, Rational, Irrational,
+        )
         T === M || @eval (::Type{$S})(x::$T) = $S($M(x))
     end
     S === IntStandIn || @eval (::Type{$S})(x::IntStandIn) = $S($M(x.model))
     S === FloatStandIn || @eval (::Type{$S})(x::FloatStandIn) = $S($M(x.model))
-    for T in (Bool, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128,
-              Float16, Float32, Float64, BigInt, BigFloat)
+    for T in (
+            Bool, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128,
+            Float16, Float32, Float64, BigInt, BigFloat,
+        )
         @eval (::Type{$T})(x::$S) = $T(x.model)
     end
     @eval Base.Rational{T}(x::$S) where {T <: Base.BitInteger} = Rational{T}(x.model)
@@ -65,8 +69,10 @@ Base.Rational(x::IntStandIn) = Rational(x.model)
 Base.Int(x::FloatStandIn, r::RoundingMode) = round(Int, x.model, r)
 
 # Promotion: mirror the model type, then map model back to stand-in.
-const PROMOTE_PARTNERS = (Bool, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64,
-                          UInt128, Float16, Float32, Float64, BigInt, BigFloat)
+const PROMOTE_PARTNERS = (
+    Bool, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64,
+    UInt128, Float16, Float32, Float64, BigInt, BigFloat,
+)
 standin_of(T::Type, S::Type)::Type = T === model(S) ? S : T
 for S in (FloatStandIn, IntStandIn), T in PROMOTE_PARTNERS
     @eval Base.promote_rule(::Type{$S}, ::Type{$T}) = standin_of(promote_type(model($S), $T), $S)
@@ -79,16 +85,20 @@ Base.promote_rule(::Type{<:AbstractIrrational}, ::Type{FloatStandIn}) = FloatSta
 Base.promote_rule(::Type{<:AbstractIrrational}, ::Type{IntStandIn}) = Float64
 
 # Arithmetic and math, forwarded to the model type.
-const BINARY = (:+, :-, :*, :/, :^, :rem, :mod, :div, :fld, :cld, :min, :max, :atan, :hypot, :copysign,
-                :flipsign, :\)
+const BINARY = (
+    :+, :-, :*, :/, :^, :rem, :mod, :div, :fld, :cld, :min, :max, :atan, :hypot, :copysign,
+    :flipsign, :\,
+)
 const BINARY_INT = (:&, :|, :xor, :gcd, :lcm, :<<, :>>, :>>>)
 const COMPARE = (:(==), :<, :<=, :isless, :isequal, :!=)
-const UNARY = (:-, :abs, :abs2, :sqrt, :cbrt, :exp, :exp2, :exp10, :expm1, :log, :log2, :log10, :log1p,
-               :sin, :cos, :tan, :asin, :acos, :atan, :sinh, :cosh, :tanh, :asinh, :acosh, :atanh,
-               :sinpi, :cospi, :sign, :float, :inv, :round, :trunc, :floor, :ceil, :nextfloat, :prevfloat,
-               :eps, :significand, :exponent, :sincos, :frexp, :modf, :signbit, :isnan, :isinf, :isfinite,
-               :isinteger, :iszero, :isone, :~, :count_ones, :leading_zeros, :trailing_zeros, :isodd,
-               :iseven, :bswap, :deg2rad, :rad2deg, :conj, :real, :imag, :transpose, :adjoint, :widen)
+const UNARY = (
+    :-, :abs, :abs2, :sqrt, :cbrt, :exp, :exp2, :exp10, :expm1, :log, :log2, :log10, :log1p,
+    :sin, :cos, :tan, :asin, :acos, :atan, :sinh, :cosh, :tanh, :asinh, :acosh, :atanh,
+    :sinpi, :cospi, :sign, :float, :inv, :round, :trunc, :floor, :ceil, :nextfloat, :prevfloat,
+    :eps, :significand, :exponent, :sincos, :frexp, :modf, :signbit, :isnan, :isinf, :isfinite,
+    :isinteger, :iszero, :isone, :~, :count_ones, :leading_zeros, :trailing_zeros, :isodd,
+    :iseven, :bswap, :deg2rad, :rad2deg, :conj, :real, :imag, :transpose, :adjoint, :widen,
+)
 for S in (FloatStandIn, IntStandIn)
     for f in BINARY
         isdefined(Base, f) && @eval Base.$f(a::$S, b::$S) = wrap($f(a.model, b.model))
@@ -172,8 +182,9 @@ model_type(::Type{FloatStandIn}) = Float32
 model_type(::Type{IntStandIn}) = Int32
 model_type(::Type{ArrayStandIn{T, N}}) where {T, N} = Array{model_type(T), N}
 function model_type(T::DataType)
-    (isempty(T.parameters) || T <: Type) && return T
-    try
+    T <: Type && T isa DataType && T.name === Type.body.name && return Type{model_type(T.parameters[1])}
+    isempty(T.parameters) && return T
+    return try
         T.name.wrapper{map(model_type, T.parameters)...}
     catch
         T
@@ -197,7 +208,7 @@ function number_stand_in(T::DataType)
         s = number_stand_in(p)
         s === nothing || return s
     end
-    nothing
+    return nothing
 end
 number_stand_in(T::Union) = something(number_stand_in(T.a), number_stand_in(T.b), Some(nothing))
 export number_stand_in, NumberStandIn

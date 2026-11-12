@@ -1,0 +1,61 @@
+package DataStructures 0.19.6; julia 1.13.3
+load_s 0.01; scan_s 7.46; methods 1449; signatures 1574; inferred_signatures 1574; generated_methods 0; methods_reached_through_callers 28; maxrss_mb 426
+
+# method status (own signature)
+inferred_declared_types_only 1302
+inferred_with_stand_in 147
+
+# signature skips
+
+# argument notes (methods with note)
+no_stand_in 709
+struct_parameters_filled 439
+array_without_stand_in 72
+package_abstract 13
+number_without_stand_in 1
+
+# Union{} calls by class
+explicit_throw 157
+callee_throws 8
+only_default_type_works 6
+stand_in_gap_no_method 4
+undecided_abstract_args 3
+stand_in_gap_ok 2
+opaque_result 2
+real_no_method 1
+undecided_unknown_callee 1
+
+# literal sites (kind, escape)
+(:int_literal, :no_change) 41
+(:int_literal, :intermediate) 18
+(:type_name, :intermediate) 9
+(:int_literal, :not_operand) 8
+(:int_literal, :returned) 4
+(:type_name, :not_operand) 2
+
+# escaping findings
+returned int_literal *(2) [IntStandIn] Int64 vs IntStandIn @ DataStructures.heapleft ~/.julia/packages/DataStructures/IwRP2/src/heaps/arrays_as_heaps.jl:12 (~/.julia/packages/DataStructures/IwRP2/src/heaps/arrays_as_heaps.jl:12)
+returned int_literal *(2) [IntStandIn] Int64 vs IntStandIn @ DataStructures.lchild ~/.julia/packages/DataStructures/IwRP2/src/heaps/minmax_heap.jl:115 (~/.julia/packages/DataStructures/IwRP2/src/heaps/minmax_heap.jl:115)
+returned int_literal div(2) [IntStandIn] Int64 vs IntStandIn @ DataStructures.heapparent ~/.julia/packages/DataStructures/IwRP2/src/heaps/arrays_as_heaps.jl:14 (~/.julia/packages/DataStructures/IwRP2/src/heaps/arrays_as_heaps.jl:14)
+returned int_literal div(2) [IntStandIn] Int64 vs IntStandIn @ DataStructures.hparent ~/.julia/packages/DataStructures/IwRP2/src/heaps/minmax_heap.jl:118 (~/.julia/packages/DataStructures/IwRP2/src/heaps/minmax_heap.jl:118)
+
+# real never-succeeds candidates
+only_default_type_works DataStructures._minmax_heap_trickle_down! ~/.julia/packages/DataStructures/IwRP2/src/heaps/minmax_heap.jl:81 -> children_and_grandchildren(Int64, IntStandIn)
+real_no_method DataStructures.empty ~/.julia/packages/DataStructures/IwRP2/src/default_dict.jl:84 -> kwcall(@NamedTuple{passkey::Bool}, Type{DataStructures.DefaultDictBase{_A, _B, _C}} where {_A, _B, _C}, Any)
+
+# stand-in gaps and other ignored Union{} calls (distinct calls)
+stand_in_gap_no_method pop!(ArrayStandIn{IntStandIn, 1},) 2
+stand_in_gap_no_method pop!(ArrayStandIn{FloatStandIn, 1},) 2
+undecided_abstract_args _apply_iterate(typeof(iterate), typeof(Core.kwcall), Tuple{NamedTuple, typeof(first)}, Tuple) 1
+callee_throws #_#39(Base.Pairs{Symbol, Union{}, Nothing, @NamedTuple{}}, Type{DefaultDict{K, V}} where {K, V}) 1
+callee_throws #_#39(Base.Pairs{Symbol, _A, Nothing, A} where {_A, A<:NamedTuple}, Type{DefaultDict{K, V}} where {K, V}) 1
+callee_throws #_#54(Base.Pairs{Symbol, Union{}, Nothing, @NamedTuple{}}, Type{DefaultOrderedDict{K, V}} where {K, V}) 1
+stand_in_gap_ok heappop!(ArrayStandIn{IntStandIn, 1}, Base.Order.ForwardOrdering) 1
+stand_in_gap_ok heappop!(ArrayStandIn{FloatStandIn, 1}, Base.Order.ForwardOrdering) 1
+callee_throws #DefaultDictBase#19(Base.Pairs{Symbol, _A, Nothing, A} where {_A, A<:NamedTuple}, Type{DataStructures.DefaultDictBase}, Any, Any) 1
+undecided_abstract_args _apply_iterate(typeof(iterate), typeof(Core.kwcall), Tuple{NamedTuple, typeof(find_root!)}, Tuple) 1
+callee_throws #DefaultDictBase#19(Base.Pairs{Symbol, Union{}, Nothing, @NamedTuple{}}, Type{DataStructures.DefaultDictBase}, Any, Any) 1
+undecided_abstract_args _apply_iterate(typeof(iterate), typeof(Core.kwcall), Tuple{NamedTuple, typeof(Base.Iterators.reverse)}, Tuple) 1
+callee_throws #DefaultDictBase#18(Base.Pairs{Symbol, _A, Nothing, A} where {_A, A<:NamedTuple}, Type{DataStructures.DefaultDictBase}) 1
+callee_throws #DefaultDictBase#18(Base.Pairs{Symbol, Union{}, Nothing, @NamedTuple{}}, Type{DataStructures.DefaultDictBase}) 1
+callee_throws #_#54(Base.Pairs{Symbol, _A, Nothing, A} where {_A, A<:NamedTuple}, Type{DefaultOrderedDict{K, V}} where {K, V}) 1
