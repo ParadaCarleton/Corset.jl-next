@@ -8,6 +8,7 @@ warning[c-type]: C type `Cuint` outside C call
   = fix: use Julia type (`UInt32`), or keep `Cuint` only in `ccall` signatures   [manual]
   = docs: corset explain c-type
   = note: warn from readability group, library preset
+  = note: opt out with `# corset: allow c-type -- <reason>`
 
 warning[c-type]: C type `Csize_t` outside C call
  --> positive.jl:3:12

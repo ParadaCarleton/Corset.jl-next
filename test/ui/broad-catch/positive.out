@@ -8,6 +8,7 @@ error[broad-catch]: `catch` handles every error
   = fix: handle expected type only: `e isa MyError || rethrow()`   [manual]
   = docs: corset explain broad-catch
   = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow broad-catch -- <reason>`
 
 error[broad-catch]: `catch` handles every error
   --> positive.jl:11:1

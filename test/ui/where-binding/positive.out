@@ -9,6 +9,7 @@ error[where-binding]: `where` binds result type `T`, not method
   = fix: replace with `(same(x::T)::T) where {T}`   [safe]
   = docs: corset explain where-binding
   = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow where-binding -- <reason>`
 
 error[where-binding]: `where` binds result type `T`, not method
  --> positive.jl:3:1

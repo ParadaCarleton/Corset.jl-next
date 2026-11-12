@@ -8,6 +8,7 @@ warning[inference-dependent]: result of `Core.Compiler.return_type` depends on c
   = fix: compute type from values (`typeof(f(x))`), or document fallback for wide result   [manual]
   = docs: corset explain inference-dependent
   = note: warn from composability group, library preset
+  = note: opt out with `# corset: allow inference-dependent -- <reason>`
 
 warning[inference-dependent]: result of `Base.promote_op` depends on compiler inference
  --> positive.jl:3:25

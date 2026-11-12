@@ -4,6 +4,7 @@ module Render
 using ..Facts: Span, Precision, Confidence
 using ..Config: Level
 using ..Engine: Diagnostic, Report
+using ..OptOuts: NAME as OPT_OUT
 
 """Header word for `level`, as in rustc."""
 const HEADER = Dict(Level.deny => "error", Level.warn => "warning")
@@ -39,7 +40,7 @@ function placement(text::String, starts::Vector{Int}, span::Span)::Tuple{Int, In
     return line, first_col, max(width_between(text, span.first_byte, min(span.last_byte, line_end)), 1)
 end
 
-"""Write `diagnostic` from file with source `text` to `io`; `note` adds line saying where level was set."""
+"""Write `diagnostic` from file with source `text` to `io`; `note` adds lines saying where level was set and how to opt out."""
 function render(io::IO, diagnostic::Diagnostic, text::String, note::Bool)::Nothing
     finding = diagnostic.finding
     starts = line_starts(text)
@@ -72,6 +73,7 @@ function render(io::IO, diagnostic::Diagnostic, text::String, note::Bool)::Nothi
     isnothing(finding.fix) || println(io, gutter, " = fix: ", finding.fix.text, "   [", finding.fix.tier, "]")
     println(io, gutter, " = docs: corset explain ", finding.rule)
     note && println(io, gutter, " = note: ", diagnostic.level, " from ", diagnostic.source)
+    note && finding.rule != OPT_OUT && println(io, gutter, " = note: opt out with `# corset: allow ", finding.rule, " -- <reason>`")
     return nothing
 end
 

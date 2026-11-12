@@ -9,6 +9,7 @@ error[bracketed-range]: `[1:3]` is vector with one element, range `1:3`
   = fix: replace with `collect(1:3)`   [likely]
   = docs: corset explain bracketed-range
   = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow bracketed-range -- <reason>`
 
 error[bracketed-range]: `[2:2:10]` is vector with one element, range `2:2:10`
  --> positive.jl:3:9
