@@ -1,4 +1,30 @@
-"""`bracketed-range` (F2): `[1:3]` is one-element vector holding range."""
+"""
+`bracketed-range` (F2): range in brackets is one-element vector.
+
+## Description
+Reports vector literal whose only element is range: `[1:n]`.
+
+## Rationale
+`[1:n]` holds one range, not `n` numbers. Loop over it runs once, and `length` returns 1.
+
+## Example
+```julia
+for i in [1:n]
+    total += i
+end
+```
+
+## Alternative
+```julia
+for i in 1:n
+    total += i
+end
+values = collect(1:n)   # when vector is needed
+```
+
+## Limitations
+Finding is `possible`: vector of ranges can be intended. Fix writes `collect(range)` with tier `likely`.
+"""
 module BracketedRange
 
 using ...Facts

@@ -1,4 +1,34 @@
-"""`broad-catch` (F59): `catch` that neither tests error type nor rethrows handles every error."""
+"""
+`broad-catch` (F59): `catch` handles every error.
+
+## Description
+Reports `catch` block that neither tests error type nor passes error on.
+
+## Rationale
+Bare `catch` also catches `InterruptException`, `OutOfMemoryError` and bugs such as `MethodError`, then hides them.
+
+## Example
+```julia
+value = try
+    parse(Int, text)
+catch
+    0
+end
+```
+
+## Alternative
+```julia
+value = try
+    parse(Int, text)
+catch error
+    error isa ArgumentError || rethrow()
+    0
+end
+```
+
+## Limitations
+Rule accepts `isa` test on caught variable, `rethrow`, `throw` and `error` as narrowing. It does not check that test names right type.
+"""
 module BroadCatch
 
 using ...Facts

@@ -32,3 +32,12 @@ end
         @test imports == ["using ...Facts"]
     end
 end
+
+@testset "rule docs follow Clippy sections" begin
+    for entry in Corset.Rules.REGISTRY
+        doc = Corset.CLI.module_doc(parentmodule(entry.run))
+        @test startswith(doc, "`$(entry.name)` (")
+        positions = [findfirst("\n## $section\n", doc) for section in ("Description", "Rationale", "Example", "Alternative", "Limitations")]
+        @test all(!isnothing, positions) && issorted(first.(positions))
+    end
+end

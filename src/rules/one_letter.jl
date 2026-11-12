@@ -1,4 +1,29 @@
-"""`one-letter` (F72): one-letter variable names; `i`, `j`, `k` as loop indices and `_` exempt."""
+"""
+`one-letter` (F72): one-letter name.
+
+## Description
+Reports one-letter variable, argument and loop names, once per name and function.
+
+## Rationale
+One letter carries no meaning outside its first line. Reader must find assignment to learn what value holds.
+
+## Example
+```julia
+function area(w, h)
+    return w * h
+end
+```
+
+## Alternative
+```julia
+function area(width, height)
+    return width * height
+end
+```
+
+## Limitations
+Exempt: `_`, and `i`, `j`, `k` as loop variables. Math-heavy file may opt out with `# corset: allow-file one-letter -- <reason>`.
+"""
 module OneLetter
 
 using ...Facts

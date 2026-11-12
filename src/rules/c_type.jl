@@ -1,4 +1,25 @@
-"""`c-type` (F81): C type aliases (`Cint`) outside C calls hide Julia type and vary by platform."""
+"""
+`c-type` (F81): C type alias outside C calls.
+
+## Description
+Reports C type aliases such as `Cint`, `Clong` and `Csize_t` outside `ccall`, `@ccall`, `cglobal`, `@cfunction`, `Ptr{}` and `Ref{}`.
+
+## Rationale
+Alias hides Julia type from reader. `Clong`, `Culong` and `Cwchar_t` also change width by platform, so code behaves differently on Windows.
+
+## Example
+```julia
+count::Cint = 0
+```
+
+## Alternative
+```julia
+count::Int32 = 0
+```
+
+## Limitations
+Rule reads names as written. Local variable named like alias gives false finding.
+"""
 module CType
 
 using ...Facts

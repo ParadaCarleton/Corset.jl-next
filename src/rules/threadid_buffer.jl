@@ -1,4 +1,29 @@
-"""`threadid-buffer` (F68): buffer indexed by `threadid()`; task can migrate between threads."""
+"""
+`threadid-buffer` (F68): buffer indexed by `threadid()`.
+
+## Description
+Reports indexing with `threadid()`, such as `buffers[threadid()]`.
+
+## Rationale
+Task can migrate between threads after yield, and several tasks can share one thread. Two tasks then write same buffer.
+
+## Example
+```julia
+Threads.@threads for item in items
+    push!(buffers[Threads.threadid()], transform(item))
+end
+```
+
+## Alternative
+```julia
+chunks = Iterators.partition(items, cld(length(items), Threads.nthreads()))
+tasks = [Threads.@spawn map(transform, chunk) for chunk in chunks]
+results = reduce(vcat, fetch.(tasks))
+```
+
+## Limitations
+Finding is `definite` inside `@threads`, `@spawn` and `@async`, and `possible` elsewhere.
+"""
 module ThreadidBuffer
 
 using ...Facts

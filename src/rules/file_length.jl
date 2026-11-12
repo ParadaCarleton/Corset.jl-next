@@ -1,4 +1,21 @@
-"""`file-length` (F77): file too long to hold one topic."""
+"""
+`file-length` (F77): file too long.
+
+## Description
+Reports file longer than 1000 lines, at first line past limit.
+
+## Rationale
+Long file holds several topics. Reader cannot find code by file name, and reviews touch unrelated code.
+
+## Example
+`solver.jl` with 2400 lines: setup, iteration, output and plots.
+
+## Alternative
+Split file by topic: `setup.jl`, `iterate.jl`, `output.jl`.
+
+## Limitations
+Limit is fixed at 1000 lines until rule options exist.
+"""
 module FileLength
 
 using ...Facts

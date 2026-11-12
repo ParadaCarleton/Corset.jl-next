@@ -1,4 +1,25 @@
-"""`where-binding` (F4): in `f(x::T)::T where {T} = …`, `where` binds result type, not method."""
+"""
+`where-binding` (F4): `where` after result annotation binds result type.
+
+## Description
+Reports short-form method `f(x::T)::T where {T} = …` whose `where` clause attaches to result annotation.
+
+## Rationale
+Parser reads `f(x::T)::T where {T}` as `f(x::T)::(T where {T})`. Signature then names free `T`: definition errors, or silently uses global `T` when one exists.
+
+## Example
+```julia
+same(x::T)::T where {T} = x
+```
+
+## Alternative
+```julia
+(same(x::T)::T) where {T} = x
+```
+
+## Limitations
+None known. Upstream kept this precedence (JuliaLang/julia#21847).
+"""
 module WhereBinding
 
 using ...Facts

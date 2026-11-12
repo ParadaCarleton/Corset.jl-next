@@ -1,4 +1,31 @@
-"""`world-age` (F63): function defined by `eval` inside function, then called there; call sees old world."""
+"""
+`world-age` (F63): function defined by `eval` called in same world.
+
+## Description
+Reports call to function that `eval` or `@eval` defines earlier in same function body.
+
+## Rationale
+Running function sees only methods that existed when it started. Call right after `eval` throws `MethodError`, or runs old method.
+
+## Example
+```julia
+function setup()
+    @eval helper() = 1
+    return helper()
+end
+```
+
+## Alternative
+```julia
+function setup()
+    @eval helper() = 1
+    return Base.invokelatest(helper)
+end
+```
+
+## Limitations
+Fix is `manual` when call passes keywords.
+"""
 module WorldAge
 
 using ...Facts

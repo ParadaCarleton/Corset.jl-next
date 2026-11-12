@@ -1,4 +1,27 @@
-"""`docstring` (F74, F80): comment where docstring belongs; module without docstring."""
+"""
+`docstring` (F74, F80): comment where docstring belongs; module without docstring.
+
+## Description
+Reports comment block directly above top-level function or struct, and module without docstring.
+
+## Rationale
+Help mode (`?name`) and documentation tools read docstrings only. Comment above definition stays invisible to them.
+
+## Example
+```julia
+# Area of circle with radius `r`.
+area(r) = π * r^2
+```
+
+## Alternative
+```julia
+\"\"\"Area of circle with radius `r`.\"\"\"
+area(r) = π * r^2
+```
+
+## Limitations
+Fix turns comment into docstring as written; review wording after fix.
+"""
 module Docstring
 
 using ...Facts
