@@ -160,6 +160,7 @@ note = "Kinds: undef read, placeholder read."
 [[check]]
 name = "shared-fill"
 footguns = [35]
+note = "Fix tier `manual`."
 
 [[check]]
 name = "one-based-range"
@@ -193,9 +194,12 @@ footguns = [42]
 note = "Possible only."
 
 [[check]]
-name = "quadratic"
-footguns = [43, 44]
-note = "Kinds: scan, concatenation."
+name = "loop-search"
+footguns = [43]
+
+[[check]]
+name = "repeated-concat"
+footguns = [44]
 
 [[check]]
 name = "matrix-function"

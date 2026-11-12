@@ -380,3 +380,17 @@ Spike reports: `spikes/s1-stand-in-inference` to `spikes/s5-effect-summary`, fil
 | 9 | F1 needs whitespace; Argus ignores trivia | Fixed: F1 reads source bytes. |
 | 10 | S5 percentage wrong | Fixed: per-package shares. |
 | 11 | LintApp check source stale | Fixed: JuliaWorkspaces named. |
+
+### Layer audit after first family A checks
+
+Rule: check waits for layer that owns its facts. Removed syntax versions and fixtures stay in `main` at `3cb1383` (`src/checks`, `test/ui`).
+
+| Check | Problem | Outcome |
+|---|---|---|
+| `quadratic` | Grouped F43 (D) with F44 (A); syntax scan ignored collection type | Split: `loop-search` (F43, D), `repeated-concat` (F44, A). Syntax scan removed. |
+| `shared-fill` | Constructor list guessed mutability | F35 moves to D. Fix tier `manual`: comprehension changes code that shares on purpose, and `fill(x, -1)` throws where comprehension returns empty. |
+| `one-based-range` | Syntax `possible` reported missing type facts as finding; `Vector` argument is always 1-based | F36 moves to D. |
+| `loop-order` | Memory order depends on array type (`Adjoint`) | F42 moves to D. |
+| `non-exhaustive-match`, `unreachable-arm`, `wildcard-arm` | Variants need loaded ADT | F89–F91 move to C. |
+| `c-type` | Local variable named `Cint` gives false finding | Kept in A. `Cint === Int32`, so only syntax sees alias. Import `Cint as CI` still names `Cint` in import line. |
+| `untyped-empty`, `annotation` | Fixer needs inferred element or argument type | Detection stays A. Fixer reads L4 when it ran; otherwise fix is `manual`. |

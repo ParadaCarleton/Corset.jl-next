@@ -34,6 +34,9 @@ assert set(owner) == set(by_id) and all(count == 1 for count in owner.values()),
 for check in checks:
     assert len({by_id[ident]["group"] for ident in check["footguns"]}) == 1, f"{check['name']}: one group per check"
 assert {footgun["family"] for footgun in footguns} <= {family["letter"] for family in families}, "unknown family letter"
+for check in checks:
+    letters = {by_id[ident]["family"] for ident in check["footguns"]}
+    assert len(letters) == 1 or not letters & {"A", "B"}, f"{check['name']}: syntax family mixed with later family"
 
 
 def code(text: str) -> str:
