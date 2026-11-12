@@ -21,7 +21,7 @@ Each stage is one module that produces facts. Rules read facts through one API. 
 | `Fix` | Apply edits to lossless tree; filter by tier. |
 | `Report` | Render text, JSON, SARIF; `explain`. |
 | `Cache` | Disk cache keys and storage. |
-| `Config` | Preferences.jl table, presets, command-line overrides. |
+| `Config` | Project.toml and LocalPreferences.toml tables, presets, command-line flags; level per rule. |
 | `CLI` | Julia app entry point. |
 
 ### Core types
@@ -36,7 +36,8 @@ struct Finding
     primary::Label; causes::Vector{Label}; why::String
     fix::Union{Fix, Nothing}
 end
-struct CheckEntry
+struct Diagnostic finding::Finding; level::Level; source::String end   # source: where level was set
+struct RuleEntry
     name::Symbol; group::Group; footguns::Vector{Int}; stage::Stage
     run::Function                                            # (facts::Facts) -> Vector{Finding}
 end

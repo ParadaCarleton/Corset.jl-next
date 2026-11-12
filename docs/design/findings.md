@@ -40,7 +40,7 @@ Coverage line ends every run and counts blind spots by cause: `analyzed 412 of 4
 
 ### Lint levels
 
-Clippy model: each group and each rule has level `allow`, `warn` or `deny`; rule level overrides group level. `deny` findings fail run; `--deny warnings` makes warnings fail too. Baseline findings never fail run.
+Clippy model: each group and each rule has level `allow`, `warn` or `deny`; rule level overrides group level from any source. Command-line flags beat config; config beats preset. `deny` findings fail run; `--deny warnings` makes warnings fail too. Baseline findings never fail run.
 
 ### Opt-out comments
 
@@ -48,7 +48,7 @@ Clippy model: each group and each rule has level `allow`, `warn` or `deny`; rule
 
 ### Config
 
-`[preferences.Corset]` table in Project.toml, read through Preferences.jl. Scripts without Project.toml use defaults and command-line flags.
+`[preferences.Corset]` table in target Project.toml; `[Corset]` table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: `kind`, `confidence`, `fix_tier`, `levels` (group or rule name to level). Unknown key, value or name is config error (exit 2). Scripts without Project.toml use defaults and command-line flags.
 
 ### Project kind
 
@@ -77,7 +77,7 @@ Each fix declares tier by risk to callers; one setting picks highest tier applie
 Model: Rust compiler errors. Each finding carries primary span, labeled cause spans, one-line reason, fix with tier, and docs link. Analyses record cause spans (where union is created, where literal enters), so rules can name cause. Span has precision: exact bytes or line only. Renderer marks whole line for line precision.
 
 ```
-performance[vague-type]: `acc` changes type inside loop
+warning[vague-type]: `acc` changes type inside loop
   --> src/stats.jl:12:9
    |
 10 |     acc = 0
@@ -89,8 +89,10 @@ performance[vague-type]: `acc` changes type inside loop
    = why: later uses cannot compile for one type; each one dispatches at run time
    = fix: start from element type: `acc = zero(eltype(xs))`   [safe]
    = docs: corset explain vague-type
+   = note: warn from performance group, library preset
 ```
 
+- Header names level as rustc does: `error` for `deny`, `warning` for `warn`. Note line says where level was set, once per rule per run.
 - Same structure feeds SARIF: related locations and fixes.
 - `corset explain <rule>` prints footgun, example and fix offline.
 - Opt-out hint names exact comment: `# corset: allow vague-type -- <reason>`.

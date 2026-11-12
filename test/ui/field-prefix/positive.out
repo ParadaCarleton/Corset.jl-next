@@ -1,4 +1,4 @@
-readability[field-prefix]: 3 fields of `State` share prefix `governor_`
+warning[field-prefix]: 3 fields of `State` share prefix `governor_`
  --> positive.jl:3:5
   |
 3 |     governor_name::String
@@ -11,4 +11,5 @@ readability[field-prefix]: 3 fields of `State` share prefix `governor_`
   = why: shared prefix names hidden struct; grouping it lets code pass it as one value
   = fix: move `governor_*` fields into struct, then use `governor.field`   [manual]
   = docs: corset explain field-prefix
+  = note: warn from readability group, library preset
 

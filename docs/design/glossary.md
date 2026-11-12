@@ -16,6 +16,7 @@ Terms this design coins.
 | confidence | `definite`: problem exists. `possible`: compiler cannot resolve doubt either. |
 | blind spot | Doubt compiler resolves but Corset cannot. Counted on coverage line; never finding. |
 | level | `allow`, `warn` or `deny` per group or rule. |
+| diagnostic | Finding with level applied; what Corset reports. |
 | fix tier | Risk of fix to callers: `safe`, `likely`, `breaking`, `manual`. |
 | project kind | Preset of levels and tier: `library`, `application`, `script`. |
 | baseline | Stored existing findings that never fail run. |

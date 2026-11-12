@@ -1,7 +1,12 @@
-"""Render findings as Rust-style text messages."""
+"""Render diagnostics as Rust-style text messages."""
 module Render
 
-using ..Facts: Finding, Label, Span, Group, Precision, Confidence
+using ..Facts: Span, Precision, Confidence
+using ..Config: Level
+using ..Engine: Diagnostic, Report
+
+"""Header word for `level`, as in rustc."""
+const HEADER = Dict(Level.deny => "error", Level.warn => "warning")
 
 """Byte offset of first byte of each line of `text`."""
 line_starts(text::String)::Vector{Int} = [1; findall(==(UInt8('\n')), codeunits(text)) .+ 1]
@@ -34,8 +39,9 @@ function placement(text::String, starts::Vector{Int}, span::Span)::Tuple{Int, In
     return line, first_col, max(width_between(text, span.first_byte, min(span.last_byte, line_end)), 1)
 end
 
-"""Write `finding` from file with source `text` to `io`; `group` comes from rule registry."""
-function render(io::IO, finding::Finding, group::Group.T, text::String)::Nothing
+"""Write `diagnostic` from file with source `text` to `io`; `note` adds line saying where level was set."""
+function render(io::IO, diagnostic::Diagnostic, text::String, note::Bool)::Nothing
+    finding = diagnostic.finding
     starts = line_starts(text)
     marked = [
         (placement(text, starts, label.span)..., marker, label.text) for (label, marker) in
@@ -44,7 +50,7 @@ function render(io::IO, finding::Finding, group::Group.T, text::String)::Nothing
     primary_line, primary_col = marked[1][1], marked[1][2]
     lines = sort!(unique(first.(marked)))
     gutter = " "^ndigits(maximum(lines))
-    println(io, group, "[", finding.rule, "]: ", finding.message)
+    println(io, HEADER[diagnostic.level], "[", finding.rule, "]: ", finding.message)
     println(io, gutter, "--> ", finding.primary.span.file, ":", primary_line, ":", primary_col)
     println(io, gutter, " |")
     previous = 0
@@ -65,6 +71,18 @@ function render(io::IO, finding::Finding, group::Group.T, text::String)::Nothing
     finding.confidence == Confidence.possible && println(io, gutter, " = confidence: possible")
     isnothing(finding.fix) || println(io, gutter, " = fix: ", finding.fix.text, "   [", finding.fix.tier, "]")
     println(io, gutter, " = docs: corset explain ", finding.rule)
+    note && println(io, gutter, " = note: ", diagnostic.level, " from ", diagnostic.source)
+    return nothing
+end
+
+"""Write every diagnostic of `report`, blank line after each; level note appears once per rule."""
+function render_all(io::IO, report::Report)::Nothing
+    noted = Set{Symbol}()
+    for diagnostic in report.diagnostics
+        render(io, diagnostic, report.sources[diagnostic.finding.primary.span.file], diagnostic.finding.rule ∉ noted)
+        push!(noted, diagnostic.finding.rule)
+        println(io)
+    end
     return nothing
 end
 

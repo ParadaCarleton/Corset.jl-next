@@ -1,0 +1,10 @@
+name = "Library"
+
+[preferences.Corset]
+kind = "library"
+confidence = "possible"
+fix_tier = "safe"
+
+[preferences.Corset.levels]
+readability = "allow"
+one-letter = "deny"

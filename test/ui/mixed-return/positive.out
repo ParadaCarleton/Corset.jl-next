@@ -1,4 +1,4 @@
-readability[mixed-return]: function mixes `return` with implicit last value
+warning[mixed-return]: function mixes `return` with implicit last value
  --> positive.jl:6:5
   |
 4 |         return -1
@@ -10,8 +10,9 @@ readability[mixed-return]: function mixes `return` with implicit last value
   = why: reader must check every path to see what function returns
   = fix: replace with `return x == 0 ? 0 : 1`   [safe]
   = docs: corset explain mixed-return
+  = note: warn from readability group, library preset
 
-readability[mixed-return]: function mixes `return` with implicit last value
+warning[mixed-return]: function mixes `return` with implicit last value
   --> positive.jl:13:5
    |
 11 |         x > 0 && return x
