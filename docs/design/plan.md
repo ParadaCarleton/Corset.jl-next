@@ -13,13 +13,13 @@ Draft. Spikes retire risks first. Each later phase ships usable checks. Phase or
 | 4 types | Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); family D and type-disruption scan; per-method disk cache; `annotation` fixer guesses argument types and fills result types (annotation transition, `types.md`). | {{count:D}} | Precision gate passes on corpus. `unverified-inbounds` agrees with julia-in-lean site verdicts. |
 | 5 effects | Effect and alias summary; family E; `!` convention flow. | {{count:E}} | Flow fixtures pass, IO, RNG and memo exemptions included. |
 | 6 scope | Family H on scope layer chosen in S3. | {{count:H}} | Scope fixtures pass on packages and scripts. |
-| later | F12, F45, F46, F49 (off by default); compiled-instance specialization count; string and dict stand-in types; language server mode; dimension-aware stand-in for `Number` (catches `x + 1` on Unitful quantity); nursery group for checks before quality gate; upstream F89 and F90 logic to Moshi `verify/` (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for `manual` fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking. | {{count:later}} | — |
+| later | F12, F45, F46, F49 (off by default); string and dict stand-in types; language server mode; dimension-aware stand-in for `Number` (catches `x + 1` on Unitful quantity); nursery group for checks before quality gate; upstream F89 and F90 logic to Moshi `verify/` (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for `manual` fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking. | {{count:later}} | — |
 
 ### Spikes
 
-- **S1 stand-in inference** (done, works with limits): every corpus method infers; 2 generated functions refused. Differential check right on 12 fixtures. Re-dispatch on real types separates stand-in gaps. Found real bug (`DataStructures.empty(::DefaultDictBase)`).
+- **S1 stand-in inference** (done, works with limits): every corpus method infers; 2 generated functions refused. Differential check right on 12 fixtures. Re-dispatch on real types separates stand-in blind spots. Found real bug (`DataStructures.empty(::DefaultDictBase)`).
 - **S2 source mapping** (done, works with limits): 65% of findable statements map to exact bytes; about 2% of checked spans wrong. Code macros write maps to line only.
-- **S3 scope layer** (done, works with limits): JuliaLowering at julia commit `f0188d597b` lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload. `Meta.lower` fallback dropped.
+- **S3 scope layer** (done, works with limits): JuliaLowering at julia commit `f0188d597b` lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload in Corset. `Meta.lower` fallback dropped.
 - **S4 syntax matcher** (done, `spikes/s4-syntax-matcher/REPORT.md`): Argus.jl 0.4.2 is MIT. Use Argus behind thin wrapper so matcher stays swappable. Argus searches whole tree once per rule (about 8× slower than kind-indexed walk); own walk with root-kind index should remove most of gap. Unmeasured: benchmark candidate-node design at planned rule count first in phase 2.
 - **S5 effect summary** (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). `possible` covers 75%, 55% and 52% of methods (Distances, DataStructures, JSON), all from unknown callees or unknown foreign calls. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.
 
@@ -36,7 +36,7 @@ Check is on by default only when all hold:
 
 Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.
 
-Legacy baseline (S4, warm, whole process): Distances 9.4 s, DataStructures 16–19 s, JSON 33–37 s. Remeasure legacy in same scope (startup and target load subtracted) before comparing. Main risks: stand-in inference, 7–17 s cold per package (S1); effect summary, 17–22 s uncached (S5). Precompile workload, Base summary cache and per-method disk cache must close gap; effects phase gets own budget once Base cache exists.
+Legacy baseline (S4, warm, whole process): Distances 9.4 s, DataStructures 16–19 s, JSON 33–37 s. Remeasure legacy in same scope (startup and target load subtracted) before comparing. Main risks: stand-in inference, 7–17 s cold per package (S1); effect summary, 17–22 s uncached (S5). Corset precompile workload, Base summary cache and per-method disk cache must close gap; effects phase gets own budget once Base cache exists.
 
 Repository bar: 100% line coverage; mutation testing on check code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).
 

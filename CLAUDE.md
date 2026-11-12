@@ -10,12 +10,16 @@ Workspaces live in .worktrees/<name> inside repo (git-ignored); never in sibling
 ## Check contract
 
 Check is pure function: facts in, findings out. Check imports only Corset.Facts.
-Check never parses, lowers, loads or infers. Missing information: add fact to its analysis.
+Check never lowers, loads, or infers. Missing information: add fact to its analysis.
 Every finding: primary span, labeled cause spans, one-line reason, fix with tier.
 Every check: UI snapshot test with positive, negative and fix case.
 
 ## Scope
 
-Never read or run package tests. Report findings only in package code; analysis may read dependency code, Base included.
-Support only latest Julia release.
-Analysis gaps never become findings; coverage line reports them.
+Facts come from source, type annotations, loaded module and inference. Package without tests or precompile workload gets full analysis.
+Only support the latest Julia release.
+
+## Confidence
+
+Doubt test: would perfect analysis still be unsure? Yes: `possible` finding. No: Corset blind spot; count it on coverage line only.
+Details and examples: docs/design/findings.md, "Confidence and blind spots".

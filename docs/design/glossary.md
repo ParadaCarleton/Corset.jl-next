@@ -14,10 +14,11 @@ Terms this design coins.
 | generic argument | Annotation callers can fill with many types: `x::Real`, `x::T`. |
 | overspecified type | Annotation that names specific number type, `AbstractFloat`, or concrete container anywhere inside. |
 | escaping value | Value that leaves method: returned, or written to argument or global. |
-| confidence | `definite`: problem exists. `possible`: analysis ran and could not rule it out. |
+| confidence | `definite`: problem exists. `possible`: perfect analysis would still be unsure. |
+| blind spot | Site Corset cannot decide although perfect analysis could. Counted on coverage line; never finding. |
 | level | `allow`, `warn` or `deny` per group or check. |
 | fix tier | Risk of fix to callers: `safe`, `likely`, `breaking`, `manual`. |
 | project kind | Preset of levels and tier: `library`, `application`, `script`. |
 | baseline | Stored existing findings that never fail run. |
 | opt-out | `# corset: allow <check> -- <reason>` comment. |
-| coverage line | End-of-run summary of methods Corset could not analyze, and why. |
+| coverage line | End-of-run count of blind spots by cause. |

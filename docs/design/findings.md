@@ -12,15 +12,30 @@ Noise is no longer reason for group. Each finding says how sure analysis is. One
       <div role="cell"><code>possible</code> problem</div><div class="no" role="cell">skip</div><div class="yes" role="cell">report</div>
     </div>
 
-Note: Checks with both kinds: `bang-convention` (dispatch past candidate budget may write), `type-disruption` (type branch), `unwritten-element` and `constant-array` (sites fixer cannot prove).
+Note: Checks with both kinds: `bang-convention` (dispatch candidates disagree on write), `type-disruption` (type branch), `unwritten-element` and `constant-array` (sites fixer cannot prove).
 
 ### Groups
 
 `correctness`, `performance`, `composability`, `readability`. One group per check; `banned` entries name their own group.
 
-### Confidence setting
+### Confidence and blind spots
 
-`confidence` sets lowest confidence finding needs to be reported. `definite` (default): problem exists. `possible`: analysis ran and could not rule problem out; includes definite findings. Gaps in Corset itself are never `possible` findings; coverage line lists them. `likely` can join between them later.
+`confidence` sets lowest confidence finding needs to be reported. `definite` (default) reports definite findings only; `possible` reports both. `likely` can join between them later.
+
+Doubt test: would perfect analysis still be unsure? Perfect analysis sees all Julia code, dependencies included. It never sees run-time values or foreign code.
+
+| Perfect analysis | Corset | Report |
+|---|---|---|
+| problem exists | proves problem | `definite` finding |
+| unsure | unsure | `possible` finding |
+| sure, problem or no problem | unsure | blind spot: coverage line only |
+
+- `possible`: argument typed `Any` reaches methods that disagree on writing it. Run-time type decides.
+- `possible`: public function returns union from dependency. Unknown callers decide.
+- Blind spot: syntax-only check cannot see that `a::Vector` is 1-based, because typed layer did not run.
+- Blind spot: inference refused generated method; macro did not expand; typed finding has no source span; dispatch exceeds candidate budget.
+
+Coverage line ends every run and counts blind spots by cause: `analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)`. Check that lacks fact at site reports nothing there.
 
 ### Lint levels
 
