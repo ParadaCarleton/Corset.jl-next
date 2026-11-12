@@ -1,0 +1,14 @@
+readability[field-prefix]: 3 fields of `State` share prefix `governor_`
+ --> positive.jl:3:5
+  |
+3 |     governor_name::String
+  |     ^^^^^^^^^^^^^ first `governor_` field
+4 |     governor_age::Int
+  |     ------------ same prefix
+5 |     governor_term::T = 4
+  |     ------------- same prefix
+  |
+  = why: shared prefix names hidden struct; grouping it lets code pass it as one value
+  = fix: move `governor_*` fields into struct, then use `governor.field`   [manual]
+  = docs: corset explain field-prefix
+

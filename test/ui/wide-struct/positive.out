@@ -1,0 +1,10 @@
+readability[wide-struct]: struct `Settings` has 16 fields
+ --> positive.jl:2:8
+  |
+2 | struct Settings
+  |        ^^^^^^^^ more than 15 fields
+  |
+  = why: wide structs mix concerns; every constructor call lists every field
+  = fix: group related fields into nested structs   [manual]
+  = docs: corset explain wide-struct
+
