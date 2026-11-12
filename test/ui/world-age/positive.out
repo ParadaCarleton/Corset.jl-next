@@ -23,3 +23,15 @@ correctness[world-age]: `scaled` is called in world older than its definition
    = fix: call through `Base.invokelatest`   [manual]
    = docs: corset explain world-age
 
+correctness[world-age]: `wrap` is called in world older than its definition
+  --> positive.jl:17:12
+   |
+16 |     @eval wrap(x::T) where {T} = x
+   |     ------------------------------ defined by `eval` here
+17 |     return wrap(1)
+   |            ^^^^^^^ MethodError: method too new
+   |
+   = why: running function keeps world it started in; `eval` adds method to newer world
+   = fix: replace with `Base.invokelatest(wrap, 1)`   [safe]
+   = docs: corset explain world-age
+

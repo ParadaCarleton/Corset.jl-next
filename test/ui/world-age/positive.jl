@@ -11,3 +11,8 @@ function define_and_call_kw()
     end
     return scaled(2; by = 3)
 end
+
+function define_generic()
+    @eval wrap(x::T) where {T} = x
+    return wrap(1)
+end
