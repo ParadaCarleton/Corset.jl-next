@@ -67,9 +67,11 @@ const STANDIN = get(ENV, "S5_STANDIN", "0") == "1"
 function standin(t)
     t isa TypeVar && return standin(t.ub)
     t isa Type || return t
-    for (abstract, concrete) in ((AbstractFloat, Float64), (Real, Float64), (Number, Float64), (Integer, Int),
+    for (abstract, concrete) in (
+            (AbstractFloat, Float64), (Real, Float64), (Number, Float64), (Integer, Int),
             (AbstractVector, Vector{Float64}), (AbstractMatrix, Matrix{Float64}), (AbstractArray, Array{Float64}),
-            (AbstractString, String), (AbstractDict, Dict{Any, Any}), (IO, IOBuffer))
+            (AbstractString, String), (AbstractDict, Dict{Any, Any}), (IO, IOBuffer),
+        )
         concrete <: t && t <: abstract && return concrete
         t === abstract && return concrete
     end

@@ -46,8 +46,10 @@ struct Summary
     fresh_result::Bool                  # result always allocated inside call
 end
 
-bottom_summary(nparams::Int)::Summary = Summary(fill(NO_EFFECT, nparams), Set{Tuple{Int, Int}}(), Set{Tuple{Int, Int}}(),
-    Dict{GlobalKey, Certainty}(), Set{GlobalKey}(), Dict{GlobalKey, Certainty}(), false, true)
+bottom_summary(nparams::Int)::Summary = Summary(
+    fill(NO_EFFECT, nparams), Set{Tuple{Int, Int}}(), Set{Tuple{Int, Int}}(),
+    Dict{GlobalKey, Certainty}(), Set{GlobalKey}(), Dict{GlobalKey, Certainty}(), false, true
+)
 
 Base.:(==)(a::Summary, b::Summary)::Bool = all(getfield(a, f) == getfield(b, f) for f in fieldnames(Summary))
 
@@ -56,8 +58,10 @@ lub(a::Dict{GlobalKey, Certainty}, b::Dict{GlobalKey, Certainty})::Dict{GlobalKe
 
 function lub(a::Summary, b::Summary)::Summary
     length(a.params) == length(b.params) || error("summary arity mismatch")
-    return Summary(lub.(a.params, b.params), a.stores ∪ b.stores, a.merges ∪ b.merges, lub(a.globals, b.globals),
-        a.direct ∪ b.direct, lub(a.result_globals, b.result_globals), a.opaque || b.opaque, a.fresh_result && b.fresh_result)
+    return Summary(
+        lub.(a.params, b.params), a.stores ∪ b.stores, a.merges ∪ b.merges, lub(a.globals, b.globals),
+        a.direct ∪ b.direct, lub(a.result_globals, b.result_globals), a.opaque || b.opaque, a.fresh_result && b.fresh_result
+    )
 end
 
 # ---------------------------------------------------------------- points-to graph
@@ -207,7 +211,11 @@ function index_constants!()::Nothing
         push!(seen, m)
         for n in names(m; all = true, imported = false)
             (isdefined(m, n) && isconst(m, n)) || continue
-            v = try getglobal(m, n) catch; continue end
+            v = try
+                getglobal(m, n)
+            catch
+                continue
+            end
             v isa Module ? (parentmodule(v) === m && push!(todo, v)) :
                 ismutable(v) && !(v isa Type) && !haskey(CONST_NAMES, v) && (CONST_NAMES[v] = GlobalKey(m, n))
         end
@@ -268,10 +276,14 @@ end
 const FIELD_WRITES = (setfield!, Core.setproperty!, Core.setfieldonce!, Core.modifyfield!, Core.swapfield!, Core.replacefield!)
 const MEMORY_WRITES = (Core.memoryrefset!, Core.memoryrefsetonce!, Core.memoryrefmodify!, Core.memoryrefswap!, Core.memoryrefreplace!)
 const GLOBAL_WRITES = (setglobal!, Core.setglobalonce!, Core.swapglobal!, Core.modifyglobal!, Core.replaceglobal!)
-const POINTER_WRITES = (Core.Intrinsics.pointerset, Core.Intrinsics.atomic_pointerset, Core.Intrinsics.atomic_pointerswap,
-    Core.Intrinsics.atomic_pointermodify, Core.Intrinsics.atomic_pointerreplace)
-const DYNAMIC_BUILTINS = (Core._apply_iterate, Core.invoke, Core.invoke_in_world, Core.invokelatest, Core._call_in_world,
-    Core._call_in_world_total, Core._call_latest, Core.finalizer)
+const POINTER_WRITES = (
+    Core.Intrinsics.pointerset, Core.Intrinsics.atomic_pointerset, Core.Intrinsics.atomic_pointerswap,
+    Core.Intrinsics.atomic_pointermodify, Core.Intrinsics.atomic_pointerreplace,
+)
+const DYNAMIC_BUILTINS = (
+    Core._apply_iterate, Core.invoke, Core.invoke_in_world, Core.invokelatest, Core._call_in_world,
+    Core._call_in_world_total, Core._call_latest, Core.finalizer,
+)
 
 # C functions with known behavior: written argument positions, and result origin
 # (`:fresh` allocation, `:bits` untracked, or argument positions it points into).
@@ -290,13 +302,15 @@ const FOREIGN = Dict{Symbol, Tuple{Vector{Int}, Union{Symbol, Vector{Int}}}}(
 )
 
 # Runtime, scheduler, GC and libuv calls: write task, thread or OS state only (task and IO exemptions).
-for name in (:jl_rethrow, :jl_sigatomic_begin, :jl_sigatomic_end, :jl_cpu_suspend, :jl_cpu_wake, :jl_gc_safepoint,
+for name in (
+        :jl_rethrow, :jl_sigatomic_begin, :jl_sigatomic_end, :jl_cpu_suspend, :jl_cpu_wake, :jl_gc_safepoint,
         :jl_threadpoolid, :jl_threadid, :jl_get_next_task, :jl_set_next_task, :jl_process_events, :jl_iolock_begin,
         :jl_iolock_end, :jl_set_task_tid, :jl_get_task_tid, :jl_gc_is_in_finalizer, :jl_hrtime, :jl_get_ptls_rng,
         :jl_set_ptls_rng, :jl_gc_enable_finalizers_internal, :jl_gc_disable_finalizers_internal,
         :jl_gc_run_pending_finalizers, :jl_wakeup_thread, :jl_wakeup_threadpool, :jl_get_task_threadpoolid,
         :jl_task_get_next, :jl_switch, :jl_new_task, :jl_safe_printf, :uv_err_name, :uv_strerror, :utf8proc_charwidth,
-        :uv_handle_set_data, :uv_req_set_data, :uv_req_get_data, :jl_uv_write, :free, :jl_set_precompile_field_replace)
+        :uv_handle_set_data, :uv_req_set_data, :uv_req_get_data, :jl_uv_write, :free, :jl_set_precompile_field_replace,
+    )
     FOREIGN[name] = (Int[], :bits)
 end
 
@@ -616,8 +630,10 @@ Gap: a write to an argument before a caught throw is lost.
 """
 function throw_blocks(ir::CC.IRCode)::Set{Int}
     blocks = ir.cfg.blocks
-    throws = Set{Int}(b for b in eachindex(blocks)
-        if (t = ir.stmts.stmt[last(blocks[b].stmts)]; t isa Core.ReturnNode && !isdefined(t, :val)))
+    throws = Set{Int}(
+        b for b in eachindex(blocks)
+            if (t = ir.stmts.stmt[last(blocks[b].stmts)]; t isa Core.ReturnNode && !isdefined(t, :val))
+    )
     changed = true
     while changed
         changed = false
@@ -732,8 +748,12 @@ function strongconnect!(eng::Engine, v::Core.MethodInstance)::Nothing
         return
     end
     eng.stats.instances += 1
-    eng.stats.instances % 100 == 0 && (println(stderr, "instances=", eng.stats.instances, " ir_s=", round(eng.stats.ir_seconds; digits = 1),
-        " depth=", length(eng.stack), " at ", v); flush(stderr))
+    eng.stats.instances % 100 == 0 && (
+        println(
+            stderr, "instances=", eng.stats.instances, " ir_s=", round(eng.stats.ir_seconds; digits = 1),
+            " depth=", length(eng.stack), " at ", v
+        ); flush(stderr)
+    )
     eng.irs[v] = ir
     push!(eng.stack, v); eng.onstack[v] = true
     eng.summaries[v] = bottom_summary(length(ir.argtypes))

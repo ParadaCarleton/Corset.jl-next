@@ -5,47 +5,49 @@ using Random: AbstractRNG, Xoshiro
 using Test
 
 module Fx
-using Random: AbstractRNG
+    using Random: AbstractRNG
 
-struct Wrapper
-    v::Vector{Int}
-end
+    struct Wrapper
+        v::Vector{Int}
+    end
 
-const CACHE = Dict{Int, Int}()
-const REGISTRY = Int[]
-counter = Ref(0)
-typed_counter::Base.RefValue{Int} = Ref(0)
+    const CACHE = Dict{Int, Int}()
+    const REGISTRY = Int[]
+    counter = Ref(0)
+    typed_counter::Base.RefValue{Int} = Ref(0)
 
-alias_view(a::Vector{Int}) = (v = view(a, 1:2); v[1] = 0; nothing)
-@noinline poke!(v::AbstractVector{Int}) = (v[1] = 0; nothing)
-alias_view_call(a::Vector{Int}) = (poke!(view(a, 1:2)); nothing)
-closure_write(a::Vector{Int}) = (c = () -> push!(a, 1); c(); nothing)
-@noinline callit(f::F) where {F} = f()
-closure_noinline(a::Vector{Int}) = (callit(() -> push!(a, 1)); nothing)
-field_write(w::Wrapper) = (w.v[1] = 0; nothing)
-@noinline ping(a::Vector{Int}, n::Int) = n <= 0 ? nothing : pong(a, n - 1)
-@noinline pong(a::Vector{Int}, n::Int) = (a[1] = n; ping(a, n - 1))
-pure_copy(a::Vector{Int}) = (b = copy(a); b[1] = 0; b)
-fresh_wrapper(a::Vector{Int}) = (r = Ref(a); r[] = Int[]; nothing)
-io_write(io::IO, x::Int) = (print(io, x); nothing)
-iobuffer_write(io::IOBuffer, x::Int) = (write(io, x); nothing)
-rng_draw(rng::Xoshiro_) where {Xoshiro_ <: AbstractRNG} = rand(rng)
-global_rng() = rand()
-memo(x::Int) = get!(CACHE, x) do; x^2 end
-register(x::Int) = (push!(REGISTRY, x); nothing)
-getreg() = REGISTRY
-via_result(x::Int) = (push!(getreg(), x); nothing)
-nonconst_global(x::Int) = (counter[] = x; nothing)
-typed_global(x::Int) = (typed_counter[] = x; nothing)
-unknown_callee(x::Vector{Int}, f::Function) = (f(x); nothing)
-reads_only(a::Vector{Int}) = sum(a)
-@noinline wrap_global() = [REGISTRY]
-write_wrapped_global() = (push!(wrap_global()[1], 1); nothing)
-@noinline maybe_alias(x::Vector{Int}, flag::Bool) = flag ? x : copy(x)
-write_maybe(x::Vector{Int}, flag::Bool) = (maybe_alias(x, flag)[1] = 0; nothing)
-lazy_string_read(s::LazyString) = String(s)
-broadcast_fresh(x::Matrix{Float64}) = x .- sum(x; dims = 1)
-store_then_write(x::Vector{Vector{Int}}) = (b = zeros(Int, 1); push!(x, b); b[1] = 5; nothing)
+    alias_view(a::Vector{Int}) = (v = view(a, 1:2); v[1] = 0; nothing)
+    @noinline poke!(v::AbstractVector{Int}) = (v[1] = 0; nothing)
+    alias_view_call(a::Vector{Int}) = (poke!(view(a, 1:2)); nothing)
+    closure_write(a::Vector{Int}) = (c = () -> push!(a, 1); c(); nothing)
+    @noinline callit(f::F) where {F} = f()
+    closure_noinline(a::Vector{Int}) = (callit(() -> push!(a, 1)); nothing)
+    field_write(w::Wrapper) = (w.v[1] = 0; nothing)
+    @noinline ping(a::Vector{Int}, n::Int) = n <= 0 ? nothing : pong(a, n - 1)
+    @noinline pong(a::Vector{Int}, n::Int) = (a[1] = n; ping(a, n - 1))
+    pure_copy(a::Vector{Int}) = (b = copy(a); b[1] = 0; b)
+    fresh_wrapper(a::Vector{Int}) = (r = Ref(a); r[] = Int[]; nothing)
+    io_write(io::IO, x::Int) = (print(io, x); nothing)
+    iobuffer_write(io::IOBuffer, x::Int) = (write(io, x); nothing)
+    rng_draw(rng::Xoshiro_) where {Xoshiro_ <: AbstractRNG} = rand(rng)
+    global_rng() = rand()
+    memo(x::Int) = get!(CACHE, x) do;
+        x^2
+    end
+    register(x::Int) = (push!(REGISTRY, x); nothing)
+    getreg() = REGISTRY
+    via_result(x::Int) = (push!(getreg(), x); nothing)
+    nonconst_global(x::Int) = (counter[] = x; nothing)
+    typed_global(x::Int) = (typed_counter[] = x; nothing)
+    unknown_callee(x::Vector{Int}, f::Function) = (f(x); nothing)
+    reads_only(a::Vector{Int}) = sum(a)
+    @noinline wrap_global() = [REGISTRY]
+    write_wrapped_global() = (push!(wrap_global()[1], 1); nothing)
+    @noinline maybe_alias(x::Vector{Int}, flag::Bool) = flag ? x : copy(x)
+    write_maybe(x::Vector{Int}, flag::Bool) = (maybe_alias(x, flag)[1] = 0; nothing)
+    lazy_string_read(s::LazyString) = String(s)
+    broadcast_fresh(x::Matrix{Float64}) = x .- sum(x; dims = 1)
+    store_then_write(x::Vector{Vector{Int}}) = (b = zeros(Int, 1); push!(x, b); b[1] = 5; nothing)
 end
 
 const TARGETS = [
@@ -70,8 +72,10 @@ for (name, types) in TARGETS
     mi = Base.method_instance(getfield(Fx, name), types)
     sums[name] = on_big_stack(() -> summary!(eng, mi))
     s = sums[name]
-    println(rpad(name, 18), " args=", [argwrite(s, j) for j in 2:length(s.params)],
-        " globals=", Dict(string(k.mod, ".", k.name) => c for (k, c) in s.globals), " opaque=", s.opaque)
+    println(
+        rpad(name, 18), " args=", [argwrite(s, j) for j in 2:length(s.params)],
+        " globals=", Dict(string(k.mod, ".", k.name) => c for (k, c) in s.globals), " opaque=", s.opaque
+    )
 end
 
 @testset "S5 fixtures" begin
