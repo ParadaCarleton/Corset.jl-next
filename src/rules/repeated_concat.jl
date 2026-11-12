@@ -1,4 +1,31 @@
-"""`repeated-concat` (F44): loop rebuilds collection from old copy plus one piece."""
+"""
+`repeated-concat` (F44): loop concatenates one piece at a time.
+
+## Description
+Reports `a = vcat(a, piece)`, `a = [a; piece]`, and same pattern with `hcat`, `cat` or `string`, inside loop.
+
+## Rationale
+Each step copies all earlier pieces, so total work grows with square of length.
+
+## Example
+```julia
+result = Int[]
+for part in parts
+    result = vcat(result, part)
+end
+```
+
+## Alternative
+```julia
+result = Int[]
+for part in parts
+    append!(result, part)
+end
+```
+
+## Limitations
+None known.
+"""
 module RepeatedConcat
 
 using ...Facts

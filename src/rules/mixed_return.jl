@@ -1,4 +1,31 @@
-"""`mixed-return` (F73): function uses explicit `return` and also ends on implicit value."""
+"""
+`mixed-return` (F73): explicit `return` mixed with implicit last value.
+
+## Description
+Reports long-form function that uses `return` somewhere and ends on plain expression.
+
+## Rationale
+Reader must check every path to see what function returns. Explicit final `return` shows result at end.
+
+## Example
+```julia
+function clamp_positive(x)
+    x < 0 && return 0
+    x
+end
+```
+
+## Alternative
+```julia
+function clamp_positive(x)
+    x < 0 && return 0
+    return x
+end
+```
+
+## Limitations
+Rule stays narrow: function ending in `if`, loop, `try` or macro call passes. Requiring `return` everywhere would force `return nothing` and fight formatters.
+"""
 module MixedReturn
 
 using ...Facts

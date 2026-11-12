@@ -1,4 +1,26 @@
-"""`ambiguous-concat` (F1): `[1 -2]` is 1×2 matrix; space before sign starts new element."""
+"""
+`ambiguous-concat` (F1): space before sign in array literal starts new element.
+
+## Description
+Reports array literal row where space before `-` or `+` splits one expression into two elements: `[a -b]`.
+
+## Rationale
+Inside brackets, `a -b` is two elements and `a - b` is one. Spacing silently changes shape and length of result.
+
+## Example
+```julia
+offsets = [width -margin]
+```
+
+## Alternative
+```julia
+offsets = [width - margin]   # difference
+offsets = [width, -margin]   # two elements
+```
+
+## Limitations
+Finding is `possible`: row of signed numbers can be intended.
+"""
 module AmbiguousConcat
 
 using ...Facts

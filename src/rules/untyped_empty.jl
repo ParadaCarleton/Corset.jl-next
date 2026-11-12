@@ -1,4 +1,26 @@
-"""`untyped-empty` (F21): `[]` and `Dict()` have `Any` element type."""
+"""
+`untyped-empty` (F21): empty literal has `Any` element type.
+
+## Description
+Reports `[]`, `Dict()`, `Set()`, `IdDict()`, `Vector()` and `Vector(undef, n)`.
+
+## Rationale
+These containers hold `Any`. Every element read then dispatches at run time and boxes values.
+
+## Example
+```julia
+lengths = []
+```
+
+## Alternative
+```julia
+lengths = Int[]
+cache = Dict{String, Float64}()
+```
+
+## Limitations
+Fix is `manual` until rule can read element type from inference. Write `Any[]` when `Any` is intended.
+"""
 module UntypedEmpty
 
 using ...Facts

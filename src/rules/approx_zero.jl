@@ -1,4 +1,25 @@
-"""`approx-zero` (F10): `x ≈ 0` uses relative tolerance only, so it holds only when `x == 0`."""
+"""
+`approx-zero` (F10): approximate compare to zero without `atol` holds only for exact zero.
+
+## Description
+Reports `x ≈ 0` and `isapprox(x, 0)` with literal zero and no `atol`.
+
+## Rationale
+`isapprox` uses relative tolerance by default. Relative to zero, no nonzero value is close, so test passes only when value is exactly zero.
+
+## Example
+```julia
+converged = residual(x) ≈ 0
+```
+
+## Alternative
+```julia
+converged = isapprox(residual(x), 0; atol = 1e-8)
+```
+
+## Limitations
+Rule sees literal zero only. Zero held in variable passes.
+"""
 module ApproxZero
 
 using ...Facts

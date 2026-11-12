@@ -1,4 +1,27 @@
-"""`duplicate-statement` (F60): same statement twice in row, usually copy-paste slip."""
+"""
+`duplicate-statement` (F60): same statement twice in row.
+
+## Description
+Reports statement equal to statement directly before it, whitespace ignored.
+
+## Rationale
+Repeated statement is usually copy-paste slip: second copy does nothing new, or does same work twice.
+
+## Example
+```julia
+total += weight
+total += weight
+```
+
+## Alternative
+```julia
+total += weight
+count += 1
+```
+
+## Limitations
+Finding is `possible`: repeated call such as `push!(queue, item)` can be intended.
+"""
 module DuplicateStatement
 
 using ...Facts

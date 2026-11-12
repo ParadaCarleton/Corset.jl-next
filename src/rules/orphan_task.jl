@@ -1,4 +1,29 @@
-"""`orphan-task` (F70): task started and never waited; its error vanishes."""
+"""
+`orphan-task` (F70): task never waited; its error vanishes.
+
+## Description
+Reports `@spawn` and `@async` whose task is dropped outside `@sync`.
+
+## Rationale
+Nobody waits on dropped task. Its exception never reaches caller, and program may finish before task does.
+
+## Example
+```julia
+for file in files
+    Threads.@spawn process(file)
+end
+```
+
+## Alternative
+```julia
+@sync for file in files
+    Threads.@spawn process(file)
+end
+```
+
+## Limitations
+Rule sees dropped statements only. Task stored in variable and never waited passes.
+"""
 module OrphanTask
 
 using ...Facts

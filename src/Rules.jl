@@ -11,6 +11,7 @@ include("rules/c_type.jl")
 include("rules/docstring.jl")
 include("rules/double_include.jl")
 include("rules/duplicate_statement.jl")
+include("rules/field_prefix.jl")
 include("rules/file_length.jl")
 include("rules/inference_dependent.jl")
 include("rules/juxtaposition.jl")
@@ -18,14 +19,14 @@ include("rules/mixed_return.jl")
 include("rules/one_letter.jl")
 include("rules/orphan_task.jl")
 include("rules/repeated_concat.jl")
-include("rules/struct_shape.jl")
 include("rules/threadid_buffer.jl")
 include("rules/untyped_empty.jl")
 include("rules/where_binding.jl")
+include("rules/wide_struct.jl")
 include("rules/world_age.jl")
 
 """Every rule, in name order (test enforces order)."""
-const REGISTRY = RuleEntry[AmbiguousConcat.ENTRY, ApproxZero.ENTRY, BracketedRange.ENTRY, BroadCatch.ENTRY, CType.ENTRY, Docstring.ENTRY, DoubleInclude.ENTRY, DuplicateStatement.ENTRY, StructShape.PREFIX, FileLength.ENTRY, InferenceDependent.ENTRY, Juxtaposition.ENTRY, MixedReturn.ENTRY, OneLetter.ENTRY, OrphanTask.ENTRY, RepeatedConcat.ENTRY, ThreadidBuffer.ENTRY, UntypedEmpty.ENTRY, WhereBinding.ENTRY, StructShape.WIDE, WorldAge.ENTRY]
+const REGISTRY = RuleEntry[AmbiguousConcat.ENTRY, ApproxZero.ENTRY, BracketedRange.ENTRY, BroadCatch.ENTRY, CType.ENTRY, Docstring.ENTRY, DoubleInclude.ENTRY, DuplicateStatement.ENTRY, FieldPrefix.ENTRY, FileLength.ENTRY, InferenceDependent.ENTRY, Juxtaposition.ENTRY, MixedReturn.ENTRY, OneLetter.ENTRY, OrphanTask.ENTRY, RepeatedConcat.ENTRY, ThreadidBuffer.ENTRY, UntypedEmpty.ENTRY, WhereBinding.ENTRY, WideStruct.ENTRY, WorldAge.ENTRY]
 
 """Registry entry named `name`; throws for unknown rule."""
 function entry(name::Symbol)::RuleEntry

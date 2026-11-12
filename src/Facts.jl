@@ -14,6 +14,7 @@ export Span, Label, Edit, Fix, Finding, RuleEntry
 export SyntaxFile, FactSet, IndexedPattern, Match
 export @pattern, matches, binding, span, source, nodes_of_kind, children_of, kind_name
 export finding, replace_fix, manual_fix, identifier_name, nodes_named, parent_of, ancestors, descendants, call_head, leaf_value
+export definition_name, struct_fields
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
 @enumx Precision exact line
@@ -218,6 +219,26 @@ leaf_value(node::SyntaxNode)::Union{Nothing, String} = JS.is_leaf(node) ? string
 
 """Children of `node`; empty for leaf."""
 children_of(node::SyntaxNode)::Vector{SyntaxNode} = JS.is_leaf(node) ? SyntaxNode[] : collect(JS.children(node))
+
+"""Name node of definition `node` (function, macro, struct, module): strips `where`, result type, arguments, type parameters, supertype."""
+function definition_name(node::SyntaxNode)::SyntaxNode
+    head = children_of(node)[1]
+    while kind_name(head) in ("where", "::", "call", "curly", "<:") && !isempty(children_of(head))
+        head = children_of(head)[1]
+    end
+    return head
+end
+
+"""Field name nodes of struct definition `definition`, skipping inner constructors."""
+function struct_fields(definition::SyntaxNode)::Vector{SyntaxNode}
+    names = SyntaxNode[]
+    for field in children_of(children_of(definition)[end])
+        node = kind_name(field) == "=" ? children_of(field)[1] : field
+        node = kind_name(node) == "::" ? children_of(node)[1] : node
+        isnothing(identifier_name(node)) || push!(names, node)
+    end
+    return names
+end
 
 """Finding of `rule` with primary label at `node` of `file`."""
 function finding(

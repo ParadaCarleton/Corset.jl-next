@@ -1,4 +1,25 @@
-"""`juxtaposition` (F3): `1/2x` is `1/(2x)` and `2^2x` is `2^(2x)`; juxtaposition binds tighter than reader expects."""
+"""
+`juxtaposition` (F3): juxtaposition binds tighter than reader expects.
+
+## Description
+Reports division or power whose right operand is juxtaposed product without parentheses: `1/2x`, `2^2x`.
+
+## Rationale
+Juxtaposition binds tighter than `/` and `^`. `1/2x` is `1/(2x)`, while many readers expect `(1/2)x`.
+
+## Example
+```julia
+half = 1/2x
+```
+
+## Alternative
+```julia
+half = 1/(2x)    # or (1/2)x
+```
+
+## Limitations
+Fix keeps meaning and adds parentheses: `1/(2x)`.
+"""
 module Juxtaposition
 
 using ...Facts

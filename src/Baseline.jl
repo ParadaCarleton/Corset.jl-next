@@ -8,7 +8,7 @@ module Baseline
 
 using SHA: sha1
 using TOML: TOML
-using ..Facts: Facts, SyntaxFile, Finding, SyntaxNode
+using ..Facts: Facts, SyntaxFile, Finding
 using ..Config: ConfigError
 
 """Baseline file name at project root."""
@@ -34,15 +34,6 @@ function entry(table::Dict{String, Any})::Pair{Key, Int}
     return Key(table["rule"]::String, table["file"]::String, table["definition"]::String, table["snippet"]::String) => table["count"]::Int
 end
 
-"""Name node of definition `node`: strips `where`, result type, call arguments, type parameters and supertype."""
-function name_node(node::SyntaxNode)::SyntaxNode
-    head = Facts.children_of(node)[1]
-    while Facts.kind_name(head) in ("where", "::", "call", "curly", "<:") && !isempty(Facts.children_of(head))
-        head = Facts.children_of(head)[1]
-    end
-    return head
-end
-
 """Name of innermost definition enclosing byte `byte` of `file`; empty string at top level."""
 function definition_name(file::SyntaxFile, byte::Int)::String
     enclosing = [
@@ -50,7 +41,7 @@ function definition_name(file::SyntaxFile, byte::Int)::String
             if Facts.kind_name(node) in DEFINITIONS && byte in Facts.trimmed_bytes(file, node)
     ]
     isempty(enclosing) && return ""
-    return Facts.source(file, name_node(argmin(node -> length(Facts.trimmed_bytes(file, node)), enclosing)))
+    return Facts.source(file, Facts.definition_name(argmin(node -> length(Facts.trimmed_bytes(file, node)), enclosing)))
 end
 
 """Key of `finding` in `file`, with path relative to `root`."""

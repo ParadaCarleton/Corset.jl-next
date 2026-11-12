@@ -1,4 +1,24 @@
-"""`double-include` (F64): same file included twice defines everything in it twice."""
+"""
+`double-include` (F64): same file included twice.
+
+## Description
+Reports second and later `include` of same literal path in one run.
+
+## Rationale
+Each `include` evaluates file again. Struct definitions then throw on redefinition, and methods are defined twice.
+
+## Example
+```julia
+include("utils.jl")
+include("solver.jl")   # solver.jl also includes "utils.jl"
+```
+
+## Alternative
+Include each file once, from module root file.
+
+## Limitations
+Rule resolves literal paths only; computed paths pass.
+"""
 module DoubleInclude
 
 using ...Facts

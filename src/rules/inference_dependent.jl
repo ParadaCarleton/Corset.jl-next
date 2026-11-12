@@ -1,4 +1,26 @@
-"""`inference-dependent` (F26): result depends on what compiler infers, so it changes between Julia versions."""
+"""
+`inference-dependent` (F26): behavior depends on inference result.
+
+## Description
+Reports calls to `Core.Compiler.return_type`, `Base.return_types`, `Base.infer_return_type` and `Base.promote_op`.
+
+## Rationale
+Inference may widen result at any time: new Julia version, other load order, or changed heuristics. Code that branches on result then takes other path or allocates other type.
+
+## Example
+```julia
+T = Base.promote_op(+, eltype(a), eltype(b))
+result = Vector{T}(undef, n)
+```
+
+## Alternative
+```julia
+result = map(+, a, b)
+```
+
+## Limitations
+None known.
+"""
 module InferenceDependent
 
 using ...Facts
