@@ -47,7 +47,7 @@ end
 - From tests: Corset is test dependency; `Corset.check()` in `runtests.jl` shares package load with test suite.
 - From command line: build temporary environment from target Manifest and add Corset with every target version preserved; fail loud if any would change. Cache by Manifest hash.
 - Load each extension's trigger packages: extension activates only when all triggers are loaded.
-- Pkg resolves Corset dependencies with package dependencies, so conflict fails loudly at install. Keep Corset dependency list short.
+- Pkg resolves Corset dependencies with package dependencies, so conflict fails loudly at install.
 - Cache check runs before package load: unchanged rerun loads nothing.
 
 ### Tests
