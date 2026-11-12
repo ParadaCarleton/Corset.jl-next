@@ -102,7 +102,7 @@ warning[vague-type]: `acc` changes type inside loop
 
 ### Macro output
 
-Findings inside macro expansions are reported, other packages' macros included: message marks them upstream and points at call site. Own macro: one finding at definition, with call-site count. Fixes never edit generated code. Syntax stages see source as written; findings in expanded code come from stages after load. Code passed through macro (`@inbounds`, `@views`) maps to exact bytes. Code macro writes itself (`@kwdef`, macro body, `@generated`) maps to nearest line inside definition: call site. Julia 1.13 lowering keeps no call-site provenance (S2); JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.
+Rules read code as written, macro arguments included. Code that package macro writes gets findings: one finding at macro definition, with call-site count. Code that other packages' macros write gets none, since package cannot fix it (Clippy `in_external_macro`). Fixes never edit generated code. Syntax stage sees source as written; findings in expanded code come from stages after load. Syntax stage skips quoted code outside `$` interpolation, and macro arguments that hold syntax plain Julia rejects (`{x}` in Argus patterns): macro rewrites them, so code as written never runs. Code passed through macro (`@inbounds`, `@views`) maps to exact bytes. Code macro writes itself (macro body, `@generated`) maps to nearest line inside definition. Julia 1.13 lowering keeps no call-site provenance (S2); JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.
 
 ### Conventions
 
