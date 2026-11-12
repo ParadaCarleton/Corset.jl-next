@@ -42,3 +42,9 @@ ln -s /path/to/Corset.jl/skill ~/.claude/skills/corset
 # for one project
 mkdir -p .claude/skills && cp -r /path/to/Corset.jl/skill .claude/skills/corset
 ```
+
+## License
+
+Corset is free for noncommercial use under [PolyForm Noncommercial 1.0.0](LICENSE).
+Universities, public research institutes and other noncommercial organizations qualify, whatever their funding.
+Commercial use needs a separate license; contact [ParadaCarleton](https://github.com/ParadaCarleton).
