@@ -6,12 +6,12 @@ Stages run top to bottom. Rule declares last stage it reads. Engine computes onl
 
 <div class="pipeline" role="img" aria-label="Analysis stages from syntax tree to effect summary, then findings, confidence filter, report and fix">
       <div class="layer"><div class="id">syntax</div><div class="what">Lossless syntax tree, index by node kind<small>JuliaSyntax · per file · milliseconds</small></div></div>
-      <div class="layer"><div class="id">lifecycle</div><div class="what">Local def-use per array<small>reads syntax tree · per file</small></div></div>
       <div class="divider">package code runs below · same process, target environment</div>
       <div class="layer"><div class="id">package</div><div class="what">Loaded package: bindings, structs, method table<small>one load per run · cached by Manifest hash</small></div></div>
       <div class="layer"><div class="id">scope</div><div class="what">Lowering with scope resolution and source positions<small>JuliaLowering · per top-level form, include order · macros need package</small></div></div>
       <div class="layer"><div class="id">inference</div><div class="what">Typed IR for every eligible package method<small>native inference cache · signatures from annotations · no package tests needed</small></div></div>
       <div class="layer"><div class="id">effects</div><div class="what">Effect and alias summary per method<small>own points-to summary inside method + callee summaries · bottom-up, Base included</small></div></div>
+      <div class="layer"><div class="id">lifecycle</div><div class="what">Local def-use per array<small>syntax tree plus callee write summaries · per method</small></div></div>
       <div class="arrow" aria-hidden="true">↓</div>
       <div class="sink">
         <div><b>findings</b>span · rule · message · confidence · fix</div>

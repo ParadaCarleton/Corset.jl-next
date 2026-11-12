@@ -8,10 +8,10 @@ Draft. Spikes retire risks first. Each later phase ships usable rules. Phase ord
 |---|---|---|---|
 | 0 spikes | S1 stand-in inference · S2 source mapping · S3 scope stage · S4 syntax matcher · S5 effect API. Measure legacy Corset on corpus as speed baseline. | — | Each spike works on Julia 1.13, or fallback is chosen. |
 | 1 skeleton | Julia app `corset`; facts API and rule contract; config, project kind, groups, confidence, fix tiers; finding type with cause spans; message renderer; `corset explain`; opt-outs; baseline; text, JSON, SARIF output; disk cache for syntax findings; fixer engine on lossless tree; UI snapshot tests and other harnesses. | — | One rule runs end to end: report, opt-out, baseline, fix, SARIF, cached rerun. |
-| 2 syntax | Stages `syntax` and `lifecycle`. Copy ReLint.jl rules (Argus patterns) and LintApp.jl rules (in JuliaWorkspaces) where they exist. | {{count:syntax lifecycle}} | Works on scripts. Reference comparison clean or allowlisted. **First release.** |
+| 2 syntax | `syntax` stage. Copy ReLint.jl rules (Argus patterns) and LintApp.jl rules (in JuliaWorkspaces) where they exist. | {{count:syntax}} | Works on scripts. Reference comparison clean or allowlisted. **First release.** |
 | 3 module | Package load in target environment; stages `package` and `external`. | {{count:package external}} | Load and rules run on every corpus package. |
 | 4 types | Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); `inference` stage and type-disruption scan; per-method disk cache; `annotation` fixer guesses argument types and fills result types (annotation transition, `types.md`). | {{count:inference}} | Precision gate passes on corpus. `unverified-inbounds` agrees with julia-in-lean site verdicts. |
-| 5 effects | `effects` stage: effect and alias summary; `!` convention flow. | {{count:effects}} | Flow fixtures pass, IO, RNG and memo exemptions included. |
+| 5 effects | `effects` stage: effect and alias summary; `lifecycle` stage reads callee writes from it; `!` convention flow. | {{count:effects lifecycle}} | Flow fixtures pass, IO, RNG and memo exemptions included. |
 | 6 scope | `scope` stage on JuliaLowering (S3). | {{count:scope}} | Scope fixtures pass on packages and scripts. |
 | later | F12, F45, F46, F49 (off by default); string and dict stand-in types; language server mode; dimension-aware stand-in for `Number` (catches `x + 1` on Unitful quantity); nursery group for rules before quality gate; upstream F89 and F90 logic to Moshi `verify/` (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for `manual` fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking. | {{count:later}} | — |
 
@@ -48,5 +48,6 @@ Design is draft until code proves it. Revisit at each checkpoint:
 - After first release: corpus findings and real use test footgun list, levels, presets and messages.
 - After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (`types.md`). Replace indexing exemption of `type-disruption` with exact conversion rule.
 - Before each later phase: reread parts that phase builds on; question decisions that no longer fit.
+- Before phase 5: decide whether `lifecycle` def-use runs on syntax tree or reuses `effects` points-to graph over IR (one producer per fact).
 - Each review: adversarial pass by second model on changed parts; log findings and outcomes in `rules-rewrite-history.md`.
 - Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.

@@ -36,7 +36,7 @@ for rule in rules:
 assert {footgun["stage"] for footgun in footguns} <= {stage["name"] for stage in stages}, "unknown stage"
 for rule in rules:
     names = {by_id[ident]["stage"] for ident in rule["footguns"]}
-    assert len(names) == 1 or not names & {"syntax", "lifecycle"}, f"{rule['name']}: syntax stage mixed with later stage"
+    assert len(names) == 1 or "syntax" not in names, f"{rule['name']}: syntax stage mixed with later stage"
 
 
 def code(text: str) -> str:

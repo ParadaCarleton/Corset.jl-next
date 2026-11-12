@@ -9,11 +9,11 @@ Each stage is one module that produces facts. Rules read facts through one API. 
 | Module | Job |
 |---|---|
 | `Syntax` | `syntax` stage: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind. |
-| `Lifecycle` | `lifecycle` stage: local def-use per array. |
 | `Scope` | `scope` stage: lowering and scope facts. JuliaLowering vendored at pinned julia commit on 1.13; `Base.JuliaLowering` from 1.14. Own replacement expansions for common Base macros keep byte positions. Soft scope: before lowering each form, declare earlier top-level assigned globals as `global x::Any`, in include order; order-sensitive fixtures. |
 | `Package` | `package` stage: load package; module facts; Project.toml facts. |
 | `Inference` | `inference` stage: stand-in types; one inference per method; typed IR with source mapping. Mapping: vendored TypedSyntax.jl algorithm on syntax tree; no CodeTracking. |
 | `Effects` | `effects` stage: effect and alias summary per method. |
+| `Lifecycle` | `lifecycle` stage: local def-use per array; callee writes from `effects`. |
 | `External` | `external` stage: Aqua.jl, ExplicitImports.jl, jscpd output as facts. |
 | `Facts` | Fact types and query API. Only module rule code may import. |
 | `Rules` | One pure function per rule; registry as data. |
@@ -83,7 +83,7 @@ Main goal of rewrite: clean structure. Legacy implemented each rule on its own, 
 
 ### Package load
 
-Loading runs code. Stages after package load (`package`, `inference`, `effects`, `external`) run only on package with `name`; Julia apps qualify. Scripts and nameless environments get `syntax`, `lifecycle` and `scope`. Extensions are analyzed with test dependencies installed and their triggers loaded; `untested-extension` reports trigger missing from them. Later: definitions-only load for scripts.
+Loading runs code. Stages after package load (`package`, `inference`, `effects`, `lifecycle`, `external`) run only on package with `name`; Julia apps qualify. Scripts and nameless environments get `syntax` and `scope`. Extensions are analyzed with test dependencies installed and their triggers loaded; `untested-extension` reports trigger missing from them. Later: definitions-only load for scripts.
 
 ### Incremental runs and disk cache
 
@@ -93,7 +93,7 @@ Loading runs code. Stages after package load (`package`, `inference`, `effects`,
 - Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.
 - Location: user cache directory, one entry set per project. CI saves it between runs.
 - Global key: Julia version, Corset version, config hash, Manifest hash, preferences, active extensions. Any change clears all entries.
-- Syntax stages: findings per file, keyed by file content hash.
+- `syntax` stage: findings per file, keyed by file content hash.
 - Typed stages: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. `@generated` method depends on whole package.
 - Run parses every file (cheap) and computes keys. Nothing changed: no package load; cached findings print. Otherwise load package and infer only invalid methods.
 - Later: warm daemon keeps Salsa tables and loaded package, so edit costs only its dependents.
