@@ -9,7 +9,7 @@ text = "Space before minus in array literal concatenates"
 example = "`[1 -2]` is 1×2 matrix"
 group = "correctness"
 family = "A"
-note = "Needs whitespace: check reads source bytes between elements, since Argus patterns ignore trivia."
+note = "Needs whitespace: rule reads source bytes between elements, since Argus patterns ignore trivia."
 
 [[footgun]]
 id = 2
@@ -212,7 +212,7 @@ text = "Methods differ only in keywords; later one overwrites"
 example = "`f(x; a)` and `f(x; b)`"
 group = "correctness"
 family = "C"
-note = "Keywords take no part in dispatch. Julia 1.10+ errors in packages; check covers scripts and explains cause."
+note = "Keywords take no part in dispatch. Julia 1.10+ errors in packages; rule covers scripts and explains cause."
 
 [[footgun]]
 id = 25
@@ -690,7 +690,7 @@ text = "Argument or result without type"
 example = "`f(x) = …`"
 group = "readability"
 family = "A"
-note = "With result-conversion check, annotations act as type checks. Fixer fills result type from inference. `::Any` opts out."
+note = "With result-conversion rule, annotations act as type checks. Fixer fills result type from inference. `::Any` opts out."
 
 [[footgun]]
 id = 72

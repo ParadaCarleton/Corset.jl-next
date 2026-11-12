@@ -4,7 +4,7 @@ Code layout, process model, cache, tests, command line.
 
 ### Code layout
 
-Each layer is one module that produces facts. Checks read facts through one API. Engine is only module that knows order.
+Each layer is one module that produces facts. Rules read facts through one API. Engine is only module that knows order.
 
 | Module | Job |
 |---|---|
@@ -14,9 +14,9 @@ Each layer is one module that produces facts. Checks read facts through one API.
 | `Infer` | L4: stand-in types; one inference per method; typed IR with source mapping (family D). Mapping: vendored TypedSyntax.jl algorithm on L1 tree; no CodeTracking. |
 | `Effects` | L5: effect and alias summary per method (family E). |
 | `External` | Family G: Aqua.jl, ExplicitImports.jl, jscpd output as facts. |
-| `Facts` | Fact types and query API. Only module check code may import. |
-| `Checks` | One pure function per check; registry as data. |
-| `Engine` | Salsa.jl query graph: pick layers that enabled checks need; run them; apply levels, confidence, opt-outs, baseline. |
+| `Facts` | Fact types and query API. Only module rule code may import. |
+| `Rules` | One pure function per rule; registry as data. |
+| `Engine` | Salsa.jl query graph: pick layers that enabled rules need; run them; apply levels, confidence, opt-outs, baseline. |
 | `Fix` | Apply edits to lossless tree; filter by tier. |
 | `Report` | Render text, JSON, SARIF; `explain`. |
 | `Cache` | Disk cache keys and storage. |
@@ -31,7 +31,7 @@ struct Label    span::Span; text::String end
 struct Edit     span::Span; replacement::String end
 struct Fix      edits::Vector{Edit}; tier::Tier end           # Tier: safe likely breaking manual
 struct Finding
-    check::Symbol; kind::Symbol; confidence::Confidence      # definite possible
+    rule::Symbol; kind::Symbol; confidence::Confidence      # definite possible
     primary::Label; causes::Vector{Label}; why::String
     fix::Union{Fix, Nothing}
 end
@@ -52,11 +52,11 @@ end
 
 ### Tests
 
-- UI tests, as in Clippy: `test/ui/<check>/<case>.jl` with snapshot of full rendered output and fixed source. Bless command updates snapshots; CI fails on diff.
+- UI tests, as in Clippy: `test/ui/<rule>/<case>.jl` with snapshot of full rendered output and fixed source. Bless command updates snapshots; CI fails on diff.
 - Each footgun: positive case, negative case, fix case.
 - Property tests (Supposition.jl): fix creates no new finding; fix is idempotent. `safe` fix: fixture behaves same before and after (differential run).
 - Reference comparison: JET, fatou, LintApp.jl, ReLint.jl on fixtures, with allowlist.
-- 100% line coverage; mutation testing on check code.
+- 100% line coverage; mutation testing on rule code.
 
 ### Command line
 
@@ -64,21 +64,21 @@ end
 |---|---|
 | `corset check [path]` | Report findings. |
 | `corset fix [path] [--tier T]` | Apply fixes up to tier (default from preset), then check again. |
-| `corset explain <check>` | Print check docs offline. |
+| `corset explain <rule>` | Print rule docs offline. |
 | `corset baseline [path]` | Write current findings to baseline. |
 
-Flags: `-A`, `-W`, `-D <check or group>` set levels (Clippy style); `--deny warnings`; `--confidence definite|possible`; `--format text|json|sarif`; `--no-cache`.
+Flags: `-A`, `-W`, `-D <rule or group>` set levels (Clippy style); `--deny warnings`; `--confidence definite|possible`; `--format text|json|sarif`; `--no-cache`.
 
 Exit codes: `0` no `deny` finding; `1` `deny` finding; `2` config or usage error; `101` internal error (Cargo convention).
 
-### Check contract
+### Rule contract
 
 Main goal of rewrite: clean structure. Legacy implemented each rule on its own, so analyses repeated and code grew.
 
 - Analysis (family) computes facts once per run: syntax index, array def-use, scopes, module facts, typed IR, effect summary.
-- Check is one pure function: facts in, findings out. Check code imports only facts API; test enforces it.
-- Check that needs new information adds fact to its analysis. Long check signals missing fact.
-- Registry is data: name, group, footguns, family, fix tier. Docs page per check comes from footgun table.
+- Rule is one pure function: facts in, findings out. Rule code imports only facts API; test enforces it.
+- Rule that needs new information adds fact to its analysis. Long rule signals missing fact.
+- Registry is data: name, group, footguns, family, fix tier. Docs page per rule comes from footgun table.
 
 ### Package load
 
@@ -99,7 +99,7 @@ Loading runs code. Typed families (C, D, E, G) run only on package with `name`; 
 
 ### Reference linters
 
-JET, fatou, LintApp.jl (`julialint`, julia-vscode linter; its checks live in JuliaWorkspaces, vendored StaticLint) and ReLint.jl run only in Corset tests, never at lint time. All four are MIT: copy their check code where it already implements our footgun, keeping license notice.
+JET, fatou, LintApp.jl (`julialint`, julia-vscode linter; its rules live in JuliaWorkspaces, vendored StaticLint) and ReLint.jl run only in Corset tests, never at lint time. All four are MIT: copy their rule code where it already implements our footgun, keeping license notice.
 
 - Tests run each reference on fixture corpus and compare findings with Corset. `julialint` emits JSON and SARIF.
 - Reference finding Corset misses: fix Corset, or record reason in allowlist (reference bug, different design).

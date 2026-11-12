@@ -4,7 +4,7 @@ module Juxtaposition
 using ...Facts
 
 const NAME = :juxtaposition
-const RULE = Rule(@pattern ~or({left} / {right}, {left}^{right}, {left} // {right}, {left} \ {right}))
+const PATTERN = IndexedPattern(@pattern ~or({left} / {right}, {left}^{right}, {left} // {right}, {left} \ {right}))
 
 """Whether `node` is wrapped in parentheses in source: nearest non-space byte before it is `(`."""
 function parenthesized(file::SyntaxFile, node)::Bool
@@ -19,7 +19,7 @@ end
 """Findings for division or power whose right operand is unparenthesized juxtaposed product."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
-    for file in facts.files, match in matches(file, RULE)
+    for file in facts.files, match in matches(file, PATTERN)
         right = binding(match, :right)
         kind_name(right) == "juxtapose" && !parenthesized(file, right) || continue
         operator = call_head(match.node)
@@ -36,6 +36,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = CheckEntry(NAME, Group.correctness, [3], Family.A, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [3], Family.A, run)
 
 end

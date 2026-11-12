@@ -44,7 +44,7 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 - **Cost** (S1 spike): number stand-ins about 200 lines; mixing check (differential, escape, filters, classifier) about 360; signature mapping about 190. Source mapping: vendored TypedSyntax.jl algorithm (S2).
 - **Stand-in fidelity**: stand-in copies every `Float32` and `Int32` special case that changes result type (irrational rule, `irrationals.jl`). Stand-in test suite runs `Test.detect_ambiguities` against Base.
 - **No tests**: stand-in types come from annotations; see **Arguments without stand-in**.
-- Syntax check stays for hard-coded `Array` without template. Shared fix helper finds in-scope type source (`T`, `eltype(x)`, template array).
+- Syntax rule stays for hard-coded `Array` without template. Shared fix helper finds in-scope type source (`T`, `eltype(x)`, template array).
 
 ### Annotations
 

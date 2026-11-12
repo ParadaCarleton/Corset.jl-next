@@ -4,7 +4,7 @@ module ThreadidBuffer
 using ...Facts
 
 const NAME = Symbol("threadid-buffer")
-const RULE = Rule(@pattern ~or({buffer}[threadid()], {buffer}[Threads.threadid()], {buffer}[Base.Threads.threadid()]))
+const PATTERN = IndexedPattern(@pattern ~or({buffer}[threadid()], {buffer}[Threads.threadid()], {buffer}[Base.Threads.threadid()]))
 
 """Macros that run body on several tasks."""
 const THREADED = Set(["@threads", "@spawn", "@async"])
@@ -28,10 +28,10 @@ function run(facts::FactSet)::Vector{Finding}
             label = "task may switch thread between read and write",
             why = "tasks migrate between threads, so two tasks can share one slot and race",
             fix = manual_fix("keep state per task: chunk work and give each chunk its own buffer (OhMyThreads.jl)"),
-        ) for file in facts.files for match in matches(file, RULE)
+        ) for file in facts.files for match in matches(file, PATTERN)
     ]
 end
 
-const ENTRY = CheckEntry(NAME, Group.correctness, [68], Family.A, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [68], Family.A, run)
 
 end

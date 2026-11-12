@@ -1,4 +1,4 @@
-# Time family-A checks per 10,000 lines on package sources: parse and match separately.
+# Time family-A rules per 10,000 lines on package sources: parse and match separately.
 # Usage: julia --project=test benchmark/syntax.jl <src-dir>...
 using Corset: Corset
 
@@ -13,11 +13,11 @@ for directory in ARGS
     lines = sum(path -> count(==('\n'), read(path, String)), paths)
     parse = best_time(() -> Corset.Engine.facts_for(paths), 5)
     facts = Corset.Engine.facts_for(paths)
-    check = best_time(() -> Corset.Engine.run_checks(facts), 5)
-    found = length(Corset.Engine.run_checks(facts))
+    matching = best_time(() -> Corset.Engine.run_rules(facts), 5)
+    found = length(Corset.Engine.run_rules(facts))
     per10k(seconds) = round(seconds * 1.0e4 / lines * 1000; digits = 1)
     println(
-        directory, ": lines=", lines, " parse=", per10k(parse), "ms/10k match=", per10k(check), "ms/10k checks=",
-        length(Corset.Checks.REGISTRY), " findings=", found
+        directory, ": lines=", lines, " parse=", per10k(parse), "ms/10k match=", per10k(matching), "ms/10k rules=",
+        length(Corset.Rules.REGISTRY), " findings=", found
     )
 end

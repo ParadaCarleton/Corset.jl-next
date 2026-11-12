@@ -34,7 +34,7 @@ function placement(text::String, starts::Vector{Int}, span::Span)::Tuple{Int, In
     return line, first_col, max(width_between(text, span.first_byte, min(span.last_byte, line_end)), 1)
 end
 
-"""Write `finding` from file with source `text` to `io`; `group` comes from check registry."""
+"""Write `finding` from file with source `text` to `io`; `group` comes from rule registry."""
 function render(io::IO, finding::Finding, group::Group.T, text::String)::Nothing
     starts = line_starts(text)
     marked = [
@@ -44,7 +44,7 @@ function render(io::IO, finding::Finding, group::Group.T, text::String)::Nothing
     primary_line, primary_col = marked[1][1], marked[1][2]
     lines = sort!(unique(first.(marked)))
     gutter = " "^ndigits(maximum(lines))
-    println(io, group, "[", finding.check, "]: ", finding.message)
+    println(io, group, "[", finding.rule, "]: ", finding.message)
     println(io, gutter, "--> ", finding.primary.span.file, ":", primary_line, ":", primary_col)
     println(io, gutter, " |")
     previous = 0
@@ -64,7 +64,7 @@ function render(io::IO, finding::Finding, group::Group.T, text::String)::Nothing
     println(io, gutter, " = why: ", finding.why)
     finding.confidence == Confidence.possible && println(io, gutter, " = confidence: possible")
     isnothing(finding.fix) || println(io, gutter, " = fix: ", finding.fix.text, "   [", finding.fix.tier, "]")
-    println(io, gutter, " = docs: corset explain ", finding.check)
+    println(io, gutter, " = docs: corset explain ", finding.rule)
     return nothing
 end
 

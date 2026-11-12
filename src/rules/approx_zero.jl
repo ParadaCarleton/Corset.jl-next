@@ -4,7 +4,7 @@ module ApproxZero
 using ...Facts
 
 const NAME = Symbol("approx-zero")
-const RULE = Rule(
+const PATTERN = IndexedPattern(
     @pattern ~or(
         {x} ≈ 0, 0 ≈ {x}, {x} ≈ 0.0, 0.0 ≈ {x},
         isapprox({x}, 0), isapprox(0, {x}), isapprox({x}, 0.0), isapprox(0.0, {x}),
@@ -20,10 +20,10 @@ function run(facts::FactSet)::Vector{Finding}
             label = "relative tolerance scales with zero",
             why = "`isapprox` defaults to relative tolerance; relative to zero, no nonzero value is close",
             fix = manual_fix("pass absolute tolerance: `isapprox($(source(file, binding(match, :x))), 0; atol = tol)`"),
-        ) for file in facts.files for match in matches(file, RULE)
+        ) for file in facts.files for match in matches(file, PATTERN)
     ]
 end
 
-const ENTRY = CheckEntry(NAME, Group.correctness, [10], Family.A, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [10], Family.A, run)
 
 end

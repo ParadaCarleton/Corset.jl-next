@@ -2,7 +2,7 @@
 
 Layers Corset computes, and which analysis family reads each.
 
-Layers run top to bottom. Check declares last layer it reads. Engine computes only layers that selected checks need. L2 runs after L3: macro expansion needs evaluated imports and package macros (S3). Scripts: L2 evaluates imports only; unresolved macros go to coverage line.
+Layers run top to bottom. Rule declares last layer it reads. Engine computes only layers that selected rules need. L2 runs after L3: macro expansion needs evaluated imports and package macros (S3). Scripts: L2 evaluates imports only; unresolved macros go to coverage line.
 
 <div class="pipeline" role="img" aria-label="Analysis layers from syntax tree to dataflow, then findings, confidence filter, report and fix">
       <div class="layer"><div class="id">L1<small>syntax</small></div><div class="what">Lossless syntax tree, index by node kind<small>JuliaSyntax · per file · milliseconds</small></div><div class="fams"><span class="fam">A</span><span class="fam">B</span></div></div>

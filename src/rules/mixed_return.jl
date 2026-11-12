@@ -4,7 +4,7 @@ module MixedReturn
 using ...Facts
 
 const NAME = Symbol("mixed-return")
-"""Final statements whose value is not plain expression; check stays narrow there."""
+"""Final statements whose value is not plain expression; rule stays narrow there."""
 const CONTROL = Set(["if", "for", "while", "try", "let", "block", "return", "macrocall", "function", "struct", "module"])
 
 """`return` nodes of function body `body`, skipping nested functions and closures."""
@@ -43,6 +43,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = CheckEntry(NAME, Group.readability, [73], Family.A, run)
+const ENTRY = RuleEntry(NAME, Group.readability, [73], Family.A, run)
 
 end

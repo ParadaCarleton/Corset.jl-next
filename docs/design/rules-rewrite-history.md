@@ -1,7 +1,7 @@
 # Corset rewrite: old rule names
 
 Record of rules on main, ideas from open work, and early decisions that use old names.
-Design page `rules-rewrite.html` replaces them with footguns and checks.
+Design page `rules-rewrite.html` replaces them with footguns and rules. Rewrite called rules "checks" until rename below.
 
 ## Rules on main, kept or changed
 
@@ -255,9 +255,9 @@ Proposal: test-only oracle. Typed IR from native compiler at lint time.
 
 ## Coverage of old rules
 
-Frozen: footgun and check names as of design split. Current catalog lives in footguns.toml and checks.toml.
+Frozen: footgun and check names as of design split. Current catalog lives in footguns.toml and rules.toml.
 
-| Source | Old rule | Footguns | Check | Note |
+| Source | Legacy rule | Footguns | Rule | Note |
 |---|---|---|---|---|
 | main | `unstable-variable` | F17 Variable, result or closure capture with vague inferred type | `vague-type` |  |
 | main | `unstable-return` | F17 Variable, result or closure capture with vague inferred type | `vague-type` |  |
@@ -383,9 +383,9 @@ Spike reports: `spikes/s1-stand-in-inference` to `spikes/s5-effect-summary`, fil
 
 ### Layer audit after first family A checks
 
-Rule: check waits for layer that owns its facts. Removed syntax versions and fixtures stay in `main` at `3cb1383` (`src/checks`, `test/ui`).
+Principle: rule waits for layer that owns its facts. Removed syntax versions and fixtures stay in `main` at `3cb1383` (`src/checks`, `test/ui`).
 
-| Check | Problem | Outcome |
+| Rule | Problem | Outcome |
 |---|---|---|
 | `quadratic` | Grouped F43 (D) with F44 (A); syntax scan ignored collection type | Split: `loop-search` (F43, D), `repeated-concat` (F44, A). Syntax scan removed. |
 | `shared-fill` | Constructor list guessed mutability | F35 moves to D. Fix tier `manual`: comprehension changes code that shares on purpose, and `fill(x, -1)` throws where comprehension returns empty. |
@@ -394,3 +394,7 @@ Rule: check waits for layer that owns its facts. Removed syntax versions and fix
 | `non-exhaustive-match`, `unreachable-arm`, `wildcard-arm` | Variants need loaded ADT | F89–F91 move to C. |
 | `c-type` | Local variable named `Cint` gives false finding | Kept in A. `Cint === Int32`, so only syntax sees alias. Import `Cint as CI` still names `Cint` in import line. |
 | `untyped-empty`, `annotation` | Fixer needs inferred element or argument type | Detection stays A. Fixer reads L4 when it ran; otherwise fix is `manual`. |
+
+### Rename: check to rule
+
+"Check" named three things: `corset check` command, `Corset.check()` pipeline entry, and one unit of config. Unit is now "rule", as in Ruff. Command and entry point keep verb `check`. Argus wrapper `Rule` became `IndexedPattern`: it holds only pattern and root-kind index, while Argus `Rule` is whole named rule.

@@ -1,18 +1,18 @@
 # Corset
 
 Rewrite in progress; rewrite lives in src/. Legacy code lives in lib/CorsetLegacy: idea source only; fix legacy bugs only as stopgap. Delete legacy feature once rewrite replaces it.
-Design: docs/design/README.md indexes parts. Read only parts task needs before changing architecture or checks.
+Design: docs/design/README.md indexes parts. Read only parts task needs before changing architecture or rules.
 Edit design parts (*.md, *.toml), then run `uv run docs/design/build.py`. Never hand-edit rules-rewrite.html.
-Footgun IDs are stable; never reuse removed ID. Old rule names live only in rules-rewrite-history.md.
+Footgun IDs are stable; never reuse removed ID. Legacy rule names live only in rules-rewrite-history.md.
 When unsure, do what Rust and Clippy do.
 Workspaces live in .worktrees/<name> inside repo (git-ignored); never in sibling directories.
 
-## Check contract
+## Rule contract
 
-Check is pure function: facts in, findings out. Check imports only Corset.Facts.
-Check never lowers, loads, or infers. Missing information: add fact to its analysis.
+Rule is pure function: facts in, findings out. Rule imports only Corset.Facts.
+Rule reads facts only; analysis layers compute every fact once per run. Missing information: add fact to its layer.
 Every finding: primary span, labeled cause spans, one-line reason, fix with tier.
-Every check: UI snapshot test with positive, negative and fix case.
+Every rule: UI snapshot test with positive, negative and fix case.
 
 ## Scope
 

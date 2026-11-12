@@ -4,7 +4,7 @@ module UntypedEmpty
 using ...Facts
 
 const NAME = Symbol("untyped-empty")
-const RULE = Rule(@pattern ~or([], Dict(), Set(), IdDict(), Vector(), Vector(undef, {_})))
+const PATTERN = IndexedPattern(@pattern ~or([], Dict(), Set(), IdDict(), Vector(), Vector(undef, {_})))
 
 """Findings for empty containers with `Any` element type."""
 function run(facts::FactSet)::Vector{Finding}
@@ -14,10 +14,10 @@ function run(facts::FactSet)::Vector{Finding}
             message = "`$(source(file, match.node))` has element type `Any`",
             label = "holds `Any`", why = "every element read dispatches at run time and boxes values",
             fix = manual_fix("name element type: `Float64[]`, `Dict{String, Int}()`; write `Any[]` when `Any` is intended"),
-        ) for file in facts.files for match in matches(file, RULE)
+        ) for file in facts.files for match in matches(file, PATTERN)
     ]
 end
 
-const ENTRY = CheckEntry(NAME, Group.performance, [21], Family.A, run)
+const ENTRY = RuleEntry(NAME, Group.performance, [21], Family.A, run)
 
 end
