@@ -319,3 +319,23 @@ Proposal: test-only oracle. Typed IR from native compiler at lint time.
 | open work | `any-supertype` | F84 Public struct has no abstract supertype; users cannot extend | `closed-struct` | Extensibility. |
 | open work | `dims-keyword` | F32 Temporary array built only to be consumed once | `temporary-array` | Stay-lazy goal; `dims` itself fine. |
 <!-- /coverage -->
+
+## Adversarial review findings
+
+Codex reviewed design page; each finding with its outcome.
+
+| # | Finding | Outcome |
+|---|---|---|
+| 1 | `infer_effects` gives no per-argument writes | Fixed: own bottom-up write summary (S5, `!` convention). Unknown callee gives `possible`. |
+| 2 | Integer literal widening also guards overflow; user promotion rules | Rule kept by owner. Definite via Base counterexample; user promotion rules out of scope. |
+| 3 | Cache keys miss method-table, preferences, extensions, generated methods | Fixed: compiler dependency record, global key additions, `@generated` depends on package. |
+| 4 | Escape analysis skips small numbers | Fixed: own data-flow pass to returns and stores. |
+| 5 | Unannotated methods skipped | Clarified: analyzed through callers; uncalled ones skipped and reported by `annotation`. Annotation rule kept by owner. |
+| 6 | External macro output invisible before load | Fixed: expanded code only after load; unmapped location goes to coverage line. |
+| 7 | F23 claimed to error | Rejected: Julia 1.13 silently creates separate function (tested). |
+| 8 | F15 fast paths; small unions fast; `Real` worsens inference | Fast-path exemption restored. F20 split into `ad-hoc-union` (readability). `Real` claim rejected: arguments specialize anyway; fields get type parameter. |
+| 9 | Array lifecycle cannot prove general reads | Fixed: definite only for straight-line patterns. |
+| 10 | Temporary environment may change versions; triggers need loading | Fixed: target versions preserved or fail loud; triggers loaded. |
+| 11 | 90% gate contradicts `definite`; fixes not behavior-checked | Fixed: false definite blocks check; `safe` fixes run before and after. |
+| 12 | Concurrency non-goal contradicts phases; stale counts | Fixed: non-goal is race and ownership analysis; counts generated. |
+| 13 | Method ambiguity missing | Fixed: F94 `method-ambiguity` (Aqua.jl). |
