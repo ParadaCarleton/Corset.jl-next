@@ -26,7 +26,29 @@ include("rules/wide_struct.jl")
 include("rules/world_age.jl")
 
 """Every rule, in name order (test enforces order)."""
-const REGISTRY = RuleEntry[AmbiguousConcat.ENTRY, ApproxZero.ENTRY, BracketedRange.ENTRY, BroadCatch.ENTRY, CType.ENTRY, Docstring.ENTRY, DoubleInclude.ENTRY, DuplicateStatement.ENTRY, FieldPrefix.ENTRY, FileLength.ENTRY, InferenceDependent.ENTRY, Juxtaposition.ENTRY, MixedReturn.ENTRY, OneLetter.ENTRY, OrphanTask.ENTRY, RepeatedConcat.ENTRY, ThreadidBuffer.ENTRY, UntypedEmpty.ENTRY, WhereBinding.ENTRY, WideStruct.ENTRY, WorldAge.ENTRY]
+const REGISTRY = RuleEntry[
+    AmbiguousConcat.ENTRY,
+    ApproxZero.ENTRY,
+    BracketedRange.ENTRY,
+    BroadCatch.ENTRY,
+    CType.ENTRY,
+    Docstring.ENTRY,
+    DoubleInclude.ENTRY,
+    DuplicateStatement.ENTRY,
+    FieldPrefix.ENTRY,
+    FileLength.ENTRY,
+    InferenceDependent.ENTRY,
+    Juxtaposition.ENTRY,
+    MixedReturn.ENTRY,
+    OneLetter.ENTRY,
+    OrphanTask.ENTRY,
+    RepeatedConcat.ENTRY,
+    ThreadidBuffer.ENTRY,
+    UntypedEmpty.ENTRY,
+    WhereBinding.ENTRY,
+    WideStruct.ENTRY,
+    WorldAge.ENTRY,
+]
 
 """Registry entry named `name`; throws for unknown rule."""
 function entry(name::Symbol)::RuleEntry
