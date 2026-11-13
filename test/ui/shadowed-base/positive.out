@@ -1,0 +1,65 @@
+error[shadowed-base]: `show` defines new function; `Base.show` gains no method
+ --> src/ShadowedBasePositive.jl:8:1
+  |
+8 | show(io::IO, square::Square) = print(io, "Square(", square.side, ")")
+  | ^^^^ creates `ShadowedBasePositive.show`
+  |
+  = why: callers of `Base.show` never reach these methods, and `show` inside module no longer reaches Base
+  = fix: extend `Base.show`   [likely]
+  = docs: corset explain shadowed-base
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow shadowed-base -- <reason>`
+
+error[shadowed-base]: `length` defines new function; `Base.length` gains no method
+  --> src/ShadowedBasePositive.jl:10:10
+   |
+10 | function length(square::Square)
+   |          ^^^^^^ creates `ShadowedBasePositive.length`
+...
+13 | length(squares::Vector{Square}) = sum(length, squares)
+   | ------ another method of new function
+   |
+   = why: callers of `Base.length` never reach these methods, and `length` inside module no longer reaches Base
+   = fix: extend `Base.length`   [likely]
+   = docs: corset explain shadowed-base
+
+error[shadowed-base]: `+` defines new function; `Base.+` gains no method
+  --> src/ShadowedBasePositive.jl:15:1
+   |
+15 | +(left::Square, right::Square) = Square(left.side + right.side)
+   | ^ creates `ShadowedBasePositive.+`
+   |
+   = why: callers of `Base.+` never reach these methods, and `+` inside module no longer reaches Base
+   = fix: extend `Base.:+`   [likely]
+   = docs: corset explain shadowed-base
+
+error[shadowed-base]: `first` defines new function; `Base.first` gains no method
+  --> src/ShadowedBasePositive.jl:17:1
+   |
+17 | first(name::Symbol) = name
+   | ^^^^^ creates `ShadowedBasePositive.first`
+   |
+   = why: callers of `Base.first` never reach these methods, and `first` inside module no longer reaches Base
+   = fix: rename function, or extend `Base.first` for package types only   [manual]
+   = docs: corset explain shadowed-base
+
+error[shadowed-base]: `last` defines new function; `Base.last` gains no method
+  --> src/ShadowedBasePositive.jl:19:1
+   |
+19 | last(square::Square; scale = 1) = scale * square.side
+   | ^^^^ creates `ShadowedBasePositive.last`
+   |
+   = why: callers of `Base.last` never reach these methods, and `last` inside module no longer reaches Base
+   = fix: extend `Base.last`   [likely]
+   = docs: corset explain shadowed-base
+
+error[shadowed-base]: `eltype` defines new function; `Base.eltype` gains no method
+  --> src/ShadowedBasePositive.jl:22:5
+   |
+22 |     @eval $name(::Square) = Float64
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ creates `ShadowedBasePositive.eltype`
+   |
+   = why: callers of `Base.eltype` never reach these methods, and `eltype` inside module no longer reaches Base
+   = fix: rename function, or extend `Base.eltype` for package types only   [manual]
+   = docs: corset explain shadowed-base
+

@@ -177,6 +177,8 @@ end
 end
 
 const CONFIG = joinpath(@__DIR__, "config")
+# Package stage loads `library` fixture in place, so test environment must load it from its root.
+joinpath(CONFIG, "library") in LOAD_PATH || push!(LOAD_PATH, joinpath(CONFIG, "library"))
 
 """Settings of config fixture `name` with command-line `flags`."""
 fixture_settings(name::String, flags::Flags = Flags())::Settings = Config.settings(joinpath(CONFIG, name), flags, REGISTRY)
