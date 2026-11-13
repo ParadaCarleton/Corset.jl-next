@@ -15,11 +15,29 @@ function parse_file(path::String, text::String)::SyntaxFile
     return SyntaxFile(path, text, tree, forms, leaves, comments)
 end
 
-"""Call `visit` on `node` and every descendant, parents first."""
-function walk(visit::Function, node::SyntaxNode)::Nothing
-    visit(node)
-    JS.is_leaf(node) || foreach(child -> walk(visit, child), JS.children(node))
+"""
+Kinds lowering always rejects; macro argument with one is DSL input (Argus `{x}`).
+Stopgap: plan.md later row replaces it with check for any code Julia rejects as written.
+"""
+const DSL_KINDS = (JS.K"braces", JS.K"bracescat")
+
+"""
+Call `visit` on code nodes of `node`, parents first. Skips quoted code outside `\$` interpolation
+and macro arguments that hold `DSL_KINDS`. `quotes` counts open quotes around `node`.
+"""
+function walk(visit::Function, node::SyntaxNode, quotes::Int = 0)::Nothing
+    quotes == 0 && visit(node)
+    JS.is_leaf(node) && return nothing
+    kind = JS.kind(node)
+    inner = kind == JS.K"quote" ? quotes + 1 : kind == JS.K"$" ? max(quotes - 1, 0) : quotes
+    for (position, child) in enumerate(JS.children(node))
+        kind == JS.K"macrocall" && position > 1 && holds_dsl(child) && continue
+        walk(visit, child, inner)
+    end
     return nothing
 end
+
+"""Whether `node` or any descendant has kind in `DSL_KINDS`."""
+holds_dsl(node::SyntaxNode)::Bool = JS.kind(node) in DSL_KINDS || (!JS.is_leaf(node) && any(holds_dsl, JS.children(node)))
 
 end

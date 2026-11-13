@@ -5,7 +5,7 @@
 [[stage]]
 name = "syntax"
 title = "Syntax patterns"
-text = "One tree walk per file. Rules are Argus.jl patterns: syntax classes, pattern forms, templates for fixes. Walk indexes rules by pattern root kind and asks Argus to match candidate nodes only. Names read as written: Base export name means Base binding; `shadowed-base` reports package method that breaks this."
+text = "One tree walk per file. Rules are Argus.jl patterns: syntax classes, pattern forms, templates for fixes. Walk indexes rules by pattern root kind and asks Argus to match candidate nodes only. Names read as written: Base export name means Base binding; `shadowed-base` reports package method that breaks this. Macro arguments read as code, except arguments with `{}` (stopgap, revisit later); quoted code reads as data outside `$` interpolation."
 
 [[stage]]
 name = "package"

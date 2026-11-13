@@ -410,3 +410,7 @@ Letters and layer numbers became one list of named stages. Map for older text: A
 ### `lifecycle` after `effects`
 
 Array rules hinge on whether callee writes array. Syntax alone treats every call as escape, or needs hand-written list of non-writing Base functions. `lifecycle` now reads callee writes from `effects` summaries and ships in phase 5; scripts get it with definitions-only load.
+
+### Macro code
+
+Self-lint matched rule patterns inside Argus `@pattern` bodies, which are data. Rules now follow Clippy: they read code as written, macro arguments included, and code that package macros write. Code that other packages' macros write gets no findings, since package cannot fix it; earlier text reported it marked upstream. Syntax stage skips quoted code outside `$` interpolation. Shelved: skip macro arguments Julia rejects as written (lowering error such as `{x}`, or call no Base method takes such as `x ~ Normal()`). Lowering belongs to `scope` and method tables to `package`, so syntax stage would be second producer. Stopgap until then: skip macro arguments with `{}`, which lowering always rejects; revisit with general check.
