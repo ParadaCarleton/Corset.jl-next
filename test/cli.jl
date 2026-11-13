@@ -30,6 +30,20 @@ const SARIF_SCHEMA = JSONSchema.Schema(JSON.parsefile(joinpath(@__DIR__, "fixtur
     @test redirect_stdout(() -> Corset.main(["explain", "baseline"]), devnull) == 0
 end
 
+@testset "cli script outside project" begin
+    # System temp directory has no Project.toml above it, like standalone script.
+    mktempdir() do directory
+        @test isnothing(Corset.Config.project_root(directory))
+        script = joinpath(directory, "script.jl")
+        write(script, "const WORKERS = Threads.nthreads()\nreach(value::Real)::Bool = value ≈ 0\ntask = @async reach(1)\nENV[\"MODE\"] = \"fast\"\n")
+        for target in (script, directory)
+            code, out, _ = corset("check", target, "-W", "composability")
+            @test code == 1 && occursin("error[approx-zero]", out) && occursin("coverage: analyzed 1 file", out)
+            @test !any(rule -> occursin(rule, out), ("baked-state", "pinned-task", "process-state"))
+        end
+    end
+end
+
 @testset "cli formats" begin
     json = JSON.parse(corset("check", LIBRARY, "--format", "json", "--confidence", "possible")[2])
     @test json["version"] == 1 && json["baselined"] == 0 && isempty(json["stale"])
