@@ -1,0 +1,38 @@
+warning[module-inception]: module `Shapes` is nested in module of same name
+ --> positive.jl:3:8
+  |
+2 | module Shapes
+  |        ------ parent module `Shapes`
+3 | module Shapes
+  |        ^^^^^^ inner module takes name `Shapes`
+  |
+  = why: outside code must write `Shapes.Shapes.x`; inside parent, `Shapes` no longer means parent
+  = fix: rename inner module, or move its body into parent `Shapes`   [manual]
+  = docs: corset explain module-inception
+  = note: warn from readability group, library preset
+  = note: opt out with `# corset: allow module-inception -- <reason>`
+
+warning[module-inception]: module `Geometry` is nested in module of same name
+ --> positive.jl:9:8
+  |
+8 | baremodule Geometry
+  |            -------- parent module `Geometry`
+9 | module Geometry
+  |        ^^^^^^^^ inner module takes name `Geometry`
+  |
+  = why: outside code must write `Geometry.Geometry.x`; inside parent, `Geometry` no longer means parent
+  = fix: rename inner module, or move its body into parent `Geometry`   [manual]
+  = docs: corset explain module-inception
+
+warning[module-inception]: module `Inner` is nested in module of same name
+  --> positive.jl:15:12
+   |
+14 | module Inner
+   |        ----- parent module `Inner`
+15 | baremodule Inner
+   |            ^^^^^ inner module takes name `Inner`
+   |
+   = why: outside code must write `Inner.Inner.x`; inside parent, `Inner` no longer means parent
+   = fix: rename inner module, or move its body into parent `Inner`   [manual]
+   = docs: corset explain module-inception
+
