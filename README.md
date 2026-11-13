@@ -1,54 +1,56 @@
 # Corset
 
-[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://paradacarleton.github.io/Corset.jl/dev/)
+Corset is a code-quality checker for Julia. It reports likely bugs, performance traps and code that is hard to read.
+Each finding shows the code, the reason and a fix. Corset applies the fixes that are safe for your project.
 
-Code-quality rules for Julia packages, checked in CI by `corset check`. A rule reads a loaded module
-(its lowered and inferred code, bindings and types) or a source file, and returns the places where the
-code breaks it.
+```text
+error[nan-compare]: `x != NaN` is never false
+ --> demo.jl:2:21
+  |
+2 | valid = filter(x -> x != NaN, samples)
+  |                     ^^^^^^^^ NaN equals no value, itself included
+  |
+  = why: IEEE comparison with NaN is false, and `!=` is true
+  = fix: replace with `!isnan(x)`   [likely]
+  = docs: corset explain nan-compare
+  = note: deny from correctness group, script preset
+  = note: opt out with `# corset: allow nan-compare -- <reason>`
+```
 
-Corset checks what a linter cannot see because it needs the compiler's answer: a local that infers as
-a union, a closure that boxes a captured variable, a function that reads a mutable global, a Float32
-kernel that computes in Float64.
+## Install
+
+Corset is not in the General registry. Add the `corset` app from this repository:
 
 ```julia
-pkg> add Corset
+pkg> app add https://github.com/ParadaCarleton/Corset.jl-private
 ```
 
-Run it in a CI job of its own. With Corset in the package's test dependencies:
+Pkg puts the app in `~/.julia/bin`. Add that directory to `PATH`.
+
+## Use
 
 ```bash
-julia -e 'using Pkg; Pkg.add("TestEnv")'
-julia --project=. -e 'using TestEnv; TestEnv.activate(); using Corset; exit(Corset.main(ARGS))' -- check .
+corset check            # report findings
+corset fix              # apply fixes up to the fix tier of the project
+corset baseline         # record current findings in corset-baseline.toml
+corset explain <rule>   # print the documentation of a rule
 ```
 
-`corset check` loads the package in a fresh process, without `--code-coverage`, so the typed rules
-read the code users run. They type the package over its entry-point signatures: the specializations
-its precompile workload compiles and the methods whose declared signature is already concrete.
-`entry_frames` walks their optimized IR along `:invoke` edges and inlined callees, and returns the
-frame of every method instance of the package they reach, inferred once.
+A package sets its kind in `Project.toml`:
 
-A baseline file allows today's offenders and fails on new ones; `corset baseline`
-seeds it and lowers it as old ones are fixed. The
-[documentation](https://paradacarleton.github.io/Corset.jl/dev/) has the guide (baselines,
-exemptions, opt-out comments) and the reference for every rule.
-
-## Install the skill
-
-`skill/SKILL.md` teaches an agent to run Corset, read findings, use fixers and respect waivers. Copy or symlink the `skill` directory:
-
-```bash
-# for every project
-ln -s /path/to/Corset.jl/skill ~/.claude/skills/corset
-# for one project
-mkdir -p .claude/skills && cp -r /path/to/Corset.jl/skill .claude/skills/corset
+```toml
+[preferences.Corset]
+kind = "library"
 ```
+
+The [guide](docs/src/guide.md) tells how to set levels, opt out of a rule and adopt Corset with a baseline.
 
 ## Acknowledgments
 
-- [Clippy](https://github.com/rust-lang/rust-clippy) and the Rust compiler set the model for Corset's design: rule levels, opt-out comments, UI snapshot tests, `explain` pages and error-message format. Corset rules read shared analysis facts the way Clippy lints read compiler results.
-- [Argus.jl](https://github.com/iuliadmtru/Argus.jl) matches syntax patterns for syntax rules.
-- [JuliaSyntax.jl](https://github.com/JuliaLang/JuliaSyntax.jl) parses source into the lossless tree that rules and fixers use.
-- [ExplicitImports.jl](https://github.com/JuliaTesting/ExplicitImports.jl) finds implicit imports and internal access.
+- [Clippy](https://github.com/rust-lang/rust-clippy) and the Rust compiler set the model for Corset: lint levels, opt-out comments, UI snapshot tests, `explain` pages and the message format.
+- [JuliaSyntax.jl](https://github.com/JuliaLang/JuliaSyntax.jl) parses source into the lossless tree that rules and fixes use.
+- [Argus.jl](https://github.com/iuliadmtru/Argus.jl) matches syntax patterns.
+- [ReLint.jl](https://github.com/RelationalAI-oss/ReLint.jl) and LintApp.jl in [JuliaWorkspaces.jl](https://github.com/julia-vscode/JuliaWorkspaces.jl) are sources of rules, and references for the tests.
 
 ## License
 
