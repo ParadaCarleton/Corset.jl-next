@@ -230,7 +230,7 @@ text = "Method definition overwrites earlier one with same positional signature"
 example = "`f(x; a)` and `f(x; b)`: keywords take no part in dispatch"
 group = "correctness"
 stage = "package"
-note = "Package precompilation fails, and Julia loads package without cache on each load. Overwritten method is gone from method table, so rule pairs definitions in syntax tree with surviving method. Scripts: later, with definitions-only load."
+note = "Package precompilation fails, and Julia loads package without cache on each load. Later definition replaces positional method; keyword sorter of earlier one stays when later one has no keywords, so keyword calls run earlier body. Rule pairs definitions in syntax tree with surviving method. Scripts: later, with definitions-only load."
 
 [[footgun]]
 id = 25
@@ -701,8 +701,8 @@ area = "modules"
 text = "Extension trigger package missing from test dependencies"
 example = "`[weakdeps]` names `CUDA`; tests never load it"
 group = "correctness"
-stage = "package"
-note = "Reads Project.toml; no load needed. Untested extension also cannot be analyzed."
+stage = "syntax"
+note = "Reads Project.toml before load, so load error does not hide it. Untested extension also cannot be analyzed."
 
 [[footgun]]
 id = 102

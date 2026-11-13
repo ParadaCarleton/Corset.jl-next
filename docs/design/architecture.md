@@ -48,9 +48,9 @@ end
 
 - One process per run. Corset loads target into its own process, as Aqua.jl and JET do, so later stages read compiler state directly.
 - Fresh process only: no `Corset.check()` inside `runtests.jl`. Test code would change method table, and `--code-coverage` changes optimized IR, so findings would depend on what ran before.
-- Environment loads target from its root (`Base.locate_package` gives target entry file): load in place.
-- Otherwise build temporary environment: nameless project that develops target by path, starts from target Manifest, and adds test dependencies and Corset by path. Every target version stays. Version change fails loud (exit 2) and lists packages. Relaunch Julia in that environment with same arguments. Cache environment by hash of Manifest, Project.toml and Corset version.
-- Relaunched process that still loads target from other path (registered copy, other checkout) is internal error: findings would describe other code.
+- Command line always builds temporary environment: nameless project that develops target by path, starts from target Manifest, and adds test dependencies and Corset by path. Every target version stays. Version change fails loud (exit 2) and lists packages. Cache environment by hash of Manifest, Project.toml, Julia version and Corset version.
+- Relaunch Julia with `JULIA_LOAD_PATH` set to that environment and `@stdlib` only, so default environment (`@v#.#`) adds no package, trigger or method.
+- Package stage loads in place only there and in Corset tests: `Base.locate_package` must give target entry file by real path. Other path is internal error: findings would describe other code.
 - Load each extension's trigger packages: extension activates only when all triggers are loaded.
 - Cache check runs before package load: unchanged rerun loads nothing.
 
@@ -105,7 +105,7 @@ Engine loads package only when enabled rule needs stage after `syntax`. Load tha
 
 Method span: `package` stage pairs each method with definition node at its file and line. Exact span when one definition node of that name starts there; line precision otherwise (`@eval` loops, macro output).
 
-UI cases for rules after `syntax`: case directory holds package (Project.toml with `name` and `uuid`, `src/`). Harness loads it in test process under unique name; fixtures change only own types and functions, except `piracy` fixture, which extends Base function on Base type no test calls.
+UI cases for rules after `syntax`: case directory holds package (Project.toml with `name` and `uuid`, `src/`). Harness loads it in test process under unique name. Fixture that extends function it does not own (`piracy`) changes method table for later cases, so it runs in fresh process.
 
 ### Incremental runs and disk cache
 

@@ -460,3 +460,11 @@ F76 `duplicate-code` moves to later: jscpd needs Node at lint time.
 Dropped `Corset.check()` inside `runtests.jl`. Test code changes method table, and `--code-coverage` changes optimized IR; principle says code that ran before Corset changes speed only.
 Temporary environment is nameless and develops target by path: copied named project would load target from cache directory.
 Load failure is `load-error` finding, as `parse-error`.
+
+### Phase 3 design: adversarial pass
+
+Codex review of phase 3 design found four problems; all accepted:
+- `@v#.#` sits in default load path, so ambient packages could supply target, triggers or methods. Command line now always relaunches with `JULIA_LOAD_PATH` set to temporary environment and `@stdlib`.
+- Overwrite without keywords keeps earlier keyword sorter; F24 note says so.
+- F88 reads Project.toml only; it moves to `syntax` stage, so load error does not hide it and check loads nothing.
+- Piracy fixture changes method table for later UI cases; such fixtures run in fresh process.
