@@ -28,3 +28,9 @@ end
 "none"
 # Volume of unit cube.
 volume() = 1
+
+# Costs $5; quote with """, path C:\temp.
+cost() = 5
+
+# Greets with "hi"
+greet() = "hi"

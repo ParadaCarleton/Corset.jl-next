@@ -211,8 +211,8 @@ const PROGRAMS = @composed function program(parts = PARTS, separator = SEPARATOR
     return body * "\n"
 end
 const TIERS = Data.SampledFrom(collect(instances(Tier.T)))
-"""Rules that compare statement with neighbor as text; fix that rewrites statement into neighbor's text reveals duplicate."""
-const NEIGHBOR_RULES = [Symbol("duplicate-statement")]
+"""Rules that compare code as text; fix that rewrites code into text of other code reveals real match, such as two equal lock targets."""
+const TEXT_MATCH_RULES = [Symbol("duplicate-statement"), Symbol("unguarded-release"), :unreachable]
 """Rules whose `safe` fix spells out what parser already reads: proven equivalent."""
 const EQUIVALENT = [:docstring, :juxtaposition, Symbol("mixed-return"), Symbol("unused-literal")]
 """Rules whose `safe` fix changes meaning to fix definite bug inside method."""
@@ -238,6 +238,11 @@ end
     returned = "function wrapped()\n    return missing\n    pinned = Task(work); pinned.sticky = false\nend\n"
     @test occursin("return pinned.sticky", fixed_once(returned, Tier.safe)) && !any(finding -> finding.rule == Symbol("pinned-task"), findings_of(fixed_once(returned, Tier.safe)))
 
+    # Comment text becomes docstring with same value; quotes, backslashes and dollar signs included.
+    @check max_examples = EXAMPLES db = EXAMPLE_DB function docstring_keeps_text(line = Data.Text(Data.SampledFrom(collect("a \"\\\$#()")); max_len = 12))
+        return Meta.parse("\"\"\"" * Corset.Rules.Docstring.escaped(line) * "\"\"\"") == line
+    end
+
     @check max_examples = EXAMPLES db = EXAMPLE_DB function fix_keeps_code_valid(text = PROGRAMS, tier = TIERS)
         fixed = fixed_once(text, tier)
         return (!parses(text) || parses(fixed)) && lowering_errors(Meta.parseall(fixed)) <= lowering_errors(Meta.parseall(text))
@@ -251,7 +256,7 @@ end
         after = findings_of(Corset.Fixes.apply_edits(text, edits))
         applied = filter(finding -> !isnothing(finding.fix) && !isempty(finding.fix.edits) && all(in(edits), finding.fix.edits), before)
         tally(findings::Vector{Finding}, rule::Symbol)::Int = count(finding -> finding.rule == rule, findings)
-        return all(tally(after, rule) <= tally(before, rule) - tally(applied, rule) for rule in setdiff([entry.name for entry in Corset.Rules.REGISTRY], NEIGHBOR_RULES))
+        return all(tally(after, rule) <= tally(before, rule) - tally(applied, rule) for rule in setdiff([entry.name for entry in Corset.Rules.REGISTRY], TEXT_MATCH_RULES))
     end
 
     # Equivalent fixes keep meaning; differential run of all `safe` fixes waits for execution harness.

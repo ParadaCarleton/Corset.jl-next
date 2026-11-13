@@ -40,9 +40,12 @@ function code_above(text::String, first::Int)::Bool
     return !isempty(line) && !startswith(line, "#")
 end
 
+"""Comment text `line` as string source with same value: backslash, dollar sign and quote that could close string get escaped."""
+escaped(line::AbstractString)::String = replace(line, '\\' => "\\\\", '$' => "\\\$", r"\"(?=\"|$)" => "\\\"")
+
 """Docstring text built from comment lines `lines` of `text`, with indentation `indent`."""
 function as_docstring(text::String, lines::Vector{UnitRange{Int}}, indent::String)::String
-    body = [lstrip(chopprefix(lstrip(text[line]), "#")) for line in lines]
+    body = [escaped(lstrip(chopprefix(lstrip(text[line]), "#"))) for line in lines]
     return length(body) == 1 ? "$indent\"\"\"$(body[1])\"\"\"" :
         "$indent\"\"\"\n" * join((indent * line for line in body), "\n") * "\n$indent\"\"\""
 end

@@ -71,3 +71,27 @@ warning[docstring]: comment above definition is not docstring
    = fix: turn comment into docstring   [safe]
    = docs: corset explain docstring
 
+warning[docstring]: comment above definition is not docstring
+  --> positive.jl:33:1
+   |
+32 | # Costs $5; quote with """, path C:\temp.
+   | ----------------------------------------- comment
+33 | cost() = 5
+   | ^^^^^^^^^^ definition without docstring
+   |
+   = why: help mode, Documenter and language server show docstrings; comments stay invisible
+   = fix: turn comment into docstring   [safe]
+   = docs: corset explain docstring
+
+warning[docstring]: comment above definition is not docstring
+  --> positive.jl:36:1
+   |
+35 | # Greets with "hi"
+   | ------------------ comment
+36 | greet() = "hi"
+   | ^^^^^^^^^^^^^^ definition without docstring
+   |
+   = why: help mode, Documenter and language server show docstrings; comments stay invisible
+   = fix: turn comment into docstring   [safe]
+   = docs: corset explain docstring
+
