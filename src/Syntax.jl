@@ -29,12 +29,15 @@ function parse_file(path::String, text::String, role::Role.T)::SyntaxFile
     return SyntaxFile(path, text, role, tree, forms, leaves, comments, groups, errors, binding_sites(forms))
 end
 
-"""Identifier `node` binds once `::T` and default `= value` are stripped; `nothing` for other targets, such as tuples."""
-function bound_identifier(node::SyntaxNode)::Union{Nothing, SyntaxNode}
-    while kind_name(node) in ("::", "=", "kw") && !isempty(children_of(node))
-        node = children_of(node)[1]
-    end
-    return isnothing(identifier_name(node)) ? nothing : node
+"""
+Identifiers `node` binds once `x::T`, default `= value` and splat `...` are stripped; tuple binds each element, `(; a, b)` too.
+Anonymous `::T` binds nothing; so do targets such as `a[i]` and `a.b`.
+"""
+function bound_identifiers(node::SyntaxNode)::Vector{SyntaxNode}
+    kind, children = kind_name(node), children_of(node)
+    kind in ("tuple", "parameters") && return reduce(vcat, map(bound_identifiers, children); init = SyntaxNode[])
+    (kind in ("=", "kw", "...") || (kind == "::" && length(children) == 2)) && return bound_identifiers(children[1])
+    return isnothing(identifier_name(node)) ? SyntaxNode[] : [node]
 end
 
 """Kinds whose first child names definition."""
@@ -44,11 +47,7 @@ const NAMED = ("function", "macro", "struct", "abstract", "primitive", "module")
 function binding_sites(forms::Dict{Kind, Vector{SyntaxNode}})::Vector{BindingSite}
     sites = BindingSite[]
     nodes(kind::String)::Vector{SyntaxNode} = get(forms, JS.Kind(kind), SyntaxNode[])
-    function site!(node::SyntaxNode, kind::BindingKind.T)::Nothing
-        name = bound_identifier(node)
-        isnothing(name) || push!(sites, BindingSite(name, kind))
-        return nothing
-    end
+    site!(node::SyntaxNode, kind::BindingKind.T)::Nothing = (foreach(name -> push!(sites, BindingSite(name, kind)), bound_identifiers(node)); nothing)
     for definition in nodes("function")
         signature = children_of(definition)[1]
         while kind_name(signature) in ("where", "::")

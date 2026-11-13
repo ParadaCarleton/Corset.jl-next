@@ -450,6 +450,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Blind spot: syntax-only rule cannot see that <code>a::Vector</code> is 1-based, because <code>inference</code> stage did not run.</li>
 <li>Blind spot: inference refused generated method; macro did not expand; typed finding has no source span; <code>include</code> path is computed.</li>
 <li>Corset limits never fall below compiler limits (<code>max_methods</code>, union splitting). Corset resolves every call compiler resolves.</li>
+<li>Rules assume Base functions keep documented contracts: <code>==</code> has no side effects, and comparison with <code>NaN</code> is false. Method that breaks contract is out of scope, as for Clippy <code>ifs_same_cond</code>.</li>
 </ul>
 <p>Coverage line ends every run and counts blind spots by cause: <code>analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)</code>. Rule that lacks fact at site reports nothing there.</p>
 </div><div class="decision"><h3>Lint levels</h3>

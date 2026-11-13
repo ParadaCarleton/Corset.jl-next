@@ -47,3 +47,9 @@ function opt_out_reverted(f)
     task.sticky = true
     return task
 end
+
+# Qualified constructor builds same sticky task.
+schedule(Core.Task(() -> work()))
+
+# Opt-out after schedule comes too late: task already pinned.
+late = Task(work); schedule(late); late.sticky = false

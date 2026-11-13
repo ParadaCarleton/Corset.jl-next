@@ -55,3 +55,9 @@ module Legacy
 error("Legacy is removed; use Modern")
 const LEVEL = 1
 end
+
+# Qualified Base function still ends block.
+function stop_qualified()
+    Base.error("stop")
+    return 1
+end

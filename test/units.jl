@@ -78,6 +78,16 @@ end
     calls = Corset.Syntax.parse_file("c.jl", "@spawn f()\nBase.Threads.@spawn f()\n@Threads.spawn f()\nMine.@spawn f()\n", Role.package)
     @test [Facts.base_macro(node) for node in Facts.forms(calls, "macrocall")] == ["@spawn", "@spawn", "@spawn", nothing]
     @test isnothing(Facts.base_macro(only(Facts.forms(calls, "toplevel"))))
+    # Call head reads Base module path as written; function of other module gives `nothing`.
+    heads = Corset.Syntax.parse_file("h.jl", "error(1)\nBase.include(@__MODULE__, \"c.jl\")\nCore.Task(f)\nMine.error(1)\na == b\n", Role.package)
+    @test [Facts.call_head(node) for node in Facts.forms(heads, "call")] == ["error", "include", "Task", nothing, "=="]
+    @test length(Facts.include_calls(heads)) == 1
+    # Binding sites: destructured names bind; anonymous `::T` binds nothing.
+    bound = Corset.Syntax.parse_file("b.jl", "f(::Int, (a, b), c::Int = 1; d = 2, e...) = 1\ntmp, (other, x...) = pair\nfor (i, item) in pairs end\n(; k, l) = nt\nv[1] = 2\n", Role.package)
+    @test [Facts.identifier_name(site.name) for site in bound.bindings] == ["a", "b", "c", "d", "e", "tmp", "other", "x", "k", "l", "i", "item", "f"]
+    # Normalized source: layout run becomes one space; comments drop; string contents and significant spaces stay.
+    shapes = Corset.Syntax.parse_file("n.jl", "a = [1 -2]\nb = [1 - 2]\nc = x == \"a  b\" #= c =#  &&  y\n", Role.package)
+    @test [Facts.normalized_source(shapes, node) for node in Facts.forms(shapes, "=")] == ["a = [1 -2]", "b = [1 - 2]", "c = x == \"a  b\" && y"]
 end
 
 @testset "engine" begin
@@ -152,7 +162,8 @@ end
         report = Corset.check(directory)
         @test !isempty(report.diagnostics)
         @test length(report.sources) == count(endswith(".jl"), [name for (_, _, names) in walkdir(joinpath(directory, "src")) for name in names])
-        @test isempty(report.blind_spots)
+        # `configured_signatures` loads user file with `Base.include(holder, path)`: path is computed.
+        @test [spot.cause for spot in report.blind_spots] == ["include with computed path"]
         @test isnothing(Corset.Render.render_all(devnull, report))
         @test length(Corset.Output.json_report(report)["diagnostics"]) == length(report.diagnostics)
         @test length(only(Corset.Output.sarif_report(report, "0")["runs"])["results"]) == length(report.diagnostics)
@@ -180,8 +191,7 @@ level(settings::Settings, name::String)::Level.T = first(Config.level_of(setting
     @test Config.level_of(library, entry(Symbol("approx-zero")))[2] == "correctness group, library preset"
     nameless = fixture_settings("nameless")
     @test (nameless.kind, nameless.confidence, nameless.tier) == (Kind.application, Confidence.definite, Tier.breaking)
-    @test fixture_settings("not-table").kind == Kind.application
-    for broken in ("missing-kind", "bad-level", "unknown-rule", "unknown-key", "broken-toml")
+    for broken in ("missing-kind", "bad-level", "unknown-rule", "unknown-key", "broken-toml", "not-table")
         @test_throws ConfigError fixture_settings(broken)
     end
     @test sprint(showerror, ConfigError("bad")) == "config error: bad"
@@ -209,6 +219,14 @@ level(settings::Settings, name::String)::Level.T = first(Config.level_of(setting
     mktempdir(@__DIR__) do directory
         write(joinpath(directory, "LocalPreferences.toml"), "[Corset]\nbanned = [{ name = \"x\", reason = \"r\", group = \"correctness\" }]\n")
         @test_throws ConfigError Config.read_table(joinpath(directory, "LocalPreferences.toml"), ("Corset",))
+        # Missing key means defaults; key holding other value than table is error.
+        project_file = joinpath(directory, "Project.toml")
+        write(project_file, "name = \"P\"\n")
+        @test Config.read_table(project_file, ("preferences", "Corset")) == Config.Table()
+        for text in ("preferences = 1\n", "[preferences]\nCorset = \"library\"\n")
+            write(project_file, text)
+            @test_throws ConfigError Config.read_table(project_file, ("preferences", "Corset"))
+        end
     end
 end
 

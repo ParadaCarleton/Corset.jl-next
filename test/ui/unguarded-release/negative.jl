@@ -63,3 +63,16 @@ function finish(cache_lock)
     unlock(cache_lock)
     return nothing
 end
+
+# Targets differ inside string: two locks.
+function pick(locks)
+    lock(locks["a b"])
+    work()
+    unlock(locks["a  b"])
+end
+
+# Code between cannot throw.
+function mark(guard)
+    lock(guard); count = 1; unlock(guard)
+    return count
+end

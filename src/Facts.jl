@@ -17,7 +17,7 @@ export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
-export takes_docstring, comment_lines_above, comments_in, discarded
+export takes_docstring, comment_lines_above, comments_in, discarded, literal
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
 @enumx Precision exact line
@@ -176,11 +176,13 @@ end
 root_alternatives(node::JS.TreeNode)::Vector{Any} =
     kind_name(node) == "~or" ? reduce(vcat, map(root_alternatives, JS.children(node))) : Any[node]
 
-"""Function name of call `node` (operator for infix call); `nothing` for other nodes or computed callee."""
+"""
+Base function name call `node` calls, read as written (operator for infix call): `"error"` for `error(…)` and `Base.error(…)`.
+`nothing` for other nodes, computed callee, and function of module outside `BASE_MODULES`.
+"""
 function call_head(node::JS.TreeNode)::Union{Nothing, String}
     kind_name(node) == "call" || return nothing
-    callee = JS.children(node)[JS.is_infix_op_call(node) ? 2 : 1]
-    return kind_name(callee) == "Identifier" ? string(callee.val) : nothing
+    return base_name(JS.children(node)[JS.is_infix_op_call(node) ? 2 : 1])
 end
 
 """Functions that load file into calling module: Base `include`, Revise `includet`."""
@@ -289,23 +291,22 @@ end
 macro_name(file::SyntaxFile, node::SyntaxNode)::String = (name = macro_span(file, node); file.text[name.first_byte:thisind(file.text, name.last_byte)])
 
 """Name of identifier `node`; `nothing` for other kinds."""
-identifier_name(node::SyntaxNode)::Union{Nothing, String} = kind_name(node) == "Identifier" ? string(node.val) : nothing
+identifier_name(node::JS.TreeNode)::Union{Nothing, String} = kind_name(node) == "Identifier" ? string(node.val) : nothing
 
-"""Name `node` gives Base binding: `"NaN"` for `NaN` and `Base.NaN`; `nothing` for other nodes. Names read as written."""
-function base_name(node::SyntaxNode)::Union{Nothing, String}
-    kind_name(node) == "." || return identifier_name(node)
-    parts = children_of(node)
-    return length(parts) == 2 && identifier_name(parts[1]) == "Base" ? identifier_name(parts[2]) : nothing
-end
-
-"""Module paths whose macros count as Base macros, as written before `.@`."""
+"""Module paths whose names count as Base names, as written before `.`: `Base.error`, `Core.Task`, `Threads.@spawn`."""
 const BASE_MODULES = ("Base", "Core", "Threads", "Base.Threads")
 
 """Dotted module path `node` writes: `"Base.Threads"` for `Base.Threads`; `nothing` for other forms."""
-function module_path(node::SyntaxNode)::Union{Nothing, String}
+function module_path(node::JS.TreeNode)::Union{Nothing, String}
     kind_name(node) == "." || return identifier_name(node)
-    outer, inner = module_path(children_of(node)[1]), identifier_name(children_of(node)[end])
+    outer, inner = module_path(JS.children(node)[1]), identifier_name(JS.children(node)[end])
     return isnothing(outer) || isnothing(inner) ? nothing : "$outer.$inner"
+end
+
+"""Name `node` gives Base binding, read as written: `"NaN"` for `NaN` and `Base.NaN`; `nothing` for name of other module."""
+function base_name(node::JS.TreeNode)::Union{Nothing, String}
+    kind_name(node) == "." || return identifier_name(node)
+    return module_path(JS.children(node)[1]) in BASE_MODULES ? identifier_name(JS.children(node)[end]) : nothing
 end
 
 """
@@ -434,9 +435,39 @@ function discarded(node::SyntaxNode)::Bool
     return children_of(parent)[end] !== node
 end
 
-"""Source of `node` with whitespace runs collapsed and docstring dropped, for comparison."""
-normalized_source(file::SyntaxFile, node::SyntaxNode)::String =
-    kind_name(node) == "doc" ? normalized_source(file, children_of(node)[end]) : replace(source(file, node), r"\s+" => " ")
+"""Leaf kinds of number and boolean literals."""
+const LITERAL_LEAVES = ("Integer", "Float", "Float32", "HexInt", "BinInt", "OctInt", "Bool")
+
+"""Whether `node` is literal: string without interpolation, number, character, symbol, `nothing`, `true` or `false`."""
+function literal(node::SyntaxNode)::Bool
+    kind, children = kind_name(node), children_of(node)
+    (kind in LITERAL_LEAVES || kind == "char") && return true
+    kind == "string" && return all(child -> kind_name(child) == "String", children)
+    kind == "quote" && return length(children) == 1 && kind_name(children[1]) == "Identifier"
+    return identifier_name(node) == "nothing"
+end
+
+"""Tokens of layout: whitespace and comments."""
+const LAYOUT_TOKENS = (JS.K"Whitespace", JS.K"NewlineWs", JS.K"Comment")
+
+"""
+Source of `node` for comparison: each layout run between tokens becomes one space, docstring drops, string contents stay exact.
+Space stays significant: `[1 -2]` and `[1 - 2]` differ.
+"""
+function normalized_source(file::SyntaxFile, node::SyntaxNode)::String
+    kind_name(node) == "doc" && return normalized_source(file, children_of(node)[end])
+    text, pieces, gap = source(file, node), SubString{String}[], false
+    for token in JS.tokenize(text)
+        if JS.kind(token) in LAYOUT_TOKENS
+            gap = !isempty(pieces)
+        else
+            gap && push!(pieces, SubString(" "))
+            push!(pieces, SubString(text, Int(first(token.range)), thisind(text, Int(last(token.range)))))
+            gap = false
+        end
+    end
+    return join(pieces)
+end
 
 """Finding of `rule` with primary label at `node` of `file`."""
 function finding(
