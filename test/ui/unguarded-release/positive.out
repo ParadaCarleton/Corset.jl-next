@@ -1,0 +1,132 @@
+error[unguarded-release]: `unlock(cache_lock)` is skipped when code before it throws
+ --> positive.jl:5:5
+  |
+3 |     lock(cache_lock)
+  |     ---------------- acquired here
+4 |     cache[key] = value
+5 |     unlock(cache_lock)
+  |     ^^^^^^^^^^^^^^^^^^ skipped on exception
+  |
+  = why: exception between them leaves lock held; next `lock` call waits forever
+  = fix: use `lock(cache_lock) do … end`   [manual]
+  = docs: corset explain unguarded-release
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow unguarded-release -- <reason>`
+
+error[unguarded-release]: `Base.unlock(cache_lock)` is skipped when code before it throws
+  --> positive.jl:12:5
+   |
+10 |     Base.lock(cache_lock)
+   |     --------------------- acquired here
+11 |     cache[key] = value
+12 |     Base.unlock(cache_lock)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^ skipped on exception
+   |
+   = why: exception between them leaves lock held; next `lock` call waits forever
+   = fix: use `Base.lock(cache_lock) do … end`   [manual]
+   = docs: corset explain unguarded-release
+
+error[unguarded-release]: `unlock(state.locks[  1 ])` is skipped when code before it throws
+  --> positive.jl:20:5
+   |
+18 |     lock(state.locks[ 1 ])
+   |     ---------------------- acquired here
+19 |     state.count += 1
+20 |     unlock(state.locks[  1 ])
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ skipped on exception
+   |
+   = why: exception between them leaves lock held; next `lock` call waits forever
+   = fix: use `lock(state.locks[ 1 ]) do … end`   [manual]
+   = docs: corset explain unguarded-release
+
+error[unguarded-release]: `release(slots)` is skipped when code before it throws
+  --> positive.jl:27:5
+   |
+25 |     acquire(slots)
+   |     -------------- acquired here
+26 |     work()
+27 |     release(slots)
+   |     ^^^^^^^^^^^^^^ skipped on exception
+   |
+   = why: exception between them keeps semaphore slot; later `acquire` calls wait for it forever
+   = fix: wrap code after `acquire(slots)` in `try … finally release(slots) end`   [manual]
+   = docs: corset explain unguarded-release
+
+error[unguarded-release]: `Base.release(slots)` is skipped when code before it throws
+  --> positive.jl:34:5
+   |
+32 |     Base.acquire(slots)
+   |     ------------------- acquired here
+33 |     work()
+34 |     Base.release(slots)
+   |     ^^^^^^^^^^^^^^^^^^^ skipped on exception
+   |
+   = why: exception between them keeps semaphore slot; later `acquire` calls wait for it forever
+   = fix: wrap code after `Base.acquire(slots)` in `try … finally Base.release(slots) end`   [manual]
+   = docs: corset explain unguarded-release
+
+error[unguarded-release]: `close(io)` is skipped when code before it throws
+  --> positive.jl:41:5
+   |
+39 |     io = open(path, "w")
+   |     -------------------- acquired here
+40 |     write(io, data)
+41 |     close(io)
+   |     ^^^^^^^^^ skipped on exception
+   |
+   = why: exception between them leaves file open until garbage collector finalizes it
+   = fix: use `open(path, "w") do io … end`   [manual]
+   = docs: corset explain unguarded-release
+
+error[unguarded-release]: `Base.close(io)` is skipped when code before it throws
+  --> positive.jl:48:5
+   |
+46 |     io = Base.open(path, "w")
+   |     ------------------------- acquired here
+47 |     write(io, data)
+48 |     Base.close(io)
+   |     ^^^^^^^^^^^^^^ skipped on exception
+   |
+   = why: exception between them leaves file open until garbage collector finalizes it
+   = fix: use `Base.open(path, "w") do io … end`   [manual]
+   = docs: corset explain unguarded-release
+
+error[unguarded-release]: `unlock(cache_lock)` is skipped when code before it throws
+  --> positive.jl:57:9
+   |
+55 |         lock(cache_lock)
+   |         ---------------- acquired here
+56 |         work()
+57 |         unlock(cache_lock)
+   |         ^^^^^^^^^^^^^^^^^^ skipped on exception
+   |
+   = why: exception between them leaves lock held; next `lock` call waits forever
+   = fix: use `lock(cache_lock) do … end`   [manual]
+   = docs: corset explain unguarded-release
+
+error[unguarded-release]: `unlock(cache_lock)` is skipped when code before it throws
+  --> positive.jl:73:5
+   |
+71 |     lock(cache_lock)
+   |     ---------------- acquired here
+72 |     work()
+73 |     unlock(cache_lock)
+   |     ^^^^^^^^^^^^^^^^^^ skipped on exception
+   |
+   = why: exception between them leaves lock held; next `lock` call waits forever
+   = fix: use `lock(cache_lock) do … end`   [manual]
+   = docs: corset explain unguarded-release
+
+error[unguarded-release]: `unlock(registry_lock)` is skipped when code before it throws
+  --> positive.jl:79:1
+   |
+77 | lock(registry_lock)
+   | ------------------- acquired here
+78 | register(item)
+79 | unlock(registry_lock)
+   | ^^^^^^^^^^^^^^^^^^^^^ skipped on exception
+   |
+   = why: exception between them leaves lock held; next `lock` call waits forever
+   = fix: use `lock(registry_lock) do … end`   [manual]
+   = docs: corset explain unguarded-release
+
