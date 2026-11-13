@@ -414,3 +414,10 @@ Array rules hinge on whether callee writes array. Syntax alone treats every call
 ### Macro code
 
 Self-lint matched rule patterns inside Argus `@pattern` bodies, which are data. Rules now follow Clippy: they read code as written, macro arguments included, and code that package macros write. Code that other packages' macros write gets no findings, since package cannot fix it; earlier text reported it marked upstream. Syntax stage skips quoted code outside `$` interpolation. Shelved: skip macro arguments Julia rejects as written (lowering error such as `{x}`, or call no Base method takes such as `x ~ Normal()`). Lowering belongs to `scope` and method tables to `package`, so syntax stage would be second producer. Stopgap until then: skip macro arguments with `{}`, which lowering always rejects; revisit with general check.
+
+### Fix properties
+
+Supposition properties found four causes of fix bugs.
+JuliaSyntax keeps grouping parentheses as trivia of parent. Fixes that pasted child source dropped them: `(a + b)/2x` became `a + b/(2x)`. `source` now keeps them.
+`world-age` rewrote method signature after `eval` as call. `docstring` fired in function bodies, where docstring is plain string. `duplicate-statement` compared docstrings.
+Exempt from no-new-finding property: rules that compare statement with neighbor. Fix can rewrite statement into neighbor's text; duplicate existed in meaning before.

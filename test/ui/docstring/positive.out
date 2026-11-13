@@ -35,3 +35,27 @@ warning[docstring]: module `Inner` has no docstring
    = fix: add docstring above `module`: what package does, main entry points   [manual]
    = docs: corset explain docstring
 
+warning[docstring]: comment above definition is not docstring
+  --> positive.jl:21:5
+   |
+20 |     # Volume of unit cube.
+   | -------------------------- comment
+21 |     volume() = 1
+   |     ^^^^^^^^^^^^ definition without docstring
+   |
+   = why: help mode, Documenter and language server show docstrings; comments stay invisible
+   = fix: turn comment into docstring   [safe]
+   = docs: corset explain docstring
+
+warning[docstring]: comment above definition is not docstring
+  --> positive.jl:25:9
+   |
+24 | # Sum without bounds checks.
+   | ---------------------------- comment
+25 | @inline fast_sum(a, b) = a + b
+   |         ^^^^^^^^^^^^^^^^^^^^^^ definition without docstring
+   |
+   = why: help mode, Documenter and language server show docstrings; comments stay invisible
+   = fix: turn comment into docstring   [safe]
+   = docs: corset explain docstring
+

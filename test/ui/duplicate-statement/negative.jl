@@ -7,3 +7,7 @@ end
 
 next!(rng)
 skip!(rng)
+
+"""Area of unit circle."""
+area() = pi
+perimeter() = 2pi

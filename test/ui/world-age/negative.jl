@@ -11,3 +11,9 @@ function no_eval()
     @eval x = 1
     return other()
 end
+
+function define_twice()
+    @eval twice() = 1
+    twice()::Int = 2
+    return nothing
+end

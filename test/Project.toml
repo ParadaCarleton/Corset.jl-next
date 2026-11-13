@@ -2,6 +2,7 @@
 Corset = "09bf9df1-bea6-4267-acd1-e930da7492cc"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 JSONSchema = "7d188eb4-7ad8-530c-ae41-71a32a6d4692"
+Supposition = "5a0628fe-1738-4658-9b6d-0b7605a9755b"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
@@ -11,5 +12,6 @@ Corset = {path = ".."}
 [compat]
 JSON = "1"
 JSONSchema = "1"
+Supposition = "0.3"
 TOML = "1"
 Test = "1"

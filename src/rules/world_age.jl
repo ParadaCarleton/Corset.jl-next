@@ -46,6 +46,15 @@ function evaluated_definition(node)::Union{Nothing, String}
     return nothing
 end
 
+"""Whether call `node` is signature of method definition, as in `f(x) = …`: definition, no call."""
+function is_signature(node)::Bool
+    child, parent = node, parent_of(node)
+    while !isnothing(parent) && kind_name(parent) in ("where", "::") && children_of(parent)[1] === child
+        child, parent = parent, parent_of(parent)
+    end
+    return !isnothing(parent) && kind_name(parent) == "function" && children_of(parent)[1] === child
+end
+
 """Fix wrapping call `node` in `Base.invokelatest`; manual when call passes keywords."""
 function latest_fix(file::SyntaxFile, node)::Fix
     parts = children_of(node)
@@ -64,7 +73,7 @@ function run(facts::FactSet)::Vector{Finding}
             name = evaluated_definition(statement)
             isnothing(name) || (defined[name] = statement; continue)
             for node in descendants(statement)
-                call_head(node) in keys(defined) || continue
+                call_head(node) in keys(defined) && !is_signature(node) || continue
                 push!(
                     found, finding(
                         NAME, file, node; kind = :same_world_call, confidence = Confidence.definite,

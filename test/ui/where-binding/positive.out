@@ -22,3 +22,14 @@ error[where-binding]: `where` binds result type `T`, not method
   = fix: replace with `(first_of(v::Vector{T})::T) where T`   [safe]
   = docs: corset explain where-binding
 
+error[where-binding]: `where` binds result type `(T <: Integer ? Int : T)`, not method
+ --> positive.jl:4:1
+  |
+4 | promoted(x::T)::(T <: Integer ? Int : T) where {T} = x
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `where` attaches to result annotation
+  |                 ---------------------------------- parsed as `(T <: Integer ? Int : T) where …`
+  |
+  = why: method gets no type parameter: call errors, or uses global of same name
+  = fix: replace with `(promoted(x::T)::(T <: Integer ? Int : T)) where {T}`   [safe]
+  = docs: corset explain where-binding
+

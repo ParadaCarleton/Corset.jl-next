@@ -37,3 +37,15 @@ error[world-age]: `wrap` is called in world older than its definition
    = fix: replace with `Base.invokelatest(wrap, 1)`   [safe]
    = docs: corset explain world-age
 
+error[world-age]: `set_flag` is called in world older than its definition
+  --> positive.jl:22:12
+   |
+21 |     @eval set_flag(flag) = flag
+   |     --------------------------- defined by `eval` here
+22 |     return set_flag((flag = true))
+   |            ^^^^^^^^^^^^^^^^^^^^^^^ MethodError: method too new
+   |
+   = why: running function keeps world it started in; `eval` adds method to newer world
+   = fix: replace with `Base.invokelatest(set_flag, (flag = true))`   [safe]
+   = docs: corset explain world-age
+

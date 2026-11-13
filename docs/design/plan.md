@@ -30,7 +30,8 @@ Rule is on by default only when all hold:
 - Fixture per footgun: positive, negative, and fix result.
 - Any false `definite` finding blocks rule: it is rule bug. At least 90% of sampled `possible` findings are real problems.
 - `definite` typed finding needs validated span: callee at mapped node matches IR callee; mismatch demotes span to line precision.
-- Property tests (Supposition.jl): fix creates no new finding; fix is idempotent. `safe` fix: fixture behaves same before and after (differential run).
+- Property tests (Supposition.jl) on programs built from UI case statements, with expressions spliced into value positions so fixes nest. Fixed code parses and lowers when original did. On code Julia accepts, fix removes its finding and adds none; `duplicate-statement` compares neighbors and is exempt. Fix runs converge. Equivalent `safe` fix keeps parsed meaning.
+- Differential run: `safe` fix behaves same before and after on executed fixture. Not built yet.
 - Message shows cause span and concrete fix; reviewed on corpus sample.
 - Run time stays inside budget in CI perf test.
 
