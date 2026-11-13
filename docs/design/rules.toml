@@ -368,7 +368,7 @@ footguns = [81]
 [[rule]]
 name = "banned"
 footguns = [82]
-note = "One config list; each entry names its group."
+note = "One config list `banned`; entry holds Argus `pattern` or whole-name regex `name`, plus `reason`. Rule level covers every entry, like Clippy `disallowed_methods`."
 
 [[rule]]
 name = "nan-compare"

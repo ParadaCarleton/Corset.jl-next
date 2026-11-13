@@ -245,9 +245,10 @@ Principle: values from outside inputs are weak. Literals, constants and globals 
 
 Always suggest `Real` for floats. `enumerated-union` calls `abstract-float` rewrite directly: `float_to_real(typejoin(members))`. Property test guards all rules: applying any fix never creates new finding. Revisit general mechanism only if test keeps finding conflicts.
 
-### Name bans (conflict)
+### Name bans (decided)
 
-`banned-name` and `forbidden-pattern` both ban text by config. Merge configs?
+`banned` merges `banned-name` and `forbidden-pattern` into one config list. Entry holds `pattern` or `name`, plus `reason`.
+Rule level covers every entry, like Clippy `disallowed_methods`; per-entry group was dropped.
 
 ### JET (open)
 

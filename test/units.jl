@@ -192,6 +192,20 @@ level(settings::Settings, name::String)::Level.T = first(Config.level_of(setting
     @test Config.project_root(joinpath(CONFIG, "library", "a.jl")) == joinpath(CONFIG, "library")
     @test Config.project_root("/") === nothing
     @test isempty(intersect(string.(instances(Group.T)), [string(rule.name) for rule in REGISTRY]))
+    # Ban entry: one of `pattern` and `name`, reason with text, valid pattern or regex. Name regex matches whole name.
+    @test Config.ban(Config.BanTable(; name = "tmp.*", reason = "r")).target == r"^(?:tmp.*)$"
+    @test Config.ban(Config.BanTable(; pattern = "eval", reason = "r")).text == "eval"
+    for (pattern, name, reason) in (
+            (nothing, nothing, "r"), ("f()", "x", "r"), (nothing, "x", " "), ("f(", nothing, "r"), ("a b", nothing, "r"), ("", nothing, "r"), ("@esc(x, :some)", nothing, "r"), (nothing, "(", "r"), (nothing, "a)|(b", "r"),
+        )
+        @test_throws ConfigError Config.ban(Config.BanTable(; pattern, name, reason))
+    end
+    project, local_bans = Config.Table(; banned = [Config.BanTable(; name = "a", reason = "r")]), Config.Table(; banned = Config.BanTable[])
+    @test isempty(Config.overlay(project, local_bans).banned) && length(Config.overlay(project, Config.Table()).banned) == 1
+    mktempdir(@__DIR__) do directory
+        write(joinpath(directory, "LocalPreferences.toml"), "[Corset]\nbanned = [{ name = \"x\", reason = \"r\", group = \"correctness\" }]\n")
+        @test_throws ConfigError Config.read_table(joinpath(directory, "LocalPreferences.toml"), ("Corset",))
+    end
 end
 
 @testset "levels and report" begin
@@ -229,7 +243,7 @@ end
     @test all(diagnostic.level == Level.deny for diagnostic in report.diagnostics)
     @test occursin("= note: deny from opt-out check, always on", sprint(io -> Corset.Render.render_all(io, report)))
     file = Corset.Syntax.parse_file("end.jl", "x = 1\n# corset: allow one-letter -- nothing follows\n", Role.package)
-    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file], String[]), Finding[], Set([Symbol("one-letter")]))
+    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file], String[], Facts.Ban[]), Finding[], Set([Symbol("one-letter")]))
     @test isempty(kept) && [problem.kind for problem in problems] == [:unused]
 end
 
