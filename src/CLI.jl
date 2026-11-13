@@ -16,6 +16,7 @@ using ..Render: render_all, render_summary, render_coverage
 using ..Output: json_report, sarif_report
 using ..OptOuts: OptOuts
 using ..Baseline: Baseline
+using ..Syntax: Syntax
 
 const EXIT_PASS = 0
 const EXIT_FAIL = 1
@@ -37,6 +38,7 @@ const LEVEL_FLAGS = Dict(
 """Text `corset explain` prints for checks that are not registry rules."""
 const BUILTIN_DOCS = Dict(
     String(OptOuts.NAME) => "opt-out (always on)\n\nReports malformed opt-out comments, missing reasons, unknown rules, late `allow-file`, and opt-outs that suppress nothing.",
+    String(Syntax.PARSE_ERROR) => "parse-error (always on)\n\nReports code JuliaSyntax cannot parse. Rules still run on recovered tree; no level, opt-out or baseline hides parse error.",
     "baseline" => "baseline (always on)\n\nReports `$(Baseline.FILE)` entries that match no finding. Run `corset baseline` to rewrite file.",
 )
 

@@ -2,18 +2,45 @@
 module Syntax
 
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
-using ..Facts: SyntaxFile, trimmed, trimmed_bytes
+using ..Facts: SyntaxFile, FactSet, Finding, Label, Span, Precision, Confidence, manual_fix, trimmed, trimmed_bytes
 
-"""Parse `text` of file `path` into lossless tree with kind index and comment ranges. Parse errors stay in tree as error nodes."""
+"""Rule name parse errors report under; outside registry, like opt-out problems."""
+const PARSE_ERROR = Symbol("parse-error")
+
+"""Level source parse errors name; they always have level `deny`."""
+const PARSE_SOURCE = "parse check, always on"
+
+"""
+Parse `text` of file `path` into lossless tree with kind index, comment ranges and parse errors.
+Parser recovers from errors: tree holds error nodes there, and rules still run.
+"""
 function parse_file(path::String, text::String)::SyntaxFile
-    tree = JS.parseall(SyntaxNode, text; filename = path, ignore_errors = true)
+    stream = JS.ParseStream(text)
+    JS.parse!(stream; rule = :all)
+    tree = JS.build_tree(SyntaxNode, stream; filename = path)
+    errors = [error_label(path, text, diagnostic) for diagnostic in stream.diagnostics if JS.is_error(diagnostic)]
     forms, leaves = Dict{Kind, Vector{SyntaxNode}}(), Dict{Kind, Vector{SyntaxNode}}()
     walk(tree) do node
         push!(get!(() -> SyntaxNode[], JS.is_leaf(node) ? leaves : forms, JS.kind(node)), node)
     end
     comments = [Int(first(token.range)):Int(last(token.range)) for token in JS.tokenize(text) if JS.kind(token) == JS.K"Comment"]
-    return SyntaxFile(path, text, tree, forms, leaves, comments, groups!(IdDict{SyntaxNode, UnitRange{Int}}(), text, tree))
+    return SyntaxFile(path, text, tree, forms, leaves, comments, groups!(IdDict{SyntaxNode, UnitRange{Int}}(), text, tree), errors)
 end
+
+"""Label of parse error `diagnostic`; empty range (missing token) widens to byte there, or to last byte at end of file."""
+function error_label(path::String, text::String, diagnostic::JS.Diagnostic)::Label
+    first_byte = clamp(JS.first_byte(diagnostic), 1, max(ncodeunits(text), 1))
+    last_byte = min(max(first_byte, JS.last_byte(diagnostic)), max(ncodeunits(text), 1))
+    return Label(Span(path, first_byte, last_byte, Precision.exact), diagnostic.message)
+end
+
+"""Findings for parse errors of `facts`, always `deny`."""
+parse_problems(facts::FactSet)::Vector{Finding} = [
+    Finding(
+        PARSE_ERROR, :parse_error, Confidence.definite, "code does not parse", label, Label[],
+        "Julia rejects file at load; rules see recovered tree only", manual_fix("fix syntax at marked place"),
+    ) for file in facts.files for label in file.parse_errors
+]
 
 """
 Record in `found` bytes of grouping parentheses that wrap only one child of `node` and its descendants.

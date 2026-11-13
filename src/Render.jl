@@ -4,7 +4,7 @@ module Render
 using ..Facts: Span, Precision, Confidence
 using ..Config: Level
 using ..Engine: Diagnostic, Report
-using ..OptOuts: NAME as OPT_OUT
+using ..Rules: REGISTRY
 using ..Baseline: Baseline
 
 """Header word for `level`, as in rustc."""
@@ -81,7 +81,8 @@ function render(io::IO, diagnostic::Diagnostic, text::String, note::Bool)::Nothi
     isnothing(finding.fix) || println(io, gutter, " = fix: ", finding.fix.text, "   [", finding.fix.tier, "]")
     println(io, gutter, " = docs: corset explain ", finding.rule)
     note && println(io, gutter, " = note: ", diagnostic.level, " from ", diagnostic.source)
-    note && finding.rule != OPT_OUT && println(io, gutter, " = note: opt out with `# corset: allow ", finding.rule, " -- <reason>`")
+    # Opt-outs cover registry rules only; always-on checks (opt-out, parse-error) have none.
+    note && any(rule -> rule.name == finding.rule, REGISTRY) && println(io, gutter, " = note: opt out with `# corset: allow ", finding.rule, " -- <reason>`")
     return nothing
 end
 

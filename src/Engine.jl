@@ -8,6 +8,7 @@ using ..OptOuts: OptOuts
 using ..Fixes: Fixes
 using ..Baseline: Baseline
 using ..Discovery: Discovery
+using ..Syntax: Syntax
 
 """Finding with level from settings. `source` says where level was set."""
 struct Diagnostic
@@ -71,7 +72,11 @@ function analyze(path::String, flags::Flags)::Analysis
     root = something(project, isdir(path) ? abspath(path) : dirname(abspath(path)))
     files = Dict(file.path => file for file in facts.files)
     keys = [Baseline.key(files[diagnostic.finding.primary.span.file], root, diagnostic.finding) for diagnostic in leveled]
-    return Analysis(settings, facts, root, leveled, keys, [Diagnostic(problem, Level.deny, OptOuts.SOURCE) for problem in problems], sources.blind_spots)
+    checks = [
+        [Diagnostic(problem, Level.deny, Syntax.PARSE_SOURCE) for problem in Syntax.parse_problems(facts)];
+        [Diagnostic(problem, Level.deny, OptOuts.SOURCE) for problem in problems]
+    ]
+    return Analysis(settings, facts, root, leveled, keys, checks, sources.blind_spots)
 end
 
 """Report for files discovered from `path`; baseline at project root hides known findings."""
