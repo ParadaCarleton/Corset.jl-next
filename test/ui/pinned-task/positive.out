@@ -120,3 +120,13 @@ warning[pinned-task]: `Task` creates sticky task; `schedule` pins it and caller 
    = fix: start task with `Threads.@spawn`, or set `task.sticky = false` before `schedule`   [manual]
    = docs: corset explain pinned-task
 
+warning[pinned-task]: `Task` creates sticky task; `schedule` pins it and caller to one thread
+  --> positive.jl:52:10
+   |
+52 | schedule(Core.Task(() -> work()))
+   |          ^^^^^^^^^^^^^^^^^^^^^^^ sticky by default
+   |
+   = why: sticky task runs only on scheduling thread; scheduling it also pins calling task
+   = fix: start task with `Threads.@spawn`, or set `task.sticky = false` before `schedule`   [manual]
+   = docs: corset explain pinned-task
+

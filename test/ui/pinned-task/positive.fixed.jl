@@ -47,3 +47,6 @@ function opt_out_reverted(f)
     task.sticky = true
     return task
 end
+
+# Qualified constructor builds same sticky task.
+schedule(Core.Task(() -> work()))

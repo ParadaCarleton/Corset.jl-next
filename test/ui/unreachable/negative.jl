@@ -70,3 +70,8 @@ function choose(x)
         return 2
     end
 end
+
+# Function of other module passes.
+Mine.error("stop")
+keep = 1
+schedule(Mine.Task(() -> work()))

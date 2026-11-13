@@ -78,6 +78,10 @@ end
     calls = Corset.Syntax.parse_file("c.jl", "@spawn f()\nBase.Threads.@spawn f()\n@Threads.spawn f()\nMine.@spawn f()\n", Role.package)
     @test [Facts.base_macro(node) for node in Facts.forms(calls, "macrocall")] == ["@spawn", "@spawn", "@spawn", nothing]
     @test isnothing(Facts.base_macro(only(Facts.forms(calls, "toplevel"))))
+    # Call head reads Base module path as written; function of other module gives `nothing`.
+    heads = Corset.Syntax.parse_file("h.jl", "error(1)\nBase.include(@__MODULE__, \"c.jl\")\nCore.Task(f)\nMine.error(1)\na == b\n", Role.package)
+    @test [Facts.call_head(node) for node in Facts.forms(heads, "call")] == ["error", "include", "Task", nothing, "=="]
+    @test length(Facts.include_calls(heads)) == 1
     # Normalized source: layout run becomes one space; comments drop; string contents and significant spaces stay.
     shapes = Corset.Syntax.parse_file("n.jl", "a = [1 -2]\nb = [1 - 2]\nc = x == \"a  b\" #= c =#  &&  y\n", Role.package)
     @test [Facts.normalized_source(shapes, node) for node in Facts.forms(shapes, "=")] == ["a = [1 -2]", "b = [1 - 2]", "c = x == \"a  b\" && y"]
@@ -155,7 +159,8 @@ end
         report = Corset.check(directory)
         @test !isempty(report.diagnostics)
         @test length(report.sources) == count(endswith(".jl"), [name for (_, _, names) in walkdir(joinpath(directory, "src")) for name in names])
-        @test isempty(report.blind_spots)
+        # `configured_signatures` loads user file with `Base.include(holder, path)`: path is computed.
+        @test [spot.cause for spot in report.blind_spots] == ["include with computed path"]
         @test isnothing(Corset.Render.render_all(devnull, report))
         @test length(Corset.Output.json_report(report)["diagnostics"]) == length(report.diagnostics)
         @test length(only(Corset.Output.sarif_report(report, "0")["runs"])["results"]) == length(report.diagnostics)

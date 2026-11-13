@@ -176,11 +176,13 @@ end
 root_alternatives(node::JS.TreeNode)::Vector{Any} =
     kind_name(node) == "~or" ? reduce(vcat, map(root_alternatives, JS.children(node))) : Any[node]
 
-"""Function name of call `node` (operator for infix call); `nothing` for other nodes or computed callee."""
+"""
+Base function name call `node` calls, read as written (operator for infix call): `"error"` for `error(…)` and `Base.error(…)`.
+`nothing` for other nodes, computed callee, and function of module outside `BASE_MODULES`.
+"""
 function call_head(node::JS.TreeNode)::Union{Nothing, String}
     kind_name(node) == "call" || return nothing
-    callee = JS.children(node)[JS.is_infix_op_call(node) ? 2 : 1]
-    return kind_name(callee) == "Identifier" ? string(callee.val) : nothing
+    return base_name(JS.children(node)[JS.is_infix_op_call(node) ? 2 : 1])
 end
 
 """Functions that load file into calling module: Base `include`, Revise `includet`."""
@@ -289,23 +291,22 @@ end
 macro_name(file::SyntaxFile, node::SyntaxNode)::String = (name = macro_span(file, node); file.text[name.first_byte:thisind(file.text, name.last_byte)])
 
 """Name of identifier `node`; `nothing` for other kinds."""
-identifier_name(node::SyntaxNode)::Union{Nothing, String} = kind_name(node) == "Identifier" ? string(node.val) : nothing
+identifier_name(node::JS.TreeNode)::Union{Nothing, String} = kind_name(node) == "Identifier" ? string(node.val) : nothing
 
-"""Name `node` gives Base binding: `"NaN"` for `NaN` and `Base.NaN`; `nothing` for other nodes. Names read as written."""
-function base_name(node::SyntaxNode)::Union{Nothing, String}
-    kind_name(node) == "." || return identifier_name(node)
-    parts = children_of(node)
-    return length(parts) == 2 && identifier_name(parts[1]) == "Base" ? identifier_name(parts[2]) : nothing
-end
-
-"""Module paths whose macros count as Base macros, as written before `.@`."""
+"""Module paths whose names count as Base names, as written before `.`: `Base.error`, `Core.Task`, `Threads.@spawn`."""
 const BASE_MODULES = ("Base", "Core", "Threads", "Base.Threads")
 
 """Dotted module path `node` writes: `"Base.Threads"` for `Base.Threads`; `nothing` for other forms."""
-function module_path(node::SyntaxNode)::Union{Nothing, String}
+function module_path(node::JS.TreeNode)::Union{Nothing, String}
     kind_name(node) == "." || return identifier_name(node)
-    outer, inner = module_path(children_of(node)[1]), identifier_name(children_of(node)[end])
+    outer, inner = module_path(JS.children(node)[1]), identifier_name(JS.children(node)[end])
     return isnothing(outer) || isnothing(inner) ? nothing : "$outer.$inner"
+end
+
+"""Name `node` gives Base binding, read as written: `"NaN"` for `NaN` and `Base.NaN`; `nothing` for name of other module."""
+function base_name(node::JS.TreeNode)::Union{Nothing, String}
+    kind_name(node) == "." || return identifier_name(node)
+    return module_path(JS.children(node)[1]) in BASE_MODULES ? identifier_name(JS.children(node)[end]) : nothing
 end
 
 """
