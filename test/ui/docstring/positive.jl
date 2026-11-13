@@ -15,3 +15,11 @@ module Inner
 end
 
 end
+
+begin
+    # Volume of unit cube.
+    volume() = 1
+end
+
+# Sum without bounds checks.
+@inline fast_sum(a, b) = a + b

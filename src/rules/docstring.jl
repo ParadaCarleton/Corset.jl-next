@@ -2,7 +2,8 @@
 `docstring` (F74, F80): comment where docstring belongs; module without docstring.
 
 ## Description
-Reports comment block directly above top-level function or struct, and module without docstring.
+Reports comment block directly above function or struct where docstring attaches, and module without docstring.
+Docstring attaches at top level, in module body and in `begin` block; function, `let` and loop bodies drop it.
 
 ## Rationale
 Help mode (`?name`) and documentation tools read docstrings only. Comment above definition stays invisible to them.
@@ -31,6 +32,21 @@ const NAME = :docstring
 """Whether `node` carries docstring: parent is `doc` node."""
 documented(node)::Bool = (parent = parent_of(node); !isnothing(parent) && kind_name(parent) == "doc")
 
+"""Whether docstring above `definition` attaches: statement at top level, in module body or in `begin` block."""
+function takes_docstring(file::SyntaxFile, definition)::Bool
+    statement = definition
+    while !isnothing(parent_of(statement)) && kind_name(parent_of(statement)) == "macrocall"
+        statement = parent_of(statement)
+    end
+    container = parent_of(statement)
+    kind_name(container) == "toplevel" && return true
+    kind_name(container) == "block" || return false
+    kind_name(parent_of(container)) == "module" && return true
+    # `begin` block: keyword comes before first statement; body blocks start at first statement.
+    start = span(file, container).first_byte
+    return startswith(file.text[start:end], "begin") && start < span(file, children_of(container)[1]).first_byte
+end
+
 """Byte ranges of comment lines directly above byte `first` in `text`, top first; blank line ends block."""
 function comment_lines_above(text::String, first::Int)::Vector{UnitRange{Int}}
     lines = UnitRange{Int}[]
@@ -52,12 +68,12 @@ function as_docstring(text::String, lines::Vector{UnitRange{Int}}, indent::Strin
         "$indent\"\"\"\n" * join((indent * line for line in body), "\n") * "\n$indent\"\"\""
 end
 
-"""Findings for top-level definitions under comment block, and modules without docstring."""
+"""Findings for definitions under comment block where docstring attaches, and modules without docstring."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
         for definition in [forms(file, "function"); forms(file, "struct")]
-            documented(definition) && continue
+            (documented(definition) || !takes_docstring(file, definition)) && continue
             lines = comment_lines_above(file.text, span(file, definition).first_byte)
             isempty(lines) && continue
             indent = String(match(r"^[ \t]*", file.text[lines[1]]).match)
