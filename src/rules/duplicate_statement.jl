@@ -29,7 +29,7 @@ using ...Facts
 const NAME = Symbol("duplicate-statement")
 
 """Findings for statement equal to statement right before it; repeated calls may be intended, so `possible`."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, block in [forms(file, "block"); forms(file, "toplevel")]
         statements = children_of(block)
@@ -49,6 +49,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [60], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [60], Stage.syntax, findings)
 
 end

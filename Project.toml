@@ -1,6 +1,6 @@
 name = "Corset"
 uuid = "09bf9df1-bea6-4267-acd1-e930da7492cc"
-version = "0.5.0"
+version = "0.6.0-DEV"
 authors = ["Carlos Parada <71727937+ParadaCarleton@users.noreply.github.com>"]
 
 [deps]

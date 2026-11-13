@@ -26,6 +26,7 @@ include("rules/orphan_task.jl")
 include("rules/pinned_task.jl")
 include("rules/process_state.jl")
 include("rules/repeated_concat.jl")
+include("rules/shadowed_base.jl")
 include("rules/threadid_buffer.jl")
 include("rules/unguarded_release.jl")
 include("rules/unreachable.jl")
@@ -60,6 +61,7 @@ const REGISTRY = RuleEntry[
     PinnedTask.ENTRY,
     ProcessState.ENTRY,
     RepeatedConcat.ENTRY,
+    ShadowedBase.ENTRY,
     ThreadidBuffer.ENTRY,
     UnguardedRelease.ENTRY,
     Unreachable.ENTRY,

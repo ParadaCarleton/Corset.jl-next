@@ -70,7 +70,7 @@ cannot_throw(node::SyntaxNode)::Bool =
     literal(node) || (kind_name(node) == "=" && kind_name(children_of(node)[1]) == "Identifier" && literal(children_of(node)[end]))
 
 """Findings for release statements that run only when code since acquire statement on same target does not throw."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
         acquires, releases = sites(file, :acquire), sites(file, :release)
@@ -96,6 +96,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [98], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [98], Stage.syntax, findings)
 
 end

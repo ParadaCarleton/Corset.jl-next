@@ -48,7 +48,7 @@ function own_returns(body::SyntaxNode)::Vector{Any}
 end
 
 """Findings for long-form functions that return explicitly somewhere and implicitly at end."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, definition in forms(file, "function")
         parts = children_of(definition)
@@ -73,6 +73,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.readability, [73], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.readability, [73], Stage.syntax, findings)
 
 end

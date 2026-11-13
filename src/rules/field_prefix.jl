@@ -41,7 +41,7 @@ const NAME = Symbol("field-prefix")
 const MIN_PREFIX_FIELDS = 3
 
 """Findings for groups of at least `MIN_PREFIX_FIELDS` fields sharing `prefix_` stem."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, definition in forms(file, "struct")
         groups = Dict{String, Vector{Any}}()
@@ -66,6 +66,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.readability, [79], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.readability, [79], Stage.syntax, findings)
 
 end

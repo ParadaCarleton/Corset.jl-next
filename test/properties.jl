@@ -15,7 +15,7 @@ const EXAMPLE_DB = Supposition.DirectoryDB(joinpath(@__DIR__, "SuppositionDB"))
 const SANDBOX = Module(:Sandbox)
 
 """Findings of every rule on `text` as one package file, so rules for package code run too."""
-findings_of(text::String)::Vector{Finding} = Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(PROGRAM, text, Role.package)], [PROGRAM], Corset.Facts.Ban[]))
+findings_of(text::String)::Vector{Finding} = Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(PROGRAM, text, Role.package)], [PROGRAM], Corset.Facts.Ban[], nothing))
 
 """Edits one fix run applies to `findings` at `tier`."""
 edits_of(findings::Vector{Finding}, tier::Tier.T)::Vector{Corset.Facts.Edit} = Corset.Fixes.applicable_edits(findings, PROGRAM, tier)
@@ -218,9 +218,10 @@ const EQUIVALENT = [:docstring, :juxtaposition, Symbol("mixed-return"), Symbol("
 """Rules whose `safe` fix changes meaning to fix definite bug inside method."""
 const BUG_FIXES = [Symbol("where-binding"), Symbol("world-age")]
 
-"""Rules with `safe` fix in UI positive cases."""
+"""Rules with `safe` fix in single-file UI positive cases; package cases are directories and need load."""
 function safe_rules()::Vector{Symbol}
-    positives = [read(joinpath(@__DIR__, "ui", rule, "positive.jl"), String) for rule in readdir(joinpath(@__DIR__, "ui"))]
+    files = [joinpath(@__DIR__, "ui", rule, "positive.jl") for rule in readdir(joinpath(@__DIR__, "ui"))]
+    positives = [read(file, String) for file in files if isfile(file)]
     safe = [finding.rule for text in positives for finding in findings_of(text) if !isnothing(finding.fix) && finding.fix.tier == Tier.safe && !isempty(finding.fix.edits)]
     return sort!(unique(safe))
 end

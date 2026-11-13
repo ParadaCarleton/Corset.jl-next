@@ -148,3 +148,12 @@ A skipped place is a blind spot. Corset can miss findings there.
 
 Corset reports code that JuliaSyntax cannot parse as a `parse-error` finding. Rules still run on the rest of the file.
 No level, opt-out or baseline hides a parse error.
+
+## Load errors
+
+Some rules read the loaded package. For these rules, Corset loads the package into its own process.
+The environment must load the package from its root; another copy is a configuration error.
+
+A package that throws while loading gets a `load-error` finding at the line that threw.
+Rules that read the loaded package do not run, and the coverage line says so.
+No level, opt-out or baseline hides a load error.

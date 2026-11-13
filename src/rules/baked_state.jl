@@ -87,7 +87,7 @@ function baked_target(read::SyntaxNode)::Union{Nothing, SyntaxNode}
 end
 
 """Findings for run-time state read into global at module top level of package file, where precompile stores it."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
         file.role == Role.package || continue
@@ -108,6 +108,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [100], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [100], Stage.syntax, findings)
 
 end

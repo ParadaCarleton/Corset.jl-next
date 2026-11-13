@@ -27,23 +27,23 @@ end
         texts = [(file.path, file.text, file.role) for file in sources.files]
         lines = sum(((_, text, _),) -> count(==('\n'), text), texts)
         seconds = fastest(3) do
-            Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(path, text, role) for (path, text, role) in texts], sources.entries, Corset.Facts.Ban[]))
+            Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(path, text, role) for (path, text, role) in texts], sources.entries, Corset.Facts.Ban[], nothing))
         end
         @test seconds * 10_000 / lines < 2.0
     end
     @testset "cost linear in function size" begin
-        # Every UI and opt-out case inside one function, 16 and 64 copies: linear cost grows 4×, quadratic 16×.
+        # Every UI and opt-out case inside one function, 16 and 128 copies: linear cost grows 8×, quadratic 64×.
         # Both sizes exceed processor cache: smaller trees fit in it, and cache step looks like superlinear time.
         ui = [case for rule in readdir(joinpath(@__DIR__, "ui"); join = true) for case in readdir(rule; join = true) if endswith(case, ".jl")]
         cases = join((read(case, String) for case in [ui; joinpath(@__DIR__, "optout", "cases.jl")]), "\n")
         mktempdir(@__DIR__) do directory
-            small, large = map((16, 64)) do copies
+            small, large = map((16, 128)) do copies
                 path = joinpath(directory, "copies_$copies.jl")
                 write(path, "function wrapped()\n$(repeat(cases, copies))end\n")
                 return path
             end
             bans = Corset.Config.bans(Corset.Config.read_table(joinpath(@__DIR__, "ui", "banned", "config.toml"), ("Corset",)))
-            facts = Dict(path => FactSet([Corset.Syntax.parse_file(path, read(path, String), Role.package)], [path], bans) for path in (small, large))
+            facts = Dict(path => FactSet([Corset.Syntax.parse_file(path, read(path, String), Role.package)], [path], bans, nothing) for path in (small, large))
             findings = Dict(path => Corset.Engine.run_rules(facts[path]) for path in (small, large))
             known = Set(entry.name for entry in Corset.Rules.REGISTRY)
             stages = Dict{String, Function}(
@@ -56,9 +56,10 @@ end
             growth(f::Function)::Float64 = (f(small); @allocated(f(large)) / @allocated(f(small)))
             growths = Dict(string(entry.name) => growth(path -> entry.run(facts[path])) for entry in Corset.Rules.REGISTRY)
             merge!(growths, Dict(name => growth(stage) for (name, stage) in stages), Dict("analyze" => growth(path -> Corset.Engine.analyze(path, Corset.Config.Flags()))))
-            @test isempty(filter(entry -> last(entry) >= 8, growths))
-            # Time catches loops that do not allocate; it gets 2.5× headroom. Single rules visit few nodes: cache misses swing their time.
-            @test isempty(filter(entry -> last(entry) >= 10, Dict(name => fastest(() -> stage(large), 3) / fastest(() -> stage(small), 3) for (name, stage) in stages)))
+            @test isempty(filter(entry -> last(entry) >= 16, growths))
+            # Time catches loops that do not allocate. Load swings ratio of same input from 4 to 9, so time gets 5× headroom.
+            # Single rules visit few nodes: cache misses swing their time.
+            @test isempty(filter(entry -> last(entry) >= 40, Dict(name => fastest(() -> stage(large), 3) / fastest(() -> stage(small), 3) for (name, stage) in stages)))
         end
     end
 end

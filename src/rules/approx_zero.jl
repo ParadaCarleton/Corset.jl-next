@@ -33,7 +33,7 @@ const PATTERN = IndexedPattern(
 )
 
 """Findings for approximate comparisons against literal zero without absolute tolerance."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     return [
         finding(
             NAME, file, match.node; kind = :literal_zero, confidence = Confidence.definite,
@@ -45,6 +45,6 @@ function run(facts::FactSet)::Vector{Finding}
     ]
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [10], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [10], Stage.syntax, findings)
 
 end

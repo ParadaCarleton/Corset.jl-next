@@ -96,7 +96,7 @@ function nan_fix(file::SyntaxFile, link::Link)::Fix
 end
 
 """Findings for comparisons with NaN constant, one per node."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, link in nan_links(file)
         kind, negated = KINDS[plain(link.operator)], plain(link.operator) in NEGATED
@@ -112,6 +112,6 @@ function run(facts::FactSet)::Vector{Finding}
     return sort!(found; by = finding -> finding.primary.span.first_byte)
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [95], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [95], Stage.syntax, findings)
 
 end

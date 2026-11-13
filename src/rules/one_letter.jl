@@ -36,7 +36,7 @@ const INDEX_NAMES = Set(["i", "j", "k"])
 const VALUE_BINDINGS = (BindingKind.parameter, BindingKind.assignment, BindingKind.loop)
 
 """Findings for one-letter names, once per name and enclosing function."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
         seen = Set{Tuple{UInt, String}}()
@@ -62,6 +62,6 @@ function run(facts::FactSet)::Vector{Finding}
     return sort!(found; by = finding -> finding.primary.span.first_byte)
 end
 
-const ENTRY = RuleEntry(NAME, Group.readability, [72], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.readability, [72], Stage.syntax, findings)
 
 end

@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, PackageFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -163,13 +163,37 @@ struct Ban
 end
 
 """
+Method package code defines, in analyzed `file`. `node` is its definition node, when exactly one definition of that
+name starts on method line; `nothing` otherwise (`@eval` loops, macro output), and `span` then has line precision.
+"""
+struct MethodSite
+    method::Method
+    file::SyntaxFile
+    node::Union{Nothing, SyntaxNode}
+    span::Span
+end
+
+"""
+Loaded package (`package` stage facts): Project.toml `name`, `uuid` and root directory, package modules
+(root, submodules, loaded extensions; root first), and sites of methods they define in analyzed files.
+"""
+struct PackageFacts
+    name::String
+    uuid::Base.UUID
+    root::String
+    modules::Vector{Module}
+    methods::Vector{MethodSite}
+end
+
+"""
 Facts of one run: parsed files, entry files Julia loads directly (empty for directory walk, where any file may be included),
-and project bans from config.
+project bans from config, and loaded package (`nothing` for scripts, nameless projects, failed load, or run without package rules).
 """
 struct FactSet
     files::Vector{SyntaxFile}
     entries::Vector{String}
     bans::Vector{Ban}
+    package::Union{Nothing, PackageFacts}
 end
 
 """Root nodes of pattern, with `~or` alternatives flattened."""

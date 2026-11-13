@@ -33,7 +33,7 @@ const NAME = Symbol("bracketed-range")
 const PATTERN = IndexedPattern(@pattern [~or({start}:{stop}, {start}:{step}:{stop})])
 
 """Findings for vector literal whose only element is range; vector of ranges can be intended, so `possible`."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     return [
         finding(
             NAME, file, match.node; kind = :range_vector, confidence = Confidence.possible,
@@ -44,6 +44,6 @@ function run(facts::FactSet)::Vector{Finding}
     ]
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [2], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [2], Stage.syntax, findings)
 
 end

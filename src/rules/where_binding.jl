@@ -34,7 +34,7 @@ function defines_method(node::SyntaxNode)::Bool
 end
 
 """Findings for short-form definitions whose `where` clause attaches to result annotation."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, match in matches(file, PATTERN)
         annotated = children_of(match.node)
@@ -56,6 +56,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [4], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [4], Stage.syntax, findings)
 
 end

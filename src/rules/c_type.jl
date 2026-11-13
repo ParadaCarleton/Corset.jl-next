@@ -43,7 +43,7 @@ function in_c_context(node::SyntaxNode)::Bool
 end
 
 """Findings for C type aliases used outside C interface code."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, node in leaves(file, "Identifier")
         name = identifier_name(node)
@@ -60,6 +60,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.readability, [81], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.readability, [81], Stage.syntax, findings)
 
 end

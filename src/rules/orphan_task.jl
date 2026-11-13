@@ -36,7 +36,7 @@ const SPAWNING = Set(["@spawn", "@async"])
 synced(node::SyntaxNode)::Bool = any(ancestor -> base_macro(ancestor) == "@sync", ancestors(node))
 
 """Findings for task-starting macros whose task is discarded outside `@sync`."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, call in forms(file, "macrocall")
         base_macro(call) in SPAWNING && discarded(call) && !synced(call) || continue
@@ -52,6 +52,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [70], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [70], Stage.syntax, findings)
 
 end

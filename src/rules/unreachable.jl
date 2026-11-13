@@ -125,7 +125,7 @@ function after_exit(file::SyntaxFile, block::SyntaxNode, labels::Vector{Int})::U
 end
 
 """Findings for repeated pure `if` chain conditions and statements after exit."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
         foreach(node -> append!(found, repeated_conditions(file, node)), forms(file, "if"))
@@ -138,6 +138,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [96], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [96], Stage.syntax, findings)
 
 end

@@ -14,7 +14,7 @@ const HEADER = Dict(Level.deny => "error", Level.warn => "warning")
 line_starts(text::String)::Vector{Int} = [1; findall(==(UInt8('\n')), codeunits(text)) .+ 1]
 
 """Line and code-point column of byte `byte` in `text`; `byte` may sit one past end."""
-function position(text::String, byte::Int)::Tuple{Int, Int}
+function line_column(text::String, byte::Int)::Tuple{Int, Int}
     starts = line_starts(text)
     line = searchsortedlast(starts, byte)
     return line, length(text, starts[line], prevind(text, byte)) + 1
@@ -49,7 +49,7 @@ function placement(text::String, starts::Vector{Int}, span::Span)::Tuple{Int, In
 end
 
 """Write `diagnostic` from file with source `text` to `io`; `note` adds lines saying where level was set and how to opt out."""
-function render(io::IO, diagnostic::Diagnostic, text::String, note::Bool)::Nothing
+function render(io::IO, diagnostic::Diagnostic, text::String, path::String, note::Bool)::Nothing
     finding = diagnostic.finding
     starts = line_starts(text)
     marked = [
@@ -60,7 +60,7 @@ function render(io::IO, diagnostic::Diagnostic, text::String, note::Bool)::Nothi
     lines = sort!(unique(first.(marked)))
     gutter = " "^ndigits(maximum(lines))
     println(io, HEADER[diagnostic.level], "[", finding.rule, "]: ", finding.message)
-    println(io, gutter, "--> ", finding.primary.span.file, ":", primary_line, ":", primary_col)
+    println(io, gutter, "--> ", path, ":", primary_line, ":", primary_col)
     println(io, gutter, " |")
     previous = 0
     for line in lines
@@ -90,7 +90,8 @@ end
 function render_all(io::IO, report::Report)::Nothing
     noted = Set{Symbol}()
     for diagnostic in report.diagnostics
-        render(io, diagnostic, report.sources[diagnostic.finding.primary.span.file], diagnostic.finding.rule ∉ noted)
+        file = diagnostic.finding.primary.span.file
+        render(io, diagnostic, report.sources[file], relpath(file, report.root), diagnostic.finding.rule ∉ noted)
         push!(noted, diagnostic.finding.rule)
         println(io)
     end
@@ -117,7 +118,7 @@ function render_coverage(io::IO, report::Report)::Nothing
     end
     println(io)
     for spot in report.blind_spots
-        line, column = position(report.sources[spot.span.file], spot.span.first_byte)
+        line, column = line_column(report.sources[spot.span.file], spot.span.first_byte)
         println(io, "  - ", relpath(spot.span.file, report.root), ":", line, ":", column, ": ", spot.cause)
     end
     return nothing

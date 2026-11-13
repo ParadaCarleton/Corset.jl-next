@@ -104,7 +104,7 @@ function drop_fix(file::SyntaxFile, node::SyntaxNode)::Fix
 end
 
 """Findings for detached docstrings and literal statements whose value Julia drops."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, block in [forms(file, "block"); forms(file, "toplevel")]
         statements = children_of(block)
@@ -128,6 +128,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.readability, [97], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.readability, [97], Stage.syntax, findings)
 
 end

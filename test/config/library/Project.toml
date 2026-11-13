@@ -1,4 +1,5 @@
 name = "Library"
+uuid = "16bf5c61-24f4-438c-97be-8cda19a3b368"
 
 [preferences.Corset]
 kind = "library"

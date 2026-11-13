@@ -5,7 +5,7 @@ using ..Facts: Finding, Label, Fix
 using ..Config: Level
 using ..Rules: REGISTRY
 using ..Engine: Diagnostic, Report
-using ..Render: position
+using ..Render: line_column
 using ..Baseline: Baseline
 
 """Report format version of Corset JSON."""
@@ -15,8 +15,8 @@ const JSON_VERSION = 1
 function label_data(report::Report, label::Label, primary::Bool)::Dict{String, Any}
     span = label.span
     text = report.sources[span.file]
-    line, column = position(text, span.first_byte)
-    end_line, end_column = position(text, span.last_byte + 1)
+    line, column = line_column(text, span.first_byte)
+    end_line, end_column = line_column(text, span.last_byte + 1)
     return Dict(
         "file" => relpath(span.file, report.root), "line" => line, "column" => column, "end_line" => end_line,
         "end_column" => end_column, "first_byte" => span.first_byte, "last_byte" => span.last_byte,

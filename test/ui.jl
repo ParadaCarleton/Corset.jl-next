@@ -1,9 +1,10 @@
 # UI snapshot tests, as in Clippy: test/ui/<rule>/<case>.jl, rendered output in <case>.out,
 # fixed source in <case>.fixed.jl. Set CORSET_BLESS=1 to rewrite snapshots.
-# Each case starts with `# runic: off`: formatter must not normalize syntax cases test.
+# Case of rule after `syntax` stage is package directory test/ui/<rule>/<case>/ with one source file.
+# Each case file starts with `# runic: off`: formatter must not normalize syntax cases test.
 
 using Corset: Corset
-using Corset.Facts: FactSet, Tier, Confidence, Role, Ban
+using Corset.Facts: FactSet, Finding, Tier, Confidence, Role, Ban
 using Corset.Config: Settings, Kind
 using Test: @test, @testset
 
@@ -21,34 +22,58 @@ function snapshot(path::String, actual::String)::Bool
     return actual == (isfile(path) ? read(path, String) : "")
 end
 
+"""Facts of file `case`, as in `corset check case.jl`: `script*.jl` parses as script, other files as package code."""
+function file_facts(case::String)::FactSet
+    file = Corset.Syntax.parse_file(case, read(case, String), startswith(basename(case), "script") ? Role.script : Role.package)
+    return FactSet([file], [file.path], case_bans(dirname(case)), nothing)
+end
+
+"""Facts of package directory `case`, loaded with case directory added to load path; fixture must load."""
+function package_facts(case::String)::FactSet
+    sources = Corset.Discovery.discover(case)
+    push!(LOAD_PATH, case)
+    loaded = try
+        Corset.Package.load(case, Corset.Package.package_id(case), sources.files)
+    finally
+        pop!(LOAD_PATH)
+    end
+    loaded isa Finding && error("fixture $case does not load: $(loaded.primary.text)")
+    return FactSet(sources.files, sources.entries, case_bans(dirname(case)), loaded)
+end
+
+"""Source file of `case` that snapshots and fixes cover: case file, or entry file of package case."""
+case_file(case::String)::String = isdir(case) ? only(Corset.Discovery.discover(case).entries) : case
+
 """
-Rendered findings and fixed source for `case` of rule `name`; case is only entry, as in `corset check case.jl`.
-Case named `script*.jl` parses as script; other cases parse as package code. Bans come from `case_bans`.
+Rendered findings and fixed source of `case_file` for `case` of rule `name`. File case is only entry; directory case is
+package. Bans come from `case_bans`.
 """
 function run_case(name::Symbol, case::String)::Tuple{String, String}
-    text = read(case, String)
-    file = Corset.Syntax.parse_file(basename(case), text, startswith(basename(case), "script") ? Role.script : Role.package)
-    entry = Corset.Rules.entry(name)
-    findings = Corset.Engine.run_rules(FactSet([file], [file.path], case_bans(dirname(case))), [entry])
-    report = Corset.Engine.Report(Corset.Engine.diagnostics(findings, UI_SETTINGS), UI_SETTINGS, dirname(case), Dict(file.path => text), 0, [], [])
+    facts = isdir(case) ? package_facts(case) : file_facts(case)
+    findings = Corset.Engine.run_rules(facts, [Corset.Rules.entry(name)])
+    sources = Dict(file.path => file.text for file in facts.files)
+    root = isdir(case) ? case : dirname(case)
+    report = Corset.Engine.Report(Corset.Engine.diagnostics(findings, UI_SETTINGS), UI_SETTINGS, root, sources, 0, [], [])
     rendered = sprint(io -> Corset.Render.render_all(io, report))
-    fixed = Corset.Fixes.apply_edits(text, Corset.Fixes.applicable_edits(findings, file.path, Tier.breaking))
-    return rendered, fixed == text ? "" : fixed
+    path = case_file(case)
+    fixed = Corset.Fixes.apply_edits(sources[path], Corset.Fixes.applicable_edits(findings, path, Tier.breaking))
+    return rendered, fixed == sources[path] ? "" : fixed
 end
 
 @testset "UI $(rule)" for rule in sort!(readdir(UI))
     directory = joinpath(UI, rule)
-    cases = sort!(filter(name -> endswith(name, ".jl") && !endswith(name, ".fixed.jl"), readdir(directory)))
-    @test "positive.jl" in cases
-    @test "negative.jl" in cases
-    for case in cases
-        @test startswith(read(joinpath(directory, case), String), "# runic: off\n")
-        rendered, fixed = run_case(Symbol(rule), joinpath(directory, case))
-        stem = joinpath(directory, chopsuffix(case, ".jl"))
-        @test snapshot(stem * ".out", rendered)
-        @test snapshot(stem * ".fixed.jl", fixed)
-        case == "negative.jl" && @test isempty(rendered)
-        case == "positive.jl" && @test !isempty(rendered)
+    cases = sort!(filter(name -> isdir(joinpath(directory, name)) || endswith(name, ".jl") && !endswith(name, ".fixed.jl"), readdir(directory)))
+    stems = map(case -> chopsuffix(case, ".jl"), cases)
+    @test "positive" in stems
+    @test "negative" in stems
+    for (case, stem) in zip(cases, stems)
+        path = joinpath(directory, case)
+        @test startswith(read(case_file(path), String), "# runic: off\n")
+        rendered, fixed = run_case(Symbol(rule), path)
+        @test snapshot(joinpath(directory, stem * ".out"), rendered)
+        @test snapshot(joinpath(directory, stem * ".fixed.jl"), fixed)
+        stem == "negative" && @test isempty(rendered)
+        stem == "positive" && @test !isempty(rendered)
     end
 end
 
