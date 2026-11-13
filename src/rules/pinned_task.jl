@@ -33,12 +33,7 @@ const NAME = Symbol("pinned-task")
 const MACROS = Dict("@async" => :async, "@task" => :task, "@threads" => :static_schedule)
 
 """Nearest block or file around `node`, where statements run in order; `return x.sticky = false` still runs in it."""
-function statement_block(node::SyntaxNode)::Union{Nothing, SyntaxNode}
-    for ancestor in ancestors(node)
-        kind_name(ancestor) in ("block", "toplevel") && return ancestor
-    end
-    return nothing
-end
+statement_block(node::SyntaxNode)::SyntaxNode = first(ancestor for ancestor in ancestors(node) if kind_name(ancestor) in ("block", "toplevel"))
 
 """Byte of last `name.sticky = false` in each block, keyed by block identity and name."""
 function unpinned(file::SyntaxFile)::Dict{Tuple{UInt, String}, Int}
