@@ -69,14 +69,15 @@ end
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
-        seen = Set{Tuple{Any, String}}()
+        seen = Set{Tuple{UInt, String}}()
         for (site, is_loop) in binding_sites(file)
             node = bound_identifier(site)
             isnothing(node) && continue
             name = identifier_name(node)
             length(name) == 1 && name != "_" && !(is_loop && name in INDEX_NAMES) || continue
             scope = findfirst(ancestor -> kind_name(ancestor) == "function", ancestors(node))
-            key = (isnothing(scope) ? nothing : ancestors(node)[scope], name)
+            # Node hash walks whole subtree; key scope by identity.
+            key = (isnothing(scope) ? UInt(0) : objectid(ancestors(node)[scope]), name)
             key in seen && continue
             push!(seen, key)
             push!(
