@@ -8,3 +8,4 @@
 /docs/Manifest.toml
 .worktrees/
 /test/SuppositionDB/
+/test/jl_*/
