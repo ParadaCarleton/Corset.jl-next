@@ -12,7 +12,7 @@ using ..Facts: Confidence, Tier
 using ..Config: ConfigError, Flags, Level
 using ..Rules: Rules
 using ..Engine: Engine, Report
-using ..Render: render_all, render_summary
+using ..Render: render_all, render_summary, render_coverage
 using ..Output: json_report, sarif_report
 using ..OptOuts: OptOuts
 using ..Baseline: Baseline
@@ -133,6 +133,7 @@ function write_report(out::IO, report::Report, format::String)::Nothing
     if format == "text"
         render_all(out, report)
         render_summary(out, report)
+        render_coverage(out, report)
     else
         data = format == "json" ? json_report(report) : sarif_report(report, string(pkgversion(Base.moduleroot(@__MODULE__))))
         println(out, JSON.json(data; pretty = true))

@@ -17,7 +17,7 @@ const SARIF_SCHEMA = JSONSchema.Schema(JSON.parsefile(joinpath(@__DIR__, "fixtur
 
 @testset "cli check" begin
     code, out, _ = corset("check", LIBRARY)
-    @test code == 1 && occursin("error[approx-zero]", out) && endswith(out, "corset: 2 errors, 1 warning, 0 baselined\n")
+    @test code == 1 && occursin("error[approx-zero]", out) && endswith(out, "corset: 2 errors, 1 warning, 0 baselined\ncoverage: analyzed 2 files\n")
     @test first(corset("check", LIBRARY, "-A", "approx-zero")) == 0
     @test first(corset("check", LIBRARY, "-A", "approx-zero", "-D", "warnings")) == 1
     @test first(corset("check", LIBRARY, "--allow", "correctness", "--warn", "approx-zero")) == 0
@@ -39,27 +39,37 @@ end
     sarif = JSON.parse(corset("check", LIBRARY, "--format", "sarif")[2])
     @test isnothing(JSONSchema.validate(SARIF_SCHEMA, sarif))
     @test [result["level"] for result in only(sarif["runs"])["results"]] == ["warning", "error", "error"]
+    mktempdir(@__DIR__) do package
+        mkpath(joinpath(package, "src"))
+        write(joinpath(package, "Project.toml"), "name = \"Computed\"\n\n[preferences.Corset]\nkind = \"library\"\n")
+        write(joinpath(package, "src", "Computed.jl"), "\"\"\"Computed include.\"\"\"\nmodule Computed\ninclude(name)\nend\n")
+        coverage = JSON.parse(corset("check", package, "--format", "json")[2])["coverage"]
+        @test coverage["files"] == 1 && only(coverage["blind_spots"])["cause"] == "include with computed path"
+        sarif = JSON.parse(corset("check", package, "--format", "sarif")[2])
+        @test isnothing(JSONSchema.validate(SARIF_SCHEMA, sarif))
+        @test only(only(only(sarif["runs"])["invocations"])["toolExecutionNotifications"])["message"]["text"] == "skipped: include with computed path"
+    end
 end
 
 @testset "cli fix, baseline, explain" begin
-    directory = mktempdir(@__DIR__)
-    write(joinpath(directory, "Project.toml"), "[deps]\n")
-    write(joinpath(directory, "a.jl"), "f(x)::T where T = x\nreach(value) = value ≈ 0\n")
-    sarif = JSON.parse(corset("check", directory, "--format", "sarif", "-A", "one-letter")[2])
-    @test isnothing(JSONSchema.validate(SARIF_SCHEMA, sarif))
-    @test any(!isempty(result["fixes"]) for result in only(sarif["runs"])["results"])
-    code, _, err = corset("fix", directory, "--tier", "safe")
-    @test occursin("applied 1 edits", err) && code == 1
-    @test startswith(read(joinpath(directory, "a.jl"), String), "(f(x)::T) where T = x\n")
-    @test occursin("wrote 1 findings", corset("baseline", directory, "-A", "one-letter")[3])
-    @test first(corset("check", directory, "-A", "one-letter")) == 0
-    write(joinpath(directory, "a.jl"), "x = 1\n")
-    stale = corset("check", directory, "--format", "sarif", "-A", "one-letter")
-    @test first(stale) == 1 && isnothing(JSONSchema.validate(SARIF_SCHEMA, JSON.parse(stale[2])))
-    @test occursin("error[baseline]", corset("check", directory, "-A", "one-letter")[2])
-    symlink(joinpath(directory, "missing.jl"), joinpath(directory, "broken.jl"))
-    @test first(corset("check", directory)) == 101
-    rm(directory; recursive = true)
+    mktempdir(@__DIR__) do directory
+        write(joinpath(directory, "Project.toml"), "[deps]\n")
+        write(joinpath(directory, "a.jl"), "f(x)::T where T = x\nreach(value) = value ≈ 0\n")
+        sarif = JSON.parse(corset("check", directory, "--format", "sarif", "-A", "one-letter")[2])
+        @test isnothing(JSONSchema.validate(SARIF_SCHEMA, sarif))
+        @test any(!isempty(result["fixes"]) for result in only(sarif["runs"])["results"])
+        code, _, err = corset("fix", directory, "--tier", "safe")
+        @test occursin("applied 1 edits", err) && code == 1
+        @test startswith(read(joinpath(directory, "a.jl"), String), "(f(x)::T) where T = x\n")
+        @test occursin("wrote 1 findings", corset("baseline", directory, "-A", "one-letter")[3])
+        @test first(corset("check", directory, "-A", "one-letter")) == 0
+        write(joinpath(directory, "a.jl"), "x = 1\n")
+        stale = corset("check", directory, "--format", "sarif", "-A", "one-letter")
+        @test first(stale) == 1 && isnothing(JSONSchema.validate(SARIF_SCHEMA, JSON.parse(stale[2])))
+        @test occursin("error[baseline]", corset("check", directory, "-A", "one-letter")[2])
+        symlink(joinpath(directory, "missing.jl"), joinpath(directory, "broken.jl"))
+        @test first(corset("check", directory)) == 101
+    end
     code, out, _ = corset("explain", "approx-zero")
     @test code == 0 && startswith(out, "approx-zero (correctness group, syntax stage, F10)")
     @test occursin("opt-outs that suppress nothing", corset("explain", "opt-out")[2])

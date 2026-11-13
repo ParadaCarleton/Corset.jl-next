@@ -13,6 +13,13 @@ const HEADER = Dict(Level.deny => "error", Level.warn => "warning")
 """Byte offset of first byte of each line of `text`."""
 line_starts(text::String)::Vector{Int} = [1; findall(==(UInt8('\n')), codeunits(text)) .+ 1]
 
+"""Line and code-point column of byte `byte` in `text`; `byte` may sit one past end."""
+function position(text::String, byte::Int)::Tuple{Int, Int}
+    starts = line_starts(text)
+    line = searchsortedlast(starts, byte)
+    return line, length(text, starts[line], prevind(text, byte)) + 1
+end
+
 """Text of line `line` without its newline."""
 function line_text(text::String, starts::Vector{Int}, line::Int)::String
     stop = line < length(starts) ? starts[line + 1] - 2 : ncodeunits(text)
@@ -95,6 +102,23 @@ function render_summary(io::IO, report::Report)::Nothing
     errors = count(diagnostic -> diagnostic.level == Level.deny, report.diagnostics) + length(report.stale)
     warnings = count(diagnostic -> diagnostic.level == Level.warn, report.diagnostics)
     println(io, "corset: ", errors, errors == 1 ? " error, " : " errors, ", warnings, warnings == 1 ? " warning, " : " warnings, ", report.baselined, " baselined")
+    return nothing
+end
+
+"""Write coverage line: analyzed file count and blind spots by cause, then one line per blind spot."""
+function render_coverage(io::IO, report::Report)::Nothing
+    files = length(report.sources)
+    print(io, "coverage: analyzed ", files, files == 1 ? " file" : " files")
+    if !isempty(report.blind_spots)
+        causes = sort!(unique(spot.cause for spot in report.blind_spots))
+        counts = join(("$(count(spot -> spot.cause == cause, report.blind_spots)) $cause" for cause in causes), ", ")
+        print(io, "; skipped ", length(report.blind_spots), " (", counts, ")")
+    end
+    println(io)
+    for spot in report.blind_spots
+        line, column = position(report.sources[spot.span.file], spot.span.first_byte)
+        println(io, "  - ", relpath(spot.span.file, report.root), ":", line, ":", column, ": ", spot.cause)
+    end
     return nothing
 end
 
