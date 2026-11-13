@@ -35,6 +35,7 @@ Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and meth
 - Blind spot: syntax-only rule cannot see that `a::Vector` is 1-based, because `inference` stage did not run.
 - Blind spot: inference refused generated method; macro did not expand; typed finding has no source span; `include` path is computed.
 - Corset limits never fall below compiler limits (`max_methods`, union splitting). Corset resolves every call compiler resolves.
+- Rules assume Base functions keep documented contracts: `==` has no side effects, and comparison with `NaN` is false. Method that breaks contract is out of scope, as for Clippy `ifs_same_cond`.
 
 Coverage line ends every run and counts blind spots by cause: `analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)`. Rule that lacks fact at site reports nothing there.
 
