@@ -26,7 +26,7 @@ area(r) = π * r^2
 Rule skips code inside macro arguments, since macro may give literal meaning.
 Last top-level statement of file passes, since `include` returns its value.
 Struct body passes: string there documents field.
-Fix that deletes literal is `likely`: deleted string may hold notes worth keeping as comment.
+Fix turns string into comment; it deletes other literals at `likely`, since comment above may describe them.
 """
 module UnusedLiteral
 
@@ -94,13 +94,23 @@ function detached(file::SyntaxFile, node::SyntaxNode, next::SyntaxNode)::Union{N
     )
 end
 
-"""Fix deleting lines that hold only `node`; manual when line holds other code, or comment above may describe `node`."""
-function delete_fix(file::SyntaxFile, node::SyntaxNode)::Fix
+"""
+Fix for literal statement `node` alone on its lines: string turns into comment, which keeps its note; other literal goes.
+Manual when line holds other code, or when comment above may describe deleted literal.
+"""
+function drop_fix(file::SyntaxFile, node::SyntaxNode)::Fix
     bytes, bounds = codeunits(file.text), span(file, node)
     start = something(findprev(==(UInt8('\n')), bytes, bounds.first_byte - 1), 0) + 1
     stop = something(findnext(==(UInt8('\n')), bytes, bounds.last_byte + 1), length(bytes))
     alone = all(in(BLANK), view(bytes, start:(bounds.first_byte - 1))) && all(in(BLANK), view(bytes, (bounds.last_byte + 1):stop))
-    (alone && isempty(comment_lines_above(file.text, start))) || return manual_fix("delete statement")
+    alone || return manual_fix("delete statement")
+    if kind_name(node) == "string"
+        indent = String(bytes[start:(bounds.first_byte - 1)])
+        text = join(leaf_value(piece) for piece in children_of(node))
+        note = join((rstrip(indent * "# " * line) for line in split(text, '\n')), "\n")
+        return Fix("turn string into comment", [Edit(Span(file.path, start, bounds.last_byte, Precision.exact), note)], Tier.safe)
+    end
+    isempty(comment_lines_above(file.text, start)) || return manual_fix("delete statement")
     return Fix("delete statement", [Edit(Span(file.path, start, stop, Precision.exact), "")], Tier.likely)
 end
 
@@ -117,10 +127,10 @@ function run(facts::FactSet)::Vector{Finding}
             elseif literal(statement) && discarded(statement) && !file_value(statement)
                 push!(
                     found, finding(
-                        NAME, file, statement; kind = :other, confidence = Confidence.definite,
+                        NAME, file, statement; kind = :no_effect, confidence = Confidence.definite,
                         message = "literal statement has no effect", label = "value dropped",
                         why = "Julia evaluates literal and drops its value; statement does nothing",
-                        fix = delete_fix(file, statement),
+                        fix = drop_fix(file, statement),
                     )
                 )
             end

@@ -41,6 +41,7 @@ end
 "Square of `x`."; square(x) = x^2
 
 function process(items)
+    # Process every item.
     for item in items
         handle(item)
     end

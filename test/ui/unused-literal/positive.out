@@ -148,7 +148,7 @@ warning[unused-literal]: literal statement has no effect
    |     ^^^^^^^^^^^^^^^^^^^^^ value dropped
    |
    = why: Julia evaluates literal and drops its value; statement does nothing
-   = fix: delete statement   [likely]
+   = fix: turn string into comment   [safe]
    = docs: corset explain unused-literal
 
 warning[unused-literal]: literal statement has no effect
