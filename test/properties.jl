@@ -57,8 +57,11 @@ accepted(text::String)::Bool = parses(text) && lowering_errors(Meta.parseall(tex
 """Whether assignment target `target` names method, as in `f(x) = …` or `f(x)::T where {T} = …`."""
 names_method(target::Any)::Bool = target isa Expr && (target.head === :call || target.head in (:where, :(::)) && names_method(target.args[1]))
 
-"""Body argument index of each head whose body drops value of every statement; `try` holds `finally` body fourth."""
-const DROPPING_BODIES = Dict(:module => 3, :for => 2, :while => 2, :try => 4)
+"""
+Index of body in `arguments` of `head` whose statements all drop their value; `0` for other heads.
+Module and loop bodies come last: Julia 1.14 adds syntax version before module name. `try` holds `finally` fourth.
+"""
+dropping_body(head::Symbol, arguments::Vector{Any})::Int = head in (:module, :for, :while) ? lastindex(arguments) : head === :try ? 4 : 0
 
 """Whether `argument` is string literal or interpolated string."""
 is_string(argument::Any)::Bool = argument isa String || Meta.isexpr(argument, :string)
@@ -75,7 +78,7 @@ function normalized(expression::Any)::Any
         last_index = length(arguments)
         arguments = Any[argument for (index, argument) in enumerate(arguments) if index == last_index || !is_string(argument)]
     end
-    body = get(DROPPING_BODIES, expression.head, 0)
+    body = dropping_body(expression.head, arguments)
     checkbounds(Bool, arguments, body) && Meta.isexpr(arguments[body], :block) && (arguments[body] = Expr(:block, filter(!is_string, arguments[body].args)...))
     if expression.head === :function || expression.head === :(=) && names_method(arguments[1])
         body = arguments[end]
