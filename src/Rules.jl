@@ -18,6 +18,7 @@ include("rules/file_length.jl")
 include("rules/inference_dependent.jl")
 include("rules/juxtaposition.jl")
 include("rules/mixed_return.jl")
+include("rules/nan_compare.jl")
 include("rules/one_letter.jl")
 include("rules/orphan_task.jl")
 include("rules/repeated_concat.jl")
@@ -47,6 +48,7 @@ const REGISTRY = RuleEntry[
     InferenceDependent.ENTRY,
     Juxtaposition.ENTRY,
     MixedReturn.ENTRY,
+    NanCompare.ENTRY,
     OneLetter.ENTRY,
     OrphanTask.ENTRY,
     RepeatedConcat.ENTRY,

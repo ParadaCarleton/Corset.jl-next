@@ -15,7 +15,7 @@ export Precision, Tier, Confidence, Group, Stage, Role
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
-export finding, replace_fix, manual_fix, identifier_name, parent_of, ancestors, descendants, call_head, leaf_value
+export finding, replace_fix, manual_fix, identifier_name, base_name, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, struct_fields, include_calls, include_target, normalized_source
 export takes_docstring, comment_lines_above, comments_in, discarded
 
@@ -231,7 +231,10 @@ function span(file::SyntaxFile, node::SyntaxNode)::Span
     return Span(file.path, first(bytes), last(bytes), Precision.exact)
 end
 
-"""Source text of `node` in `file` with grouping parentheses that wrap only it; safe to paste in new context."""
+"""
+Source text of `node` in `file` with grouping parentheses that wrap only it; safe to paste as operand.
+Assignment pasted as call argument reads as keyword: `f((x = 1))` means `f(; x = 1)`.
+"""
 function source(file::SyntaxFile, node::SyntaxNode)::String
     bytes = get(() -> trimmed_bytes(file.text, node), file.groups, node)
     return file.text[first(bytes):thisind(file.text, last(bytes))]
@@ -239,6 +242,20 @@ end
 
 """Name of identifier `node`; `nothing` for other kinds."""
 identifier_name(node::SyntaxNode)::Union{Nothing, String} = kind_name(node) == "Identifier" ? string(node.val) : nothing
+
+"""Name `node` gives Base binding: `"NaN"` for `NaN` and `Base.NaN`; `nothing` for other nodes. Names read as written."""
+function base_name(node::SyntaxNode)::Union{Nothing, String}
+    kind_name(node) == "." || return identifier_name(node)
+    parts = children_of(node)
+    return length(parts) == 2 && identifier_name(parts[1]) == "Base" ? identifier_name(parts[2]) : nothing
+end
+
+"""Operator of infix call `node`, dot included: `"=="` for `a == b`, `".=="` for `a .== b`; `nothing` for other nodes."""
+function infix_operator(node::SyntaxNode)::Union{Nothing, String}
+    kind_name(node) in ("call", "dotcall") && JS.is_infix_op_call(node) || return nothing
+    name = identifier_name(children_of(node)[2])
+    return kind_name(node) == "dotcall" && !isnothing(name) ? "." * name : name
+end
 
 """Parent of `node`; `nothing` at root."""
 parent_of(node::SyntaxNode)::Union{Nothing, SyntaxNode} = node.parent
