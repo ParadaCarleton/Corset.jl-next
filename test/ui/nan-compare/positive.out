@@ -1,0 +1,212 @@
+error[nan-compare]: `x == NaN` is never true
+ --> positive.jl:2:20
+  |
+2 | missing_value(x) = x == NaN
+  |                    ^^^^^^^^ NaN equals no value, itself included
+  |
+  = why: IEEE comparison with NaN is false, and `!=` is true
+  = fix: replace with `isnan(x)`   [likely]
+  = docs: corset explain nan-compare
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow nan-compare -- <reason>`
+
+error[nan-compare]: `x != NaN` is never false
+ --> positive.jl:3:14
+  |
+3 | present(x) = x != NaN
+  |              ^^^^^^^^ NaN equals no value, itself included
+  |
+  = why: IEEE comparison with NaN is false, and `!=` is true
+  = fix: replace with `!isnan(x)`   [likely]
+  = docs: corset explain nan-compare
+
+error[nan-compare]: `x ≠ Base.NaN32` is never false
+ --> positive.jl:4:19
+  |
+4 | also_present(x) = x ≠ Base.NaN32
+  |                   ^^^^^^^^^^^^^^ NaN equals no value, itself included
+  |
+  = why: IEEE comparison with NaN is false, and `!=` is true
+  = fix: replace with `!isnan(x)`   [likely]
+  = docs: corset explain nan-compare
+
+error[nan-compare]: `NaN64 == x` is never true
+ --> positive.jl:5:14
+  |
+5 | flipped(x) = NaN64 == x
+  |              ^^^^^^^^^^ NaN equals no value, itself included
+  |
+  = why: IEEE comparison with NaN is false, and `!=` is true
+  = fix: replace with `isnan(x)`   [likely]
+  = docs: corset explain nan-compare
+
+error[nan-compare]: `NaN == NaN` is never true
+ --> positive.jl:6:10
+  |
+6 | both() = NaN == NaN
+  |          ^^^^^^^^^^ NaN equals no value, itself included
+  |
+  = why: IEEE comparison with NaN is false, and `!=` is true
+  = fix: replace with `isnan(NaN)`   [likely]
+  = docs: corset explain nan-compare
+
+error[nan-compare]: `xs .== NaN` is never true
+ --> positive.jl:7:14
+  |
+7 | masked(xs) = xs .== NaN
+  |              ^^^^^^^^^^ NaN equals no value, itself included
+  |
+  = why: IEEE comparison with NaN is false, and `!=` is true
+  = fix: replace with `isnan.(xs)`   [likely]
+  = docs: corset explain nan-compare
+
+error[nan-compare]: `xs .!= NaN16` is never false
+ --> positive.jl:8:12
+  |
+8 | kept(xs) = xs .!= NaN16
+  |            ^^^^^^^^^^^^ NaN equals no value, itself included
+  |
+  = why: IEEE comparison with NaN is false, and `!=` is true
+  = fix: replace with `.!isnan.(xs)`   [likely]
+  = docs: corset explain nan-compare
+
+error[nan-compare]: `x < NaN` is never true
+ --> positive.jl:9:12
+  |
+9 | below(x) = x < NaN
+  |            ^^^^^^^ NaN has no order
+  |
+  = why: IEEE order comparison with NaN is false
+  = fix: test for NaN with `isnan(x)`   [manual]
+  = docs: corset explain nan-compare
+
+error[nan-compare]: `x <= NaN` is never true
+  --> positive.jl:10:14
+   |
+10 | at_most(x) = x <= NaN
+   |              ^^^^^^^^ NaN has no order
+   |
+   = why: IEEE order comparison with NaN is false
+   = fix: test for NaN with `isnan(x)`   [manual]
+   = docs: corset explain nan-compare
+
+error[nan-compare]: `NaN ≥ x` is never true
+  --> positive.jl:11:12
+   |
+11 | above(x) = NaN ≥ x
+   |            ^^^^^^^ NaN has no order
+   |
+   = why: IEEE order comparison with NaN is false
+   = fix: test for NaN with `isnan(x)`   [manual]
+   = docs: corset explain nan-compare
+
+error[nan-compare]: `x === NaN` is false for NaN with other bit patterns
+  --> positive.jl:12:16
+   |
+12 | same_bits(x) = x === NaN
+   |                ^^^^^^^^^ compares bits
+   |
+   = why: NaN has many bit patterns; `0/0 === NaN` is false
+   = fix: test for NaN with `isnan(x)`, which matches every bit pattern   [manual]
+   = docs: corset explain nan-compare
+
+error[nan-compare]: `x !== NaN` is true for NaN with other bit patterns
+  --> positive.jl:13:17
+   |
+13 | other_bits(x) = x !== NaN
+   |                 ^^^^^^^^^ compares bits
+   |
+   = why: NaN has many bit patterns; `0/0 === NaN` is false
+   = fix: test for NaN with `isnan(x)`, which matches every bit pattern   [manual]
+   = docs: corset explain nan-compare
+
+error[nan-compare]: `x ≡ NaN` is false for NaN with other bit patterns
+  --> positive.jl:14:16
+   |
+14 | identical(x) = x ≡ NaN
+   |                ^^^^^^^ compares bits
+   |
+   = why: NaN has many bit patterns; `0/0 === NaN` is false
+   = fix: test for NaN with `isnan(x)`, which matches every bit pattern   [manual]
+   = docs: corset explain nan-compare
+
+error[nan-compare]: `xs .=== NaN` is false for NaN with other bit patterns
+  --> positive.jl:15:19
+   |
+15 | dotted_bits(xs) = xs .=== NaN
+   |                   ^^^^^^^^^^^ compares bits
+   |
+   = why: NaN has many bit patterns; `0/0 === NaN` is false
+   = fix: test for NaN with `isnan.(xs)`, which matches every bit pattern   [manual]
+   = docs: corset explain nan-compare
+
+error[nan-compare]: `x == NaN` is never true
+  --> positive.jl:16:20
+   |
+16 | in_range(low, x) = low < x == NaN
+   |                    ^^^^^^^^^^^^^^ NaN equals no value, itself included
+   |
+   = why: IEEE comparison with NaN is false, and `!=` is true
+   = fix: test for NaN with `isnan(x)`   [manual]
+   = docs: corset explain nan-compare
+
+error[nan-compare]: `xs .< NaN` is never true
+  --> positive.jl:17:26
+   |
+17 | dotted_chain(xs, high) = xs .< NaN .< high
+   |                          ^^^^^^^^^^^^^^^^^ NaN has no order
+   |
+   = why: IEEE order comparison with NaN is false
+   = fix: test for NaN with `isnan.(xs)`   [manual]
+   = docs: corset explain nan-compare
+
+error[nan-compare]: `==(NaN)` is never true
+  --> positive.jl:18:27
+   |
+18 | count_missing(xs) = count(==(NaN), xs)
+   |                           ^^^^^^^ NaN equals no value, itself included
+   |
+   = why: IEEE comparison with NaN is false, and `!=` is true
+   = fix: replace with `isnan`   [likely]
+   = docs: corset explain nan-compare
+
+error[nan-compare]: `!=(NaN)` is never false
+  --> positive.jl:19:27
+   |
+19 | drop_missing(xs) = filter(!=(NaN), xs)
+   |                           ^^^^^^^ NaN equals no value, itself included
+   |
+   = why: IEEE comparison with NaN is false, and `!=` is true
+   = fix: replace with `!isnan`   [likely]
+   = docs: corset explain nan-compare
+
+error[nan-compare]: `==(x, NaN)` is never true
+  --> positive.jl:20:13
+   |
+20 | prefix(x) = ==(x, NaN)
+   |             ^^^^^^^^^^ NaN equals no value, itself included
+   |
+   = why: IEEE comparison with NaN is false, and `!=` is true
+   = fix: replace with `isnan(x)`   [likely]
+   = docs: corset explain nan-compare
+
+error[nan-compare]: `(x + 1) == NaN` is never true
+  --> positive.jl:21:7
+   |
+21 | @test (x + 1) == NaN
+   |       ^^^^^^^^^^^^^^ NaN equals no value, itself included
+   |
+   = why: IEEE comparison with NaN is false, and `!=` is true
+   = fix: replace with `isnan((x + 1))`   [likely]
+   = docs: corset explain nan-compare
+
+error[nan-compare]: `(state.count = 0) .!= NaN16` is never false
+  --> positive.jl:22:19
+   |
+22 | assigned(state) = (state.count = 0) .!= NaN16
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^ NaN equals no value, itself included
+   |
+   = why: IEEE comparison with NaN is false, and `!=` is true
+   = fix: assign before comparison, then test value with `isnan`   [manual]
+   = docs: corset explain nan-compare
+

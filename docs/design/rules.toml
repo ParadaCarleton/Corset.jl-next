@@ -391,7 +391,7 @@ footguns = [98]
 [[rule]]
 name = "pinned-task"
 footguns = [99]
-note = "Kinds: `@async`, `Task`, `:static` schedule."
+note = "Kinds: `@async`, `Task`, `:static` schedule. Package code only: script owns whole process."
 
 [[rule]]
 name = "baked-state"
@@ -401,6 +401,7 @@ note = "Reads file role fact: package module or script."
 [[rule]]
 name = "process-state"
 footguns = [101]
+note = "Package code only: script owns whole process."
 
 [[rule]]
 name = "module-inception"

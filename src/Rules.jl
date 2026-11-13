@@ -18,8 +18,12 @@ include("rules/file_length.jl")
 include("rules/inference_dependent.jl")
 include("rules/juxtaposition.jl")
 include("rules/mixed_return.jl")
+include("rules/module_inception.jl")
+include("rules/nan_compare.jl")
 include("rules/one_letter.jl")
 include("rules/orphan_task.jl")
+include("rules/pinned_task.jl")
+include("rules/process_state.jl")
 include("rules/repeated_concat.jl")
 include("rules/threadid_buffer.jl")
 include("rules/unguarded_release.jl")
@@ -47,8 +51,12 @@ const REGISTRY = RuleEntry[
     InferenceDependent.ENTRY,
     Juxtaposition.ENTRY,
     MixedReturn.ENTRY,
+    ModuleInception.ENTRY,
+    NanCompare.ENTRY,
     OneLetter.ENTRY,
     OrphanTask.ENTRY,
+    PinnedTask.ENTRY,
+    ProcessState.ENTRY,
     RepeatedConcat.ENTRY,
     ThreadidBuffer.ENTRY,
     UnguardedRelease.ENTRY,
