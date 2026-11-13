@@ -21,6 +21,38 @@ include("Output.jl")
 include("CLI.jl")
 
 using .Engine: check
+using PrecompileTools: @compile_workload, @setup_workload
+
+"""Script precompile workload checks: rules find something in it, and every output format and fix path runs."""
+const SAMPLE = """
+const WORKERS = Threads.nthreads()
+values = []
+total = 1.0
+total ≈ 0
+reach(value::Real)::Bool = value ≈ 0
+task = @async reach(1)
+ENV["MODE"] = "fast"
+function pick(flag::Bool)
+    flag && return 1
+    "no"
+end
+"""
+
+"""Run command line on `SAMPLE` in empty `directory`: every format, then fix, baseline, check and explain."""
+function workload(directory::String)::Nothing
+    # Own Project.toml makes `directory` project root, so baseline cannot land in project above it.
+    write(joinpath(directory, "Project.toml"), "[preferences.Corset]\nkind = \"library\"\n")
+    script = joinpath(directory, "sample.jl")
+    write(script, SAMPLE)
+    commands = [["check", script, "--format", format] for format in ("text", "json", "sarif")]
+    for args in [commands; [["fix", script], ["baseline", script], ["check", script], ["explain", "approx-zero"]]]
+        code = CLI.execute(args, IOBuffer(), IOBuffer(); launch = false)
+        code in (CLI.EXIT_PASS, CLI.EXIT_FAIL) || error("precompile workload: `corset $(join(args, ' '))` exited with $code")
+    end
+    return nothing
+end
+
+@setup_workload @compile_workload mktempdir(workload)
 
 """Command-line entry point for `corset` app and `julia -m Corset`; package runs relaunch in temporary environment."""
 function (@main)(args::Vector{String})::Int
