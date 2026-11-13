@@ -16,7 +16,7 @@ export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export finding, replace_fix, manual_fix, identifier_name, parent_of, ancestors, descendants, call_head, leaf_value
-export definition_name, struct_fields, include_calls, include_target
+export definition_name, struct_fields, include_calls, include_target, normalized_source
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
 @enumx Precision exact line
@@ -291,6 +291,10 @@ function struct_fields(definition::SyntaxNode)::Vector{SyntaxNode}
     end
     return names
 end
+
+"""Source of `node` with whitespace runs collapsed and docstring dropped, for comparison."""
+normalized_source(file::SyntaxFile, node::SyntaxNode)::String =
+    kind_name(node) == "doc" ? normalized_source(file, children_of(node)[end]) : replace(source(file, node), r"\s+" => " ")
 
 """Finding of `rule` with primary label at `node` of `file`."""
 function finding(
