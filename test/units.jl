@@ -1,7 +1,7 @@
 # Unit tests for skeleton pieces that UI snapshots do not reach.
 
 using Corset: Corset
-using Corset.Facts: Facts, Span, Label, Edit, Fix, Finding, Precision, Tier, Confidence, Group, IndexedPattern, @pattern
+using Corset.Facts: Facts, Span, Label, Edit, Fix, Finding, Precision, Tier, Confidence, Group, Role, IndexedPattern, @pattern
 using Corset.Config: Config, ConfigError, Flags, Kind, Level, Settings
 using Corset.Engine: Diagnostic, Report
 using Corset.Rules: REGISTRY, entry
@@ -54,21 +54,21 @@ end
     @test mixed.roots[Corset.Syntax.JS.K"call"] === nothing
     @test mixed.roots[Corset.Syntax.JS.K"vect"] === nothing
     @test IndexedPattern(@pattern ~or(f({x}), g({x}))).roots[Corset.Syntax.JS.K"call"] == Set(["f", "g"])
-    file = Corset.Syntax.parse_file("f.jl", "g(1)\n")
+    file = Corset.Syntax.parse_file("f.jl", "g(1)\n", Role.package)
     @test length(Facts.matches(file, IndexedPattern(@pattern {x}))) > 1
     @test Facts.identifier_name(only(Facts.leaves(file, "Integer"))) === nothing
     @test isempty(Facts.children_of(only(Facts.leaves(file, "Integer"))))
     text = "a = :(b = 1)\nc = :(f(\$(d = 2)))\n@dsl {e} = 3\n@test (g = 4)\nquote quote \$(h = 5) end end\n"
-    quoted = Corset.Syntax.parse_file("q.jl", text)
+    quoted = Corset.Syntax.parse_file("q.jl", text, Role.package)
     @test [Facts.source(quoted, node) for node in Facts.forms(quoted, "=")] == ["a = :(b = 1)", "c = :(f(\$(d = 2)))", "(d = 2)", "(g = 4)"]
     # Grouping parentheses belong to parent in JuliaSyntax tree; source keeps them, span does not.
-    grouped = Corset.Syntax.parse_file("g.jl", "f((x), y, (( a + b )), (c, d), (p)(q))\n")
+    grouped = Corset.Syntax.parse_file("g.jl", "f((x), y, (( a + b )), (c, d), (p)(q))\n", Role.package)
     call = first(Facts.forms(grouped, "call"))
     @test [Facts.source(grouped, node) for node in Facts.children_of(call)] == ["f", "(x)", "y", "(( a + b ))", "(c, d)", "(p)(q)"]
     @test [Facts.source(grouped, node) for node in Facts.children_of(Facts.children_of(call)[6])] == ["(p)", "q"]
     @test Facts.span(grouped, Facts.children_of(call)[2]).first_byte == 4
     # Parse error leaves empty parentheses: they group nothing.
-    @test isempty(Corset.Syntax.parse_file("e.jl", "x = (end)\n").groups)
+    @test isempty(Corset.Syntax.parse_file("e.jl", "x = (end)\n", Role.package).groups)
     # Children are shared with tree: mutation must fail loud.
     @test_throws MethodError push!(Facts.children_of(call), call)
 end
@@ -113,6 +113,9 @@ discovered(root::String, path::String = root)::Vector{String} = [relpath(file.pa
         @test discovered(root) == [
             "src/Pkg.jl", "ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "test/runtests.jl", "src/a.jl", "src/sub/b.jl", "test/cases.jl",
         ]
+        roles = [(relpath(file.path, root), file.role) for file in Corset.Discovery.discover(root).files]
+        @test sort!([path for (path, role) in roles if role == Role.package]) == ["ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "src/Pkg.jl", "src/a.jl", "src/sub/b.jl"]
+        @test only(Corset.Discovery.discover(joinpath(root, "lib", "Other")).files).role == Role.script
         @test [spot.cause for spot in Corset.Discovery.discover(root).blind_spots] == ["include with computed path", "include of missing file"]
         @test discovered(root, joinpath(root, "src", "a.jl")) == ["src/a.jl"]
         @test [relpath(entry, root) for entry in Corset.Discovery.discover(root).entries] == ["src/Pkg.jl", "ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "test/runtests.jl"]
@@ -124,6 +127,7 @@ discovered(root::String, path::String = root)::Vector{String} = [relpath(file.pa
               - src/Pkg.jl:5:1: include of missing file
             """
         rm(joinpath(root, "Project.toml"))
+        @test all(file -> file.role == Role.script, Corset.Discovery.discover(root).files)
         @test discovered(root) == ["ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "scripts/e.jl", "src/Pkg.jl", "src/a.jl", "src/orphan.jl", "src/sub/b.jl", "test/cases.jl", "test/fixtures/bad.jl", "test/runtests.jl"]
         write(joinpath(root, "Project.toml"), "name = \"Missing\"\n")
         @test_throws Corset.Config.ConfigError Corset.Discovery.discover(root)
@@ -221,17 +225,17 @@ end
     ]
     @test all(diagnostic.level == Level.deny for diagnostic in report.diagnostics)
     @test occursin("= note: deny from opt-out check, always on", sprint(io -> Corset.Render.render_all(io, report)))
-    file = Corset.Syntax.parse_file("end.jl", "x = 1\n# corset: allow one-letter -- nothing follows\n")
+    file = Corset.Syntax.parse_file("end.jl", "x = 1\n# corset: allow one-letter -- nothing follows\n", Role.package)
     kept, problems = Corset.OptOuts.apply(Facts.FactSet([file], String[]), Finding[], Set([Symbol("one-letter")]))
     @test isempty(kept) && [problem.kind for problem in problems] == [:unused]
 end
 
 @testset "baseline" begin
-    nested = Corset.Syntax.parse_file("d.jl", "module M\nstruct S{T} <: A\n    x::T\nend\nf(x::T)::T where {T} = x\nend\n")
+    nested = Corset.Syntax.parse_file("d.jl", "module M\nstruct S{T} <: A\n    x::T\nend\nf(x::T)::T where {T} = x\nend\n", Role.package)
     @test Corset.Baseline.definition_name(Corset.Baseline.Definitions(nested), first(findfirst("x::T\nend", nested.text))) == "S"
     @test Corset.Baseline.definition_name(Corset.Baseline.Definitions(nested), last(findfirst("= x", nested.text))) == "f"
     @test Corset.Baseline.definition_name(Corset.Baseline.Definitions(nested), 1) == "M"
-    @test Corset.Baseline.definition_name(Corset.Baseline.Definitions(Corset.Syntax.parse_file("t.jl", "x = 1\n")), 1) == ""
+    @test Corset.Baseline.definition_name(Corset.Baseline.Definitions(Corset.Syntax.parse_file("t.jl", "x = 1\n", Role.package)), 1) == ""
     mktempdir(@__DIR__) do directory
         write(joinpath(directory, "Project.toml"), "[deps]\n")
         source = "near(value::Real)::Bool = value ≈ 0\nfunction far(value::Real)::Bool\n    return value ≈ 0\nend\n"
@@ -242,7 +246,7 @@ end
         write(joinpath(directory, "a.jl"), "# moved down\n\n" * source * "extra(value::Real)::Bool = value ≈ 0\n")
         moved = Corset.check(directory)
         @test moved.baselined == 2
-        definitions = Corset.Baseline.Definitions(Corset.Syntax.parse_file(joinpath(directory, "a.jl"), read(joinpath(directory, "a.jl"), String)))
+        definitions = Corset.Baseline.Definitions(Corset.Syntax.parse_file(joinpath(directory, "a.jl"), read(joinpath(directory, "a.jl"), String), Role.script))
         @test [Corset.Baseline.key(definitions, directory, d.finding).definition for d in moved.diagnostics] == ["extra"]
         write(joinpath(directory, "a.jl"), "near(value::Real)::Bool = value ≈ 0\n")
         fixed = Corset.check(directory)

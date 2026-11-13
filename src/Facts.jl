@@ -11,7 +11,7 @@ using EnumX: @enumx
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
 using ReadOnlyArrays: ReadOnlyVector
 
-export Precision, Tier, Confidence, Group, Stage
+export Precision, Tier, Confidence, Group, Stage, Role
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
@@ -28,6 +28,8 @@ export definition_name, struct_fields, include_calls, include_target
 @enumx Group correctness performance composability readability
 """Analysis stage that computes facts rule reads, in pipeline order."""
 @enumx Stage syntax package scope inference effects lifecycle external
+"""File role: `package` module code precompiles; `script` code (tests, docs, scripts) runs each time it loads."""
+@enumx Role package script
 
 """Byte range `first_byte:last_byte` of `file`, 1-based and inclusive."""
 struct Span
@@ -84,7 +86,7 @@ struct RuleEntry
 end
 
 """
-Parsed source file (`syntax` stage facts): lossless tree, comment byte ranges, and code nodes indexed by kind.
+Parsed source file (`syntax` stage facts): role, lossless tree, comment byte ranges, and code nodes indexed by kind.
 Index keeps forms (inner nodes) apart from leaves, since quoted operators like `:(=)` are leaves of form kinds.
 Index skips quoted code outside interpolation and macro arguments with `{}` (`Syntax.walk`); tree walks see both.
 `groups` maps node to bytes of grouping parentheses that wrap only it (`Syntax.groups`).
@@ -93,6 +95,7 @@ Index skips quoted code outside interpolation and macro arguments with `{}` (`Sy
 struct SyntaxFile
     path::String
     text::String
+    role::Role.T
     tree::SyntaxNode
     forms::Dict{Kind, Vector{SyntaxNode}}
     leaves::Dict{Kind, Vector{SyntaxNode}}

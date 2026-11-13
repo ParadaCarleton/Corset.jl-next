@@ -1,7 +1,7 @@
 # Speed: syntax budget on legacy source, and cost linear in function size.
 
 using Corset: Corset
-using Corset.Facts: FactSet
+using Corset.Facts: FactSet, Role
 using Test: @test, @testset
 
 """Seconds `f()` takes with garbage collector off: full collections scan whole heap, so their cost grows with live data."""
@@ -25,10 +25,10 @@ end
     @testset "syntax run inside budget" begin
         # Budget: 2 s per 10,000 lines (plan.md). Measured 0.04 s.
         sources = Corset.Discovery.discover(joinpath(dirname(@__DIR__), "lib", "CorsetLegacy", "src"))
-        texts = [(file.path, file.text) for file in sources.files]
-        lines = sum(text -> count(==('\n'), text), last.(texts))
+        texts = [(file.path, file.text, file.role) for file in sources.files]
+        lines = sum(((_, text, _),) -> count(==('\n'), text), texts)
         seconds = fastest(3) do
-            Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(path, text) for (path, text) in texts], sources.entries))
+            Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(path, text, role) for (path, text, role) in texts], sources.entries))
         end
         @test seconds * 10_000 / lines < 2.0
     end
@@ -44,9 +44,9 @@ end
             end
             # Time ratio gets 5× headroom over linear; allocation ratio is deterministic and gets 2×.
             ratios(f::Function) = (fastest(() -> f(large), 5) / fastest(() -> f(small), 5), @allocated(f(large)) / @allocated(f(small)))
-            facts = Dict(path => FactSet([Corset.Syntax.parse_file(path, read(path, String))], [path]) for path in (small, large))
+            facts = Dict(path => FactSet([Corset.Syntax.parse_file(path, read(path, String), Role.package)], [path]) for path in (small, large))
             measured = Dict(string(entry.name) => ratios(path -> entry.run(facts[path])) for entry in Corset.Rules.REGISTRY)
-            measured["parse"] = ratios(path -> Corset.Syntax.parse_file(path, read(path, String)))
+            measured["parse"] = ratios(path -> Corset.Syntax.parse_file(path, read(path, String), Role.package))
             # Measure stages after rules alone: inside `analyze`, linear rule cost hides their growth.
             findings = Dict(path => Corset.Engine.run_rules(facts[path]) for path in (small, large))
             known = Set(entry.name for entry in Corset.Rules.REGISTRY)

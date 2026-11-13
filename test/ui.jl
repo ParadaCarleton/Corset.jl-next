@@ -3,7 +3,7 @@
 # Each case starts with `# runic: off`: formatter must not normalize syntax cases test.
 
 using Corset: Corset
-using Corset.Facts: FactSet, Tier, Confidence
+using Corset.Facts: FactSet, Tier, Confidence, Role
 using Corset.Config: Settings, Kind
 using Test: @test, @testset
 
@@ -18,10 +18,13 @@ function snapshot(path::String, actual::String)::Bool
     return actual == (isfile(path) ? read(path, String) : "")
 end
 
-"""Rendered findings and fixed source for `case` of rule `name`; case is only entry, as in `corset check case.jl`."""
+"""
+Rendered findings and fixed source for `case` of rule `name`; case is only entry, as in `corset check case.jl`.
+Case named `script*.jl` parses as script; other cases parse as package code.
+"""
 function run_case(name::Symbol, case::String)::Tuple{String, String}
     text = read(case, String)
-    file = Corset.Syntax.parse_file(basename(case), text)
+    file = Corset.Syntax.parse_file(basename(case), text, startswith(basename(case), "script") ? Role.script : Role.package)
     entry = Corset.Rules.entry(name)
     findings = Corset.Engine.run_rules(FactSet([file], [file.path]), [entry])
     report = Corset.Engine.Report(Corset.Engine.diagnostics(findings, UI_SETTINGS), UI_SETTINGS, dirname(case), Dict(file.path => text), 0, [], [])

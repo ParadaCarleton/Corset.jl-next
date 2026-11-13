@@ -2,7 +2,7 @@
 # Set CORSET_PROPERTY_EXAMPLES to run more examples per property.
 
 using Corset: Corset
-using Corset.Facts: FactSet, Finding, Tier, children_of, kind_name, parent_of
+using Corset.Facts: FactSet, Finding, Tier, Role, children_of, kind_name, parent_of
 using Corset.Syntax: JS
 using Supposition: Supposition, @check, @composed, Data, assume!
 using Test: @test, @testset
@@ -14,8 +14,8 @@ const EXAMPLE_DB = Supposition.DirectoryDB(joinpath(@__DIR__, "SuppositionDB"))
 """Module that statements lower in; lowering expands macros and runs nothing."""
 const SANDBOX = Module(:Sandbox)
 
-"""Findings of every rule on `text` as one file."""
-findings_of(text::String)::Vector{Finding} = Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(PROGRAM, text)], [PROGRAM]))
+"""Findings of every rule on `text` as one package file, so rules for package code run too."""
+findings_of(text::String)::Vector{Finding} = Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(PROGRAM, text, Role.package)], [PROGRAM]))
 
 """Edits one fix run applies to `findings` at `tier`."""
 edits_of(findings::Vector{Finding}, tier::Tier.T)::Vector{Corset.Facts.Edit} = Corset.Fixes.applicable_edits(findings, PROGRAM, tier)
