@@ -188,8 +188,7 @@ level(settings::Settings, name::String)::Level.T = first(Config.level_of(setting
     @test Config.level_of(library, entry(Symbol("approx-zero")))[2] == "correctness group, library preset"
     nameless = fixture_settings("nameless")
     @test (nameless.kind, nameless.confidence, nameless.tier) == (Kind.application, Confidence.definite, Tier.breaking)
-    @test fixture_settings("not-table").kind == Kind.application
-    for broken in ("missing-kind", "bad-level", "unknown-rule", "unknown-key", "broken-toml")
+    for broken in ("missing-kind", "bad-level", "unknown-rule", "unknown-key", "broken-toml", "not-table")
         @test_throws ConfigError fixture_settings(broken)
     end
     @test sprint(showerror, ConfigError("bad")) == "config error: bad"
@@ -217,6 +216,14 @@ level(settings::Settings, name::String)::Level.T = first(Config.level_of(setting
     mktempdir(@__DIR__) do directory
         write(joinpath(directory, "LocalPreferences.toml"), "[Corset]\nbanned = [{ name = \"x\", reason = \"r\", group = \"correctness\" }]\n")
         @test_throws ConfigError Config.read_table(joinpath(directory, "LocalPreferences.toml"), ("Corset",))
+        # Missing key means defaults; key holding other value than table is error.
+        project_file = joinpath(directory, "Project.toml")
+        write(project_file, "name = \"P\"\n")
+        @test Config.read_table(project_file, ("preferences", "Corset")) == Config.Table()
+        for text in ("preferences = 1\n", "[preferences]\nCorset = \"library\"\n")
+            write(project_file, text)
+            @test_throws ConfigError Config.read_table(project_file, ("preferences", "Corset"))
+        end
     end
 end
 

@@ -81,13 +81,14 @@ function parse_toml(file::String)::Dict{String, Any}
     end
 end
 
-"""Table under `keys` in TOML `file`; empty table when file or table is missing."""
+"""Table under `keys` in TOML `file`; empty table when file or key is missing. Key holding other value is config error."""
 function read_table(file::String, keys::Tuple{Vararg{String}})::Table
     isfile(file) || return Table()
     data = parse_toml(file)
-    for key in keys
-        data = get(data, key, nothing)
-        data isa AbstractDict || return Table()
+    for (depth, key) in enumerate(keys)
+        haskey(data, key) || return Table()
+        data = data[key]
+        data isa AbstractDict || throw(ConfigError("$file: `$(join(keys[1:depth], "."))` must be table, not $(typeof(data))"))
     end
     try
         return from_dict(Table, data)
