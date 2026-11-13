@@ -2,7 +2,8 @@
 `pinned-task` (F99): task pinned to one thread.
 
 ## Description
-Reports `@async`, task construction with `Task(f)` or `@task`, and `@threads :static`.
+Reports `@async`, task construction with `Task(f)` or `@task`, and `@threads :static`, in package code only.
+Script owns whole process and picks its own threads, so rule skips it.
 
 ## Rationale
 Pinned task runs only on its thread, even when other threads are idle.
@@ -73,6 +74,7 @@ task_finding(file::SyntaxFile, node::SyntaxNode, name::String)::Finding = findin
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
+        file.role == Role.package || continue
         sticky_off = unpinned(file)
         for node in forms(file, "macrocall")
             name = macro_name(file, node)

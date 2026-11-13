@@ -72,7 +72,7 @@ end
     # Children are shared with tree: mutation must fail loud.
     @test_throws MethodError push!(Facts.children_of(call), call)
     # String macro name has no `@`; at file start, byte before it does not exist.
-    macros = Corset.Syntax.parse_file("m.jl", "raw\"x\"\n@async f()\nThreads.@async f()\n@. x + 1\n")
+    macros = Corset.Syntax.parse_file("m.jl", "raw\"x\"\n@async f()\nThreads.@async f()\n@. x + 1\n", Role.package)
     @test [Facts.macro_name(macros, node) for node in Facts.forms(macros, "macrocall")] == ["raw", "@async", "Threads.@async", "@."]
 end
 

@@ -2,7 +2,8 @@
 `process-state` (F101): package writes process-wide state.
 
 ## Description
-Reports writes to `ENV`, `withenv`, and `cd` in any form.
+Reports writes to `ENV`, `withenv`, and `cd` in any form, in package code only.
+Script owns whole process, so rule skips it.
 `ENV` writes: index assignment, compound assignment, and `setindex!`, `delete!`, `pop!`, `push!`, `empty!`, `merge!`, `get!` on `ENV`.
 
 ## Rationale
@@ -62,6 +63,7 @@ end
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
+        file.role == Role.package || continue
         for node in [forms(file, "="); forms(file, "op=")]
             target = children_of(node)[1]
             kind_name(target) == "ref" && is_env(children_of(target)[1]) || continue
