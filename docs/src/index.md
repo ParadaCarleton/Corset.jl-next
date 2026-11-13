@@ -1,90 +1,57 @@
 # Corset.jl
 
-Corset checks a package against code-quality rules. A rule is a function that reads a loaded module
-(its lowered and inferred code, bindings and types) or a source file, and returns the places where
-the code breaks it. [`corset check`](cli.md) runs the rules in CI.
+Corset is a code-quality checker for Julia. It reports likely bugs, performance traps and code that is hard to read.
+Each finding shows the code, the reason and a fix. Corset applies the fixes that are safe for your project.
 
-Corset checks things a linter cannot see because they need the compiler's answer: a local variable
-that infers as `Any`, a closure that boxes a captured variable, a function that reads a mutable
-global, a Float32 kernel that computes in Float64.
+Corset checks packages, applications and scripts. Its rules read the syntax tree of each file.
 
 ## Install
 
+Corset is not in the General registry. Add the `corset` app from its repository:
+
 ```julia
-pkg> add Corset
+pkg> app add https://github.com/ParadaCarleton/Corset.jl-private
 ```
+
+Pkg puts the app in `~/.julia/bin`. Add that directory to `PATH`.
+In an environment that has Corset, `julia -m Corset` runs the same command.
 
 ## A first check
 
-Write a module with two problems.
-
-```@setup first
-using CorsetLegacy: Repository, offenders!, hidden_inputs, unstable_variables, entry_frames
-root = mktempdir()
-mkpath(joinpath(root, "src"))
-write(joinpath(root, "src", "Demo.jl"), """
-module Demo
-const COUNTER = Ref(0)
-bump(x) = x + COUNTER[]
-function total(xs)
-    acc = 0
-    for x in xs
-        acc += x / 2
-    end
-    acc
-end
-end
-""")
-include(joinpath(root, "src", "Demo.jl"))
-```
+Write a script with two problems:
 
 ```julia
-module Demo
-const COUNTER = Ref(0)
-bump(x) = x + COUNTER[]
-
-function total(xs)
-    acc = 0
-    for x in xs
-        acc += x / 2
-    end
-    acc
-end
+samples = [1.0, NaN, 3.0]
+valid = filter(x -> x != NaN, samples)
+try
+    sum(valid)
+catch
 end
 ```
 
-`bump` reads a mutable global, so its result depends on state its signature does not show. In
-`total`, `acc` starts as an `Int` and becomes a `Float64`, so the compiler infers a union for it.
-Ask Corset for the offenders of the two rules that notice this:
+Check it:
 
-```@example first
-repo = Repository(root)
-offenders!(repo, "hidden-input", hidden_inputs(repo, Demo))
+```@setup first
+using Corset
+directory = mktempdir()
+write(joinpath(directory, "demo.jl"), """
+samples = [1.0, NaN, 3.0]
+valid = filter(x -> x != NaN, samples)
+try
+    sum(valid)
+catch
+end
+""")
 ```
 
 ```@example first
-offenders!(repo, "unstable-variable", unstable_variables(repo, entry_frames([Tuple{typeof(Demo.total), Vector{Int}}], Demo)))
+cd(() -> Corset.CLI.execute(["check", "demo.jl"], stdout, stdout), directory) # hide
 ```
 
-Each returned string is a key: the name of one offender. [`offenders!`](@ref) returns the keys
-and logs them.
+The exit code is `1` because each finding has level `deny`. The [Guide](guide.md) tells how to set levels.
 
-## In CI
+## Next
 
-[`corset check`](cli.md) runs every rule over a package and exits nonzero on a finding. Give it a CI
-job of its own; with Corset in the package's test dependencies:
-
-```bash
-julia -e 'using Pkg; Pkg.add("TestEnv")'
-julia --project=. -e 'using TestEnv; TestEnv.activate(); using Corset; exit(Corset.main(ARGS))' -- check .
-```
-
-With no further setup every offender fails. A package with existing offenders adopts Corset one
-rule at a time through a [baseline](guide.md#Adopting-Corset-on-an-existing-package). The
-[Guide](guide.md#Where-to-run-the-rules) says why the rules run outside `Pkg.test`.
-
-## Where to go next
-
-- [Guide](guide.md): where to run the rules, baselines, exemptions and opt-out comments.
-- [Rules](rules.md): every rule, what it finds and how to repair an offender.
-- [API](api.md): the exported names. The internals pages hold every other docstring.
+- [Guide](guide.md): project kind, levels, configuration, opt-out comments, baseline and fixes.
+- [CLI](cli.md): commands, options and exit codes.
+- [Rules](rules.md): each rule, with an example and the alternative.
