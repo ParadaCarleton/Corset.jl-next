@@ -32,49 +32,18 @@ const NAME = Symbol("one-letter")
 """Names allowed as loop variables."""
 const INDEX_NAMES = Set(["i", "j", "k"])
 
-"""Identifier bound by binding-site node `node` (strips `::T` and default `= value`)."""
-function bound_identifier(node::SyntaxNode)::Union{Nothing, SyntaxNode}
-    while kind_name(node) in ("::", "=", "kw") && !isempty(children_of(node))
-        node = children_of(node)[1]
-    end
-    return isnothing(identifier_name(node)) ? nothing : node
-end
-
-"""Binding sites in `file`: parameters, assignment targets, loop and `let` variables, each with loop flag."""
-function binding_sites(file::SyntaxFile)::Vector{Tuple{Any, Bool}}
-    sites = Tuple{Any, Bool}[]
-    for definition in forms(file, "function")
-        signature = children_of(definition)[1]
-        while kind_name(signature) in ("where", "::")
-            signature = children_of(signature)[1]
-        end
-        kind_name(signature) == "call" || continue
-        for parameter in children_of(signature)[2:end]
-            group = kind_name(parameter) == "parameters" ? children_of(parameter) : [parameter]
-            append!(sites, ((node, false) for node in group))
-        end
-    end
-    for assignment in forms(file, "=")
-        parent = parent_of(assignment)
-        kind_name(parent) in ("call", "parameters", "function") && continue
-        push!(sites, (children_of(assignment)[1], kind_name(parent) in ("iteration", "for")))
-    end
-    for clause in forms(file, "in")
-        kind_name(parent_of(clause)) == "iteration" && push!(sites, (children_of(clause)[1], true))
-    end
-    return sites
-end
+"""Binding kinds rule reads; definition names and fields, such as `x` of point type, stay legal."""
+const VALUE_BINDINGS = (BindingKind.parameter, BindingKind.assignment, BindingKind.loop)
 
 """Findings for one-letter names, once per name and enclosing function."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
         seen = Set{Tuple{UInt, String}}()
-        for (site, is_loop) in binding_sites(file)
-            node = bound_identifier(site)
-            isnothing(node) && continue
-            name = identifier_name(node)
-            length(name) == 1 && name != "_" && !(is_loop && name in INDEX_NAMES) || continue
+        for site in file.bindings
+            site.kind in VALUE_BINDINGS || continue
+            node, name = site.name, identifier_name(site.name)
+            length(name) == 1 && name != "_" && !(site.kind == BindingKind.loop && name in INDEX_NAMES) || continue
             scope = findfirst(ancestor -> kind_name(ancestor) == "function", ancestors(node))
             # Node hash walks whole subtree; key scope by identity.
             key = (isnothing(scope) ? UInt(0) : objectid(ancestors(node)[scope]), name)

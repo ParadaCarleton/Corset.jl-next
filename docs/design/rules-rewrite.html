@@ -389,7 +389,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tr data-group="readability"><td><code>wide-struct</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F78 Struct with too many fields</td><td></td></tr>
 <tr data-group="readability"><td><code>field-prefix</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F79 Related fields belong in nested struct, table or array</td><td></td></tr>
 <tr data-group="readability"><td><code>c-type</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F81 C types outside C calls</td><td></td></tr>
-<tr data-group="readability"><td><code>banned</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F82 Project-banned name or pattern</td><td>One config list; each entry names its group.</td></tr>
+<tr data-group="readability"><td><code>banned</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F82 Project-banned name or pattern</td><td>One config list <code>banned</code>; entry holds Argus <code>pattern</code> or whole-name regex <code>name</code>, plus <code>reason</code>. Rule level covers every entry, like Clippy <code>disallowed_methods</code>.</td></tr>
 <tr data-group="correctness"><td><code>nan-compare</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F95 Comparison with <code>NaN</code> has fixed result</td><td></td></tr>
 <tr data-group="correctness"><td><code>unreachable</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F96 Code never runs</td><td>Kinds: repeated condition, statement after exit.</td></tr>
 <tr data-group="readability"><td><code>unused-literal</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F97 Literal statement has no effect</td><td>Kinds: detached docstring, other literal.</td></tr>
@@ -414,7 +414,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
     </div>
 <p>Note: Rules with both kinds: <code>bang-convention</code> (dispatch candidates disagree on write, or call dispatches at run time), <code>type-disruption</code> (type branch), <code>unwritten-element</code> and <code>constant-array</code> (sites fixer cannot prove).</p>
 <div class="decision"><h3>Groups</h3>
-<p><code>correctness</code>, <code>performance</code>, <code>composability</code>, <code>readability</code>. One group per rule; <code>banned</code> entries name their own group.</p>
+<p><code>correctness</code>, <code>performance</code>, <code>composability</code>, <code>readability</code>. One group per rule, <code>banned</code> included.</p>
 </div><div class="decision"><h3>Confidence and blind spots</h3>
 <p><code>confidence</code> sets lowest confidence finding needs to be reported. <code>definite</code> (default) reports definite findings only; <code>possible</code> reports both. <code>likely</code> can join between them later.</p>
 <p>Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and method table when it compiles call. It never sees run-time values, foreign code or methods added later.</p>
@@ -460,7 +460,8 @@ footer { color: var(--muted); font-size: 0.85rem; }
 </div><div class="decision"><h3>Parse errors</h3>
 <p>JuliaSyntax parse error is error finding at <code>deny</code>, outside rule table, as Ruff reports syntax errors. No level, opt-out or baseline hides it. Rules still run on recovered tree.</p>
 </div><div class="decision"><h3>Config</h3>
-<p><code>[preferences.Corset]</code> table in target Project.toml; <code>[Corset]</code> table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: <code>kind</code>, <code>confidence</code>, <code>fix_tier</code>, <code>levels</code> (group or rule name to level). Unknown key, value or name is config error (exit 2). Scripts without Project.toml use defaults and command-line flags.</p>
+<p><code>[preferences.Corset]</code> table in target Project.toml; <code>[Corset]</code> table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: <code>kind</code>, <code>confidence</code>, <code>fix_tier</code>, <code>levels</code> (group or rule name to level), <code>banned</code> (list of bans).
+Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, or <code>name</code> regex that must match whole bound name. Unknown key, value or name is config error (exit 2). Scripts without Project.toml use defaults and command-line flags.</p>
 </div><div class="decision"><h3>Project kind</h3>
 <p>Preset over groups and fix tier. Answers &quot;who uses this code?&quot;</p>
 <div class="scroll"><table>

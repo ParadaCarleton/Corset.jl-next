@@ -1,5 +1,5 @@
 """
-Run settings: project kind, levels, confidence and fix tier.
+Run settings: project kind, levels, confidence, fix tier and project bans.
 
 Sources, later wins: kind preset, `[preferences.Corset]` in Project.toml, `[Corset]` in LocalPreferences.toml,
 command-line flags. Rule level beats group level.
@@ -9,7 +9,7 @@ module Config
 using Configurations: @option, from_dict
 using EnumX: @enumx
 using TOML: TOML
-using ..Facts: Group, Confidence, Tier, RuleEntry
+using ..Facts: Facts, Group, Confidence, Tier, RuleEntry, Ban
 
 """Lint level, as in Clippy: `deny` findings fail run; `allow` findings are not reported."""
 @enumx Level allow warn deny
@@ -24,12 +24,20 @@ end
 
 Base.showerror(io::IO, error::ConfigError)::Nothing = print(io, "config error: ", error.message)
 
+"""One `banned` entry as written: Argus `pattern` or binding `name` regex, and `reason`."""
+@option struct BanTable
+    pattern::Union{Nothing, String} = nothing
+    name::Union{Nothing, String} = nothing
+    reason::String
+end
+
 """One preferences table as written. `nothing` marks key left out, so later table overlays earlier one key by key."""
 @option struct Table
     kind::Union{Nothing, String} = nothing
     confidence::Union{Nothing, String} = nothing
     fix_tier::Union{Nothing, String} = nothing
     levels::Dict{String, String} = Dict{String, String}()
+    banned::Union{Nothing, Vector{BanTable}} = nothing
 end
 
 """Command-line settings; each beats config file value."""
@@ -47,6 +55,7 @@ struct Settings
     tier::Tier.T
     levels::Dict{String, Tuple{Level.T, String}}
     deny_warnings::Bool
+    bans::Vector{Ban}
 end
 
 """Groups each kind enables, and highest fix tier it applies."""
@@ -87,13 +96,42 @@ function read_table(file::String, keys::Tuple{Vararg{String}})::Table
     end
 end
 
-"""Table `under` with every key `over` sets replaced; `levels` merge name by name."""
+"""Table `under` with every key `over` sets replaced; `levels` merge name by name, `banned` list replaces whole list."""
 overlay(under::Table, over::Table)::Table = Table(;
     kind = something(over.kind, under.kind, Some(nothing)),
     confidence = something(over.confidence, under.confidence, Some(nothing)),
     fix_tier = something(over.fix_tier, under.fix_tier, Some(nothing)),
     levels = merge(under.levels, over.levels),
+    banned = something(over.banned, under.banned, Some(nothing)),
 )
+
+"""Ban from `entry`: exactly one of `pattern` and `name`, and reason with text. Bad entry is config error."""
+function ban(entry::BanTable)::Ban
+    xor(isnothing(entry.pattern), isnothing(entry.name)) || throw(ConfigError("banned entry needs exactly one of `pattern` and `name`"))
+    isempty(strip(entry.reason)) && throw(ConfigError("banned entry needs reason"))
+    isnothing(entry.name) || return Ban(entry.name, name_regex(entry.name), entry.reason)
+    try
+        return Ban(entry.pattern, Facts.parse_pattern(entry.pattern), entry.reason)
+    catch error
+        error isa ArgumentError || rethrow()
+        throw(ConfigError("banned pattern $(repr(entry.pattern)): $(error.msg)"))
+    end
+end
+
+"""Regex that matches whole binding name `text`; bad regex is config error, unbalanced one included."""
+function name_regex(text::String)::Regex
+    try
+        # Compile alone first: `a)|(b` would close anchoring group and match any name starting with `a`.
+        Regex(text)
+        return Regex("^(?:$text)\$")
+    catch error
+        error isa ErrorException || rethrow()
+        throw(ConfigError("banned name $(repr(text)): $(error.msg)"))
+    end
+end
+
+"""Bans of `table`; table without `banned` key bans nothing."""
+bans(table::Table)::Vector{Ban} = map(ban, something(table.banned, BanTable[]))
 
 """Value of enum `T` named `name`; error names config `key` and valid choices."""
 function parse_enum(::Type{T}, name::String, key::String)::T where {T <: Enum}
@@ -141,7 +179,7 @@ function settings(root::Union{Nothing, String}, flags::Flags, rules::Vector{Rule
     end
     confidence = something(flags.confidence, isnothing(table.confidence) ? Confidence.definite : parse_enum(Confidence.T, table.confidence, "confidence"))
     tier = something(flags.tier, isnothing(table.fix_tier) ? last(PRESETS[kind]) : parse_enum(Tier.T, table.fix_tier, "fix_tier"))
-    return Settings(kind, confidence, tier, levels, flags.deny_warnings)
+    return Settings(kind, confidence, tier, levels, flags.deny_warnings, bans(table))
 end
 
 """Level of `entry` under `settings`, and where it was set. Rule setting beats group setting; group setting beats preset."""

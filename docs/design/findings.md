@@ -16,7 +16,7 @@ Note: Rules with both kinds: `bang-convention` (dispatch candidates disagree on 
 
 ### Groups
 
-`correctness`, `performance`, `composability`, `readability`. One group per rule; `banned` entries name their own group.
+`correctness`, `performance`, `composability`, `readability`. One group per rule, `banned` included.
 
 ### Confidence and blind spots
 
@@ -54,7 +54,8 @@ JuliaSyntax parse error is error finding at `deny`, outside rule table, as Ruff 
 
 ### Config
 
-`[preferences.Corset]` table in target Project.toml; `[Corset]` table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: `kind`, `confidence`, `fix_tier`, `levels` (group or rule name to level). Unknown key, value or name is config error (exit 2). Scripts without Project.toml use defaults and command-line flags.
+`[preferences.Corset]` table in target Project.toml; `[Corset]` table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: `kind`, `confidence`, `fix_tier`, `levels` (group or rule name to level), `banned` (list of bans).
+Each ban holds `reason` and one target: Argus `pattern`, or `name` regex that must match whole bound name. Unknown key, value or name is config error (exit 2). Scripts without Project.toml use defaults and command-line flags.
 
 ### Project kind
 

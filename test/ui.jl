@@ -3,14 +3,17 @@
 # Each case starts with `# runic: off`: formatter must not normalize syntax cases test.
 
 using Corset: Corset
-using Corset.Facts: FactSet, Tier, Confidence, Role
+using Corset.Facts: FactSet, Tier, Confidence, Role, Ban
 using Corset.Config: Settings, Kind
 using Test: @test, @testset
 
 const UI = joinpath(@__DIR__, "ui")
 const BLESS = get(ENV, "CORSET_BLESS", "") == "1"
 """Settings UI cases render under: library preset, both confidences."""
-const UI_SETTINGS = Settings(Kind.library, Confidence.possible, Tier.breaking, Dict(), false)
+const UI_SETTINGS = Settings(Kind.library, Confidence.possible, Tier.breaking, Dict(), false, Ban[])
+
+"""Bans of `[Corset]` table in `config.toml` next to case, as LocalPreferences.toml holds them; none without file."""
+case_bans(directory::String)::Vector{Ban} = Corset.Config.bans(Corset.Config.read_table(joinpath(directory, "config.toml"), ("Corset",)))
 
 """Compare `actual` with snapshot `path`; write it when blessing. Missing snapshot means empty expected text."""
 function snapshot(path::String, actual::String)::Bool
@@ -20,13 +23,13 @@ end
 
 """
 Rendered findings and fixed source for `case` of rule `name`; case is only entry, as in `corset check case.jl`.
-Case named `script*.jl` parses as script; other cases parse as package code.
+Case named `script*.jl` parses as script; other cases parse as package code. Bans come from `case_bans`.
 """
 function run_case(name::Symbol, case::String)::Tuple{String, String}
     text = read(case, String)
     file = Corset.Syntax.parse_file(basename(case), text, startswith(basename(case), "script") ? Role.script : Role.package)
     entry = Corset.Rules.entry(name)
-    findings = Corset.Engine.run_rules(FactSet([file], [file.path]), [entry])
+    findings = Corset.Engine.run_rules(FactSet([file], [file.path], case_bans(dirname(case))), [entry])
     report = Corset.Engine.Report(Corset.Engine.diagnostics(findings, UI_SETTINGS), UI_SETTINGS, dirname(case), Dict(file.path => text), 0, [], [])
     rendered = sprint(io -> Corset.Render.render_all(io, report))
     fixed = Corset.Fixes.apply_edits(text, Corset.Fixes.applicable_edits(findings, file.path, Tier.breaking))

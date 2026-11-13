@@ -2,7 +2,8 @@
 module Syntax
 
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
-using ..Facts: SyntaxFile, Role, FactSet, Finding, Label, Span, Precision, Confidence, manual_fix, trimmed, trimmed_bytes
+using ..Facts: SyntaxFile, Role, FactSet, Finding, Label, Span, Precision, Confidence, BindingKind, BindingSite
+using ..Facts: manual_fix, trimmed, trimmed_bytes, children_of, kind_name, parent_of, identifier_name, definition_name, struct_fields
 
 """Rule name parse errors report under; outside registry, like opt-out problems."""
 const PARSE_ERROR = Symbol("parse-error")
@@ -24,7 +25,55 @@ function parse_file(path::String, text::String, role::Role.T)::SyntaxFile
         push!(get!(() -> SyntaxNode[], JS.is_leaf(node) ? leaves : forms, JS.kind(node)), node)
     end
     comments = [Int(first(token.range)):Int(last(token.range)) for token in JS.tokenize(text) if JS.kind(token) == JS.K"Comment"]
-    return SyntaxFile(path, text, role, tree, forms, leaves, comments, groups!(IdDict{SyntaxNode, UnitRange{Int}}(), text, tree), errors)
+    groups = groups!(IdDict{SyntaxNode, UnitRange{Int}}(), text, tree)
+    return SyntaxFile(path, text, role, tree, forms, leaves, comments, groups, errors, binding_sites(forms))
+end
+
+"""Identifier `node` binds once `::T` and default `= value` are stripped; `nothing` for other targets, such as tuples."""
+function bound_identifier(node::SyntaxNode)::Union{Nothing, SyntaxNode}
+    while kind_name(node) in ("::", "=", "kw") && !isempty(children_of(node))
+        node = children_of(node)[1]
+    end
+    return isnothing(identifier_name(node)) ? nothing : node
+end
+
+"""Kinds whose first child names definition."""
+const NAMED = ("function", "macro", "struct", "abstract", "primitive", "module")
+
+"""Names code in `forms` binds: parameters, assignment targets, loop variables, then definition names and struct fields."""
+function binding_sites(forms::Dict{Kind, Vector{SyntaxNode}})::Vector{BindingSite}
+    sites = BindingSite[]
+    nodes(kind::String)::Vector{SyntaxNode} = get(forms, JS.Kind(kind), SyntaxNode[])
+    function site!(node::SyntaxNode, kind::BindingKind.T)::Nothing
+        name = bound_identifier(node)
+        isnothing(name) || push!(sites, BindingSite(name, kind))
+        return nothing
+    end
+    for definition in nodes("function")
+        signature = children_of(definition)[1]
+        while kind_name(signature) in ("where", "::")
+            signature = children_of(signature)[1]
+        end
+        kind_name(signature) == "call" || continue
+        for parameter in children_of(signature)[2:end], node in (kind_name(parameter) == "parameters" ? children_of(parameter) : [parameter])
+            site!(node, BindingKind.parameter)
+        end
+    end
+    for assignment in nodes("=")
+        parent = parent_of(assignment)
+        kind_name(parent) in ("call", "parameters", "function") && continue
+        site!(children_of(assignment)[1], kind_name(parent) in ("iteration", "for") ? BindingKind.loop : BindingKind.assignment)
+    end
+    for clause in nodes("in")
+        kind_name(parent_of(clause)) == "iteration" && site!(children_of(clause)[1], BindingKind.loop)
+    end
+    for kind in NAMED, definition in nodes(kind)
+        site!(definition_name(definition), BindingKind.definition)
+    end
+    for definition in nodes("struct"), field in struct_fields(definition)
+        push!(sites, BindingSite(field, BindingKind.field))
+    end
+    return sites
 end
 
 """Label of parse error `diagnostic`; empty range (missing token) widens to byte there, or to last byte at end of file."""

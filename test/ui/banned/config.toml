@@ -1,0 +1,8 @@
+# Bans for `banned` UI cases, as `[Corset]` table of LocalPreferences.toml.
+[Corset]
+banned = [
+    { pattern = "@show({_}...)", reason = "debug print; log with `@debug`" },
+    { pattern = "ccall({_}...)", reason = "foreign call needs review" },
+    { name = "tmp.*", reason = "name what value holds" },
+    { name = "foo|bar", reason = "placeholder name" },
+]

@@ -11,9 +11,9 @@ using EnumX: @enumx
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
 using ReadOnlyArrays: ReadOnlyVector
 
-export Precision, Tier, Confidence, Group, Stage, Role
+export Precision, Tier, Confidence, Group, Stage, Role, BindingKind
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export finding, replace_fix, manual_fix, identifier_name, base_name, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -31,6 +31,8 @@ export takes_docstring, comment_lines_above, comments_in, discarded
 @enumx Stage syntax package scope inference effects lifecycle external
 """File role: `package` module code precompiles; `script` code (tests, docs, scripts) runs each time it loads."""
 @enumx Role package script
+"""Name binding site: function `parameter`, `assignment` target, `loop` variable, `definition` name, struct `field`."""
+@enumx BindingKind parameter assignment loop definition field
 
 """Byte range `first_byte:last_byte` of `file`, 1-based and inclusive."""
 struct Span
@@ -86,12 +88,19 @@ struct RuleEntry
     run::Function
 end
 
+"""Identifier node that binding site binds, and site kind."""
+struct BindingSite
+    name::SyntaxNode
+    kind::BindingKind.T
+end
+
 """
 Parsed source file (`syntax` stage facts): role, lossless tree, comment byte ranges, and code nodes indexed by kind.
 Index keeps forms (inner nodes) apart from leaves, since quoted operators like `:(=)` are leaves of form kinds.
 Index skips quoted code outside interpolation and macro arguments with `{}` (`Syntax.walk`); tree walks see both.
 `groups` maps node to bytes of grouping parentheses that wrap only it (`Syntax.groups`).
 `parse_errors` label each JuliaSyntax parse error; tree holds recovered code there.
+`bindings` lists names code binds, in kind order (`Syntax.binding_sites`).
 """
 struct SyntaxFile
     path::String
@@ -103,12 +112,7 @@ struct SyntaxFile
     comments::Vector{UnitRange{Int}}
     groups::IdDict{SyntaxNode, UnitRange{Int}}
     parse_errors::Vector{Label}
-end
-
-"""Facts of one run: parsed files, and entry files Julia loads directly (empty for directory walk, where any file may be included)."""
-struct FactSet
-    files::Vector{SyntaxFile}
-    entries::Vector{String}
+    bindings::Vector{BindingSite}
 end
 
 """
@@ -131,6 +135,41 @@ function IndexedPattern(pattern::Pattern)::IndexedPattern
         roots[kind] = isnothing(head) || isnothing(previous) ? nothing : push!(previous, head)
     end
     return IndexedPattern(pattern, roots)
+end
+
+"""Indexed pattern from Argus pattern `text`, as config writes it; bad pattern throws `ArgumentError`."""
+function parse_pattern(text::String)::IndexedPattern
+    expression = try
+        Meta.parse(text; raise = true)
+    catch error
+        error isa Meta.ParseError || rethrow()
+        throw(ArgumentError(sprint(showerror, error)))
+    end
+    isnothing(expression) && throw(ArgumentError("pattern is empty"))
+    Meta.isexpr(expression, :incomplete) && throw(ArgumentError("pattern ends early: $(repr(text))"))
+    try
+        return IndexedPattern(Pattern(Argus.SyntaxPatternNode(expression)))
+    catch error
+        error isa Argus.SyntaxError || rethrow()
+        throw(ArgumentError(sprint(showerror, error)))
+    end
+end
+
+"""Project ban from config: Argus pattern, or name regex that must match whole name; text as written, and reason."""
+struct Ban
+    text::String
+    target::Union{IndexedPattern, Regex}
+    reason::String
+end
+
+"""
+Facts of one run: parsed files, entry files Julia loads directly (empty for directory walk, where any file may be included),
+and project bans from config.
+"""
+struct FactSet
+    files::Vector{SyntaxFile}
+    entries::Vector{String}
+    bans::Vector{Ban}
 end
 
 """Root nodes of pattern, with `~or` alternatives flattened."""
