@@ -57,9 +57,15 @@ accepted(text::String)::Bool = parses(text) && lowering_errors(Meta.parseall(tex
 """Whether assignment target `target` names method, as in `f(x) = …` or `f(x)::T where {T} = …`."""
 names_method(target::Any)::Bool = target isa Expr && (target.head === :call || target.head in (:where, :(::)) && names_method(target.args[1]))
 
+"""Body argument index of each head whose body drops value of every statement; `try` holds `finally` body fourth."""
+const DROPPING_BODIES = Dict(:module => 3, :for => 2, :while => 2, :try => 4)
+
+"""Whether `argument` is string literal or interpolated string."""
+is_string(argument::Any)::Bool = argument isa String || Meta.isexpr(argument, :string)
+
 """
-`expression` without line numbers, docstrings, non-last string statements, and `return` on last statement of method body.
-Julia returns value of last statement and drops value of other string statements, so code with same meaning normalizes equal.
+`expression` without line numbers, docstrings, dropped string statements, and `return` on last statement of method body.
+Julia drops value of string statement unless it is last of block; module, loop and `finally` bodies drop every value.
 """
 function normalized(expression::Any)::Any
     expression isa Expr || return expression
@@ -67,8 +73,10 @@ function normalized(expression::Any)::Any
     arguments = Any[normalized(argument) for argument in expression.args if !(argument isa LineNumberNode)]
     if expression.head in (:block, :toplevel)
         last_index = length(arguments)
-        arguments = Any[argument for (index, argument) in enumerate(arguments) if index == last_index || !(argument isa String || Meta.isexpr(argument, :string))]
+        arguments = Any[argument for (index, argument) in enumerate(arguments) if index == last_index || !is_string(argument)]
     end
+    body = get(DROPPING_BODIES, expression.head, 0)
+    checkbounds(Bool, arguments, body) && Meta.isexpr(arguments[body], :block) && (arguments[body] = Expr(:block, filter(!is_string, arguments[body].args)...))
     if expression.head === :function || expression.head === :(=) && names_method(arguments[1])
         body = arguments[end]
         tail = body isa Expr && body.head === :block && !isempty(body.args) ? body.args[end] : nothing
@@ -215,6 +223,12 @@ end
 @testset "fix properties" begin
     @test count(fixable, STATEMENTS) >= 6 && count(fixable, EXPRESSIONS) >= 2
     @test safe_rules() == sort!([EQUIVALENT; BUG_FIXES])
+    same(left::String, right::String)::Bool = normalized(Meta.parseall(left)) == normalized(Meta.parseall(right))
+    @test same("module M\n\"a\"\nend\n", "module M\nend\n") && same("for i in 1:2\n\"a\"\nend\n", "for i in 1:2\nend\n")
+    @test same("while f()\n\"a\"\nend\n", "while f()\nend\n") && same("try\nf()\nfinally\n\"a\"\nend\n", "try\nf()\nfinally\nend\n")
+    @test !same("f() = \"a\"\n", "f() = nothing\n") && !same("\"a\"\n", "")
+    wrapped = "module Wrapped\n    \"Shape types.\"\nend\n"
+    @test Corset.Fixes.apply_edits(wrapped, edits_of(findings_of(wrapped), Tier.safe)) == "module Wrapped\n    # Shape types.\nend\n"
 
     @check max_examples = EXAMPLES db = EXAMPLE_DB function fix_keeps_code_valid(text = PROGRAMS, tier = TIERS)
         fixed = fixed_once(text, tier)
