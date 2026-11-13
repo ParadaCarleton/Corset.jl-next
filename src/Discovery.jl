@@ -1,9 +1,9 @@
 """Choose files to analyze: package entry files and their include closure, like Cargo targets, or Julia files under directory."""
 module Discovery
 
-using ..Facts: SyntaxFile, BlindSpot, include_calls, include_target, span
+using ..Facts: SyntaxFile, BlindSpot, Role, include_calls, include_target, span
 using ..Syntax: parse_file
-using ..Config: ConfigError, parse_toml
+using ..Config: ConfigError, parse_toml, project_root
 
 """Parsed files to analyze, include calls discovery could not follow, and entry files Julia loads directly."""
 struct Sources
@@ -25,7 +25,18 @@ function discover(path::String)::Sources
     project_file = joinpath(path, "Project.toml")
     project = isfile(project_file) ? parse_toml(project_file) : Dict{String, Any}()
     haskey(project, "name") && return closure(entry_files(path, project))
-    return Sources([parse_file(file, read(file, String)) for file in walk_files(path)], BlindSpot[], String[])
+    return Sources([load(file) for file in walk_files(path)], BlindSpot[], String[])
+end
+
+"""Parsed file at `path` with its role."""
+load(path::String)::SyntaxFile = parse_file(path, read(path, String), role_of(path))
+
+"""Role of file at `path`: `package` under `src` or `ext` of project with `name`, which precompiles; else `script`."""
+function role_of(path::String)::Role.T
+    root = project_root(path)
+    (isnothing(root) || !haskey(parse_toml(joinpath(root, "Project.toml")), "name")) && return Role.script
+    parts = splitpath(relpath(path, root))
+    return length(parts) > 1 && parts[1] in ("src", "ext") ? Role.package : Role.script
 end
 
 """Entry files of package at `root`: module file, extension files, then script entries that exist."""
@@ -52,7 +63,7 @@ function closure(entries::Vector{String})::Sources
         path = popfirst!(pending)
         path in seen && continue
         push!(seen, path)
-        file = parse_file(path, read(path, String))
+        file = load(path)
         push!(files, file)
         for call in include_calls(file)
             target = include_target(file, call)

@@ -6,6 +6,7 @@ using ..Facts: RuleEntry
 include("rules/ambiguous_concat.jl")
 include("rules/annotation.jl")
 include("rules/approx_zero.jl")
+include("rules/baked_state.jl")
 include("rules/bracketed_range.jl")
 include("rules/broad_catch.jl")
 include("rules/c_type.jl")
@@ -21,6 +22,7 @@ include("rules/one_letter.jl")
 include("rules/orphan_task.jl")
 include("rules/repeated_concat.jl")
 include("rules/threadid_buffer.jl")
+include("rules/unguarded_release.jl")
 include("rules/untyped_empty.jl")
 include("rules/where_binding.jl")
 include("rules/wide_struct.jl")
@@ -31,6 +33,7 @@ const REGISTRY = RuleEntry[
     AmbiguousConcat.ENTRY,
     Annotation.ENTRY,
     ApproxZero.ENTRY,
+    BakedState.ENTRY,
     BracketedRange.ENTRY,
     BroadCatch.ENTRY,
     CType.ENTRY,
@@ -46,6 +49,7 @@ const REGISTRY = RuleEntry[
     OrphanTask.ENTRY,
     RepeatedConcat.ENTRY,
     ThreadidBuffer.ENTRY,
+    UnguardedRelease.ENTRY,
     UntypedEmpty.ENTRY,
     WhereBinding.ENTRY,
     WideStruct.ENTRY,

@@ -59,3 +59,15 @@ warning[docstring]: comment above definition is not docstring
    = fix: turn comment into docstring   [safe]
    = docs: corset explain docstring
 
+warning[docstring]: comment above definition is not docstring
+  --> positive.jl:30:1
+   |
+29 | # Volume of unit cube.
+   | ---------------------- comment
+30 | volume() = 1
+   | ^^^^^^^^^^^^ definition without docstring
+   |
+   = why: help mode, Documenter and language server show docstrings; comments stay invisible
+   = fix: turn comment into docstring   [safe]
+   = docs: corset explain docstring
+

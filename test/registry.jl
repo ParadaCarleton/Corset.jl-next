@@ -1,7 +1,7 @@
 # Registry agrees with design data, and rule files keep rule contract.
 
 using Corset: Corset
-using Corset.Facts: Group, Stage
+using Corset.Facts: Group, Stage, Role
 using TOML: TOML
 using Test: @test, @testset
 
@@ -30,7 +30,7 @@ end
         return expression
     end
     """
-    file = Corset.Syntax.parse_file("quoted.jl", text)
+    file = Corset.Syntax.parse_file("quoted.jl", text, Role.package)
     @test length(Corset.Facts.forms(file, "=")) == 1
     @test isempty(Corset.Facts.leaves(file, "="))
     facts = Corset.Facts.FactSet([file], String[])

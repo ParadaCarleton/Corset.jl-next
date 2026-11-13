@@ -23,3 +23,8 @@ end
 
 # Sum without bounds checks.
 @inline fast_sum(a, b) = a + b
+
+# String statement right above: fix keeps blank line, so string does not document new docstring.
+"none"
+# Volume of unit cube.
+volume() = 1

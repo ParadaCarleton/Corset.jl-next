@@ -2,7 +2,7 @@
 module Syntax
 
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
-using ..Facts: SyntaxFile, FactSet, Finding, Label, Span, Precision, Confidence, manual_fix, trimmed, trimmed_bytes
+using ..Facts: SyntaxFile, Role, FactSet, Finding, Label, Span, Precision, Confidence, manual_fix, trimmed, trimmed_bytes
 
 """Rule name parse errors report under; outside registry, like opt-out problems."""
 const PARSE_ERROR = Symbol("parse-error")
@@ -11,10 +11,10 @@ const PARSE_ERROR = Symbol("parse-error")
 const PARSE_SOURCE = "parse check, always on"
 
 """
-Parse `text` of file `path` into lossless tree with kind index, comment ranges and parse errors.
+Parse `text` of file `path` with `role` into lossless tree with kind index, comment ranges and parse errors.
 Parser recovers from errors: tree holds error nodes there, and rules still run.
 """
-function parse_file(path::String, text::String)::SyntaxFile
+function parse_file(path::String, text::String, role::Role.T)::SyntaxFile
     stream = JS.ParseStream(text)
     JS.parse!(stream; rule = :all)
     tree = JS.build_tree(SyntaxNode, stream; filename = path)
@@ -24,7 +24,7 @@ function parse_file(path::String, text::String)::SyntaxFile
         push!(get!(() -> SyntaxNode[], JS.is_leaf(node) ? leaves : forms, JS.kind(node)), node)
     end
     comments = [Int(first(token.range)):Int(last(token.range)) for token in JS.tokenize(text) if JS.kind(token) == JS.K"Comment"]
-    return SyntaxFile(path, text, tree, forms, leaves, comments, groups!(IdDict{SyntaxNode, UnitRange{Int}}(), text, tree), errors)
+    return SyntaxFile(path, text, role, tree, forms, leaves, comments, groups!(IdDict{SyntaxNode, UnitRange{Int}}(), text, tree), errors)
 end
 
 """Label of parse error `diagnostic`; empty range (missing token) widens to byte there, or to last byte at end of file."""
