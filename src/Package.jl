@@ -3,11 +3,13 @@
 
 Environment must load package from its root (`Base.locate_package`); other environment is config error.
 Load that throws becomes `load-error` finding, as `parse-error`.
+Each extension whose triggers environment can load gets them loaded; extension that throws gets `load-error` finding.
 """
 module Package
 
-using ..Facts: Facts, PackageFacts, MethodSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence
+using ..Facts: Facts, PackageFacts, MethodSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
 using ..Config: ConfigError, parse_toml
+using ..Discovery: extension_file
 
 """Rule name load failures report under."""
 const LOAD_ERROR = Symbol("load-error")
@@ -133,10 +135,10 @@ function reproduce(entry::String)::Union{Nothing, Tuple{Any, Vector{Base.StackTr
 end
 
 """
-`load-error` finding for `error` with `frames`. Primary span: line of innermost frame in analyzed file; first line of
-`entry` when none, or when entry is not analyzed.
+`load-error` finding for `error` with `frames`, saying `subject` does not load and `missed` what rules missed.
+Primary span: line of innermost frame in analyzed file; first line of `entry` when none, or when entry is not analyzed.
 """
-function load_error(error::Any, frames::Vector{Base.StackTraces.StackFrame}, entry::String, files::Vector{SyntaxFile})::Finding
+function load_error(error::Any, frames::Vector{Base.StackTraces.StackFrame}, entry::String, files::Vector{SyntaxFile}, subject::String, missed::String)::Finding
     by_path = Dict(file.path => file for file in files)
     index = findfirst(frame -> haskey(by_path, string(frame.file)), frames)
     file, line = isnothing(index) ? (get(by_path, entry, nothing), 1) : (by_path[string(frames[index].file)], frames[index].line)
@@ -144,16 +146,59 @@ function load_error(error::Any, frames::Vector{Base.StackTraces.StackFrame}, ent
     path, start = isnothing(file) ? (entry, 1) : (file.path, starts[clamp(line, 1, length(starts))])
     message = first(split(sprint(showerror, unwrapped(error)), '\n'))
     return Finding(
-        LOAD_ERROR, :load_error, Confidence.definite, "package does not load", Label(Span(path, start, start, Precision.line), message),
-        Label[], "Julia cannot load package; rules after `syntax` stage did not run", Facts.manual_fix("fix error at marked line"),
+        LOAD_ERROR, :load_error, Confidence.definite, "$subject does not load", Label(Span(path, start, start, Precision.line), message),
+        Label[], "Julia cannot load $subject; $missed", Facts.manual_fix("fix error at marked line"),
     )
 end
 
+"""Outcome of package load: facts when root module loads, `load-error` findings, and parts rules could not see."""
+struct Loaded
+    facts::Union{Nothing, PackageFacts}
+    errors::Vector{Finding}
+    blind_spots::Vector{BlindSpot}
+end
+
+"""Trigger packages of each extension in Project.toml at `root`, by extension name; trigger missing from `[weakdeps]` is config error."""
+function extension_triggers(root::String)::Vector{Pair{String, Vector{Base.PkgId}}}
+    project = parse_toml(joinpath(root, "Project.toml"))
+    known = merge(get(project, "deps", Dict{String, Any}()), get(project, "weakdeps", Dict{String, Any}()))
+    extensions = sort!(collect(get(project, "extensions", Dict{String, Any}())); by = first)
+    return map(extensions) do (name, triggers)
+        names = triggers isa String ? [triggers] : Vector{String}(triggers)
+        unknown = filter(trigger -> !haskey(known, trigger), names)
+        isempty(unknown) || throw(ConfigError("extension $name names $(join(unknown, ", ")), which [weakdeps] lacks"))
+        return name => [Base.PkgId(Base.UUID(known[trigger]), trigger) for trigger in names]
+    end
+end
+
 """
-Facts of package `id` at `root`, loaded in this process, with method sites in `files`; `load-error` finding when load throws.
+Load triggers of each extension of `mod` at `root`; extension activates once all its triggers load.
+Extension with trigger environment cannot load becomes blind spot; extension that throws, `load-error` finding.
+"""
+function load_extensions(mod::Module, root::String, files::Vector{SyntaxFile})::Tuple{Vector{Finding}, Vector{BlindSpot}}
+    errors, blind_spots = Finding[], BlindSpot[]
+    for (name, triggers) in extension_triggers(root)
+        file = extension_file(root, name)
+        if any(trigger -> isnothing(Base.locate_package(trigger)), triggers)
+            push!(blind_spots, BlindSpot("extension trigger not installed", Span(file, 1, 1, Precision.line)))
+            continue
+        end
+        foreach(Base.require, triggers)
+        isnothing(Base.get_extension(mod, Symbol(name))) || continue
+        # Precompile-only failure: Julia logged error, and load in anonymous module succeeds.
+        error, frames = something(reproduce(file), (ErrorException("extension `$name` failed to precompile; Julia logged error"), Base.StackTraces.StackFrame[]))
+        finding = load_error(error, frames, file, files, "extension `$name`", "rules did not see extension")
+        push!(errors, finding)
+        push!(blind_spots, BlindSpot("extension did not load", finding.primary.span))
+    end
+    return errors, blind_spots
+end
+
+"""
+Facts of package `id` at `root`, loaded in this process with extension triggers, with method sites in `files`.
 Precompile failure carries no frame inside package, so error comes from second load in anonymous module (`reproduce`).
 """
-function load(root::String, id::Base.PkgId, files::Vector{SyntaxFile})::Union{PackageFacts, Finding}
+function load(root::String, id::Base.PkgId, files::Vector{SyntaxFile})::Loaded
     entry = entry_file(root, id)
     mod = try
         load_module(id, entry)
@@ -164,10 +209,12 @@ function load(root::String, id::Base.PkgId, files::Vector{SyntaxFile})::Union{Pa
             again = reproduce(entry)
             isnothing(again) || ((error, frames) = again)
         end
-        return load_error(error, frames, entry, files)
+        finding = load_error(error, frames, entry, files, "package", "rules after `syntax` stage did not run")
+        return Loaded(nothing, [finding], [BlindSpot("package did not load", finding.primary.span)])
     end
+    errors, blind_spots = load_extensions(mod, root, files)
     modules = package_modules(mod, root)
-    return PackageFacts(id.name, id.uuid, root, modules, method_sites(modules, files))
+    return Loaded(PackageFacts(id.name, id.uuid, root, modules, method_sites(modules, files)), errors, blind_spots)
 end
 
 end

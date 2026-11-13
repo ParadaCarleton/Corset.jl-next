@@ -1,7 +1,7 @@
 """Discover files, build facts, run registered rules; apply opt-outs, levels, confidence setting and baseline."""
 module Engine
 
-using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, PackageFacts
+using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage
 using ..Rules: REGISTRY, entry
 using ..Config: Config, Flags, Settings, Level, level_of, project_root
 using ..OptOuts: OptOuts
@@ -55,12 +55,12 @@ end
 needs_package(settings::Settings)::Bool = any(entry -> entry.stage != Stage.syntax && first(level_of(settings, entry)) != Level.allow, REGISTRY)
 
 """
-Loaded package of named `project` with method sites in `files`, or `load-error` finding.
-`nothing` outside named project, and when no enabled rule reads package.
+Loaded package of named `project` with method sites in `files`, and its load errors and blind spots.
+Nothing loads outside named project, and when no enabled rule reads package.
 """
-function load_package(project::Union{Nothing, String}, settings::Settings, files::Vector{Facts.SyntaxFile})::Union{Nothing, PackageFacts, Finding}
+function load_package(project::Union{Nothing, String}, settings::Settings, files::Vector{Facts.SyntaxFile})::Package.Loaded
     id = load_target(project, settings)
-    return isnothing(id) ? nothing : Package.load(project, id, files)
+    return isnothing(id) ? Package.Loaded(nothing, Finding[], BlindSpot[]) : Package.load(project, id, files)
 end
 
 """Package run loads from `project` under `settings`: named project with enabled rule after `syntax` stage."""
@@ -93,18 +93,17 @@ function analyze(path::String, flags::Flags)::Analysis
     settings = Config.settings(project, flags, REGISTRY)
     sources = Discovery.discover(path)
     loaded = load_package(project, settings, sources.files)
-    facts = FactSet(sources.files, sources.entries, settings.bans, loaded isa PackageFacts ? loaded : nothing)
+    facts = FactSet(sources.files, sources.entries, settings.bans, loaded.facts)
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
     root = something(project, isdir(path) ? abspath(path) : dirname(abspath(path)))
     keys = Baseline.finding_keys(facts, root, [diagnostic.finding for diagnostic in leveled])
-    failed_load = loaded isa Finding ? [loaded] : Finding[]
     checks = [
         [Diagnostic(problem, Level.deny, Syntax.PARSE_SOURCE) for problem in Syntax.parse_problems(facts)];
-        [Diagnostic(problem, Level.deny, Package.LOAD_SOURCE) for problem in failed_load];
+        [Diagnostic(problem, Level.deny, Package.LOAD_SOURCE) for problem in loaded.errors];
         [Diagnostic(problem, Level.deny, OptOuts.SOURCE) for problem in problems]
     ]
-    blind_spots = [sources.blind_spots; [BlindSpot("package did not load", problem.primary.span) for problem in failed_load]]
+    blind_spots = [sources.blind_spots; loaded.blind_spots]
     return Analysis(settings, facts, root, leveled, keys, checks, blind_spots)
 end
 
@@ -115,9 +114,8 @@ function check(path::String; flags::Flags = Flags())::Report
     reported = [analysis.leveled[.!covered]; analysis.problems]
     sort!(reported; by = diagnostic -> (diagnostic.finding.primary.span.file, diagnostic.finding.primary.span.first_byte, diagnostic.finding.rule))
     sources = Dict(file.path => file.text for file in analysis.facts.files)
-    # Load error can point at package entry file when checked path leaves it out.
-    for diagnostic in reported
-        path = diagnostic.finding.primary.span.file
+    # Load error and blind spot can point at entry or extension file when checked path leaves it out.
+    for path in [[diagnostic.finding.primary.span.file for diagnostic in reported]; [spot.span.file for spot in analysis.blind_spots]]
         haskey(sources, path) || (sources[path] = read(path, String))
     end
     return Report(reported, analysis.settings, analysis.root, sources, count(covered), stale, analysis.blind_spots)

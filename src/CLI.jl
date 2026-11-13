@@ -41,7 +41,7 @@ const LEVEL_FLAGS = Dict(
 const BUILTIN_DOCS = Dict(
     String(OptOuts.NAME) => "opt-out (always on)\n\nReports malformed opt-out comments, missing reasons, unknown rules, late `allow-file`, and opt-outs that suppress nothing.",
     String(Syntax.PARSE_ERROR) => "parse-error (always on)\n\nReports code JuliaSyntax cannot parse. Rules still run on recovered tree; no level, opt-out or baseline hides parse error.",
-    String(Package.LOAD_ERROR) => "load-error (always on)\n\nReports package that throws while loading. Rules after `syntax` stage do not run; no level, opt-out or baseline hides load error.",
+    String(Package.LOAD_ERROR) => "load-error (always on)\n\nReports package or extension that throws while loading. Failed package: rules after `syntax` stage do not run. No level, opt-out or baseline hides load error.",
     "baseline" => "baseline (always on)\n\nReports `$(Baseline.FILE)` entries that match no finding. Run `corset baseline` to rewrite file.",
 )
 

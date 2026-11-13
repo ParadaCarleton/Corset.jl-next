@@ -160,4 +160,7 @@ The first run builds the environment. Later runs reuse it until the project file
 
 A package that throws while loading gets a `load-error` finding at the line that threw.
 Rules that read the loaded package do not run, and the coverage line says so.
+Corset loads the trigger packages of each extension, and the extension loads with them.
+Test dependencies supply the triggers. An extension without an installed trigger is a blind spot.
+An extension that throws gets a `load-error` finding; rules still read the package.
 No level, opt-out or baseline hides a load error.

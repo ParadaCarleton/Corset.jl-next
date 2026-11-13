@@ -163,7 +163,59 @@ end
         code, _, err = corset("check", package)
         @test code == 2 && occursin("environment cannot load Lost", err)
     end
-    @test occursin("no level, opt-out or baseline hides", corset("explain", "load-error")[2])
+    @test occursin("Reports package or extension", corset("explain", "load-error")[2])
+end
+
+@testset "extensions" begin
+    trigger, absent = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
+    project = """
+    name = "Extended"
+    uuid = "$(Base.UUID(rand(UInt128)))"
+
+    [weakdeps]
+    Absent = "$absent"
+    Trigger = "$trigger"
+
+    [extensions]
+    AbsentExt = "Absent"
+    BrokenExt = "Trigger"
+    PrecompileOnlyExt = "Trigger"
+    TriggerExt = ["Trigger"]
+
+    [preferences.Corset]
+    kind = "library"
+    """
+    files = [
+        "Project.toml" => project,
+        "src/Extended.jl" => "\"\"\"Package with extensions.\"\"\"\nmodule Extended\n\"\"\"Number in box.\"\"\"\nstruct Box\n    number::Int\nend\nend\n",
+        "ext/AbsentExt.jl" => "module AbsentExt\nend\n",
+        "ext/BrokenExt.jl" => "module BrokenExt\nusing Extended, Trigger\nerror(\"extension boom\")\nend\n",
+        "ext/PrecompileOnlyExt.jl" => "module PrecompileOnlyExt\nccall(:jl_generating_output, Cint, ()) == 1 && error(\"precompile only\")\nend\n",
+        "ext/TriggerExt/TriggerExt.jl" => "module TriggerExt\nusing Extended: Box\nlength(box::Box)::Int = box.number\nend\n",
+        "trigger/Project.toml" => "name = \"Trigger\"\nuuid = \"$trigger\"\n",
+        "trigger/src/Trigger.jl" => "module Trigger\nend\n",
+    ]
+    mktempdir(@__DIR__) do root
+        for (path, text) in files
+            mkpath(dirname(joinpath(root, path)))
+            write(joinpath(root, path), text)
+        end
+        append!(LOAD_PATH, [root, joinpath(root, "trigger")])
+        try
+            code, out, _ = redirect_stderr(() -> corset("check", root), devnull)
+            @test code == 1 && occursin("error[shadowed-base]: `length` defines new function", out) && occursin("--> ext/TriggerExt/TriggerExt.jl:3:1", out)
+            @test occursin("error[load-error]: extension `BrokenExt` does not load\n --> ext/BrokenExt.jl:3:1", out) && occursin("extension boom", out)
+            @test occursin("extension `PrecompileOnlyExt` failed to precompile; Julia logged error", out)
+            @test occursin("skipped 3 (2 extension did not load, 1 extension trigger not installed)", out)
+            @test occursin("ext/AbsentExt.jl:1:1: extension trigger not installed", out)
+            # Checked path leaves extension files out: they are read from disk for report.
+            @test occursin("ext/AbsentExt.jl:1:1", redirect_stderr(() -> corset("check", joinpath(root, "src")), devnull)[2])
+        finally
+            filter!(path -> !startswith(path, root), LOAD_PATH)
+        end
+        write(joinpath(root, "Project.toml"), replace(project, "TriggerExt = [\"Trigger\"]" => "TriggerExt = [\"Trigger\", \"Lost\"]"))
+        @test_throws "extension TriggerExt names Lost, which [weakdeps] lacks" Corset.Package.extension_triggers(root)
+    end
 end
 
 @testset "relaunch inputs" begin
