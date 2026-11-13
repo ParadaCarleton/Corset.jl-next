@@ -28,7 +28,7 @@ const NAME = Symbol("where-binding")
 const PATTERN = IndexedPattern(@pattern {signature}::{annotation})
 
 """Whether `node` is signature of short-form method definition `signature = body`."""
-function defines_method(node)::Bool
+function defines_method(node::SyntaxNode)::Bool
     parent = parent_of(node)
     return !isnothing(parent) && kind_name(parent) == "function" && children_of(parent)[1] === node
 end

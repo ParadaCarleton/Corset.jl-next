@@ -28,7 +28,7 @@ struct UsageError <: Exception
     message::String
 end
 
-Base.showerror(io::IO, error::UsageError) = print(io, error.message)
+Base.showerror(io::IO, error::UsageError)::Nothing = print(io, error.message)
 
 """Level each level flag sets."""
 const LEVEL_FLAGS = Dict(
@@ -109,7 +109,7 @@ function argument_settings()::ArgParseSettings
 end
 
 """Enum value of `T` named by option `name` in `options`; `nothing` when option is absent."""
-enum_option(::Type{T}, options::Dict{String, Any}, name::String) where {T <: Enum} =
+(enum_option(::Type{T}, options::Dict{String, Any}, name::String)::Union{Nothing, T}) where {T <: Enum} =
     isnothing(get(options, name, nothing)) ? nothing : only(filter(value -> string(value) == options[name], collect(instances(T))))
 
 """Docstring text of module `mod`, read from docsystem metadata; every rule module has one (test enforces)."""

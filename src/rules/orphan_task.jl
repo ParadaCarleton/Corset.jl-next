@@ -33,11 +33,11 @@ const NAME = Symbol("orphan-task")
 const SPAWNING = Set(["@spawn", "@async"])
 
 """Macro name of `macrocall` node, last component for dotted name (`Threads.@spawn`)."""
-macro_of(node)::Union{Nothing, String} =
+macro_of(node::SyntaxNode)::Union{Nothing, String} =
     (name = children_of(node)[1]; leaf_value(isempty(children_of(name)) ? name : children_of(name)[end]))
 
 """Whether value of `node` is dropped: statement in file or loop body, or non-last statement of other block."""
-function discarded(node)::Bool
+function discarded(node::SyntaxNode)::Bool
     parent = parent_of(node)
     isnothing(parent) && return false
     kind_name(parent) == "toplevel" && return true
@@ -48,7 +48,7 @@ function discarded(node)::Bool
 end
 
 """Whether `node` sits inside `@sync`, which waits for tasks started in its body."""
-synced(node)::Bool = any(ancestor -> kind_name(ancestor) == "macrocall" && macro_of(ancestor) == "@sync", ancestors(node))
+synced(node::SyntaxNode)::Bool = any(ancestor -> kind_name(ancestor) == "macrocall" && macro_of(ancestor) == "@sync", ancestors(node))
 
 """Findings for task-starting macros whose task is discarded outside `@sync`."""
 function run(facts::FactSet)::Vector{Finding}

@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, FactSet, IndexedPattern, Match
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export finding, replace_fix, manual_fix, identifier_name, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, struct_fields, include_calls, include_target
@@ -117,7 +117,7 @@ struct IndexedPattern
 end
 
 """`pattern` indexed by root alternatives, so matcher tries only candidate nodes."""
-function IndexedPattern(pattern::Pattern)
+function IndexedPattern(pattern::Pattern)::IndexedPattern
     alternatives = root_alternatives(pattern.src)
     any(node -> startswith(kind_name(node), "~"), alternatives) && return IndexedPattern(pattern, nothing)
     roots = Dict{Kind, Union{Nothing, Set{String}}}()
@@ -130,11 +130,11 @@ function IndexedPattern(pattern::Pattern)
 end
 
 """Root nodes of pattern, with `~or` alternatives flattened."""
-root_alternatives(node)::Vector{Any} =
+root_alternatives(node::JS.TreeNode)::Vector{Any} =
     kind_name(node) == "~or" ? reduce(vcat, map(root_alternatives, JS.children(node))) : Any[node]
 
 """Function name of call `node` (operator for infix call); `nothing` for other nodes or computed callee."""
-function call_head(node)::Union{Nothing, String}
+function call_head(node::JS.TreeNode)::Union{Nothing, String}
     kind_name(node) == "call" || return nothing
     callee = JS.children(node)[JS.is_infix_op_call(node) ? 2 : 1]
     return kind_name(callee) == "Identifier" ? string(callee.val) : nothing
@@ -164,7 +164,7 @@ function path_parts(file::SyntaxFile, node::SyntaxNode)::Union{Nothing, Vector{S
 end
 
 """Name of node kind as string; Argus pattern forms start with `~`."""
-kind_name(node)::String = string(JS.kind(node))
+kind_name(node::JS.TreeNode)::String = string(JS.kind(node))
 
 """Successful match of pattern at `node` with its pattern variable bindings."""
 struct Match

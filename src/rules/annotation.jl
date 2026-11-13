@@ -1,0 +1,79 @@
+"""
+`annotation` (F71): argument or result without type.
+
+## Description
+Reports named function definition with untyped argument or no result type, once per method.
+Cause labels mark each untyped argument and missing result type.
+
+## Rationale
+Signature is first thing reader sees. Types there say what function accepts and returns without reading body.
+Result annotation also acts as check: `result-conversion` reports annotation that converts.
+
+## Example
+```julia
+area(width, height) = width * height
+```
+
+## Alternative
+```julia
+area(width::Real, height::Real)::Real = width * height
+```
+
+## Limitations
+Exempt: `_` and unnamed `::T` arguments, anonymous functions, and local functions (closures).
+Abstract types are intended. `::Any` accepts anything on purpose and opts out.
+"""
+module Annotation
+
+using ...Facts
+
+const NAME = :annotation
+
+"""Signature call of definition `node` and whether result has type; `nothing` for anonymous function."""
+function signature(definition::SyntaxNode)::Union{Nothing, Tuple{SyntaxNode, Bool}}
+    head, typed = children_of(definition)[1], false
+    while kind_name(head) in ("where", "::") && length(children_of(head)) == 2
+        typed |= kind_name(head) == "::"
+        head = children_of(head)[1]
+    end
+    return kind_name(head) == "call" ? (head, typed) : nothing
+end
+
+"""Untyped names bound by argument `node`, through default value, splat and keyword group; `_` binds nothing."""
+function untyped(node::SyntaxNode)::Vector{SyntaxNode}
+    kind = kind_name(node)
+    kind == "parameters" && return reduce(vcat, map(untyped, children_of(node)); init = SyntaxNode[])
+    kind in ("=", "kw", "...") && return untyped(children_of(node)[1])
+    kind == "Identifier" && return identifier_name(node) == "_" ? SyntaxNode[] : [node]
+    return kind == "tuple" ? [node] : SyntaxNode[]
+end
+
+"""Whether `definition` sits inside function body, so it is closure."""
+is_local(definition::SyntaxNode)::Bool = any(ancestor -> kind_name(ancestor) in ("function", "->", "do"), ancestors(definition))
+
+"""Findings for named methods with untyped arguments or no result type."""
+function run(facts::FactSet)::Vector{Finding}
+    found = Finding[]
+    for file in facts.files, definition in forms(file, "function")
+        parts = signature(definition)
+        (isnothing(parts) || is_local(definition)) && continue
+        call, typed = parts
+        causes = [Label(span(file, argument), "no type") for parameter in children_of(call)[2:end] for argument in untyped(parameter)]
+        typed || push!(causes, Label(span(file, call), "no result type"))
+        isempty(causes) && continue
+        name = definition_name(definition)
+        push!(
+            found, finding(
+                NAME, file, name; kind = :missing_type, confidence = Confidence.definite, causes,
+                message = "`$(source(file, name))` signature lacks types", label = "method defined here",
+                why = "reader must read body to learn what function accepts and returns",
+                fix = manual_fix("annotate with intended abstract types; `::Any` accepts anything on purpose"),
+            )
+        )
+    end
+    return found
+end
+
+const ENTRY = RuleEntry(NAME, Group.readability, [71], Stage.syntax, run)
+
+end

@@ -28,7 +28,7 @@ const NAME = :juxtaposition
 const PATTERN = IndexedPattern(@pattern ~or({left} / {right}, {left}^{right}, {left} // {right}, {left} \ {right}))
 
 """Whether `node` is wrapped in parentheses in source: nearest non-space byte before it is `(`."""
-function parenthesized(file::SyntaxFile, node)::Bool
+function parenthesized(file::SyntaxFile, node::SyntaxNode)::Bool
     bytes = codeunits(file.text)
     index = span(file, node).first_byte - 1
     while index > 0 && bytes[index] in (UInt8(' '), UInt8('\t'))

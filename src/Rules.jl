@@ -4,6 +4,7 @@ module Rules
 using ..Facts: RuleEntry
 
 include("rules/ambiguous_concat.jl")
+include("rules/annotation.jl")
 include("rules/approx_zero.jl")
 include("rules/bracketed_range.jl")
 include("rules/broad_catch.jl")
@@ -28,6 +29,7 @@ include("rules/world_age.jl")
 """Every rule, in name order (test enforces order)."""
 const REGISTRY = RuleEntry[
     AmbiguousConcat.ENTRY,
+    Annotation.ENTRY,
     ApproxZero.ENTRY,
     BracketedRange.ENTRY,
     BroadCatch.ENTRY,

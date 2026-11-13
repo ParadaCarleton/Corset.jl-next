@@ -32,7 +32,7 @@ using ...Facts
 
 const NAME = Symbol("world-age")
 """Name defined by function definition inside `node`, which evaluates code; `nothing` when none."""
-function evaluated_definition(node)::Union{Nothing, String}
+function evaluated_definition(node::SyntaxNode)::Union{Nothing, String}
     is_eval = (kind_name(node) == "macrocall" && leaf_value(children_of(node)[1]) == "@eval") || call_head(node) == "eval"
     is_eval || return nothing
     for inner in descendants(node)
@@ -47,7 +47,7 @@ function evaluated_definition(node)::Union{Nothing, String}
 end
 
 """Whether call `node` is signature of method definition, as in `f(x) = …`: definition, no call."""
-function is_signature(node)::Bool
+function is_signature(node::SyntaxNode)::Bool
     child, parent = node, parent_of(node)
     while !isnothing(parent) && kind_name(parent) in ("where", "::") && children_of(parent)[1] === child
         child, parent = parent, parent_of(parent)
@@ -56,7 +56,7 @@ function is_signature(node)::Bool
 end
 
 """Fix wrapping call `node` in `Base.invokelatest`; manual when call passes keywords."""
-function latest_fix(file::SyntaxFile, node)::Fix
+function latest_fix(file::SyntaxFile, node::SyntaxNode)::Fix
     parts = children_of(node)
     any(part -> kind_name(part) == "parameters", parts) && return manual_fix("call through `Base.invokelatest`")
     return replace_fix(file, node, "Base.invokelatest(" * join((source(file, part) for part in parts), ", ") * ")", Tier.safe)

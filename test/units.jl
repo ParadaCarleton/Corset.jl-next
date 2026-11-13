@@ -234,16 +234,16 @@ end
     @test Corset.Baseline.definition_name(Corset.Syntax.parse_file("t.jl", "x = 1\n"), 1) == ""
     mktempdir(@__DIR__) do directory
         write(joinpath(directory, "Project.toml"), "[deps]\n")
-        source = "near(value) = value ≈ 0\nfunction far(value)\n    return value ≈ 0\nend\n"
+        source = "near(value::Real)::Bool = value ≈ 0\nfunction far(value::Real)::Bool\n    return value ≈ 0\nend\n"
         write(joinpath(directory, "a.jl"), source)
         @test Corset.Engine.baseline(directory) == 2
         clean = Corset.check(directory)
         @test isempty(clean.diagnostics) && clean.baselined == 2 && isempty(clean.stale) && !Corset.Engine.failed(clean)
-        write(joinpath(directory, "a.jl"), "# moved down\n\n" * source * "extra(value) = value ≈ 0\n")
+        write(joinpath(directory, "a.jl"), "# moved down\n\n" * source * "extra(value::Real)::Bool = value ≈ 0\n")
         moved = Corset.check(directory)
         @test moved.baselined == 2
         @test [Corset.Baseline.key(Corset.Syntax.parse_file(joinpath(directory, "a.jl"), read(joinpath(directory, "a.jl"), String)), directory, d.finding).definition for d in moved.diagnostics] == ["extra"]
-        write(joinpath(directory, "a.jl"), "near(value) = value ≈ 0\n")
+        write(joinpath(directory, "a.jl"), "near(value::Real)::Bool = value ≈ 0\n")
         fixed = Corset.check(directory)
         @test fixed.baselined == 1 && [key.definition for key in fixed.stale] == ["far"] && Corset.Engine.failed(fixed)
         @test occursin("error[baseline]: 1 baseline entry matches no finding", sprint(io -> Corset.Render.render_all(io, fixed)))
