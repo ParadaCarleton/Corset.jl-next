@@ -53,6 +53,10 @@ Malformed comment, unknown rule, late `allow-file`, and opt-out that suppresses 
 
 JuliaSyntax parse error is error finding at `deny`, outside rule table, as Ruff reports syntax errors. No level, opt-out or baseline hides it. Rules still run on recovered tree.
 
+### Load errors
+
+Package that throws while loading gets `load-error` finding at `deny`, outside rule table, as `parse-error`. Primary span: deepest backtrace frame inside package source; package entry file when none. Message carries exception text. `syntax` rules still run; later stages skip, and coverage line says package did not load. Failed precompilation alone is no finding: Julia prints its error and loads package without cache.
+
 ### Config
 
 `[preferences.Corset]` table in target Project.toml; `[Corset]` table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: `kind`, `confidence`, `fix_tier`, `levels` (group or rule name to level), `banned` (list of bans).

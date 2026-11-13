@@ -15,7 +15,7 @@ Each stage is one module that produces facts. Rules read facts through one API. 
 | `Inference` | `inference` stage: stand-in types; one inference per method; typed IR with source mapping. Mapping: vendored TypedSyntax.jl algorithm on syntax tree; no CodeTracking. |
 | `Effects` | `effects` stage: effect and alias summary per method. |
 | `Lifecycle` | `lifecycle` stage: local def-use per array; callee writes from `effects`. |
-| `External` | `external` stage: Aqua.jl, ExplicitImports.jl, jscpd output as facts. |
+| `External` | `external` stage: Aqua.jl, `Test.detect_ambiguities` and ExplicitImports.jl output as facts; jscpd later. |
 | `Facts` | Fact types and query API. Only module rule code may import. |
 | `Rules` | One pure function per rule; registry as data. |
 | `Engine` | Salsa.jl query graph: pick stages that enabled rules need; run them; apply levels, confidence, opt-outs, baseline. |
@@ -46,11 +46,12 @@ end
 
 ### Process model
 
-- One process. Corset runs inside target environment, like Aqua.jl and JET in tests.
-- From tests: Corset is test dependency; `Corset.check()` in `runtests.jl` shares package load with test suite.
-- From command line: build temporary environment from target Manifest and add Corset with every target version preserved; fail loud if any would change. Cache by Manifest hash.
+- One process per run. Corset loads target into its own process, as Aqua.jl and JET do, so later stages read compiler state directly.
+- Fresh process only: no `Corset.check()` inside `runtests.jl`. Test code would change method table, and `--code-coverage` changes optimized IR, so findings would depend on what ran before.
+- Environment loads target from its root (`Base.locate_package` gives target entry file): load in place.
+- Otherwise build temporary environment: nameless project that develops target by path, starts from target Manifest, and adds test dependencies and Corset by path. Every target version stays. Version change fails loud (exit 2) and lists packages. Relaunch Julia in that environment with same arguments. Cache environment by hash of Manifest, Project.toml and Corset version.
+- Relaunched process that still loads target from other path (registered copy, other checkout) is internal error: findings would describe other code.
 - Load each extension's trigger packages: extension activates only when all triggers are loaded.
-- Pkg resolves Corset dependencies with package dependencies, so conflict fails loudly at install.
 - Cache check runs before package load: unchanged rerun loads nothing.
 
 ### Tests
@@ -97,6 +98,14 @@ Main goal of rewrite: clean structure. Legacy implemented each rule on its own, 
 ### Package load
 
 Loading runs code. Stages after package load (`package`, `inference`, `effects`, `lifecycle`, `external`) run only on package with `name`; Julia apps qualify. Scripts and nameless environments get `syntax` and `scope`. Extensions are analyzed with test dependencies installed and their triggers loaded; `untested-extension` reports trigger missing from them. Later: definitions-only load for scripts.
+
+Engine loads package only when enabled rule needs stage after `syntax`. Load that throws becomes `load-error` finding (`findings.md`).
+
+`package` facts hold live objects (`Module`, `Method`, `DataType`); findings stay plain data. Package code: methods and types whose module is package module (root, submodules, extensions) and whose file lies under package root. Code that other packages' macros write elsewhere is not package code.
+
+Method span: `package` stage pairs each method with definition node at its file and line. Exact span when one definition node of that name starts there; line precision otherwise (`@eval` loops, macro output).
+
+UI cases for rules after `syntax`: case directory holds package (Project.toml with `name` and `uuid`, `src/`). Harness loads it in test process under unique name; fixtures change only own types and functions, except `piracy` fixture, which extends Base function on Base type no test calls.
 
 ### Incremental runs and disk cache
 

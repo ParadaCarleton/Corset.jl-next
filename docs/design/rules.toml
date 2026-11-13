@@ -92,7 +92,7 @@ name = "shadowed-base"
 footguns = [23]
 
 [[rule]]
-name = "keyword-overwrite"
+name = "method-overwrite"
 footguns = [24]
 
 [[rule]]
@@ -103,7 +103,7 @@ note = "Aqua.jl."
 [[rule]]
 name = "method-ambiguity"
 footguns = [94]
-note = "Aqua.jl."
+note = "`Test.detect_ambiguities` on package modules, as Aqua.jl; pairs with both methods in package."
 
 [[rule]]
 name = "inference-dependent"

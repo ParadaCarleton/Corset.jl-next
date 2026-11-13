@@ -10,7 +10,7 @@ text = "One tree walk per file. Rules are Argus.jl patterns: syntax classes, pat
 [[stage]]
 name = "package"
 title = "Loaded package"
-text = "Loaded package without inference: bindings, structs, signatures, method table, specialization heuristics."
+text = "Loaded package without inference: Project.toml facts, package modules (extensions included), bindings, structs, methods mapped to definition nodes, specialization heuristics. Load failure becomes `deny` finding; later stages skip."
 
 [[stage]]
 name = "scope"
@@ -35,4 +35,4 @@ text = "Local def-use per array: created, written, read before write, resized, e
 [[stage]]
 name = "external"
 title = "External tools"
-text = "Wrap tool output as findings: Aqua.jl, ExplicitImports.jl, jscpd."
+text = "Wrap tool output as findings: Aqua.jl, `Test.detect_ambiguities`, ExplicitImports.jl; jscpd later."

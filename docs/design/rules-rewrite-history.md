@@ -450,3 +450,13 @@ Owner accepted all 13 proposed bug classes. General rule wins where one check co
 - F99 `pinned-task` covers `@async`, `Task` and `@threads :static`.
 - F101 `process-state` covers `ENV` writes and `cd`.
 Parse errors become `deny` findings outside rule table, as in Ruff.
+
+### Phase 3 design
+
+Reread `architecture.md`, `findings.md`, `stages.toml` and package-stage footguns before phase 3.
+Julia 1.13 check: overwritten method makes precompilation fail, then Julia loads package without cache. Overwritten method leaves method table.
+F24 widened to every overwrite with same positional signature; rule `keyword-overwrite` renamed `method-overwrite` before it shipped. Packages: syntax tree pairs both definitions with surviving method. Scripts wait for definitions-only load.
+F76 `duplicate-code` moves to later: jscpd needs Node at lint time.
+Dropped `Corset.check()` inside `runtests.jl`. Test code changes method table, and `--code-coverage` changes optimized IR; principle says code that ran before Corset changes speed only.
+Temporary environment is nameless and develops target by path: copied named project would load target from cache directory.
+Load failure is `load-error` finding, as `parse-error`.

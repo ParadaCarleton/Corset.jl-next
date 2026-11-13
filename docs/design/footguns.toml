@@ -226,11 +226,11 @@ note = "Julia 1.13 raises no error: module gets separate function, so `length([1
 [[footgun]]
 id = 24
 area = "types"
-text = "Methods differ only in keywords; later one overwrites"
-example = "`f(x; a)` and `f(x; b)`"
+text = "Method definition overwrites earlier one with same positional signature"
+example = "`f(x; a)` and `f(x; b)`: keywords take no part in dispatch"
 group = "correctness"
 stage = "package"
-note = "Keywords take no part in dispatch. Julia 1.10+ errors in packages; rule covers scripts and explains cause."
+note = "Package precompilation fails, and Julia loads package without cache on each load. Overwritten method is gone from method table, so rule pairs definitions in syntax tree with surviving method. Scripts: later, with definitions-only load."
 
 [[footgun]]
 id = 25
@@ -804,7 +804,7 @@ area = "readability"
 text = "Copied code block"
 group = "readability"
 stage = "external"
-note = "Off by default; jscpd finds near-duplicates, needs Node."
+note = "Later; off by default. jscpd finds near-duplicates, needs Node."
 
 [[footgun]]
 id = 77

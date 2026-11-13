@@ -20,4 +20,4 @@ Stages run top to bottom. Rule declares last stage it reads. Engine computes onl
       </div>
     </div>
 
-Note: `external` stage (Aqua.jl, ExplicitImports.jl, jscpd) runs beside pipeline and reads source directories.
+Note: `external` stage (Aqua.jl, `Test.detect_ambiguities`, ExplicitImports.jl) runs after `package` and reads loaded modules and source.
