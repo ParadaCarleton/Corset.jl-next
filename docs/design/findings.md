@@ -55,7 +55,9 @@ JuliaSyntax parse error is error finding at `deny`, outside rule table, as Ruff 
 
 ### Load errors
 
-Package that throws while loading gets `load-error` finding at `deny`, outside rule table, as `parse-error`. Primary span: deepest backtrace frame inside package source; package entry file when none. Message carries exception text. `syntax` rules still run; later stages skip, and coverage line says package did not load. Failed precompilation alone is no finding: Julia prints its error and loads package without cache.
+Package that throws while loading gets `load-error` finding at `deny`, outside rule table, as `parse-error`. Primary span: deepest backtrace frame inside package source; package entry file when none. Message carries exception text. `syntax` rules still run; later stages skip, and coverage line says package did not load.
+Failed precompilation is load error too: Julia throws and loads nothing. Precompile error has no frame in package, so second load in anonymous module supplies frames; precompile-only failure points at entry file.
+Extension that throws gets `load-error` at its file; package rules still run, and coverage line counts extension. Extension whose trigger environment cannot load is blind spot.
 
 ### Config
 
