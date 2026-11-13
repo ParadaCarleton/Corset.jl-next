@@ -6,6 +6,9 @@ corset <command> [path] [options]
 
 `path` is a file or a directory. The default is `.`. Corset finds the project at or above `path`.
 
+Some rules read the loaded package. For these rules, `corset` builds a temporary environment and runs again inside it.
+The guide section "Load errors" describes this environment.
+
 ## Commands
 
 | Command | Action |

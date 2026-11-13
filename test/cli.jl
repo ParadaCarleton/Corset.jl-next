@@ -3,12 +3,13 @@
 using Corset: Corset
 using JSON: JSON
 using JSONSchema: JSONSchema
+using Scratch: Scratch
 using Test: @test, @testset
 
 """Exit code, standard output and standard error of `corset args...`."""
 function corset(args::String...)::Tuple{Int, String, String}
     out, err = IOBuffer(), IOBuffer()
-    code = Corset.CLI.execute(String[args...], out, err)
+    code = Corset.CLI.execute(String[args...], out, err; launch = false)
     return code, String(take!(out)), String(take!(err))
 end
 
@@ -163,6 +164,78 @@ end
         @test code == 2 && occursin("environment cannot load Lost", err)
     end
     @test occursin("no level, opt-out or baseline hides", corset("explain", "load-error")[2])
+end
+
+@testset "relaunch inputs" begin
+    Launch = Corset.Launch
+    uuid = Base.UUID(rand(UInt128))
+    id = Base.PkgId(uuid, "Targets")
+    mktempdir(@__DIR__) do root
+        project = "name = \"Targets\"\nuuid = \"$uuid\"\n\n[deps]\nJSON = \"682c06a0-de6a-54ab-a142-c8b1cf79cde6\"\n\n[weakdeps]\nTOML = \"fa267f1f-6049-4f14-aa54-33bafae1ed76\"\n\n[extras]\nTest = \"8dfed614-e22c-5e08-85e1-65c5234f0b40\"\n"
+        write(joinpath(root, "Project.toml"), project)
+        @test isempty(Launch.test_specs(root, id)) && isempty(Launch.manifest_deps(joinpath(root, "Project.toml")))
+        # `[targets].test` skips direct dependencies and reads names from `[weakdeps]` and `[extras]`.
+        write(joinpath(root, "Project.toml"), project * "\n[targets]\ntest = [\"JSON\", \"TOML\", \"Test\"]\n")
+        @test [spec.name for spec in Launch.test_specs(root, id)] == ["TOML", "Test"]
+        write(joinpath(root, "Project.toml"), project * "\n[targets]\ntest = [\"Lost\"]\n")
+        @test_throws "test target names Lost, which [extras] lacks" Launch.test_specs(root, id)
+        # `test/Project.toml` drops target and reads `[sources]` relative to its own directory.
+        write(joinpath(root, "Project.toml"), project)
+        mkpath(joinpath(root, "test"))
+        helper, remote = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
+        tests = "[deps]\nTargets = \"$uuid\"\nHelper = \"$helper\"\nRemote = \"$remote\"\n\n[sources]\nTargets = {path = \"..\"}\nHelper = {path = \"../helper\"}\nRemote = {url = \"https://example.com/Remote.jl\", rev = \"main\"}\n"
+        write(joinpath(root, "test", "Project.toml"), tests)
+        specs = Launch.test_specs(root, id)
+        @test [spec.name for spec in specs] == ["Helper", "Remote"]
+        @test specs[1].path == joinpath(root, "helper") && specs[2].url == "https://example.com/Remote.jl" && specs[2].rev == "main"
+        # Manifest paths become absolute; format 1 Manifest is config error.
+        write(joinpath(root, "Manifest.toml"), "manifest_format = \"2.0\"\n\n[[deps.Helper]]\npath = \"helper\"\nuuid = \"$helper\"\n")
+        @test only(Launch.manifest_deps(joinpath(root, "Project.toml"))["Helper"])["path"] == joinpath(root, "helper")
+        write(joinpath(root, "Manifest.toml"), "[[Helper]]\npath = \"helper\"\nuuid = \"$helper\"\n")
+        @test_throws "has format 1" Launch.manifest_deps(joinpath(root, "Project.toml"))
+    end
+    @test Corset.CLI.exit_code(run(ignorestatus(`sh -c 'exit 3'`))) == 3
+    @test Corset.CLI.exit_code(run(ignorestatus(`sh -c "kill -KILL \$\$"`))) == 101
+end
+
+@testset "relaunch" begin
+    # Packages sit off test load path, so only relaunched process can load them.
+    mktempdir(@__DIR__) do scratch
+        Scratch.with_scratch_directory(scratch) do
+            launched(args::String...) = (out = IOBuffer(); err = IOBuffer(); code = Corset.CLI.execute(String[args...], out, err; launch = true); (code, String(take!(out)), String(take!(err))))
+            box = "\"\"\"Package only relaunched process loads.\"\"\"\nmodule Relaunched\n\"\"\"Number in box.\"\"\"\nstruct Box\n    number::Int\nend\nlength(box::Box)::Int = box.number\nend\n"
+            mktempdir(@__DIR__) do root
+                uuid, helper = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
+                files = [
+                    "Project.toml" => "name = \"Relaunched\"\nuuid = \"$uuid\"\n\n[preferences.Corset]\nkind = \"library\"\n",
+                    "src/Relaunched.jl" => box,
+                    "helper/Project.toml" => "name = \"Helper\"\nuuid = \"$helper\"\n",
+                    "helper/src/Helper.jl" => "module Helper\nend\n",
+                    "test/Project.toml" => "[deps]\nHelper = \"$helper\"\nRelaunched = \"$uuid\"\nTest = \"8dfed614-e22c-5e08-85e1-65c5234f0b40\"\n\n[sources]\nHelper = {path = \"../helper\"}\nRelaunched = {path = \"..\"}\n",
+                ]
+                for (path, text) in files
+                    mkpath(dirname(joinpath(root, path)))
+                    write(joinpath(root, path), text)
+                end
+                @test occursin("environment cannot load Relaunched", corset("check", root)[3])
+                code, out, err = launched("check", root, "-A", "annotation")
+                @test code == 1 && occursin("error[shadowed-base]", out) && !occursin("annotation", out)
+                @test occursin("building environment for Relaunched", err)
+                code, out, err = launched("check", root, "-A", "shadowed-base")
+                @test code == 0 && !occursin("building environment", err)
+            end
+            # Manifest pins TextWrap 0.3; Corset needs ArgParse 1, which needs TextWrap 1.
+            mktempdir(@__DIR__) do root
+                textwrap = "b718987f-49a8-5099-9789-dcd902bef87d"
+                write(joinpath(root, "Project.toml"), "name = \"Pinned\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n\n[deps]\nTextWrap = \"$textwrap\"\n\n[preferences.Corset]\nkind = \"library\"\n")
+                write(joinpath(root, "Manifest.toml"), "manifest_format = \"2.0\"\n\n[[deps.TextWrap]]\ndeps = [\"Compat\", \"Test\"]\ngit-tree-sha1 = \"8355cc559e85469cd4dbe927c375f61d3750e002\"\nuuid = \"$textwrap\"\nversion = \"0.3.0\"\n")
+                mkpath(joinpath(root, "src"))
+                write(joinpath(root, "src", "Pinned.jl"), "\"\"\"Package with old Manifest.\"\"\"\nmodule Pinned\nend\n")
+                code, _, err = launched("check", root)
+                @test code == 2 && occursin("cannot build environment for Pinned that keeps every Manifest version", err) && occursin("TextWrap", err)
+            end
+        end
+    end
 end
 
 @testset "fix conflicts" begin

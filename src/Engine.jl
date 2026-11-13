@@ -59,9 +59,21 @@ Loaded package of named `project` with method sites in `files`, or `load-error` 
 `nothing` outside named project, and when no enabled rule reads package.
 """
 function load_package(project::Union{Nothing, String}, settings::Settings, files::Vector{Facts.SyntaxFile})::Union{Nothing, PackageFacts, Finding}
-    (isnothing(project) || !needs_package(settings)) && return nothing
-    id = Package.package_id(project)
+    id = load_target(project, settings)
     return isnothing(id) ? nothing : Package.load(project, id, files)
+end
+
+"""Package run loads from `project` under `settings`: named project with enabled rule after `syntax` stage."""
+function load_target(project::Union{Nothing, String}, settings::Settings)::Union{Nothing, Base.PkgId}
+    (isnothing(project) || !needs_package(settings)) && return nothing
+    return Package.package_id(project)
+end
+
+"""Project root and package that run on `path` with `flags` loads; `nothing` when run loads no package."""
+function load_target(path::String, flags::Flags)::Union{Nothing, Tuple{String, Base.PkgId}}
+    project = project_root(path)
+    id = load_target(project, Config.settings(project, flags, REGISTRY))
+    return isnothing(id) ? nothing : (project, id)
 end
 
 """One analysis of `path`: settings, facts, baseline root, leveled diagnostics with their baseline keys, and always-on check problems."""

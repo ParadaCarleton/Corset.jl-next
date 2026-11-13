@@ -151,8 +151,12 @@ No level, opt-out or baseline hides a parse error.
 
 ## Load errors
 
-Some rules read the loaded package. For these rules, Corset loads the package into its own process.
-The environment must load the package from its root; another copy is a configuration error.
+Some rules read the loaded package. For these rules, the `corset` command builds a temporary environment and runs again inside it.
+The environment starts from the package Manifest, develops the package by path and adds its test dependencies.
+Every Manifest version stays; a resolution that needs another version is a configuration error.
+Julia in the environment loads only from that environment and the standard library.
+The first run builds the environment. Later runs reuse it until the project files or the Julia version change.
+`Corset.check` in Julia code does not relaunch: the active environment must load the package from its root.
 
 A package that throws while loading gets a `load-error` finding at the line that threw.
 Rules that read the loaded package do not run, and the coverage line says so.
