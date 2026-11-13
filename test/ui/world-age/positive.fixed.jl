@@ -21,3 +21,8 @@ function define_and_set()
     @eval set_flag(flag) = flag
     return Base.invokelatest(set_flag, (flag = true))
 end
+
+function define_qualified()
+    Base.@eval qualified() = 1
+    return Base.invokelatest(qualified)
+end

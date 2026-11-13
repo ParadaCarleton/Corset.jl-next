@@ -21,3 +21,8 @@ function define_and_set()
     @eval set_flag(flag) = flag
     return set_flag((flag = true))
 end
+
+function define_qualified()
+    Base.@eval qualified() = 1
+    return qualified()
+end

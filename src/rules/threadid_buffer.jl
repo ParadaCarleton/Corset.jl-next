@@ -36,11 +36,7 @@ const THREADED = Set(["@threads", "@spawn", "@async"])
 
 """Whether `node` sits inside threaded macro call (`@threads`, `Threads.@threads`, `@spawn`)."""
 function threaded(node::SyntaxNode)::Bool
-    return any(ancestors(node)) do ancestor
-        kind_name(ancestor) == "macrocall" || return false
-        name = children_of(ancestor)[1]
-        return leaf_value(isempty(children_of(name)) ? name : children_of(name)[end]) in THREADED
-    end
+    return any(ancestor -> base_macro(ancestor) in THREADED, ancestors(node))
 end
 
 """Findings for indexing by current thread ID: `definite` inside threaded macro, else `possible`."""

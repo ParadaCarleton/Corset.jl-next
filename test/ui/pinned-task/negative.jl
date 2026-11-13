@@ -33,3 +33,9 @@ slots = Vector{Task}(undef, 4)
 running = current_task()
 Mine.@async work()
 @async_logged work()
+
+# Opt-out still counts when assignment sits inside `return`.
+function unpinned_result()
+    worker = Task(work)
+    return worker.sticky = false
+end

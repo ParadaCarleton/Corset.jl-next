@@ -1,4 +1,4 @@
-error[orphan-task]: task from `@spawn` is never waited
+error[orphan-task]: task from `Threads.@spawn` is never waited
  --> positive.jl:4:9
   |
 4 |         Threads.@spawn run(job)

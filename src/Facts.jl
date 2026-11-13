@@ -15,7 +15,7 @@ export Precision, Tier, Confidence, Group, Stage, Role, BindingKind
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
-export finding, replace_fix, manual_fix, identifier_name, base_name, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
+export finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded
 
@@ -296,6 +296,27 @@ function base_name(node::SyntaxNode)::Union{Nothing, String}
     kind_name(node) == "." || return identifier_name(node)
     parts = children_of(node)
     return length(parts) == 2 && identifier_name(parts[1]) == "Base" ? identifier_name(parts[2]) : nothing
+end
+
+"""Module paths whose macros count as Base macros, as written before `.@`."""
+const BASE_MODULES = ("Base", "Core", "Threads", "Base.Threads")
+
+"""Dotted module path `node` writes: `"Base.Threads"` for `Base.Threads`; `nothing` for other forms."""
+function module_path(node::SyntaxNode)::Union{Nothing, String}
+    kind_name(node) == "." || return identifier_name(node)
+    outer, inner = module_path(children_of(node)[1]), identifier_name(children_of(node)[end])
+    return isnothing(outer) || isnothing(inner) ? nothing : "$outer.$inner"
+end
+
+"""
+Base macro that macro call `node` names, read as written: `"@spawn"` for `@spawn`, `Threads.@spawn` and `Base.Threads.@spawn`.
+`nothing` for macro of other module, such as `Mine.@spawn`, and for nodes other than macro calls.
+"""
+function base_macro(node::SyntaxNode)::Union{Nothing, String}
+    kind_name(node) == "macrocall" || return nothing
+    name = children_of(node)[1]
+    kind_name(name) == "." || return leaf_value(name)
+    return module_path(children_of(name)[1]) in BASE_MODULES ? leaf_value(children_of(name)[end]) : nothing
 end
 
 """Operator of infix call `node`, dot included: `"=="` for `a == b`, `".=="` for `a .== b`; `nothing` for other nodes."""

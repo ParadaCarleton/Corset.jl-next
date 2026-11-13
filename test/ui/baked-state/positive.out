@@ -408,10 +408,21 @@ error[baked-state]: `IN_STATIC` bakes in `Threads.nthreads()` at precompile time
    = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
    = docs: corset explain baked-state
 
-error[baked-state]: `IN_EVAL` bakes in `(Threads.nthreads())` at precompile time
-  --> positive.jl:61:25
+error[baked-state]: `IN_QUALIFIED_STATIC` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:62:33
    |
-61 | @eval const IN_EVAL = $(Threads.nthreads())
+62 |     const IN_QUALIFIED_STATIC = Threads.nthreads()
+   |           ------------------- value stored in precompile cache
+   |                                 ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `IN_EVAL` bakes in `(Threads.nthreads())` at precompile time
+  --> positive.jl:64:25
+   |
+64 | @eval const IN_EVAL = $(Threads.nthreads())
    |             ------- value stored in precompile cache
    |                         ^^^^^^^^^^^^^^^^^^ read when package precompiles
    |

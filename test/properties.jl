@@ -234,6 +234,9 @@ end
     @test !same("f() = \"a\"\n", "f() = nothing\n") && !same("\"a\"\n", "")
     wrapped = "module Wrapped\n    \"Shape types.\"\nend\n"
     @test Corset.Fixes.apply_edits(wrapped, edits_of(findings_of(wrapped), Tier.safe)) == "module Wrapped\n    # Shape types.\nend\n"
+    # `mixed-return` fix wraps `pinned.sticky = false` in `return`; `pinned-task` opt-out still holds.
+    returned = "function wrapped()\n    return missing\n    pinned = Task(work); pinned.sticky = false\nend\n"
+    @test occursin("return pinned.sticky", fixed_once(returned, Tier.safe)) && !any(finding -> finding.rule == Symbol("pinned-task"), findings_of(fixed_once(returned, Tier.safe)))
 
     @check max_examples = EXAMPLES db = EXAMPLE_DB function fix_keeps_code_valid(text = PROGRAMS, tier = TIERS)
         fixed = fixed_once(text, tier)
