@@ -55,11 +55,11 @@ const PAIRS = (
     ),
 )
 
-"""Pair index and target source, whitespace runs collapsed, of each acquire or release statement in `file`, by node."""
+"""Pair index and normalized target source of each acquire or release statement in `file`, by node."""
 function sites(file::SyntaxFile, side::Symbol)::IdDict{SyntaxNode, Tuple{Int, String}}
     found = IdDict{SyntaxNode, Tuple{Int, String}}()
     for (index, pair) in enumerate(PAIRS), match in matches(file, pair[side])
-        found[match.node] = (index, replace(source(file, binding(match, :target)), r"\s+" => " "))
+        found[match.node] = (index, normalized_source(file, binding(match, :target)))
     end
     return found
 end

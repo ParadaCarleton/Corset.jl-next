@@ -434,9 +434,27 @@ function discarded(node::SyntaxNode)::Bool
     return children_of(parent)[end] !== node
 end
 
-"""Source of `node` with whitespace runs collapsed and docstring dropped, for comparison."""
-normalized_source(file::SyntaxFile, node::SyntaxNode)::String =
-    kind_name(node) == "doc" ? normalized_source(file, children_of(node)[end]) : replace(source(file, node), r"\s+" => " ")
+"""Tokens of layout: whitespace and comments."""
+const LAYOUT_TOKENS = (JS.K"Whitespace", JS.K"NewlineWs", JS.K"Comment")
+
+"""
+Source of `node` for comparison: each layout run between tokens becomes one space, docstring drops, string contents stay exact.
+Space stays significant: `[1 -2]` and `[1 - 2]` differ.
+"""
+function normalized_source(file::SyntaxFile, node::SyntaxNode)::String
+    kind_name(node) == "doc" && return normalized_source(file, children_of(node)[end])
+    text, pieces, gap = source(file, node), SubString{String}[], false
+    for token in JS.tokenize(text)
+        if JS.kind(token) in LAYOUT_TOKENS
+            gap = !isempty(pieces)
+        else
+            gap && push!(pieces, SubString(" "))
+            push!(pieces, SubString(text, Int(first(token.range)), thisind(text, Int(last(token.range)))))
+            gap = false
+        end
+    end
+    return join(pieces)
+end
 
 """Finding of `rule` with primary label at `node` of `file`."""
 function finding(

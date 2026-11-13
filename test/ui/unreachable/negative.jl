@@ -61,3 +61,12 @@ module Script
 return
 const LOADED = true
 end
+
+# String contents differ only in spacing: distinct conditions.
+function choose(x)
+    if x == "a b"
+        return 1
+    elseif x == "a  b"
+        return 2
+    end
+end

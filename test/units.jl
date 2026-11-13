@@ -78,6 +78,9 @@ end
     calls = Corset.Syntax.parse_file("c.jl", "@spawn f()\nBase.Threads.@spawn f()\n@Threads.spawn f()\nMine.@spawn f()\n", Role.package)
     @test [Facts.base_macro(node) for node in Facts.forms(calls, "macrocall")] == ["@spawn", "@spawn", "@spawn", nothing]
     @test isnothing(Facts.base_macro(only(Facts.forms(calls, "toplevel"))))
+    # Normalized source: layout run becomes one space; comments drop; string contents and significant spaces stay.
+    shapes = Corset.Syntax.parse_file("n.jl", "a = [1 -2]\nb = [1 - 2]\nc = x == \"a  b\" #= c =#  &&  y\n", Role.package)
+    @test [Facts.normalized_source(shapes, node) for node in Facts.forms(shapes, "=")] == ["a = [1 -2]", "b = [1 - 2]", "c = x == \"a  b\" && y"]
 end
 
 @testset "engine" begin
