@@ -230,7 +230,7 @@ text = "Method definition overwrites earlier one with same positional signature"
 example = "`f(x; a)` and `f(x; b)`: keywords take no part in dispatch"
 group = "correctness"
 stage = "package"
-note = "Package precompilation fails, and Julia loads package without cache on each load. Later definition replaces positional method; keyword sorter of earlier one stays when later one has no keywords, so keyword calls run earlier body. Rule pairs definitions in syntax tree with surviving method. Scripts: later, with definitions-only load."
+note = "Package precompilation fails, and Julia loads package without cache on each load. Later definition replaces positional method; keyword sorter of earlier one stays when later one has no keywords, so keyword calls run earlier body. Julia keeps replaced method in method table with `dispatch_status` 0; rule pairs it with later method of same signature, so definition that never ran (`if false`) is no finding. Scripts: later, with definitions-only load."
 
 [[footgun]]
 id = 25
