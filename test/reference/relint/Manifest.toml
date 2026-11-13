@@ -1,0 +1,163 @@
+# This file is machine-generated - editing it directly is not advised
+
+julia_version = "1.13.3"
+manifest_format = "2.1"
+project_hash = "b3daf69b525fbe2732abe39064c1135e2ad0a2e8"
+
+[[deps.Argus]]
+deps = ["InteractiveUtils", "JuliaSyntax", "MacroTools", "RuntimeGeneratedFunctions", "Test"]
+git-tree-sha1 = "72c07f04fae8460d54273ff22a82b7acbf6aa962"
+registries = "General"
+uuid = "e39743ec-b2cc-45ef-a990-b666fc093538"
+version = "0.4.2"
+
+[[deps.Base64]]
+uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
+version = "1.11.0"
+
+[[deps.Dates]]
+deps = ["Printf"]
+uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
+version = "1.11.0"
+
+[[deps.ExprTools]]
+git-tree-sha1 = "d2e49e7efd29719d6f28b891b0e0e159daa9d2b4"
+registries = "General"
+uuid = "e2ba6199-217a-4e67-a87a-7c52f15ade04"
+version = "0.1.11"
+
+[[deps.InteractiveUtils]]
+deps = ["Markdown"]
+uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
+version = "1.11.0"
+
+[[deps.JSON3]]
+deps = ["Dates", "Mmap", "Parsers", "PrecompileTools", "StructTypes", "UUIDs"]
+git-tree-sha1 = "34a52631602d7233eb1dca1a358ae82b656f9f2a"
+registries = "General"
+uuid = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+version = "1.14.4"
+
+    [deps.JSON3.extensions]
+    JSON3ArrowExt = ["ArrowTypes"]
+
+    [deps.JSON3.weakdeps]
+    ArrowTypes = "31f734f8-188a-4ce0-8406-c8a06bd891cd"
+
+[[deps.JuliaSyntax]]
+git-tree-sha1 = "0d4b3dab95018bcf3925204475693d9f09dc45b8"
+registries = "General"
+uuid = "70703baa-626e-46a2-a12c-08ffd08c73b4"
+version = "1.0.2"
+
+[[deps.JuliaSyntaxHighlighting]]
+deps = ["StyledStrings"]
+uuid = "ac6e5ff7-fb65-4e79-a425-ec3bc9c03011"
+version = "1.12.0"
+
+[[deps.Logging]]
+uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
+version = "1.11.0"
+
+[[deps.MacroTools]]
+git-tree-sha1 = "1e0228a030642014fe5cfe68c2c0a818f9e3f522"
+registries = "General"
+uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
+version = "0.5.16"
+
+[[deps.Markdown]]
+deps = ["Base64", "JuliaSyntaxHighlighting", "StyledStrings"]
+uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
+version = "1.11.0"
+
+[[deps.Mmap]]
+uuid = "a63ad114-7e13-5084-954f-fe012c677804"
+version = "1.11.0"
+
+[[deps.Parsers]]
+deps = ["Dates", "PrecompileTools", "UUIDs"]
+git-tree-sha1 = "2facd7b5863092567d54590997caf8f6db8e0b1e"
+registries = "General"
+uuid = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
+version = "2.8.11"
+
+[[deps.PrecompileTools]]
+deps = ["Preferences"]
+git-tree-sha1 = "1e697ad6f68af89cd3651bbe9b4a7b5d800adf5a"
+registries = "General"
+uuid = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
+version = "1.4.0"
+
+[[deps.Preferences]]
+deps = ["TOML"]
+git-tree-sha1 = "aef1987d90dcc2e2cbd919ad10b2d25bcce4f418"
+registries = "General"
+uuid = "21216c6a-2e73-6563-6e65-726566657250"
+version = "1.6.1"
+
+[[deps.Printf]]
+deps = ["Unicode"]
+uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+version = "1.11.0"
+
+[[deps.Random]]
+deps = ["SHA"]
+uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+version = "1.11.0"
+
+[[deps.ReLint]]
+deps = ["Argus", "Dates", "JSON3", "JuliaSyntax"]
+git-tree-sha1 = "fa6df0d111947d57b3c0f7f90d4d8ff408480efb"
+repo-rev = "61079427d9fc91cb3ead8f5b287aa3ae9b2269cb"
+repo-url = "https://github.com/RelationalAI-oss/ReLint.jl"
+uuid = "b3cc710f-9c33-5bdb-a03d-a94903873e97"
+version = "0.9.0"
+
+[[deps.RuntimeGeneratedFunctions]]
+deps = ["ExprTools", "PrecompileTools", "SHA", "Serialization"]
+git-tree-sha1 = "9bb075002b40849582905394bb3031fb77aa102d"
+registries = "General"
+uuid = "7e49a35a-f44a-4d26-94aa-eba1b4ca6b47"
+version = "0.5.27"
+
+[[deps.SHA]]
+uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
+version = "1.0.0"
+
+[[deps.Serialization]]
+uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
+version = "1.11.0"
+
+[[deps.StructTypes]]
+deps = ["Dates", "UUIDs"]
+git-tree-sha1 = "fd6a55e88450cb4256e49103a5a243f065c7b781"
+registries = "General"
+uuid = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
+version = "1.11.1"
+
+[[deps.StyledStrings]]
+uuid = "f489334b-da3d-4c2e-b8f0-e476e12c162b"
+version = "1.11.0"
+
+[[deps.TOML]]
+deps = ["Dates"]
+uuid = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+version = "1.0.3"
+
+[[deps.Test]]
+deps = ["InteractiveUtils", "Logging", "Random", "Serialization"]
+uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+version = "1.11.0"
+
+[[deps.UUIDs]]
+deps = ["Random", "SHA"]
+uuid = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
+version = "1.11.0"
+
+[[deps.Unicode]]
+uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
+version = "1.11.0"
+
+[registries.General]
+url = "https://github.com/JuliaRegistries/General.git"
+uuid = "23338594-aafe-5451-b93e-139f81909106"
