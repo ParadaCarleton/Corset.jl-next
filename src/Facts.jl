@@ -16,7 +16,7 @@ export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, FactSet, IndexedPattern, Match
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export finding, replace_fix, manual_fix, identifier_name, parent_of, ancestors, descendants, call_head, leaf_value
-export definition_name, struct_fields
+export definition_name, struct_fields, include_calls, include_target
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
 @enumx Precision exact line
@@ -101,9 +101,10 @@ struct SyntaxFile
     parse_errors::Vector{Label}
 end
 
-"""Facts of one run."""
+"""Facts of one run: parsed files, and entry files Julia loads directly (empty for directory walk, where any file may be included)."""
 struct FactSet
     files::Vector{SyntaxFile}
+    entries::Vector{String}
 end
 
 """
@@ -137,6 +138,29 @@ function call_head(node)::Union{Nothing, String}
     kind_name(node) == "call" || return nothing
     callee = JS.children(node)[JS.is_infix_op_call(node) ? 2 : 1]
     return kind_name(callee) == "Identifier" ? string(callee.val) : nothing
+end
+
+"""Functions that load file into calling module: Base `include`, Revise `includet`."""
+const INCLUDES = ("include", "includet")
+
+"""Calls of `file` that load another file."""
+include_calls(file::SyntaxFile)::Vector{SyntaxNode} = filter(call -> call_head(call) in INCLUDES, forms(file, "call"))
+
+"""Absolute path include `call` in `file` loads; `nothing` when path is computed."""
+function include_target(file::SyntaxFile, call::SyntaxNode)::Union{Nothing, String}
+    parts = path_parts(file, children_of(call)[end])
+    return isnothing(parts) ? nothing : normpath(joinpath(dirname(file.path), parts...))
+end
+
+"""Path pieces of `node`: string literal, `raw` string, `@__DIR__`, or `joinpath` of those; `nothing` for anything else."""
+function path_parts(file::SyntaxFile, node::SyntaxNode)::Union{Nothing, Vector{String}}
+    pieces = children_of(node)
+    kind_name(node) == "string" && length(pieces) == 1 && kind_name(pieces[1]) == "String" && return [leaf_value(pieces[1])]
+    kind_name(node) == "macrocall" && leaf_value(pieces[1]) == "@raw_str" && return path_parts(file, pieces[2])
+    kind_name(node) == "macrocall" && leaf_value(pieces[1]) == "@__DIR__" && return [dirname(file.path)]
+    call_head(node) == "joinpath" || return nothing
+    parts = [path_parts(file, piece) for piece in pieces[2:end]]
+    return any(isnothing, parts) ? nothing : reduce(vcat, parts; init = String[])
 end
 
 """Name of node kind as string; Argus pattern forms start with `~`."""

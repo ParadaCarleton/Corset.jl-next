@@ -2,10 +2,12 @@
 `double-include` (F64): same file included twice.
 
 ## Description
-Reports second and later `include` of same literal path in one run.
+Reports second and later `include` of same file in one run, and `include` of entry file Julia already loads (module file, extension, test entry).
+Paths resolve as discovery resolves them: string literal, `raw` string, `@__DIR__`, and `joinpath` of those.
 
 ## Rationale
 Each `include` evaluates file again. Struct definitions then throw on redefinition, and methods are defined twice.
+Including entry file loads it twice, or recurses until stack overflows.
 
 ## Example
 ```julia
@@ -17,38 +19,39 @@ include("solver.jl")   # solver.jl also includes "utils.jl"
 Include each file once, from module root file.
 
 ## Limitations
-Rule resolves literal paths only; computed paths pass.
+Computed paths pass.
 """
 module DoubleInclude
 
 using ...Facts
 
 const NAME = Symbol("double-include")
-const PATTERN = IndexedPattern(@pattern include({path}))
 
-"""Literal path of `include` argument, resolved against including file; `nothing` for computed path."""
-function included_path(file::SyntaxFile, argument)::Union{Nothing, String}
-    kind_name(argument) == "string" || return nothing
-    parts = children_of(argument)
-    length(parts) == 1 && kind_name(parts[1]) == "String" || return nothing
-    return normpath(joinpath(dirname(file.path), leaf_value(parts[1])))
+"""Label at first code of entry file `file`; `nothing` for file without code."""
+function entry_label(file::SyntaxFile)::Union{Nothing, Label}
+    statements = children_of(file.tree)
+    return isempty(statements) ? nothing : Label(span(file, statements[1]), "Julia loads entry file directly")
 end
 
-"""Findings for second and later `include` of same literal path across run."""
+"""Findings for second and later `include` of same file across run; entry files count as loaded once."""
 function run(facts::FactSet)::Vector{Finding}
     first_seen = Dict{String, Label}()
+    for file in facts.files
+        label = file.path in facts.entries ? entry_label(file) : nothing
+        isnothing(label) || (first_seen[file.path] = label)
+    end
     found = Finding[]
-    for file in facts.files, match in matches(file, PATTERN)
-        path = included_path(file, binding(match, :path))
+    for file in facts.files, call in include_calls(file)
+        path = include_target(file, call)
         isnothing(path) && continue
         if !haskey(first_seen, path)
-            first_seen[path] = Label(span(file, match.node), "first included here")
+            first_seen[path] = Label(span(file, call), "first included here")
             continue
         end
         push!(
             found, finding(
-                NAME, file, match.node; kind = :repeated_include, confidence = Confidence.definite,
-                message = "`$(source(file, match.node))` includes file again", label = "second copy of every definition",
+                NAME, file, call; kind = :repeated_include, confidence = Confidence.definite,
+                message = "`$(source(file, call))` includes file again", label = "second copy of every definition",
                 why = "methods are redefined and structs error or shadow; load order then decides behavior",
                 fix = manual_fix("include each file once, from package entry file"), causes = [first_seen[path]],
             )

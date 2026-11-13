@@ -1,14 +1,15 @@
 """Choose files to analyze: package entry files and their include closure, like Cargo targets, or Julia files under directory."""
 module Discovery
 
-using ..Facts: SyntaxFile, BlindSpot, forms, call_head, children_of, kind_name, leaf_value, span
+using ..Facts: SyntaxFile, BlindSpot, include_calls, include_target, span
 using ..Syntax: parse_file
 using ..Config: ConfigError, parse_toml
 
-"""Parsed files to analyze, and include calls discovery could not follow."""
+"""Parsed files to analyze, include calls discovery could not follow, and entry files Julia loads directly."""
 struct Sources
     files::Vector{SyntaxFile}
     blind_spots::Vector{BlindSpot}
+    entries::Vector{String}
 end
 
 """Script entry files of package, relative to project root; analyzed when present."""
@@ -24,7 +25,7 @@ function discover(path::String)::Sources
     project_file = joinpath(path, "Project.toml")
     project = isfile(project_file) ? parse_toml(project_file) : Dict{String, Any}()
     haskey(project, "name") && return closure(entry_files(path, project))
-    return Sources([parse_file(file, read(file, String)) for file in walk_files(path)], BlindSpot[])
+    return Sources([parse_file(file, read(file, String)) for file in walk_files(path)], BlindSpot[], String[])
 end
 
 """Entry files of package at `root`: module file, extension files, then script entries that exist."""
@@ -53,8 +54,7 @@ function closure(entries::Vector{String})::Sources
         push!(seen, path)
         file = parse_file(path, read(path, String))
         push!(files, file)
-        for call in forms(file, "call")
-            call_head(call) == "include" || continue
+        for call in include_calls(file)
             target = include_target(file, call)
             if isnothing(target)
                 push!(blind_spots, BlindSpot("include with computed path", span(file, call)))
@@ -65,23 +65,7 @@ function closure(entries::Vector{String})::Sources
             end
         end
     end
-    return Sources(files, blind_spots)
-end
-
-"""Absolute path that include `call` in `file` loads; `nothing` when path is computed."""
-function include_target(file::SyntaxFile, call)::Union{Nothing, String}
-    parts = path_parts(file, children_of(call)[end])
-    return isnothing(parts) ? nothing : normpath(joinpath(dirname(file.path), parts...))
-end
-
-"""Path pieces of `node`: string literal, `@__DIR__`, or `joinpath` of those; `nothing` for anything else."""
-function path_parts(file::SyntaxFile, node)::Union{Nothing, Vector{String}}
-    pieces = children_of(node)
-    kind_name(node) == "string" && length(pieces) == 1 && kind_name(pieces[1]) == "String" && return [leaf_value(pieces[1])]
-    kind_name(node) == "macrocall" && leaf_value(pieces[1]) == "@__DIR__" && return [dirname(file.path)]
-    call_head(node) == "joinpath" || return nothing
-    parts = [path_parts(file, piece) for piece in pieces[2:end]]
-    return any(isnothing, parts) ? nothing : reduce(vcat, parts; init = String[])
+    return Sources(files, blind_spots, entries)
 end
 
 """Julia files under `directory`, sorted; skips hidden directories, symbolic links and directories with own Project.toml."""

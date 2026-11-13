@@ -13,3 +13,65 @@ error[double-include]: `include("./geometry.jl")` includes file again
   = note: deny from correctness group, library preset
   = note: opt out with `# corset: allow double-include -- <reason>`
 
+error[double-include]: `include(joinpath(@__DIR__, "solvers.jl"))` includes file again
+ --> positive.jl:5:1
+  |
+3 | include("solvers.jl")
+  | --------------------- first included here
+4 | include("./geometry.jl")
+5 | include(joinpath(@__DIR__, "solvers.jl"))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ second copy of every definition
+  |
+  = why: methods are redefined and structs error or shadow; load order then decides behavior
+  = fix: include each file once, from package entry file   [manual]
+  = docs: corset explain double-include
+
+error[double-include]: `include(joinpath("ext", "plots.jl"))` includes file again
+ --> positive.jl:7:1
+  |
+6 | include(joinpath("ext", "plots.jl"))
+  | ------------------------------------ first included here
+7 | include(joinpath("ext", "plots.jl"))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ second copy of every definition
+  |
+  = why: methods are redefined and structs error or shadow; load order then decides behavior
+  = fix: include each file once, from package entry file   [manual]
+  = docs: corset explain double-include
+
+error[double-include]: `include("meshes.jl")` includes file again
+ --> positive.jl:9:1
+  |
+8 | include(raw"meshes.jl")
+  | ----------------------- first included here
+9 | include("meshes.jl")
+  | ^^^^^^^^^^^^^^^^^^^^ second copy of every definition
+  |
+  = why: methods are redefined and structs error or shadow; load order then decides behavior
+  = fix: include each file once, from package entry file   [manual]
+  = docs: corset explain double-include
+
+error[double-include]: `include("render.jl")` includes file again
+  --> positive.jl:11:1
+   |
+10 | includet("render.jl")
+   | --------------------- first included here
+11 | include("render.jl")
+   | ^^^^^^^^^^^^^^^^^^^^ second copy of every definition
+   |
+   = why: methods are redefined and structs error or shadow; load order then decides behavior
+   = fix: include each file once, from package entry file   [manual]
+   = docs: corset explain double-include
+
+error[double-include]: `include(identity, "positive.jl")` includes file again
+  --> positive.jl:12:1
+   |
+ 2 | include("geometry.jl")
+   | ---------------------- Julia loads entry file directly
+...
+12 | include(identity, "positive.jl")
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ second copy of every definition
+   |
+   = why: methods are redefined and structs error or shadow; load order then decides behavior
+   = fix: include each file once, from package entry file   [manual]
+   = docs: corset explain double-include
+
