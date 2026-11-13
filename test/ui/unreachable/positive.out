@@ -1,0 +1,125 @@
+error[unreachable]: condition repeats earlier condition of same `if` chain
+ --> positive.jl:7:12
+  |
+3 |     if x > 0
+  |        ----- same condition
+...
+7 |     elseif x > 0
+  |            ^^^^^ branch never runs
+  |
+  = why: earlier branch takes every case where condition holds; condition has no side effects to change that
+  = fix: change condition to intended one, or delete branch   [manual]
+  = docs: corset explain unreachable
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow unreachable -- <reason>`
+
+error[unreachable]: condition repeats earlier condition of same `if` chain
+  --> positive.jl:18:12
+   |
+14 |     if haskey(table, key) && !isempty(table[key])
+   |        ------------------------------------------ same condition
+...
+18 |     elseif haskey(table, key)  &&  !isempty(table[key])
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ branch never runs
+   |
+   = why: earlier branch takes every case where condition holds; condition has no side effects to change that
+   = fix: change condition to intended one, or delete branch   [manual]
+   = docs: corset explain unreachable
+
+error[unreachable]: condition repeats earlier condition of same `if` chain
+  --> positive.jl:20:12
+   |
+16 |     elseif config.mode == :strict || 0 < length(key) <= 2
+   |            ---------------------------------------------- same condition
+...
+20 |     elseif config.mode == :strict || 0 < length(key) <= 2
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ branch never runs
+   |
+   = why: earlier branch takes every case where condition holds; condition has no side effects to change that
+   = fix: change condition to intended one, or delete branch   [manual]
+   = docs: corset explain unreachable
+
+error[unreachable]: statement after `continue` never runs
+  --> positive.jl:28:9
+   |
+27 |         continue
+   |         -------- block exits here
+28 |         println(item)
+   |         ^^^^^^^^^^^^^ unreachable statement
+   |
+   = why: control leaves block at `continue`; code below it in same block never runs
+   = fix: delete unreachable code, or delete exit left from debugging   [manual]
+   = docs: corset explain unreachable
+
+error[unreachable]: statement after `break` never runs
+  --> positive.jl:32:9
+   |
+31 |         break
+   |         ----- block exits here
+32 |         step!(items)
+   |         ^^^^^^^^^^^^ unreachable statement
+   |
+   = why: control leaves block at `break`; code below it in same block never runs
+   = fix: delete unreachable code, or delete exit left from debugging   [manual]
+   = docs: corset explain unreachable
+
+error[unreachable]: statement after `return` never runs
+  --> positive.jl:36:5
+   |
+35 |     return nothing
+   |     -------------- block exits here
+36 |     println("done")
+   |     ^^^^^^^^^^^^^^^ unreachable statement
+   |
+   = why: control leaves block at `return`; code below it in same block never runs
+   = fix: delete unreachable code, or delete exit left from debugging   [manual]
+   = docs: corset explain unreachable
+
+error[unreachable]: statement after `error` never runs
+  --> positive.jl:42:9
+   |
+41 |         error("too large: ", x)
+   |         ----------------------- block exits here
+42 |         x = 100
+   |         ^^^^^^^ unreachable statement
+   |
+   = why: control leaves block at `error`; code below it in same block never runs
+   = fix: delete unreachable code, or delete exit left from debugging   [manual]
+   = docs: corset explain unreachable
+
+error[unreachable]: statement after `throw` never runs
+  --> positive.jl:46:9
+   |
+45 |         throw(ArgumentError("x"))
+   |         ------------------------- block exits here
+46 |         cleanup(x)
+   |         ^^^^^^^^^^ unreachable statement
+   |
+   = why: control leaves block at `throw`; code below it in same block never runs
+   = fix: delete unreachable code, or delete exit left from debugging   [manual]
+   = docs: corset explain unreachable
+
+error[unreachable]: statement after `rethrow` never runs
+  --> positive.jl:49:9
+   |
+48 |         rethrow(err)
+   |         ------------ block exits here
+49 |         log_error(err)
+   |         ^^^^^^^^^^^^^^ unreachable statement
+   |
+   = why: control leaves block at `rethrow`; code below it in same block never runs
+   = fix: delete unreachable code, or delete exit left from debugging   [manual]
+   = docs: corset explain unreachable
+
+error[unreachable]: statement after `error` never runs
+  --> positive.jl:56:1
+   |
+55 | error("Legacy is removed; use Modern")
+   | -------------------------------------- block exits here
+56 | const LEVEL = 1
+   | ^^^^^^^^^^^^^^^ unreachable statement
+   |
+   = why: control leaves block at `error`; code below it in same block never runs
+   = fix: delete unreachable code, or delete exit left from debugging   [manual]
+   = docs: corset explain unreachable
+

@@ -58,13 +58,28 @@ accepted(text::String)::Bool = parses(text) && lowering_errors(Meta.parseall(tex
 names_method(target::Any)::Bool = target isa Expr && (target.head === :call || target.head in (:where, :(::)) && names_method(target.args[1]))
 
 """
-`expression` without line numbers and docstrings, and without `return` on last statement of method body.
-Julia returns value of last statement, so code with same meaning normalizes equal.
+Index of body in `arguments` of `head` whose statements all drop their value; `0` for other heads.
+Module and loop bodies come last: Julia 1.14 adds syntax version before module name. `try` holds `finally` fourth.
+"""
+dropping_body(head::Symbol, arguments::Vector{Any})::Int = head in (:module, :for, :while) ? lastindex(arguments) : head === :try ? 4 : 0
+
+"""Whether `argument` is string literal or interpolated string."""
+is_string(argument::Any)::Bool = argument isa String || Meta.isexpr(argument, :string)
+
+"""
+`expression` without line numbers, docstrings, dropped string statements, and `return` on last statement of method body.
+Julia drops value of string statement unless it is last of block; module, loop and `finally` bodies drop every value.
 """
 function normalized(expression::Any)::Any
     expression isa Expr || return expression
     expression.head === :macrocall && expression.args[1] == GlobalRef(Core, Symbol("@doc")) && return normalized(expression.args[end])
     arguments = Any[normalized(argument) for argument in expression.args if !(argument isa LineNumberNode)]
+    if expression.head in (:block, :toplevel)
+        last_index = length(arguments)
+        arguments = Any[argument for (index, argument) in enumerate(arguments) if index == last_index || !is_string(argument)]
+    end
+    body = dropping_body(expression.head, arguments)
+    checkbounds(Bool, arguments, body) && Meta.isexpr(arguments[body], :block) && (arguments[body] = Expr(:block, filter(!is_string, arguments[body].args)...))
     if expression.head === :function || expression.head === :(=) && names_method(arguments[1])
         body = arguments[end]
         tail = body isa Expr && body.head === :block && !isempty(body.args) ? body.args[end] : nothing
@@ -197,7 +212,7 @@ const TIERS = Data.SampledFrom(collect(instances(Tier.T)))
 """Rules that compare statement with neighbor as text; fix that rewrites statement into neighbor's text reveals duplicate."""
 const NEIGHBOR_RULES = [Symbol("duplicate-statement")]
 """Rules whose `safe` fix spells out what parser already reads: proven equivalent."""
-const EQUIVALENT = [:docstring, :juxtaposition, Symbol("mixed-return")]
+const EQUIVALENT = [:docstring, :juxtaposition, Symbol("mixed-return"), Symbol("unused-literal")]
 """Rules whose `safe` fix changes meaning to fix definite bug inside method."""
 const BUG_FIXES = [Symbol("where-binding"), Symbol("world-age")]
 
@@ -211,6 +226,12 @@ end
 @testset "fix properties" begin
     @test count(fixable, STATEMENTS) >= 6 && count(fixable, EXPRESSIONS) >= 2
     @test safe_rules() == sort!([EQUIVALENT; BUG_FIXES])
+    same(left::String, right::String)::Bool = normalized(Meta.parseall(left)) == normalized(Meta.parseall(right))
+    @test same("module M\n\"a\"\nend\n", "module M\nend\n") && same("for i in 1:2\n\"a\"\nend\n", "for i in 1:2\nend\n")
+    @test same("while f()\n\"a\"\nend\n", "while f()\nend\n") && same("try\nf()\nfinally\n\"a\"\nend\n", "try\nf()\nfinally\nend\n")
+    @test !same("f() = \"a\"\n", "f() = nothing\n") && !same("\"a\"\n", "")
+    wrapped = "module Wrapped\n    \"Shape types.\"\nend\n"
+    @test Corset.Fixes.apply_edits(wrapped, edits_of(findings_of(wrapped), Tier.safe)) == "module Wrapped\n    # Shape types.\nend\n"
 
     @check max_examples = EXAMPLES db = EXAMPLE_DB function fix_keeps_code_valid(text = PROGRAMS, tier = TIERS)
         fixed = fixed_once(text, tier)

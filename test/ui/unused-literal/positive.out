@@ -1,0 +1,243 @@
+warning[unused-literal]: docstring is detached from definition
+ --> positive.jl:2:1
+  |
+2 | """
+  | ^^^ string dropped
+...
+8 | area(r) = π * r^2
+  | ----------------- definition without docstring
+  |
+  = why: blank line, comment or `;` ends docstring; Julia drops string, so help shows nothing
+  = fix: delete blank lines between docstring and definition   [safe]
+  = docs: corset explain unused-literal
+  = note: warn from readability group, library preset
+  = note: opt out with `# corset: allow unused-literal -- <reason>`
+
+warning[unused-literal]: docstring is detached from definition
+  --> positive.jl:10:1
+   |
+10 | "Perimeter of square with side `s`."
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ string dropped
+11 | # Four equal sides.
+12 | perimeter(s) = 4s
+   | ----------------- definition without docstring
+   |
+   = why: blank line, comment or `;` ends docstring; Julia drops string, so help shows nothing
+   = fix: move comment above docstring, then delete lines between docstring and definition   [manual]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: docstring is detached from definition
+  --> positive.jl:14:1
+   |
+14 | "Default tolerance."
+   | ^^^^^^^^^^^^^^^^^^^^ string dropped
+...
+17 | const TOLERANCE = 1e-8
+   | ---------------------- definition without docstring
+   |
+   = why: blank line, comment or `;` ends docstring; Julia drops string, so help shows nothing
+   = fix: delete blank lines between docstring and definition   [safe]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: docstring is detached from definition
+  --> positive.jl:19:1
+   |
+19 | "Global counter."
+   | ^^^^^^^^^^^^^^^^^ string dropped
+20 | 
+21 | counter = 0
+   | ----------- definition without docstring
+   |
+   = why: blank line, comment or `;` ends docstring; Julia drops string, so help shows nothing
+   = fix: delete blank lines between docstring and definition   [safe]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: docstring is detached from definition
+  --> positive.jl:23:1
+   |
+23 | "Fast sum."
+   | ^^^^^^^^^^^ string dropped
+24 | 
+25 | @inline fast_sum(a, b) = a + b
+   | ------------------------------ definition without docstring
+   |
+   = why: blank line, comment or `;` ends docstring; Julia drops string, so help shows nothing
+   = fix: delete blank lines between docstring and definition   [safe]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: docstring is detached from definition
+  --> positive.jl:27:1
+   |
+27 | "Shape types."
+   | ^^^^^^^^^^^^^^ string dropped
+28 | 
+29 | module Shapes
+   | ------------- definition without docstring
+   |
+   = why: blank line, comment or `;` ends docstring; Julia drops string, so help shows nothing
+   = fix: delete blank lines between docstring and definition   [safe]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: docstring is detached from definition
+  --> positive.jl:31:1
+   |
+31 | "Unit square."
+   | ^^^^^^^^^^^^^^ string dropped
+32 | 
+33 | struct Square end
+   | ----------------- definition without docstring
+   |
+   = why: blank line, comment or `;` ends docstring; Julia drops string, so help shows nothing
+   = fix: delete blank lines between docstring and definition   [safe]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: docstring is detached from definition
+  --> positive.jl:35:1
+   |
+35 | "Any shape."
+   | ^^^^^^^^^^^^ string dropped
+36 | 
+37 | abstract type Shape end
+   | ----------------------- definition without docstring
+   |
+   = why: blank line, comment or `;` ends docstring; Julia drops string, so help shows nothing
+   = fix: delete blank lines between docstring and definition   [safe]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: docstring is detached from definition
+  --> positive.jl:39:1
+   |
+39 | "Raw byte."
+   | ^^^^^^^^^^^ string dropped
+40 | 
+41 | primitive type Byte 8 end
+   | ------------------------- definition without docstring
+   |
+   = why: blank line, comment or `;` ends docstring; Julia drops string, so help shows nothing
+   = fix: delete blank lines between docstring and definition   [safe]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: docstring is detached from definition
+  --> positive.jl:46:5
+   |
+46 |     "Volume of unit cube."
+   |     ^^^^^^^^^^^^^^^^^^^^^^ string dropped
+47 | 
+48 |     volume() = 1
+   |     ------------ definition without docstring
+   |
+   = why: blank line, comment or `;` ends docstring; Julia drops string, so help shows nothing
+   = fix: delete blank lines between docstring and definition   [safe]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: docstring is detached from definition
+  --> positive.jl:51:1
+   |
+51 | "Square of `x`."; square(x) = x^2
+   | ^^^^^^^^^^^^^^^^ string dropped
+   |                   --------------- definition without docstring
+   |
+   = why: blank line, comment or `;` ends docstring; Julia drops string, so help shows nothing
+   = fix: replace `;` with line break, so definition starts on line below docstring   [manual]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: literal statement has no effect
+  --> positive.jl:54:5
+   |
+54 |     "Process every item."
+   |     ^^^^^^^^^^^^^^^^^^^^^ value dropped
+   |
+   = why: Julia evaluates literal and drops its value; statement does nothing
+   = fix: turn string into comment   [safe]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: literal statement has no effect
+  --> positive.jl:57:9
+   |
+57 |         nothing
+   |         ^^^^^^^ value dropped
+   |
+   = why: Julia evaluates literal and drops its value; statement does nothing
+   = fix: delete statement   [likely]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: literal statement has no effect
+  --> positive.jl:59:5
+   |
+59 |     42
+   |     ^^ value dropped
+   |
+   = why: Julia evaluates literal and drops its value; statement does nothing
+   = fix: delete statement   [likely]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: literal statement has no effect
+  --> positive.jl:60:5
+   |
+60 |     :done
+   |     ^^^^^ value dropped
+   |
+   = why: Julia evaluates literal and drops its value; statement does nothing
+   = fix: delete statement   [likely]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: literal statement has no effect
+  --> positive.jl:61:5
+   |
+61 |     'x'
+   |     ^^^ value dropped
+   |
+   = why: Julia evaluates literal and drops its value; statement does nothing
+   = fix: delete statement   [likely]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: literal statement has no effect
+  --> positive.jl:62:5
+   |
+62 |     true
+   |     ^^^^ value dropped
+   |
+   = why: Julia evaluates literal and drops its value; statement does nothing
+   = fix: delete statement   [likely]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: literal statement has no effect
+  --> positive.jl:71:9
+   |
+71 |         nothing
+   |         ^^^^^^^ value dropped
+   |
+   = why: Julia evaluates literal and drops its value; statement does nothing
+   = fix: delete statement   [likely]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: literal statement has no effect
+  --> positive.jl:75:1
+   |
+75 | 0x1f
+   | ^^^^ value dropped
+   |
+   = why: Julia evaluates literal and drops its value; statement does nothing
+   = fix: delete statement   [likely]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: literal statement has no effect
+  --> positive.jl:76:10
+   |
+76 | setup(); 0; teardown()
+   |          ^ value dropped
+   |
+   = why: Julia evaluates literal and drops its value; statement does nothing
+   = fix: delete statement   [manual]
+   = docs: corset explain unused-literal
+
+warning[unused-literal]: literal statement has no effect
+  --> positive.jl:79:1
+   |
+79 | -1
+   | ^^ value dropped
+   |
+   = why: Julia evaluates literal and drops its value; statement does nothing
+   = fix: delete statement   [manual]
+   = docs: corset explain unused-literal
+

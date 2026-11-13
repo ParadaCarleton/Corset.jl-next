@@ -32,35 +32,6 @@ const NAME = :docstring
 """Whether `node` carries docstring: parent is `doc` node."""
 documented(node::SyntaxNode)::Bool = (parent = parent_of(node); !isnothing(parent) && kind_name(parent) == "doc")
 
-"""Whether docstring above `definition` attaches: statement at top level, in module body or in `begin` block."""
-function takes_docstring(file::SyntaxFile, definition::SyntaxNode)::Bool
-    statement = definition
-    while !isnothing(parent_of(statement)) && kind_name(parent_of(statement)) == "macrocall"
-        statement = parent_of(statement)
-    end
-    container = parent_of(statement)
-    kind_name(container) == "toplevel" && return true
-    kind_name(container) == "block" || return false
-    kind_name(parent_of(container)) == "module" && return true
-    # `begin` block: keyword comes before first statement; body blocks start at first statement.
-    start = span(file, container).first_byte
-    return startswith(SubString(file.text, start), "begin") && start < span(file, children_of(container)[1]).first_byte
-end
-
-"""Byte ranges of comment lines directly above byte `first` in `text`, top first; blank line ends block."""
-function comment_lines_above(text::String, first::Int)::Vector{UnitRange{Int}}
-    lines = UnitRange{Int}[]
-    stop = something(findprev(==('\n'), text, prevind(text, first)), 0)
-    while stop > 0
-        start = something(findprev(==('\n'), text, prevind(text, stop)), 0) + 1
-        content = strip(text[start:prevind(text, stop)])
-        startswith(content, "#") && !startswith(content, "#=") && !startswith(content, "# corset:") || break
-        pushfirst!(lines, start:(stop - 1))
-        stop = start - 1
-    end
-    return lines
-end
-
 """Whether line above byte `first`, where comment block starts, holds code; `false` at file start."""
 function code_above(text::String, first::Int)::Bool
     first <= 2 && return false

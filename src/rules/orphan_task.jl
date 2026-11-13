@@ -36,17 +36,6 @@ const SPAWNING = Set(["@spawn", "@async"])
 macro_of(node::SyntaxNode)::Union{Nothing, String} =
     (name = children_of(node)[1]; leaf_value(isempty(children_of(name)) ? name : children_of(name)[end]))
 
-"""Whether value of `node` is dropped: statement in file or loop body, or non-last statement of other block."""
-function discarded(node::SyntaxNode)::Bool
-    parent = parent_of(node)
-    isnothing(parent) && return false
-    kind_name(parent) == "toplevel" && return true
-    kind_name(parent) == "block" || return false
-    owner = parent_of(parent)
-    !isnothing(owner) && kind_name(owner) in ("for", "while") && return true
-    return children_of(parent)[end] !== node
-end
-
 """Whether `node` sits inside `@sync`, which waits for tasks started in its body."""
 synced(node::SyntaxNode)::Bool = any(ancestor -> kind_name(ancestor) == "macrocall" && macro_of(ancestor) == "@sync", ancestors(node))
 

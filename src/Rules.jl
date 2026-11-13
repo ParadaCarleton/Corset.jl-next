@@ -23,7 +23,9 @@ include("rules/orphan_task.jl")
 include("rules/repeated_concat.jl")
 include("rules/threadid_buffer.jl")
 include("rules/unguarded_release.jl")
+include("rules/unreachable.jl")
 include("rules/untyped_empty.jl")
+include("rules/unused_literal.jl")
 include("rules/where_binding.jl")
 include("rules/wide_struct.jl")
 include("rules/world_age.jl")
@@ -50,7 +52,9 @@ const REGISTRY = RuleEntry[
     RepeatedConcat.ENTRY,
     ThreadidBuffer.ENTRY,
     UnguardedRelease.ENTRY,
+    Unreachable.ENTRY,
     UntypedEmpty.ENTRY,
+    UnusedLiteral.ENTRY,
     WhereBinding.ENTRY,
     WideStruct.ENTRY,
     WorldAge.ENTRY,
