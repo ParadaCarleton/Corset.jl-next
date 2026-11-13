@@ -37,15 +37,29 @@ problem(file::SyntaxFile, bytes::UnitRange{Int}, kind::Symbol, message::String, 
     Label[], why, Facts.manual_fix(fix),
 )
 
-"""Whether bytes `range` of `file` hold code: anything besides whitespace and comments."""
-function holds_code(file::SyntaxFile, range::UnitRange{Int})::Bool
-    for index in range
-        any(comment -> index in comment, file.comments) && continue
-        byte = codeunit(file.text, index)
-        byte < 0x80 && isspace(Char(byte)) || return true
-    end
-    return false
+"""Byte layout of `file`, built once per file so each lookup stays cheap."""
+struct Layout
+    file::SyntaxFile
+    "Bytes holding code: anything besides whitespace and comments."
+    code::BitVector
+    "Last byte of outermost node starting at each byte; `toplevel` excluded."
+    stops::Dict{Int, Int}
 end
+
+function Layout(file::SyntaxFile)::Layout
+    code = BitVector(byte >= 0x80 || !isspace(Char(byte)) for byte in codeunits(file.text))
+    foreach(comment -> code[comment] .= false, file.comments)
+    stops = Dict{Int, Int}()
+    for node in Facts.all_nodes(file)
+        Facts.kind_name(node) == "toplevel" && continue
+        bytes = Facts.trimmed_bytes(file.text, node)
+        stops[first(bytes)] = max(last(bytes), get(stops, first(bytes), last(bytes)))
+    end
+    return Layout(file, code, stops)
+end
+
+"""Whether bytes `range` hold code."""
+holds_code(layout::Layout, range::UnitRange{Int})::Bool = any(view(layout.code, range))
 
 """Bytes of line holding byte `index`, newline excluded."""
 function line_bytes(text::String, index::Int)::UnitRange{Int}
@@ -55,19 +69,15 @@ function line_bytes(text::String, index::Int)::UnitRange{Int}
 end
 
 """Bytes of outermost statement starting at first code after byte `index`; empty range when no code follows."""
-function next_statement(file::SyntaxFile, index::Int)::UnitRange{Int}
-    offset = findfirst(byte -> holds_code(file, byte:byte), (index + 1):ncodeunits(file.text))
-    isnothing(offset) && return (index + 1):index
-    target = index + offset
-    stops = [
-        last(Facts.trimmed_bytes(file.text, node)) for node in Facts.all_nodes(file)
-            if Facts.kind_name(node) != "toplevel" && first(Facts.trimmed_bytes(file.text, node)) == target
-    ]
-    return target:maximum(stops; init = target)
+function next_statement(layout::Layout, index::Int)::UnitRange{Int}
+    target = findnext(layout.code, index + 1)
+    isnothing(target) && return (index + 1):index
+    return target:get(layout.stops, target, target)
 end
 
-"""Opt-out in comment `bytes` of `file`, problem finding, or `nothing` when comment does not address Corset."""
-function read_comment(file::SyntaxFile, bytes::UnitRange{Int}, known::Set{Symbol})::Union{OptOut, Finding, Nothing}
+"""Opt-out in comment `bytes` of layout's file, problem finding, or `nothing` when comment does not address Corset."""
+function read_comment(layout::Layout, bytes::UnitRange{Int}, known::Set{Symbol})::Union{OptOut, Finding, Nothing}
+    file = layout.file
     text = String(codeunits(file.text)[bytes])
     occursin(ADDRESSED, text) || return nothing
     parsed = match(GRAMMAR, text)
@@ -86,25 +96,28 @@ function read_comment(file::SyntaxFile, bytes::UnitRange{Int}, known::Set{Symbol
         "use rule name that `corset explain` lists",
     )
     if parsed[:form] == "allow-file"
-        holds_code(file, 1:(first(bytes) - 1)) && return problem(
+        holds_code(layout, 1:(first(bytes) - 1)) && return problem(
             file, bytes, :late_file, "`allow-file` after code", "file-wide opt-out must open file, so reader sees it first",
             "move comment above first code line",
         )
         return OptOut(rules, bytes, 1:ncodeunits(file.text))
     end
     line = line_bytes(file.text, first(bytes))
-    trailing = holds_code(file, first(line):(first(bytes) - 1))
-    return OptOut(rules, bytes, trailing ? line : next_statement(file, last(bytes)))
+    trailing = holds_code(layout, first(line):(first(bytes) - 1))
+    return OptOut(rules, bytes, trailing ? line : next_statement(layout, last(bytes)))
 end
 
 """Findings no opt-out covers, and problems: bad comments plus opt-out rules that suppressed nothing. `known` holds rule names."""
 function apply(facts::FactSet, findings::Vector{Finding}, known::Set{Symbol})::Tuple{Vector{Finding}, Vector{Finding}}
     problems = Finding[]
     optouts = Dict(file.path => OptOut[] for file in facts.files)
-    for file in facts.files, bytes in file.comments
-        read = read_comment(file, bytes, known)
-        read isa OptOut && push!(optouts[file.path], read)
-        read isa Finding && push!(problems, read)
+    for file in facts.files
+        layout = Layout(file)
+        for bytes in file.comments
+            read = read_comment(layout, bytes, known)
+            read isa OptOut && push!(optouts[file.path], read)
+            read isa Finding && push!(problems, read)
+        end
     end
     kept, used = Finding[], Set{Tuple{String, UnitRange{Int}, Symbol}}()
     for finding in findings

@@ -1,0 +1,74 @@
+warning[annotation]: `area` signature lacks types
+ --> positive.jl:2:1
+  |
+2 | area(width, height) = width * height
+  | ^^^^ method defined here
+  | ------------------- no result type
+  |      ----- no type
+  |             ------ no type
+  |
+  = why: reader must read body to learn what function accepts and returns
+  = fix: annotate with intended abstract types; `::Any` accepts anything on purpose   [manual]
+  = docs: corset explain annotation
+  = note: warn from readability group, library preset
+  = note: opt out with `# corset: allow annotation -- <reason>`
+
+warning[annotation]: `scale` signature lacks types
+ --> positive.jl:4:10
+  |
+4 | function scale(points::Vector{Float64}, factor; center = 0.0, weights...)::Vector{Float64}
+  |          ^^^^^ method defined here
+  |                                         ------ no type
+  |                                                 ------ no type
+  |                                                               ------- no type
+  |
+  = why: reader must read body to learn what function accepts and returns
+  = fix: annotate with intended abstract types; `::Any` accepts anything on purpose   [manual]
+  = docs: corset explain annotation
+
+warning[annotation]: `first_pair` signature lacks types
+ --> positive.jl:8:1
+  |
+8 | first_pair((left, right)) = left
+  | ^^^^^^^^^^ method defined here
+  | ------------------------- no result type
+  |            ------------- no type
+  |
+  = why: reader must read body to learn what function accepts and returns
+  = fix: annotate with intended abstract types; `::Any` accepts anything on purpose   [manual]
+  = docs: corset explain annotation
+
+warning[annotation]: `Base.show` signature lacks types
+  --> positive.jl:10:1
+   |
+10 | Base.show(io::IO, shape::Shape) = print(io, "shape")
+   | ^^^^^^^^^ method defined here
+   | ------------------------------- no result type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with intended abstract types; `::Any` accepts anything on purpose   [manual]
+   = docs: corset explain annotation
+
+warning[annotation]: `limit` signature lacks types
+  --> positive.jl:12:1
+   |
+12 | limit(x::T, bound::T = zero(T)) where {T <: Real} = min(x, bound)
+   | ^^^^^ method defined here
+   | ------------------------------- no result type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with intended abstract types; `::Any` accepts anything on purpose   [manual]
+   = docs: corset explain annotation
+
+warning[annotation]: `Box` signature lacks types
+  --> positive.jl:16:5
+   |
+16 |     Box(side) = new(side)
+   |     ^^^ method defined here
+   |     --------- no result type
+   |         ---- no type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with intended abstract types; `::Any` accepts anything on purpose   [manual]
+   = docs: corset explain annotation
+

@@ -22,7 +22,7 @@ struct ConfigError <: Exception
     message::String
 end
 
-Base.showerror(io::IO, error::ConfigError) = print(io, "config error: ", error.message)
+Base.showerror(io::IO, error::ConfigError)::Nothing = print(io, "config error: ", error.message)
 
 """One preferences table as written. `nothing` marks key left out, so later table overlays earlier one key by key."""
 @option struct Table

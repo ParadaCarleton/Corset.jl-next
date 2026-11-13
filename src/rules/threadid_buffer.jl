@@ -35,7 +35,7 @@ const PATTERN = IndexedPattern(@pattern ~or({buffer}[threadid()], {buffer}[Threa
 const THREADED = Set(["@threads", "@spawn", "@async"])
 
 """Whether `node` sits inside threaded macro call (`@threads`, `Threads.@threads`, `@spawn`)."""
-function threaded(node)::Bool
+function threaded(node::SyntaxNode)::Bool
     return any(ancestors(node)) do ancestor
         kind_name(ancestor) == "macrocall" || return false
         name = children_of(ancestor)[1]

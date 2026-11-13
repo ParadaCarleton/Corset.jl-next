@@ -28,7 +28,7 @@ using ...Facts
 const NAME = Symbol("ambiguous-concat")
 
 """Whether `node` source starts with sign directly followed by operand, and space precedes it in `text`."""
-function signed_after_space(file::SyntaxFile, node)::Bool
+function signed_after_space(file::SyntaxFile, node::SyntaxNode)::Bool
     bytes = codeunits(file.text)
     first = span(file, node).first_byte
     return first > 1 && bytes[first] in (UInt8('-'), UInt8('+')) && bytes[first - 1] in (UInt8(' '), UInt8('\t')) &&

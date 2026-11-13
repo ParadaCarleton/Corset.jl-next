@@ -38,7 +38,7 @@ const NAME = Symbol("broad-catch")
 const PASSING = Set(["rethrow", "throw", "error"])
 
 """Whether handler `block` passes error on, or tests type of caught variable `variable` (`nothing`: no variable)."""
-function narrows(block, variable::Union{Nothing, String})::Bool
+function narrows(block::SyntaxNode, variable::Union{Nothing, String})::Bool
     return any(descendants(block)) do node
         call_head(node) in PASSING ||
             (call_head(node) == "isa" && !isnothing(variable) && identifier_name(children_of(node)[1]) == variable)

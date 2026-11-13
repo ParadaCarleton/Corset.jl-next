@@ -37,7 +37,7 @@ const CONTROL = Set(["if", "for", "while", "try", "let", "block", "return", "mac
 const NO_RETURN = Set(["throw", "error", "rethrow"])
 
 """`return` nodes of function body `body`, skipping nested functions and closures."""
-function own_returns(body)::Vector{Any}
+function own_returns(body::SyntaxNode)::Vector{Any}
     found = Any[]
     for child in children_of(body)
         kind_name(child) in ("function", "->", "do") && continue

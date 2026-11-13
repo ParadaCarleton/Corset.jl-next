@@ -33,7 +33,7 @@ const NAME = Symbol("one-letter")
 const INDEX_NAMES = Set(["i", "j", "k"])
 
 """Identifier bound by binding-site node `node` (strips `::T` and default `= value`)."""
-function bound_identifier(node)
+function bound_identifier(node::SyntaxNode)::Union{Nothing, SyntaxNode}
     while kind_name(node) in ("::", "=", "kw") && !isempty(children_of(node))
         node = children_of(node)[1]
     end

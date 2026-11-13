@@ -29,7 +29,7 @@ using ...Facts
 const NAME = Symbol("duplicate-statement")
 
 """Source of `node` with whitespace runs collapsed and docstring dropped, for comparison."""
-normalized(file::SyntaxFile, node)::String =
+normalized(file::SyntaxFile, node::SyntaxNode)::String =
     kind_name(node) == "doc" ? normalized(file, children_of(node)[end]) : replace(source(file, node), r"\s+" => " ")
 
 """Findings for statement equal to statement right before it; repeated calls may be intended, so `possible`."""

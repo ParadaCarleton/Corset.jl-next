@@ -70,8 +70,7 @@ function analyze(path::String, flags::Flags)::Analysis
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
     root = something(project, isdir(path) ? abspath(path) : dirname(abspath(path)))
-    files = Dict(file.path => file for file in facts.files)
-    keys = [Baseline.key(files[diagnostic.finding.primary.span.file], root, diagnostic.finding) for diagnostic in leveled]
+    keys = Baseline.finding_keys(facts, root, [diagnostic.finding for diagnostic in leveled])
     checks = [
         [Diagnostic(problem, Level.deny, Syntax.PARSE_SOURCE) for problem in Syntax.parse_problems(facts)];
         [Diagnostic(problem, Level.deny, OptOuts.SOURCE) for problem in problems]

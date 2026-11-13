@@ -35,7 +35,7 @@ const NAME = Symbol("repeated-concat")
 const CONCATS = Set(["vcat", "hcat", "cat", "string"])
 
 """Whether `node` sits inside `for` or `while` body."""
-in_loop(node)::Bool = any(ancestor -> kind_name(ancestor) in ("for", "while"), ancestors(node))
+in_loop(node::SyntaxNode)::Bool = any(ancestor -> kind_name(ancestor) in ("for", "while"), ancestors(node))
 
 """Findings for `a = vcat(a, …)` and `a = [a; …]` inside loops: each step copies whole `a`."""
 function run(facts::FactSet)::Vector{Finding}

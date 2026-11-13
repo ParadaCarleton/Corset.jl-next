@@ -30,10 +30,10 @@ using ...Facts
 const NAME = :docstring
 
 """Whether `node` carries docstring: parent is `doc` node."""
-documented(node)::Bool = (parent = parent_of(node); !isnothing(parent) && kind_name(parent) == "doc")
+documented(node::SyntaxNode)::Bool = (parent = parent_of(node); !isnothing(parent) && kind_name(parent) == "doc")
 
 """Whether docstring above `definition` attaches: statement at top level, in module body or in `begin` block."""
-function takes_docstring(file::SyntaxFile, definition)::Bool
+function takes_docstring(file::SyntaxFile, definition::SyntaxNode)::Bool
     statement = definition
     while !isnothing(parent_of(statement)) && kind_name(parent_of(statement)) == "macrocall"
         statement = parent_of(statement)

@@ -35,7 +35,7 @@ const C_TYPES = Dict(
 const C_CONTEXTS = Set(["ccall", "cglobal", "@cfunction", "@ccall"])
 
 """Whether `node` sits inside C call, C callback, or `Ptr` type."""
-function in_c_context(node)::Bool
+function in_c_context(node::SyntaxNode)::Bool
     return any(ancestors(node)) do ancestor
         call_head(ancestor) in C_CONTEXTS || (kind_name(ancestor) == "macrocall" && leaf_value(children_of(ancestor)[1]) in C_CONTEXTS) ||
             (kind_name(ancestor) == "curly" && identifier_name(children_of(ancestor)[1]) in ("Ptr", "Ref"))

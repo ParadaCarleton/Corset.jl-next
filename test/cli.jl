@@ -54,13 +54,13 @@ end
 @testset "cli fix, baseline, explain" begin
     mktempdir(@__DIR__) do directory
         write(joinpath(directory, "Project.toml"), "[deps]\n")
-        write(joinpath(directory, "a.jl"), "f(x)::T where T = x\nreach(value) = value ≈ 0\n")
+        write(joinpath(directory, "a.jl"), "f(x::T)::T where T = x\nreach(value::Real)::Bool = value ≈ 0\n")
         sarif = JSON.parse(corset("check", directory, "--format", "sarif", "-A", "one-letter")[2])
         @test isnothing(JSONSchema.validate(SARIF_SCHEMA, sarif))
         @test any(!isempty(result["fixes"]) for result in only(sarif["runs"])["results"])
         code, _, err = corset("fix", directory, "--tier", "safe")
         @test occursin("applied 1 edits", err) && code == 1
-        @test startswith(read(joinpath(directory, "a.jl"), String), "(f(x)::T) where T = x\n")
+        @test startswith(read(joinpath(directory, "a.jl"), String), "(f(x::T)::T) where T = x\n")
         @test occursin("wrote 1 findings", corset("baseline", directory, "-A", "one-letter")[3])
         @test first(corset("check", directory, "-A", "one-letter")) == 0
         write(joinpath(directory, "a.jl"), "x = 1\n")
