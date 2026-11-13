@@ -1,0 +1,52 @@
+error[method-overwrite]: `area(::Any)` defined twice; later definition replaces earlier one
+ --> src/MethodOverwritePositive.jl:5:1
+  |
+4 | area(side; scale = 1) = scale * side^2
+  | ---- positional calls never reach this body
+5 | area(side; units = :m) = side^2
+  | ^^^^ replaces earlier method
+  |
+  = why: keywords take no part in dispatch, and package with overwrite cannot precompile
+  = fix: merge bodies into one method, or give methods different argument types   [manual]
+  = docs: corset explain method-overwrite
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow method-overwrite -- <reason>`
+
+error[method-overwrite]: `perimeter(::Float64)` defined twice; later definition replaces earlier one
+  --> src/MethodOverwritePositive.jl:10:1
+   |
+ 7 | function perimeter(side::Float64)
+   |          --------- positional calls never reach this body
+...
+10 | perimeter(side::Float64) = 4side
+   | ^^^^^^^^^ replaces earlier method
+   |
+   = why: keywords take no part in dispatch, and package with overwrite cannot precompile
+   = fix: merge bodies into one method, or give methods different argument types   [manual]
+   = docs: corset explain method-overwrite
+
+error[method-overwrite]: `label(::Int64)` defined twice; later definition replaces earlier one
+  --> src/MethodOverwritePositive.jl:13:1
+   |
+12 | label(count::Int; plural = true) = plural ? "items" : "item"
+   | ----- positional calls never reach this body
+13 | label(count::Int) = "items"
+   | ^^^^^ replaces earlier method
+   |
+   = why: keywords take no part in dispatch, and package with overwrite cannot precompile
+   = fix: merge bodies into one method, or give methods different argument types   [manual]
+   = docs: corset explain method-overwrite
+
+error[method-overwrite]: `volume(::Any)` defined twice; later definition replaces earlier one
+  --> src/MethodOverwritePositive.jl:18:1
+   |
+16 |     @eval $name(side) = side^3
+   |     -------------------------- positional calls never reach this body
+17 | end
+18 | volume(side) = side * side * side
+   | ^^^^^^ replaces earlier method
+   |
+   = why: keywords take no part in dispatch, and package with overwrite cannot precompile
+   = fix: merge bodies into one method, or give methods different argument types   [manual]
+   = docs: corset explain method-overwrite
+

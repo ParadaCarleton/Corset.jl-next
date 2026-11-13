@@ -111,6 +111,21 @@ function method_sites(modules::Vector{Module}, files::Vector{SyntaxFile})::Vecto
     return sort!(sites; by = site -> (site.span.file, site.span.first_byte, string(site.method.sig)))
 end
 
+"""
+Pairs (earlier, later) of `sites` where later definition replaced earlier one with same signature.
+Julia keeps replaced method in method table with `dispatch_status` 0 and numbers definitions by `primary_world`.
+"""
+function overwrites(sites::Vector{MethodSite})::Vector{Tuple{MethodSite, MethodSite}}
+    ordered = sort(sites; by = site -> site.method.primary_world)
+    found = Tuple{MethodSite, MethodSite}[]
+    for (index, earlier) in enumerate(ordered)
+        earlier.method.dispatch_status == 0 || continue
+        later = findnext(site -> site.method.sig == earlier.method.sig, ordered, index + 1)
+        isnothing(later) || push!(found, (earlier, ordered[later]))
+    end
+    return sort!(found; by = pair -> (last(pair).span.file, last(pair).span.first_byte))
+end
+
 """Exception `error` holds after load wrappers (`LoadError`, `InitError`) are removed."""
 function unwrapped(error::Any)::Any
     while error isa LoadError || error isa InitError
@@ -214,7 +229,8 @@ function load(root::String, id::Base.PkgId, files::Vector{SyntaxFile})::Loaded
     end
     errors, blind_spots = load_extensions(mod, root, files)
     modules = package_modules(mod, root)
-    return Loaded(PackageFacts(id.name, id.uuid, root, modules, method_sites(modules, files)), errors, blind_spots)
+    sites = method_sites(modules, files)
+    return Loaded(PackageFacts(id.name, id.uuid, root, modules, sites, overwrites(sites)), errors, blind_spots)
 end
 
 end

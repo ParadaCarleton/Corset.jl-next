@@ -68,9 +68,6 @@ function shadow_fix(name::Symbol, sites::Vector{MethodSite}, modules::Set{Module
     return Fix("extend `$(qualified(name))`", edits, Tier.likely)
 end
 
-"""Span of definition name at `site`; whole line when site has no definition node."""
-name_span(site::MethodSite)::Span = isnothing(site.node) ? site.span : span(site.file, definition_name(site.node))
-
 """Findings for functions package modules create under exported Base names; one per function, at its first method."""
 function findings(facts::FactSet)::Vector{Finding}
     package = facts.package

@@ -7,6 +7,7 @@
 - A package that throws while loading gets a `load-error` finding. Rules that read the loaded package do not run.
 - Corset loads the trigger packages of each extension, so rules see the extension. An extension that throws gets a `load-error` finding.
 - New rule `shadowed-base`: a method named like an exported Base function defines a new function.
+- New rule `method-overwrite`: a later method definition replaces an earlier one with the same positional signature.
 - Text output shows paths relative to the project root.
 - A precompile workload compiles the command line, so a first `corset check` starts in seconds.
 
