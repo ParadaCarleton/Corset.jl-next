@@ -33,21 +33,10 @@ module UnusedLiteral
 using ...Facts
 
 const NAME = Symbol("unused-literal")
-"""Leaf kinds of number and boolean literals."""
-const LITERAL_LEAVES = ("Integer", "Float", "Float32", "HexInt", "BinInt", "OctInt", "Bool")
 """Definition kinds docstring documents; assignment counts when it binds name."""
 const DEFINITIONS = ("function", "macro", "struct", "abstract", "primitive", "module", "const", "global")
 """Bytes of blank text."""
 const BLANK = (UInt8(' '), UInt8('\t'), UInt8('\r'), UInt8('\n'))
-
-"""Whether `node` is literal: string without interpolation, number, character, symbol, `nothing`, `true` or `false`."""
-function literal(node::SyntaxNode)::Bool
-    kind, children = kind_name(node), children_of(node)
-    (kind in LITERAL_LEAVES || kind == "char") && return true
-    kind == "string" && return all(child -> kind_name(child) == "String", children)
-    kind == "quote" && return length(children) == 1 && kind_name(children[1]) == "Identifier"
-    return identifier_name(node) == "nothing"
-end
 
 """Whether statement `node` defines what docstring documents, through macros such as `@inline`."""
 function defines(node::SyntaxNode)::Bool

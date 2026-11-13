@@ -2,7 +2,8 @@
 `unguarded-release` (F98): release skipped when code between acquire and release throws.
 
 ## Description
-Reports release statement after acquire statement on same target in same block, with code between them.
+Reports release statement after acquire statement on same target in same block, with code between them that can throw.
+Literals and literals assigned to plain names cannot throw, so they pass.
 Pairs: `lock`/`unlock`, `acquire`/`release`, `io = open(…)`/`close(io)`, plain or `Base.` qualified.
 Release in `finally` of `try` after acquire passes, since it sits in other block.
 
@@ -64,6 +65,10 @@ function sites(file::SyntaxFile, side::Symbol)::IdDict{SyntaxNode, Tuple{Int, St
     return found
 end
 
+"""Whether statement `node` cannot throw: literal, or literal assigned to plain name."""
+cannot_throw(node::SyntaxNode)::Bool =
+    literal(node) || (kind_name(node) == "=" && kind_name(children_of(node)[1]) == "Identifier" && literal(children_of(node)[end]))
+
 """Findings for release statements that run only when code since acquire statement on same target does not throw."""
 function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
@@ -75,7 +80,7 @@ function run(facts::FactSet)::Vector{Finding}
                 haskey(acquires, statement) && (held[acquires[statement]] = (statement, position))
                 haskey(releases, statement) && haskey(held, releases[statement]) || continue
                 acquire, start = pop!(held, releases[statement])
-                position == start + 1 && continue
+                all(cannot_throw, children_of(block)[(start + 1):(position - 1)]) && continue
                 pair = PAIRS[first(releases[statement])]
                 push!(
                     found, finding(

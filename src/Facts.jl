@@ -17,7 +17,7 @@ export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
-export takes_docstring, comment_lines_above, comments_in, discarded
+export takes_docstring, comment_lines_above, comments_in, discarded, literal
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
 @enumx Precision exact line
@@ -432,6 +432,18 @@ function discarded(node::SyntaxNode)::Bool
     kind_name(owner) == "let" && children_of(owner)[1] === parent && return false
     kind_name(owner) in DISCARDING && children_of(owner)[end] === parent && return true
     return children_of(parent)[end] !== node
+end
+
+"""Leaf kinds of number and boolean literals."""
+const LITERAL_LEAVES = ("Integer", "Float", "Float32", "HexInt", "BinInt", "OctInt", "Bool")
+
+"""Whether `node` is literal: string without interpolation, number, character, symbol, `nothing`, `true` or `false`."""
+function literal(node::SyntaxNode)::Bool
+    kind, children = kind_name(node), children_of(node)
+    (kind in LITERAL_LEAVES || kind == "char") && return true
+    kind == "string" && return all(child -> kind_name(child) == "String", children)
+    kind == "quote" && return length(children) == 1 && kind_name(children[1]) == "Identifier"
+    return identifier_name(node) == "nothing"
 end
 
 """Tokens of layout: whitespace and comments."""

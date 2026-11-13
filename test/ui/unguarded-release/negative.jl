@@ -70,3 +70,9 @@ function pick(locks)
     work()
     unlock(locks["a  b"])
 end
+
+# Code between cannot throw.
+function mark(guard)
+    lock(guard); count = 1; unlock(guard)
+    return count
+end
