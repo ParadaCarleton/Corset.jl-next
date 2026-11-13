@@ -2,7 +2,7 @@
 # Set CORSET_PROPERTY_EXAMPLES to run more examples per property.
 
 using Corset: Corset
-using Corset.Facts: FactSet, Finding, Tier, Role, children_of, kind_name, parent_of
+using Corset.Facts: FactSet, Finding, Tier, Role, call_head, children_of, kind_name, parent_of
 using Corset.Syntax: JS
 using Supposition: Supposition, @check, @composed, Data, assume!
 using Test: @test, @testset
@@ -110,6 +110,8 @@ end
 """Children of `parent` that stand for values: arguments, operands, elements, conditions, assigned and returned values."""
 function value_children(parent::JS.SyntaxNode)::Vector{JS.SyntaxNode}
     children, kind = children_of(parent), kind_name(parent)
+    # `ccall` function, return type and argument types are constants; only trailing arguments are values.
+    call_head(parent) == "ccall" && return children[5:end]
     kind in ("call", "dotcall") && return [child for child in children if child !== children[JS.is_infix_op_call(parent) ? 2 : 1]]
     kind in ("vect", "row", "hcat", "vcat", "tuple", "ref", "return", "&&", "||", "?") && return children
     kind == "=" && return children[2:2]

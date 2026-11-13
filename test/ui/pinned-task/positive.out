@@ -1,0 +1,122 @@
+warning[pinned-task]: `@async` pins task and its parent to current thread
+ --> positive.jl:2:8
+  |
+2 | task = @async fetch_data(url)
+  |        ^^^^^^^^^^^^^^^^^^^^^^ sticky task
+  |
+  = why: pinned task waits for its thread while others idle; parent task stays pinned for its whole life
+  = fix: replace `@async` with `Threads.@spawn`   [breaking]
+  = docs: corset explain pinned-task
+  = note: warn from composability group, library preset
+  = note: opt out with `# corset: allow pinned-task -- <reason>`
+
+warning[pinned-task]: `Threads.@async` pins task and its parent to current thread
+ --> positive.jl:3:1
+  |
+3 | Threads.@async serve()
+  | ^^^^^^^^^^^^^^^^^^^^^^ sticky task
+  |
+  = why: pinned task waits for its thread while others idle; parent task stays pinned for its whole life
+  = fix: replace `Threads.@async` with `Threads.@spawn`   [breaking]
+  = docs: corset explain pinned-task
+
+warning[pinned-task]: `Base.@async` pins task and its parent to current thread
+ --> positive.jl:4:10
+  |
+4 | handle = Base.@async begin
+  |          ^^^^^^^^^^^^^^^^^ sticky task
+  |
+  = why: pinned task waits for its thread while others idle; parent task stays pinned for its whole life
+  = fix: replace `Base.@async` with `Threads.@spawn`   [breaking]
+  = docs: corset explain pinned-task
+
+warning[pinned-task]: `Task` creates sticky task; `schedule` pins it and caller to one thread
+ --> positive.jl:9:12
+  |
+9 |     task = Task(f)
+  |            ^^^^^^^ sticky by default
+  |
+  = why: sticky task runs only on scheduling thread; scheduling it also pins calling task
+  = fix: start task with `Threads.@spawn`, or set `task.sticky = false` before `schedule`   [manual]
+  = docs: corset explain pinned-task
+
+warning[pinned-task]: `Task` creates sticky task; `schedule` pins it and caller to one thread
+  --> positive.jl:14:10
+   |
+14 | schedule(Task(() -> work()))
+   |          ^^^^^^^^^^^^^^^^^^ sticky by default
+   |
+   = why: sticky task runs only on scheduling thread; scheduling it also pins calling task
+   = fix: start task with `Threads.@spawn`, or set `task.sticky = false` before `schedule`   [manual]
+   = docs: corset explain pinned-task
+
+warning[pinned-task]: `@task` creates sticky task; `schedule` pins it and caller to one thread
+  --> positive.jl:15:7
+   |
+15 | job = @task compute()
+   |       ^^^^^^^^^^^^^^^ sticky by default
+   |
+   = why: sticky task runs only on scheduling thread; scheduling it also pins calling task
+   = fix: start task with `Threads.@spawn`, or set `task.sticky = false` before `schedule`   [manual]
+   = docs: corset explain pinned-task
+
+warning[pinned-task]: `Threads.@threads :static` pins one task to each thread
+  --> positive.jl:17:18
+   |
+17 | Threads.@threads :static for i in 1:10
+   |                  ^^^^^^^ static schedule
+   |
+   = why: `:static` throws when caller runs on thread other than 1 or inside another `@threads` loop
+   = fix: remove `:static`; keep state per chunk of work, not per `threadid()`   [manual]
+   = docs: corset explain pinned-task
+
+warning[pinned-task]: `@threads :static` pins one task to each thread
+  --> positive.jl:21:10
+   |
+21 | @threads :static for item in items
+   |          ^^^^^^^ static schedule
+   |
+   = why: `:static` throws when caller runs on thread other than 1 or inside another `@threads` loop
+   = fix: remove `:static`; keep state per chunk of work, not per `threadid()`   [manual]
+   = docs: corset explain pinned-task
+
+warning[pinned-task]: `Task` creates sticky task; `schedule` pins it and caller to one thread
+  --> positive.jl:26:12
+   |
+26 |     task = Task(f)
+   |            ^^^^^^^ sticky by default
+   |
+   = why: sticky task runs only on scheduling thread; scheduling it also pins calling task
+   = fix: start task with `Threads.@spawn`, or set `task.sticky = false` before `schedule`   [manual]
+   = docs: corset explain pinned-task
+
+warning[pinned-task]: `Task` creates sticky task; `schedule` pins it and caller to one thread
+  --> positive.jl:33:12
+   |
+33 |     task = Task(f)
+   |            ^^^^^^^ sticky by default
+   |
+   = why: sticky task runs only on scheduling thread; scheduling it also pins calling task
+   = fix: start task with `Threads.@spawn`, or set `task.sticky = false` before `schedule`   [manual]
+   = docs: corset explain pinned-task
+
+warning[pinned-task]: `Task` creates sticky task; `schedule` pins it and caller to one thread
+  --> positive.jl:38:12
+   |
+38 |     task = Task(f)
+   |            ^^^^^^^ sticky by default
+   |
+   = why: sticky task runs only on scheduling thread; scheduling it also pins calling task
+   = fix: start task with `Threads.@spawn`, or set `task.sticky = false` before `schedule`   [manual]
+   = docs: corset explain pinned-task
+
+warning[pinned-task]: `Task` creates sticky task; `schedule` pins it and caller to one thread
+  --> positive.jl:46:12
+   |
+46 |     task = Task(f)
+   |            ^^^^^^^ sticky by default
+   |
+   = why: sticky task runs only on scheduling thread; scheduling it also pins calling task
+   = fix: start task with `Threads.@spawn`, or set `task.sticky = false` before `schedule`   [manual]
+   = docs: corset explain pinned-task
+

@@ -22,6 +22,7 @@ include("rules/module_inception.jl")
 include("rules/nan_compare.jl")
 include("rules/one_letter.jl")
 include("rules/orphan_task.jl")
+include("rules/pinned_task.jl")
 include("rules/repeated_concat.jl")
 include("rules/threadid_buffer.jl")
 include("rules/unguarded_release.jl")
@@ -53,6 +54,7 @@ const REGISTRY = RuleEntry[
     NanCompare.ENTRY,
     OneLetter.ENTRY,
     OrphanTask.ENTRY,
+    PinnedTask.ENTRY,
     RepeatedConcat.ENTRY,
     ThreadidBuffer.ENTRY,
     UnguardedRelease.ENTRY,

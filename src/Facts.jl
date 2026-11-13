@@ -16,7 +16,7 @@ export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export finding, replace_fix, manual_fix, identifier_name, base_name, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
-export definition_name, struct_fields, include_calls, include_target, normalized_source
+export definition_name, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
@@ -239,6 +239,15 @@ function source(file::SyntaxFile, node::SyntaxNode)::String
     bytes = get(() -> trimmed_bytes(file.text, node), file.groups, node)
     return file.text[first(bytes):thisind(file.text, last(bytes))]
 end
+
+"""Span of name of macro call `node` as written; `MacroName` leaf starts after its `@`, string macro name (`raw`) has none."""
+function macro_span(file::SyntaxFile, node::SyntaxNode)::Span
+    name = span(file, children_of(node)[1])
+    return kind_name(children_of(node)[1]) == "MacroName" ? Span(name.file, name.first_byte - 1, name.last_byte, name.precision) : name
+end
+
+"""Name of macro call `node` as written: `"@async"`, `"Threads.@async"`, `"raw"` for `raw"…"`."""
+macro_name(file::SyntaxFile, node::SyntaxNode)::String = (name = macro_span(file, node); file.text[name.first_byte:thisind(file.text, name.last_byte)])
 
 """Name of identifier `node`; `nothing` for other kinds."""
 identifier_name(node::SyntaxNode)::Union{Nothing, String} = kind_name(node) == "Identifier" ? string(node.val) : nothing
