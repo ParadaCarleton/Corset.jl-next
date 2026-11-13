@@ -1,0 +1,9 @@
+name = "UntestedExtensionProject"
+uuid = "501b9a37-426f-45c2-89c2-46ae1e3ad07a"
+
+[weakdeps]
+Absent = "1e2b0aac-a9bf-40d2-9dfd-12c6286c6ff4"
+Other = "f9d0263d-4406-4b7f-aa6f-f12b3b32a03c"
+
+[extensions]
+AbsentExt = "Absent"

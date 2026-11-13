@@ -1,0 +1,12 @@
+name = "UntestedExtensionNegative"
+uuid = "b1c031b2-2686-4a69-b026-2a35467a3899"
+
+[deps]
+Hard = "2ae7415f-141a-4481-b04c-8f4ffab072c7"
+
+[weakdeps]
+Other = "f9d0263d-4406-4b7f-aa6f-f12b3b32a03c"
+
+[extensions]
+HardExt = ["Hard", "Other"]
+OtherExt = "Other"

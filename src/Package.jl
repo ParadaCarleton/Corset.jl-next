@@ -7,9 +7,8 @@ Each extension whose triggers environment can load gets them loaded; extension t
 """
 module Package
 
-using ..Facts: Facts, PackageFacts, MethodSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
-using ..Config: ConfigError, parse_toml
-using ..Discovery: extension_file
+using ..Facts: Facts, PackageFacts, ProjectFacts, MethodSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
+using ..Config: ConfigError
 
 """Rule name load failures report under."""
 const LOAD_ERROR = Symbol("load-error")
@@ -17,18 +16,11 @@ const LOAD_ERROR = Symbol("load-error")
 """Level source load errors name; they always have level `deny`."""
 const LOAD_SOURCE = "load check, always on"
 
-"""Package identity from Project.toml at `root`; `nothing` for project without `name`."""
-function package_id(root::String)::Union{Nothing, Base.PkgId}
-    project = parse_toml(joinpath(root, "Project.toml"))
-    haskey(project, "name") || return nothing
-    name = project["name"]::String
-    uuid = tryparse(Base.UUID, string(get(project, "uuid", "")))
-    isnothing(uuid) && throw(ConfigError("package $name needs valid uuid in Project.toml"))
-    return Base.PkgId(uuid, name)
+"""Package identity of `project`; project without valid uuid is config error, since Julia loads package by uuid."""
+function package_id(project::ProjectFacts)::Base.PkgId
+    isnothing(project.uuid) && throw(ConfigError("package $(project.name) needs valid uuid in Project.toml"))
+    return Base.PkgId(project.uuid, project.name)
 end
-
-"""Entry file of package `id` at `root`."""
-entry_file(root::String, id::Base.PkgId)::String = joinpath(root, "src", "$(id.name).jl")
 
 """Package `id` loaded from `entry`; environment that loads package from other file is config error."""
 function load_module(id::Base.PkgId, entry::String)::Module
@@ -51,10 +43,9 @@ function module_tree(mod::Module)::Vector{Module}
     return found
 end
 
-"""Package modules of loaded `root` module: its module tree, then trees of loaded extensions named in Project.toml."""
-function package_modules(root::Module, project_root::String)::Vector{Module}
-    extensions = keys(get(parse_toml(joinpath(project_root, "Project.toml")), "extensions", Dict{String, Any}()))
-    loaded = filter(!isnothing, [Base.get_extension(root, Symbol(name)) for name in sort!(collect(extensions))])
+"""Package modules of loaded `root` module: its module tree, then trees of loaded extensions of `project`."""
+function package_modules(root::Module, project::ProjectFacts)::Vector{Module}
+    loaded = filter(!isnothing, [Base.get_extension(root, Symbol(extension.name)) for extension in project.extensions])
     return reduce(vcat, map(module_tree, loaded); init = module_tree(root))
 end
 
@@ -173,27 +164,13 @@ struct Loaded
     blind_spots::Vector{BlindSpot}
 end
 
-"""Trigger packages of each extension in Project.toml at `root`, by extension name; trigger missing from `[weakdeps]` is config error."""
-function extension_triggers(root::String)::Vector{Pair{String, Vector{Base.PkgId}}}
-    project = parse_toml(joinpath(root, "Project.toml"))
-    known = merge(get(project, "deps", Dict{String, Any}()), get(project, "weakdeps", Dict{String, Any}()))
-    extensions = sort!(collect(get(project, "extensions", Dict{String, Any}())); by = first)
-    return map(extensions) do (name, triggers)
-        names = triggers isa String ? [triggers] : Vector{String}(triggers)
-        unknown = filter(trigger -> !haskey(known, trigger), names)
-        isempty(unknown) || throw(ConfigError("extension $name names $(join(unknown, ", ")), which [weakdeps] lacks"))
-        return name => [Base.PkgId(Base.UUID(known[trigger]), trigger) for trigger in names]
-    end
-end
-
 """
-Load triggers of each extension of `mod` at `root`; extension activates once all its triggers load.
+Load triggers of each extension of `mod` in `project`; extension activates once all its triggers load.
 Extension with trigger environment cannot load becomes blind spot; extension that throws, `load-error` finding.
 """
-function load_extensions(mod::Module, root::String, files::Vector{SyntaxFile})::Tuple{Vector{Finding}, Vector{BlindSpot}}
+function load_extensions(mod::Module, project::ProjectFacts, files::Vector{SyntaxFile})::Tuple{Vector{Finding}, Vector{BlindSpot}}
     errors, blind_spots = Finding[], BlindSpot[]
-    for (name, triggers) in extension_triggers(root)
-        file = extension_file(root, name)
+    for (; name, file, triggers) in project.extensions
         if any(trigger -> isnothing(Base.locate_package(trigger)), triggers)
             push!(blind_spots, BlindSpot("extension trigger not installed", Span(file, 1, 1, Precision.line)))
             continue
@@ -210,13 +187,13 @@ function load_extensions(mod::Module, root::String, files::Vector{SyntaxFile})::
 end
 
 """
-Facts of package `id` at `root`, loaded in this process with extension triggers, with method sites in `files`.
+Facts of package of `project`, loaded in this process with extension triggers, with method sites in `files`.
 Precompile failure carries no frame inside package, so error comes from second load in anonymous module (`reproduce`).
 """
-function load(root::String, id::Base.PkgId, files::Vector{SyntaxFile})::Loaded
-    entry = entry_file(root, id)
+function load(project::ProjectFacts, files::Vector{SyntaxFile})::Loaded
+    entry = project.entry
     mod = try
-        load_module(id, entry)
+        load_module(package_id(project), entry)
     catch error
         error isa ConfigError && rethrow()
         frames = stacktrace(catch_backtrace())
@@ -227,10 +204,10 @@ function load(root::String, id::Base.PkgId, files::Vector{SyntaxFile})::Loaded
         finding = load_error(error, frames, entry, files, "package", "rules after `syntax` stage did not run")
         return Loaded(nothing, [finding], [BlindSpot("package did not load", finding.primary.span)])
     end
-    errors, blind_spots = load_extensions(mod, root, files)
-    modules = package_modules(mod, root)
+    errors, blind_spots = load_extensions(mod, project, files)
+    modules = package_modules(mod, project)
     sites = method_sites(modules, files)
-    return Loaded(PackageFacts(id.name, id.uuid, root, modules, sites, overwrites(sites)), errors, blind_spots)
+    return Loaded(PackageFacts(modules, sites, overwrites(sites)), errors, blind_spots)
 end
 
 end

@@ -1,7 +1,7 @@
 """Discover files, build facts, run registered rules; apply opt-outs, levels, confidence setting and baseline."""
 module Engine
 
-using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage
+using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, ProjectFacts
 using ..Rules: REGISTRY, entry
 using ..Config: Config, Flags, Settings, Level, level_of, project_root
 using ..OptOuts: OptOuts
@@ -54,26 +54,22 @@ end
 """Whether `settings` enable any rule that reads stage after `syntax`."""
 needs_package(settings::Settings)::Bool = any(entry -> entry.stage != Stage.syntax && first(level_of(settings, entry)) != Level.allow, REGISTRY)
 
+"""Whether run under `settings` loads package of `project`: package project, and enabled rule after `syntax` stage."""
+loads(project::Union{Nothing, ProjectFacts}, settings::Settings)::Bool = !isnothing(project) && needs_package(settings)
+
 """
-Loaded package of named `project` with method sites in `files`, and its load errors and blind spots.
-Nothing loads outside named project, and when no enabled rule reads package.
+Loaded package of `project` with method sites in `files`, and its load errors and blind spots.
+Nothing loads outside package project, and when no enabled rule reads package.
 """
-function load_package(project::Union{Nothing, String}, settings::Settings, files::Vector{Facts.SyntaxFile})::Package.Loaded
-    id = load_target(project, settings)
-    return isnothing(id) ? Package.Loaded(nothing, Finding[], BlindSpot[]) : Package.load(project, id, files)
+function load_package(project::Union{Nothing, ProjectFacts}, settings::Settings, files::Vector{Facts.SyntaxFile})::Package.Loaded
+    return loads(project, settings) ? Package.load(project, files) : Package.Loaded(nothing, Finding[], BlindSpot[])
 end
 
-"""Package run loads from `project` under `settings`: named project with enabled rule after `syntax` stage."""
-function load_target(project::Union{Nothing, String}, settings::Settings)::Union{Nothing, Base.PkgId}
-    (isnothing(project) || !needs_package(settings)) && return nothing
-    return Package.package_id(project)
-end
-
-"""Project root and package that run on `path` with `flags` loads; `nothing` when run loads no package."""
-function load_target(path::String, flags::Flags)::Union{Nothing, Tuple{String, Base.PkgId}}
-    project = project_root(path)
-    id = load_target(project, Config.settings(project, flags, REGISTRY))
-    return isnothing(id) ? nothing : (project, id)
+"""Project facts of package run on `path` with `flags` loads; `nothing` when run loads no package."""
+function load_target(path::String, flags::Flags)::Union{Nothing, ProjectFacts}
+    root = project_root(path)
+    project = isnothing(root) ? nothing : Discovery.project_facts(root)
+    return loads(project, Config.settings(root, flags, REGISTRY)) ? project : nothing
 end
 
 """One analysis of `path`: settings, facts, baseline root, leveled diagnostics with their baseline keys, and always-on check problems."""
@@ -92,8 +88,8 @@ function analyze(path::String, flags::Flags)::Analysis
     project = project_root(path)
     settings = Config.settings(project, flags, REGISTRY)
     sources = Discovery.discover(path)
-    loaded = load_package(project, settings, sources.files)
-    facts = FactSet(sources.files, sources.entries, settings.bans, loaded.facts)
+    loaded = load_package(sources.project, settings, sources.files)
+    facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts)
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
     root = something(project, isdir(path) ? abspath(path) : dirname(abspath(path)))

@@ -31,6 +31,7 @@ include("rules/shadowed_base.jl")
 include("rules/threadid_buffer.jl")
 include("rules/unguarded_release.jl")
 include("rules/unreachable.jl")
+include("rules/untested_extension.jl")
 include("rules/untyped_empty.jl")
 include("rules/unused_literal.jl")
 include("rules/where_binding.jl")
@@ -67,6 +68,7 @@ const REGISTRY = RuleEntry[
     ThreadidBuffer.ENTRY,
     UnguardedRelease.ENTRY,
     Unreachable.ENTRY,
+    UntestedExtension.ENTRY,
     UntypedEmpty.ENTRY,
     UnusedLiteral.ENTRY,
     WhereBinding.ENTRY,

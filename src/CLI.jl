@@ -170,7 +170,7 @@ function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err
         ispath(path) || throw(UsageError("no such file or directory: $path"))
         flags = Flags(; levels, deny_warnings, confidence = enum_option(Confidence.T, options, "confidence"), tier = enum_option(Tier.T, options, "tier"))
         target = launch ? Engine.load_target(path, flags) : nothing
-        isnothing(target) || return exit_code(Launch.relaunch(Launch.environment(target..., err), args, out, err))
+        isnothing(target) || return exit_code(Launch.relaunch(Launch.environment(target, err), args, out, err))
         if command == "baseline"
             println(err, "corset: wrote ", Engine.baseline(path; flags), " findings to ", Baseline.FILE)
             return EXIT_PASS

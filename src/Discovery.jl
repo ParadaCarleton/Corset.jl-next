@@ -1,15 +1,19 @@
 """Choose files to analyze: package entry files and their include closure, like Cargo targets, or Julia files under directory."""
 module Discovery
 
-using ..Facts: SyntaxFile, BlindSpot, Role, include_calls, include_target, span
+using ..Facts: SyntaxFile, BlindSpot, Role, ProjectFacts, Extension, TestDeps, include_calls, include_target, span
 using ..Syntax: parse_file
 using ..Config: ConfigError, parse_toml, project_root
 
-"""Parsed files to analyze, include calls discovery could not follow, and entry files Julia loads directly."""
+"""
+Parsed files to analyze, include calls discovery could not follow, entry files Julia loads directly,
+and Project.toml facts of enclosing package (`nothing` outside project with `name`).
+"""
 struct Sources
     files::Vector{SyntaxFile}
     blind_spots::Vector{BlindSpot}
     entries::Vector{String}
+    project::Union{Nothing, ProjectFacts}
 end
 
 """Script entry files of package, relative to project root; analyzed when present."""
@@ -21,11 +25,61 @@ File: it and its include closure. Other directory: Julia files under it, without
 """
 function discover(path::String)::Sources
     path = abspath(path)
-    isfile(path) && return closure([path])
-    project_file = joinpath(path, "Project.toml")
-    project = isfile(project_file) ? parse_toml(project_file) : Dict{String, Any}()
-    haskey(project, "name") && return closure(entry_files(path, project))
-    return Sources([load(file) for file in walk_files(path)], BlindSpot[], String[])
+    root = project_root(path)
+    project = isnothing(root) ? nothing : project_facts(root)
+    isfile(path) && return closure([path], project)
+    !isnothing(project) && isfile(joinpath(path, "Project.toml")) && return closure(entry_files(project), project)
+    return Sources([load(file) for file in walk_files(path)], BlindSpot[], String[], project)
+end
+
+"""Table `key` of parsed TOML `data`; empty when absent."""
+table(data::Dict{String, Any}, key::String)::Dict{String, Any} = get(data, key, Dict{String, Any}())
+
+"""Package identities of dependency table `names` (name to uuid), sorted by name."""
+ids(names::Dict{String, Any})::Vector{Base.PkgId} = [Base.PkgId(Base.UUID(uuid), name) for (name, uuid) in sort!(collect(names); by = first)]
+
+"""
+Project.toml facts of package with project root `root`; `nothing` for project without `name`.
+Config error: missing module or extension file, unknown trigger or test target name. Only package load needs uuid.
+"""
+function project_facts(root::String)::Union{Nothing, ProjectFacts}
+    project = parse_toml(joinpath(root, "Project.toml"))
+    haskey(project, "name") || return nothing
+    name = project["name"]::String
+    entry = joinpath(root, "src", "$name.jl")
+    isfile(entry) || throw(ConfigError("package $name has no module file src/$name.jl"))
+    known = merge(table(project, "deps"), table(project, "weakdeps"))
+    extensions = [extension(root, extension_name, triggers, known) for (extension_name, triggers) in sort!(collect(table(project, "extensions")); by = first)]
+    test_deps, tests = test_dependencies(root, project)
+    uuid = tryparse(Base.UUID, string(get(project, "uuid", "")))
+    return ProjectFacts(name, uuid, root, entry, ids(table(project, "deps")), extensions, test_deps, tests)
+end
+
+"""Extension `name` of package at `root` with trigger name or names `triggers`, looked up in `known` (`[deps]` and `[weakdeps]`)."""
+function extension(root::String, name::String, triggers::Union{String, Vector}, known::Dict{String, Any})::Extension
+    names = triggers isa String ? [triggers] : Vector{String}(triggers)
+    unknown = filter(trigger -> !haskey(known, trigger), names)
+    isempty(unknown) || throw(ConfigError("extension $name names $(join(unknown, ", ")), which [weakdeps] lacks"))
+    return Extension(name, extension_file(root, name), [Base.PkgId(Base.UUID(known[trigger]), trigger) for trigger in names])
+end
+
+"""
+Where package at `root` with parsed `project` lists test dependencies, and those not in `[deps]`.
+`[targets].test` names come from `[weakdeps]` and `[extras]`; else test/Project.toml `[deps]`, without package itself.
+"""
+function test_dependencies(root::String, project::Dict{String, Any})::Tuple{TestDeps.T, Vector{Base.PkgId}}
+    deps = table(project, "deps")
+    if haskey(table(project, "targets"), "test")
+        known = merge(table(project, "weakdeps"), table(project, "extras"))
+        names = filter(name -> !haskey(deps, name), project["targets"]["test"])
+        unknown = filter(name -> !haskey(known, name), names)
+        isempty(unknown) || throw(ConfigError("test target names $(join(unknown, ", ")), which [extras] lacks"))
+        return TestDeps.target, ids(Dict{String, Any}(name => known[name] for name in names))
+    end
+    test_project = joinpath(root, "test", "Project.toml")
+    isfile(test_project) || return TestDeps.none, Base.PkgId[]
+    listed = filter(dep -> !haskey(deps, dep.first) && dep.first != project["name"], table(parse_toml(test_project), "deps"))
+    return TestDeps.project, ids(listed)
 end
 
 """Parsed file at `path` with its role."""
@@ -39,14 +93,9 @@ function role_of(path::String)::Role.T
     return length(parts) > 1 && parts[1] in ("src", "ext") ? Role.package : Role.script
 end
 
-"""Entry files of package at `root`: module file, extension files, then script entries that exist."""
-function entry_files(root::String, project::Dict{String, Any})::Vector{String}
-    name = project["name"]::String
-    main = joinpath(root, "src", "$name.jl")
-    isfile(main) || throw(ConfigError("package $name has no module file src/$name.jl"))
-    extensions = [extension_file(root, extension) for extension in sort!(collect(keys(get(project, "extensions", Dict{String, Any}()))))]
-    return [main; extensions; filter(isfile, [joinpath(root, script) for script in SCRIPTS])]
-end
+"""Entry files of `project`: module file, extension files, then script entries that exist."""
+entry_files(project::ProjectFacts)::Vector{String} =
+    [project.entry; [extension.file for extension in project.extensions]; filter(isfile, [joinpath(project.root, script) for script in SCRIPTS])]
 
 """File of extension `name`: `ext/<name>.jl`, else `ext/<name>/<name>.jl`, as Julia loads it."""
 function extension_file(root::String, name::String)::String
@@ -56,8 +105,8 @@ function extension_file(root::String, name::String)::String
     return nested
 end
 
-"""Parse `entries` and every file they include, breadth first; include calls not followed become blind spots."""
-function closure(entries::Vector{String})::Sources
+"""Parse `entries` of `project` and every file they include, breadth first; include calls not followed become blind spots."""
+function closure(entries::Vector{String}, project::Union{Nothing, ProjectFacts})::Sources
     files, blind_spots, pending, seen = SyntaxFile[], BlindSpot[], copy(entries), Set{String}()
     while !isempty(pending)
         path = popfirst!(pending)
@@ -76,7 +125,7 @@ function closure(entries::Vector{String})::Sources
             end
         end
     end
-    return Sources(files, blind_spots, entries)
+    return Sources(files, blind_spots, entries, project)
 end
 
 """Julia files under `directory`, sorted; skips hidden directories, symbolic links and directories with own Project.toml."""

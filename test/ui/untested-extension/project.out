@@ -1,0 +1,12 @@
+error[untested-extension]: test dependencies lack `Absent`, trigger of extension `AbsentExt`
+ --> ext/AbsentExt.jl:2:8
+  |
+2 | module AbsentExt
+  |        ^^^^^^^^^ tests skip this extension
+  |
+  = why: extension loads only after every trigger loads, so tests skip its code
+  = fix: add `Absent` to `[deps]` of test/Project.toml   [manual]
+  = docs: corset explain untested-extension
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow untested-extension -- <reason>`
+
