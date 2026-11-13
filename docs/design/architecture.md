@@ -8,6 +8,7 @@ Each stage is one module that produces facts. Rules read facts through one API. 
 
 | Module | Job |
 |---|---|
+| `Discovery` | Files to analyze: package entry files and their include closure, or Julia files under directory. |
 | `Syntax` | `syntax` stage: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind. |
 | `Scope` | `scope` stage: lowering and scope facts. JuliaLowering vendored at pinned julia commit on 1.13; `Base.JuliaLowering` from 1.14. Own replacement expansions for common Base macros keep byte positions. Soft scope: before lowering each form, declare earlier top-level assigned globals as `global x::Any`, in include order; order-sensitive fixtures. |
 | `Package` | `package` stage: load package; module facts; Project.toml facts. |
@@ -72,7 +73,15 @@ end
 
 Flags: `-A`, `-W`, `-D <rule or group>` set levels and apply in order, as in rustc; `-D warnings` fails run on warnings; `--confidence definite|possible`; `--format text|json|sarif`; `--tier safe|likely|breaking` for `fix`; `--no-cache`.
 
-Install: `pkg> app add Corset` puts `corset` on PATH (Julia app); `julia -m Corset` runs same entry point. Text output ends with count line: errors, warnings, baselined. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.
+Install: `pkg> app add Corset` puts `corset` on PATH (Julia app); `julia -m Corset` runs same entry point. Text output ends with count line (errors, warnings, baselined), then coverage line. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.
+
+Files, as Cargo picks targets:
+
+- Package or app root (Project.toml with `name`): entry files and every file they include. Entries: `src/<name>.jl`, extension files, `test/runtests.jl`, `docs/make.jl`, `benchmark/benchmarks.jl`.
+- File: file and every file it includes.
+- Other directory: Julia files under it, without hidden directories, symbolic links and nested projects.
+- Include path: string literal, `@__DIR__` or `joinpath` of those. Computed path or missing file goes to coverage line.
+- Missing module or extension file is config error.
 
 Exit codes: `0` no `deny` finding; `1` `deny` finding; `2` config or usage error; `101` internal error (Cargo convention).
 

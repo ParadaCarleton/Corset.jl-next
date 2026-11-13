@@ -33,7 +33,7 @@ Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and meth
 - Finding: argument typed `Any` reaches methods that disagree on writing it. Compiler dispatches at run time: `bang-convention` reports `possible`, and `runtime-dispatch` reports call.
 - Finding: public function returns union from dependency. Unknown callers decide: `possible`.
 - Blind spot: syntax-only rule cannot see that `a::Vector` is 1-based, because `inference` stage did not run.
-- Blind spot: inference refused generated method; macro did not expand; typed finding has no source span.
+- Blind spot: inference refused generated method; macro did not expand; typed finding has no source span; `include` path is computed.
 - Corset limits never fall below compiler limits (`max_methods`, union splitting). Corset resolves every call compiler resolves.
 
 Coverage line ends every run and counts blind spots by cause: `analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)`. Rule that lacks fact at site reports nothing there.

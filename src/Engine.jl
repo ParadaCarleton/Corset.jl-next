@@ -1,13 +1,13 @@
-"""Collect files, build facts, run registered rules; apply opt-outs, levels, confidence setting and baseline."""
+"""Discover files, build facts, run registered rules; apply opt-outs, levels, confidence setting and baseline."""
 module Engine
 
-using ..Facts: FactSet, Finding, RuleEntry, Confidence
-using ..Syntax: parse_file
+using ..Facts: FactSet, Finding, BlindSpot, RuleEntry, Confidence
 using ..Rules: REGISTRY, entry
 using ..Config: Config, Flags, Settings, Level, level_of, project_root
 using ..OptOuts: OptOuts
 using ..Fixes: Fixes
 using ..Baseline: Baseline
+using ..Discovery: Discovery
 
 """Finding with level from settings. `source` says where level was set."""
 struct Diagnostic
@@ -16,7 +16,7 @@ struct Diagnostic
     source::String
 end
 
-"""Result of one run: diagnostics, settings, project root, source text per file, baselined count and stale baseline keys."""
+"""Result of one run: diagnostics, settings, project root, source text per file, baselined count, stale baseline keys and blind spots."""
 struct Report
     diagnostics::Vector{Diagnostic}
     settings::Settings
@@ -24,17 +24,8 @@ struct Report
     sources::Dict{String, String}
     baselined::Int
     stale::Vector{Baseline.Key}
+    blind_spots::Vector{BlindSpot}
 end
-
-"""Julia files under `path` in sorted order; `path` itself when it is a file."""
-function julia_files(path::String)::Vector{String}
-    isfile(path) && return [path]
-    isdir(path) || throw(ArgumentError("no such file or directory: $path"))
-    return sort!([joinpath(root, name) for (root, _, names) in walkdir(path) for name in names if endswith(name, ".jl")])
-end
-
-"""Facts for files `paths`, each file read and parsed once."""
-facts_for(paths::Vector{String})::FactSet = FactSet([parse_file(path, read(path, String)) for path in paths])
 
 """Findings of `rules` on `facts`, sorted by file and position."""
 function run_rules(facts::FactSet, rules::Vector{RuleEntry} = REGISTRY)::Vector{Finding}
@@ -66,29 +57,31 @@ struct Analysis
     leveled::Vector{Diagnostic}
     keys::Vector{Baseline.Key}
     problems::Vector{Diagnostic}
+    blind_spots::Vector{BlindSpot}
 end
 
-"""Analyze every Julia file under `path` with config of enclosing project and command-line `flags`. Opt-outs apply before levels."""
+"""Analyze files `Discovery.discover` picks for `path`, with config of enclosing project and command-line `flags`. Opt-outs apply before levels."""
 function analyze(path::String, flags::Flags)::Analysis
     project = project_root(path)
     settings = Config.settings(project, flags, REGISTRY)
-    facts = facts_for(julia_files(path))
+    sources = Discovery.discover(path)
+    facts = FactSet(sources.files)
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
     root = something(project, isdir(path) ? abspath(path) : dirname(abspath(path)))
     files = Dict(file.path => file for file in facts.files)
     keys = [Baseline.key(files[diagnostic.finding.primary.span.file], root, diagnostic.finding) for diagnostic in leveled]
-    return Analysis(settings, facts, root, leveled, keys, [Diagnostic(problem, Level.deny, OptOuts.SOURCE) for problem in problems])
+    return Analysis(settings, facts, root, leveled, keys, [Diagnostic(problem, Level.deny, OptOuts.SOURCE) for problem in problems], sources.blind_spots)
 end
 
-"""Report for every Julia file under `path`; baseline at project root hides known findings."""
+"""Report for files discovered from `path`; baseline at project root hides known findings."""
 function check(path::String; flags::Flags = Flags())::Report
     analysis = analyze(path, flags)
     covered, stale = Baseline.cover(Baseline.read_baseline(analysis.root), analysis.keys)
     reported = [analysis.leveled[.!covered]; analysis.problems]
     sort!(reported; by = diagnostic -> (diagnostic.finding.primary.span.file, diagnostic.finding.primary.span.first_byte, diagnostic.finding.rule))
     sources = Dict(file.path => file.text for file in analysis.facts.files)
-    return Report(reported, analysis.settings, analysis.root, sources, count(covered), stale)
+    return Report(reported, analysis.settings, analysis.root, sources, count(covered), stale, analysis.blind_spots)
 end
 
 """Write baseline at project root of `path` from every reported finding; return entry count."""

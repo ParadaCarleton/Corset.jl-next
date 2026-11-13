@@ -5,18 +5,11 @@ using ..Facts: Finding, Label, Fix
 using ..Config: Level
 using ..Rules: REGISTRY
 using ..Engine: Diagnostic, Report
-using ..Render: line_starts
+using ..Render: position
 using ..Baseline: Baseline
 
 """Report format version of Corset JSON."""
 const JSON_VERSION = 1
-
-"""Line and code-point column of byte `byte` in `text`; `byte` may sit one past end."""
-function position(text::String, byte::Int)::Tuple{Int, Int}
-    starts = line_starts(text)
-    line = searchsortedlast(starts, byte)
-    return line, length(text, starts[line], prevind(text, byte)) + 1
-end
 
 """Location of `label` as plain data: file, start and end positions (end exclusive), bytes, precision and text."""
 function label_data(report::Report, label::Label, primary::Bool)::Dict{String, Any}
@@ -52,7 +45,12 @@ function json_report(report::Report)::Dict{String, Any}
         )
     end
     stale = [Dict("rule" => key.rule, "file" => key.file, "definition" => key.definition) for key in report.stale]
-    return Dict("version" => JSON_VERSION, "diagnostics" => diagnostics, "baselined" => report.baselined, "stale" => stale)
+    blind_spots = map(report.blind_spots) do spot
+        location = filter(pair -> first(pair) ∉ ("text", "primary"), label_data(report, Label(spot.span, spot.cause), true))
+        return merge(location, Dict("cause" => spot.cause))
+    end
+    coverage = Dict("files" => length(report.sources), "blind_spots" => blind_spots)
+    return Dict("version" => JSON_VERSION, "diagnostics" => diagnostics, "baselined" => report.baselined, "stale" => stale, "coverage" => coverage)
 end
 
 """SARIF physical location of `label`."""
@@ -106,7 +104,12 @@ function sarif_report(report::Report, version::String)::Dict{String, Any}
     rules = [Dict("id" => name, "properties" => Dict("group" => get(groups, name, "correctness"))) for name in names]
     driver = Dict("name" => "Corset", "informationUri" => "https://github.com/ParadaCarleton/Corset.jl", "version" => version, "rules" => rules)
     results = [[sarif_result(report, diagnostic) for diagnostic in report.diagnostics]; [stale_result(key) for key in report.stale]]
-    run = Dict("tool" => Dict("driver" => driver), "columnKind" => "unicodeCodePoints", "results" => results)
+    notifications = [
+        Dict("level" => "note", "message" => Dict("text" => "skipped: $(spot.cause)"), "locations" => [sarif_location(report, Label(spot.span, spot.cause))])
+            for spot in report.blind_spots
+    ]
+    invocation = Dict("executionSuccessful" => true, "toolExecutionNotifications" => notifications)
+    run = Dict("tool" => Dict("driver" => driver), "columnKind" => "unicodeCodePoints", "results" => results, "invocations" => [invocation])
     return Dict("\$schema" => "https://json.schemastore.org/sarif-2.1.0.json", "version" => "2.1.0", "runs" => [run])
 end
 

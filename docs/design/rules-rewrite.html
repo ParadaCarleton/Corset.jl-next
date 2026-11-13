@@ -429,7 +429,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Finding: argument typed <code>Any</code> reaches methods that disagree on writing it. Compiler dispatches at run time: <code>bang-convention</code> reports <code>possible</code>, and <code>runtime-dispatch</code> reports call.</li>
 <li>Finding: public function returns union from dependency. Unknown callers decide: <code>possible</code>.</li>
 <li>Blind spot: syntax-only rule cannot see that <code>a::Vector</code> is 1-based, because <code>inference</code> stage did not run.</li>
-<li>Blind spot: inference refused generated method; macro did not expand; typed finding has no source span.</li>
+<li>Blind spot: inference refused generated method; macro did not expand; typed finding has no source span; <code>include</code> path is computed.</li>
 <li>Corset limits never fall below compiler limits (<code>max_methods</code>, union splitting). Corset resolves every call compiler resolves.</li>
 </ul>
 <p>Coverage line ends every run and counts blind spots by cause: <code>analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)</code>. Rule that lacks fact at site reports nothing there.</p>
@@ -691,6 +691,10 @@ footer { color: var(--muted); font-size: 0.85rem; }
 </thead>
 <tbody>
 <tr>
+<td><code>Discovery</code></td>
+<td>Files to analyze: package entry files and their include closure, or Julia files under directory.</td>
+</tr>
+<tr>
 <td><code>Syntax</code></td>
 <td><code>syntax</code> stage: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind.</td>
 </tr>
@@ -814,7 +818,15 @@ end
 </tbody>
 </table></div>
 <p>Flags: <code>-A</code>, <code>-W</code>, <code>-D &lt;rule or group&gt;</code> set levels and apply in order, as in rustc; <code>-D warnings</code> fails run on warnings; <code>--confidence definite|possible</code>; <code>--format text|json|sarif</code>; <code>--tier safe|likely|breaking</code> for <code>fix</code>; <code>--no-cache</code>.</p>
-<p>Install: <code>pkg&gt; app add Corset</code> puts <code>corset</code> on PATH (Julia app); <code>julia -m Corset</code> runs same entry point. Text output ends with count line: errors, warnings, baselined. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.</p>
+<p>Install: <code>pkg&gt; app add Corset</code> puts <code>corset</code> on PATH (Julia app); <code>julia -m Corset</code> runs same entry point. Text output ends with count line (errors, warnings, baselined), then coverage line. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.</p>
+<p>Files, as Cargo picks targets:</p>
+<ul>
+<li>Package or app root (Project.toml with <code>name</code>): entry files and every file they include. Entries: <code>src/&lt;name&gt;.jl</code>, extension files, <code>test/runtests.jl</code>, <code>docs/make.jl</code>, <code>benchmark/benchmarks.jl</code>.</li>
+<li>File: file and every file it includes.</li>
+<li>Other directory: Julia files under it, without hidden directories, symbolic links and nested projects.</li>
+<li>Include path: string literal, <code>@__DIR__</code> or <code>joinpath</code> of those. Computed path or missing file goes to coverage line.</li>
+<li>Missing module or extension file is config error.</li>
+</ul>
 <p>Exit codes: <code>0</code> no <code>deny</code> finding; <code>1</code> <code>deny</code> finding; <code>2</code> config or usage error; <code>101</code> internal error (Cargo convention).</p>
 </div><div class="decision"><h3>Rule contract</h3>
 <p>Main goal of rewrite: clean structure. Legacy implemented each rule on its own, so analyses repeated and code grew.</p>
@@ -908,7 +920,7 @@ end
 </tr>
 <tr>
 <td>later</td>
-<td>F12, F45, F46, F49 (off by default); string and dict stand-in types; language server mode; Corset precompile workload (develop with Revise until then); test helper that runs rules on macro expansion, so macro authors check generated code (other packages' macro output gets no findings); replace <code>{}</code> stopgap with skip of macro arguments Julia rejects as written (<code>{x}</code>, <code>x ~ Normal()</code>), once <code>scope</code> lowering and <code>package</code> method tables can supply it; dimension-aware stand-in for <code>Number</code> (catches <code>x + 1</code> on Unitful quantity); nursery group for rules before quality gate; upstream F89 and F90 logic to Moshi <code>verify/</code> (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for <code>manual</code> fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking.</td>
+<td>F12, F45, F46, F49 (off by default); string and dict stand-in types; language server mode; directory discovery reads <code>.gitignore</code> and <code>.ignore</code>, like Ruff; Corset precompile workload (develop with Revise until then); test helper that runs rules on macro expansion, so macro authors check generated code (other packages' macro output gets no findings); replace <code>{}</code> stopgap with skip of macro arguments Julia rejects as written (<code>{x}</code>, <code>x ~ Normal()</code>), once <code>scope</code> lowering and <code>package</code> method tables can supply it; dimension-aware stand-in for <code>Number</code> (catches <code>x + 1</code> on Unitful quantity); nursery group for rules before quality gate; upstream F89 and F90 logic to Moshi <code>verify/</code> (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for <code>manual</code> fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking.</td>
 <td>4</td>
 <td>—</td>
 </tr>

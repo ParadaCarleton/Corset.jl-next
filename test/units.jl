@@ -70,31 +70,75 @@ end
 end
 
 @testset "engine" begin
-    directory = mktempdir(@__DIR__)
-    write(joinpath(directory, "a.jl"), "x ≈ 0\n")
-    write(joinpath(directory, "notes.txt"), "x ≈ 0\n")
-    @test Corset.Engine.julia_files(directory) == [joinpath(directory, "a.jl")]
-    @test Corset.Engine.julia_files(joinpath(directory, "a.jl")) == [joinpath(directory, "a.jl")]
-    @test_throws ArgumentError Corset.Engine.julia_files(joinpath(directory, "missing"))
-    report = Corset.check(directory)
-    @test [diagnostic.finding.rule for diagnostic in report.diagnostics] == [Symbol("approx-zero")]
-    @test report.settings.kind == Kind.application
-    @test Corset.Engine.failed(report)
-    @test_throws ArgumentError Corset.Rules.entry(:no_such_check)
-    rm(directory; recursive = true)
+    mktempdir(@__DIR__) do directory
+        write(joinpath(directory, "a.jl"), "x ≈ 0\n")
+        write(joinpath(directory, "notes.txt"), "x ≈ 0\n")
+        report = Corset.check(directory)
+        @test [diagnostic.finding.rule for diagnostic in report.diagnostics] == [Symbol("approx-zero")]
+        @test report.settings.kind == Kind.application
+        @test Corset.Engine.failed(report)
+        @test_throws ArgumentError Corset.Rules.entry(:no_such_check)
+    end
+end
+
+"""Paths, relative to `root`, of files `Discovery.discover` picks for `path`."""
+discovered(root::String, path::String = root)::Vector{String} = [relpath(file.path, root) for file in Corset.Discovery.discover(path).files]
+
+@testset "discovery" begin
+    mktempdir(@__DIR__) do root
+        files = Dict(
+            "Project.toml" => "name = \"Pkg\"\n\n[extensions]\nFlatExt = \"A\"\nNestedExt = \"B\"\n\n[preferences.Corset]\nkind = \"library\"\n",
+            "src/Pkg.jl" => "module Pkg\ninclude(\"a.jl\")\ninclude(joinpath(@__DIR__, \"sub\", \"b.jl\"))\ninclude(name)\ninclude(\"gone.jl\")\nend\n",
+            "src/a.jl" => "include(\"a.jl\")\n",
+            "src/sub/b.jl" => "x = 1\n",
+            "src/orphan.jl" => "y = 2\n",
+            "ext/FlatExt.jl" => "module FlatExt end\n",
+            "ext/NestedExt/NestedExt.jl" => "module NestedExt end\n",
+            "test/runtests.jl" => "include(\"cases.jl\")\n",
+            "test/cases.jl" => "z = 3\n",
+            "test/fixtures/bad.jl" => "x ≈ 0\n",
+            ".hidden/c.jl" => "w = 4\n",
+            "lib/Other/Project.toml" => "",
+            "lib/Other/d.jl" => "v = 5\n",
+            "scripts/e.jl" => "u = 6\n",
+        )
+        for (path, text) in files
+            mkpath(dirname(joinpath(root, path)))
+            write(joinpath(root, path), text)
+        end
+        @test discovered(root) == [
+            "src/Pkg.jl", "ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "test/runtests.jl", "src/a.jl", "src/sub/b.jl", "test/cases.jl",
+        ]
+        @test [spot.cause for spot in Corset.Discovery.discover(root).blind_spots] == ["include with computed path", "include of missing file"]
+        @test discovered(root, joinpath(root, "src", "a.jl")) == ["src/a.jl"]
+        @test sprint(Corset.Render.render_coverage, Corset.check(root)) == """
+            coverage: analyzed 7 files; skipped 2 (1 include of missing file, 1 include with computed path)
+              - src/Pkg.jl:4:1: include with computed path
+              - src/Pkg.jl:5:1: include of missing file
+            """
+        rm(joinpath(root, "Project.toml"))
+        @test discovered(root) == ["ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "scripts/e.jl", "src/Pkg.jl", "src/a.jl", "src/orphan.jl", "src/sub/b.jl", "test/cases.jl", "test/fixtures/bad.jl", "test/runtests.jl"]
+        write(joinpath(root, "Project.toml"), "name = \"Missing\"\n")
+        @test_throws Corset.Config.ConfigError Corset.Discovery.discover(root)
+        write(joinpath(root, "Project.toml"), "name = \"Pkg\"\n\n[extensions]\nGoneExt = \"C\"\n\n[preferences.Corset]\nkind = \"library\"\n")
+        @test_throws Corset.Config.ConfigError Corset.Discovery.discover(root)
+        @test startswith(sprint(Corset.Render.render_coverage, Corset.check(joinpath(root, "src"))), "coverage: analyzed 4 files\n")
+    end
 end
 
 @testset "pipeline runs on legacy sources" begin
     # Real code finds crashes that fixtures miss; replace this corpus once legacy code is deleted.
-    directory = mktempdir(@__DIR__)
-    cp(joinpath(dirname(@__DIR__), "lib", "CorsetLegacy", "src"), joinpath(directory, "src"))
-    write(joinpath(directory, "Project.toml"), "name = \"Corpus\"\n\n[preferences.Corset]\nkind = \"library\"\n")
-    report = Corset.check(directory)
-    @test !isempty(report.diagnostics)
-    @test isnothing(Corset.Render.render_all(devnull, report))
-    @test length(Corset.Output.json_report(report)["diagnostics"]) == length(report.diagnostics)
-    @test length(only(Corset.Output.sarif_report(report, "0")["runs"])["results"]) == length(report.diagnostics)
-    rm(directory; recursive = true)
+    mktempdir(@__DIR__) do directory
+        cp(joinpath(dirname(@__DIR__), "lib", "CorsetLegacy", "src"), joinpath(directory, "src"))
+        write(joinpath(directory, "Project.toml"), "name = \"CorsetLegacy\"\n\n[preferences.Corset]\nkind = \"library\"\n")
+        report = Corset.check(directory)
+        @test !isempty(report.diagnostics)
+        @test length(report.sources) == count(endswith(".jl"), [name for (_, _, names) in walkdir(joinpath(directory, "src")) for name in names])
+        @test isempty(report.blind_spots)
+        @test isnothing(Corset.Render.render_all(devnull, report))
+        @test length(Corset.Output.json_report(report)["diagnostics"]) == length(report.diagnostics)
+        @test length(only(Corset.Output.sarif_report(report, "0")["runs"])["results"]) == length(report.diagnostics)
+    end
 end
 
 const CONFIG = joinpath(@__DIR__, "config")
@@ -150,10 +194,10 @@ end
     )
     definite_only = Config.settings(nothing, Flags(), REGISTRY)
     @test isempty(Corset.Engine.diagnostics([possible], definite_only))
-    warned = Report([Diagnostic(possible, Level.warn, "test")], definite_only, @__DIR__, Dict{String, String}(), 0, [])
+    warned = Report([Diagnostic(possible, Level.warn, "test")], definite_only, @__DIR__, Dict{String, String}(), 0, [], [])
     @test !Corset.Engine.failed(warned)
     strict = Config.settings(nothing, Flags(; deny_warnings = true), REGISTRY)
-    @test Corset.Engine.failed(Report(warned.diagnostics, strict, @__DIR__, Dict{String, String}(), 0, []))
+    @test Corset.Engine.failed(Report(warned.diagnostics, strict, @__DIR__, Dict{String, String}(), 0, [], []))
 end
 
 @testset "opt-outs" begin
@@ -181,24 +225,24 @@ end
     @test Corset.Baseline.definition_name(nested, last(findfirst("= x", nested.text))) == "f"
     @test Corset.Baseline.definition_name(nested, 1) == "M"
     @test Corset.Baseline.definition_name(Corset.Syntax.parse_file("t.jl", "x = 1\n"), 1) == ""
-    directory = mktempdir(@__DIR__)
-    write(joinpath(directory, "Project.toml"), "[deps]\n")
-    source = "near(value) = value ≈ 0\nfunction far(value)\n    return value ≈ 0\nend\n"
-    write(joinpath(directory, "a.jl"), source)
-    @test Corset.Engine.baseline(directory) == 2
-    clean = Corset.check(directory)
-    @test isempty(clean.diagnostics) && clean.baselined == 2 && isempty(clean.stale) && !Corset.Engine.failed(clean)
-    write(joinpath(directory, "a.jl"), "# moved down\n\n" * source * "extra(value) = value ≈ 0\n")
-    moved = Corset.check(directory)
-    @test moved.baselined == 2
-    @test [Corset.Baseline.key(Corset.Syntax.parse_file(joinpath(directory, "a.jl"), read(joinpath(directory, "a.jl"), String)), directory, d.finding).definition for d in moved.diagnostics] == ["extra"]
-    write(joinpath(directory, "a.jl"), "near(value) = value ≈ 0\n")
-    fixed = Corset.check(directory)
-    @test fixed.baselined == 1 && [key.definition for key in fixed.stale] == ["far"] && Corset.Engine.failed(fixed)
-    @test occursin("error[baseline]: 1 baseline entry matches no finding", sprint(io -> Corset.Render.render_all(io, fixed)))
-    write(joinpath(directory, Corset.Baseline.FILE), "[[finding]]\nrule = 1\n")
-    @test_throws ConfigError Corset.check(directory)
-    write(joinpath(directory, Corset.Baseline.FILE), "[[finding]]\nrule = 1\nfile = \"a.jl\"\ndefinition = \"\"\nsnippet = \"s\"\ncount = 1\n")
-    @test_throws ConfigError Corset.check(directory)
-    rm(directory; recursive = true)
+    mktempdir(@__DIR__) do directory
+        write(joinpath(directory, "Project.toml"), "[deps]\n")
+        source = "near(value) = value ≈ 0\nfunction far(value)\n    return value ≈ 0\nend\n"
+        write(joinpath(directory, "a.jl"), source)
+        @test Corset.Engine.baseline(directory) == 2
+        clean = Corset.check(directory)
+        @test isempty(clean.diagnostics) && clean.baselined == 2 && isempty(clean.stale) && !Corset.Engine.failed(clean)
+        write(joinpath(directory, "a.jl"), "# moved down\n\n" * source * "extra(value) = value ≈ 0\n")
+        moved = Corset.check(directory)
+        @test moved.baselined == 2
+        @test [Corset.Baseline.key(Corset.Syntax.parse_file(joinpath(directory, "a.jl"), read(joinpath(directory, "a.jl"), String)), directory, d.finding).definition for d in moved.diagnostics] == ["extra"]
+        write(joinpath(directory, "a.jl"), "near(value) = value ≈ 0\n")
+        fixed = Corset.check(directory)
+        @test fixed.baselined == 1 && [key.definition for key in fixed.stale] == ["far"] && Corset.Engine.failed(fixed)
+        @test occursin("error[baseline]: 1 baseline entry matches no finding", sprint(io -> Corset.Render.render_all(io, fixed)))
+        write(joinpath(directory, Corset.Baseline.FILE), "[[finding]]\nrule = 1\n")
+        @test_throws ConfigError Corset.check(directory)
+        write(joinpath(directory, Corset.Baseline.FILE), "[[finding]]\nrule = 1\nfile = \"a.jl\"\ndefinition = \"\"\nsnippet = \"s\"\ncount = 1\n")
+        @test_throws ConfigError Corset.check(directory)
+    end
 end

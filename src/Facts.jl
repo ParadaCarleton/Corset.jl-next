@@ -10,7 +10,7 @@ using EnumX: @enumx
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
 
 export Precision, Tier, Confidence, Group, Stage
-export Span, Label, Edit, Fix, Finding, RuleEntry
+export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, FactSet, IndexedPattern, Match
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export finding, replace_fix, manual_fix, identifier_name, parent_of, ancestors, descendants, call_head, leaf_value
@@ -64,6 +64,12 @@ struct Finding
     causes::Vector{Label}
     why::String
     fix::Union{Fix, Nothing}
+end
+
+"""Site Corset skipped though compiler resolves it; coverage line counts it by `cause`."""
+struct BlindSpot
+    cause::String
+    span::Span
 end
 
 """Registry entry: rule metadata plus pure function `run(facts::FactSet)::Vector{Finding}`."""
