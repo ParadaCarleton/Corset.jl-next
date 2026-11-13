@@ -41,7 +41,7 @@ statement with macro defined outside program counts as lowered, since lowering c
 function lowering_errors(expression::Any)::Int
     expression isa Expr || return 0
     expression.head === :toplevel && return sum(lowering_errors, expression.args; init = 0)
-    expression.head === :module && return lowering_errors(Expr(:toplevel, expression.args[3].args...))
+    expression.head === :module && return lowering_errors(Expr(:toplevel, expression.args[end].args...))
     lowered = try
         Meta.lower(SANDBOX, expression)
     catch error
