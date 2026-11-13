@@ -32,6 +32,14 @@ const NAME = Symbol("pinned-task")
 """Finding kind of each Base macro."""
 const MACROS = Dict("@async" => :async, "@task" => :task, "@threads" => :static_schedule)
 
+"""Nearest block or file around `node`, where statements run in order; `return x.sticky = false` still runs in it."""
+function statement_block(node::SyntaxNode)::Union{Nothing, SyntaxNode}
+    for ancestor in ancestors(node)
+        kind_name(ancestor) in ("block", "toplevel") && return ancestor
+    end
+    return nothing
+end
+
 """Byte of last `name.sticky = false` in each block, keyed by block identity and name."""
 function unpinned(file::SyntaxFile)::Dict{Tuple{UInt, String}, Int}
     found = Dict{Tuple{UInt, String}, Int}()
@@ -39,7 +47,7 @@ function unpinned(file::SyntaxFile)::Dict{Tuple{UInt, String}, Int}
         target, assigned = children_of(assignment)[1], children_of(assignment)[end]
         kind_name(target) == "." && identifier_name(children_of(target)[end]) == "sticky" && leaf_value(assigned) == "false" || continue
         name = identifier_name(children_of(target)[1])
-        isnothing(name) || (found[(objectid(parent_of(assignment)), name)] = span(file, assignment).first_byte)
+        isnothing(name) || (found[(objectid(statement_block(assignment)), name)] = span(file, assignment).first_byte)
     end
     return found
 end
@@ -49,7 +57,7 @@ function opted_out(file::SyntaxFile, node::SyntaxNode, unpinned::Dict{Tuple{UInt
     assignment = parent_of(node)
     kind_name(assignment) == "=" && children_of(assignment)[end] === node || return false
     name = identifier_name(children_of(assignment)[1])
-    return !isnothing(name) && get(unpinned, (objectid(parent_of(assignment)), name), 0) > span(file, assignment).first_byte
+    return !isnothing(name) && get(unpinned, (objectid(statement_block(assignment)), name), 0) > span(file, assignment).first_byte
 end
 
 """Whether `@threads` call `node` passes `:static` schedule."""
