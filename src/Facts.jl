@@ -169,10 +169,10 @@ end
 """Syntax node bound to pattern variable `name` in `match`."""
 binding(match::Match, name::Symbol)::SyntaxNode = match.bindings[name].src
 
-"""Byte range of `node` in `file` without surrounding whitespace; infix nodes start at leading trivia."""
-function trimmed_bytes(file::SyntaxFile, node::SyntaxNode)::UnitRange{Int}
+"""`range` of bytes in `file` without surrounding whitespace."""
+function trimmed(file::SyntaxFile, range::UnitRange{Int})::UnitRange{Int}
     bytes = codeunits(file.text)
-    first, last = JS.first_byte(node), JS.last_byte(node)
+    first, last = range.start, range.stop
     while first < last && bytes[first] in (UInt8(' '), UInt8('\t'), UInt8('\n'), UInt8('\r'))
         first += 1
     end
@@ -182,15 +182,44 @@ function trimmed_bytes(file::SyntaxFile, node::SyntaxNode)::UnitRange{Int}
     return first:last
 end
 
+"""Byte range of `node` in `file` without surrounding whitespace; infix nodes start at leading trivia."""
+trimmed_bytes(file::SyntaxFile, node::SyntaxNode)::UnitRange{Int} = trimmed(file, JS.first_byte(node):JS.last_byte(node))
+
+"""
+Byte range of `node` with grouping parentheses that wrap only it. JuliaSyntax keeps these
+parentheses as `parens` trivia of parent: text without them changes meaning in new context.
+"""
+function grouped_bytes(file::SyntaxFile, node::SyntaxNode)::UnitRange{Int}
+    parent = parent_of(node)
+    return isnothing(parent) ? trimmed_bytes(file, node) : widened(file, parent.raw, JS.first_byte(parent), trimmed_bytes(file, node))
+end
+
+"""`target` widened over chain of `parens` nodes among children of `green`, which starts at byte `offset`."""
+function widened(file::SyntaxFile, green::JS.GreenNode, offset::Int, target::UnitRange{Int})::UnitRange{Int}
+    for child in something(JS.children(green), ())
+        range = offset:(offset + JS.span(child) - 1)
+        if JS.kind(child) == JS.K"parens" && first(range) < first(target) && last(target) < last(range)
+            inner, contents, start = widened(file, child, offset, target), UnitRange{Int}[], offset
+            for part in JS.children(child)
+                JS.is_trivia(part) || push!(contents, trimmed(file, start:(start + JS.span(part) - 1)))
+                start += JS.span(part)
+            end
+            return contents == [inner] ? range : target
+        end
+        offset += JS.span(child)
+    end
+    return target
+end
+
 """Exact span of `node` in `file`."""
 function span(file::SyntaxFile, node::SyntaxNode)::Span
     bytes = trimmed_bytes(file, node)
     return Span(file.path, first(bytes), last(bytes), Precision.exact)
 end
 
-"""Source text of `node` in `file`."""
+"""Source text of `node` in `file` with grouping parentheses that wrap only it; safe to paste in new context."""
 function source(file::SyntaxFile, node::SyntaxNode)::String
-    bytes = trimmed_bytes(file, node)
+    bytes = grouped_bytes(file, node)
     return file.text[first(bytes):thisind(file.text, last(bytes))]
 end
 
