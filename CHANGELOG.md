@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Corset loads a package to check it. The environment must load the package from its root.
+- Corset loads a package to check it. The `corset` command builds a temporary environment and runs again inside it.
+- The temporary environment starts from the package Manifest and adds the test dependencies. A version change is a configuration error.
 - A package that throws while loading gets a `load-error` finding. Rules that read the loaded package do not run.
 - New rule `shadowed-base`: a method named like an exported Base function defines a new function.
 - Text output shows paths relative to the project root.

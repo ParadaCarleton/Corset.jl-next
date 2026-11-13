@@ -10,6 +10,7 @@ include("Syntax.jl")
 include("Rules.jl")
 include("Config.jl")
 include("Package.jl")
+include("Launch.jl")
 include("Fixes.jl")
 include("OptOuts.jl")
 include("Baseline.jl")
@@ -21,9 +22,9 @@ include("CLI.jl")
 
 using .Engine: check
 
-"""Command-line entry point for `corset` app and `julia -m Corset`."""
+"""Command-line entry point for `corset` app and `julia -m Corset`; package runs relaunch in temporary environment."""
 function (@main)(args::Vector{String})::Int
-    return CLI.execute(args, stdout, stderr)
+    return CLI.execute(args, stdout, stderr; launch = true)
 end
 
 end

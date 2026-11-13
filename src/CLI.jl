@@ -18,6 +18,7 @@ using ..OptOuts: OptOuts
 using ..Baseline: Baseline
 using ..Syntax: Syntax
 using ..Package: Package
+using ..Launch: Launch
 
 const EXIT_PASS = 0
 const EXIT_FAIL = 1
@@ -145,8 +146,16 @@ function write_report(out::IO, report::Report, format::String)::Nothing
     return nothing
 end
 
-"""Run command line `args`: report to `out`, messages to `err`. Return exit code."""
-function execute(args::Vector{String}, out::IO, err::IO)::Int
+"""Exit code of finished relaunched `process`; signal that ended it is internal error."""
+exit_code(process::Base.Process)::Int = process.termsignal == 0 ? process.exitcode : EXIT_INTERNAL
+
+"""
+Run command line `args`: report to `out`, messages to `err`. Return exit code.
+
+With `launch`, run that loads package builds temporary environment and runs again in new Julia process there.
+Without `launch`, current environment must load package from its root: relaunched process and tests.
+"""
+function execute(args::Vector{String}, out::IO, err::IO; launch::Bool)::Int
     try
         levels, deny_warnings, rest = level_flags(args)
         parsed = parse_args(rest, argument_settings())
@@ -158,6 +167,8 @@ function execute(args::Vector{String}, out::IO, err::IO)::Int
         path = options["path"]
         ispath(path) || throw(UsageError("no such file or directory: $path"))
         flags = Flags(; levels, deny_warnings, confidence = enum_option(Confidence.T, options, "confidence"), tier = enum_option(Tier.T, options, "tier"))
+        target = launch ? Engine.load_target(path, flags) : nothing
+        isnothing(target) || return exit_code(Launch.relaunch(Launch.environment(target..., err), args, out, err))
         if command == "baseline"
             println(err, "corset: wrote ", Engine.baseline(path; flags), " findings to ", Baseline.FILE)
             return EXIT_PASS
