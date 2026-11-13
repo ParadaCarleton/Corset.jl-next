@@ -22,3 +22,14 @@ error[juxtaposition]: `2^2r` means `2^(2r)`
   = fix: replace with `2^(2r)`   [safe]
   = docs: corset explain juxtaposition
 
+error[juxtaposition]: `(a + b)/2n` means `(a + b)/(2n)`
+ --> positive.jl:4:25
+  |
+4 | mean_inverse(a, b, n) = (a + b)/2n
+  |                         ^^^^^^^^^^ parsed as `(a + b)/(2n)`
+  |                                 -- one factor
+  |
+  = why: juxtaposition binds tighter than `/`; readers often read left to right
+  = fix: replace with `(a + b)/(2n)`   [safe]
+  = docs: corset explain juxtaposition
+

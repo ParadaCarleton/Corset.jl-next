@@ -418,3 +418,10 @@ Self-lint matched rule patterns inside Argus `@pattern` bodies, which are data. 
 ### File discovery
 
 `corset check .` walked every directory: hidden `.worktrees` copies, nested packages and test fixtures. Discovery now follows Cargo: package root gives entry files and their include closure, so fixtures that tests read as data stay out. Include with computed path is blind spot, since loading resolves it; coverage line lists it. `.gitignore` support waits in later work.
+
+### Fix properties
+
+Supposition properties found four causes of fix bugs.
+JuliaSyntax keeps grouping parentheses as trivia of parent. Fixes that pasted child source dropped them: `(a + b)/2x` became `a + b/(2x)`. `source` now keeps them.
+`world-age` rewrote method signature after `eval` as call. `docstring` fired in function bodies, where docstring is plain string. `duplicate-statement` compared docstrings.
+Exempt from no-new-finding property: rules that compare statement with neighbor. Fix can rewrite statement into neighbor's text; duplicate existed in meaning before.

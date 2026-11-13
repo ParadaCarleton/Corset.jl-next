@@ -7,3 +7,7 @@ end
 
 x = load()
 x = load()
+
+"""Area of unit circle."""
+area() = pi
+area() = pi

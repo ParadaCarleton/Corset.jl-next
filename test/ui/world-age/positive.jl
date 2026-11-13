@@ -16,3 +16,8 @@ function define_generic()
     @eval wrap(x::T) where {T} = x
     return wrap(1)
 end
+
+function define_and_set()
+    @eval set_flag(flag) = flag
+    return set_flag((flag = true))
+end

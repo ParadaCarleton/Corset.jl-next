@@ -2,7 +2,7 @@
 `duplicate-statement` (F60): same statement twice in row.
 
 ## Description
-Reports statement equal to statement directly before it, whitespace ignored.
+Reports statement equal to statement directly before it, whitespace and docstrings ignored.
 
 ## Rationale
 Repeated statement is usually copy-paste slip: second copy does nothing new, or does same work twice.
@@ -28,8 +28,9 @@ using ...Facts
 
 const NAME = Symbol("duplicate-statement")
 
-"""Source of `node` with whitespace runs collapsed, for comparison."""
-normalized(file::SyntaxFile, node)::String = replace(source(file, node), r"\s+" => " ")
+"""Source of `node` with whitespace runs collapsed and docstring dropped, for comparison."""
+normalized(file::SyntaxFile, node)::String =
+    kind_name(node) == "doc" ? normalized(file, children_of(node)[end]) : replace(source(file, node), r"\s+" => " ")
 
 """Findings for statement equal to statement right before it; repeated calls may be intended, so `possible`."""
 function run(facts::FactSet)::Vector{Finding}
