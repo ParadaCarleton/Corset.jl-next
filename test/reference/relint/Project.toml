@@ -1,0 +1,6 @@
+[deps]
+JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+ReLint = "b3cc710f-9c33-5bdb-a03d-a94903873e97"
+
+[sources]
+ReLint = {rev = "61079427d9fc91cb3ead8f5b287aa3ae9b2269cb", url = "https://github.com/RelationalAI-oss/ReLint.jl"}

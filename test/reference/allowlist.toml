@@ -1,0 +1,424 @@
+# Reference linter map. `compare.jl` checks every rule of ReLint and LintApp against this file.
+# Entry: reference `rule`, optional `message` regex, and one of:
+#   corset = "<rule>": each report needs Corset finding of that rule on same line.
+#   allow = "<reason>": report needs no Corset finding.
+# Report takes first entry whose rule and message match. Report with no entry fails.
+# `disagree`: reference false positive that Corset rejects on purpose, keyed by file, rule and trimmed line text.
+# Entry no report uses fails, so stale entries cannot linger.
+
+# ReLint
+
+[[relint]]
+rule = "@async"
+corset = "pinned-task"
+
+[[relint]]
+rule = "static threads"
+corset = "pinned-task"
+
+[[relint]]
+rule = "array with no specific type"
+corset = "untyped-empty"
+
+[[relint]]
+rule = "initializing with `nthreads`"
+corset = "baked-state"
+
+[[relint]]
+rule = "mutating ENV"
+corset = "process-state"
+
+[[relint]]
+rule = "unreachable branch"
+corset = "unreachable"
+
+[[relint]]
+rule = "unlock"
+allow = "flags every `unlock`; `unguarded-release` reports unlock outside `finally` only"
+
+[[relint]]
+rule = "return type annotation"
+allow = "opposes `annotation` (F71), which asks for result types; `result-conversion` (F13) reports converting ones"
+
+[[relint]]
+rule = "no import"
+allow = "house style; Corset asks for explicit imports (F65)"
+
+[[relint]]
+rule = "@inbounds"
+allow = "later stage: `unverified-inbounds` (inference) reports unproven sites only"
+
+[[relint]]
+rule = "bare using"
+allow = "later stage: `implicit-import` (external)"
+
+[[relint]]
+rule = "closure capture by reference"
+allow = "later stage: `boxed-capture` (scope) reports rebound captures only"
+
+[[relint]]
+rule = "non-const untyped global"
+allow = "later stage: `hidden-input` (effects)"
+
+[[relint]]
+rule = "splatting"
+allow = "later stage: `dynamic-splat` (inference) reports variable-length collections only"
+
+[[relint]]
+rule = "uv"
+allow = "later stage: `internal-access` (external)"
+
+[[relint]]
+rule = "not fully parametrised constructor"
+allow = "project heuristic; real cost shows as `runtime-dispatch` (F27, inference)"
+
+[[relint]]
+rule = "@generated"
+allow = "caution marker; project ban list (`banned`) expresses it"
+
+[[relint]]
+rule = "Task"
+allow = "caution marker; project ban list (`banned`) expresses it"
+
+[[relint]]
+rule = "show"
+allow = "caution marker; project ban list (`banned`) expresses it"
+
+[[relint]]
+rule = "ccall"
+allow = "caution marker; project ban list (`banned`) expresses it"
+
+[[relint]]
+rule = "finalizer"
+allow = "caution marker; project ban list (`banned`) expresses it"
+
+[[relint]]
+rule = "@cfunction"
+allow = "caution marker; project ban list (`banned`) expresses it"
+
+[[relint]]
+rule = "yield"
+allow = "caution marker; project ban list (`banned`) expresses it"
+
+[[relint]]
+rule = "sleep"
+allow = "caution marker; project ban list (`banned`) expresses it"
+
+[[relint]]
+rule = "@sync"
+allow = "caution marker; project ban list (`banned`) expresses it"
+
+[[relint]]
+rule = "@threads"
+allow = "caution marker; data races belong to scope stage (F69)"
+
+[[relint]]
+rule = "ErrorException"
+allow = "style: custom exception types"
+
+[[relint]]
+rule = "error"
+allow = "style; `error` fails loud"
+
+[[relint]]
+rule = "return in anonymous function"
+allow = "style: trailing `return` is harmless"
+
+[[relint]]
+rule = "string interpolation"
+allow = "style"
+
+[[relint]]
+rule = "string concatenation"
+allow = "style"
+
+[[relint]]
+rule = "isnothing"
+allow = "obsolete performance claim: `isnothing` inlines to `===`"
+
+[[relint]]
+rule = "untyped array comprehension"
+allow = "comprehension infers element type"
+
+[[relint]]
+rule = "unsafe_ function"
+allow = "naming rule bans safe wrappers of `unsafe_` calls, which Rust allows"
+
+[[relint]]
+rule = "in"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "haskey"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "equal"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "unsafe-logging"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "unsafe-assert"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "interpolation in `@warnv_safe_to_log`"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "initializing with `is_local_deployment`"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "noinline with non-literal/identifier args"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "no import RAICode"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "remove_page"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "RelPath"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "RelPath split_path"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "RelPath drop_first"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "RelPath relpath_from_signature"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "TODO"
+allow = "RelationalAI house rule"
+
+[[relint]]
+rule = "TODO PR"
+allow = "RelationalAI house rule"
+
+# LintApp
+
+[[lintapp]]
+rule = "async_task"
+corset = "pinned-task"
+
+[[lintapp]]
+rule = "nan_comparison"
+corset = "nan-compare"
+
+[[lintapp]]
+rule = "duplicate_branch_condition"
+corset = "unreachable"
+
+[[lintapp]]
+rule = "detached_docstring"
+corset = "unused-literal"
+
+[[lintapp]]
+rule = "module_name"
+corset = "module-inception"
+
+[[lintapp]]
+rule = "syntax_errors"
+corset = "parse-error"
+
+[[lintapp]]
+rule = "const_if_condition"
+message = "^Unbracketed assignment"
+corset = "parse-error"
+
+[[lintapp]]
+rule = "const_if_condition"
+message = "^A boolean literal"
+allow = "deliberate toggle in most code"
+
+[[lintapp]]
+rule = "include_errors"
+message = "^Circular include|^This file has already been included"
+corset = "double-include"
+
+[[lintapp]]
+rule = "include_errors"
+message = "^The included file can not be found"
+allow = "load fails loud; Corset counts blind spot"
+
+[[lintapp]]
+rule = "include_errors"
+message = "contains NULL"
+allow = "load fails loud"
+
+[[lintapp]]
+rule = "include_errors"
+message = "^File too big|^File not available"
+allow = "analyzer limit"
+
+[[lintapp]]
+rule = "computed_include"
+allow = "analyzer limit; Corset counts blind spot"
+
+[[lintapp]]
+rule = "type_piracy"
+message = "^`!=` is defined"
+allow = "later stage: `operator-consistency` (package)"
+
+[[lintapp]]
+rule = "type_piracy"
+message = "^An imported function has been extended"
+allow = "later stage: `piracy` (external)"
+
+[[lintapp]]
+rule = "unused_binding"
+allow = "later stage: `unused-binding` (scope)"
+
+[[lintapp]]
+rule = "unused_function_argument"
+allow = "later stage: `unused-binding` (scope)"
+
+[[lintapp]]
+rule = "unused_type_parameter"
+allow = "later stage: `unused-binding` (scope)"
+
+[[lintapp]]
+rule = "missing_reference"
+allow = "later stage: `never-succeeds` (inference)"
+
+[[lintapp]]
+rule = "incorrect_call_args"
+allow = "later stage: `never-succeeds` (inference)"
+
+[[lintapp]]
+rule = "kw_default_mismatch"
+allow = "later stage: `never-succeeds` (inference)"
+
+[[lintapp]]
+rule = "incorrect_iter_spec"
+allow = "later stage: `scalar-loop` (inference)"
+
+[[lintapp]]
+rule = "index_from_length"
+allow = "later stage: `one-based-range` (inference)"
+
+[[lintapp]]
+rule = "bare_using"
+allow = "later stage: `implicit-import` (external)"
+
+[[lintapp]]
+rule = "break_continue"
+allow = "lowering error; scope stage reports it"
+
+[[lintapp]]
+rule = "duplicate_function_argument"
+allow = "lowering error; scope stage reports it"
+
+[[lintapp]]
+rule = "global_const_decl"
+allow = "lowering error, or dead on supported Julia"
+
+[[lintapp]]
+rule = "literal_use"
+allow = "lowering or load error"
+
+[[lintapp]]
+rule = "const_decl"
+allow = "load error; const redefinition is legal since Julia 1.12"
+
+[[lintapp]]
+rule = "invalid_type_declaration"
+allow = "load error"
+
+[[lintapp]]
+rule = "relative_import"
+allow = "load error"
+
+[[lintapp]]
+rule = "unresolved_import"
+allow = "load error"
+
+[[lintapp]]
+rule = "debug_statement"
+allow = "caution marker; project ban list (`banned`) expresses it"
+
+[[lintapp]]
+rule = "nothing_comparison"
+allow = "style: `==` on `nothing` answers correctly"
+
+[[lintapp]]
+rule = "pointless_boolean"
+allow = "rare dead code"
+
+[[lintapp]]
+rule = "string_concat_style"
+allow = "style"
+
+[[lintapp]]
+rule = "syntax_warnings"
+allow = "Julia accepts code"
+
+[[lintapp]]
+rule = "environment_errors"
+allow = "environment hygiene, outside source"
+
+[[lintapp]]
+rule = "testitem_errors"
+allow = "test framework, outside scope"
+
+[[lintapp]]
+rule = "toml_syntax_errors"
+allow = "Corset fails loud on bad TOML"
+
+[[lintapp]]
+rule = "config_errors"
+allow = "LintApp config file"
+
+[[lintapp]]
+rule = "shadowed_config"
+allow = "LintApp config file"
+
+# Disagreements
+
+[[disagree]]
+tool = "relint"
+file = "test/ui/unreachable/negative.jl"
+rule = "unreachable branch"
+code = "if pop!(queue) == 1"
+reason = "`pop!` changes queue, so second condition reads other element"
+
+[[disagree]]
+tool = "relint"
+file = "test/ui/unreachable/negative.jl"
+rule = "unreachable branch"
+code = "if state.ready"
+reason = "`refresh!` in branch condition between can change `state.ready`"
+
+[[disagree]]
+tool = "lintapp"
+file = "test/ui/unreachable/negative.jl"
+rule = "duplicate_branch_condition"
+code = "elseif state.ready"
+reason = "`refresh!` in branch condition between can change `state.ready`"
+
+[[disagree]]
+tool = "lintapp"
+file = "test/ui/nan-compare/negative.jl"
+rule = "nan_comparison"
+code = "quoted = :(x == NaN)"
+reason = "quoted code is data until evaluated; Corset skips quotes outside interpolation"
+
+[[disagree]]
+tool = "lintapp"
+file = "test/ui/pinned-task/negative.jl"
+rule = "async_task"
+code = "Mine.@async work()"
+reason = "`Mine.@async` is other module's macro; Corset checks Base `@async` only"
