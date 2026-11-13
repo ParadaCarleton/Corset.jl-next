@@ -43,7 +43,7 @@ uuid = "5218b696-f38b-4ac9-8b61-a12ec717816d"
 version = "0.17.8"
 
 [[deps.Corset]]
-deps = ["ArgParse", "Argus", "Configurations", "EnumX", "JSON", "JuliaSyntax", "ReadOnlyArrays", "SHA", "TOML"]
+deps = ["ArgParse", "Argus", "Configurations", "EnumX", "IntervalTrees", "JSON", "JuliaSyntax", "ReadOnlyArrays", "SHA", "TOML"]
 path = ".."
 uuid = "09bf9df1-bea6-4267-acd1-e930da7492cc"
 version = "0.5.0-DEV"
@@ -90,6 +90,12 @@ version = "0.2.0"
 deps = ["Markdown"]
 uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 version = "1.11.0"
+
+[[deps.IntervalTrees]]
+git-tree-sha1 = "dc3b97bb5c9cb7c437f74027309f2c2f09a82aaf"
+registries = "General"
+uuid = "524e6230-43b7-53ae-be76-1e9e4d08d11b"
+version = "1.1.0"
 
 [[deps.JSON]]
 deps = ["Dates", "Logging", "Parsers", "PrecompileTools", "StructUtils", "UUIDs", "Unicode"]

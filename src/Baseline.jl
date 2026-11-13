@@ -6,9 +6,10 @@ Edits elsewhere keep matches. Entry that matches no finding is stale and fails r
 """
 module Baseline
 
+using IntervalTrees: IntervalTree, IntervalValue
 using SHA: sha1
 using TOML: TOML
-using ..Facts: Facts, SyntaxFile, Finding
+using ..Facts: Facts, SyntaxFile, FactSet, Finding, SyntaxNode
 using ..Config: ConfigError
 
 """Baseline file name at project root."""
@@ -34,18 +35,35 @@ function entry(table::Dict{String, Any})::Pair{Key, Int}
     return Key(table["rule"]::String, table["file"]::String, table["definition"]::String, table["snippet"]::String) => table["count"]::Int
 end
 
-"""Name of innermost definition enclosing byte `byte` of `file`; empty string at top level."""
-function definition_name(file::SyntaxFile, byte::Int)::String
-    enclosing = [node for kind in DEFINITIONS for node in Facts.forms(file, kind) if byte in Facts.trimmed_bytes(file.text, node)]
-    isempty(enclosing) && return ""
-    return Facts.source(file, Facts.definition_name(argmin(node -> length(Facts.trimmed_bytes(file.text, node)), enclosing)))
+"""Named definitions of `file` in interval tree over their bytes: lookup cost stays logarithmic in file size."""
+struct Definitions
+    file::SyntaxFile
+    tree::IntervalTree{Int, IntervalValue{Int, SyntaxNode}}
 end
 
-"""Key of `finding` in `file`, with path relative to `root`."""
-function key(file::SyntaxFile, root::String, finding::Finding)::Key
-    span = finding.primary.span
+function Definitions(file::SyntaxFile)::Definitions
+    intervals = [IntervalValue(extrema(Facts.trimmed_bytes(file.text, node))..., node) for kind in DEFINITIONS for node in Facts.forms(file, kind)]
+    return Definitions(file, IntervalTree{Int, IntervalValue{Int, SyntaxNode}}(sort!(intervals)))
+end
+
+"""Name of innermost definition enclosing byte `byte`; empty string at top level."""
+function definition_name(definitions::Definitions, byte::Int)::String
+    enclosing = collect(intersect(definitions.tree, (byte, byte)))
+    isempty(enclosing) && return ""
+    return Facts.source(definitions.file, Facts.definition_name(argmin(interval -> last(interval) - first(interval), enclosing).value))
+end
+
+"""Key of `finding` in file of `definitions`, with path relative to `root`."""
+function key(definitions::Definitions, root::String, finding::Finding)::Key
+    span, file = finding.primary.span, definitions.file
     snippet = join(split(String(codeunits(file.text)[(span.first_byte):(span.last_byte)])), " ")
-    return Key(string(finding.rule), relpath(file.path, root), definition_name(file, span.first_byte), bytes2hex(sha1(snippet))[1:16])
+    return Key(string(finding.rule), relpath(file.path, root), definition_name(definitions, span.first_byte), bytes2hex(sha1(snippet))[1:16])
+end
+
+"""Key of each of `findings` in `facts`, with paths relative to `root`."""
+function finding_keys(facts::FactSet, root::String, findings::Vector{Finding})::Vector{Key}
+    definitions = Dict(file.path => Definitions(file) for file in facts.files)
+    return [key(definitions[finding.primary.span.file], root, finding) for finding in findings]
 end
 
 """Count per key in baseline file at `root`; empty when file is missing. Malformed file is config error."""

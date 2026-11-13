@@ -33,8 +33,9 @@ end
         @test seconds * 10_000 / lines < 2.0
     end
     @testset "cost linear in function size" begin
-        # Every UI case inside one function, 2 and 32 copies: linear cost grows 16×, quadratic 256×.
-        cases = join((read(case, String) for rule in readdir(joinpath(@__DIR__, "ui"); join = true) for case in readdir(rule; join = true) if endswith(case, ".jl")), "\n")
+        # Every UI and opt-out case inside one function, 2 and 32 copies: linear cost grows 16×, quadratic 256×.
+        ui = [case for rule in readdir(joinpath(@__DIR__, "ui"); join = true) for case in readdir(rule; join = true) if endswith(case, ".jl")]
+        cases = join((read(case, String) for case in [ui; joinpath(@__DIR__, "optout", "cases.jl")]), "\n")
         mktempdir(@__DIR__) do directory
             small, large = map((2, 32)) do copies
                 path = joinpath(directory, "copies_$copies.jl")
@@ -46,6 +47,11 @@ end
             facts = Dict(path => FactSet([Corset.Syntax.parse_file(path, read(path, String))], [path]) for path in (small, large))
             measured = Dict(string(entry.name) => ratios(path -> entry.run(facts[path])) for entry in Corset.Rules.REGISTRY)
             measured["parse"] = ratios(path -> Corset.Syntax.parse_file(path, read(path, String)))
+            # Measure stages after rules alone: inside `analyze`, linear rule cost hides their growth.
+            findings = Dict(path => Corset.Engine.run_rules(facts[path]) for path in (small, large))
+            known = Set(entry.name for entry in Corset.Rules.REGISTRY)
+            measured["opt-outs"] = ratios(path -> Corset.OptOuts.apply(facts[path], findings[path], known))
+            measured["baseline"] = ratios(path -> Corset.Baseline.finding_keys(facts[path], directory, findings[path]))
             measured["analyze"] = ratios(path -> Corset.Engine.analyze(path, Corset.Config.Flags()))
             @test isempty(filter(entry -> first(last(entry)) >= 80 || last(last(entry)) >= 32, measured))
         end
