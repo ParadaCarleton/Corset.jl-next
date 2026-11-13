@@ -51,7 +51,7 @@ function as_docstring(text::String, lines::Vector{UnitRange{Int}}, indent::Strin
 end
 
 """Findings for definitions under comment block where docstring attaches, and modules without docstring."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
         for definition in [forms(file, "function"); forms(file, "struct")]
@@ -87,6 +87,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.readability, [74, 80], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.readability, [74, 80], Stage.syntax, findings)
 
 end

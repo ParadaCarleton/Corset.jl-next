@@ -36,7 +36,7 @@ function signed_after_space(file::SyntaxFile, node::SyntaxNode)::Bool
 end
 
 """Findings for one-row concatenation with signed element after space; matrix may be intended, so `possible`."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, row in forms(file, "hcat")
         elements = children_of(row)
@@ -57,6 +57,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [1], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [1], Stage.syntax, findings)
 
 end

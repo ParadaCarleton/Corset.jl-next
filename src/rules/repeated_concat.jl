@@ -38,7 +38,7 @@ const CONCATS = Set(["vcat", "hcat", "cat", "string"])
 in_loop(node::SyntaxNode)::Bool = any(ancestor -> kind_name(ancestor) in ("for", "while"), ancestors(node))
 
 """Findings for `a = vcat(a, …)` and `a = [a; …]` inside loops: each step copies whole `a`."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, assignment in forms(file, "=")
         target, value = children_of(assignment)[1], children_of(assignment)[end]
@@ -59,6 +59,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.performance, [44], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.performance, [44], Stage.syntax, findings)
 
 end

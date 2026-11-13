@@ -38,7 +38,7 @@ function parenthesized(file::SyntaxFile, node::SyntaxNode)::Bool
 end
 
 """Findings for division or power whose right operand is unparenthesized juxtaposed product."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, match in matches(file, PATTERN)
         right = binding(match, :right)
@@ -57,6 +57,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [3], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [3], Stage.syntax, findings)
 
 end

@@ -46,7 +46,7 @@ function parent_module(node::SyntaxNode)::Union{Nothing, SyntaxNode}
 end
 
 """Findings for modules whose direct parent module has same name."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, inner in forms(file, "module")
         outer, name = parent_module(inner), module_name(inner)
@@ -64,6 +64,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.readability, [102], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.readability, [102], Stage.syntax, findings)
 
 end

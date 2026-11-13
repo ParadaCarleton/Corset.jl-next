@@ -46,7 +46,7 @@ function narrows(block::SyntaxNode, variable::Union{Nothing, String})::Bool
 end
 
 """Findings for catch clauses that swallow every error, `InterruptException` included."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, clause in forms(file, "catch")
         parts = children_of(clause)
@@ -63,6 +63,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [59], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [59], Stage.syntax, findings)
 
 end

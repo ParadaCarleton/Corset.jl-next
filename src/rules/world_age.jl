@@ -63,7 +63,7 @@ function latest_fix(file::SyntaxFile, node::SyntaxNode)::Fix
 end
 
 """Findings for calls in same function body after `eval` defines called function."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, definition in forms(file, "function")
         body = children_of(definition)[end]
@@ -89,6 +89,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [63], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [63], Stage.syntax, findings)
 
 end

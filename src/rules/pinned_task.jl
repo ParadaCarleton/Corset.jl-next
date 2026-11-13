@@ -87,7 +87,7 @@ task_finding(file::SyntaxFile, node::SyntaxNode, name::String)::Finding = findin
 )
 
 """Findings for `@async`, sticky task construction, and `@threads :static`."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
         file.role == Role.package || continue
@@ -124,6 +124,6 @@ function run(facts::FactSet)::Vector{Finding}
     return sort!(found; by = finding -> finding.primary.span.first_byte)
 end
 
-const ENTRY = RuleEntry(NAME, Group.composability, [99], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.composability, [99], Stage.syntax, findings)
 
 end

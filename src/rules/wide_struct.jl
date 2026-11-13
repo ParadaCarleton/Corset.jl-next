@@ -37,7 +37,7 @@ const NAME = Symbol("wide-struct")
 const MAX_FIELDS = 15
 
 """Findings for structs with more than `MAX_FIELDS` fields."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, definition in forms(file, "struct")
         fields = struct_fields(definition)
@@ -54,6 +54,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.readability, [78], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.readability, [78], Stage.syntax, findings)
 
 end

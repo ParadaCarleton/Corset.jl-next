@@ -40,7 +40,7 @@ function threaded(node::SyntaxNode)::Bool
 end
 
 """Findings for indexing by current thread ID: `definite` inside threaded macro, else `possible`."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     return [
         finding(
             NAME, file, match.node; kind = :threadid_index,
@@ -53,6 +53,6 @@ function run(facts::FactSet)::Vector{Finding}
     ]
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [68], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [68], Stage.syntax, findings)
 
 end

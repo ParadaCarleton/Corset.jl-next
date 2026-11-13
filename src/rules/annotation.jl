@@ -52,7 +52,7 @@ end
 is_local(definition::SyntaxNode)::Bool = any(ancestor -> kind_name(ancestor) in ("function", "->", "do"), ancestors(definition))
 
 """Findings for named methods with untyped arguments or no result type."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, definition in forms(file, "function")
         parts = signature(definition)
@@ -74,6 +74,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.readability, [71], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.readability, [71], Stage.syntax, findings)
 
 end

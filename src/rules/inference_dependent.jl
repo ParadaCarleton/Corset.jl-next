@@ -34,7 +34,7 @@ const PATTERN = IndexedPattern(
 )
 
 """Findings for calls that expose inference results as values."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     return [
         finding(
             NAME, file, match.node; kind = :inference_query, confidence = Confidence.definite,
@@ -46,6 +46,6 @@ function run(facts::FactSet)::Vector{Finding}
     ]
 end
 
-const ENTRY = RuleEntry(NAME, Group.composability, [26], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.composability, [26], Stage.syntax, findings)
 
 end

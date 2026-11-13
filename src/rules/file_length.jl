@@ -36,7 +36,7 @@ function line_start(text::String, line::Int)::Union{Nothing, Int}
 end
 
 """Findings for files longer than `MAX_LINES` lines, placed at first line past limit."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
         start = line_start(file.text, MAX_LINES + 1)
@@ -54,6 +54,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.readability, [77], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.readability, [77], Stage.syntax, findings)
 
 end

@@ -29,7 +29,7 @@ const NAME = Symbol("untyped-empty")
 const PATTERN = IndexedPattern(@pattern ~or([], Dict(), Set(), IdDict(), Vector(), Vector(undef, {_})))
 
 """Findings for empty containers with `Any` element type."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     return [
         finding(
             NAME, file, match.node; kind = :any_element, confidence = Confidence.definite,
@@ -40,6 +40,6 @@ function run(facts::FactSet)::Vector{Finding}
     ]
 end
 
-const ENTRY = RuleEntry(NAME, Group.performance, [21], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.performance, [21], Stage.syntax, findings)
 
 end

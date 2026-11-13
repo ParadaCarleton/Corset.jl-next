@@ -34,7 +34,7 @@ function entry_label(file::SyntaxFile)::Union{Nothing, Label}
 end
 
 """Findings for second and later `include` of same file across run; entry files count as loaded once."""
-function run(facts::FactSet)::Vector{Finding}
+function findings(facts::FactSet)::Vector{Finding}
     first_seen = Dict{String, Label}()
     for file in facts.files
         label = file.path in facts.entries ? entry_label(file) : nothing
@@ -60,6 +60,6 @@ function run(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [64], Stage.syntax, run)
+const ENTRY = RuleEntry(NAME, Group.correctness, [64], Stage.syntax, findings)
 
 end
