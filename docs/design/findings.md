@@ -48,6 +48,10 @@ Modeled on Rust lint attributes. `# corset: allow <rule>, <rule> -- <reason>`; r
 
 Malformed comment, unknown rule, late `allow-file`, and opt-out that suppresses nothing are errors; they always fail run, like unfulfilled `#[expect]` under `-D warnings`. Opt-outs apply to findings before levels and confidence filter, so config change never orphans opt-out.
 
+### Parse errors
+
+JuliaSyntax parse error is error finding at `deny`, outside rule table, as Ruff reports syntax errors. No level, opt-out or baseline hides it. Rules still run on recovered tree.
+
 ### Config
 
 `[preferences.Corset]` table in target Project.toml; `[Corset]` table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: `kind`, `confidence`, `fix_tier`, `levels` (group or rule name to level). Unknown key, value or name is config error (exit 2). Scripts without Project.toml use defaults and command-line flags.

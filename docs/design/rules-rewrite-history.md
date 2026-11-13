@@ -434,3 +434,18 @@ Perf test (`test/perf.jl`) found six rules with cost quadratic in function size.
 `children_of` copied child vector; `source` scanned parent children for grouping parentheses; `docstring` copied rest of file per definition.
 Fixes: identity keys, read-only children without copy, grouping parentheses found once at parse.
 Garbage collector makes linear code look quadratic: full collections scan live heap. Test times with collector off and checks allocation ratio.
+
+### Reference linter map
+
+Mapped 101 rules: ReLint.jl 50 (commit 6107942), LintApp.jl 51 (JuliaWorkspaces 13.5.0).
+Covered 1, gap 2, later stage 15, dropped 2, no footgun 81. Gaps: `double-include` misses include loop through entry file and `joinpath(@__DIR__, …)` paths.
+Most no-footgun rows are RelationalAI conventions, caution markers (`ccall`, `finalizer`: `banned` entries) or errors Julia reports itself.
+Owner accepted all 13 proposed bug classes. General rule wins where one check covers another as special case:
+- F96 `unreachable` covers repeated branch condition and statement after exit.
+- F97 `unused-literal` covers detached docstring and other literal statements.
+- F103 `unused-binding` covers unused local, argument and `where` parameter.
+- F104 joins F22 in `operator-consistency` (was `eq-without-hash`).
+- F98 `unguarded-release` covers `unlock`, `release` and `close` outside `finally`.
+- F99 `pinned-task` covers `@async`, `Task` and `@threads :static`.
+- F101 `process-state` covers `ENV` writes and `cd`.
+Parse errors become `deny` findings outside rule table, as in Ruff.

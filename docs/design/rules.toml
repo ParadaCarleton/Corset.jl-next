@@ -83,8 +83,9 @@ footguns = [21]
 note = "Fixer adds element type."
 
 [[rule]]
-name = "eq-without-hash"
-footguns = [22]
+name = "operator-consistency"
+footguns = [22, 104]
+note = "Kinds: `==` without `hash`, method on derived operator."
 
 [[rule]]
 name = "shadowed-base"
@@ -368,3 +369,44 @@ footguns = [81]
 name = "banned"
 footguns = [82]
 note = "One config list; each entry names its group."
+
+[[rule]]
+name = "nan-compare"
+footguns = [95]
+
+[[rule]]
+name = "unreachable"
+footguns = [96]
+note = "Kinds: repeated condition, statement after exit."
+
+[[rule]]
+name = "unused-literal"
+footguns = [97]
+note = "Kinds: detached docstring, other literal."
+
+[[rule]]
+name = "unguarded-release"
+footguns = [98]
+
+[[rule]]
+name = "pinned-task"
+footguns = [99]
+note = "Kinds: `@async`, `Task`, `:static` schedule."
+
+[[rule]]
+name = "baked-state"
+footguns = [100]
+note = "Reads file role fact: package module or script."
+
+[[rule]]
+name = "process-state"
+footguns = [101]
+
+[[rule]]
+name = "module-inception"
+footguns = [102]
+
+[[rule]]
+name = "unused-binding"
+footguns = [103]
+note = "Kinds: local, argument, `where` parameter."

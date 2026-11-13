@@ -37,6 +37,15 @@ stage = "syntax"
 note = "Errors, or silently binds global `T` if one exists; report both. Upstream rejected precedence change (JuliaLang/julia#21847)."
 
 [[footgun]]
+id = 96
+area = "syntax"
+text = "Code never runs"
+example = "`elseif` repeats earlier condition; statement after `return`"
+group = "correctness"
+stage = "syntax"
+note = "Kinds: repeated side-effect-free branch condition (Clippy `ifs_same_cond`); statement after `return`, `break`, `continue`, `throw` (rustc `unreachable_code`). Branch dead by type belongs to inference."
+
+[[footgun]]
 id = 5
 area = "numbers"
 text = "Literal or constant changes input type"
@@ -120,6 +129,15 @@ example = "`f(x)::Float64 = x` turns `Float32` into `Float64`"
 group = "correctness"
 stage = "inference"
 note = "Report when inferred result needs conversion; annotation then acts as type check."
+
+[[footgun]]
+id = 95
+area = "numbers"
+text = "Comparison with `NaN` has fixed result"
+example = "`x == NaN` is always false"
+group = "correctness"
+stage = "syntax"
+note = "Every order and equality operator, dotted forms included. rustc `invalid_nan_comparisons`. Fix: `isnan(x)`."
 
 [[footgun]]
 id = 14
@@ -276,6 +294,15 @@ stage = "package"
 note = "`collect` and friends take slow, vague paths."
 
 [[footgun]]
+id = 104
+area = "types"
+text = "Method on derived operator"
+example = "`Base.:!=(a::T, b::T)` disagrees with `==`"
+group = "correctness"
+stage = "package"
+note = "Base derives `!=` from `==`, `>` from `<`, `>=` from `<=`. Clippy `partialeq_ne_impl`."
+
+[[footgun]]
 id = 27
 area = "compile"
 text = "Call resolved at run time"
@@ -307,6 +334,15 @@ example = "one method, 500 closure types"
 group = "performance"
 stage = "package"
 note = "Predict from source: `package` stage finds methods that specialize on argument; `syntax` stage counts distinct closures or types passed at package call sites."
+
+[[footgun]]
+id = 100
+area = "compile"
+text = "Precompile bakes run-time value into global"
+example = "`const N = Threads.nthreads()`"
+group = "correctness"
+stage = "syntax"
+note = "Package module top level outside `__init__`: thread count, `ENV`, paths (`homedir`, `pwd`, `tempdir`), time, `rand`, host name, process id, pointers (`dlopen`, `cglobal`). Pure builders stay legal. Scripts never precompile."
 
 [[footgun]]
 id = 31
@@ -627,6 +663,15 @@ group = "correctness"
 stage = "syntax"
 
 [[footgun]]
+id = 103
+area = "scope"
+text = "Binding never read"
+example = "local, argument or `where` parameter never used"
+group = "readability"
+stage = "scope"
+note = "rustc `unused_variables`; often marks typo. Opt out: name `_`, or argument type without name (`::T`) for dispatch-only argument."
+
+[[footgun]]
 id = 65
 area = "modules"
 text = "Name reached through bare `using`"
@@ -660,6 +705,15 @@ stage = "package"
 note = "Reads Project.toml; no load needed. Untested extension also cannot be analyzed."
 
 [[footgun]]
+id = 102
+area = "modules"
+text = "Module named like parent module"
+example = "`module Shapes … module Shapes`"
+group = "readability"
+stage = "syntax"
+note = "Clippy `module_inception`."
+
+[[footgun]]
 id = 68
 area = "concurrency"
 text = "Buffer indexed by `threadid()`"
@@ -682,6 +736,33 @@ text = "Task result never waited; errors vanish"
 example = "`@spawn work()`"
 group = "correctness"
 stage = "syntax"
+
+[[footgun]]
+id = 98
+area = "concurrency"
+text = "Release skipped when code between acquire and release throws"
+example = "`lock(l); work(); unlock(l)`"
+group = "correctness"
+stage = "syntax"
+note = "Pairs: `lock`/`unlock`, `acquire`/`release`, `open`/`close`. Held lock deadlocks next caller. Fix: do-block form, or `try`/`finally`."
+
+[[footgun]]
+id = 99
+area = "concurrency"
+text = "Task pinned to one thread"
+example = "`@async work()`, `@threads :static for …`, `Task(f)`"
+group = "composability"
+stage = "syntax"
+note = "`@async` and `Task` pin task and parent; Base docs favor `Threads.@spawn`. `:static` throws when nested or run from task. `t.sticky = false` opts out."
+
+[[footgun]]
+id = 101
+area = "concurrency"
+text = "Package writes process-wide state"
+example = "`ENV[\"KEY\"] = value`, `cd(dir)`"
+group = "composability"
+stage = "syntax"
+note = "Writes race with threaded callers; Base docs call `ENV` writes thread-unsafe, Rust 2024 made `set_var` unsafe. Fix: pass setting to `Cmd` (`addenv`, `dir`)."
 
 [[footgun]]
 id = 71
@@ -769,3 +850,12 @@ text = "Project-banned name or pattern"
 example = "config list"
 group = "readability"
 stage = "syntax"
+
+[[footgun]]
+id = 97
+area = "readability"
+text = "Literal statement has no effect"
+example = "blank line between docstring and function: docs lost"
+group = "readability"
+stage = "syntax"
+note = "Kinds: detached docstring (blank line or comment ends attachment; rustc `unused_doc_comments`), other literal. Last statement of block is its value: exempt. Call without effect: F54."
