@@ -781,7 +781,8 @@ end
 <ul>
 <li>UI tests, as in Clippy: <code>test/ui/&lt;rule&gt;/&lt;case&gt;.jl</code> with snapshot of full rendered output and fixed source. Bless command updates snapshots; CI fails on diff.</li>
 <li>Each footgun: positive case, negative case, fix case.</li>
-<li>Property tests (Supposition.jl): fix creates no new finding; fix is idempotent. <code>safe</code> fix: fixture behaves same before and after (differential run).</li>
+<li>Property tests (Supposition.jl) on programs built from UI case statements, with expressions spliced into value positions so fixes nest. Fixed code parses and lowers when original did. On code Julia accepts, fix removes its finding and adds none; <code>duplicate-statement</code> compares neighbors and is exempt. Fix runs converge. Equivalent <code>safe</code> fix keeps parsed meaning.</li>
+<li>Differential run: <code>safe</code> fix behaves same before and after on executed fixture. Not built yet.</li>
 <li>Reference comparison: JET, fatou, LintApp.jl, ReLint.jl on fixtures, with allowlist.</li>
 <li>100% line coverage; mutation testing on rule code.</li>
 </ul>
@@ -927,7 +928,8 @@ end
 <li>Fixture per footgun: positive, negative, and fix result.</li>
 <li>Any false <code>definite</code> finding blocks rule: it is rule bug. At least 90% of sampled <code>possible</code> findings are real problems.</li>
 <li><code>definite</code> typed finding needs validated span: callee at mapped node matches IR callee; mismatch demotes span to line precision.</li>
-<li>Property tests (Supposition.jl): fix creates no new finding; fix is idempotent. <code>safe</code> fix: fixture behaves same before and after (differential run).</li>
+<li>Property tests (Supposition.jl) on programs built from UI case statements, with expressions spliced into value positions so fixes nest. Fixed code parses and lowers when original did. On code Julia accepts, fix removes its finding and adds none; <code>duplicate-statement</code> compares neighbors and is exempt. Fix runs converge. Equivalent <code>safe</code> fix keeps parsed meaning.</li>
+<li>Differential run: <code>safe</code> fix behaves same before and after on executed fixture. Not built yet.</li>
 <li>Message shows cause span and concrete fix; reviewed on corpus sample.</li>
 <li>Run time stays inside budget in CI perf test.</li>
 </ul>
