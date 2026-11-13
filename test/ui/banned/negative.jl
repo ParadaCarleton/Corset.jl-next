@@ -9,3 +9,6 @@ work(tmp)
 @info "tmp" total
 show(stdout, total)
 call = :ccall
+
+# Anonymous parameter binds no name.
+convert_tmp(::Int) = 1

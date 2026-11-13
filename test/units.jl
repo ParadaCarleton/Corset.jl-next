@@ -82,6 +82,9 @@ end
     heads = Corset.Syntax.parse_file("h.jl", "error(1)\nBase.include(@__MODULE__, \"c.jl\")\nCore.Task(f)\nMine.error(1)\na == b\n", Role.package)
     @test [Facts.call_head(node) for node in Facts.forms(heads, "call")] == ["error", "include", "Task", nothing, "=="]
     @test length(Facts.include_calls(heads)) == 1
+    # Binding sites: destructured names bind; anonymous `::T` binds nothing.
+    bound = Corset.Syntax.parse_file("b.jl", "f(::Int, (a, b), c::Int = 1; d = 2, e...) = 1\ntmp, (other, x...) = pair\nfor (i, item) in pairs end\n(; k, l) = nt\nv[1] = 2\n", Role.package)
+    @test [Facts.identifier_name(site.name) for site in bound.bindings] == ["a", "b", "c", "d", "e", "tmp", "other", "x", "k", "l", "i", "item", "f"]
     # Normalized source: layout run becomes one space; comments drop; string contents and significant spaces stay.
     shapes = Corset.Syntax.parse_file("n.jl", "a = [1 -2]\nb = [1 - 2]\nc = x == \"a  b\" #= c =#  &&  y\n", Role.package)
     @test [Facts.normalized_source(shapes, node) for node in Facts.forms(shapes, "=")] == ["a = [1 -2]", "b = [1 - 2]", "c = x == \"a  b\" && y"]

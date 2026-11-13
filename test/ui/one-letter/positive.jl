@@ -8,3 +8,6 @@ function scale(v, s; f = identity)
 end
 
 n = length(items)
+
+# Destructured names count too.
+q, r = divrem(total, width)

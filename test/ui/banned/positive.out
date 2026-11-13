@@ -80,3 +80,23 @@ warning[banned]: `tmp_index` matches project ban `tmp.*`
    = fix: rewrite as ban reason asks   [manual]
    = docs: corset explain banned
 
+warning[banned]: `tmp_first` matches project ban `tmp.*`
+  --> positive.jl:16:1
+   |
+16 | tmp_first, rest = pair
+   | ^^^^^^^^^ banned by project
+   |
+   = why: name what value holds
+   = fix: rewrite as ban reason asks   [manual]
+   = docs: corset explain banned
+
+warning[banned]: `tmp_key` matches project ban `tmp.*`
+  --> positive.jl:17:6
+   |
+17 | for (tmp_key, value) in pairs
+   |      ^^^^^^^ banned by project
+   |
+   = why: name what value holds
+   = fix: rewrite as ban reason asks   [manual]
+   = docs: corset explain banned
+

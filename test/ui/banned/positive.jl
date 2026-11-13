@@ -12,3 +12,8 @@ end
 for tmp_index in 1:3
     work(tmp_index)
 end
+# Destructured names bind too.
+tmp_first, rest = pair
+for (tmp_key, value) in pairs
+    work(tmp_key, value)
+end
