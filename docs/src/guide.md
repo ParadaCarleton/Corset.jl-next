@@ -1,130 +1,150 @@
 # Guide
 
-## Where to run the rules
+## Project kind
 
-Run the rules with [`corset check`](cli.md) in a CI job of their own. The CLI page's
-[recipe](cli.md#Corset-as-a-test-dependency) works when Corset is only a test dependency.
+The project kind tells who uses the code. The kind picks the groups Corset reports and the highest fix tier `corset fix` applies.
 
-Don't run the rules inside `Pkg.test`:
+| Kind | Groups | Fix tier |
+| --- | --- | --- |
+| `library` | `correctness`, `performance`, `composability`, `readability` | `likely` |
+| `application` | `correctness`, `performance`, `readability` | `breaking` |
+| `script` | `correctness`, `readability` | `breaking` |
 
-- **Coverage.** CI usually runs `Pkg.test` with `--code-coverage`, which blocks inlining and constant
-  folding. The typed rules (`unstable-variable`, `runtime-dispatch`, `unstable-return` and the others that
-  read `entry_frames`) would then read code users never run. `entry_frames` warns once when it runs
-  under coverage.
-- **Shared state.** The rules would see whatever the earlier test files loaded, defined or compiled,
-  so their results could depend on which tests ran and in what order.
-- **Mixed failures.** A rule's failure would show up as a failing test beside the package's real ones.
+Findings in the `correctness` group have level `deny`. Findings in the other groups of the kind have level `warn`.
+Groups outside the kind have level `allow`.
 
-`corset check` loads the package in a process of its own, without coverage.
+Corset finds the kind as follows:
 
-## The pieces
+- A file outside a project is a `script`.
+- A project without a `name` in `Project.toml` is an `application`.
+- A package must set `kind` in its configuration. Without it, Corset stops with a configuration error.
 
-A **rule** is a function from code to a vector of [`Site`](@ref)s. A site has a `key` (the name of
-the offender, such as `"src/Demo.jl total"`), a file, a line and a `detail` (what the offender is, such as
-``local `x`::Any``; `""` when the key says it all). The log of a failing rule prints each key's details.
+## Levels
 
-A **[`Repository`](@ref)** is the tree the rules read, plus the settings that relax them.
+Each finding has one of three levels, as in Clippy:
 
-[`offenders!`](@ref)`(repo, "rule-name", sites)` holds the sites to the repository's allowances,
-logs the ones it doesn't allow and returns their keys. The rule name names the rule's table in the
-baseline file and the rule in opt-out comments.
+- `deny`: the finding fails the run.
+- `warn`: the finding shows, but the run passes. `-D warnings` makes warnings fail the run.
+- `allow`: Corset does not report the finding.
 
-There are two kinds of rules.
+Set a level for a group or for one rule. A rule level overrides its group level.
+The command line overrides the configuration.
 
-- **Module rules** read a loaded module: `hidden_inputs(repo, MyPackage)`, `impure_anon_funs(repo, MyPackage)`,
-  `unstable_variables(repo, entry_frames(SIGNATURES, MyPackage))`.
-- **Source rules** read a file's syntax. Parse each file once with `Corset.Source`, then hand it to
-  each rule: `nothing_returns(Corset.Source(REPO, file))`. `repository_sources(repo, ("src",))`
-  lists a repository's files.
+## Configuration
 
-```julia
-files = repository_sources(REPO, ("src",))
-offenders!(REPO, "nothing-return", [site for file in files for site in nothing_returns(Corset.Source(REPO, file))])
-```
-
-## Adopting Corset on an existing package
-
-Turning on a rule in a mature package usually reports hundreds of offenders. A **baseline** makes
-that adoptable. It allows today's offenders and fails on new ones. Name the file in `Project.toml`:
+Write the configuration in `Project.toml`:
 
 ```toml
 [preferences.Corset]
-baseline = "code_baseline.toml"
+kind = "library"
+confidence = "definite"
+fix_tier = "likely"
+
+[preferences.Corset.levels]
+readability = "allow"
+nan-compare = "warn"
+
+[[preferences.Corset.banned]]
+pattern = "@show({_}...)"
+reason = "debug print; use `@debug`"
+
+[[preferences.Corset.banned]]
+name = "tmp.*"
+reason = "name what the value holds"
 ```
 
-Run `corset baseline` to seed it with each rule's current offenders:
+| Key | Values | Default |
+| --- | --- | --- |
+| `kind` | `library`, `application`, `script` | see [Project kind](#Project-kind) |
+| `confidence` | `definite`, `possible` | `definite` |
+| `fix_tier` | `safe`, `likely`, `breaking` | from the kind |
+| `levels` | group or rule name to `allow`, `warn`, `deny` | from the kind |
+| `banned` | list of tables with `pattern` or `name`, and `reason` | no bans |
 
-```toml
-[hidden-input]
-"COUNTER" = 1
+A `[Corset]` table in `LocalPreferences.toml` overrides the same keys for one machine.
+`levels` merge name by name. A `banned` list replaces the full list.
 
-[unstable-variable]
-"src/Demo.jl total" = 1
-```
+Each `banned` entry has exactly one of two keys:
 
-Each entry is a key and an allowance. An integer allows that many sites under the key. A string,
-such as `"kept: hot loop"`, is a note that allows any number.
+- `pattern`: an [Argus](https://github.com/iuliadmtru/Argus.jl) syntax pattern.
+- `name`: a regular expression that must match the full bound name.
 
-After that:
+The [`banned`](rules.md#banned) rule reports each match with its reason.
 
-- A **new** offender fails `corset check`, because its key has no entry or the entry's count is exceeded.
-- A **fixed** offender lowers the file at the next `corset baseline`. An entry with
-  fewer sites than it allows falls to the new count, or is deleted at zero, and the file is rewritten.
-  Commit the change. The allowance can only shrink. A note stays when its offender has no site left:
-  the run logs it as stale, and you delete it by hand.
+## Opt-out comments
 
-## Exemptions
-
-Settings in `[preferences.Corset]` relax rules for a whole project:
-
-```toml
-[preferences.Corset]
-one_letter_exempt = ["p"]
-skipped_directories = ["vendor"]
-```
-
-`one_letter_exempt` lists variable names the one-letter rule allows besides `_`. A project's own
-convention, such as an argument everywhere named `p`, goes here. `skipped_directories` lists
-directory names that Corset leaves out wherever they sit. Hidden directories are always left out.
-The [CLI page](cli.md#Configuration) lists every setting.
-
-## Opting out one site
-
-A comment opts a site out of a rule by the rule's name:
+An opt-out comment stops findings of the rules it names:
 
 ```julia
-const CACHE = Ref(0)   # lint: hidden-input  memoized across calls on purpose
+@test !(x == NaN) # corset: allow nan-compare -- test checks the IEEE result
+
+# corset: allow broad-catch -- worker logs each error and continues
+try
+    run_job(job)
+catch
+    @error "job failed" job
+end
 ```
 
-| Comment | Opts out |
+- A comment after code covers its line.
+- A comment on its own line covers the next statement: a function, struct, block or expression.
+- `# corset: allow-file <rule> -- <reason>` before the first code covers the file.
+
+Each opt-out needs a reason after `--`. Corset reports these problems, and each one fails the run:
+
+- a malformed comment
+- a missing reason
+- an unknown rule
+- an `allow-file` comment after code
+- an opt-out that stops no finding
+
+## Baseline
+
+A baseline lets you adopt Corset on code that has findings. It records the current findings. Corset counts them as baselined, and they do not fail the run.
+
+```bash
+corset baseline
+```
+
+The command writes `corset-baseline.toml` at the project root. Commit the file.
+New findings fail the run as usual.
+
+A baseline entry has no line number. It records the rule, the file, the enclosing definition and a hash of the code.
+Edits in other parts of the file keep the entry valid.
+An entry that matches no finding is stale and fails the run. Run `corset baseline` again to remove it.
+
+## Fixes
+
+Each fix has a tier:
+
+| Tier | Meaning |
 | --- | --- |
-| `# lint: RULE` | its own line |
-| `# lint: RULE-begin` … `# lint: RULE-end` | the lines between, inclusive |
-| `# lint: RULE-file` | the whole file |
+| `safe` | keeps behavior, or fixes a definite bug inside one method |
+| `likely` | can change what callers see, such as a result type |
+| `breaking` | changes the public API |
+| `manual` | needs a human choice; Corset shows the fix and never applies it |
 
-Write the reason after the rule name. A `-begin` with no `-end` runs to the end of the file.
-`offenders!` logs how many sites each rule's opt-outs removed.
+`corset fix` applies each fix up to the fix tier, then reports the findings that remain.
+When two fixes change the same code, Corset applies the first. Run `corset fix` again to apply the next.
 
-## JET
+## Confidence
 
-[`@call_sites`](@ref) and [`@opt_sites`](@ref) turn `JET.@report_call` and `JET.@report_opt` reports
-into sites. Each report becomes one site keyed by scope, function and report kind.
+A `definite` finding is a problem for each input. A `possible` finding depends on facts that the code does not settle.
+Corset reports `definite` findings only. Set `confidence = "possible"` to see both.
 
-```julia
-sites = Site[]
-@call_sites "parse" sites target_modules = (MyPackage,) MyPackage.parse("1 + 2")
-offenders!(REPO, "jet", sites)
+## Coverage line
+
+The last line of the text report counts the files Corset analyzed.
+It also counts each place that Corset could not analyze, by cause:
+
+```text
+coverage: analyzed 12 files; skipped 1 (include with computed path)
+  - src/Plugins.jl:4:1: include with computed path
 ```
 
-## Float32 code paths
+A skipped place is a blind spot. Corset can miss findings there.
 
-A wrapper number type catches Float64 only when it is promoted with a wrapped number. A dependency
-that computes at Float64 internally and narrows before returning stays invisible to it.
-[`float64_ops`](@ref) reads the optimized IR of one call and counts Float64 operations:
+## Parse errors
 
-```julia
-@test float64_ops(my_kernel, (Float32, Vector{Float32})) == 0
-```
-
-Keep a positive control, a function that does use Float64, so a change to the IR filter cannot
-disarm the check.
+Corset reports code that JuliaSyntax cannot parse as a `parse-error` finding. Rules still run on the rest of the file.
+No level, opt-out or baseline hides a parse error.

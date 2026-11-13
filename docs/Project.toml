@@ -1,9 +1,9 @@
 [deps]
-CorsetLegacy = "2f4ee51c-2651-4747-8309-64f55c12e75f"
+Corset = "09bf9df1-bea6-4267-acd1-e930da7492cc"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 
 [sources]
-CorsetLegacy = {path = "../lib/CorsetLegacy"}
+Corset = {path = ".."}
 
 [compat]
 Documenter = "1"

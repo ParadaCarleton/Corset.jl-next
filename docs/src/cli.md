@@ -1,125 +1,64 @@
-# Command-Line Interface
-
-`corset` is the command-line tool for Corset.jl. It runs code-quality rules over a project's
-source and loaded package, judges findings against a baseline, prints formatted output, and
-optionally fixes or previews automated code rewrites.
-
-## Installation
-
-Install `corset` using Julia's declarative application manager (Julia 1.13):
-
-```julia
-pkg> app add Corset
-```
-
-You can also run it via `julia -m Corset`:
+# CLI
 
 ```bash
-julia --project -m Corset check
+corset <command> [path] [options]
 ```
 
-### Corset as a test dependency
-
-A package that lists Corset only under `[extras]` and `[targets] test` can't load it from its own
-environment, so `julia --project -m Corset` fails with "Package Corset not found". Activate the test
-target's environment with [TestEnv.jl](https://github.com/JuliaTesting/TestEnv.jl) first:
-
-```bash
-julia -e 'using Pkg; Pkg.add("TestEnv")'
-julia --project=. -e 'using TestEnv; TestEnv.activate(); using Corset; exit(Corset.main(ARGS))' -- check .
-```
-
-`corset check` then relaunches in the package's own project and keeps the test environment on the load
-path for Corset and its dependencies. Corset's own CI runs this command in its `corset` job, so the job
-can be copied into a downstream package as is.
+`path` is a file or a directory. The default is `.`. Corset finds the project at or above `path`.
 
 ## Commands
 
-### `corset check`
+| Command | Action |
+| --- | --- |
+| `check` | Report findings. |
+| `fix` | Apply fixes up to the fix tier, then report the findings that remain. |
+| `baseline` | Write the current findings to `corset-baseline.toml`. |
+| `explain <rule>` | Print the documentation of a rule. |
 
-Run the configured rules over a project.
+`explain` also knows the checks that are always on: `opt-out`, `parse-error` and `baseline`.
 
-```bash
-corset check [path] [options]
-```
+## Options
 
-`path` defaults to `.` (the current directory) and finds the project root at or above that path.
+`check`, `fix` and `baseline` take these options:
 
-#### Options
+| Option | Values | Default |
+| --- | --- | --- |
+| `--format` | `text`, `json`, `sarif` | `text` |
+| `--confidence` | `definite`, `possible` | from the configuration |
 
-- `--format <format>`: Output format (`human`, `concise`, or `json`). Default is `human`.
-- `--fix`: Rewrite files in place for rules that provide an automated fixer (`where-return`, `misplaced-import`, `quadratic-vcat`, `abstract-float`, `concrete-arg`, `constant-array`, `unwritten-undef`, `annotation` and `concrete-return`). The `annotation` and `concrete-return` fixers write only result types that hold for every argument the signature admits, and no argument annotation.
-- `--unsafe-fixes`: Imply `--fix` and also run the fixes that can change behavior, inference or code outside the checked directories: argument annotations from the observed calls, partial annotations, joined types across specializations, `Union` results, replacing a declared result that converts the value, and `abstract-field` (rewrites a struct with abstract-typed fields as a `@concrete struct`, which changes its type and constructors).
-- `--diff`: Print a unified diff of the changes `--fix` (or `--unsafe-fixes`) would make without modifying any files on disk. Exits with code `1` if changes are detected, `0` if clean. It loads the package for the typed fixers, as `--fix` does (`--no-load` previews the others). It rejects `--fix` and the flags it would ignore: `--format`, `--deny-warnings` and `--candidate-limit`.
-- `--pedantic`: Enable rules in the `:pedantic` group (house style and noisy heuristics) in addition to the `:default` rules (likely bugs, performance traps, and patterns Rust rejects without an explicit marker). The [rules page](rules.md#Groups) lists both groups.
-- `--deny-warnings`: Exit nonzero on warnings in addition to deny-level findings.
-- `--no-load`: Skip loading the package module into Julia; runs only file and tree syntax rules. It rejects `--entries`, which only the typed rules read.
-- `--candidate-limit <count>`: The most candidate methods one runtime-dispatch site lists; `0` lists none. Overrides `candidate_limit`.
-- `--entries <sources>`: Where the typed rules (`unstable-variable`, `bang`, `runtime-dispatch`, `unmarked-mutation`, `unstable-return`, `float-widening`) get their entry signatures, as a comma-separated list. `workload` (the default) takes the specializations the package's precompile workload compiled and the methods whose declared signature is already concrete. `tests` runs the package's tests under `--trace-compile` and keeps the traced signatures of the package's methods; it runs the whole test suite and every process it starts beside the check, so it needs their memory too. `none` skips the typed rules. After the findings, the command prints how many signatures each source gave, how many the walk inferred, and the peak resident memory of the run.
-- `--allow <rule>`: Disable the specified rule (repeatable).
-- `--warn <rule>`: Set the specified rule to warn (repeatable).
-- `--deny <rule>`: Set the specified rule to deny (repeatable).
+`fix` also takes `--tier` with `safe`, `likely` or `breaking`. The default comes from the configuration.
 
-### `corset baseline`
+## Level flags
 
-Seed the baseline file with the rules' current offenders, and lower its entries where a run finds
-fewer sites than they allow.
+Level flags work as in rustc. Each flag takes a group or a rule name:
 
-```bash
-corset baseline [path] [options]
-```
+| Flag | Level |
+| --- | --- |
+| `-A`, `--allow` | `allow` |
+| `-W`, `--warn` | `warn` |
+| `-D`, `--deny` | `deny` |
 
-It writes the file `baseline` names in the [configuration](#Configuration) and fails when that is
-unset. It takes `--pedantic`, `--no-load`, `--candidate-limit`, `--entries`, `--allow`, `--warn` and
-`--deny`, as `corset check` does, and exits `0` once the file is written. Commit the file; `corset check`
-then fails only on offenders the baseline doesn't allow.
-
-### `corset rules`
-
-List all available rules, their group (`default` or `pedantic`), their configured level (`allow`, `warn`, or `deny`), and a one-line summary.
+Corset applies the flags in order, after the configuration. `-D warnings` makes warnings fail the run.
 
 ```bash
-corset rules [path] [--pedantic]
+corset check src -A readability -W nan-compare -D warnings
 ```
 
-## Configuration
+## Output formats
 
-Settings are configured per-project in the `[preferences.Corset]` table of `Project.toml`, and can be overridden locally in `LocalPreferences.toml` under `[Corset]`.
+- `text`: one block per finding, then a summary line and the [coverage line](guide.md#Coverage-line).
+- `json`: Corset JSON, with a `version` key.
+- `sarif`: SARIF 2.1.0, for code-scanning tools.
 
-```toml
-[preferences.Corset]
-directories = ["src"]
-baseline = "code_baseline.toml"
-pedantic = false
-skipped_directories = ["vendor"]
-one_letter_exempt = ["p", "x"]
-candidate_limit = 4
-entry_points = "test/entry_points.jl:signatures"
-
-[preferences.Corset.levels]
-float64 = "deny"
-where-return = "allow"
-```
-
-Keys:
-
-- `directories`: Folders containing Julia source code to check (default: `["src"]`). A listed folder that does not exist is an error; a missing default `src` is skipped.
-- `baseline`: Path to the baseline TOML file, relative to the project root.
-- `pedantic`: Boolean to enable all pedantic rules by default.
-- `skipped_directories`: Directory names omitted wherever they sit.
-- `one_letter_exempt`: Variable names exempt from the `one-letter` rule.
-- `file_line_limit`: The most lines a source file may hold before the `file-length` rule reports it (default: `1500`).
-- `struct_field_limit`: The most fields a struct may hold before the `wide-struct` rule reports it (default: `12`).
-- `strict_captures`: Boolean; when `true`, `impure-anon-fun` also reports a capture of plain immutable data, for a project whose functions read only their arguments (default: `false`).
-- `forbidden_patterns`: An array of tables `{name, pattern, message, unless, skip_files}`. The `forbidden-pattern` rule reports each line of a checked file that matches the regular expression `pattern`, unless it matches `unless` or sits in a file of `skip_files` (paths from the project root). The baseline key is `file name`.
-- `banned_words`, `banned_suffixes`: arrays of lowercase strings. The `banned-name` rule reports a declared name (function, parameter, local, loop or `catch` variable, struct field) with a banned word as a `_`-separated part, or ending in a banned suffix. Both are empty by default. The baseline key is `file function`.
-- `candidate_limit`: The most methods `unmarked-mutation` and `float-widening` list at one runtime-dispatch site (default: `4`; `0` lists none). A site with more methods keeps its conservative report. The budget is a count, so the findings do not depend on timing.
-- `entry_points`: `"file.jl:function"`, a file relative to the project root and a function in it that takes no arguments and returns a vector of signature types (`Type[Tuple{typeof(MyPackage.f), Int}]`). Its signatures replace the `--entries` sources.
-- `levels`: Map of rule names to `:allow`, `:warn`, or `:deny`.
+Columns count code points. Byte offsets are exact.
 
 ## Exit codes
 
-- `0`: Clean run (no deny-level findings, or no findings when `--deny-warnings` is set).
-- `1`: One or more findings failed the run, or `--diff` detected rewrites.
-- `2`: Usage error or invalid configuration (`CorsetLegacy.UsageError`), such as an unknown rule, a bad flag, a configured directory that does not exist or a missing `fatou`; also a failing test run under `--entries tests` or a bad `entry_points` file (`CorsetLegacy.Entries.SourceError`).
-- `3`: Internal error: any other exception, so Corset itself failed. The error and its backtrace go to standard error.
+Exit codes follow Cargo:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | No finding fails the run. |
+| `1` | At least one finding fails the run. |
+| `2` | The command line or the configuration has an error. |
+| `101` | Corset has an internal error. |
