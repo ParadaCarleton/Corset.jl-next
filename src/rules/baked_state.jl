@@ -67,7 +67,7 @@ const TOP_LEVEL = ("toplevel", "module", "block", "if", "elseif", "doc", "const"
 const TRANSPARENT = ("@static", "@eval")
 
 """Whether `node` calls macro outside `TRANSPARENT`."""
-opaque_macro(node::SyntaxNode)::Bool = kind_name(node) == "macrocall" && leaf_value(children_of(node)[1]) ∉ TRANSPARENT
+opaque_macro(node::SyntaxNode)::Bool = kind_name(node) == "macrocall" && base_macro(node) ∉ TRANSPARENT
 
 """Whether `node` keeps code at module top level; `let` does so only for assignment marked `global`."""
 top_level(node::SyntaxNode, global_assignment::Bool)::Bool =

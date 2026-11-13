@@ -58,5 +58,8 @@ end
 @static if Sys.iswindows()
     const IN_STATIC = Threads.nthreads()
 end
+Base.@static if Sys.isunix()
+    const IN_QUALIFIED_STATIC = Threads.nthreads()
+end
 @eval const IN_EVAL = $(Threads.nthreads())
 end

@@ -29,12 +29,8 @@ module PinnedTask
 using ...Facts
 
 const NAME = Symbol("pinned-task")
-"""Finding kind of each macro name as written."""
-const MACROS = Dict(
-    "@async" => :async, "Threads.@async" => :async, "Base.@async" => :async, "Base.Threads.@async" => :async,
-    "@task" => :task, "Base.@task" => :task,
-    "@threads" => :static_schedule, "Threads.@threads" => :static_schedule, "Base.Threads.@threads" => :static_schedule,
-)
+"""Finding kind of each Base macro."""
+const MACROS = Dict("@async" => :async, "@task" => :task, "@threads" => :static_schedule)
 
 """Byte of last `name.sticky = false` in each block, keyed by block identity and name."""
 function unpinned(file::SyntaxFile)::Dict{Tuple{UInt, String}, Int}
@@ -78,7 +74,7 @@ function run(facts::FactSet)::Vector{Finding}
         sticky_off = unpinned(file)
         for node in forms(file, "macrocall")
             name = macro_name(file, node)
-            kind = get(MACROS, name, nothing)
+            kind = get(MACROS, base_macro(node), nothing)
             if kind == :async
                 push!(
                     found, finding(

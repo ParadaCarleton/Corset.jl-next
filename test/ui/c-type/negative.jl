@@ -4,3 +4,4 @@ length_of(s) = @ccall strlen(s::Cstring)::Csize_t
 buffer = Ref{Cint}(0)
 slot::Ptr{Cdouble} = C_NULL
 width::UInt32 = 0
+size_of(s) = Base.@ccall strlen(s::Cstring)::Csize_t

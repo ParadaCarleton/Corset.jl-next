@@ -129,7 +129,7 @@ function run(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files
         foreach(node -> append!(found, repeated_conditions(file, node)), forms(file, "if"))
-        labels = sort!([span(file, call).first_byte for call in forms(file, "macrocall") if leaf_value(children_of(call)[1]) == "@label"])
+        labels = sort!([span(file, call).first_byte for call in forms(file, "macrocall") if base_macro(call) == "@label"])
         for block in [forms(file, "block"); forms(file, "toplevel")]
             dead_code = after_exit(file, block, labels)
             isnothing(dead_code) || push!(found, dead_code)

@@ -33,7 +33,7 @@ using ...Facts
 const NAME = Symbol("world-age")
 """Name defined by function definition inside `node`, which evaluates code; `nothing` when none."""
 function evaluated_definition(node::SyntaxNode)::Union{Nothing, String}
-    is_eval = (kind_name(node) == "macrocall" && leaf_value(children_of(node)[1]) == "@eval") || call_head(node) == "eval"
+    is_eval = base_macro(node) == "@eval" || call_head(node) == "eval"
     is_eval || return nothing
     for inner in descendants(node)
         kind_name(inner) == "function" || continue

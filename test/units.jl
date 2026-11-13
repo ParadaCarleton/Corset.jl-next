@@ -74,6 +74,10 @@ end
     # String macro name has no `@`; at file start, byte before it does not exist.
     macros = Corset.Syntax.parse_file("m.jl", "raw\"x\"\n@async f()\nThreads.@async f()\n@. x + 1\n", Role.package)
     @test [Facts.macro_name(macros, node) for node in Facts.forms(macros, "macrocall")] == ["raw", "@async", "Threads.@async", "@."]
+    # Base macro reads module path as written; macro of other module and other nodes give `nothing`.
+    calls = Corset.Syntax.parse_file("c.jl", "@spawn f()\nBase.Threads.@spawn f()\n@Threads.spawn f()\nMine.@spawn f()\n", Role.package)
+    @test [Facts.base_macro(node) for node in Facts.forms(calls, "macrocall")] == ["@spawn", "@spawn", "@spawn", nothing]
+    @test isnothing(Facts.base_macro(only(Facts.forms(calls, "toplevel"))))
 end
 
 @testset "engine" begin
