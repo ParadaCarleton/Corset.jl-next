@@ -88,6 +88,7 @@ Parsed source file (`syntax` stage facts): lossless tree, comment byte ranges, a
 Index keeps forms (inner nodes) apart from leaves, since quoted operators like `:(=)` are leaves of form kinds.
 Index skips quoted code outside interpolation and macro arguments with `{}` (`Syntax.walk`); tree walks see both.
 `groups` maps node to bytes of grouping parentheses that wrap only it (`Syntax.groups`).
+`parse_errors` label each JuliaSyntax parse error; tree holds recovered code there.
 """
 struct SyntaxFile
     path::String
@@ -97,6 +98,7 @@ struct SyntaxFile
     leaves::Dict{Kind, Vector{SyntaxNode}}
     comments::Vector{UnitRange{Int}}
     groups::IdDict{SyntaxNode, UnitRange{Int}}
+    parse_errors::Vector{Label}
 end
 
 """Facts of one run."""

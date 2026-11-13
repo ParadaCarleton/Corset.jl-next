@@ -75,6 +75,22 @@ end
     @test occursin("opt-outs that suppress nothing", corset("explain", "opt-out")[2])
     @test all(first(corset("explain", string(entry.name))) == 0 for entry in Corset.Rules.REGISTRY)
     @test occursin("Run `corset baseline`", corset("explain", "baseline")[2])
+    @test occursin("no level, opt-out or baseline hides", corset("explain", "parse-error")[2])
+end
+
+@testset "parse errors" begin
+    mktempdir(@__DIR__) do directory
+        write(joinpath(directory, "Project.toml"), "[deps]\n")
+        # Missing token: empty diagnostic range widens to byte there. Error at end of file: last byte.
+        write(joinpath(directory, "a.jl"), "first_value = (1 2)\nsecond_value = 1 +\n")
+        code, out, _ = corset("check", directory, "-A", "readability")
+        @test code == 1 && count("error[parse-error]: code does not parse", out) == 2
+        @test occursin("parse check, always on", out) && !occursin("allow parse-error", out)
+        @test occursin("wrote 0 findings", corset("baseline", directory, "-A", "readability")[3])
+        @test first(corset("check", directory, "-A", "readability")) == 1
+        sarif = JSON.parse(corset("check", directory, "--format", "sarif")[2])
+        @test isnothing(JSONSchema.validate(SARIF_SCHEMA, sarif))
+    end
 end
 
 @testset "fix conflicts" begin
