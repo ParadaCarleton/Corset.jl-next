@@ -44,7 +44,7 @@ function takes_docstring(file::SyntaxFile, definition)::Bool
     kind_name(parent_of(container)) == "module" && return true
     # `begin` block: keyword comes before first statement; body blocks start at first statement.
     start = span(file, container).first_byte
-    return startswith(file.text[start:end], "begin") && start < span(file, children_of(container)[1]).first_byte
+    return startswith(SubString(file.text, start), "begin") && start < span(file, children_of(container)[1]).first_byte
 end
 
 """Byte ranges of comment lines directly above byte `first` in `text`, top first; blank line ends block."""

@@ -36,12 +36,9 @@ end
 
 """Name of innermost definition enclosing byte `byte` of `file`; empty string at top level."""
 function definition_name(file::SyntaxFile, byte::Int)::String
-    enclosing = [
-        node for node in Facts.all_nodes(file)
-            if Facts.kind_name(node) in DEFINITIONS && byte in Facts.trimmed_bytes(file, node)
-    ]
+    enclosing = [node for kind in DEFINITIONS for node in Facts.forms(file, kind) if byte in Facts.trimmed_bytes(file.text, node)]
     isempty(enclosing) && return ""
-    return Facts.source(file, Facts.definition_name(argmin(node -> length(Facts.trimmed_bytes(file, node)), enclosing)))
+    return Facts.source(file, Facts.definition_name(argmin(node -> length(Facts.trimmed_bytes(file.text, node)), enclosing)))
 end
 
 """Key of `finding` in `file`, with path relative to `root`."""

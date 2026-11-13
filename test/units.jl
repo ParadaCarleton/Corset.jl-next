@@ -67,6 +67,10 @@ end
     @test [Facts.source(grouped, node) for node in Facts.children_of(call)] == ["f", "(x)", "y", "(( a + b ))", "(c, d)", "(p)(q)"]
     @test [Facts.source(grouped, node) for node in Facts.children_of(Facts.children_of(call)[6])] == ["(p)", "q"]
     @test Facts.span(grouped, Facts.children_of(call)[2]).first_byte == 4
+    # Parse error leaves empty parentheses: they group nothing.
+    @test isempty(Corset.Syntax.parse_file("e.jl", "x = (end)\n").groups)
+    # Children are shared with tree: mutation must fail loud.
+    @test_throws MethodError push!(Facts.children_of(call), call)
 end
 
 @testset "engine" begin

@@ -6,4 +6,5 @@ using Test: @testset
     include("ui.jl")
     include("properties.jl")
     include("cli.jl")
+    include("perf.jl")
 end

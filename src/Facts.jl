@@ -2,12 +2,14 @@
 Fact types and query API. Only module rule code may import.
 
 Analyses build facts once per run; rules read them through this module and return `Finding`s.
+`SyntaxNode` `==` and `hash` walk whole subtree: compare nodes with `===`, key collections by `objectid`.
 """
 module Facts
 
 using Argus: Argus, @pattern, Pattern, BindingSet, syntax_match
 using EnumX: @enumx
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
+using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
@@ -85,6 +87,7 @@ end
 Parsed source file (`syntax` stage facts): lossless tree, comment byte ranges, and code nodes indexed by kind.
 Index keeps forms (inner nodes) apart from leaves, since quoted operators like `:(=)` are leaves of form kinds.
 Index skips quoted code outside interpolation and macro arguments with `{}` (`Syntax.walk`); tree walks see both.
+`groups` maps node to bytes of grouping parentheses that wrap only it (`Syntax.groups`).
 """
 struct SyntaxFile
     path::String
@@ -93,6 +96,7 @@ struct SyntaxFile
     forms::Dict{Kind, Vector{SyntaxNode}}
     leaves::Dict{Kind, Vector{SyntaxNode}}
     comments::Vector{UnitRange{Int}}
+    groups::IdDict{SyntaxNode, UnitRange{Int}}
 end
 
 """Facts of one run."""
@@ -175,9 +179,9 @@ end
 """Syntax node bound to pattern variable `name` in `match`."""
 binding(match::Match, name::Symbol)::SyntaxNode = match.bindings[name].src
 
-"""`range` of bytes in `file` without surrounding whitespace."""
-function trimmed(file::SyntaxFile, range::UnitRange{Int})::UnitRange{Int}
-    bytes = codeunits(file.text)
+"""`range` of bytes in `text` without surrounding whitespace."""
+function trimmed(text::String, range::UnitRange{Int})::UnitRange{Int}
+    bytes = codeunits(text)
     first, last = range.start, range.stop
     while first < last && bytes[first] in (UInt8(' '), UInt8('\t'), UInt8('\n'), UInt8('\r'))
         first += 1
@@ -188,44 +192,18 @@ function trimmed(file::SyntaxFile, range::UnitRange{Int})::UnitRange{Int}
     return first:last
 end
 
-"""Byte range of `node` in `file` without surrounding whitespace; infix nodes start at leading trivia."""
-trimmed_bytes(file::SyntaxFile, node::SyntaxNode)::UnitRange{Int} = trimmed(file, JS.first_byte(node):JS.last_byte(node))
-
-"""
-Byte range of `node` with grouping parentheses that wrap only it. JuliaSyntax keeps these
-parentheses as `parens` trivia of parent: text without them changes meaning in new context.
-"""
-function grouped_bytes(file::SyntaxFile, node::SyntaxNode)::UnitRange{Int}
-    parent = parent_of(node)
-    return isnothing(parent) ? trimmed_bytes(file, node) : widened(file, parent.raw, JS.first_byte(parent), trimmed_bytes(file, node))
-end
-
-"""`target` widened over chain of `parens` nodes among children of `green`, which starts at byte `offset`."""
-function widened(file::SyntaxFile, green::JS.GreenNode, offset::Int, target::UnitRange{Int})::UnitRange{Int}
-    for child in something(JS.children(green), ())
-        range = offset:(offset + JS.span(child) - 1)
-        if JS.kind(child) == JS.K"parens" && first(range) < first(target) && last(target) < last(range)
-            inner, contents, start = widened(file, child, offset, target), UnitRange{Int}[], offset
-            for part in JS.children(child)
-                JS.is_trivia(part) || push!(contents, trimmed(file, start:(start + JS.span(part) - 1)))
-                start += JS.span(part)
-            end
-            return contents == [inner] ? range : target
-        end
-        offset += JS.span(child)
-    end
-    return target
-end
+"""Byte range of `node` in `text` without surrounding whitespace; infix nodes start at leading trivia."""
+trimmed_bytes(text::String, node::SyntaxNode)::UnitRange{Int} = trimmed(text, JS.first_byte(node):JS.last_byte(node))
 
 """Exact span of `node` in `file`."""
 function span(file::SyntaxFile, node::SyntaxNode)::Span
-    bytes = trimmed_bytes(file, node)
+    bytes = trimmed_bytes(file.text, node)
     return Span(file.path, first(bytes), last(bytes), Precision.exact)
 end
 
 """Source text of `node` in `file` with grouping parentheses that wrap only it; safe to paste in new context."""
 function source(file::SyntaxFile, node::SyntaxNode)::String
-    bytes = grouped_bytes(file, node)
+    bytes = get(() -> trimmed_bytes(file.text, node), file.groups, node)
     return file.text[first(bytes):thisind(file.text, last(bytes))]
 end
 
@@ -258,8 +236,12 @@ end
 """Value of leaf `node` as string (`"@ccall"` for macro name); `nothing` for inner node."""
 leaf_value(node::SyntaxNode)::Union{Nothing, String} = JS.is_leaf(node) ? string(node.val) : nothing
 
-"""Children of `node`; empty for leaf."""
-children_of(node::SyntaxNode)::Vector{SyntaxNode} = JS.is_leaf(node) ? SyntaxNode[] : collect(JS.children(node))
+"""Children of leaf."""
+const NO_CHILDREN = ReadOnlyVector(SyntaxNode[])
+
+"""Children of `node`, read-only and without copy; empty for leaf."""
+children_of(node::SyntaxNode)::ReadOnlyVector{SyntaxNode, Vector{SyntaxNode}} =
+    JS.is_leaf(node) ? NO_CHILDREN : ReadOnlyVector(JS.children(node))
 
 """Name node of definition `node` (function, macro, struct, module): strips `where`, result type, arguments, type parameters, supertype."""
 function definition_name(node::SyntaxNode)::SyntaxNode

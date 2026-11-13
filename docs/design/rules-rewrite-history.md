@@ -425,3 +425,12 @@ Supposition properties found four causes of fix bugs.
 JuliaSyntax keeps grouping parentheses as trivia of parent. Fixes that pasted child source dropped them: `(a + b)/2x` became `a + b/(2x)`. `source` now keeps them.
 `world-age` rewrote method signature after `eval` as call. `docstring` fired in function bodies, where docstring is plain string. `duplicate-statement` compared docstrings.
 Exempt from no-new-finding property: rules that compare statement with neighbor. Fix can rewrite statement into neighbor's text; duplicate existed in meaning before.
+
+### Speed test
+
+Phase 2 benchmark: matcher design holds; `one-letter` alone cost 180–570 ms per 10,000 lines.
+Perf test (`test/perf.jl`) found six rules with cost quadratic in function size. Causes:
+`SyntaxNode` `hash` walks whole subtree, so set keyed by function node hashed its body per name.
+`children_of` copied child vector; `source` scanned parent children for grouping parentheses; `docstring` copied rest of file per definition.
+Fixes: identity keys, read-only children without copy, grouping parentheses found once at parse.
+Garbage collector makes linear code look quadratic: full collections scan live heap. Test times with collector off and checks allocation ratio.
