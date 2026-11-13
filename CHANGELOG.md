@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Corset loads a package to check it. The environment must load the package from its root.
+- A package that throws while loading gets a `load-error` finding. Rules that read the loaded package do not run.
+- New rule `shadowed-base`: a method named like an exported Base function defines a new function.
+- Text output shows paths relative to the project root.
+
 ## 0.5.0
 
 Corset 0.5 is a rewrite. The rule names, opt-out comments, baseline file and Julia API of 0.4 are gone.

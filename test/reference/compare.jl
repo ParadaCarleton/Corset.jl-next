@@ -54,7 +54,7 @@ function corset_lines()::Dict{Tuple{String, String}, Set{Int}}
     lines = Dict{Tuple{String, String}, Set{Int}}()
     for root in CORPUS
         files = [Corset.Syntax.parse_file(path, read(path, String), Role.package) for path in Corset.Discovery.walk_files(root)]
-        facts = FactSet(files, String[], Ban[])
+        facts = FactSet(files, String[], Ban[], nothing)
         starts = Dict(file.path => [1; findall(==(UInt8('\n')), codeunits(file.text)) .+ 1] for file in files)
         line(path::String, byte::Int)::Int = searchsortedlast(starts[path], byte)
         for finding in [Corset.Engine.run_rules(facts); Corset.Syntax.parse_problems(facts)], label in [finding.primary; finding.causes]

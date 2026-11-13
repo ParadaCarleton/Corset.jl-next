@@ -33,7 +33,7 @@ end
 
 @testset "render" begin
     text = "a = 1\nb = 2\nc = 3\nd = 4\ne = 5\n"
-    render(finding) = sprint(io -> Corset.Render.render(io, Diagnostic(finding, Level.warn, "test"), text, false))
+    render(finding) = sprint(io -> Corset.Render.render(io, Diagnostic(finding, Level.warn, "test"), text, "f.jl", false))
     adjacent = render(sample_finding(13:17; causes = [Label(Span("f.jl", 1, 5, Precision.exact), "cause")]))
     @test occursin("2 | b = 2", adjacent)
     gap = render(sample_finding(25:29; causes = [Label(Span("f.jl", 1, 5, Precision.exact), "cause")]))
@@ -44,7 +44,7 @@ end
     @test occursin("  | ^^^^^ primary", multi_line)
     @test Corset.Render.line_text("x\r\n", [1, 4], 1) == "x"
     tabbed = "\ty = 1\n"
-    @test occursin("1 |     y = 1\n  |     ^ primary", sprint(io -> Corset.Render.render(io, Diagnostic(sample_finding(2:2), Level.warn, "test"), tabbed, false)))
+    @test occursin("1 |     y = 1\n  |     ^ primary", sprint(io -> Corset.Render.render(io, Diagnostic(sample_finding(2:2), Level.warn, "test"), tabbed, "f.jl", false)))
 end
 
 @testset "facts" begin
@@ -105,6 +105,11 @@ end
 """Paths, relative to `root`, of files `Discovery.discover` picks for `path`."""
 discovered(root::String, path::String = root)::Vector{String} = [relpath(file.path, root) for file in Corset.Discovery.discover(path).files]
 
+"""Flags that allow every rule after `syntax` stage, so run loads no package: discovery fixtures are not loadable."""
+const SYNTAX_ONLY = Corset.Config.Flags(;
+    levels = [string(entry.name) => Corset.Config.Level.allow for entry in Corset.Rules.REGISTRY if entry.stage != Corset.Facts.Stage.syntax],
+)
+
 @testset "discovery" begin
     mktempdir(@__DIR__) do root
         files = Dict(
@@ -138,7 +143,7 @@ discovered(root::String, path::String = root)::Vector{String} = [relpath(file.pa
         @test [relpath(entry, root) for entry in Corset.Discovery.discover(root).entries] == ["src/Pkg.jl", "ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "test/runtests.jl"]
         @test Corset.Discovery.discover(joinpath(root, "src", "a.jl")).entries == [joinpath(root, "src", "a.jl")]
         @test isempty(Corset.Discovery.discover(joinpath(root, "scripts")).entries)
-        @test sprint(Corset.Render.render_coverage, Corset.check(root)) == """
+        @test sprint(Corset.Render.render_coverage, Corset.check(root; flags = SYNTAX_ONLY)) == """
             coverage: analyzed 7 files; skipped 2 (1 include of missing file, 1 include with computed path)
               - src/Pkg.jl:4:1: include with computed path
               - src/Pkg.jl:5:1: include of missing file
@@ -150,7 +155,7 @@ discovered(root::String, path::String = root)::Vector{String} = [relpath(file.pa
         @test_throws Corset.Config.ConfigError Corset.Discovery.discover(root)
         write(joinpath(root, "Project.toml"), "name = \"Pkg\"\n\n[extensions]\nGoneExt = \"C\"\n\n[preferences.Corset]\nkind = \"library\"\n")
         @test_throws Corset.Config.ConfigError Corset.Discovery.discover(root)
-        @test startswith(sprint(Corset.Render.render_coverage, Corset.check(joinpath(root, "src"))), "coverage: analyzed 4 files\n")
+        @test startswith(sprint(Corset.Render.render_coverage, Corset.check(joinpath(root, "src"); flags = SYNTAX_ONLY)), "coverage: analyzed 4 files\n")
     end
 end
 
@@ -159,7 +164,8 @@ end
     mktempdir(@__DIR__) do directory
         cp(joinpath(dirname(@__DIR__), "lib", "CorsetLegacy", "src"), joinpath(directory, "src"))
         write(joinpath(directory, "Project.toml"), "name = \"CorsetLegacy\"\n\n[preferences.Corset]\nkind = \"library\"\n")
-        report = Corset.check(directory)
+        # Copy lacks legacy dependencies, so it cannot load; corpus tests syntax stage.
+        report = Corset.check(directory; flags = SYNTAX_ONLY)
         @test !isempty(report.diagnostics)
         @test length(report.sources) == count(endswith(".jl"), [name for (_, _, names) in walkdir(joinpath(directory, "src")) for name in names])
         # `configured_signatures` loads user file with `Base.include(holder, path)`: path is computed.
@@ -265,7 +271,7 @@ end
     @test all(diagnostic.level == Level.deny for diagnostic in report.diagnostics)
     @test occursin("= note: deny from opt-out check, always on", sprint(io -> Corset.Render.render_all(io, report)))
     file = Corset.Syntax.parse_file("end.jl", "x = 1\n# corset: allow one-letter -- nothing follows\n", Role.package)
-    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file], String[], Facts.Ban[]), Finding[], Set([Symbol("one-letter")]))
+    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file], String[], Facts.Ban[], nothing), Finding[], Set([Symbol("one-letter")]))
     @test isempty(kept) && [problem.kind for problem in problems] == [:unused]
 end
 

@@ -3,7 +3,7 @@
 Corset is a code-quality checker for Julia. It reports likely bugs, performance traps and code that is hard to read.
 Each finding shows the code, the reason and a fix. Corset applies the fixes that are safe for your project.
 
-Corset checks packages, applications and scripts. Its rules read the syntax tree of each file.
+Corset checks packages, applications and scripts. Its rules read the syntax tree of each file, and the loaded package.
 
 ## Install
 

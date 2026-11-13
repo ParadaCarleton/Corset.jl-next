@@ -15,7 +15,7 @@ corset <command> [path] [options]
 | `baseline` | Write the current findings to `corset-baseline.toml`. |
 | `explain <rule>` | Print the documentation of a rule. |
 
-`explain` also knows the checks that are always on: `opt-out`, `parse-error` and `baseline`.
+`explain` also knows the checks that are always on: `opt-out`, `parse-error`, `load-error` and `baseline`.
 
 ## Options
 

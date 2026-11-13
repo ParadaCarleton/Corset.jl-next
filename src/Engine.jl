@@ -1,7 +1,7 @@
 """Discover files, build facts, run registered rules; apply opt-outs, levels, confidence setting and baseline."""
 module Engine
 
-using ..Facts: FactSet, Finding, BlindSpot, RuleEntry, Confidence
+using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, PackageFacts
 using ..Rules: REGISTRY, entry
 using ..Config: Config, Flags, Settings, Level, level_of, project_root
 using ..OptOuts: OptOuts
@@ -9,6 +9,7 @@ using ..Fixes: Fixes
 using ..Baseline: Baseline
 using ..Discovery: Discovery
 using ..Syntax: Syntax
+using ..Package: Package
 
 """Finding with level from settings. `source` says where level was set."""
 struct Diagnostic
@@ -50,7 +51,20 @@ failed(report::Report)::Bool = !isempty(report.stale) || any(report.diagnostics)
     diagnostic.level == Level.deny || (report.settings.deny_warnings && diagnostic.level == Level.warn)
 end
 
-"""One analysis of `path`: settings, facts, baseline root, leveled diagnostics with their baseline keys, and opt-out problems."""
+"""Whether `settings` enable any rule that reads stage after `syntax`."""
+needs_package(settings::Settings)::Bool = any(entry -> entry.stage != Stage.syntax && first(level_of(settings, entry)) != Level.allow, REGISTRY)
+
+"""
+Loaded package of named `project` with method sites in `files`, or `load-error` finding.
+`nothing` outside named project, and when no enabled rule reads package.
+"""
+function load_package(project::Union{Nothing, String}, settings::Settings, files::Vector{Facts.SyntaxFile})::Union{Nothing, PackageFacts, Finding}
+    (isnothing(project) || !needs_package(settings)) && return nothing
+    id = Package.package_id(project)
+    return isnothing(id) ? nothing : Package.load(project, id, files)
+end
+
+"""One analysis of `path`: settings, facts, baseline root, leveled diagnostics with their baseline keys, and always-on check problems."""
 struct Analysis
     settings::Settings
     facts::FactSet
@@ -66,16 +80,20 @@ function analyze(path::String, flags::Flags)::Analysis
     project = project_root(path)
     settings = Config.settings(project, flags, REGISTRY)
     sources = Discovery.discover(path)
-    facts = FactSet(sources.files, sources.entries, settings.bans)
+    loaded = load_package(project, settings, sources.files)
+    facts = FactSet(sources.files, sources.entries, settings.bans, loaded isa PackageFacts ? loaded : nothing)
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
     root = something(project, isdir(path) ? abspath(path) : dirname(abspath(path)))
     keys = Baseline.finding_keys(facts, root, [diagnostic.finding for diagnostic in leveled])
+    failed_load = loaded isa Finding ? [loaded] : Finding[]
     checks = [
         [Diagnostic(problem, Level.deny, Syntax.PARSE_SOURCE) for problem in Syntax.parse_problems(facts)];
+        [Diagnostic(problem, Level.deny, Package.LOAD_SOURCE) for problem in failed_load];
         [Diagnostic(problem, Level.deny, OptOuts.SOURCE) for problem in problems]
     ]
-    return Analysis(settings, facts, root, leveled, keys, checks, sources.blind_spots)
+    blind_spots = [sources.blind_spots; [BlindSpot("package did not load", problem.primary.span) for problem in failed_load]]
+    return Analysis(settings, facts, root, leveled, keys, checks, blind_spots)
 end
 
 """Report for files discovered from `path`; baseline at project root hides known findings."""
@@ -85,6 +103,11 @@ function check(path::String; flags::Flags = Flags())::Report
     reported = [analysis.leveled[.!covered]; analysis.problems]
     sort!(reported; by = diagnostic -> (diagnostic.finding.primary.span.file, diagnostic.finding.primary.span.first_byte, diagnostic.finding.rule))
     sources = Dict(file.path => file.text for file in analysis.facts.files)
+    # Load error can point at package entry file when checked path leaves it out.
+    for diagnostic in reported
+        path = diagnostic.finding.primary.span.file
+        haskey(sources, path) || (sources[path] = read(path, String))
+    end
     return Report(reported, analysis.settings, analysis.root, sources, count(covered), stale, analysis.blind_spots)
 end
 
