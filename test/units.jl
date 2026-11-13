@@ -196,7 +196,7 @@ level(settings::Settings, name::String)::Level.T = first(Config.level_of(setting
     @test Config.ban(Config.BanTable(; name = "tmp.*", reason = "r")).target == r"^(?:tmp.*)$"
     @test Config.ban(Config.BanTable(; pattern = "eval", reason = "r")).text == "eval"
     for (pattern, name, reason) in (
-            (nothing, nothing, "r"), ("f()", "x", "r"), (nothing, "x", " "), ("f(", nothing, "r"), ("a b", nothing, "r"), ("", nothing, "r"), (nothing, "(", "r"), (nothing, "a)|(b", "r"),
+            (nothing, nothing, "r"), ("f()", "x", "r"), (nothing, "x", " "), ("f(", nothing, "r"), ("a b", nothing, "r"), ("", nothing, "r"), ("@esc(x, :some)", nothing, "r"), (nothing, "(", "r"), (nothing, "a)|(b", "r"),
         )
         @test_throws ConfigError Config.ban(Config.BanTable(; pattern, name, reason))
     end
