@@ -63,8 +63,8 @@ Module and loop bodies come last: Julia 1.14 adds syntax version before module n
 """
 dropping_body(head::Symbol, arguments::Vector{Any})::Int = head in (:module, :for, :while) ? lastindex(arguments) : head === :try ? 4 : 0
 
-"""Whether `argument` is string literal or interpolated string."""
-is_string(argument::Any)::Bool = argument isa String || Meta.isexpr(argument, :string)
+"""Whether `argument` is string literal; interpolated string may run code, so it stays."""
+is_string(argument::Any)::Bool = argument isa String
 
 """
 `expression` without line numbers, docstrings, dropped string statements, and `return` on last statement of method body.
@@ -232,6 +232,7 @@ end
     @test same("module M\n\"a\"\nend\n", "module M\nend\n") && same("for i in 1:2\n\"a\"\nend\n", "for i in 1:2\nend\n")
     @test same("while f()\n\"a\"\nend\n", "while f()\nend\n") && same("try\nf()\nfinally\n\"a\"\nend\n", "try\nf()\nfinally\nend\n")
     @test !same("f() = \"a\"\n", "f() = nothing\n") && !same("\"a\"\n", "")
+    @test !same("function f(xs)\n\"\$(push!(xs, 1))\"\nnothing\nend\n", "function f(xs)\nnothing\nend\n")
     wrapped = "module Wrapped\n    \"Shape types.\"\nend\n"
     @test Corset.Fixes.apply_edits(wrapped, edits_of(findings_of(wrapped), Tier.safe)) == "module Wrapped\n    # Shape types.\nend\n"
     # `mixed-return` fix wraps `pinned.sticky = false` in `return`; `pinned-task` opt-out still holds.
