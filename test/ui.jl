@@ -4,7 +4,7 @@
 # Each case file starts with `# runic: off`: formatter must not normalize syntax cases test.
 
 using Corset: Corset
-using Corset.Facts: FactSet, Finding, Tier, Confidence, Role, Ban
+using Corset.Facts: FactSet, Tier, Confidence, Role, Ban
 using Corset.Config: Settings, Kind
 using Test: @test, @testset
 
@@ -37,8 +37,8 @@ function package_facts(case::String)::FactSet
     finally
         pop!(LOAD_PATH)
     end
-    loaded isa Finding && error("fixture $case does not load: $(loaded.primary.text)")
-    return FactSet(sources.files, sources.entries, case_bans(dirname(case)), loaded)
+    isempty(loaded.errors) || error("fixture $case does not load: $(first(loaded.errors).primary.text)")
+    return FactSet(sources.files, sources.entries, case_bans(dirname(case)), loaded.facts)
 end
 
 """Source file of `case` that snapshots and fixes cover: case file, or entry file of package case."""
