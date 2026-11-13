@@ -58,13 +58,17 @@ accepted(text::String)::Bool = parses(text) && lowering_errors(Meta.parseall(tex
 names_method(target::Any)::Bool = target isa Expr && (target.head === :call || target.head in (:where, :(::)) && names_method(target.args[1]))
 
 """
-`expression` without line numbers and docstrings, and without `return` on last statement of method body.
-Julia returns value of last statement, so code with same meaning normalizes equal.
+`expression` without line numbers, docstrings, non-last string statements, and `return` on last statement of method body.
+Julia returns value of last statement and drops value of other string statements, so code with same meaning normalizes equal.
 """
 function normalized(expression::Any)::Any
     expression isa Expr || return expression
     expression.head === :macrocall && expression.args[1] == GlobalRef(Core, Symbol("@doc")) && return normalized(expression.args[end])
     arguments = Any[normalized(argument) for argument in expression.args if !(argument isa LineNumberNode)]
+    if expression.head in (:block, :toplevel)
+        last_index = length(arguments)
+        arguments = Any[argument for (index, argument) in enumerate(arguments) if index == last_index || !(argument isa String || Meta.isexpr(argument, :string))]
+    end
     if expression.head === :function || expression.head === :(=) && names_method(arguments[1])
         body = arguments[end]
         tail = body isa Expr && body.head === :block && !isempty(body.args) ? body.args[end] : nothing
@@ -197,7 +201,7 @@ const TIERS = Data.SampledFrom(collect(instances(Tier.T)))
 """Rules that compare statement with neighbor as text; fix that rewrites statement into neighbor's text reveals duplicate."""
 const NEIGHBOR_RULES = [Symbol("duplicate-statement")]
 """Rules whose `safe` fix spells out what parser already reads: proven equivalent."""
-const EQUIVALENT = [:docstring, :juxtaposition, Symbol("mixed-return")]
+const EQUIVALENT = [:docstring, :juxtaposition, Symbol("mixed-return"), Symbol("unused-literal")]
 """Rules whose `safe` fix changes meaning to fix definite bug inside method."""
 const BUG_FIXES = [Symbol("where-binding"), Symbol("world-age")]
 

@@ -17,6 +17,7 @@ export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export finding, replace_fix, manual_fix, identifier_name, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, struct_fields, include_calls, include_target, normalized_source
+export takes_docstring, comment_lines_above, comments_in, discarded
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
 @enumx Precision exact line
@@ -290,6 +291,61 @@ function struct_fields(definition::SyntaxNode)::Vector{SyntaxNode}
         isnothing(identifier_name(node)) || push!(names, node)
     end
     return names
+end
+
+"""Whether docstring above `definition` attaches: statement at top level, in module body or in `begin` block."""
+function takes_docstring(file::SyntaxFile, definition::SyntaxNode)::Bool
+    statement = definition
+    while !isnothing(parent_of(statement)) && kind_name(parent_of(statement)) == "macrocall"
+        statement = parent_of(statement)
+    end
+    container = parent_of(statement)
+    kind_name(container) == "toplevel" && return true
+    kind_name(container) == "block" || return false
+    kind_name(parent_of(container)) == "module" && return true
+    # `begin` block: keyword comes before first statement; body blocks start at first statement.
+    start = span(file, container).first_byte
+    return startswith(SubString(file.text, start), "begin") && start < span(file, children_of(container)[1]).first_byte
+end
+
+"""Byte ranges of comment lines directly above byte `first` in `text`, top first; blank line ends block."""
+function comment_lines_above(text::String, first::Int)::Vector{UnitRange{Int}}
+    lines = UnitRange{Int}[]
+    stop = something(findprev(==('\n'), text, prevind(text, first)), 0)
+    while stop > 0
+        start = something(findprev(==('\n'), text, prevind(text, stop)), 0) + 1
+        content = strip(text[start:prevind(text, stop)])
+        startswith(content, "#") && !startswith(content, "#=") && !startswith(content, "# corset:") || break
+        pushfirst!(lines, start:(stop - 1))
+        stop = start - 1
+    end
+    return lines
+end
+
+"""Comment byte ranges of `file` that start inside `bytes`, in source order."""
+function comments_in(file::SyntaxFile, bytes::UnitRange{Int})::Vector{UnitRange{Int}}
+    start = searchsortedfirst(file.comments, bytes; by = first)
+    stop = searchsortedlast(file.comments, last(bytes):last(bytes); by = first)
+    return file.comments[start:stop]
+end
+
+"""Kinds whose body block drops value of every statement."""
+const DISCARDING = ("for", "while", "module", "finally")
+
+"""
+Whether value of statement `node` goes unused: any top-level statement, any statement of loop, module or `finally` body,
+or non-last statement of other block. Struct body and `let` bindings hold no statements.
+"""
+function discarded(node::SyntaxNode)::Bool
+    parent = parent_of(node)
+    isnothing(parent) && return false
+    kind_name(parent) == "toplevel" && return true
+    kind_name(parent) == "block" || return false
+    owner = parent_of(parent)
+    kind_name(owner) == "struct" && return false
+    kind_name(owner) == "let" && children_of(owner)[1] === parent && return false
+    kind_name(owner) in DISCARDING && children_of(owner)[end] === parent && return true
+    return children_of(parent)[end] !== node
 end
 
 """Source of `node` with whitespace runs collapsed and docstring dropped, for comparison."""
