@@ -871,9 +871,9 @@ end
 </tr>
 <tr>
 <td>1 skeleton</td>
-<td>Julia app <code>corset</code>; facts API and rule contract; config, project kind, groups, confidence, fix tiers; finding type with cause spans; message renderer; <code>corset explain</code>; opt-outs; baseline; text, JSON, SARIF output; disk cache for syntax findings; fixer engine on lossless tree; UI snapshot tests and other harnesses.</td>
+<td>Julia app <code>corset</code>; facts API and rule contract; config, project kind, groups, confidence, fix tiers; finding type with cause spans; message renderer; <code>corset explain</code>; opt-outs; baseline; text, JSON, SARIF output; fixer engine on lossless tree; UI snapshot tests and other harnesses.</td>
 <td>—</td>
-<td>One rule runs end to end: report, opt-out, baseline, fix, SARIF, cached rerun.</td>
+<td>One rule runs end to end: report, opt-out, baseline, fix, SARIF. Warm rerun inside speed budget.</td>
 </tr>
 <tr>
 <td>2 syntax</td>
@@ -889,7 +889,7 @@ end
 </tr>
 <tr>
 <td>4 types</td>
-<td>Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); <code>inference</code> stage and type-disruption scan; per-method disk cache; <code>annotation</code> fixer guesses argument types and fills result types (annotation transition, <code>types.md</code>).</td>
+<td>Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); <code>inference</code> stage and type-disruption scan; findings disk cache and per-method disk cache; <code>annotation</code> fixer guesses argument types and fills result types (annotation transition, <code>types.md</code>).</td>
 <td>25</td>
 <td>Precision gate passes on corpus. <code>unverified-inbounds</code> agrees with julia-in-lean site verdicts.</td>
 </tr>
@@ -907,7 +907,7 @@ end
 </tr>
 <tr>
 <td>later</td>
-<td>F12, F45, F46, F49 (off by default); string and dict stand-in types; language server mode; test helper that runs rules on macro expansion, so macro authors check generated code (other packages' macro output gets no findings); replace <code>{}</code> stopgap with skip of macro arguments Julia rejects as written (<code>{x}</code>, <code>x ~ Normal()</code>), once <code>scope</code> lowering and <code>package</code> method tables can supply it; dimension-aware stand-in for <code>Number</code> (catches <code>x + 1</code> on Unitful quantity); nursery group for rules before quality gate; upstream F89 and F90 logic to Moshi <code>verify/</code> (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for <code>manual</code> fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking.</td>
+<td>F12, F45, F46, F49 (off by default); string and dict stand-in types; language server mode; Corset precompile workload (develop with Revise until then); test helper that runs rules on macro expansion, so macro authors check generated code (other packages' macro output gets no findings); replace <code>{}</code> stopgap with skip of macro arguments Julia rejects as written (<code>{x}</code>, <code>x ~ Normal()</code>), once <code>scope</code> lowering and <code>package</code> method tables can supply it; dimension-aware stand-in for <code>Number</code> (catches <code>x + 1</code> on Unitful quantity); nursery group for rules before quality gate; upstream F89 and F90 logic to Moshi <code>verify/</code> (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for <code>manual</code> fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking.</td>
 <td>4</td>
 <td>—</td>
 </tr>
