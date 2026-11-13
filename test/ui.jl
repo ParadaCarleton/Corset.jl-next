@@ -18,12 +18,12 @@ function snapshot(path::String, actual::String)::Bool
     return actual == (isfile(path) ? read(path, String) : "")
 end
 
-"""Rendered findings and fixed source for `case` of rule `name`."""
+"""Rendered findings and fixed source for `case` of rule `name`; case is only entry, as in `corset check case.jl`."""
 function run_case(name::Symbol, case::String)::Tuple{String, String}
     text = read(case, String)
     file = Corset.Syntax.parse_file(basename(case), text)
     entry = Corset.Rules.entry(name)
-    findings = Corset.Engine.run_rules(FactSet([file]), [entry])
+    findings = Corset.Engine.run_rules(FactSet([file], [file.path]), [entry])
     report = Corset.Engine.Report(Corset.Engine.diagnostics(findings, UI_SETTINGS), UI_SETTINGS, dirname(case), Dict(file.path => text), 0, [], [])
     rendered = sprint(io -> Corset.Render.render_all(io, report))
     fixed = Corset.Fixes.apply_edits(text, Corset.Fixes.applicable_edits(findings, file.path, Tier.breaking))

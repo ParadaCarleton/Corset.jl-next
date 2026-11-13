@@ -28,7 +28,7 @@ end
         texts = [(file.path, file.text) for file in sources.files]
         lines = sum(text -> count(==('\n'), text), last.(texts))
         seconds = fastest(3) do
-            Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(path, text) for (path, text) in texts]))
+            Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(path, text) for (path, text) in texts], sources.entries))
         end
         @test seconds * 10_000 / lines < 2.0
     end
@@ -43,7 +43,7 @@ end
             end
             # Time ratio gets 5× headroom over linear; allocation ratio is deterministic and gets 2×.
             ratios(f::Function) = (fastest(() -> f(large), 5) / fastest(() -> f(small), 5), @allocated(f(large)) / @allocated(f(small)))
-            facts = Dict(path => FactSet([Corset.Syntax.parse_file(path, read(path, String))]) for path in (small, large))
+            facts = Dict(path => FactSet([Corset.Syntax.parse_file(path, read(path, String))], [path]) for path in (small, large))
             measured = Dict(string(entry.name) => ratios(path -> entry.run(facts[path])) for entry in Corset.Rules.REGISTRY)
             measured["parse"] = ratios(path -> Corset.Syntax.parse_file(path, read(path, String)))
             measured["analyze"] = ratios(path -> Corset.Engine.analyze(path, Corset.Config.Flags()))

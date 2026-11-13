@@ -115,6 +115,9 @@ discovered(root::String, path::String = root)::Vector{String} = [relpath(file.pa
         ]
         @test [spot.cause for spot in Corset.Discovery.discover(root).blind_spots] == ["include with computed path", "include of missing file"]
         @test discovered(root, joinpath(root, "src", "a.jl")) == ["src/a.jl"]
+        @test [relpath(entry, root) for entry in Corset.Discovery.discover(root).entries] == ["src/Pkg.jl", "ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "test/runtests.jl"]
+        @test Corset.Discovery.discover(joinpath(root, "src", "a.jl")).entries == [joinpath(root, "src", "a.jl")]
+        @test isempty(Corset.Discovery.discover(joinpath(root, "scripts")).entries)
         @test sprint(Corset.Render.render_coverage, Corset.check(root)) == """
             coverage: analyzed 7 files; skipped 2 (1 include of missing file, 1 include with computed path)
               - src/Pkg.jl:4:1: include with computed path
@@ -219,7 +222,7 @@ end
     @test all(diagnostic.level == Level.deny for diagnostic in report.diagnostics)
     @test occursin("= note: deny from opt-out check, always on", sprint(io -> Corset.Render.render_all(io, report)))
     file = Corset.Syntax.parse_file("end.jl", "x = 1\n# corset: allow one-letter -- nothing follows\n")
-    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file]), Finding[], Set([Symbol("one-letter")]))
+    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file], String[]), Finding[], Set([Symbol("one-letter")]))
     @test isempty(kept) && [problem.kind for problem in problems] == [:unused]
 end
 

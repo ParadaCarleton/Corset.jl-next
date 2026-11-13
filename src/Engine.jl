@@ -66,7 +66,7 @@ function analyze(path::String, flags::Flags)::Analysis
     project = project_root(path)
     settings = Config.settings(project, flags, REGISTRY)
     sources = Discovery.discover(path)
-    facts = FactSet(sources.files)
+    facts = FactSet(sources.files, sources.entries)
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
     root = something(project, isdir(path) ? abspath(path) : dirname(abspath(path)))
