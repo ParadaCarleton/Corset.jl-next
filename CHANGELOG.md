@@ -7,6 +7,7 @@
 - A package that throws while loading gets a `load-error` finding. Rules that read the loaded package do not run.
 - New rule `shadowed-base`: a method named like an exported Base function defines a new function.
 - Text output shows paths relative to the project root.
+- A precompile workload compiles the command line, so a first `corset check` starts in seconds.
 
 ## 0.5.0
 

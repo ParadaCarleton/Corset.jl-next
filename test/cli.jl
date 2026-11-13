@@ -238,6 +238,15 @@ end
     end
 end
 
+@testset "precompile workload" begin
+    mktempdir(@__DIR__) do directory
+        @test isnothing(Corset.workload(directory))
+        @test isfile(joinpath(directory, "corset-baseline.toml"))
+        write(joinpath(directory, "corset-baseline.toml"), "not toml")
+        @test_throws "exited with 2" Corset.workload(directory)
+    end
+end
+
 @testset "fix conflicts" begin
     span(first, last) = Corset.Facts.Span("f.jl", first, last, Corset.Facts.Precision.exact)
     fix(first, last) = Corset.Facts.Fix("t", [Corset.Facts.Edit(span(first, last), "x")], Corset.Facts.Tier.safe)

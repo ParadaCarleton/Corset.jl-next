@@ -133,16 +133,18 @@ function explain(out::IO, name::String)::Int
     return EXIT_PASS
 end
 
-"""Write `report` to `out` in `format`."""
+"""Write `report` to `out` in `format`. Rendering targets buffer, so precompiled code serves every stream type."""
 function write_report(out::IO, report::Report, format::String)::Nothing
+    buffer = IOBuffer()
     if format == "text"
-        render_all(out, report)
-        render_summary(out, report)
-        render_coverage(out, report)
+        render_all(buffer, report)
+        render_summary(buffer, report)
+        render_coverage(buffer, report)
     else
         data = format == "json" ? json_report(report) : sarif_report(report, string(pkgversion(Base.moduleroot(@__MODULE__))))
-        println(out, JSON.json(data; pretty = true))
+        println(buffer, JSON.json(data; pretty = true))
     end
+    write(out, take!(buffer))
     return nothing
 end
 
@@ -155,7 +157,7 @@ Run command line `args`: report to `out`, messages to `err`. Return exit code.
 With `launch`, run that loads package builds temporary environment and runs again in new Julia process there.
 Without `launch`, current environment must load package from its root: relaunched process and tests.
 """
-function execute(args::Vector{String}, out::IO, err::IO; launch::Bool)::Int
+function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err::IO); launch::Bool)::Int
     try
         levels, deny_warnings, rest = level_flags(args)
         parsed = parse_args(rest, argument_settings())
