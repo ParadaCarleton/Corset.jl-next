@@ -1,0 +1,421 @@
+error[baked-state]: `NTHREADS` bakes in `Threads.nthreads()` at precompile time
+ --> positive.jl:2:18
+  |
+2 | const NTHREADS = Threads.nthreads()
+  |       -------- value stored in precompile cache
+  |                  ^^^^^^^^^^^^^^^^^^ read when package precompiles
+  |
+  = why: cache keeps thread count of build session; sessions with other thread count still see it
+  = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+  = docs: corset explain baked-state
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow baked-state -- <reason>`
+
+error[baked-state]: `WORKERS` bakes in `nthreads()` at precompile time
+ --> positive.jl:3:17
+  |
+3 | const WORKERS = nthreads()
+  |       ------- value stored in precompile cache
+  |                 ^^^^^^^^^^ read when package precompiles
+  |
+  = why: cache keeps thread count of build session; sessions with other thread count still see it
+  = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+  = docs: corset explain baked-state
+
+error[baked-state]: `QUALIFIED_WORKERS` bakes in `Base.Threads.nthreads()` at precompile time
+ --> positive.jl:4:27
+  |
+4 | const QUALIFIED_WORKERS = Base.Threads.nthreads()
+  |       ----------------- value stored in precompile cache
+  |                           ^^^^^^^^^^^^^^^^^^^^^^^ read when package precompiles
+  |
+  = why: cache keeps thread count of build session; sessions with other thread count still see it
+  = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+  = docs: corset explain baked-state
+
+error[baked-state]: `CORES` bakes in `Sys.CPU_THREADS` at precompile time
+ --> positive.jl:5:15
+  |
+5 | const CORES = Sys.CPU_THREADS
+  |       ----- value stored in precompile cache
+  |               ^^^^^^^^^^^^^^^ read when package precompiles
+  |
+  = why: cache keeps thread count of build session; sessions with other thread count still see it
+  = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+  = docs: corset explain baked-state
+
+error[baked-state]: `QUALIFIED_CORES` bakes in `Base.Sys.CPU_THREADS` at precompile time
+ --> positive.jl:6:25
+  |
+6 | const QUALIFIED_CORES = Base.Sys.CPU_THREADS
+  |       --------------- value stored in precompile cache
+  |                         ^^^^^^^^^^^^^^^^^^^^ read when package precompiles
+  |
+  = why: cache keeps thread count of build session; sessions with other thread count still see it
+  = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+  = docs: corset explain baked-state
+
+error[baked-state]: `API_KEY` bakes in `ENV["API_KEY"]` at precompile time
+ --> positive.jl:7:17
+  |
+7 | const API_KEY = ENV["API_KEY"]
+  |       ------- value stored in precompile cache
+  |                 ^^^^^^^^^^^^^^ read when package precompiles
+  |
+  = why: cache keeps environment of build session; later changes to variable have no effect
+  = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+  = docs: corset explain baked-state
+
+error[baked-state]: `LEVEL` bakes in `get(ENV, "LEVEL", "info")` at precompile time
+ --> positive.jl:8:15
+  |
+8 | const LEVEL = get(ENV, "LEVEL", "info")
+  |       ----- value stored in precompile cache
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^ read when package precompiles
+  |
+  = why: cache keeps environment of build session; later changes to variable have no effect
+  = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+  = docs: corset explain baked-state
+
+error[baked-state]: `CONFIG` bakes in `homedir()` at precompile time
+ --> positive.jl:9:25
+  |
+9 | const CONFIG = joinpath(homedir(), ".config")
+  |       ------ value stored in precompile cache
+  |                         ^^^^^^^^^ read when package precompiles
+  |
+  = why: cache keeps directory of build session; other users, machines and directories get wrong path
+  = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+  = docs: corset explain baked-state
+
+error[baked-state]: `START` bakes in `pwd()` at precompile time
+  --> positive.jl:10:15
+   |
+10 | const START = pwd()
+   |       ----- value stored in precompile cache
+   |               ^^^^^ read when package precompiles
+   |
+   = why: cache keeps directory of build session; other users, machines and directories get wrong path
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `SCRATCH` bakes in `tempdir()` at precompile time
+  --> positive.jl:11:17
+   |
+11 | const SCRATCH = tempdir()
+   |       ------- value stored in precompile cache
+   |                 ^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps directory of build session; other users, machines and directories get wrong path
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `LOADED` bakes in `time()` at precompile time
+  --> positive.jl:12:16
+   |
+12 | const LOADED = time()
+   |       ------ value stored in precompile cache
+   |                ^^^^^^ read when package precompiles
+   |
+   = why: cache keeps build time; every session sees same old time
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `STAMP` bakes in `time_ns()` at precompile time
+  --> positive.jl:13:15
+   |
+13 | const STAMP = time_ns()
+   |       ----- value stored in precompile cache
+   |               ^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps build time; every session sees same old time
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `BUILT` bakes in `now()` at precompile time
+  --> positive.jl:14:15
+   |
+14 | const BUILT = now()
+   |       ----- value stored in precompile cache
+   |               ^^^^^ read when package precompiles
+   |
+   = why: cache keeps build time; every session sees same old time
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `BUILT_UTC` bakes in `Dates.now(Dates.UTC)` at precompile time
+  --> positive.jl:15:19
+   |
+15 | const BUILT_UTC = Dates.now(Dates.UTC)
+   |       --------- value stored in precompile cache
+   |                   ^^^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps build time; every session sees same old time
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `SEED` bakes in `rand(UInt)` at precompile time
+  --> positive.jl:16:14
+   |
+16 | const SEED = rand(UInt)
+   |       ---- value stored in precompile cache
+   |              ^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps one draw; every session gets same value
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `NOISE` bakes in `randn(3)` at precompile time
+  --> positive.jl:17:15
+   |
+17 | const NOISE = randn(3)
+   |       ----- value stored in precompile cache
+   |               ^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps one draw; every session gets same value
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `HOST` bakes in `gethostname()` at precompile time
+  --> positive.jl:18:14
+   |
+18 | const HOST = gethostname()
+   |       ---- value stored in precompile cache
+   |              ^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps host name of build machine
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `PID` bakes in `getpid()` at precompile time
+  --> positive.jl:19:13
+   |
+19 | const PID = getpid()
+   |       --- value stored in precompile cache
+   |             ^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps ID of build process, which has ended
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `LIBRARY` bakes in `Libdl.dlopen("libfoo")` at precompile time
+  --> positive.jl:20:17
+   |
+20 | const LIBRARY = Libdl.dlopen("libfoo")
+   |       ------- value stored in precompile cache
+   |                 ^^^^^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache resets pointer to null; later sessions crash or fail through it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `HANDLE` bakes in `dlopen("libbar")` at precompile time
+  --> positive.jl:21:16
+   |
+21 | const HANDLE = dlopen("libbar")
+   |       ------ value stored in precompile cache
+   |                ^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache resets pointer to null; later sessions crash or fail through it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `COUNTER` bakes in `cglobal((:counter, "libfoo"), Cint)` at precompile time
+  --> positive.jl:22:17
+   |
+22 | const COUNTER = cglobal((:counter, "libfoo"), Cint)
+   |       ------- value stored in precompile cache
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache resets pointer to null; later sessions crash or fail through it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `BUFFER_START` bakes in `pointer(BUFFER)` at precompile time
+  --> positive.jl:23:22
+   |
+23 | const BUFFER_START = pointer(BUFFER)
+   |       ------------ value stored in precompile cache
+   |                      ^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache resets pointer to null; later sessions crash or fail through it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `threads` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:26:11
+   |
+26 | threads = Threads.nthreads()
+   | ------- value stored in precompile cache
+   |           ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `home` bakes in `homedir()` at precompile time
+  --> positive.jl:27:15
+   |
+27 | global home = homedir()
+   |        ---- value stored in precompile cache
+   |               ^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps directory of build session; other users, machines and directories get wrong path
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `typed::Int` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:28:14
+   |
+28 | typed::Int = Threads.nthreads()
+   | ---------- value stored in precompile cache
+   |              ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `SLOTS[]` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:29:11
+   |
+29 | SLOTS[] = Threads.nthreads()
+   | ------- value stored in precompile cache
+   |           ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `SIZES` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:32:23
+   |
+32 | const SIZES = fill(0, Threads.nthreads())
+   |       ----- value stored in precompile cache
+   |                       ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `OPTIONS` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:33:28
+   |
+33 | const OPTIONS = (threads = Threads.nthreads(),)
+   |       ------- value stored in precompile cache
+   |                            ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `FALLBACK` bakes in `ENV["FALLBACK"]` at precompile time
+  --> positive.jl:35:5
+   |
+34 | const FALLBACK = try
+   |       -------- value stored in precompile cache
+35 |     ENV["FALLBACK"]
+   |     ^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps environment of build session; later changes to variable have no effect
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `TEMPLATE` bakes in `(Threads.nthreads())` at precompile time
+  --> positive.jl:39:26
+   |
+39 | const TEMPLATE = :(run($(Threads.nthreads())))
+   |       -------- value stored in precompile cache
+   |                          ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `DOCUMENTED` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:42:20
+   |
+42 | const DOCUMENTED = Threads.nthreads()
+   |       ---------- value stored in precompile cache
+   |                    ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `IN_BEGIN` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:46:22
+   |
+46 |     const IN_BEGIN = Threads.nthreads()
+   |           -------- value stored in precompile cache
+   |                      ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `IN_IF` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:49:19
+   |
+49 |     const IN_IF = Threads.nthreads()
+   |           ----- value stored in precompile cache
+   |                   ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `IN_ELSEIF` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:51:23
+   |
+51 |     const IN_ELSEIF = Threads.nthreads()
+   |           --------- value stored in precompile cache
+   |                       ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `IN_ELSE` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:53:21
+   |
+53 |     const IN_ELSE = Threads.nthreads()
+   |           ------- value stored in precompile cache
+   |                     ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `IN_LET` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:56:21
+   |
+56 |     global IN_LET = Threads.nthreads()
+   |            ------ value stored in precompile cache
+   |                     ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `IN_STATIC` bakes in `Threads.nthreads()` at precompile time
+  --> positive.jl:59:23
+   |
+59 |     const IN_STATIC = Threads.nthreads()
+   |           --------- value stored in precompile cache
+   |                       ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `IN_EVAL` bakes in `(Threads.nthreads())` at precompile time
+  --> positive.jl:61:25
+   |
+61 | @eval const IN_EVAL = $(Threads.nthreads())
+   |             ------- value stored in precompile cache
+   |                         ^^^^^^^^^^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps thread count of build session; sessions with other thread count still see it
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+

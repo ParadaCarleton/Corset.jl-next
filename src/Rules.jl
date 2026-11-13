@@ -6,6 +6,7 @@ using ..Facts: RuleEntry
 include("rules/ambiguous_concat.jl")
 include("rules/annotation.jl")
 include("rules/approx_zero.jl")
+include("rules/baked_state.jl")
 include("rules/bracketed_range.jl")
 include("rules/broad_catch.jl")
 include("rules/c_type.jl")
@@ -32,6 +33,7 @@ const REGISTRY = RuleEntry[
     AmbiguousConcat.ENTRY,
     Annotation.ENTRY,
     ApproxZero.ENTRY,
+    BakedState.ENTRY,
     BracketedRange.ENTRY,
     BroadCatch.ENTRY,
     CType.ENTRY,

@@ -149,11 +149,14 @@ distinct(texts::Vector{String})::Vector{String} = unique(text -> replace(text, r
 const STATEMENTS = distinct([statement_text(text, child) for (text, tree) in CASES for node in subtree(tree) if kind_name(node) in ("toplevel", "block") for child in children_of(node)])
 """Definition kinds; definition spliced into expression gives code nobody writes."""
 const DEFINITIONS = ("function", "doc", "macro", "struct", "module", "abstract", "primitive", "const", "global", "local", "using", "import", "export")
-"""Kind of first statement of `text`."""
-root_kind(text::String)::String = kind_name(first(children_of(JS.parseall(JS.SyntaxNode, text))))
-"""One-line inner nodes of UI cases, definitions excluded; splices put them in place of identifiers."""
+"""Kind of first statement of `text`; `nothing` for text without code, such as empty `let` binding list."""
+function root_kind(text::String)::Union{Nothing, String}
+    statements = children_of(JS.parseall(JS.SyntaxNode, text))
+    return isempty(statements) ? nothing : kind_name(first(statements))
+end
+"""One-line inner nodes of UI cases, definitions and code-free text excluded; splices put them in place of identifiers."""
 const EXPRESSIONS = filter(
-    text -> root_kind(text) ∉ DEFINITIONS,
+    text -> root_kind(text) ∉ (nothing, DEFINITIONS...),
     distinct(filter(text -> sizeof(text) <= 40 && !occursin('\n', text), [node_text(text, node) for (text, tree) in CASES for node in subtree(tree) if !JS.is_leaf(node)])),
 )
 const HOLES = Dict(statement => holes(statement) for statement in STATEMENTS)
