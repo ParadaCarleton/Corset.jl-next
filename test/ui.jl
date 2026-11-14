@@ -34,7 +34,7 @@ Facts of package directory `case` for rule of `stage`. Package loads, with case 
 stage after `syntax`; fixture must load. External facts exist for `external` stage only.
 """
 function package_facts(case::String, stage::Stage.T)::FactSet
-    sources = Corset.Discovery.discover(case)
+    sources = Corset.Discovery.discover(case; environment = nothing)
     stage == Stage.syntax && return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, nothing, nothing)
     push!(LOAD_PATH, case)
     loaded = try
@@ -48,7 +48,7 @@ function package_facts(case::String, stage::Stage.T)::FactSet
 end
 
 """Source file of `case` that must start with `# runic: off`: case file, or module file of package case."""
-case_file(case::String)::String = isdir(case) ? first(Corset.Discovery.discover(case).entries) : case
+case_file(case::String)::String = isdir(case) ? first(Corset.Discovery.discover(case; environment = nothing).entries) : case
 
 """
 Fixed text of every file `edits` change, from `sources`: file case gives its text; package case gives each file under

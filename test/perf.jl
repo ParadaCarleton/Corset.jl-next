@@ -23,7 +23,7 @@ end
 @testset "speed" begin
     @testset "syntax run inside budget" begin
         # Budget: 2 s per 10,000 lines (plan.md). Measured 0.04 s.
-        sources = Corset.Discovery.discover(joinpath(dirname(@__DIR__), "lib", "CorsetLegacy", "src"))
+        sources = Corset.Discovery.discover(joinpath(dirname(@__DIR__), "lib", "CorsetLegacy", "src"); environment = nothing)
         texts = [(file.path, file.text, file.role) for file in sources.files]
         lines = sum(((_, text, _),) -> count(==('\n'), text), texts)
         seconds = fastest(3) do

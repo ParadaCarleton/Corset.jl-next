@@ -152,7 +152,7 @@ end
 end
 
 """Paths, relative to `root`, of files `Discovery.discover` picks for `path`."""
-discovered(root::String, path::String = root)::Vector{String} = [relpath(file.path, root) for file in Corset.Discovery.discover(path).files]
+discovered(root::String, path::String = root)::Vector{String} = [relpath(file.path, root) for file in Corset.Discovery.discover(path; environment = nothing).files]
 
 """Flags that allow every rule after `syntax` stage, so run loads no package: discovery fixtures are not loadable."""
 const SYNTAX_ONLY = Corset.Config.Flags(;
@@ -191,27 +191,27 @@ end
         @test discovered(root) == [
             "src/Pkg.jl", "ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "test/runtests.jl", "src/a.jl", "src/sub/b.jl", "test/cases.jl",
         ]
-        roles = [(relpath(file.path, root), file.role) for file in Corset.Discovery.discover(root).files]
+        roles = [(relpath(file.path, root), file.role) for file in Corset.Discovery.discover(root; environment = nothing).files]
         @test sort!([path for (path, role) in roles if role == Role.package]) == ["ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "src/Pkg.jl", "src/a.jl", "src/sub/b.jl"]
-        @test only(Corset.Discovery.discover(joinpath(root, "lib", "Other")).files).role == Role.script
-        @test [spot.cause for spot in Corset.Discovery.discover(root).blind_spots] == ["include with computed path", "include of missing file"]
+        @test only(Corset.Discovery.discover(joinpath(root, "lib", "Other"); environment = nothing).files).role == Role.script
+        @test [spot.cause for spot in Corset.Discovery.discover(root; environment = nothing).blind_spots] == ["include with computed path", "include of missing file"]
         @test discovered(root, joinpath(root, "src", "a.jl")) == ["src/a.jl"]
-        @test [relpath(entry, root) for entry in Corset.Discovery.discover(root).entries] == ["src/Pkg.jl", "ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "test/runtests.jl"]
-        @test Corset.Discovery.discover(joinpath(root, "src", "a.jl")).entries == [joinpath(root, "src", "a.jl")]
-        @test isempty(Corset.Discovery.discover(joinpath(root, "scripts")).entries)
+        @test [relpath(entry, root) for entry in Corset.Discovery.discover(root; environment = nothing).entries] == ["src/Pkg.jl", "ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "test/runtests.jl"]
+        @test Corset.Discovery.discover(joinpath(root, "src", "a.jl"); environment = nothing).entries == [joinpath(root, "src", "a.jl")]
+        @test isempty(Corset.Discovery.discover(joinpath(root, "scripts"); environment = nothing).entries)
         @test sprint(Corset.Render.render_coverage, Corset.check(root; flags = SYNTAX_ONLY)) == """
             coverage: analyzed 7 files; skipped 2 (1 include of missing file, 1 include with computed path)
               - src/Pkg.jl:4:1: include with computed path
               - src/Pkg.jl:5:1: include of missing file
             """
         rm(joinpath(root, "Project.toml"))
-        @test all(file -> file.role == Role.script, Corset.Discovery.discover(root).files)
+        @test all(file -> file.role == Role.script, Corset.Discovery.discover(root; environment = nothing).files)
         @test discovered(root) == ["ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "scripts/e.jl", "src/Pkg.jl", "src/a.jl", "src/orphan.jl", "src/sub/b.jl", "test/cases.jl", "test/fixtures/bad.jl", "test/runtests.jl"]
         write(joinpath(root, "Project.toml"), "name = \"Missing\"\n")
-        @test_throws Corset.Config.ConfigError Corset.Discovery.discover(root)
+        @test_throws Corset.Config.ConfigError Corset.Discovery.discover(root; environment = nothing)
         # Broken Project.toml stops every run inside project, as in Cargo.
         write(joinpath(root, "Project.toml"), "name = \"Pkg\"\n\n[weakdeps]\nC = \"$(Base.UUID(rand(UInt128)))\"\n\n[extensions]\nGoneExt = \"C\"\n\n[preferences.Corset]\nkind = \"library\"\n")
-        @test_throws "extension GoneExt has no file ext/GoneExt.jl" Corset.Discovery.discover(root)
+        @test_throws "extension GoneExt has no file ext/GoneExt.jl" Corset.Discovery.discover(root; environment = nothing)
         @test_throws "extension GoneExt has no file ext/GoneExt.jl" Corset.check(joinpath(root, "src"); flags = SYNTAX_ONLY)
     end
 end

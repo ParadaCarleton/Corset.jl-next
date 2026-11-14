@@ -216,7 +216,7 @@ end
             filter!(path -> !startswith(path, root), LOAD_PATH)
         end
         write(joinpath(root, "Project.toml"), replace(project, "TriggerExt = [\"Trigger\"]" => "TriggerExt = [\"Trigger\", \"Lost\"]"))
-        @test_throws "extension TriggerExt names Lost, which [weakdeps] lacks" Corset.Discovery.project_facts(root)
+        @test_throws "extension TriggerExt names Lost, which [weakdeps] lacks" Corset.Discovery.project_facts(root; environment = nothing)
     end
 end
 
@@ -244,22 +244,22 @@ end
     mktempdir(@__DIR__) do root
         project = "name = \"Targets\"\nuuid = \"$uuid\"\n\n[deps]\nJSON = \"682c06a0-de6a-54ab-a142-c8b1cf79cde6\"\n\n[weakdeps]\nTOML = \"fa267f1f-6049-4f14-aa54-33bafae1ed76\"\n\n[extras]\nTest = \"8dfed614-e22c-5e08-85e1-65c5234f0b40\"\n"
         write(joinpath(root, "Project.toml"), project)
-        @test_throws "package Targets has no module file src/Targets.jl" Discovery.project_facts(root)
+        @test_throws "package Targets has no module file src/Targets.jl" Discovery.project_facts(root; environment = nothing)
         mkpath(joinpath(root, "src"))
         write(joinpath(root, "src", "Targets.jl"), "module Targets\nend\n")
-        facts = Discovery.project_facts(root)
+        facts = Discovery.project_facts(root; environment = nothing)
         @test facts.test_deps == TestDeps.none && isempty(Launch.test_specs(facts)) && isempty(Launch.manifest_deps(joinpath(root, "Project.toml")))
         @test Corset.Package.package_id(facts) == Base.PkgId(uuid, "Targets") && [dep.name for dep in facts.deps] == ["JSON"]
         # `[targets].test` skips direct dependencies and reads names from `[weakdeps]` and `[extras]`.
         write(joinpath(root, "Project.toml"), project * "\n[targets]\ntest = [\"JSON\", \"TOML\", \"Test\"]\n")
-        facts = Discovery.project_facts(root)
+        facts = Discovery.project_facts(root; environment = nothing)
         @test facts.test_deps == TestDeps.target && [spec.name for spec in Launch.test_specs(facts)] == ["TOML", "Test"]
         # `[targets].test` reads `[sources]` of Project.toml; Corset test dependency gives way to running Corset.
         corset = "\nCorset = \"$(Base.PkgId(Corset).uuid)\"\n\n[sources]\nTest = {path = \"vendor/Test\"}\nCorset = {url = \"https://example.com/Corset.jl\"}\n"
         write(joinpath(root, "Project.toml"), project * corset * "\n[targets]\ntest = [\"Corset\", \"Test\"]\n")
-        @test only(Launch.test_specs(Discovery.project_facts(root))).path == joinpath(root, "vendor", "Test")
+        @test only(Launch.test_specs(Discovery.project_facts(root; environment = nothing))).path == joinpath(root, "vendor", "Test")
         write(joinpath(root, "Project.toml"), project * "\n[targets]\ntest = [\"Lost\"]\n")
-        @test_throws "test target names Lost, which [extras] lacks" Discovery.project_facts(root)
+        @test_throws "test target names Lost, which [extras] lacks" Discovery.project_facts(root; environment = nothing)
         # `test/Project.toml` drops package and direct dependencies, and reads `[sources]` relative to its own directory.
         write(joinpath(root, "Project.toml"), project)
         mkpath(joinpath(root, "test"))
@@ -281,7 +281,7 @@ end
         Mono = {url = "https://example.com/Mono.jl", subdir = "lib/Mono"}
         """
         write(joinpath(root, "test", "Project.toml"), tests)
-        facts = Discovery.project_facts(root)
+        facts = Discovery.project_facts(root; environment = nothing)
         branch_spec, helper_spec, mono_spec, remote_spec = specs = Launch.test_specs(facts)
         @test facts.test_deps == TestDeps.project && [spec.name for spec in specs] == ["Branch", "Helper", "Mono", "Remote"]
         @test helper_spec.path == joinpath(root, "helper") && remote_spec.url == "https://example.com/Remote.jl" && remote_spec.rev == "main"
@@ -291,6 +291,42 @@ end
         @test only(Launch.manifest_deps(joinpath(root, "Project.toml"))["Helper"])["path"] == joinpath(root, "helper")
         write(joinpath(root, "Manifest.toml"), "[[Helper]]\npath = \"helper\"\nuuid = \"$helper\"\n")
         @test_throws "has format 1" Launch.manifest_deps(joinpath(root, "Project.toml"))
+        # Test loads: transitive `[deps]` of package and tests; Manifest maps name to uuid where names repeat.
+        environment = joinpath(root, "env", "Project.toml")
+        mkpath(dirname(environment))
+        write(environment, "")
+        @test isnothing(Discovery.test_loads(environment, uuid, Base.PkgId[]))
+        shared, other = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
+        manifest = """
+        manifest_format = "2.0"
+
+        [[deps.Targets]]
+        deps = ["Helper"]
+        uuid = "$uuid"
+
+        [[deps.Helper]]
+        uuid = "$helper"
+
+        [[deps.Remote]]
+        uuid = "$remote"
+
+            [deps.Remote.deps]
+            Shared = "$shared"
+
+        [[deps.Shared]]
+        uuid = "$shared"
+
+        [[deps.Shared]]
+        uuid = "$other"
+
+        [[deps.Mono]]
+        uuid = "$mono"
+        """
+        write(joinpath(root, "env", "Manifest.toml"), manifest)
+        loads = Discovery.test_loads(environment, uuid, [Base.PkgId(remote, "Remote"), Base.PkgId(Base.UUID(rand(UInt128)), "Ghost")])
+        @test [id.name for id in loads] == ["Helper", "Remote", "Shared", "Targets"] && Base.PkgId(shared, "Shared") in loads
+        @test isnothing(Discovery.test_loads(environment, Base.UUID(rand(UInt128)), Base.PkgId[]))
+        @test [id.name for id in Discovery.project_facts(root; environment).test_loads] == ["Helper", "Mono", "Remote", "Shared", "Targets"]
     end
     @test Corset.CLI.exit_code(run(ignorestatus(`sh -c 'exit 3'`))) == 3
     @test Corset.CLI.exit_code(run(ignorestatus(`sh -c "kill -KILL \$\$"`))) == 101
@@ -305,10 +341,12 @@ end
             mktempdir(@__DIR__) do root
                 uuid, helper = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
                 files = [
-                    "Project.toml" => "name = \"Relaunched\"\nuuid = \"$uuid\"\n\n[preferences.Corset]\nkind = \"library\"\n",
+                    "Project.toml" => "name = \"Relaunched\"\nuuid = \"$uuid\"\n\n[weakdeps]\nDates = \"ade2ca70-3891-5945-98fb-dc099432e06a\"\n\n[extensions]\nDatesExt = \"Dates\"\n\n[preferences.Corset]\nkind = \"library\"\n",
                     "src/Relaunched.jl" => box,
-                    "helper/Project.toml" => "name = \"Helper\"\nuuid = \"$helper\"\n",
-                    "helper/src/Helper.jl" => "module Helper\nend\n",
+                    # Helper loads Dates, so tests load extension Dates triggers.
+                    "helper/Project.toml" => "name = \"Helper\"\nuuid = \"$helper\"\n\n[deps]\nDates = \"ade2ca70-3891-5945-98fb-dc099432e06a\"\n",
+                    "helper/src/Helper.jl" => "module Helper\nusing Dates: Dates\nend\n",
+                    "ext/DatesExt.jl" => "\"\"\"Extension tests load through Helper.\"\"\"\nmodule DatesExt\nend\n",
                     "test/Project.toml" => "[deps]\nHelper = \"$helper\"\nRelaunched = \"$uuid\"\nTest = \"8dfed614-e22c-5e08-85e1-65c5234f0b40\"\n\n[sources]\nHelper = {path = \"../helper\"}\nRelaunched = {path = \"..\"}\n",
                 ]
                 for (path, text) in files
@@ -317,7 +355,7 @@ end
                 end
                 @test occursin("environment cannot load Relaunched", corset("check", root)[3])
                 code, out, err = launched("check", root, "-A", "annotation")
-                @test code == 1 && occursin("error[shadowed-base]", out) && !occursin("annotation", out)
+                @test code == 1 && occursin("error[shadowed-base]", out) && !occursin("annotation", out) && !occursin("untested-extension", out)
                 @test occursin("building environment for Relaunched", err)
                 code, out, err = launched("check", root, "-A", "shadowed-base")
                 @test code == 0 && !occursin("building environment", err)

@@ -2,7 +2,7 @@
 `untested-extension` (F88): extension trigger package missing from test dependencies.
 
 ## Description
-Reports extension whose trigger package is neither direct dependency nor test dependency.
+Reports extension whose trigger package is neither direct dependency nor test dependency, and none of them loads it.
 
 ## Rationale
 Extension loads only after every trigger package loads. Tests without trigger never run extension code.
@@ -26,7 +26,7 @@ CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 ```
 
 ## Limitations
-Trigger that other test dependency loads still counts as missing.
+Run outside environment that resolves package reads direct lists only: trigger that other test dependency loads counts as missing.
 Finding sits at extension module, so it shows only when run analyzes extension file.
 """
 module UntestedExtension
@@ -42,11 +42,11 @@ function test_fix(test_deps::TestDeps.T, names::String)::Fix
     return manual_fix("add test/Project.toml with $names in `[deps]`")
 end
 
-"""Findings for each analyzed extension file whose extension has trigger outside direct and test dependencies."""
+"""Findings for each analyzed extension file whose extension has trigger that neither dependencies nor test dependencies load."""
 function findings(facts::FactSet)::Vector{Finding}
     project = facts.project
     isnothing(project) && return Finding[]
-    installed = Set([project.deps; project.tests])
+    installed = Set([project.deps; project.tests; something(project.test_loads, Base.PkgId[])])
     by_path = Dict(file.path => file for file in facts.files)
     found = Finding[]
     for extension in project.extensions

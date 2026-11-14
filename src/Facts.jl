@@ -192,7 +192,8 @@ end
 """
 Project.toml facts of package (`syntax` stage, read before load): name, uuid (`nothing` when absent or invalid), root
 directory, module file, direct dependencies, extensions by name, where tests list dependencies, and test dependencies
-other than direct ones, by name.
+other than direct ones, by name. `test_loads`: packages that load with package and its test dependencies, by name, from
+Manifest of environment that loads package; `nothing` when that environment does not resolve package.
 """
 struct ProjectFacts
     name::String
@@ -203,6 +204,7 @@ struct ProjectFacts
     extensions::Vector{Extension}
     test_deps::TestDeps.T
     tests::Vector{Base.PkgId}
+    test_loads::Union{Nothing, Vector{Base.PkgId}}
 end
 
 """

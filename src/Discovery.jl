@@ -22,11 +22,12 @@ const SCRIPTS = [joinpath("test", "runtests.jl"), joinpath("docs", "make.jl"), j
 """
 Sources for `path`. Package or app root (Project.toml with `name`): entry files and their include closure.
 File: it and its include closure. Other directory: Julia files under it, without hidden directories and nested projects.
+`environment` is project file of environment that loads package (`nothing` when run loads none); its Manifest gives `test_loads`.
 """
-function discover(path::String)::Sources
+function discover(path::String; environment::Union{Nothing, String})::Sources
     path = abspath(path)
     root = project_root(path)
-    project = isnothing(root) ? nothing : project_facts(root)
+    project = isnothing(root) ? nothing : project_facts(root; environment)
     isfile(path) && return closure([path], project)
     !isnothing(project) && isfile(joinpath(path, "Project.toml")) && return closure(entry_files(project), project)
     return Sources([load(file) for file in walk_files(path)], BlindSpot[], String[], project)
@@ -39,10 +40,11 @@ table(data::Dict{String, Any}, key::String)::Dict{String, Any} = get(data, key, 
 ids(names::Dict{String, Any})::Vector{Base.PkgId} = [Base.PkgId(Base.UUID(uuid), name) for (name, uuid) in sort!(collect(names); by = first)]
 
 """
-Project.toml facts of package with project root `root`; `nothing` for project without `name`.
-Config error: missing module or extension file, unknown trigger or test target name. Only package load needs uuid.
+Project.toml facts of package with project root `root`; `nothing` for project without `name`. Manifest of `environment`
+project file gives `test_loads`. Config error: missing module or extension file, unknown trigger or test target name.
+Only package load needs uuid.
 """
-function project_facts(root::String)::Union{Nothing, ProjectFacts}
+function project_facts(root::String; environment::Union{Nothing, String})::Union{Nothing, ProjectFacts}
     project = parse_toml(joinpath(root, "Project.toml"))
     haskey(project, "name") || return nothing
     name = project["name"]::String
@@ -52,7 +54,30 @@ function project_facts(root::String)::Union{Nothing, ProjectFacts}
     extensions = [extension(root, extension_name, triggers, known) for (extension_name, triggers) in sort!(collect(table(project, "extensions")); by = first)]
     test_deps, tests = test_dependencies(root, project)
     uuid = tryparse(Base.UUID, string(get(project, "uuid", "")))
-    return ProjectFacts(name, uuid, root, entry, ids(table(project, "deps")), extensions, test_deps, tests)
+    loads = isnothing(uuid) || isnothing(environment) ? nothing : test_loads(environment, uuid, tests)
+    return ProjectFacts(name, uuid, root, entry, ids(table(project, "deps")), extensions, test_deps, tests, loads)
+end
+
+"""
+Packages that load with package `uuid` and its test dependencies `tests`: their transitive `[deps]` in Manifest of
+`environment` project file, sorted by name. `nothing` when Manifest is missing or lacks package.
+"""
+function test_loads(environment::String, uuid::Base.UUID, tests::Vector{Base.PkgId})::Union{Nothing, Vector{Base.PkgId}}
+    manifest = Base.project_file_manifest_path(environment)
+    isnothing(manifest) && return nothing
+    entries = table(parse_toml(manifest), "deps")
+    found = Dict(Base.UUID(entry["uuid"]) => (name, entry) for (name, list) in entries for entry in list)
+    haskey(found, uuid) || return nothing
+    pending, seen = [uuid; [test.uuid for test in tests]], Set{Base.UUID}()
+    while !isempty(pending)
+        next = pop!(pending)
+        (next in seen || !haskey(found, next)) && continue
+        push!(seen, next)
+        deps = get(last(found[next]), "deps", String[])
+        # Manifest lists dependency names; it maps name to uuid only where names repeat.
+        append!(pending, deps isa AbstractDict ? Base.UUID.(values(deps)) : [Base.UUID(only(entries[dep])["uuid"]) for dep in deps])
+    end
+    return sort!([Base.PkgId(id, first(found[id])) for id in seen]; by = id -> id.name)
 end
 
 """Extension `name` of package at `root` with trigger name or names `triggers`, looked up in `known` (`[deps]` and `[weakdeps]`)."""
