@@ -159,8 +159,8 @@ statement_of(file::SyntaxFile, name::Span)::SyntaxNode =
 
 """
 Explicit import statements (`using X: a`, `import X: a`, `import X`) in analyzed `files`, each with global uses of names
-it binds in its module, in source order. Statement with `as`, statement outside `files` and module ExplicitImports.jl
-cannot analyze fully give no entry.
+it binds in its module, in source order. Statement with `as`, statement or use outside `files`, and module
+ExplicitImports.jl cannot analyze fully give no entry.
 """
 function explicit_imports(analysis::ExplicitImports.FileAnalysis, files::Vector{SyntaxFile})::Vector{ExplicitImport}
     by_path, rows = Dict(file.path => file for file in files), analysis.per_usage_info
@@ -177,15 +177,16 @@ function explicit_imports(analysis::ExplicitImports.FileAnalysis, files::Vector{
     end
     found = ExplicitImport[]
     for (statement, (module_path, names)) in statements
-        uses = Tuple{Symbol, Span}[]
+        uses, outside = Tuple{Symbol, Span}[], false
         for row in rows
             row.name in names && row.module_path == module_path && row.import_type == :not_import && isnothing(row.qualified_by) || continue
             # ExplicitImports.jl marks named-tuple key or field name after global use as later use; neither reads name.
             !row.kwarg_name && !row.struct_field_name && (row.name, map(objectid, row.scope_path)) in global_in || continue
             use = location_span(row.location, string(row.name), by_path)
-            isnothing(use) || push!(uses, (row.name, use))
+            isnothing(use) ? (outside = true) : push!(uses, (row.name, use))
         end
-        push!(found, ExplicitImport(statement, names, sort!(uses; by = ((_, use),) -> (use.file, use.first_byte))))
+        # Use outside analyzed files (`corset check src/one.jl`) would make import look unused or misplaced.
+        outside || push!(found, ExplicitImport(statement, names, sort!(uses; by = ((_, use),) -> (use.file, use.first_byte))))
     end
     return sort!(found; by = imported -> (imported.statement.file, imported.statement.first_byte))
 end
