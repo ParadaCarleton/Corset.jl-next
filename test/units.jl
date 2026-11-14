@@ -110,6 +110,13 @@ const SYNTAX_ONLY = Corset.Config.Flags(;
     levels = [string(entry.name) => Corset.Config.Level.allow for entry in Corset.Rules.REGISTRY if entry.stage != Corset.Facts.Stage.syntax],
 )
 
+@testset "defined name" begin
+    # Parenthesized operator once lost exact method site: `(==)` never matched method name `==`.
+    text = "Base.:(==)(a, b) = true\nBase.:+(a, b) = a\nfunction Base.show(io, x) end\n(!=)(a, b) = false\nlocal_name(x) = x\n"
+    file = Corset.Syntax.parse_file("names.jl", text, Role.package)
+    @test [Corset.Package.defined_name(file, node) for node in Corset.Facts.forms(file, "function")] == ["==", "+", "show", "!=", "local_name"]
+end
+
 @testset "discovery" begin
     mktempdir(@__DIR__) do root
         files = Dict(

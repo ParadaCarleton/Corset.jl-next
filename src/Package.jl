@@ -56,10 +56,10 @@ function generated(method::Method)::Bool
     return !isempty(signature.parameters) && signature.parameters[1] === typeof(Core.kwcall)
 end
 
-"""Function name definition `node` writes, without module qualifier or quote: `+` for `Base.:+(a, b) = …`."""
+"""Function name definition `node` writes, without module qualifier, quote or parentheses: `==` for `Base.:(==)(a, b) = …`."""
 function defined_name(file::SyntaxFile, node::SyntaxNode)::String
     text = Facts.source(file, Facts.definition_name(node))
-    return lstrip(last(split(text, '.')), ':')
+    return strip(lstrip(last(split(text, '.')), ':'), ['(', ')'])
 end
 
 """Byte where each line of `text` starts."""

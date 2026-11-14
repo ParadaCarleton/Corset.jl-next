@@ -1,0 +1,54 @@
+error[operator-consistency]: `==` defined for `Tags` without `hash`
+  --> src/OperatorConsistencyPositive.jl:9:1
+   |
+ 9 | Base.:(==)(a::Tags, b::Tags) = a.names == b.names
+   | ^^^^^^^^^^ equality without matching `hash`
+10 | Base.isequal(a::Tags, b::Tags) = isequal(a.names, b.names)
+   | ------------ also defines equality
+   |
+   = why: `Dict` and `Set` find keys by `hash`; Base default hashes identity, so equal values miss
+   = fix: define `Base.hash(x::Tags, h::UInt)` from fields equality compares   [manual]
+   = docs: corset explain operator-consistency
+   = note: deny from correctness group, library preset
+   = note: opt out with `# corset: allow operator-consistency -- <reason>`
+
+error[operator-consistency]: `==` defined for `Point` without `hash`
+  --> src/OperatorConsistencyPositive.jl:16:1
+   |
+16 | Base.:(==)(a::Point{T}, b::Point{T}) where {T} = a.x == b.x
+   | ^^^^^^^^^^ equality without matching `hash`
+   |
+   = why: `Dict` and `Set` find keys by `hash`; Base default hashes identity, so equal values miss
+   = fix: define `Base.hash(x::Point, h::UInt)` from fields equality compares   [manual]
+   = docs: corset explain operator-consistency
+
+error[operator-consistency]: method on `!=`, which Base derives from `==`
+  --> src/OperatorConsistencyPositive.jl:25:1
+   |
+25 | Base.:(!=)(a::Ring, b::Ring) = a.radius != b.radius
+   | ^^^^^^^^^^ can disagree with `==`
+   |
+   = why: Base defines `a != b` as `!(a == b)`; own method can drift from it
+   = fix: delete method; define `==` only   [manual]
+   = docs: corset explain operator-consistency
+
+error[operator-consistency]: method on `>`, which Base derives from `<`
+  --> src/OperatorConsistencyPositive.jl:26:1
+   |
+26 | Base.:(>)(a::Ring, b::Ring) = a.radius > b.radius
+   | ^^^^^^^^^ can disagree with `<`
+   |
+   = why: Base defines `a > b` as `b < a`; own method can drift from it
+   = fix: delete method; define `<` only   [manual]
+   = docs: corset explain operator-consistency
+
+error[operator-consistency]: method on `>=`, which Base derives from `<=`
+  --> src/OperatorConsistencyPositive.jl:27:1
+   |
+27 | Base.:(>=)(a::Ring, b::Ring) = a.radius >= b.radius
+   | ^^^^^^^^^^ can disagree with `<=`
+   |
+   = why: Base defines `a >= b` as `b <= a`; own method can drift from it
+   = fix: delete method; define `<=` only   [manual]
+   = docs: corset explain operator-consistency
+
