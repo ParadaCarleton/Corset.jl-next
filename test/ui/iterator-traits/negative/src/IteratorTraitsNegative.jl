@@ -29,6 +29,13 @@ Base.iterate(lines::Lines, state = nothing) = iterate(eachsplit(lines.text, '\n'
 Base.IteratorSize(::Type{Lines}) = Base.SizeUnknown()
 Base.IteratorEltype(::Type{Lines}) = Base.EltypeUnknown()
 
+"""Tokens; element trait throws, so `collect` never reads `eltype`."""
+struct Tokens end
+
+Base.iterate(tokens::Tokens, state = nothing) = nothing
+Base.length(tokens::Tokens) = 0
+Base.IteratorEltype(::Type{Tokens}) = throw(ArgumentError("tokens have no element trait"))
+
 """Decimal digits; `eltype` on value."""
 struct Digits
     number::Int

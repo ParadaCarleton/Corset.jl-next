@@ -2,7 +2,8 @@
 `iterator-traits` (F93): iterator without element type makes `collect` build `Vector{Any}`.
 
 ## Description
-Reports package struct with `Base.iterate` method when no method other than Base default covers its `eltype` or `IteratorEltype`.
+Reports package struct with `Base.iterate` method when its `IteratorEltype` is `HasEltype` and no method other than Base
+default covers its `eltype`. Default `IteratorEltype` is `HasEltype`. Return type inference finds trait.
 
 ## Rationale
 Default `IteratorEltype` is `HasEltype`, so `collect` and `Set` trust `eltype`. Base default `eltype` is `Any`.
@@ -27,6 +28,7 @@ Base.eltype(::Type{Countdown})::Type = Int
 ## Limitations
 Abstract types and unions as `iterate` argument pass; each subtype can define `eltype`.
 `eltype` method that covers only some parameters, as `eltype(::Type{Cycle{Int}})`, reports.
+Iterator whose `IteratorEltype` inference cannot settle to one trait passes, as trait that depends on type parameter.
 """
 module IteratorTraits
 
@@ -56,12 +58,12 @@ function untyped_finding(type::Type, site::MethodSite)::Finding
     return Finding(
         NAME, :untyped_iterator, Confidence.definite, "`iterate` on `$name` without `eltype`; `collect` builds `Vector{Any}`",
         Label(name_span(site), "element type defaults to `Any`"), Label[],
-        "default `IteratorEltype` trusts `eltype`, and Base default `eltype` is `Any`",
+        "`IteratorEltype` is `HasEltype`, so `collect` trusts `eltype`; Base default `eltype` is `Any`",
         manual_fix("define `Base.eltype(::Type{<:$name})`, or `Base.IteratorEltype(::Type{<:$name}) = Base.EltypeUnknown()`"),
     )
 end
 
-"""Findings for package structs with `iterate` method whose `eltype` and `IteratorEltype` are Base defaults."""
+"""Findings for package structs with `iterate` method whose `IteratorEltype` is `HasEltype` and `eltype` is Base default."""
 function findings(facts::FactSet)::Vector{Finding}
     package = facts.package
     isnothing(package) && return Finding[]
@@ -72,7 +74,8 @@ function findings(facts::FactSet)::Vector{Finding}
         type = iterated(site.method, modules)
         isnothing(type) || get!(iterators, Base.unwrap_unionall(type).name, (type, site))
     end
-    return [untyped_finding(type, site) for (type, site) in values(iterators) if !own_method(Base.eltype, type) && !own_method(Base.IteratorEltype, type)]
+    trusted = type -> (trait = trait_type(Base.IteratorEltype, type); trait !== Union{} && trait <: Base.HasEltype)
+    return [untyped_finding(type, site) for (type, site) in values(iterators) if !own_method(Base.eltype, type) && trusted(type)]
 end
 
 const ENTRY = RuleEntry(NAME, Group.performance, [93], Stage.package, findings)

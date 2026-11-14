@@ -90,6 +90,30 @@ end
 Base.iterate(number::Digits, rest::Int = number.number) = rest == 0 ? nothing : (rest % 10, rest ÷ 10)
 Base.IteratorSize(::Digits) = Base.SizeUnknown()
 
+"""Cells of square board; `HasShape` trait with `length` and `size`."""
+struct Board
+    side::Int
+end
+
+Base.iterate(board::Board, cell::Int = 1) = cell > board.side^2 ? nothing : (cell, cell + 1)
+Base.IteratorSize(::Type{Board}) = Base.HasShape{2}()
+Base.length(board::Board) = board.side^2
+Base.size(board::Board) = (board.side, board.side)
+
+"""Rows; size trait depends on element type, which inference cannot settle."""
+struct Rows{T}
+    items::Vector{T}
+end
+
+Base.iterate(rows::Rows, index::Int = 1) = index > length(rows.items) ? nothing : (rows.items[index], index + 1)
+Base.IteratorSize(::Type{Rows{T}}) where {T} = T <: Number ? Base.HasLength() : Base.SizeUnknown()
+
+"""Tokens; size trait throws, so `collect` never calls `length`."""
+struct Tokens end
+
+Base.iterate(tokens::Tokens, state = nothing) = nothing
+Base.IteratorSize(::Type{Tokens}) = throw(ArgumentError("tokens have no size trait"))
+
 """Counter; `length` through `Vararg` method covers call on one counter."""
 struct Counter
     count::Int

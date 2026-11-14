@@ -34,9 +34,9 @@ error[missing-interface]: `Grid` misses `size(::Grid)` and `getindex(::Grid, ::V
    = docs: corset explain missing-interface
 
 error[missing-interface]: `Repeated` misses `isvalid(::Repeated, ::Int)` and `iterate(::Repeated, ::Int)` of `AbstractString` interface
-  --> src/MissingInterfacePositive.jl:26:8
+  --> src/MissingInterfacePositive.jl:28:8
    |
-26 | struct Repeated <: AbstractString
+28 | struct Repeated <: AbstractString
    |        ^^^^^^^^ first call to missing method throws
    |                    -------------- opts into `AbstractString` interface
    |
@@ -45,41 +45,67 @@ error[missing-interface]: `Repeated` misses `isvalid(::Repeated, ::Int)` and `it
    = docs: corset explain missing-interface
 
 error[missing-interface]: `Countdown` misses `length(::Countdown)` of iteration interface
-  --> src/MissingInterfacePositive.jl:35:8
+  --> src/MissingInterfacePositive.jl:37:8
    |
-35 | struct Countdown
+37 | struct Countdown
    |        ^^^^^^^^^ first call to missing method throws
 ...
-39 | Base.iterate(countdown::Countdown, count::Int = countdown.start) = count < 1 ? nothing : (count, count - 1)
+41 | Base.iterate(countdown::Countdown, count::Int = countdown.start) = count < 1 ? nothing : (count, count - 1)
    | ------------ `iterate` makes it iterator
    |
-   = why: default `IteratorSize` is `HasLength`, so `collect` and `map` call `length`
+   = why: `IteratorSize` is `HasLength`, so `collect` calls `length(::Countdown)`
    = fix: define `Base.length(::Countdown)`, or `Base.IteratorSize(::Type{<:Countdown}) = Base.SizeUnknown()`   [manual]
    = docs: corset explain missing-interface
 
 error[missing-interface]: `Pulse` misses `length(::Pulse)` of iteration interface
-  --> src/MissingInterfacePositive.jl:47:8
+  --> src/MissingInterfacePositive.jl:49:8
    |
-44 | Base.iterate(stream::Stream, state::Int = 1) = state > 1 ? nothing : (state, state + 1)
+46 | Base.iterate(stream::Stream, state::Int = 1) = state > 1 ? nothing : (state, state + 1)
    | ------------ `iterate` makes it iterator
 ...
-47 | struct Pulse <: Stream end
+49 | struct Pulse <: Stream end
    |        ^^^^^ first call to missing method throws
    |
-   = why: default `IteratorSize` is `HasLength`, so `collect` and `map` call `length`
+   = why: `IteratorSize` is `HasLength`, so `collect` calls `length(::Pulse)`
    = fix: define `Base.length(::Pulse)`, or `Base.IteratorSize(::Type{<:Pulse}) = Base.SizeUnknown()`   [manual]
    = docs: corset explain missing-interface
 
 error[missing-interface]: `Table` misses `length(::Table)` of iteration interface
-  --> src/MissingInterfacePositive.jl:50:8
+  --> src/MissingInterfacePositive.jl:52:8
    |
-50 | struct Table <: AbstractDict{Symbol, Int}
+52 | struct Table <: AbstractDict{Symbol, Int}
    |        ^^^^^ first call to missing method throws
 ...
-54 | Base.iterate(table::Table, index::Int = 1) = index > length(table.items) ? nothing : (table.items[index], index + 1)
+56 | Base.iterate(table::Table, index::Int = 1) = index > length(table.items) ? nothing : (table.items[index], index + 1)
    | ------------ `iterate` makes it iterator
    |
-   = why: default `IteratorSize` is `HasLength`, so `collect` and `map` call `length`
+   = why: `IteratorSize` is `HasLength`, so `collect` calls `length(::Table)`
    = fix: define `Base.length(::Table)`, or `Base.IteratorSize(::Type{<:Table}) = Base.SizeUnknown()`   [manual]
+   = docs: corset explain missing-interface
+
+error[missing-interface]: `Window` misses `length(::Window)` of iteration interface
+  --> src/MissingInterfacePositive.jl:59:8
+   |
+59 | struct Window
+   |        ^^^^^^ first call to missing method throws
+...
+63 | Base.iterate(window::Window, column::Int = 1) = column > window.width ? nothing : (column, column + 1)
+   | ------------ `iterate` makes it iterator
+   |
+   = why: `IteratorSize` is `HasLength`, so `collect` calls `length(::Window)`
+   = fix: define `Base.length(::Window)`, or `Base.IteratorSize(::Type{<:Window}) = Base.SizeUnknown()`   [manual]
+   = docs: corset explain missing-interface
+
+error[missing-interface]: `Board` misses `length(::Board)` and `size(::Board)` of iteration interface
+  --> src/MissingInterfacePositive.jl:67:8
+   |
+67 | struct Board
+   |        ^^^^^ first call to missing method throws
+...
+71 | Base.iterate(board::Board, cell::Int = 1) = cell > board.side^2 ? nothing : (cell, cell + 1)
+   | ------------ `iterate` makes it iterator
+   |
+   = why: `IteratorSize` is `HasShape`, so `collect` calls `length(::Board)` and `size(::Board)`
+   = fix: define `Base.length(::Board)` and `Base.size(::Board)`, or `Base.IteratorSize(::Type{<:Board}) = Base.SizeUnknown()`   [manual]
    = docs: corset explain missing-interface
 
