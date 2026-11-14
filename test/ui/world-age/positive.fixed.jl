@@ -26,3 +26,8 @@ function define_qualified()
     Base.@eval qualified() = 1
     return Base.invokelatest(qualified)
 end
+
+function define_elsewhere(runner::Module)
+    @eval runner remote() = 1
+    return Base.invokelatest(runner.remote)
+end

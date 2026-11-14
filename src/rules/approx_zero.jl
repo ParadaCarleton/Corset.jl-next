@@ -3,6 +3,7 @@
 
 ## Description
 Reports `x ≈ 0` and `isapprox(x, 0)` with literal zero and no `atol`.
+Test macro argument `atol` counts: `@test x ≈ 0 atol = 1e-8` passes it to `isapprox`.
 
 ## Rationale
 `isapprox` uses relative tolerance by default. Relative to zero, no nonzero value is close, so test passes only when value is exactly zero.
@@ -32,6 +33,16 @@ const PATTERN = IndexedPattern(
     )
 )
 
+"""Test macros that pass trailing `key = value` arguments to tested call."""
+const TEST_MACROS = ("@test", "@test_broken", "@test_skip")
+
+"""Whether `node` is expression of test macro call that passes `atol`, as in `@test x ≈ 0 atol = 1e-8`."""
+function test_atol(node::SyntaxNode)::Bool
+    call = parent_of(node)
+    (isnothing(call) || base_macro(call) ∉ TEST_MACROS || children_of(call)[2] !== node) && return false
+    return any(argument -> kind_name(argument) == "=" && leaf_value(children_of(argument)[1]) == "atol", children_of(call)[3:end])
+end
+
 """Findings for approximate comparisons against literal zero without absolute tolerance."""
 function findings(facts::FactSet)::Vector{Finding}
     return [
@@ -41,7 +52,7 @@ function findings(facts::FactSet)::Vector{Finding}
             label = "relative tolerance scales with zero",
             why = "`isapprox` defaults to relative tolerance; relative to zero, no nonzero value is close",
             fix = manual_fix("pass absolute tolerance: `isapprox($(source(file, binding(match, :x))), 0; atol = tol)`"),
-        ) for file in facts.files for match in matches(file, PATTERN)
+        ) for file in facts.files for match in matches(file, PATTERN) if !test_atol(match.node)
     ]
 end
 

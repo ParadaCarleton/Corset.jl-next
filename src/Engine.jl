@@ -78,7 +78,7 @@ end
 """Project facts of package run on `path` with `flags` loads; `nothing` when run loads no package."""
 function load_target(path::String, flags::Flags)::Union{Nothing, ProjectFacts}
     root = project_root(path)
-    project = isnothing(root) ? nothing : Discovery.project_facts(root)
+    project = isnothing(root) ? nothing : Discovery.project_facts(root; environment = nothing)
     return loads(project, Config.settings(root, flags, REGISTRY)) ? project : nothing
 end
 
@@ -97,7 +97,8 @@ end
 function analyze(path::String, flags::Flags)::Analysis
     project = project_root(path)
     settings = Config.settings(project, flags, REGISTRY)
-    sources = Discovery.discover(path)
+    # Package stage loads package from active environment.
+    sources = Discovery.discover(path; environment = Base.active_project())
     loaded = load_package(sources.project, settings, sources.files)
     facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, external_facts(loaded.facts, sources.files, settings))
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))

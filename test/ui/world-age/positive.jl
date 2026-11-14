@@ -26,3 +26,8 @@ function define_qualified()
     Base.@eval qualified() = 1
     return qualified()
 end
+
+function define_elsewhere(runner::Module)
+    @eval runner remote() = 1
+    return runner.remote()
+end

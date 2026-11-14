@@ -28,7 +28,7 @@ warning[unused-import]: unused import: `Dates`
   |        ^^^^^ never used
   |
   = why: reader looks for use that does not exist
-  = fix: remove import   [likely]
+  = fix: remove import, unless loading `Dates` has intended effect   [manual]
   = docs: corset explain unused-import
 
 warning[unused-import]: unused import: `Unicode`
@@ -38,23 +38,33 @@ warning[unused-import]: unused import: `Unicode`
   |        ^^^^^^^ never used
   |
   = why: reader looks for use that does not exist
-  = fix: replace with `import Base64`   [likely]
+  = fix: remove import, unless loading `Unicode` has intended effect   [manual]
+  = docs: corset explain unused-import
+
+warning[unused-import]: unused import: `Printf`
+ --> src/UnusedImportPositive.jl:9:15
+  |
+9 | using Printf: Printf
+  |               ^^^^^^ never used
+  |
+  = why: reader looks for use that does not exist
+  = fix: remove import, unless loading `Printf` has intended effect   [manual]
   = docs: corset explain unused-import
 
 warning[unused-import]: unused import: `tr`
- --> src/UnusedImportPositive.jl:9:22
-  |
-9 | using LinearAlgebra: tr; const ONE = 1
-  |                      ^^ never used
-  |
-  = why: reader looks for use that does not exist
-  = fix: remove import   [manual]
-  = docs: corset explain unused-import
-
-warning[unused-import]: unused import: `cross`
   --> src/UnusedImportPositive.jl:10:22
    |
-10 | using LinearAlgebra: cross #= note =# ; const TWO = 2
+10 | using LinearAlgebra: tr; const ONE = 1
+   |                      ^^ never used
+   |
+   = why: reader looks for use that does not exist
+   = fix: remove import   [manual]
+   = docs: corset explain unused-import
+
+warning[unused-import]: unused import: `cross`
+  --> src/UnusedImportPositive.jl:11:22
+   |
+11 | using LinearAlgebra: cross #= note =# ; const TWO = 2
    |                      ^^^^^ never used
    |
    = why: reader looks for use that does not exist
@@ -62,10 +72,20 @@ warning[unused-import]: unused import: `cross`
    = docs: corset explain unused-import
 
 warning[unused-import]: unused import: `lu`
-  --> src/UnusedImportPositive.jl:18:26
+  --> src/UnusedImportPositive.jl:19:26
    |
-18 |     using LinearAlgebra: lu
+19 |     using LinearAlgebra: lu
    |                          ^^ never used
+   |
+   = why: reader looks for use that does not exist
+   = fix: remove import   [likely]
+   = docs: corset explain unused-import
+
+warning[unused-import]: unused import: `Inner`
+  --> src/UnusedImportPositive.jl:21:8
+   |
+21 | import .Inner
+   |        ^^^^^^ never used
    |
    = why: reader looks for use that does not exist
    = fix: remove import   [likely]

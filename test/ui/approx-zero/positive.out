@@ -20,3 +20,23 @@ error[approx-zero]: `isapprox(0.0, residual(x))` is true only when `residual(x) 
   = fix: pass absolute tolerance: `isapprox(residual(x), 0; atol = tol)`   [manual]
   = docs: corset explain approx-zero
 
+error[approx-zero]: `x ≈ 0` is true only when `x == 0`
+ --> positive.jl:9:7
+  |
+9 | @test x ≈ 0 rtol = 1e-3
+  |       ^^^^^ relative tolerance scales with zero
+  |
+  = why: `isapprox` defaults to relative tolerance; relative to zero, no nonzero value is close
+  = fix: pass absolute tolerance: `isapprox(x, 0; atol = tol)`   [manual]
+  = docs: corset explain approx-zero
+
+error[approx-zero]: `x ≈ 0` is true only when `x == 0`
+  --> positive.jl:10:9
+   |
+10 | @assert x ≈ 0 atol = 1e-3
+   |         ^^^^^ relative tolerance scales with zero
+   |
+   = why: `isapprox` defaults to relative tolerance; relative to zero, no nonzero value is close
+   = fix: pass absolute tolerance: `isapprox(x, 0; atol = tol)`   [manual]
+   = docs: corset explain approx-zero
+

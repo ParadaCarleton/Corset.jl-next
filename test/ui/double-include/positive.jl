@@ -10,3 +10,8 @@ include("meshes.jl")
 includet("render.jl")
 include("render.jl")
 include(identity, "positive.jl")
+
+# Platform test differs between hosts: branch may run.
+@static if Sys.iswindows()
+    include("solvers.jl")
+end

@@ -5,7 +5,9 @@ module UnusedImportPositive
 
 using LinearAlgebra: norm, dot  # vector math
 using Printf: @sprintf
-import Base64
+import Dates
+import Unicode, Base64
+using Printf: Printf
 using LinearAlgebra: tr; const ONE = 1
 using LinearAlgebra: cross #= note =# ; const TWO = 2
 include("geometry.jl")

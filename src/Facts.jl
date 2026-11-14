@@ -192,7 +192,8 @@ end
 """
 Project.toml facts of package (`syntax` stage, read before load): name, uuid (`nothing` when absent or invalid), root
 directory, module file, direct dependencies, extensions by name, where tests list dependencies, and test dependencies
-other than direct ones, by name.
+other than direct ones, by name. `test_loads`: packages that load with package and its test dependencies, by name, from
+Manifest of environment that loads package; `nothing` when that environment does not resolve package.
 """
 struct ProjectFacts
     name::String
@@ -203,6 +204,7 @@ struct ProjectFacts
     extensions::Vector{Extension}
     test_deps::TestDeps.T
     tests::Vector{Base.PkgId}
+    test_loads::Union{Nothing, Vector{Base.PkgId}}
 end
 
 """
@@ -294,8 +296,68 @@ end
 """Functions that load file into calling module: Base `include`, Revise `includet`."""
 const INCLUDES = ("include", "includet")
 
-"""Calls of `file` that load another file."""
-include_calls(file::SyntaxFile)::Vector{SyntaxNode} = filter(call -> call_head(call) in INCLUDES, forms(file, "call"))
+"""Calls of `file` that load another file, without calls in branch no supported Julia runs."""
+include_calls(file::SyntaxFile)::Vector{SyntaxNode} = filter(call -> call_head(call) in INCLUDES && !dead_branch(call), forms(file, "call"))
+
+"""Version comparisons `settled` reads, by operator."""
+const COMPARISONS = Dict{String, Function}("<" => <, "<=" => <=, ">" => >, ">=" => >=)
+
+"""Comparison operators with operands swapped: `v"1.9" <= VERSION` reads as `VERSION >= v"1.9"`."""
+const MIRRORED = Dict("<" => ">", "<=" => ">=", ">" => "<", ">=" => "<=")
+
+"""Version `v"…"` literal `node` gives; `nothing` for other nodes."""
+function version_literal(node::SyntaxNode)::Union{Nothing, VersionNumber}
+    kind_name(node) == "macrocall" && length(children_of(node)) == 2 && leaf_value(children_of(node)[1]) == "@v_str" || return nothing
+    pieces = children_of(children_of(node)[2])
+    return length(pieces) == 1 ? tryparse(VersionNumber, something(leaf_value(pieces[1]), "")) : nothing
+end
+
+"""
+Truth of version test `node` on running Julia and every later release; `nothing` when truth can change or form is unknown.
+Reads `isdefined(Base, :name)`, `VERSION` compared with `v"…"`, `!`, `&&` and `||`. Platform tests stay `nothing`: other hosts differ.
+"""
+function settled(node::SyntaxNode)::Union{Nothing, Bool}
+    pieces = children_of(node)
+    if kind_name(node) in ("&&", "||")
+        short = kind_name(node) == "||"
+        values = map(settled, pieces)
+        short in values && return short
+        return all(==(!short), values) ? !short : nothing
+    end
+    if call_head(node) == "!"
+        value = settled(pieces[2])
+        return isnothing(value) ? nothing : !value
+    end
+    if call_head(node) == "isdefined" && length(pieces) == 3 && module_path(pieces[2]) in ("Base", "Core") && kind_name(pieces[3]) == "quote"
+        name = leaf_value(children_of(pieces[3])[1])
+        owner = module_path(pieces[2]) == "Base" ? Base : Core
+        # Release keeps Base names, so name defined now stays; missing name may come later.
+        return !isnothing(name) && isdefined(owner, Symbol(name)) ? true : nothing
+    end
+    operator = infix_operator(node)
+    haskey(COMPARISONS, something(operator, "")) || return nothing
+    left, right = pieces[1], pieces[3]
+    base_name(right) == "VERSION" && ((left, right, operator) = (right, left, MIRRORED[operator]))
+    version = version_literal(right)
+    (base_name(left) == "VERSION" && !isnothing(version)) || return nothing
+    holds = COMPARISONS[operator](VERSION, version)::Bool
+    # Later releases only raise VERSION: lower bound that holds stays true, upper bound that fails stays false.
+    return operator in (">", ">=") ? (holds ? true : nothing) : (holds ? nothing : false)
+end
+
+"""Whether `node` sits in branch of `if` or `elseif` that settled version test rules out."""
+function dead_branch(node::SyntaxNode)::Bool
+    child = node
+    for owner in ancestors(node)
+        if kind_name(owner) in ("if", "elseif")
+            value = settled(children_of(owner)[1])
+            index = findfirst(sibling -> sibling === child, children_of(owner))
+            (value === false && index == 2 || value === true && index == 3) && return true
+        end
+        child = owner
+    end
+    return false
+end
 
 """Absolute path include `call` in `file` loads; `nothing` when path is computed."""
 function include_target(file::SyntaxFile, call::SyntaxNode)::Union{Nothing, String}

@@ -6,6 +6,7 @@ using LinearAlgebra: norm, det, dot, kron  # vector math
 using Printf: @printf, @sprintf
 import Dates
 import Unicode, Base64
+using Printf: Printf
 using LinearAlgebra: tr; const ONE = 1
 using LinearAlgebra: cross #= note =# ; const TWO = 2
 include("geometry.jl")
@@ -17,5 +18,6 @@ encoded(text::String) = Base64.base64encode(text)
 module Inner
     using LinearAlgebra: lu
 end
+import .Inner
 
 end
