@@ -49,7 +49,7 @@ function json_report(report::Report)::Dict{String, Any}
         location = filter(pair -> first(pair) ∉ ("text", "primary"), label_data(report, Label(spot.span, spot.cause), true))
         return merge(location, Dict("cause" => spot.cause))
     end
-    coverage = Dict("files" => length(report.sources), "blind_spots" => blind_spots)
+    coverage = Dict("files" => report.analyzed, "blind_spots" => blind_spots)
     return Dict("version" => JSON_VERSION, "diagnostics" => diagnostics, "baselined" => report.baselined, "stale" => stale, "coverage" => coverage)
 end
 

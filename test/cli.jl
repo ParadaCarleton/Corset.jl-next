@@ -132,7 +132,7 @@ end
     with_package(@__DIR__, "Throws", files...) do package
         code, out, _ = corset("check", package)
         @test code == 1 && occursin("error[load-error]: package does not load\n --> src/inner.jl:1:1", out)
-        @test occursin("boom at load", out) && occursin("load check, always on", out) && occursin("skipped 1 (1 package did not load)", out)
+        @test occursin("boom at load", out) && occursin("load check, always on", out) && occursin("skipped 1 (package did not load: 1)", out)
         # Run that allows every rule after `syntax` stage loads nothing.
         allow_package = reduce(vcat, (["-A", string(entry.name)] for entry in Corset.Rules.REGISTRY if entry.stage != Corset.Facts.Stage.syntax))
         @test !occursin("load-error", corset("check", package, allow_package...)[2])
@@ -156,7 +156,9 @@ end
     with_package(@__DIR__, "InitFails", "src/InitFails.jl" => init_fails, "Manifest.toml" => pinned) do package
         out = corset("check", package)[2]
         @test occursin("--> src/InitFails.jl:3:1", out) && occursin("init failed", out)
-        @test occursin("analyzed 1 file; skipped 2 (1 loaded version differs from Manifest, 1 package did not load)", out)
+        @test occursin("analyzed 1 file; skipped 2 (loaded version differs from Manifest: 1, package did not load: 1)", out)
+        # Manifest holds blind spot, so it is source, but JSON counts analyzed files only.
+        @test JSON.parse(corset("check", package, "--format", "json")[2])["coverage"]["files"] == 1
     end
     mktempdir(@__DIR__) do package
         mkpath(joinpath(package, "src"))
@@ -237,7 +239,7 @@ end
             @test code == 1 && occursin("error[shadowed-base]: `length` defines new function", out) && occursin("--> ext/TriggerExt/TriggerExt.jl:3:1", out)
             @test occursin("error[load-error]: extension `BrokenExt` does not load\n --> ext/BrokenExt.jl:3:1", out) && occursin("extension boom", out)
             @test occursin("extension `PrecompileOnlyExt` failed to precompile; Julia logged error", out)
-            @test occursin("skipped 4 (2 extension did not load, 1 extension trigger did not load, 1 extension trigger not installed)", out)
+            @test occursin("skipped 4 (extension did not load: 2, extension trigger did not load: 1, extension trigger not installed: 1)", out)
             @test occursin("ext/AbsentExt.jl:1:1: extension trigger not installed", out)
             @test occursin("ext/FailingExt.jl:1:1: extension trigger did not load", out)
             # Checked path leaves extension files out: they are read from disk for report.
@@ -460,7 +462,7 @@ end
                     code, out, err = launched("check", root)
                     if isempty(compat)
                         @test code == 0 && occursin("corset: Manifest pins TextWrap 0.3.0; environment uses 1.", err)
-                        @test occursin("coverage: analyzed 1 file; skipped 1 (1 loaded version differs from Manifest)", out) && occursin("  - Manifest.toml:3:1: loaded version differs from Manifest", out)
+                        @test occursin("coverage: analyzed 1 file; skipped 1 (loaded version differs from Manifest: 1)", out) && occursin("  - Manifest.toml:3:1: loaded version differs from Manifest", out)
                     else
                         @test code == 2 && occursin("cannot build environment for Pinned from its Manifest, even with Corset dependencies moved", err) && occursin("TextWrap", err)
                     end

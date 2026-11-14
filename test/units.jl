@@ -216,7 +216,7 @@ end
         @test Corset.Discovery.discover(joinpath(root, "src", "a.jl"); environment = nothing).entries == [joinpath(root, "src", "a.jl")]
         @test isempty(Corset.Discovery.discover(joinpath(root, "scripts"); environment = nothing).entries)
         @test sprint(Corset.Render.render_coverage, Corset.check(root; flags = SYNTAX_ONLY)) == """
-            coverage: analyzed 7 files; skipped 2 (1 include of missing file, 1 include with computed path)
+            coverage: analyzed 7 files; skipped 2 (include of missing file: 1, include with computed path: 1)
               - src/Pkg.jl:4:1: include with computed path
               - src/Pkg.jl:5:1: include of missing file
             """

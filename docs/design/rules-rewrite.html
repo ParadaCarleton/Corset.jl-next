@@ -456,7 +456,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Corset limits never fall below compiler limits (<code>max_methods</code>, union splitting). Corset resolves every call compiler resolves.</li>
 <li>Rules assume Base functions keep documented contracts: <code>==</code> has no side effects, and comparison with <code>NaN</code> is false. Method that breaks contract is out of scope, as for Clippy <code>ifs_same_cond</code>.</li>
 </ul>
-<p>Coverage line ends every run and counts blind spots by cause: <code>analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)</code>. Rule that lacks fact at site reports nothing there.</p>
+<p>Coverage line ends every run and counts blind spots by cause: <code>analyzed 412 of 430 methods; skipped 18 (generated function: 2, unexpanded macro: 16)</code>. Rule that lacks fact at site reports nothing there.</p>
 </div><div class="decision"><h3>Lint levels</h3>
 <p>Clippy model: each group and each rule has level <code>allow</code>, <code>warn</code> or <code>deny</code>; rule level overrides group level from any source. Command-line flags beat config; config beats preset. <code>deny</code> findings fail run; <code>--deny warnings</code> makes warnings fail too. Baseline findings never fail run.</p>
 </div><div class="decision"><h3>Opt-out comments</h3>
