@@ -1,0 +1,42 @@
+warning[iterator-traits]: `iterate` on `Countdown` without `eltype`; `collect` builds `Vector{Any}`
+  --> src/IteratorTraitsPositive.jl:10:1
+   |
+10 | Base.iterate(countdown::Countdown, count::Int = countdown.start) = count < 1 ? nothing : (count, count - 1)
+   | ^^^^^^^^^^^^ element type defaults to `Any`
+   |
+   = why: default `IteratorEltype` trusts `eltype`, and Base default `eltype` is `Any`
+   = fix: define `Base.eltype(::Type{<:Countdown})`, or `Base.IteratorEltype(::Type{<:Countdown}) = Base.EltypeUnknown()`   [manual]
+   = docs: corset explain iterator-traits
+   = note: warn from performance group, library preset
+   = note: opt out with `# corset: allow iterator-traits -- <reason>`
+
+warning[iterator-traits]: `iterate` on `Cycle` without `eltype`; `collect` builds `Vector{Any}`
+  --> src/IteratorTraitsPositive.jl:18:1
+   |
+18 | Base.iterate(cycle::Cycle, index::Int = 1) = index > length(cycle.items) ? nothing : (cycle.items[index], index + 1)
+   | ^^^^^^^^^^^^ element type defaults to `Any`
+   |
+   = why: default `IteratorEltype` trusts `eltype`, and Base default `eltype` is `Any`
+   = fix: define `Base.eltype(::Type{<:Cycle})`, or `Base.IteratorEltype(::Type{<:Cycle}) = Base.EltypeUnknown()`   [manual]
+   = docs: corset explain iterator-traits
+
+warning[iterator-traits]: `iterate` on `Window` without `eltype`; `collect` builds `Vector{Any}`
+  --> src/IteratorTraitsPositive.jl:28:1
+   |
+28 | Base.iterate(window::Window{T}) where {T} = iterate(window, 1)
+   | ^^^^^^^^^^^^ element type defaults to `Any`
+   |
+   = why: default `IteratorEltype` trusts `eltype`, and Base default `eltype` is `Any`
+   = fix: define `Base.eltype(::Type{<:Window})`, or `Base.IteratorEltype(::Type{<:Window}) = Base.EltypeUnknown()`   [manual]
+   = docs: corset explain iterator-traits
+
+warning[iterator-traits]: `iterate` on `Walk` without `eltype`; `collect` builds `Vector{Any}`
+  --> src/IteratorTraitsPositive.jl:38:1
+   |
+38 | Base.iterate(walk::W, step::Int = 0) where {W <: Walk} = step >= walk.steps ? nothing : (step, step + 1)
+   | ^^^^^^^^^^^^ element type defaults to `Any`
+   |
+   = why: default `IteratorEltype` trusts `eltype`, and Base default `eltype` is `Any`
+   = fix: define `Base.eltype(::Type{<:Walk})`, or `Base.IteratorEltype(::Type{<:Walk}) = Base.EltypeUnknown()`   [manual]
+   = docs: corset explain iterator-traits
+
