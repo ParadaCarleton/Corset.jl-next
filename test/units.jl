@@ -20,15 +20,20 @@ end
     edit(first, last, replacement) = Edit(Span("f.jl", first, last, Precision.exact), replacement)
     @test Corset.Fixes.apply_edits(text, [edit(5, 7, "xyz"), edit(1, 1, "A")]) == "Abc xyz"
     @test_throws ArgumentError Corset.Fixes.apply_edits(text, [edit(1, 3, "x"), edit(3, 4, "y")])
+    @test Corset.Fixes.apply_edits(text, [edit(1, 4, ""), edit(1, 0, "new ")]) == "new def"
     findings = [
         sample_finding(1:1; fix = Fix("t", [edit(1, 1, "A")], Tier.safe)),
         sample_finding(5:7; fix = Fix("t", [edit(5, 7, "xyz")], Tier.breaking)),
         sample_finding(2:2; fix = Fix("t", Edit[], Tier.manual)),
         sample_finding(3:3),
     ]
-    @test length(Corset.Fixes.applicable_edits(findings, "f.jl", Tier.safe)) == 1
-    @test length(Corset.Fixes.applicable_edits(findings, "f.jl", Tier.manual)) == 2
-    @test isempty(Corset.Fixes.applicable_edits(findings, "other.jl", Tier.manual))
+    @test length(Corset.Fixes.applicable_edits(findings, Tier.safe)) == 1
+    @test length(Corset.Fixes.applicable_edits(findings, Tier.manual)) == 2
+    @test_throws ArgumentError Corset.Fixes.apply_edits(text, [edit(1, 1, "A"), Edit(Span("g.jl", 5, 7, Precision.exact), "y")])
+    # Fix spanning two files applies whole or not at all; overlap in either file skips it.
+    moved(bytes) = Fix("t", [edit(bytes, bytes, ""), Edit(Span("g.jl", 1, 0, Precision.exact), "x")], Tier.safe)
+    @test Corset.Fixes.applicable_edits([sample_finding(1:1; fix = moved(1)), sample_finding(1:1; fix = moved(1))], Tier.safe) == moved(1).edits
+    @test length(Corset.Fixes.applicable_edits([sample_finding(1:1; fix = moved(1)), sample_finding(3:3; fix = moved(3))], Tier.safe)) == 4
 end
 
 @testset "render" begin

@@ -1,5 +1,6 @@
 # UI snapshot tests, as in Clippy: test/ui/<rule>/<case>.jl, rendered output in <case>.out,
-# fixed source in <case>.fixed.jl. Set CORSET_BLESS=1 to rewrite snapshots.
+# fixed source in <case>.fixed.jl; package case puts each changed file there under `# ==> <path>` line.
+# Set CORSET_BLESS=1 to rewrite snapshots.
 # Package case is directory test/ui/<rule>/<case>/; package loads only for rule after `syntax` stage.
 # Each case file starts with `# runic: off`: formatter must not normalize syntax cases test.
 
@@ -46,12 +47,23 @@ function package_facts(case::String, stage::Stage.T)::FactSet
     return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, loaded.facts, external)
 end
 
-"""Source file of `case` that snapshots and fixes cover: case file, or module file of package case."""
+"""Source file of `case` that must start with `# runic: off`: case file, or module file of package case."""
 case_file(case::String)::String = isdir(case) ? first(Corset.Discovery.discover(case).entries) : case
 
 """
-Rendered findings and fixed source of `case_file` for `case` of rule `name`. File case is only entry; directory case is
-package. Bans come from `case_bans`.
+Fixed text of every file `edits` change, from `sources`: file case gives its text; package case gives each file under
+`# ==> <path>` line, path relative to `root`, in path order. No edit gives empty text.
+"""
+function fixed_text(edits::Vector{Corset.Facts.Edit}, sources::Dict{String, String}, root::String, package::Bool)::String
+    files = sort!(unique(edit.span.file for edit in edits))
+    fixed = [Corset.Fixes.apply_edits(sources[file], filter(edit -> edit.span.file == file, edits)) for file in files]
+    package || return isempty(fixed) ? "" : only(fixed)
+    return join("# ==> $(relpath(file, root))\n$text" for (file, text) in zip(files, fixed))
+end
+
+"""
+Rendered findings and fixed source for `case` of rule `name`. File case is only entry; directory case is package.
+Bans come from `case_bans`.
 """
 function run_case(name::Symbol, case::String)::Tuple{String, String}
     facts = isdir(case) ? package_facts(case, Corset.Rules.entry(name).stage) : file_facts(case)
@@ -60,9 +72,7 @@ function run_case(name::Symbol, case::String)::Tuple{String, String}
     root = isdir(case) ? case : dirname(case)
     report = Corset.Engine.Report(Corset.Engine.diagnostics(findings, UI_SETTINGS), UI_SETTINGS, root, sources, 0, [], [])
     rendered = sprint(io -> Corset.Render.render_all(io, report))
-    path = case_file(case)
-    fixed = Corset.Fixes.apply_edits(sources[path], Corset.Fixes.applicable_edits(findings, path, Tier.breaking))
-    return rendered, fixed == sources[path] ? "" : fixed
+    return rendered, fixed_text(Corset.Fixes.applicable_edits(findings, Tier.breaking), sources, root, isdir(case))
 end
 
 @testset "UI $(rule)" for rule in sort!(readdir(UI))

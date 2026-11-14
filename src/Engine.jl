@@ -138,15 +138,12 @@ end
 """Apply fixes of reported findings under `path` up to fix tier; return number of edits applied."""
 function fix!(path::String; flags::Flags = Flags())::Int
     report = check(path; flags)
-    findings = [diagnostic.finding for diagnostic in report.diagnostics]
-    applied = 0
-    for (file, text) in report.sources
-        edits = Fixes.applicable_edits(findings, file, report.settings.tier)
-        isempty(edits) && continue
-        write(file, Fixes.apply_edits(text, edits))
-        applied += length(edits)
-    end
-    return applied
+    edits = Fixes.applicable_edits([diagnostic.finding for diagnostic in report.diagnostics], report.settings.tier)
+    # Fix may span files; edit in unread file throws `KeyError` before any write.
+    files = unique(edit.span.file for edit in edits)
+    fixed = Dict(file => Fixes.apply_edits(report.sources[file], filter(edit -> edit.span.file == file, edits)) for file in files)
+    foreach(((file, text),) -> write(file, text), fixed)
+    return length(edits)
 end
 
 end

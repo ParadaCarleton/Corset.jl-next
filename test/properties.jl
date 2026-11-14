@@ -18,7 +18,7 @@ const SANDBOX = Module(:Sandbox)
 findings_of(text::String)::Vector{Finding} = Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(PROGRAM, text, Role.package)], [PROGRAM], Corset.Facts.Ban[], nothing, nothing, nothing))
 
 """Edits one fix run applies to `findings` at `tier`."""
-edits_of(findings::Vector{Finding}, tier::Tier.T)::Vector{Corset.Facts.Edit} = Corset.Fixes.applicable_edits(findings, PROGRAM, tier)
+edits_of(findings::Vector{Finding}, tier::Tier.T)::Vector{Corset.Facts.Edit} = Corset.Fixes.applicable_edits(findings, tier)
 
 """`text` after one fix run at `tier`."""
 fixed_once(text::String, tier::Tier.T)::String = Corset.Fixes.apply_edits(text, edits_of(findings_of(text), tier))
