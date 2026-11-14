@@ -452,7 +452,8 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Finding: argument typed <code>Any</code> reaches methods that disagree on writing it. Compiler dispatches at run time: <code>bang-convention</code> reports <code>possible</code>, and <code>runtime-dispatch</code> reports call.</li>
 <li>Finding: public function returns union from dependency. Unknown callers decide: <code>possible</code>.</li>
 <li>Blind spot: syntax-only rule cannot see that <code>a::Vector</code> is 1-based, because <code>inference</code> stage did not run.</li>
-<li>Blind spot: inference refused generated method; macro did not expand; typed finding has no source span; <code>include</code> path is computed.</li>
+<li>Blind spot: inference gave no code (generator threw); method has more signatures than limit; argument type has no stand-in.</li>
+<li>Blind spot: no call reaches untyped method; macro did not expand; <code>include</code> path is computed.</li>
 <li>Corset limits never fall below compiler limits (<code>max_methods</code>, union splitting). Corset resolves every call compiler resolves.</li>
 <li>Rules assume Base functions keep documented contracts: <code>==</code> has no side effects, and comparison with <code>NaN</code> is false. Method that breaks contract is out of scope, as for Clippy <code>ifs_same_cond</code>.</li>
 </ul>
@@ -535,7 +536,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Opt-out hint names exact comment, once per rule per run: <code># corset: allow vague-type -- &lt;reason&gt;</code>.</li>
 </ul>
 </div><div class="decision"><h3>Macro output</h3>
-<p>Rules read code as written, macro arguments included. Code that package macro writes gets findings: one finding at macro definition, with call-site count. Code that other packages' macros write gets none, since package cannot fix it (Clippy <code>in_external_macro</code>). Fixes never edit generated code. Syntax stage sees source as written; findings in expanded code come from stages after load. Syntax stage skips quoted code outside <code>$</code> interpolation, and macro arguments with <code>{}</code> (Argus patterns), which lowering always rejects. <code>{}</code> check is stopgap; revisit with general check in plan later row. Code passed through macro (<code>@inbounds</code>, <code>@views</code>) maps to exact bytes. Code macro writes itself (macro body, <code>@generated</code>) maps to nearest line inside definition. Julia 1.13 lowering keeps no call-site provenance (S2); JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.</p>
+<p>Rules read code as written, macro arguments included. Code that package macro writes gets findings: one finding at macro definition, with call-site count. Code that other packages' macros write gets none, since package cannot fix it (Clippy <code>in_external_macro</code>). Fixes never edit generated code. Syntax stage sees source as written; findings in expanded code come from stages after load. Syntax stage skips quoted code outside <code>$</code> interpolation, and macro arguments with <code>{}</code> (Argus patterns), which lowering always rejects. <code>{}</code> check is stopgap; revisit with general check in plan later row. Code passed through macro (<code>@inbounds</code>, <code>@views</code>) maps to exact bytes. Code macro writes itself maps to line: call-site line for macro of other file (outermost debuginfo scope), nearest line inside definition for macro of same file and <code>@generated</code> output. Julia 1.13 lowering keeps no byte provenance; JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.</p>
 </div><div class="decision"><h3>Conventions</h3>
 <ul>
 <li>Corset supports only latest Julia release, for running and for fixes.</li>
@@ -627,7 +628,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li><strong>Why stand-in type</strong>: Base has fast paths for <code>Float32</code> and <code>Float64</code>. Real float probe takes them; stand-in type takes only generic path, same as user number type.</li>
 <li><strong>Base</strong>: assume Base callees preserve types; analysis is sound only modulo Base. Optional concrete probes (<code>Int32</code>, <code>Float32</code>) catch Base-caused widening such as <code>middle(::Int32)</code> → <code>Float64</code>. Collect real Base widening bugs for upstream report.</li>
 <li><strong>Scope</strong>: version 1 covers numbers and arrays (F5, F6, F16). Strings and dicts need only new stand-in type and result rule; engine stays same. Interfaces.jl can declare each kind's contract.</li>
-<li><strong>Cost</strong> (S1 spike): number stand-ins about 200 lines; mixing check (differential, escape, filters, classifier) about 360; signature mapping about 190. Source mapping: vendored TypedSyntax.jl algorithm (S2).</li>
+<li><strong>Cost</strong> (S1 spike): number stand-ins about 200 lines; mixing check (differential, escape, filters, classifier) about 360; signature mapping about 190. Source mapping: TypedSyntax.jl as dependency; its CodeTracking dependency loads REPL, about 0.25 s per run. Vendor algorithm (about 500 lines) if cold-run budget needs it.</li>
 <li><strong>Stand-in fidelity</strong>: stand-in copies every <code>Float32</code> and <code>Int32</code> special case that changes result type: irrational rule (<code>irrationals.jl</code>); <code>sum</code>, <code>prod</code> and <code>factorial</code> widen <code>Int32</code> to <code>Int</code>. Reflection on stand-in (<code>fieldnames</code>, <code>propertynames</code>) sees wrapper; inference stage treats its result as opaque. Stand-in test suite runs <code>Test.detect_ambiguities</code> against Base and compares inferred result types with model type.</li>
 <li><strong>No tests</strong>: stand-in types come from annotations; see <strong>Arguments without stand-in</strong>.</li>
 <li>Syntax rule stays for hard-coded <code>Array</code> without template. Shared fix helper finds in-scope type source (<code>T</code>, <code>eltype(x)</code>, template array).</li>
@@ -747,7 +748,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 </tr>
 <tr>
 <td><code>Inference</code></td>
-<td><code>inference</code> stage: stand-in types; one inference per method; typed IR with source mapping. Mapping: vendored TypedSyntax.jl algorithm on syntax tree; no CodeTracking.</td>
+<td><code>inference</code> stage: native inference of unoptimized code on stand-in signatures; worklist follows calls into untyped package methods. TypedSyntax.jl maps statements onto <code>syntax</code> stage tree; callee check demotes doubtful spans to line.</td>
 </tr>
 <tr>
 <td><code>Effects</code></td>

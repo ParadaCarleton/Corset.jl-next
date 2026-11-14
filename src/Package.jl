@@ -78,11 +78,11 @@ function generated(method::Method)::Bool
     return !isempty(signature.parameters) && signature.parameters[1] === typeof(Core.kwcall)
 end
 
+"""Name `text` spells, without module qualifier, quote or parentheses: `==` for `Base.:(==)`."""
+unqualified(text::AbstractString)::String = strip(lstrip(last(split(text, '.')), ':'), ['(', ')'])
+
 """Function name definition `node` writes, without module qualifier, quote or parentheses: `==` for `Base.:(==)(a, b) = …`."""
-function defined_name(file::SyntaxFile, node::SyntaxNode)::String
-    text = Facts.source(file, Facts.definition_name(node))
-    return strip(lstrip(last(split(text, '.')), ':'), ['(', ')'])
-end
+defined_name(file::SyntaxFile, node::SyntaxNode)::String = unqualified(Facts.source(file, Facts.definition_name(node)))
 
 """Byte where each line of `text` starts."""
 line_starts(text::String)::Vector{Int} = [1; findall(==(UInt8('\n')), codeunits(text)) .+ 1]
@@ -102,9 +102,16 @@ function Lines(file::SyntaxFile)::Lines
     return Lines(starts, definitions)
 end
 
-"""Site of `method` in `file`: exact when one definition of its name starts on method line, line precision otherwise."""
+"""Name `method` has in source: `f` for keyword body `#f#3` Julia makes from `f`; Julia name otherwise."""
+function source_name(method::Method)::String
+    name = string(method.name)
+    body = match(r"^#([^#]+)#\d+$", name)
+    return isnothing(body) ? name : body[1]
+end
+
+"""Site of `method` in `file`: exact when one definition of its source name starts on method line, line precision otherwise."""
 function method_site(method::Method, file::SyntaxFile, lines::Lines)::MethodSite
-    candidates = filter(node -> defined_name(file, node) == string(method.name), get(lines.definitions, method.line, SyntaxNode[]))
+    candidates = filter(node -> defined_name(file, node) == source_name(method), get(lines.definitions, method.line, SyntaxNode[]))
     length(candidates) == 1 && return MethodSite(method, file, only(candidates), Facts.span(file, only(candidates)))
     start = lines.starts[method.line]
     return MethodSite(method, file, nothing, Span(file.path, start, start, Precision.line))

@@ -13,10 +13,10 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, TypedCode, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
-export definition_name, signature, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
+export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal, line_start, owned_lines, line_deletion
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
@@ -218,6 +218,24 @@ struct PackageFacts
     methods::Vector{MethodSite}
     overwrites::Vector{Tuple{MethodSite, MethodSite}}
     structs::Vector{StructSite}
+end
+
+"""
+Typed code of package method on one signature (`inference` stage fact): method site, signature, unoptimized typed
+statements, inferred result type, and span of each statement. Span is exact where syntax node spells statement
+(`Inference.statement_nodes`); line precision elsewhere.
+"""
+struct TypedCode
+    site::MethodSite
+    signature::Type
+    code::Core.CodeInfo
+    result::Type
+    spans::Vector{Span}
+end
+
+"""`inference` stage facts: typed code of package methods on stand-in signatures, then of methods their calls reach."""
+struct InferenceFacts
+    typed::Vector{TypedCode}
 end
 
 """
@@ -546,6 +564,12 @@ function signature(definition::SyntaxNode)::Union{Nothing, Tuple{SyntaxNode, Boo
     end
     return kind_name(head) == "call" ? (head, typed) : nothing
 end
+
+"""Callee node of call `node`: operator of infix call `a ⊕ b`, first child otherwise."""
+callee_node(node::SyntaxNode)::SyntaxNode = children_of(node)[JS.is_infix_op_call(node) ? 2 : 1]
+
+"""Argument nodes of call `node` in source order, keyword group included: `a`, `b` of `f(a, b)` and of `a ⊕ b`."""
+call_arguments(node::SyntaxNode)::Vector{SyntaxNode} = (callee = callee_node(node); [part for part in children_of(node) if part !== callee])
 
 """Type annotation nodes of argument `node` of signature call, through default value, splat and keyword group."""
 function argument_annotations(node::SyntaxNode)::Vector{SyntaxNode}

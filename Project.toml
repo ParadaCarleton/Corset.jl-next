@@ -21,6 +21,7 @@ SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 Scratch = "6c6a2e73-6563-6170-7368-637461726353"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TypedSyntax = "d265eb64-f81a-44ad-a842-4247ee1503de"
 
 [compat]
 Aqua = "0.8.16"
@@ -40,6 +41,7 @@ SHA = "0.7, 1"
 Scratch = "1"
 TOML = "1"
 Test = "1"
+TypedSyntax = "1.5.4"
 julia = "1.13"
 
 [apps.corset]

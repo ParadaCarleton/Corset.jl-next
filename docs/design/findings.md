@@ -33,7 +33,8 @@ Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and meth
 - Finding: argument typed `Any` reaches methods that disagree on writing it. Compiler dispatches at run time: `bang-convention` reports `possible`, and `runtime-dispatch` reports call.
 - Finding: public function returns union from dependency. Unknown callers decide: `possible`.
 - Blind spot: syntax-only rule cannot see that `a::Vector` is 1-based, because `inference` stage did not run.
-- Blind spot: inference refused generated method; macro did not expand; typed finding has no source span; `include` path is computed.
+- Blind spot: inference gave no code (generator threw); method has more signatures than limit; argument type has no stand-in.
+- Blind spot: no call reaches untyped method; macro did not expand; `include` path is computed.
 - Corset limits never fall below compiler limits (`max_methods`, union splitting). Corset resolves every call compiler resolves.
 - Rules assume Base functions keep documented contracts: `==` has no side effects, and comparison with `NaN` is false. Method that breaks contract is out of scope, as for Clippy `ifs_same_cond`.
 
@@ -114,7 +115,7 @@ warning[vague-type]: `acc` changes type inside loop
 
 ### Macro output
 
-Rules read code as written, macro arguments included. Code that package macro writes gets findings: one finding at macro definition, with call-site count. Code that other packages' macros write gets none, since package cannot fix it (Clippy `in_external_macro`). Fixes never edit generated code. Syntax stage sees source as written; findings in expanded code come from stages after load. Syntax stage skips quoted code outside `$` interpolation, and macro arguments with `{}` (Argus patterns), which lowering always rejects. `{}` check is stopgap; revisit with general check in plan later row. Code passed through macro (`@inbounds`, `@views`) maps to exact bytes. Code macro writes itself (macro body, `@generated`) maps to nearest line inside definition. Julia 1.13 lowering keeps no call-site provenance (S2); JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.
+Rules read code as written, macro arguments included. Code that package macro writes gets findings: one finding at macro definition, with call-site count. Code that other packages' macros write gets none, since package cannot fix it (Clippy `in_external_macro`). Fixes never edit generated code. Syntax stage sees source as written; findings in expanded code come from stages after load. Syntax stage skips quoted code outside `$` interpolation, and macro arguments with `{}` (Argus patterns), which lowering always rejects. `{}` check is stopgap; revisit with general check in plan later row. Code passed through macro (`@inbounds`, `@views`) maps to exact bytes. Code macro writes itself maps to line: call-site line for macro of other file (outermost debuginfo scope), nearest line inside definition for macro of same file and `@generated` output. Julia 1.13 lowering keeps no byte provenance; JuliaLowering on 1.14 fixes it. Location without source mapping goes to coverage line.
 
 ### Conventions
 
