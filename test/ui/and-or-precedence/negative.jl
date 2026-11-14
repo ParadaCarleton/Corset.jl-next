@@ -8,3 +8,6 @@ guard(a, b) = a && b || return
 plain(a, b) = a || b
 both(a, b, c) = a && b && c
 spaced(a, b, c) = a || ( b && c )
+middle_grouped(a, b, c, d) = a || (b && c) || d
+tail_and(a, b, c, d) = (a || b) && c || d
+grouped_chain(a, b, c, d) = a || (b && c || d)

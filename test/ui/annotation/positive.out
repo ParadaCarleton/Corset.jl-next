@@ -20,7 +20,6 @@ warning[annotation]: `scale` signature lacks types
   |          ^^^^^ method defined here
   |                                         ------ no type
   |                                                 ------ no type
-  |                                                               ------- no type
   |
   = why: reader must read body to learn what function accepts and returns
   = fix: annotate with intended abstract types; `::Any` accepts anything on purpose   [manual]
