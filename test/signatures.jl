@@ -1,4 +1,5 @@
 using Test: @test, @testset
+using Corset: Corset
 using Corset.StandIns: ArrayStandIn, DenseStandIn, FloatStandIn, FunctionStandIn, IntStandIn
 using Corset.Signatures: LIMIT, method_signatures, struct_stand_ins
 
@@ -48,6 +49,26 @@ signatures_of(name::Symbol) = method_signatures(only(methods(getglobal(CASES, na
 """Signature tuple type for function `name` with `arguments`."""
 call(name::Symbol, arguments::Any...)::Type = Tuple{typeof(getglobal(CASES, name)), arguments...}
 
+"""Methods with distinct declared bounds, one per index, for each stand-in path: numbers, arrays, structs."""
+module CompileCases
+    abstract type Shape end
+    struct Square <: Shape end
+    for index in 1:6
+        @eval $(Symbol(:numbers, index))(x::Union{Real, Val{$index}}) = x
+        @eval $(Symbol(:arrays, index))(x::AbstractVector{<:Union{Real, Val{$index}}}) = x
+        @eval $(Symbol(:structs, index))(x::Union{Shape, Val{$index}}) = x
+    end
+end
+
+"""Specializations of methods module `mod` defines, closures included."""
+function specializations(mod::Module)::Int
+    total = Ref(0)
+    Base.visit(Core.methodtable) do method
+        method.module === mod && (total[] += count(!isnothing, Base.specializations(method)))
+    end
+    return total[]
+end
+
 @testset "stand-in signatures" begin
     @test STRUCTS == Type[CASES.Circle{FloatStandIn}, CASES.Circle{IntStandIn}, CASES.Square]
     expected = Dict(
@@ -89,6 +110,15 @@ call(name::Symbol, arguments::Any...)::Type = Tuple{typeof(getglobal(CASES, name
         @test length(many_shapes.signatures) == LIMIT && many_shapes.over_limit
         many_variables = method_signatures(only(methods(CASES.pick)), repeat(STRUCTS, 4))
         @test length(many_variables.signatures) == LIMIT && many_variables.over_limit
+    end
+    @testset "compilation independent of signature count" begin
+        # Closure capturing type value has type parameter `Type{value}`, so it once compiled anew for each signature.
+        cases = [only(methods(getglobal(CompileCases, Symbol(kind, index)))) for index in 1:6, kind in (:numbers, :arrays, :structs)]
+        structs = Type[CompileCases.Square]
+        foreach(method -> method_signatures(method, structs), cases[1, :])
+        before = specializations(Corset.Signatures)
+        foreach(method -> method_signatures(method, structs), cases[2:end, :])
+        @test specializations(Corset.Signatures) == before
     end
     @testset "concrete struct list" begin
         # Caller may pass `Vector{DataType}`.
