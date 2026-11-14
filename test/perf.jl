@@ -4,6 +4,8 @@ using Corset: Corset
 using Corset.Facts: FactSet, Role
 using Test: @test, @testset
 
+include("compilation.jl")
+
 """
 Seconds `f()` takes outside garbage collection. Full collections scan whole heap, so their cost grows with live data.
 Collector stays on: off, large runs hold every allocation in memory.
@@ -13,6 +15,30 @@ function quiet(f::Function)::Float64
     stats = @timed f()
     return stats.time - stats.gctime
 end
+
+"""
+Package source with iterator that misses `length`, array struct, string struct and function that shadows `Base.first`;
+`batch` names structs apart.
+"""
+structs_source(batch::Int)::String = """
+struct Countdown$batch
+    start::Int
+end
+Base.iterate(countdown::Countdown$batch, state::Int = countdown.start) = state <= 0 ? nothing : (state, state - 1)
+first(countdown::Countdown$batch) = countdown.start
+struct Ones$batch <: AbstractVector{Float64}
+    length::Int
+end
+Base.size(ones::Ones$batch) = (ones.length,)
+Base.getindex(::Ones$batch, ::Int) = 1.0
+struct Letters$batch <: AbstractString
+    text::String
+end
+Base.ncodeunits(letters::Letters$batch) = ncodeunits(letters.text)
+Base.codeunit(letters::Letters$batch, index::Int) = codeunit(letters.text, index)
+Base.isvalid(letters::Letters$batch, index::Int) = isvalid(letters.text, index)
+Base.iterate(letters::Letters$batch, index::Int = 1) = iterate(letters.text, index)
+"""
 
 """Fastest of `runs` timings of `f()` in seconds, after one warm-up call."""
 function fastest(f::Function, runs::Int)::Float64
@@ -42,6 +68,27 @@ end
             files = [Corset.Syntax.parse_file(path, read(path, String), Role.package)]
             Corset.Package.method_sites([mod], files)
             @test (@allocated Corset.Package.method_sites([mod], files)) / 300 < 16_000
+        end
+    end
+    @testset "package rules compile independent of struct count" begin
+        RULES = [Symbol("missing-interface"), Symbol("shadowed-base")]
+        # Closure over type value compiles once per value: missing-interface and shadowed-base compiled again for each type.
+        mktempdir(@__DIR__) do directory
+            facts = map(1:2) do batch
+                path = joinpath(directory, "Structs$batch.jl")
+                write(path, structs_source(batch))
+                mod = Module(Symbol(:Structs, batch))
+                Base.include(mod, path)
+                files = [Corset.Syntax.parse_file(path, read(path, String), Role.package)]
+                # `names` in running function misses bindings `include` adds later; newest world sees them.
+                package = Base.invokelatest(Corset.Package.package_facts, [mod], files)
+                return FactSet(files, String[], Corset.Facts.Ban[], nothing, package, nothing)
+            end
+            rules(facts::FactSet)::Vector{Symbol} = sort!([finding.rule for finding in Base.invokelatest(Corset.Engine.run_rules, facts) if finding.rule in RULES])
+            @test rules(first(facts)) == RULES
+            before = specializations(Corset)
+            @test rules(last(facts)) == RULES
+            @test specializations(Corset) == before
         end
     end
     @testset "cost linear in function size" begin

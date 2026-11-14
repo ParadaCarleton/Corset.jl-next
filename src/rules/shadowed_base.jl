@@ -85,6 +85,16 @@ function shadow_fix(name::Symbol, sites::Vector{MethodSite}, modules::Set{Module
     return Fix("extend `$(qualified(name))`", edits, Tier.likely)
 end
 
+"""Method `sites` of function with type `created`."""
+function function_sites(sites::Vector{MethodSite}, created::Type)::Vector{MethodSite}
+    # Loop: closure over type value passed to `filter` compiles once per value.
+    found = MethodSite[]
+    for site in sites
+        Base.unwrap_unionall(site.method.sig).parameters[1] === created && push!(found, site)
+    end
+    return found
+end
+
 """Findings for functions package modules create under exported Base names; one per function, at its first method."""
 function findings(facts::FactSet)::Vector{Finding}
     package = facts.package
@@ -93,8 +103,7 @@ function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for mod in package.modules, name in names(mod; all = true)
         shadows(mod, name) || continue
-        created = typeof(getglobal(mod, name))
-        sites = filter(site -> Base.unwrap_unionall(site.method.sig).parameters[1] === created, package.methods)
+        sites = function_sites(package.methods, typeof(getglobal(mod, name)))
         isempty(sites) && continue
         others = [Label(name_span(site), "another method of new function") for site in sites[2:end]]
         push!(

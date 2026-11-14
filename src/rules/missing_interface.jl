@@ -78,8 +78,12 @@ end
 
 """Calls `AbstractString` struct `type` named `name` misses."""
 function string_gaps(type::Type, name::String)::Vector{String}
-    body = Base.unwrap_unionall(type)
-    return [call_text(callee, name, fill("::Int", count)) for (callee, count) in STRING_METHODS if !implemented(callee, call(callee, type, body, fill(Int, count)...), AbstractString)]
+    body, gaps = Base.unwrap_unionall(type), String[]
+    # Loop: comprehension over type value compiles once per value.
+    for (callee, count) in STRING_METHODS
+        implemented(callee, call(callee, type, body, fill(Int, count)...), AbstractString) || push!(gaps, call_text(callee, name, fill("::Int", count)))
+    end
+    return gaps
 end
 
 """Methods iterator with `IteratorSize` of inferred type `sized` needs: none unless trait settles to `HasLength` or `HasShape`."""
@@ -87,8 +91,12 @@ sized_methods(sized::Type)::Vector{Function} = sized === Union{} || !(sized <: U
 
 """Calls iterator struct `type` named `name` misses, as `IteratorSize` of inferred type `sized` needs; methods on `Any` are fallbacks."""
 function iteration_gaps(type::Type, name::String, sized::Type)::Vector{String}
-    body = Base.unwrap_unionall(type)
-    return [call_text(callee, name, String[]) for callee in sized_methods(sized) if !implemented(callee, call(callee, type, body), Any)]
+    body, gaps = Base.unwrap_unionall(type), String[]
+    # Loop: comprehension over type value compiles once per value.
+    for callee in sized_methods(sized)
+        implemented(callee, call(callee, type, body), Any) || push!(gaps, call_text(callee, name, String[]))
+    end
+    return gaps
 end
 
 """First argument types of package `Base.iterate` methods, with their sites; structs of those types are iterators."""
