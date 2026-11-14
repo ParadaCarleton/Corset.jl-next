@@ -42,7 +42,7 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 - **Base**: assume Base callees preserve types; analysis is sound only modulo Base. Optional concrete probes (`Int32`, `Float32`) catch Base-caused widening such as `middle(::Int32)` → `Float64`. Collect real Base widening bugs for upstream report.
 - **Scope**: version 1 covers numbers and arrays (F5, F6, F16). Strings and dicts need only new stand-in type and result rule; engine stays same. Interfaces.jl can declare each kind's contract.
 - **Cost** (S1 spike): number stand-ins about 200 lines; mixing check (differential, escape, filters, classifier) about 360; signature mapping about 190. Source mapping: vendored TypedSyntax.jl algorithm (S2).
-- **Stand-in fidelity**: stand-in copies every `Float32` and `Int32` special case that changes result type (irrational rule, `irrationals.jl`). Stand-in test suite runs `Test.detect_ambiguities` against Base.
+- **Stand-in fidelity**: stand-in copies every `Float32` and `Int32` special case that changes result type: irrational rule (`irrationals.jl`); `sum`, `prod` and `factorial` widen `Int32` to `Int`. Reflection on stand-in (`fieldnames`, `propertynames`) sees wrapper; inference stage treats its result as opaque. Stand-in test suite runs `Test.detect_ambiguities` against Base and compares inferred result types with model type.
 - **No tests**: stand-in types come from annotations; see **Arguments without stand-in**.
 - Syntax rule stays for hard-coded `Array` without template. Shared fix helper finds in-scope type source (`T`, `eltype(x)`, template array).
 

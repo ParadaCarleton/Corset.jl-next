@@ -12,6 +12,7 @@ Each stage is one module that produces facts. Rules read facts through one API. 
 | `Syntax` | `syntax` stage: parse files with JuliaSyntax package (tree type Argus.jl and TypedSyntax.jl take); index nodes by kind. |
 | `Scope` | `scope` stage: lowering and scope facts. JuliaLowering vendored at pinned julia commit on 1.13; `Base.JuliaLowering` from 1.14. Own replacement expansions for common Base macros keep byte positions. Soft scope: before lowering each form, declare earlier top-level assigned globals as `global x::Any`, in include order; order-sensitive fixtures. |
 | `Package` | `package` stage: load package; module facts; Project.toml facts. |
+| `StandIns` | Stand-in types: float, integer, array, dense array and function. |
 | `Inference` | `inference` stage: stand-in types; one inference per method; typed IR with source mapping. Mapping: vendored TypedSyntax.jl algorithm on syntax tree; no CodeTracking. |
 | `Effects` | `effects` stage: effect and alias summary per method. |
 | `Lifecycle` | `lifecycle` stage: local def-use per array; callee writes from `effects`. |
