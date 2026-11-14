@@ -105,7 +105,7 @@ Engine loads package only when enabled rule needs stage after `syntax`. Load tha
 
 Method span: `package` stage pairs each method with definition node at its file and line. Exact span when one definition node of that name starts there; line precision otherwise (`@eval` loops, macro output).
 
-UI cases for rules after `syntax`: case directory holds package (Project.toml with `name` and `uuid`, `src/`). Harness loads it in test process under unique name. Fixture that extends function it does not own (`piracy`) changes method table for later cases, so it runs in fresh process.
+UI cases for rules after `syntax`: case directory holds package (Project.toml with `name` and `uuid`, `src/`). Harness loads it in test process under unique name. Fixture that extends function it does not own (`piracy`) adds only methods no other case calls, so later cases see same dispatch.
 
 ### Incremental runs and disk cache
 

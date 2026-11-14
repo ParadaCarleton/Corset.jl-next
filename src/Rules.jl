@@ -32,6 +32,7 @@ include("rules/operator_consistency.jl")
 include("rules/orphan_task.jl")
 include("rules/overspecified_type.jl")
 include("rules/pinned_task.jl")
+include("rules/piracy.jl")
 include("rules/process_state.jl")
 include("rules/repeated_concat.jl")
 include("rules/shadowed_base.jl")
@@ -76,6 +77,7 @@ const REGISTRY = RuleEntry[
     OrphanTask.ENTRY,
     OverspecifiedType.ENTRY,
     PinnedTask.ENTRY,
+    Piracy.ENTRY,
     ProcessState.ENTRY,
     RepeatedConcat.ENTRY,
     ShadowedBase.ENTRY,

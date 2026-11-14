@@ -1,0 +1,82 @@
+warning[piracy]: `isone(::Dates.Date)` extends `Base.isone` on types package does not own
+  --> ext/PiracyPositiveDatesExt.jl:12:1
+   |
+12 | Base.isone(date::Dates.Date) = false
+   | ^^^^^^^^^^ type piracy
+   |
+   = why: method changes calls in every package that loads this one
+   = fix: wrap argument in own type, or move method to package that owns `Base.isone` or argument type   [manual]
+   = docs: corset explain piracy
+   = note: warn from composability group, library preset
+   = note: opt out with `# corset: allow piracy -- <reason>`
+
+warning[piracy]: `isone(::Symbol)` extends `Base.isone` on types package does not own
+  --> src/PiracyPositive.jl:14:1
+   |
+14 | Base.isone(name::Symbol) = name === :one
+   | ^^^^^^^^^^ type piracy
+   |
+   = why: method changes calls in every package that loads this one
+   = fix: wrap argument in own type, or move method to package that owns `Base.isone` or argument type   [manual]
+   = docs: corset explain piracy
+
+warning[piracy]: `~(::Char, ::Symbol)` extends `Base.:~` on types package does not own
+  --> src/PiracyPositive.jl:16:1
+   |
+16 | Base.:~(left::Char, right::Symbol) = string(left, right)
+   | ^^^^^^^ type piracy
+   |
+   = why: method changes calls in every package that loads this one
+   = fix: wrap argument in own type, or move method to package that owns `Base.:~` or argument type   [manual]
+   = docs: corset explain piracy
+
+warning[piracy]: `ncodeunits(::Union{PiracyPositive.Box, Base.UUID})` extends `Base.ncodeunits` on types package does not own
+  --> src/PiracyPositive.jl:19:1
+   |
+19 | Base.ncodeunits(boxes::Union{Box, Identifier}) = 0
+   | ^^^^^^^^^^^^^^^ type piracy
+   |
+   = why: method changes calls in every package that loads this one
+   = fix: wrap argument in own type, or move method to package that owns `Base.ncodeunits` or argument type   [manual]
+   = docs: corset explain piracy
+
+warning[piracy]: `Int64(::Symbol, ::Char)` extends `Core.Int64` on types package does not own
+  --> src/PiracyPositive.jl:22:1
+   |
+22 | Base.Int(name::Symbol, base::Char) = length(string(name))
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type piracy
+   |
+   = why: method changes calls in every package that loads this one
+   = fix: wrap argument in own type, or move method to package that owns `Core.Int64` or argument type   [manual]
+   = docs: corset explain piracy
+
+warning[piracy]: `reverse(::Vector{Symbol}, ::Val{1})` extends `Base.reverse` on types package does not own
+  --> src/PiracyPositive.jl:24:10
+   |
+24 | function Base.reverse(names::Vector{Symbol}, flag::Val{1})
+   |          ^^^^^^^^^^^^ type piracy
+   |
+   = why: method changes calls in every package that loads this one
+   = fix: wrap argument in own type, or move method to package that owns `Base.reverse` or argument type   [manual]
+   = docs: corset explain piracy
+
+warning[piracy]: `T(::Symbol, ::Symbol) where {T<:Integer}` extends `Core.Integer` on types package does not own
+  --> src/PiracyPositive.jl:29:1
+   |
+29 | (::Type{T})(name::Symbol, base::Symbol) where {T <: Integer} = 0
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type piracy
+   |
+   = why: method changes calls in every package that loads this one
+   = fix: wrap argument in own type, or move method to package that owns `Core.Integer` or argument type   [manual]
+   = docs: corset explain piracy
+
+warning[piracy]: `Union{Int16, Int8}(::Symbol)` extends `Union{Int16, Int8}` on types package does not own
+  --> src/PiracyPositive.jl:30:4
+   |
+30 | (::Type{Union{Int8, Int16}})(name::Symbol) = 0
+   |    ^^^^ type piracy
+   |
+   = why: method changes calls in every package that loads this one
+   = fix: wrap argument in own type, or move method to package that owns `Union{Int16, Int8}` or argument type   [manual]
+   = docs: corset explain piracy
+

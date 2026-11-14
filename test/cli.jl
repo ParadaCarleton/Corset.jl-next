@@ -228,7 +228,9 @@ end
         # External checks run only when some `external` rule is enabled.
         external(flags::Corset.Config.Flags) = Corset.Engine.analyze(package, flags).facts.external
         @test length(external(Corset.Config.Flags()).ambiguities) == 1
-        @test isnothing(external(Corset.Config.Flags(; levels = ["method-ambiguity" => Corset.Config.Level.allow])))
+        allowed = [string(entry.name) => Corset.Config.Level.allow for entry in Corset.Rules.REGISTRY if entry.stage == Corset.Facts.Stage.external]
+        @test length(allowed) > 1 && isnothing(external(Corset.Config.Flags(; levels = allowed)))
+        @test !isnothing(external(Corset.Config.Flags(; levels = allowed[2:end])))
     end
 end
 

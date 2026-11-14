@@ -4,6 +4,13 @@ julia_version = "1.13.3"
 manifest_format = "2.1"
 project_hash = "639077256056f2e66c47fadc445f03eece3b2581"
 
+[[deps.Aqua]]
+deps = ["Compat", "Pkg", "Test"]
+git-tree-sha1 = "dcef9d014ddd0904947ccc0bec8f5c14f8b8add1"
+registries = "General"
+uuid = "4c88cf16-eb10-579e-8560-4a9242c79595"
+version = "0.8.19"
+
 [[deps.ArgParse]]
 deps = ["Logging", "TextWrap"]
 git-tree-sha1 = "22cf435ac22956a7b45b0168abbc871176e7eecc"
@@ -30,6 +37,20 @@ version = "1.11.0"
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 version = "1.11.0"
 
+[[deps.Compat]]
+deps = ["TOML", "UUIDs"]
+git-tree-sha1 = "9d8a54ce4b17aa5bdce0ea5c34bc5e7c340d16ad"
+registries = "General"
+uuid = "34da2185-b29b-5c13-b0c7-acf172513d20"
+version = "4.18.1"
+
+    [deps.Compat.extensions]
+    CompatLinearAlgebraExt = "LinearAlgebra"
+
+    [deps.Compat.weakdeps]
+    Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+    LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
@@ -43,7 +64,7 @@ uuid = "5218b696-f38b-4ac9-8b61-a12ec717816d"
 version = "0.17.8"
 
 [[deps.Corset]]
-deps = ["ArgParse", "Argus", "Configurations", "EnumX", "FileWatching", "IntervalTrees", "JSON", "JuliaSyntax", "Pkg", "PrecompileTools", "ReadOnlyArrays", "SHA", "Scratch", "TOML", "Test"]
+deps = ["Aqua", "ArgParse", "Argus", "Configurations", "EnumX", "FileWatching", "IntervalTrees", "JSON", "JuliaSyntax", "Pkg", "PrecompileTools", "ReadOnlyArrays", "SHA", "Scratch", "TOML", "Test"]
 path = ".."
 uuid = "09bf9df1-bea6-4267-acd1-e930da7492cc"
 version = "0.6.0-DEV"

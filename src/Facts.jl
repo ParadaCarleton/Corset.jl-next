@@ -220,10 +220,11 @@ end
 
 """
 External tool output on loaded package (`external` stage facts): pairs of package method sites `Test.detect_ambiguities`
-reports, earlier definition first.
+reports, earlier definition first; package method sites Aqua.jl calls type piracy.
 """
 struct ExternalFacts
     ambiguities::Vector{Tuple{MethodSite, MethodSite}}
+    piracies::Vector{MethodSite}
 end
 
 """
