@@ -1,0 +1,9 @@
+name = "UnusedImportPositive"
+uuid = "7ebc6252-c4aa-4d4c-ace3-0df13286241f"
+
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+Unicode = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
+Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"

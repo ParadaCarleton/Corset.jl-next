@@ -44,6 +44,7 @@ include("rules/unguarded_release.jl")
 include("rules/unreachable.jl")
 include("rules/untested_extension.jl")
 include("rules/untyped_empty.jl")
+include("rules/unused_import.jl")
 include("rules/unused_literal.jl")
 include("rules/where_binding.jl")
 include("rules/wide_struct.jl")
@@ -92,6 +93,7 @@ const REGISTRY = RuleEntry[
     Unreachable.ENTRY,
     UntestedExtension.ENTRY,
     UntypedEmpty.ENTRY,
+    UnusedImport.ENTRY,
     UnusedLiteral.ENTRY,
     WhereBinding.ENTRY,
     WideStruct.ENTRY,

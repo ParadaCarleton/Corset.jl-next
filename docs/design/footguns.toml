@@ -696,6 +696,15 @@ group = "readability"
 stage = "external"
 
 [[footgun]]
+id = 105
+area = "modules"
+text = "Explicit import never used"
+example = "`using LinearAlgebra: norm`; module never calls `norm`"
+group = "readability"
+stage = "external"
+note = "rustc `unused_imports`. Use: call, method extension, `export`, `public`, `@eval` interpolation."
+
+[[footgun]]
 id = 88
 area = "modules"
 text = "Extension trigger package missing from test dependencies"
