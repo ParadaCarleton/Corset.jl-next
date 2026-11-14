@@ -103,6 +103,34 @@ end
     heads = Corset.Syntax.parse_file("h.jl", "error(1)\nBase.include(@__MODULE__, \"c.jl\")\nCore.Task(f)\nMine.error(1)\na == b\n", Role.package)
     @test [Facts.call_head(node) for node in Facts.forms(heads, "call")] == ["error", "include", "Task", nothing, "=="]
     @test length(Facts.include_calls(heads)) == 1
+    # Version tests settle on running Julia and every later release; platform tests and future bounds stay open.
+    conditions = [
+        "isdefined(Base, :get_extension)" => true, "!isdefined(Core, :get_extension)" => nothing, "isdefined(Base, :no_such_name)" => nothing,
+        "isdefined(Base, :(a.b))" => nothing, "isdefined(Mine, :x)" => nothing, "!isdefined(Base, :get_extension)" => false,
+        "VERSION >= v\"1.9\"" => true, "v\"1.9\" <= VERSION" => true, "VERSION < v\"1.9\"" => false, "VERSION < v\"99\"" => nothing,
+        "VERSION >= v\"99\"" => nothing, "VERSION < x" => nothing, "a < b" => nothing, "VERSION == v\"1.9\"" => nothing,
+        "Sys.iswindows()" => nothing, "VERSION < v\"1.9\" && Sys.iswindows()" => false, "VERSION >= v\"1.9\" || x" => true,
+        "VERSION > v\"1.0\" && isdefined(Base, :get_extension)" => true, "VERSION <= v\"1.0\" || VERSION < v\"1.9\"" => false,
+        "x && y" => nothing, "!x" => nothing,
+    ]
+    for (text, expected) in conditions
+        @test Facts.settled(Facts.children_of(Corset.Syntax.parse_file("v.jl", text * "\n", Role.package).tree)[1]) === expected
+    end
+    branches = Corset.Syntax.parse_file(
+        "i.jl", """
+        if VERSION < v"1.9"
+            include("old.jl")
+        elseif VERSION >= v"1.9"
+            include("new.jl")
+        else
+            include("old.jl")
+        end
+        if Sys.iswindows()
+            include("windows.jl")
+        end
+        """, Role.package,
+    )
+    @test [Facts.source(branches, call) for call in Facts.include_calls(branches)] == ["include(\"new.jl\")", "include(\"windows.jl\")"]
     # Binding sites: destructured names bind; anonymous `::T` binds nothing.
     bound = Corset.Syntax.parse_file("b.jl", "f(::Int, (a, b), c::Int = 1; d = 2, e...) = 1\ntmp, (other, x...) = pair\nfor (i, item) in pairs end\n(; k, l) = nt\nv[1] = 2\n", Role.package)
     @test [Facts.identifier_name(site.name) for site in bound.bindings] == ["a", "b", "c", "d", "e", "tmp", "other", "x", "k", "l", "i", "item", "f"]

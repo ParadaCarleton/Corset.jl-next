@@ -75,3 +75,16 @@ error[double-include]: `include(identity, "positive.jl")` includes file again
    = fix: include each file once, from package entry file   [manual]
    = docs: corset explain double-include
 
+error[double-include]: `include("solvers.jl")` includes file again
+  --> positive.jl:16:5
+   |
+ 3 | include("solvers.jl")
+   | --------------------- first included here
+...
+16 |     include("solvers.jl")
+   |     ^^^^^^^^^^^^^^^^^^^^^ second copy of every definition
+   |
+   = why: methods are redefined and structs error or shadow; load order then decides behavior
+   = fix: include each file once, from package entry file   [manual]
+   = docs: corset explain double-include
+
