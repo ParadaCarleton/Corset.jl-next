@@ -31,6 +31,19 @@ end
         end
         @test seconds * 10_000 / lines < 2.0
     end
+    @testset "method sites sort without printing signatures" begin
+        # Sort once printed signatures in every comparison; printing type searches loaded modules for alias.
+        # Measured 7977 bytes per method; printing sort took 2.6 MB per method.
+        mktempdir(@__DIR__) do directory
+            path = joinpath(directory, "Sites.jl")
+            write(path, join(("f$index(x::Vector{Int}, y::Dict{String, Float64}) = x" for index in 1:300), "\n"))
+            mod = Module(:Sites)
+            Base.include(mod, path)
+            files = [Corset.Syntax.parse_file(path, read(path, String), Role.package)]
+            Corset.Package.method_sites([mod], files)
+            @test (@allocated Corset.Package.method_sites([mod], files)) / 300 < 16_000
+        end
+    end
     @testset "cost linear in function size" begin
         # Every UI and opt-out case inside one function, 16 and 128 copies: linear cost grows 8×, quadratic 64×.
         # Both sizes exceed processor cache: smaller trees fit in it, and cache step looks like superlinear time.

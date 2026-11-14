@@ -128,7 +128,16 @@ function method_sites(modules::Vector{Module}, files::Vector{SyntaxFile})::Vecto
         file = get(by_path, string(method.file), nothing)
         isnothing(file) || method.line > length(lines[file.path].starts) || push!(sites, method_site(method, file, lines[file.path]))
     end
-    return sort!(sites; by = site -> (site.span.file, site.span.first_byte, string(site.method.sig)))
+    return sort!(sites; lt = site_before)
+end
+
+"""
+Whether `site` sorts before `other`: by file, then position. Printed signature breaks ties between methods of one
+definition; printing type searches loaded modules for alias, so it runs only on ties.
+"""
+function site_before(site::MethodSite, other::MethodSite)::Bool
+    place, other_place = (site.span.file, site.span.first_byte), (other.span.file, other.span.first_byte)
+    return place == other_place ? isless(string(site.method.sig), string(other.method.sig)) : isless(place, other_place)
 end
 
 """Type name of struct that constructor `method` builds; `nothing` for other method."""
