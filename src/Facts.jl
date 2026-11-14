@@ -16,7 +16,7 @@ export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, PackageFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
-export definition_name, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
+export definition_name, signature, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
@@ -417,6 +417,16 @@ function definition_name(node::SyntaxNode)::SyntaxNode
         head = children_of(head)[1]
     end
     return head
+end
+
+"""Signature call of function definition `node` under `where` and result type, and whether result has type; `nothing` for anonymous function."""
+function signature(definition::SyntaxNode)::Union{Nothing, Tuple{SyntaxNode, Bool}}
+    head, typed = children_of(definition)[1], false
+    while kind_name(head) in ("where", "::") && length(children_of(head)) == 2
+        typed |= kind_name(head) == "::"
+        head = children_of(head)[1]
+    end
+    return kind_name(head) == "call" ? (head, typed) : nothing
 end
 
 """Span of function name at method `site`; whole line when site has no definition node."""
