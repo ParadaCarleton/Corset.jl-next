@@ -1,0 +1,85 @@
+error[missing-interface]: `Ones` misses `getindex(::Ones, ::Int)` of `AbstractArray` interface
+ --> src/MissingInterfacePositive.jl:6:8
+  |
+6 | struct Ones <: AbstractVector{Float64}
+  |        ^^^^ first call to missing method throws
+  |                ----------------------- opts into `AbstractArray` interface
+  |
+  = why: Base array methods call `size` and scalar `getindex`; fallbacks throw
+  = fix: define `Base.getindex(::Ones, ::Int)`   [manual]
+  = docs: corset explain missing-interface
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow missing-interface -- <reason>`
+
+error[missing-interface]: `Scaled` misses `getindex(::Scaled, ::Int, ::Int)` of `AbstractArray` interface
+  --> src/MissingInterfacePositive.jl:13:8
+   |
+13 | struct Scaled <: AbstractMatrix{Float64}
+   |        ^^^^^^ first call to missing method throws
+   |                  ----------------------- opts into `AbstractArray` interface
+   |
+   = why: Base array methods call `size` and scalar `getindex`; fallbacks throw
+   = fix: define `Base.getindex(::Scaled, ::Int, ::Int)`   [manual]
+   = docs: corset explain missing-interface
+
+error[missing-interface]: `Grid` misses `size(::Grid)` and `getindex(::Grid, ::Vararg{Int, N})` of `AbstractArray` interface
+  --> src/MissingInterfacePositive.jl:21:8
+   |
+21 | struct Grid{T, N} <: AbstractArray{T, N}
+   |        ^^^^ first call to missing method throws
+   |                      ------------------- opts into `AbstractArray` interface
+   |
+   = why: Base array methods call `size` and scalar `getindex`; fallbacks throw
+   = fix: define `Base.size(::Grid)` and `Base.getindex(::Grid, ::Vararg{Int, N})`   [manual]
+   = docs: corset explain missing-interface
+
+error[missing-interface]: `Repeated` misses `isvalid(::Repeated, ::Int)` and `iterate(::Repeated, ::Int)` of `AbstractString` interface
+  --> src/MissingInterfacePositive.jl:26:8
+   |
+26 | struct Repeated <: AbstractString
+   |        ^^^^^^^^ first call to missing method throws
+   |                    -------------- opts into `AbstractString` interface
+   |
+   = why: Base string methods call these methods; fallbacks throw `MethodError`
+   = fix: define `Base.isvalid(::Repeated, ::Int)` and `Base.iterate(::Repeated, ::Int)`   [manual]
+   = docs: corset explain missing-interface
+
+error[missing-interface]: `Countdown` misses `length(::Countdown)` of iteration interface
+  --> src/MissingInterfacePositive.jl:35:8
+   |
+35 | struct Countdown
+   |        ^^^^^^^^^ first call to missing method throws
+...
+39 | Base.iterate(countdown::Countdown, count::Int = countdown.start) = count < 1 ? nothing : (count, count - 1)
+   | ------------ `iterate` makes it iterator
+   |
+   = why: default `IteratorSize` is `HasLength`, so `collect` and `map` call `length`
+   = fix: define `Base.length(::Countdown)`, or `Base.IteratorSize(::Type{<:Countdown}) = Base.SizeUnknown()`   [manual]
+   = docs: corset explain missing-interface
+
+error[missing-interface]: `Pulse` misses `length(::Pulse)` of iteration interface
+  --> src/MissingInterfacePositive.jl:47:8
+   |
+44 | Base.iterate(stream::Stream, state::Int = 1) = state > 1 ? nothing : (state, state + 1)
+   | ------------ `iterate` makes it iterator
+...
+47 | struct Pulse <: Stream end
+   |        ^^^^^ first call to missing method throws
+   |
+   = why: default `IteratorSize` is `HasLength`, so `collect` and `map` call `length`
+   = fix: define `Base.length(::Pulse)`, or `Base.IteratorSize(::Type{<:Pulse}) = Base.SizeUnknown()`   [manual]
+   = docs: corset explain missing-interface
+
+error[missing-interface]: `Table` misses `length(::Table)` of iteration interface
+  --> src/MissingInterfacePositive.jl:50:8
+   |
+50 | struct Table <: AbstractDict{Symbol, Int}
+   |        ^^^^^ first call to missing method throws
+...
+54 | Base.iterate(table::Table, index::Int = 1) = index > length(table.items) ? nothing : (table.items[index], index + 1)
+   | ------------ `iterate` makes it iterator
+   |
+   = why: default `IteratorSize` is `HasLength`, so `collect` and `map` call `length`
+   = fix: define `Base.length(::Table)`, or `Base.IteratorSize(::Type{<:Table}) = Base.SizeUnknown()`   [manual]
+   = docs: corset explain missing-interface
+

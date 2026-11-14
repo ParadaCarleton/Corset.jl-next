@@ -15,7 +15,7 @@ export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
-export name_span, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
+export name_span, argument_type, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal
 
@@ -439,6 +439,17 @@ end
 
 """Span of function name at method `site`; whole line when site has no definition node."""
 name_span(site::MethodSite)::Span = isnothing(site.node) ? site.span : span(site.file, definition_name(site.node))
+
+"""
+Type of argument `position` of `method`, wrapped in signature `where`: element type for `Vararg`, bound for type variable.
+`nothing` when method has no such argument.
+"""
+function argument_type(method::Method, position::Int)::Union{Nothing, Type}
+    parameters = Base.unwrap_unionall(method.sig).parameters
+    length(parameters) > position || return nothing
+    # Julia reduces `T where T <: Walk` to `Walk`, and drops type variables argument does not use.
+    return Base.rewrap_unionall(Base.unwrapva(parameters[position + 1]), method.sig)
+end
 
 """Field name nodes of struct definition `definition`, skipping inner constructors."""
 function struct_fields(definition::SyntaxNode)::Vector{SyntaxNode}
