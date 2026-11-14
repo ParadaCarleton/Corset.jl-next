@@ -68,8 +68,12 @@ end
 end
 
 # Constructor of public `Model` shares line with private struct.
-Model() = Model(Float64[]); struct Blank end
+Model() = Model(Float64[]); struct Spacer end
 
 include("internal.jl")
+
+@static if VERSION < v"1.6"
+    include("compat.jl")
+end
 
 end

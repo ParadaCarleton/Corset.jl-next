@@ -61,35 +61,21 @@ function rootless_types(modules::Vector{Module})::Set{Core.TypeName}
     return rootless
 end
 
-"""Type name of struct that constructor `method` builds; `nothing` for other method."""
-function constructed(method::Method)::Union{Nothing, Core.TypeName}
-    callee = Base.unwrap_unionall(Base.unwrap_unionall(method.sig).parameters[1])
-    Base.isType(callee) || return nothing
-    target = Base.unwrap_unionall(callee.parameters[1])
-    return target isa DataType ? target.name : nothing
-end
-
-"""Byte where line holding byte `index` of `text` starts."""
-line_start(text::String, index::Int)::Int = something(findprev(==(UInt8('\n')), codeunits(text), index), 0) + 1
-
 """Findings for definitions of public package structs with supertype `Any`."""
 function findings(facts::FactSet)::Vector{Finding}
     package = facts.package
     isnothing(package) && return Finding[]
     rootless = rootless_types(package.modules)
-    # Default and inner constructors start on lines of struct definition; sites of package methods tie it to its type.
-    sites = filter(site -> constructed(site.method) in rootless, package.methods)
     found = Finding[]
-    for file in facts.files, definition in forms(file, "struct")
-        name, bytes = definition_name(definition), span(file, definition)
-        lines, type = line_start(file.text, bytes.first_byte):bytes.last_byte, Symbol(source(file, name))
-        any(site -> site.file.path == file.path && site.span.first_byte in lines && constructed(site.method).name === type, sites) || continue
+    for site in package.structs
+        Base.unwrap_unionall(site.type).name in rootless || continue
+        name = definition_name(site.node)
         push!(
             found, finding(
-                NAME, file, name; kind = :closed_struct, confidence = Confidence.definite,
-                message = "public struct `$(source(file, name))` has no abstract supertype", label = "users cannot add sibling type",
+                NAME, site.file, name; kind = :closed_struct, confidence = Confidence.definite,
+                message = "public struct `$(source(site.file, name))` has no abstract supertype", label = "users cannot add sibling type",
                 why = "methods typed on concrete struct accept only it; users must copy or wrap it to vary it",
-                fix = manual_fix("declare `abstract type Abstract$(source(file, name)) end`, subtype it, and type methods on it"),
+                fix = manual_fix("declare `abstract type Abstract$(source(site.file, name)) end`, subtype it, and type methods on it"),
             )
         )
     end

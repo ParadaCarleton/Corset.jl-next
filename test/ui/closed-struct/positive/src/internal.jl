@@ -4,7 +4,6 @@ module Internal
 
 export Model
 
-# Struct holds byte 210, like public `Model`.
 """Private model."""
 struct Model
     bias::Float64
