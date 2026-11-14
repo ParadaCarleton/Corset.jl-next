@@ -20,7 +20,8 @@ area(width::Real, height::Real)::Real = width * height
 ```
 
 ## Limitations
-Exempt: `_` and unnamed `::T` arguments, anonymous functions, and local functions (closures).
+Exempt: `_` and unnamed `::T` arguments, keyword splat (Julia rejects its type), anonymous functions, and local
+functions (closures).
 Abstract types are intended. `::Any` accepts anything on purpose and opts out.
 """
 module Annotation
@@ -32,7 +33,8 @@ const NAME = :annotation
 """Untyped names bound by argument `node`, through default value, splat and keyword group; `_` binds nothing."""
 function untyped(node::SyntaxNode)::Vector{SyntaxNode}
     kind = kind_name(node)
-    kind == "parameters" && return reduce(vcat, map(untyped, children_of(node)); init = SyntaxNode[])
+    # Keyword splat cannot carry type: `f(; options::Any...)` is syntax error.
+    kind == "parameters" && return reduce(vcat, (untyped(child) for child in children_of(node) if kind_name(child) != "..."); init = SyntaxNode[])
     kind in ("=", "kw", "...") && return untyped(children_of(node)[1])
     kind == "Identifier" && return identifier_name(node) == "_" ? SyntaxNode[] : [node]
     return kind == "tuple" ? [node] : SyntaxNode[]
