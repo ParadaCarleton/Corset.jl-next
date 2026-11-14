@@ -95,10 +95,12 @@ ExplicitImports.jl cannot analyze fully (dynamic `include`, module macro writes)
 """
 function internal_accesses(package::PackageFacts, files::Vector{SyntaxFile}, analyses::Analyses)::Vector{InternalAccess}
     root, by_path = first(package.modules), Dict(file.path => file for file in files)
+    # Extension reaching parent package is access to own package.
+    own = Set{Module}(package.modules)
     found = InternalAccess[]
     for (_, rows) in ExplicitImports.improper_qualified_accesses(root, pathof(root); file_analysis = analyses), row in rows
         span = location_span(row.location, string(row.name), by_path)
-        row.self_qualified || isnothing(span) || push!(found, InternalAccess(row.accessing_from, string(row.name), span, false))
+        row.self_qualified || row.accessing_from in own || isnothing(span) || push!(found, InternalAccess(row.accessing_from, string(row.name), span, false))
     end
     for (_, rows) in ExplicitImports.improper_explicit_imports(root, pathof(root); file_analysis = analyses), row in something(rows, ())
         span = location_span(row.location, string(row.name), by_path)
