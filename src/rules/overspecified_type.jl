@@ -106,7 +106,7 @@ function dispatch_safe(method::Method, wide::Type)::Bool
 end
 
 """Whether type `head` takes subtypes in its parameters: `Union` and tuple types."""
-covariant(head::Union{Nothing, Type})::Bool = head === Union || !isnothing(head) && Base.unwrap_unionall(head) <: Tuple
+covariant(head::Union{Nothing, Type})::Bool = head === Union || (!isnothing(head) && Base.unwrap_unionall(head) <: Tuple)
 
 """Widened text of curly `node`: union of number types becomes its join; parameters widen, with `<:` inside invariant type."""
 function widened_curly(mod::Module, file::SyntaxFile, node::SyntaxNode, found::Vector{SyntaxNode})::String
