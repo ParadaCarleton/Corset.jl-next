@@ -282,16 +282,16 @@ text = "Subtype misses required interface method"
 example = "`struct V <: AbstractArray` without `size`"
 group = "correctness"
 stage = "package"
-note = "Rust rejects incomplete trait impl; Julia fails at first call. Lists from Interfaces.jl or RequiredInterfaces.jl."
+note = "Rust rejects incomplete trait impl; Julia fails at first call. Lists from Interfaces.jl or RequiredInterfaces.jl. Iteration counts: `iterate` with default `IteratorSize` needs `length`, else `collect` throws."
 
 [[footgun]]
 id = 93
 area = "types"
-text = "Iterator misses size and element traits"
-example = "`iterate` without `IteratorSize`, `eltype`, `length`"
+text = "Iterator misses element type"
+example = "`iterate` without `eltype` or `IteratorEltype`"
 group = "performance"
 stage = "package"
-note = "`collect` and friends take slow, vague paths."
+note = "Default `IteratorEltype` trusts `eltype`, and Base default `eltype` is `Any`: `collect` builds `Vector{Any}`, `Set` builds `Set{Any}`."
 
 [[footgun]]
 id = 104
