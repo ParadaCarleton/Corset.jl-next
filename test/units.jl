@@ -113,7 +113,7 @@ const SYNTAX_ONLY = Corset.Config.Flags(;
 @testset "discovery" begin
     mktempdir(@__DIR__) do root
         files = Dict(
-            "Project.toml" => "name = \"Pkg\"\n\n[extensions]\nFlatExt = \"A\"\nNestedExt = \"B\"\n\n[preferences.Corset]\nkind = \"library\"\n",
+            "Project.toml" => "name = \"Pkg\"\n\n[weakdeps]\nA = \"$(Base.UUID(rand(UInt128)))\"\nB = \"$(Base.UUID(rand(UInt128)))\"\n\n[extensions]\nFlatExt = \"A\"\nNestedExt = \"B\"\n\n[preferences.Corset]\nkind = \"library\"\n",
             "src/Pkg.jl" => "module Pkg\ninclude(\"a.jl\")\ninclude(joinpath(@__DIR__, \"sub\", \"b.jl\"))\ninclude(name)\ninclude(\"gone.jl\")\nend\n",
             "src/a.jl" => "include(\"a.jl\")\n",
             "src/sub/b.jl" => "x = 1\n",
@@ -153,9 +153,10 @@ const SYNTAX_ONLY = Corset.Config.Flags(;
         @test discovered(root) == ["ext/FlatExt.jl", "ext/NestedExt/NestedExt.jl", "scripts/e.jl", "src/Pkg.jl", "src/a.jl", "src/orphan.jl", "src/sub/b.jl", "test/cases.jl", "test/fixtures/bad.jl", "test/runtests.jl"]
         write(joinpath(root, "Project.toml"), "name = \"Missing\"\n")
         @test_throws Corset.Config.ConfigError Corset.Discovery.discover(root)
-        write(joinpath(root, "Project.toml"), "name = \"Pkg\"\n\n[extensions]\nGoneExt = \"C\"\n\n[preferences.Corset]\nkind = \"library\"\n")
-        @test_throws Corset.Config.ConfigError Corset.Discovery.discover(root)
-        @test startswith(sprint(Corset.Render.render_coverage, Corset.check(joinpath(root, "src"); flags = SYNTAX_ONLY)), "coverage: analyzed 4 files\n")
+        # Broken Project.toml stops every run inside project, as in Cargo.
+        write(joinpath(root, "Project.toml"), "name = \"Pkg\"\n\n[weakdeps]\nC = \"$(Base.UUID(rand(UInt128)))\"\n\n[extensions]\nGoneExt = \"C\"\n\n[preferences.Corset]\nkind = \"library\"\n")
+        @test_throws "extension GoneExt has no file ext/GoneExt.jl" Corset.Discovery.discover(root)
+        @test_throws "extension GoneExt has no file ext/GoneExt.jl" Corset.check(joinpath(root, "src"); flags = SYNTAX_ONLY)
     end
 end
 
@@ -273,7 +274,7 @@ end
     @test all(diagnostic.level == Level.deny for diagnostic in report.diagnostics)
     @test occursin("= note: deny from opt-out check, always on", sprint(io -> Corset.Render.render_all(io, report)))
     file = Corset.Syntax.parse_file("end.jl", "x = 1\n# corset: allow one-letter -- nothing follows\n", Role.package)
-    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file], String[], Facts.Ban[], nothing), Finding[], Set([Symbol("one-letter")]))
+    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file], String[], Facts.Ban[], nothing, nothing), Finding[], Set([Symbol("one-letter")]))
     @test isempty(kept) && [problem.kind for problem in problems] == [:unused]
 end
 

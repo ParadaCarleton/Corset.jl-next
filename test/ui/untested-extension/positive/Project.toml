@@ -1,0 +1,16 @@
+name = "UntestedExtensionPositive"
+uuid = "c603afe7-b1f6-4c48-a121-b558e913a0ef"
+
+[weakdeps]
+Absent = "1e2b0aac-a9bf-40d2-9dfd-12c6286c6ff4"
+Missing = "ddfec1cc-4cd2-43f3-a0c7-d6cf15180715"
+Other = "f9d0263d-4406-4b7f-aa6f-f12b3b32a03c"
+
+[extensions]
+AbsentExt = "Absent"
+BothExt = ["Absent", "Missing"]
+PairExt = ["Absent", "Other"]
+TestedExt = "Other"
+
+[targets]
+test = ["Other"]

@@ -216,32 +216,54 @@ end
             filter!(path -> !startswith(path, root), LOAD_PATH)
         end
         write(joinpath(root, "Project.toml"), replace(project, "TriggerExt = [\"Trigger\"]" => "TriggerExt = [\"Trigger\", \"Lost\"]"))
-        @test_throws "extension TriggerExt names Lost, which [weakdeps] lacks" Corset.Package.extension_triggers(root)
+        @test_throws "extension TriggerExt names Lost, which [weakdeps] lacks" Corset.Discovery.project_facts(root)
     end
 end
 
 @testset "relaunch inputs" begin
-    Launch = Corset.Launch
+    Launch, Discovery, TestDeps = Corset.Launch, Corset.Discovery, Corset.Facts.TestDeps
     uuid = Base.UUID(rand(UInt128))
-    id = Base.PkgId(uuid, "Targets")
     mktempdir(@__DIR__) do root
         project = "name = \"Targets\"\nuuid = \"$uuid\"\n\n[deps]\nJSON = \"682c06a0-de6a-54ab-a142-c8b1cf79cde6\"\n\n[weakdeps]\nTOML = \"fa267f1f-6049-4f14-aa54-33bafae1ed76\"\n\n[extras]\nTest = \"8dfed614-e22c-5e08-85e1-65c5234f0b40\"\n"
         write(joinpath(root, "Project.toml"), project)
-        @test isempty(Launch.test_specs(root, id)) && isempty(Launch.manifest_deps(joinpath(root, "Project.toml")))
+        @test_throws "package Targets has no module file src/Targets.jl" Discovery.project_facts(root)
+        mkpath(joinpath(root, "src"))
+        write(joinpath(root, "src", "Targets.jl"), "module Targets\nend\n")
+        facts = Discovery.project_facts(root)
+        @test facts.test_deps == TestDeps.none && isempty(Launch.test_specs(facts)) && isempty(Launch.manifest_deps(joinpath(root, "Project.toml")))
+        @test Corset.Package.package_id(facts) == Base.PkgId(uuid, "Targets") && [dep.name for dep in facts.deps] == ["JSON"]
         # `[targets].test` skips direct dependencies and reads names from `[weakdeps]` and `[extras]`.
         write(joinpath(root, "Project.toml"), project * "\n[targets]\ntest = [\"JSON\", \"TOML\", \"Test\"]\n")
-        @test [spec.name for spec in Launch.test_specs(root, id)] == ["TOML", "Test"]
+        facts = Discovery.project_facts(root)
+        @test facts.test_deps == TestDeps.target && [spec.name for spec in Launch.test_specs(facts)] == ["TOML", "Test"]
         write(joinpath(root, "Project.toml"), project * "\n[targets]\ntest = [\"Lost\"]\n")
-        @test_throws "test target names Lost, which [extras] lacks" Launch.test_specs(root, id)
-        # `test/Project.toml` drops target and reads `[sources]` relative to its own directory.
+        @test_throws "test target names Lost, which [extras] lacks" Discovery.project_facts(root)
+        # `test/Project.toml` drops package and direct dependencies, and reads `[sources]` relative to its own directory.
         write(joinpath(root, "Project.toml"), project)
         mkpath(joinpath(root, "test"))
-        helper, remote = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
-        tests = "[deps]\nTargets = \"$uuid\"\nHelper = \"$helper\"\nRemote = \"$remote\"\n\n[sources]\nTargets = {path = \"..\"}\nHelper = {path = \"../helper\"}\nRemote = {url = \"https://example.com/Remote.jl\", rev = \"main\"}\n"
+        helper, remote, branch, mono = (Base.UUID(rand(UInt128)) for _ in 1:4)
+        tests = """
+        [deps]
+        Targets = "$uuid"
+        JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+        Helper = "$helper"
+        Remote = "$remote"
+        Branch = "$branch"
+        Mono = "$mono"
+
+        [sources]
+        Targets = {path = ".."}
+        Helper = {path = "../helper"}
+        Remote = {url = "https://example.com/Remote.jl", rev = "main"}
+        Branch = {rev = "dev"}
+        Mono = {url = "https://example.com/Mono.jl", subdir = "lib/Mono"}
+        """
         write(joinpath(root, "test", "Project.toml"), tests)
-        specs = Launch.test_specs(root, id)
-        @test [spec.name for spec in specs] == ["Helper", "Remote"]
-        @test specs[1].path == joinpath(root, "helper") && specs[2].url == "https://example.com/Remote.jl" && specs[2].rev == "main"
+        facts = Discovery.project_facts(root)
+        branch_spec, helper_spec, mono_spec, remote_spec = specs = Launch.test_specs(facts)
+        @test facts.test_deps == TestDeps.project && [spec.name for spec in specs] == ["Branch", "Helper", "Mono", "Remote"]
+        @test helper_spec.path == joinpath(root, "helper") && remote_spec.url == "https://example.com/Remote.jl" && remote_spec.rev == "main"
+        @test isnothing(branch_spec.url) && branch_spec.rev == "dev" && mono_spec.subdir == "lib/Mono"
         # Manifest paths become absolute; format 1 Manifest is config error.
         write(joinpath(root, "Manifest.toml"), "manifest_format = \"2.0\"\n\n[[deps.Helper]]\npath = \"helper\"\nuuid = \"$helper\"\n")
         @test only(Launch.manifest_deps(joinpath(root, "Project.toml"))["Helper"])["path"] == joinpath(root, "helper")

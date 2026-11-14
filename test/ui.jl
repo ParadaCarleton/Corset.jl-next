@@ -1,6 +1,6 @@
 # UI snapshot tests, as in Clippy: test/ui/<rule>/<case>.jl, rendered output in <case>.out,
 # fixed source in <case>.fixed.jl. Set CORSET_BLESS=1 to rewrite snapshots.
-# Case of rule after `syntax` stage is package directory test/ui/<rule>/<case>/ with one source file.
+# Package case is directory test/ui/<rule>/<case>/; package loads only for rule after `syntax` stage.
 # Each case file starts with `# runic: off`: formatter must not normalize syntax cases test.
 
 using Corset: Corset
@@ -25,31 +25,34 @@ end
 """Facts of file `case`, as in `corset check case.jl`: `script*.jl` parses as script, other files as package code."""
 function file_facts(case::String)::FactSet
     file = Corset.Syntax.parse_file(case, read(case, String), startswith(basename(case), "script") ? Role.script : Role.package)
-    return FactSet([file], [file.path], case_bans(dirname(case)), nothing)
+    return FactSet([file], [file.path], case_bans(dirname(case)), nothing, nothing)
 end
 
-"""Facts of package directory `case`, loaded with case directory added to load path; fixture must load."""
-function package_facts(case::String)::FactSet
+"""
+Facts of package directory `case`. Package loads, with case directory added to load path, when `load`; fixture must load.
+"""
+function package_facts(case::String, load::Bool)::FactSet
     sources = Corset.Discovery.discover(case)
+    load || return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, nothing)
     push!(LOAD_PATH, case)
     loaded = try
-        Corset.Package.load(case, Corset.Package.package_id(case), sources.files)
+        Corset.Package.load(sources.project, sources.files)
     finally
         pop!(LOAD_PATH)
     end
     isempty(loaded.errors) || error("fixture $case does not load: $(first(loaded.errors).primary.text)")
-    return FactSet(sources.files, sources.entries, case_bans(dirname(case)), loaded.facts)
+    return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, loaded.facts)
 end
 
-"""Source file of `case` that snapshots and fixes cover: case file, or entry file of package case."""
-case_file(case::String)::String = isdir(case) ? only(Corset.Discovery.discover(case).entries) : case
+"""Source file of `case` that snapshots and fixes cover: case file, or module file of package case."""
+case_file(case::String)::String = isdir(case) ? first(Corset.Discovery.discover(case).entries) : case
 
 """
 Rendered findings and fixed source of `case_file` for `case` of rule `name`. File case is only entry; directory case is
 package. Bans come from `case_bans`.
 """
 function run_case(name::Symbol, case::String)::Tuple{String, String}
-    facts = isdir(case) ? package_facts(case) : file_facts(case)
+    facts = isdir(case) ? package_facts(case, Corset.Rules.entry(name).stage != Corset.Facts.Stage.syntax) : file_facts(case)
     findings = Corset.Engine.run_rules(facts, [Corset.Rules.entry(name)])
     sources = Dict(file.path => file.text for file in facts.files)
     root = isdir(case) ? case : dirname(case)

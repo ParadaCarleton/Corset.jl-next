@@ -14,6 +14,8 @@ using Scratch: get_scratch!
 using SHA: sha256
 using TOML: TOML
 using ..Config: ConfigError, parse_toml
+using ..Facts: ProjectFacts, TestDeps
+using ..Package: package_id
 
 """Load path of relaunched process: active project, then standard library."""
 const LOAD_PATH = "@:@stdlib"
@@ -34,30 +36,20 @@ function manifest_deps(project::String)::Dict{String, Any}
     return deps
 end
 
-"""Spec of dependency `name` with `uuid`; `source` is its `[sources]` entry, read relative to `directory`."""
-function source_spec(name::String, uuid::String, source::Union{Nothing, Dict{String, Any}}, directory::String)::Pkg.PackageSpec
-    isnothing(source) && return Pkg.PackageSpec(; name, uuid = Base.UUID(uuid))
-    haskey(source, "path") && return Pkg.PackageSpec(; name, uuid = Base.UUID(uuid), path = abspath(directory, source["path"]))
-    return Pkg.PackageSpec(; name, uuid = Base.UUID(uuid), url = source["url"], rev = get(source, "rev", nothing))
+"""Spec of test dependency `id`; `source` is its `[sources]` entry in test/Project.toml, read relative to `directory`."""
+function source_spec(id::Base.PkgId, source::Union{Nothing, Dict{String, Any}}, directory::String)::Pkg.PackageSpec
+    name, uuid = id.name, id.uuid
+    isnothing(source) && return Pkg.PackageSpec(; name, uuid)
+    haskey(source, "path") && return Pkg.PackageSpec(; name, uuid, path = abspath(directory, source["path"]))
+    return Pkg.PackageSpec(; name, uuid, url = get(source, "url", nothing), rev = get(source, "rev", nothing), subdir = get(source, "subdir", nothing))
 end
 
-"""Test dependencies of package at `root`, other than target `id`: `[targets].test` names, else `test/Project.toml` deps."""
-function test_specs(root::String, id::Base.PkgId)::Vector{Pkg.PackageSpec}
-    project = parse_toml(joinpath(root, "Project.toml"))
-    test_project = joinpath(root, "test", "Project.toml")
-    if haskey(get(project, "targets", Dict{String, Any}()), "test")
-        deps = get(project, "deps", Dict{String, Any}())
-        known = merge(get(project, "weakdeps", Dict{String, Any}()), get(project, "extras", Dict{String, Any}()))
-        names = filter(name -> !haskey(deps, name), project["targets"]["test"])
-        unknown = filter(name -> !haskey(known, name), names)
-        isempty(unknown) || throw(ConfigError("test target names $(join(unknown, ", ")), which [extras] lacks"))
-        return [Pkg.PackageSpec(; name, uuid = Base.UUID(known[name])) for name in names]
-    end
-    isfile(test_project) || return Pkg.PackageSpec[]
-    tests = parse_toml(test_project)
-    sources = get(tests, "sources", Dict{String, Any}())
-    deps = filter(dep -> Base.UUID(dep.second) != id.uuid, get(tests, "deps", Dict{String, Any}()))
-    return [source_spec(name, uuid, get(sources, name, nothing), dirname(test_project)) for (name, uuid) in sort!(collect(deps))]
+"""Specs of test dependencies of `project`, at path or repository test/Project.toml `[sources]` gives."""
+function test_specs(project::ProjectFacts)::Vector{Pkg.PackageSpec}
+    directory = joinpath(project.root, "test")
+    listed = project.test_deps == TestDeps.project
+    sources = listed ? get(parse_toml(joinpath(directory, "Project.toml")), "sources", Dict{String, Any}()) : Dict{String, Any}()
+    return [source_spec(id, get(sources, id.name, nothing), directory) for id in project.tests]
 end
 
 """Root directory of Corset package this process runs."""
@@ -71,17 +63,17 @@ function cache_key(root::String)::String
     return bytes2hex(sha256(join(parts, '\0')))[1:16]
 end
 
-"""Build temporary environment for package `id` at `root` in empty directory `env`."""
-function build!(env::String, root::String, id::Base.PkgId)::Nothing
-    project = parse_toml(joinpath(root, "Project.toml"))
-    preferences = get(project, "preferences", Dict{String, Any}())
+"""Build temporary environment for package of `project` in empty directory `env`."""
+function build!(env::String, project::ProjectFacts)::Nothing
+    root = project.root
+    preferences = get(parse_toml(joinpath(root, "Project.toml")), "preferences", Dict{String, Any}())
     open(io -> TOML.print(io, Dict("preferences" => preferences)), joinpath(env, "Project.toml"), "w")
     manifest = Dict("manifest_format" => "2.0", "deps" => manifest_deps(joinpath(root, "Project.toml")))
     open(io -> TOML.print(io, manifest), joinpath(env, "Manifest.toml"), "w")
     local_preferences = joinpath(root, "LocalPreferences.toml")
     isfile(local_preferences) && cp(local_preferences, joinpath(env, "LocalPreferences.toml"))
     develop = unique!([realpath(root), realpath(corset_root())])
-    tests = test_specs(root, id)
+    tests = test_specs(project)
     try
         # Relaunched process precompiles what it loads. Pkg's task-local switch leaves process environment alone.
         @with Pkg._autoprecompilation_enabled_scoped => false Pkg.activate(env) do
@@ -93,20 +85,22 @@ function build!(env::String, root::String, id::Base.PkgId)::Nothing
         end
     catch error
         error isa Pkg.Types.PkgError || error isa Pkg.Resolve.ResolverError || rethrow()
-        throw(ConfigError("cannot build environment for $(id.name) that keeps every Manifest version: $(sprint(showerror, error))"))
+        throw(ConfigError("cannot build environment for $(project.name) that keeps every Manifest version: $(sprint(showerror, error))"))
     end
     return nothing
 end
 
-"""Cached temporary environment for package `id` at `root`; build it first when missing, with note to `err`."""
-function environment(root::String, id::Base.PkgId, err::IO)::String
+"""Cached temporary environment for package of `project`; build it first when missing, with note to `err`."""
+function environment(project::ProjectFacts, err::IO)::String
+    # Pkg cannot develop package without uuid: fail before build with clear error.
+    id = package_id(project)
     cache = get_scratch!(Base.moduleroot(@__MODULE__), "environments")
-    env = joinpath(cache, cache_key(root))
+    env = joinpath(cache, cache_key(project.root))
     mkpidlock("$env.pid") do
         isdir(env) && return
         println(err, "corset: building environment for $(id.name); later runs reuse it")
         mktempdir(cache) do staging
-            build!(staging, root, id)
+            build!(staging, project)
             mv(staging, env)
         end
     end

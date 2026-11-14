@@ -1,0 +1,8 @@
+name = "UntestedExtensionNone"
+uuid = "11b45d9e-a380-4110-8698-77b6ce70f817"
+
+[weakdeps]
+Absent = "1e2b0aac-a9bf-40d2-9dfd-12c6286c6ff4"
+
+[extensions]
+BareExt = "Absent"
