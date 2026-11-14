@@ -17,6 +17,8 @@ Base.:+(left::Square, right::Square) = Square(left.side + right.side)
 
 first(name::Symbol) = name
 
+hash(name::Symbol, seed::UInt) = seed
+
 Base.last(square::Square; scale = 1) = scale * square.side
 
 for name in (:eltype,)
