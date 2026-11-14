@@ -25,7 +25,7 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 | Strings (later) | `String` is correct common type | literal is `String` already | rare; Julia already does this |
 | Dicts, sets (later) | keep container kind; key and value types promote | as for arrays | rare |
 
-- **Stand-in types**: types Corset defines to stand for whatever type caller passes, so inference sees concrete type. Numbers: float stand-in and integer stand-in; arrays: stand-in array type. Each is ordinary well-behaved type, and promotes like narrowest real type of its kind: float stand-in absorbs `Int` and loses to `Float64`, like `Float32`; integer stand-in loses to `Int`, like `Int32`. Base code runs on them unchanged.
+- **Stand-in types**: types Corset defines to stand for whatever type caller passes, so inference sees concrete type. Numbers: float stand-in and integer stand-in; arrays: stand-in array type. Each is ordinary well-behaved type, and promotes like narrowest real type of its kind: float stand-in absorbs `Int` and loses to `Float64`, like `Float32`; integer stand-in loses to `Int`, like `Int32`. Base code runs on them unchanged. Array stand-in has `OneTo` axes and column-major memory: rules about axes or memory order read declared argument type, never stand-in.
 - **Inference**: infer each package method with stand-in types in place of generic arguments (`::Real`, `T <: Real`, `AbstractArray{T}`). Use native inference and its cache. No JET, no Cthulhu, no custom interpreter.
 - **Scan** (`inference` stage, package methods only):
   - Literal, constant, global or type name meets input (stand-in, or overspecified argument type): report when converting it to input type would change type of escaping value: returned, or written to argument or global. Intermediate that does not escape (`Float32(x * 0.5)`) goes to `intermediate-widening` (performance). Each site gets one finding.
@@ -56,7 +56,7 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 
 ### Union policy (`ad-hoc-union`)
 
-One policy for inferred locals, results and struct fields; argument annotations exempt. `Nothing` and `Missing` are free. Members from one module other than Base or Core form variant group. Allow at most one member outside that group.
+One policy for inferred locals, results and struct fields; argument annotations exempt. Policy reads one stand-in signature at a time; results of different signatures never merge. `Nothing` and `Missing` are free. Members from one module other than Base or Core form variant group. Allow at most one member outside that group.
 
 - Pass: `Union{Circle, Square}`, `Union{DepA.Leaf, DepA.Node}`, `Union{Float64, MyPkg.ParseError}`.
 - Report: `Union{Int, Float64}`, `Union{String, Symbol}`.

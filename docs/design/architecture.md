@@ -116,8 +116,9 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 - Location: user cache directory, one entry set per project. CI saves it between runs.
 - Global key: Julia version, Corset version, config hash, Manifest hash, preferences, active extensions. Any change clears all entries.
 - `syntax` stage: findings per file, keyed by file content hash.
-- Typed stages: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. `@generated` method depends on whole package.
-- Run parses every file (cheap) and computes keys. Nothing changed: no package load; cached findings print. Otherwise load package and infer only invalid methods.
+- Typed stages, first version: findings keyed by hash of every package file and every file of path dependencies (Manifest `path` entries, `[sources]` paths); any change reruns inference. Registry dependencies change Manifest hash.
+- Typed stages, later: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. `@generated` method depends on whole package.
+- Run parses every file (cheap) and computes keys. Nothing changed: no package load; cached findings print. Otherwise load package and infer invalid methods: all of them until per-method keys exist.
 - Later: warm daemon keeps Salsa tables and loaded package, so edit costs only its dependents.
 
 ### Reference linters
