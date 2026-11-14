@@ -37,7 +37,7 @@ Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and meth
 - Corset limits never fall below compiler limits (`max_methods`, union splitting). Corset resolves every call compiler resolves.
 - Rules assume Base functions keep documented contracts: `==` has no side effects, and comparison with `NaN` is false. Method that breaks contract is out of scope, as for Clippy `ifs_same_cond`.
 
-Coverage line ends every run and counts blind spots by cause: `analyzed 412 of 430 methods; skipped 18 (2 generated, 16 unexpanded macros)`. Rule that lacks fact at site reports nothing there.
+Coverage line ends every run and counts blind spots by cause: `analyzed 412 of 430 methods; skipped 18 (generated function: 2, unexpanded macro: 16)`. Rule that lacks fact at site reports nothing there.
 
 ### Lint levels
 

@@ -124,7 +124,8 @@ function render_coverage(io::IO, report::Report)::Nothing
     print(io, "coverage: analyzed ", files, files == 1 ? " file" : " files")
     if !isempty(report.blind_spots)
         causes = sort!(unique(spot.cause for spot in report.blind_spots))
-        counts = join(("$(count(spot -> spot.cause == cause, report.blind_spots)) $cause" for cause in causes), ", ")
+        # Count follows cause, so verb phrase reads right in singular and plural.
+        counts = join(("$cause: $(count(spot -> spot.cause == cause, report.blind_spots))" for cause in causes), ", ")
         print(io, "; skipped ", length(report.blind_spots), " (", counts, ")")
     end
     println(io)

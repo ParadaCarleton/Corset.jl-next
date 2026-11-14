@@ -138,7 +138,7 @@ The last line of the text report counts the files Corset analyzed.
 It also counts each place that Corset could not analyze, by cause:
 
 ```text
-coverage: analyzed 12 files; skipped 1 (include with computed path)
+coverage: analyzed 12 files; skipped 1 (include with computed path: 1)
   - src/Plugins.jl:4:1: include with computed path
 ```
 
