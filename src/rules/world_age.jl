@@ -23,6 +23,8 @@ function setup()
 end
 ```
 
+`Core.eval(M, …)` and `@eval M …` define in module `M`: only call written `M.f(…)` reaches that definition.
+
 ## Limitations
 Fix is `manual` when call passes keywords.
 """
@@ -31,19 +33,39 @@ module WorldAge
 using ...Facts
 
 const NAME = Symbol("world-age")
-"""Name defined by function definition inside `node`, which evaluates code; `nothing` when none."""
-function evaluated_definition(node::SyntaxNode)::Union{Nothing, String}
+"""Module eval `node` defines in, as written: `M` in `Core.eval(M, ex)` and `@eval M ex`; `nothing` for current module."""
+function eval_target(file::SyntaxFile, node::SyntaxNode)::Union{Nothing, String}
+    pieces = children_of(node)
+    length(pieces) == 3 || return nothing
+    target = source(file, pieces[2])
+    return target == "@__MODULE__" ? nothing : target
+end
+
+"""
+Name call reaches function definition inside `node` by, which evaluates code: Base-normalized name in current module,
+`M.f` in other module `M`. `nothing` when none.
+"""
+function evaluated_definition(file::SyntaxFile, node::SyntaxNode)::Union{Nothing, String}
     is_eval = base_macro(node) == "@eval" || call_head(node) == "eval"
     is_eval || return nothing
+    target = eval_target(file, node)
     for inner in descendants(node)
         kind_name(inner) == "function" || continue
         signature = children_of(inner)[1]
         while kind_name(signature) in ("where", "::")
             signature = children_of(signature)[1]
         end
-        kind_name(signature) == "call" && return call_head(signature)
+        kind_name(signature) == "call" || continue
+        return isnothing(target) ? call_head(signature) : "$target.$(source(file, children_of(signature)[1]))"
     end
     return nothing
+end
+
+"""Names call `node` reaches eval definition by: Base-normalized head, and callee as written (`M.f`) for prefix call."""
+function call_names(file::SyntaxFile, node::SyntaxNode)::Vector{String}
+    kind_name(node) == "call" || return String[]
+    written = isnothing(infix_operator(node)) ? source(file, children_of(node)[1]) : nothing
+    return unique!(filter(!isnothing, [call_head(node), written]))
 end
 
 """Whether call `node` is signature of method definition, as in `f(x) = …`: definition, no call."""
@@ -70,17 +92,18 @@ function findings(facts::FactSet)::Vector{Finding}
         kind_name(body) == "block" || continue
         defined = Dict{String, Any}()
         for statement in children_of(body)
-            name = evaluated_definition(statement)
+            name = evaluated_definition(file, statement)
             isnothing(name) || (defined[name] = statement; continue)
             for node in descendants(statement)
-                call_head(node) in keys(defined) && !is_signature(node) || continue
+                index = findfirst(in(keys(defined)), call_names(file, node))
+                (isnothing(index) || is_signature(node)) && continue
+                called = call_names(file, node)[index]
                 push!(
                     found, finding(
                         NAME, file, node; kind = :same_world_call, confidence = Confidence.definite,
-                        message = "`$(call_head(node))` is called in world older than its definition",
+                        message = "`$called` is called in world older than its definition",
                         label = "MethodError: method too new", why = "running function keeps world it started in; `eval` adds method to newer world",
-                        fix = latest_fix(file, node),
-                        causes = [Label(span(file, defined[call_head(node)]), "defined by `eval` here")],
+                        fix = latest_fix(file, node), causes = [Label(span(file, defined[called]), "defined by `eval` here")],
                     )
                 )
             end

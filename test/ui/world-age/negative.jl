@@ -17,3 +17,10 @@ function define_twice()
     twice()::Int = 2
     return nothing
 end
+
+# Eval into other module defines `runner.include`; `Base.include` and own `include` are other functions.
+function load_runner(runner::Module, path::String)
+    Core.eval(runner, :(include(path::AbstractString) = Base.include($runner, path)))
+    Base.include(runner, path)
+    return include(path)
+end

@@ -61,3 +61,15 @@ error[world-age]: `qualified` is called in world older than its definition
    = fix: replace with `Base.invokelatest(qualified)`   [safe]
    = docs: corset explain world-age
 
+error[world-age]: `runner.remote` is called in world older than its definition
+  --> positive.jl:32:12
+   |
+31 |     @eval runner remote() = 1
+   |     ------------------------- defined by `eval` here
+32 |     return runner.remote()
+   |            ^^^^^^^^^^^^^^^ MethodError: method too new
+   |
+   = why: running function keeps world it started in; `eval` adds method to newer world
+   = fix: replace with `Base.invokelatest(runner.remote)`   [safe]
+   = docs: corset explain world-age
+
