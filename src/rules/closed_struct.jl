@@ -38,34 +38,15 @@ using ...Facts
 
 const NAME = Symbol("closed-struct")
 
-"""
-Type names with supertype `Any` that public names reach: names of root module, first of package `modules`, then of
-package submodules public names reach.
-"""
-function rootless_types(modules::Vector{Module})::Set{Core.TypeName}
-    package, queue = Set(modules), [first(modules)]
-    reached, rootless = Set(queue), Set{Core.TypeName}()
-    while !isempty(queue)
-        mod = pop!(queue)
-        for name in names(mod)
-            isdefined(mod, name) || continue
-            binding = getglobal(mod, name)
-            if binding isa Module && binding in package && !(binding in reached)
-                push!(reached, binding)
-                push!(queue, binding)
-            end
-            body = Base.unwrap_unionall(binding)
-            body isa DataType && supertype(body) === Any && push!(rootless, body.name)
-        end
-    end
-    return rootless
-end
+"""Type names of types with supertype `Any` among `public` values."""
+rootless_types(public::Base.IdSet{Any})::Set{Core.TypeName} =
+    Set{Core.TypeName}(body.name for body in map(Base.unwrap_unionall, collect(public)) if body isa DataType && supertype(body) === Any)
 
 """Findings for definitions of public package structs with supertype `Any`."""
 function findings(facts::FactSet)::Vector{Finding}
     package = facts.package
     isnothing(package) && return Finding[]
-    rootless = rootless_types(package.modules)
+    rootless = rootless_types(package.public)
     found = Finding[]
     for site in package.structs
         Base.unwrap_unionall(site.type).name in rootless || continue

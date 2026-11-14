@@ -29,6 +29,7 @@ include("rules/nan_compare.jl")
 include("rules/one_letter.jl")
 include("rules/operator_consistency.jl")
 include("rules/orphan_task.jl")
+include("rules/overspecified_type.jl")
 include("rules/pinned_task.jl")
 include("rules/process_state.jl")
 include("rules/repeated_concat.jl")
@@ -71,6 +72,7 @@ const REGISTRY = RuleEntry[
     OneLetter.ENTRY,
     OperatorConsistency.ENTRY,
     OrphanTask.ENTRY,
+    OverspecifiedType.ENTRY,
     PinnedTask.ENTRY,
     ProcessState.ENTRY,
     RepeatedConcat.ENTRY,
