@@ -67,6 +67,28 @@ warning[implicit-import]: bare `using LinearAlgebra` brings 1 used name implicit
    = fix: replace with `using LinearAlgebra: LinearAlgebra, normalize`   [likely]
    = docs: corset explain implicit-import
 
+warning[implicit-import]: bare `using LinearAlgebra` brings no used name
+  --> src/ImplicitImportPositive.jl:26:15
+   |
+26 |         using LinearAlgebra
+   |               ^^^^^^^^^^^^^ brings every name `LinearAlgebra` exports
+   |
+   = why: reader cannot tell where name comes from, and new export can clash
+   = fix: replace with `using LinearAlgebra: LinearAlgebra`   [likely]
+   = docs: corset explain implicit-import
+
+warning[implicit-import]: bare `using LinearAlgebra` brings 1 used name implicitly
+  --> src/ImplicitImportPositive.jl:31:15
+   |
+31 |         using LinearAlgebra
+   |               ^^^^^^^^^^^^^ brings every name `LinearAlgebra` exports
+32 |         scaled(vector::Vector{Float64}) = normalize(vector)
+   |                                           --------- uses `normalize`
+   |
+   = why: reader cannot tell where name comes from, and new export can clash
+   = fix: replace with `using LinearAlgebra: LinearAlgebra, normalize`   [likely]
+   = docs: corset explain implicit-import
+
 warning[implicit-import]: bare `using Printf` brings 1 used name implicitly
  --> src/format.jl:1:7
   |

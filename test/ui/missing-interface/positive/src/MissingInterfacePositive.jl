@@ -17,10 +17,12 @@ end
 Base.size(scaled::Scaled) = (length(scaled.values), length(scaled.values))
 Base.getindex(scaled::Scaled, index::Int) = scaled.values[mod1(index, length(scaled.values))]
 
-"""Grid of any rank; misses `size` and `getindex`."""
+"""Grid of any rank; misses `size` and `getindex`. Array finding covers its iteration."""
 struct Grid{T, N} <: AbstractArray{T, N}
     data::Vector{T}
 end
+
+Base.iterate(grid::Grid, index::Int = 1) = index > length(grid.data) ? nothing : (grid.data[index], index + 1)
 
 """Character repeated; misses `isvalid` and `iterate`."""
 struct Repeated <: AbstractString
@@ -52,5 +54,21 @@ struct Table <: AbstractDict{Symbol, Int}
 end
 
 Base.iterate(table::Table, index::Int = 1) = index > length(table.items) ? nothing : (table.items[index], index + 1)
+
+"""Columns of window; own `HasLength` trait without `length`."""
+struct Window
+    width::Int
+end
+
+Base.iterate(window::Window, column::Int = 1) = column > window.width ? nothing : (column, column + 1)
+Base.IteratorSize(::Type{Window}) = Base.HasLength()
+
+"""Cells of square board; `HasShape` trait without `length` or `size`."""
+struct Board
+    side::Int
+end
+
+Base.iterate(board::Board, cell::Int = 1) = cell > board.side^2 ? nothing : (cell, cell + 1)
+Base.IteratorSize(::Type{Board}) = Base.HasShape{2}()
 
 end

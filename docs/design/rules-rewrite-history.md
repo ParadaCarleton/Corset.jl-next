@@ -468,3 +468,19 @@ Codex review of phase 3 design found four problems; all accepted:
 - Overwrite without keywords keeps earlier keyword sorter; F24 note says so.
 - F88 reads Project.toml only; it moves to `syntax` stage, so load error does not hide it and check loads nothing.
 - Piracy fixture changes method table for later UI cases; such fixtures run in fresh process.
+
+### Phase 3 code review: adversarial pass
+
+Codex reviewed phase 3 code (PRs #175 to #195) by trace only. Each finding got regression test before fix.
+
+| # | Finding | Outcome |
+|---|---|---|
+| 1 | `overspecified-type` fix can make call ambiguous, or give two methods one signature | Fixed: fix is `likely` when widened method and each other method of function, widened too, are disjoint or nested. Otherwise fix is manual. |
+| 2 | Checked path through symlink loses method sites | Fixed: check resolves real path, where relaunch develops package. |
+| 3 | Own `IteratorSize` that returns `HasLength` hides missing `length` | Fixed: inference finds trait. `HasShape` needs `size` too. |
+| 4 | Extension trigger that throws ends run with internal error | Fixed: blind spot "extension trigger did not load". |
+| 5 | Environment cache ignores Project.toml of path dependencies | Fixed: cache key reads Project.toml of Manifest path entries and test `[sources]` paths. |
+| 6 | Bare `using` lookup matches innermost module name only | Fixed: ExplicitImports.jl rows give full module path of statement. |
+| 7 | Removing only `using X: a` stops loading `X` | Fixed: removal of only import that loads package is manual. |
+| 8 | `misplaced-import` move changes load order, but fix is `safe` | Fixed: fix tier is `likely`. |
+| 9 | Own `IteratorEltype` that returns `HasEltype` hides missing `eltype` | Fixed: inference finds trait. |

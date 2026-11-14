@@ -224,8 +224,21 @@ struct Loaded
 end
 
 """
+Whether every package of `triggers` loads. Julia logs error of extension they activate; failure here is trigger's own.
+"""
+function loads_triggers(triggers::Vector{Base.PkgId})::Bool
+    try
+        foreach(Base.require, triggers)
+        return true
+    catch error
+        error isa InterruptException && rethrow()
+        return false
+    end
+end
+
+"""
 Load triggers of each extension of `mod` in `project`; extension activates once all its triggers load.
-Extension with trigger environment cannot load becomes blind spot; extension that throws, `load-error` finding.
+Extension with trigger environment cannot find or load becomes blind spot; extension that throws, `load-error` finding.
 """
 function load_extensions(mod::Module, project::ProjectFacts, files::Vector{SyntaxFile})::Tuple{Vector{Finding}, Vector{BlindSpot}}
     errors, blind_spots = Finding[], BlindSpot[]
@@ -234,7 +247,10 @@ function load_extensions(mod::Module, project::ProjectFacts, files::Vector{Synta
             push!(blind_spots, BlindSpot("extension trigger not installed", Span(file, 1, 1, Precision.line)))
             continue
         end
-        foreach(Base.require, triggers)
+        if !loads_triggers(triggers)
+            push!(blind_spots, BlindSpot("extension trigger did not load", Span(file, 1, 1, Precision.line)))
+            continue
+        end
         isnothing(Base.get_extension(mod, Symbol(name))) || continue
         # Precompile-only failure: Julia logged error, and load in anonymous module succeeds.
         error, frames = something(reproduce(file, nothing), (ErrorException("extension `$name` failed to precompile; Julia logged error"), Base.StackTraces.StackFrame[]))

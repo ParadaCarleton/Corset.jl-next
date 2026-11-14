@@ -15,7 +15,7 @@ export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
-export name_span, argument_type, call_text, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
+export name_span, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal, line_start, owned_lines, line_deletion
 
@@ -578,6 +578,12 @@ function argument_type(method::Method, position::Int)::Union{Nothing, Type}
     length(parameters) > position || return nothing
     # Julia reduces `T where T <: Walk` to `Walk`, and drops type variables argument does not use.
     return Base.rewrap_unionall(Base.unwrapva(parameters[position + 1]), method.sig)
+end
+
+"""Return type inference finds for `trait(x)` over values `x` of struct `type`: `Base.HasLength` for `Base.IteratorSize`."""
+function trait_type(trait::Type, type::Type)::Type
+    arguments = Base.rewrap_unionall(Tuple{Base.unwrap_unionall(type)}, type)
+    return Base.infer_return_type(trait, arguments)  # corset: allow inference-dependent -- rules read inference; wide trait passes
 end
 
 """Call of `name` with argument types of tuple type `signature` after callee, as call writes it: `area(::Int64, ::T) where T<:Real`."""

@@ -10,7 +10,7 @@ imported names; access inside package passes. One ExplicitImports.jl parse serve
 module External
 
 using ..Facts: ExternalFacts, PackageFacts, MethodSite, InternalAccess, BareUsing, ExplicitImport, SyntaxFile, SyntaxNode, Span, Precision
-using ..Facts: ancestors, children_of, definition_name, descendants, forms, kind_name, source, span
+using ..Facts: children_of, descendants, forms, kind_name, span
 using ..Package: line_starts
 using Aqua: Aqua
 using ExplicitImports: ExplicitImports
@@ -109,26 +109,23 @@ function internal_accesses(package::PackageFacts, files::Vector{SyntaxFile}, ana
     return merged(found, by_path)
 end
 
-"""Name of innermost `module` form around `node` of `file`; `nothing` at top level of included file."""
-function enclosing_module(file::SyntaxFile, node::SyntaxNode)::Union{Nothing, Symbol}
-    index = findfirst(ancestor -> kind_name(ancestor) == "module", ancestors(node))
-    return isnothing(index) ? nothing : Symbol(source(file, definition_name(ancestors(node)[index])))
-end
-
 """
-Module path of bare `using` in `files` that brings `exporter` into module `mod`: path ends in exporter name, and
-statement sits in `module` form named like `mod`, else at top level of included file. First in file order.
+`importpath` of bare `using` that brings `exporter` into module `mod`, in analyzed `files` by path; first in row order.
+ExplicitImports.jl `analysis` names module of each statement by full path, through `include` and nested modules.
 """
-function bare_statement(mod::Module, exporter::Module, files::Vector{SyntaxFile})::Union{Nothing, Tuple{SyntaxFile, SyntaxNode}}
-    inside, included = Tuple{SyntaxFile, SyntaxNode}[], Tuple{SyntaxFile, SyntaxNode}[]
-    for file in files, statement in forms(file, "using"), path in children_of(statement)
-        # `using X: a` holds one `:` child; bare `using A, B` holds one `importpath` per module.
-        kind_name(path) == "importpath" && source(file, last(children_of(path))) == string(nameof(exporter)) || continue
-        owner = enclosing_module(file, statement)
-        owner === nameof(mod) && push!(inside, (file, path))
-        isnothing(owner) && push!(included, (file, path))
+function bare_statement(mod::Module, exporter::Module, analysis::ExplicitImports.FileAnalysis, files::Dict{String, SyntaxFile})::Union{Nothing, Tuple{SyntaxFile, SyntaxNode}}
+    module_path = ExplicitImports.module_path(mod)
+    for row in analysis.per_usage_info
+        # ExplicitImports.jl calls last module of `using X` path `:plain_import`; `import X as Y` gets it too.
+        row.import_type === :plain_import && row.name === nameof(exporter) && row.module_path == module_path || continue
+        name = location_span(row.location, string(row.name), files)
+        isnothing(name) && continue
+        file = files[name.file]
+        statement = statement_of(file, name)
+        kind_name(statement) == "using" || continue
+        return file, only(path for path in children_of(statement) if span(file, path).first_byte <= name.first_byte <= span(file, path).last_byte)
     end
-    return isempty(inside) ? (isempty(included) ? nothing : first(included)) : first(inside)
+    return nothing
 end
 
 """ExplicitImports.jl locations of global uses of each name, by module path (innermost first) and name."""
@@ -160,16 +157,17 @@ use_order((_, use)::Tuple{Symbol, Span})::Tuple{String, Int} = (use.file, use.fi
 
 """
 Names package modules reach through bare `using`, one entry per statement, in source order: ExplicitImports.jl names
-them, syntax finds statement, `uses` gives first use of each. Names of `Base`, `Core` and package pass. Statement
+them and locates statement, `uses` gives first use of each. Names of `Base`, `Core` and package pass. Statement
 outside analyzed `files`, and module ExplicitImports.jl cannot analyze fully, give no entry.
 """
 function bare_usings(package::PackageFacts, files::Vector{SyntaxFile}, analyses::Analyses, uses::Uses)::Vector{BareUsing}
     root, by_path = first(package.modules), Dict(file.path => file for file in files)
+    analysis = analyses[pathof(root)]
     found = BareUsing[]
     for (mod, rows) in ExplicitImports.explicit_imports(root, pathof(root); file_analysis = analyses)
         isnothing(rows) && continue
         for exporter in unique(reduce(vcat, (row.exporters for row in rows); init = Module[]))
-            statement = bare_statement(mod, exporter, files)
+            statement = bare_statement(mod, exporter, analysis, by_path)
             isnothing(statement) && continue
             # Bare `using X` binds `X` too; fix always keeps it, so it is no brought name.
             brought = sort!([row.name for row in rows if exporter in row.exporters && row.name !== nameof(exporter)])

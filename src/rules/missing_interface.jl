@@ -6,7 +6,8 @@ Reports package struct that misses method Base interface requires:
 - `AbstractArray` subtype: `size(A)`, and scalar `getindex` with one `Int` per dimension.
   Linear `getindex(A, i::Int)` counts too when type sets own `IndexStyle`.
 - `AbstractString` subtype: `ncodeunits(s)`, `codeunit(s, i::Int)`, `isvalid(s, i::Int)`, `iterate(s, i::Int)`.
-- Struct that package `Base.iterate` method takes, with default `IteratorSize`: `length(x)`.
+- Struct that package `Base.iterate` method takes: `length(x)` when its `IteratorSize` is `HasLength`; `length(x)` and
+  `size(x)` when it is `HasShape`. Default `IteratorSize` is `HasLength`. Return type inference finds trait.
 Method on interface type itself, as `getindex(A::AbstractArray, I...)`, is Base fallback and does not count.
 
 ## Rationale
@@ -28,7 +29,8 @@ Base.getindex(ones::Ones, index::Int)::Float64 = (checkbounds(ones, index); 1.0)
 ## Limitations
 Struct without `struct` form in package files passes, as struct from macro.
 Array with own `IndexStyle` passes with either `getindex` form, also when style is `IndexCartesian`.
-Iterator with own `IteratorSize` passes, also when it returns `HasLength` or `HasShape`.
+Iterator whose `IteratorSize` inference cannot settle to one trait passes, as trait that depends on type parameter.
+`AbstractArray` subtype gets array interface only; it covers iteration.
 """
 module MissingInterface
 
@@ -80,11 +82,13 @@ function string_gaps(type::Type, name::String)::Vector{String}
     return [call_text(callee, name, fill("::Int", count)) for (callee, count) in STRING_METHODS if !implemented(callee, call(callee, type, body, fill(Int, count)...), AbstractString)]
 end
 
-"""Calls iterator struct `type` named `name` misses: `length`, unless own `IteratorSize` covers it as type or value."""
-function iteration_gaps(type::Type, name::String)::Vector{String}
+"""Methods iterator with `IteratorSize` of inferred type `sized` needs: none unless trait settles to `HasLength` or `HasShape`."""
+sized_methods(sized::Type)::Vector{Function} = sized === Union{} || !(sized <: Union{Base.HasLength, Base.HasShape}) ? Function[] : sized <: Base.HasShape ? [length, size] : [length]
+
+"""Calls iterator struct `type` named `name` misses, as `IteratorSize` of inferred type `sized` needs; methods on `Any` are fallbacks."""
+function iteration_gaps(type::Type, name::String, sized::Type)::Vector{String}
     body = Base.unwrap_unionall(type)
-    sized = implemented(Base.IteratorSize, call(Base.IteratorSize, type, Type{body}), Type) || implemented(Base.IteratorSize, call(Base.IteratorSize, type, body), Any)
-    return sized || implemented(length, call(length, type, body), Any) ? String[] : [call_text(length, name, String[])]
+    return [call_text(callee, name, String[]) for callee in sized_methods(sized) if !implemented(callee, call(callee, type, body), Any)]
 end
 
 """First argument types of package `Base.iterate` methods, with their sites; structs of those types are iterators."""
@@ -128,11 +132,15 @@ function findings(facts::FactSet)::Vector{Finding}
             why = "Base string methods call these methods; fallbacks throw `MethodError`"
             isempty(gaps) || push!(found, gap_finding(site, "`AbstractString`", gaps, [supertype_label(site, "`AbstractString`")], why, define(gaps)))
         end
-        index = findfirst(((iterated, _),) -> type <: iterated, iterators)
+        index = type <: AbstractArray ? nothing : findfirst(((iterated, _),) -> type <: iterated, iterators)
         isnothing(index) && continue
-        gaps, cause = iteration_gaps(type, name), Label(name_span(last(iterators[index])), "`iterate` makes it iterator")
-        why, fix = "default `IteratorSize` is `HasLength`, so `collect` and `map` call `length`", "$(define(gaps)), or `Base.IteratorSize(::Type{<:$name}) = Base.SizeUnknown()`"
-        isempty(gaps) || push!(found, gap_finding(site, "iteration", gaps, [cause], why, fix))
+        sized = trait_type(Base.IteratorSize, type)
+        gaps = iteration_gaps(type, name, sized)
+        isempty(gaps) && continue
+        cause = Label(name_span(last(iterators[index])), "`iterate` makes it iterator")
+        trait = sized <: Base.HasLength ? "`HasLength`" : sized <: Base.HasShape ? "`HasShape`" : "`HasLength` or `HasShape`"
+        why = "`IteratorSize` is $trait, so `collect` calls $(join(("`$gap`" for gap in gaps), " and "))"
+        push!(found, gap_finding(site, "iteration", gaps, [cause], why, "$(define(gaps)), or `Base.IteratorSize(::Type{<:$name}) = Base.SizeUnknown()`"))
     end
     return found
 end

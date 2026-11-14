@@ -6,6 +6,7 @@ Reports names of `using X: a`, `import X: a` and `import X` that module never us
 Use: call, method extension, `export`, `public`, `@eval` interpolation. One finding per statement.
 Fix removes unused names, or whole statement when none is used.
 Import that binds package it loads (`import X`, `using X: X`) gets manual fix: loading runs `__init__` and extension triggers.
+Removal of whole statement gets manual fix too when no other import loads its package. Package code and scripts count apart.
 
 ## Rationale
 Reader looks for use that does not exist. Import of name package dropped keeps stale dependency alive.
@@ -63,15 +64,32 @@ function binds_package(file::SyntaxFile, statement::SyntaxNode, path::SyntaxNode
     return isnothing(colon) || source(file, path) == source(file, loaded)
 end
 
+"""Packages `statement` of `file` loads, by first name of module path: `X` for `using X.Inner: a`; relative path loads none."""
+function loaded_packages(file::SyntaxFile, statement::SyntaxNode)::Vector{String}
+    colon = colon_of(statement)
+    paths, found = isnothing(colon) ? children_of(statement) : children_of(colon)[1:1], String[]
+    for path in paths
+        head = first(children_of(kind_name(path) == "as" ? first(children_of(path)) : path))
+        kind_name(head) == "." || push!(found, source(file, head))
+    end
+    return unique!(found)
+end
+
+"""Manual fix that removes import, unless loading `packages` has intended effect."""
+load_fix(packages::Vector{String})::Fix = manual_fix("remove import, unless loading $(join(("`$name`" for name in packages), ", ")) has intended effect")
+
 """
 Fix removing `unused` paths of `statement`: rewrite with kept paths, or delete lines of statement with none kept.
-Manual when unused path binds package: load effects may be intended.
+Manual when unused path binds package, or when deleted statement is only import of file role that loads package in
+`sole`: load effects may be intended.
 """
-function removal_fix(file::SyntaxFile, statement::SyntaxNode, unused::Vector{SyntaxNode})::Fix
+function removal_fix(file::SyntaxFile, statement::SyntaxNode, unused::Vector{SyntaxNode}, sole::Set{Tuple{Role.T, String}})::Fix
     loads = [source(file, path) for path in unused if binds_package(file, statement, path)]
-    isempty(loads) || return manual_fix("remove import, unless loading $(join(("`$name`" for name in loads), ", ")) has intended effect")
+    isempty(loads) || return load_fix(loads)
     kept = [path for path in bound_paths(statement) if !any(node -> node === path, unused)]
     if isempty(kept)
+        dropped = filter(package -> (file.role, package) in sole, loaded_packages(file, statement))
+        isempty(dropped) || return load_fix(dropped)
         lines = owned_lines(file, span(file, statement))
         isnothing(lines) && return manual_fix("remove import")
         return Fix("remove import", [line_deletion(file, lines)], Tier.likely)
@@ -81,8 +99,11 @@ function removal_fix(file::SyntaxFile, statement::SyntaxNode, unused::Vector{Syn
     return replace_fix(file, statement, "$(kind_name(statement)) $head$(join((source(file, path) for path in kept), ", "))", Tier.likely)
 end
 
-"""Finding for `imported` statement of `file` with names its module never uses; `nothing` when all are used."""
-function unused_finding(file::SyntaxFile, imported::ExplicitImport)::Union{Nothing, Finding}
+"""
+Finding for `imported` statement of `file` with names its module never uses; `nothing` when all are used. `sole` holds
+packages only one import of file role loads.
+"""
+function unused_finding(file::SyntaxFile, imported::ExplicitImport, sole::Set{Tuple{Role.T, String}})::Union{Nothing, Finding}
     statement = only(node for kind in ("using", "import") for node in forms(file, kind) if span(file, node) == imported.statement)
     used = Set(first.(imported.uses))
     # ExplicitImports.jl gives `var"name"` path no import row; such name is no known name.
@@ -92,7 +113,7 @@ function unused_finding(file::SyntaxFile, imported::ExplicitImport)::Union{Nothi
     labels = [Label(span(file, path), "never used") for path in unused]
     return Finding(
         NAME, :unused_import, Confidence.definite, "unused $(length(unused) == 1 ? "import" : "imports"): $names", first(labels),
-        labels[2:end], "reader looks for use that does not exist", removal_fix(file, statement, unused),
+        labels[2:end], "reader looks for use that does not exist", removal_fix(file, statement, unused, sole),
     )
 end
 
@@ -101,7 +122,13 @@ function findings(facts::FactSet)::Vector{Finding}
     external = facts.external
     isnothing(external) && return Finding[]
     files = Dict(file.path => file for file in facts.files)
-    found = (unused_finding(files[imported.statement.file], imported) for imported in external.explicit_imports)
+    counts = Dict{Tuple{Role.T, String}, Int}()
+    for file in facts.files, kind in ("using", "import"), statement in forms(file, kind), package in loaded_packages(file, statement)
+        counts[(file.role, package)] = get(counts, (file.role, package), 0) + 1
+    end
+    # Julia loads `Base` and `Core` before any package.
+    sole = Set(key for (key, count) in counts if count == 1 && !(last(key) in ("Base", "Core")))
+    found = (unused_finding(files[imported.statement.file], imported, sole) for imported in external.explicit_imports)
     return Finding[finding for finding in found if !isnothing(finding)]
 end
 

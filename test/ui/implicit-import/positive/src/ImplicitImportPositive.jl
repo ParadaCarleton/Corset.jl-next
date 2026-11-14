@@ -20,4 +20,17 @@ module Inner
     unit(vector::Vector{Float64}) = normalize(vector)
 end
 
+# Sibling modules share inner name; each finding names own statement.
+module Left
+    module Shapes
+        using LinearAlgebra
+    end
+end
+module Right
+    module Shapes
+        using LinearAlgebra
+        scaled(vector::Vector{Float64}) = normalize(vector)
+    end
+end
+
 end

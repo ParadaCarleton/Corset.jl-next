@@ -2,7 +2,7 @@
 """Package whose functions annotate narrower types than their code needs."""
 module OverspecifiedTypePositive
 
-export scale, area, total, middle, weighted, present, rows, absolute, Point
+export scale, area, total, middle, weighted, present, rows, absolute, Point, power, code, rounded
 public counted, sizes, members, mean
 
 """Scaled copy of values."""
@@ -44,6 +44,18 @@ members(collection::Union{Vector, Set}) = length(collection)
 
 """Mean of values with float elements."""
 mean(values::AbstractVector{<:Float64}) = sum(values) / length(values)
+
+"""Power of base; widened method would overlap `Integer` method, so call `power(2, 3)` becomes ambiguous."""
+power(base::Float64, exponent::Int) = base^exponent
+power(base::Integer, exponent) = base^exponent
+
+"""Codes of byte and word; both widen to `Integer`, so later method would replace earlier one."""
+code(value::Int8) = 1
+code(value::Int) = 2
+
+"""Rounded value; widened methods nest, `Integer` inside `Real`, so dispatch keeps both."""
+rounded(value::Float64) = round(Int, value)
+rounded(value::Int) = value
 
 """Lengths of named groups."""
 sizes(groups::Dict{Symbol, Vector{Float64}}) = Dict(name => length(group) for (name, group) in groups)

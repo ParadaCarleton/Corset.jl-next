@@ -190,18 +190,20 @@ end
 end
 
 @testset "extensions" begin
-    trigger, absent = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
+    trigger, absent, failing = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
     project = """
     name = "Extended"
     uuid = "$(Base.UUID(rand(UInt128)))"
 
     [weakdeps]
     Absent = "$absent"
+    Failing = "$failing"
     Trigger = "$trigger"
 
     [extensions]
     AbsentExt = "Absent"
     BrokenExt = "Trigger"
+    FailingExt = "Failing"
     PrecompileOnlyExt = "Trigger"
     TriggerExt = ["Trigger"]
 
@@ -212,25 +214,29 @@ end
         "Project.toml" => project,
         "src/Extended.jl" => "\"\"\"Package with extensions.\"\"\"\nmodule Extended\n\"\"\"Number in box.\"\"\"\nstruct Box\n    number::Int\nend\nend\n",
         "ext/AbsentExt.jl" => "module AbsentExt\nend\n",
+        "ext/FailingExt.jl" => "module FailingExt\nend\n",
         "ext/BrokenExt.jl" => "module BrokenExt\nusing Extended, Trigger\nerror(\"extension boom\")\nend\n",
         "ext/PrecompileOnlyExt.jl" => "module PrecompileOnlyExt\nccall(:jl_generating_output, Cint, ()) == 1 && error(\"precompile only\")\nend\n",
         "ext/TriggerExt/TriggerExt.jl" => "module TriggerExt\nusing Extended: Box\nlength(box::Box)::Int = box.number\nend\n",
         "trigger/Project.toml" => "name = \"Trigger\"\nuuid = \"$trigger\"\n",
         "trigger/src/Trigger.jl" => "module Trigger\nend\n",
+        "failing/Project.toml" => "name = \"Failing\"\nuuid = \"$failing\"\n",
+        "failing/src/Failing.jl" => "module Failing\nerror(\"trigger boom\")\nend\n",
     ]
     mktempdir(@__DIR__) do root
         for (path, text) in files
             mkpath(dirname(joinpath(root, path)))
             write(joinpath(root, path), text)
         end
-        append!(LOAD_PATH, [root, joinpath(root, "trigger")])
+        append!(LOAD_PATH, [root, joinpath(root, "trigger"), joinpath(root, "failing")])
         try
             code, out, _ = redirect_stderr(() -> corset("check", root), devnull)
             @test code == 1 && occursin("error[shadowed-base]: `length` defines new function", out) && occursin("--> ext/TriggerExt/TriggerExt.jl:3:1", out)
             @test occursin("error[load-error]: extension `BrokenExt` does not load\n --> ext/BrokenExt.jl:3:1", out) && occursin("extension boom", out)
             @test occursin("extension `PrecompileOnlyExt` failed to precompile; Julia logged error", out)
-            @test occursin("skipped 3 (2 extension did not load, 1 extension trigger not installed)", out)
+            @test occursin("skipped 4 (2 extension did not load, 1 extension trigger did not load, 1 extension trigger not installed)", out)
             @test occursin("ext/AbsentExt.jl:1:1: extension trigger not installed", out)
+            @test occursin("ext/FailingExt.jl:1:1: extension trigger did not load", out)
             # Checked path leaves extension files out: they are read from disk for report.
             @test occursin("ext/AbsentExt.jl:1:1", redirect_stderr(() -> corset("check", joinpath(root, "src")), devnull)[2])
         finally
@@ -256,6 +262,12 @@ end
         allowed = [string(entry.name) => Corset.Config.Level.allow for entry in Corset.Rules.REGISTRY if entry.stage == Corset.Facts.Stage.external]
         @test length(allowed) > 1 && isnothing(external(Corset.Config.Flags(; levels = allowed)))
         @test !isnothing(external(Corset.Config.Flags(; levels = allowed[2:end])))
+        # Path through symlink finds same method sites.
+        mktempdir(@__DIR__) do directory
+            link = joinpath(directory, "link")
+            symlink(package, link)
+            @test corset("check", link)[2] == out
+        end
     end
 end
 
@@ -310,6 +322,14 @@ end
         # Manifest paths become absolute; format 1 Manifest is config error.
         write(joinpath(root, "Manifest.toml"), "manifest_format = \"2.0\"\n\n[[deps.Helper]]\npath = \"helper\"\nuuid = \"$helper\"\n")
         @test only(Launch.manifest_deps(joinpath(root, "Project.toml"))["Helper"])["path"] == joinpath(root, "helper")
+        # Cache key reads Project.toml of each path dependency: Manifest entry `Local`, test source `Helper`.
+        write(joinpath(root, "Manifest.toml"), "manifest_format = \"2.0\"\n\n[[deps.Local]]\npath = \"local\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n")
+        for directory in ("local", "helper")
+            key = Launch.cache_key(facts)
+            mkpath(joinpath(root, directory))
+            write(joinpath(root, directory, "Project.toml"), "name = \"Changed\"\n")
+            @test Launch.cache_key(facts) != key
+        end
         write(joinpath(root, "Manifest.toml"), "[[Helper]]\npath = \"helper\"\nuuid = \"$helper\"\n")
         @test_throws "has format 1" Launch.manifest_deps(joinpath(root, "Project.toml"))
         # Test loads: transitive `[deps]` of package and tests; Manifest maps name to uuid where names repeat.

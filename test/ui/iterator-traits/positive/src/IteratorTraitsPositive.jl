@@ -38,4 +38,13 @@ end
 Base.iterate(walk::W, step::Int = 0) where {W <: Walk} = step >= walk.steps ? nothing : (step, step + 1)
 Base.length(walk::Walk) = walk.steps
 
+"""Pages of book; own `HasEltype` trait without `eltype`."""
+struct Pages
+    count::Int
+end
+
+Base.iterate(pages::Pages, page::Int = 1) = page > pages.count ? nothing : (page, page + 1)
+Base.length(pages::Pages) = pages.count
+Base.IteratorEltype(::Type{Pages}) = Base.HasEltype()
+
 end
