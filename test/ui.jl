@@ -70,7 +70,7 @@ function run_case(name::Symbol, case::String)::Tuple{String, String}
     findings = Corset.Engine.run_rules(facts, [Corset.Rules.entry(name)])
     sources = Dict(file.path => file.text for file in facts.files)
     root = isdir(case) ? case : dirname(case)
-    report = Corset.Engine.Report(Corset.Engine.diagnostics(findings, UI_SETTINGS), UI_SETTINGS, root, sources, 0, [], [])
+    report = Corset.Engine.Report(Corset.Engine.diagnostics(findings, UI_SETTINGS), UI_SETTINGS, root, sources, length(sources), 0, [], [])
     rendered = sprint(io -> Corset.Render.render_all(io, report))
     return rendered, fixed_text(Corset.Fixes.applicable_edits(findings, Tier.breaking), sources, root, isdir(case))
 end

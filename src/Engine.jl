@@ -19,12 +19,16 @@ struct Diagnostic
     source::String
 end
 
-"""Result of one run: diagnostics, settings, project root, source text per file, baselined count, stale baseline keys and blind spots."""
+"""
+Result of one run: diagnostics, settings, project root, source text per file, analyzed file count, baselined count,
+stale baseline keys and blind spots. Sources also hold files that labels and blind spots outside analyzed files point at.
+"""
 struct Report
     diagnostics::Vector{Diagnostic}
     settings::Settings
     root::String
     sources::Dict{String, String}
+    analyzed::Int
     baselined::Int
     stale::Vector{Baseline.Key}
     blind_spots::Vector{BlindSpot}
@@ -128,7 +132,7 @@ function check(path::String; flags::Flags = Flags())::Report
     for path in [[label.span.file for group in labels for label in group]; [spot.span.file for spot in analysis.blind_spots]]
         haskey(sources, path) || (sources[path] = read(path, String))
     end
-    return Report(reported, analysis.settings, analysis.root, sources, count(covered), stale, analysis.blind_spots)
+    return Report(reported, analysis.settings, analysis.root, sources, length(analysis.facts.files), count(covered), stale, analysis.blind_spots)
 end
 
 """Write baseline at project root of `path` from every reported finding; return entry count."""
