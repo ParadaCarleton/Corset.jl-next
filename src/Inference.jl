@@ -39,10 +39,10 @@ Whether method of `site` has positional argument without type in source. Explici
 counts as typed. Site without definition node counts as typed. Package stage leaves out keyword bodies.
 """
 function untyped(site::MethodSite)::Bool
-    call = isnothing(site.node) ? nothing : signature(site.node)
-    isnothing(call) && return false
+    parts = isnothing(site.node) ? nothing : signature(site.node)
+    isnothing(parts) && return false
     # Keyword group comes last, and method for omitted default values declares fewer arguments, so slice leaves out both.
-    return any(untyped_argument, call_arguments(first(call))[1:(length(Base.unwrap_unionall(site.method.sig).parameters) - 1)])
+    return any(untyped_argument, parts.arguments[1:(length(Base.unwrap_unionall(site.method.sig).parameters) - 1)])
 end
 
 """Unoptimized typed code of `method` on `signature`, its method instance and result type; `nothing` when inference gives none."""

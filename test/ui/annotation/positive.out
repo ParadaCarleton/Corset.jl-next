@@ -71,3 +71,27 @@ warning[annotation]: `Box` signature lacks types
    = fix: annotate with intended abstract types; `::Any` accepts anything on purpose   [manual]
    = docs: corset explain annotation
 
+warning[annotation]: `⊕` signature lacks types
+  --> positive.jl:19:6
+   |
+19 | left ⊕ right::Int = left
+   | ---- no type
+   | ----------------- no result type
+   |      ^ method defined here
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with intended abstract types; `::Any` accepts anything on purpose   [manual]
+   = docs: corset explain annotation
+
+warning[annotation]: `Box` signature lacks types
+  --> positive.jl:21:7
+   |
+21 | (box::Box)(scale) = box.side * scale
+   | ----------------- no result type
+   |       ^^^ method defined here
+   |            ----- no type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with intended abstract types; `::Any` accepts anything on purpose   [manual]
+   = docs: corset explain annotation
+

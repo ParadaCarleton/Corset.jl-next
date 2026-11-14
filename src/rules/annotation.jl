@@ -49,9 +49,8 @@ function findings(facts::FactSet)::Vector{Finding}
     for file in facts.files, definition in forms(file, "function")
         parts = signature(definition)
         (isnothing(parts) || is_local(definition)) && continue
-        call, typed = parts
-        causes = [Label(span(file, argument), "no type") for parameter in children_of(call)[2:end] for argument in untyped(parameter)]
-        typed || push!(causes, Label(span(file, call), "no result type"))
+        causes = [Label(span(file, argument), "no type") for parameter in parts.arguments for argument in untyped(parameter)]
+        parts.typed || push!(causes, Label(span(file, parts.call), "no result type"))
         isempty(causes) && continue
         name = definition_name(definition)
         push!(

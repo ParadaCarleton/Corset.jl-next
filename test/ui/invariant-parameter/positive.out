@@ -50,3 +50,33 @@ error[invariant-parameter]: `Vector{Shape}` matches parameter `Shape` exactly; s
    = fix: replace with `<:Shape`   [likely]
    = docs: corset explain invariant-parameter
 
+error[invariant-parameter]: `Vector{Shape}` matches parameter `Shape` exactly; subtypes of `Shape` miss
+  --> src/InvariantParameterPositive.jl:23:14
+   |
+23 | left::Vector{Shape} ⊕ right::Vector{Shape} = vcat(left, right)
+   |              ^^^^^ invariant parameter
+   |
+   = why: type parameters are invariant: `Vector{Float64}` is not `Vector{Real}`
+   = fix: replace with `<:Shape`   [likely]
+   = docs: corset explain invariant-parameter
+
+error[invariant-parameter]: `Vector{Shape}` matches parameter `Shape` exactly; subtypes of `Shape` miss
+  --> src/InvariantParameterPositive.jl:23:37
+   |
+23 | left::Vector{Shape} ⊕ right::Vector{Shape} = vcat(left, right)
+   |                                     ^^^^^ invariant parameter
+   |
+   = why: type parameters are invariant: `Vector{Float64}` is not `Vector{Real}`
+   = fix: replace with `<:Shape`   [likely]
+   = docs: corset explain invariant-parameter
+
+error[invariant-parameter]: `Vector{Real}` matches parameter `Real` exactly; subtypes of `Real` miss
+  --> src/InvariantParameterPositive.jl:26:30
+   |
+26 | (shape::Shape)(scale::Vector{Real})::Real = sum(scale)
+   |                              ^^^^ invariant parameter
+   |
+   = why: type parameters are invariant: `Vector{Float64}` is not `Vector{Real}`
+   = fix: replace with `<:Real`   [likely]
+   = docs: corset explain invariant-parameter
+

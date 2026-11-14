@@ -53,10 +53,9 @@ abstract_parameter(parameter::Type)::Bool = parameter !== Any && parameter !== U
 function site_findings(site::MethodSite, seen::Base.IdSet{SyntaxNode})::Vector{Finding}
     parts = isnothing(site.node) ? nothing : signature(site.node)
     isnothing(parts) && return Finding[]
-    call = first(parts)
     file, mod, bound = site.file, site.method.module, type_variables(site.method.sig)
     found = Finding[]
-    for argument in children_of(call)[2:end], annotation in argument_annotations(argument)
+    for argument in parts.arguments, annotation in argument_annotations(argument)
         kind_name(annotation) == "curly" || continue
         head = resolve_type(mod, file, children_of(annotation)[1])
         (isnothing(head) || !invariant(head)) && continue

@@ -15,6 +15,8 @@ struct Circle{T <: Real} <: Shape
     radius::T
 end
 area(shape::Shape) = pi * shape.radius^2
+a::Real ⊕ b::Real = a + b
+(shape::Circle)(x::Real) = shape.radius * x
 scale(x::Real, factor::Integer) = x * factor
 broken(x::Real) = x + "a"
 helper(x) = 2x

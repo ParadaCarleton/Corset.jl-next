@@ -12,3 +12,4 @@ for _ in 1:3
 end
 convert_all(::Type{T}, items) where {T} = T.(items)
 plot(data; x = 1)
+left ⊕ right = left
