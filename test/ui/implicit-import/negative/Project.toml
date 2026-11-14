@@ -1,0 +1,7 @@
+name = "ImplicitImportNegative"
+uuid = "a2945766-79d5-4a5e-8f6b-6fb1ebc2f2c1"
+
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"

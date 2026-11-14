@@ -17,6 +17,7 @@ include("rules/double_include.jl")
 include("rules/duplicate_statement.jl")
 include("rules/field_prefix.jl")
 include("rules/file_length.jl")
+include("rules/implicit_import.jl")
 include("rules/inference_dependent.jl")
 include("rules/internal_access.jl")
 include("rules/invariant_parameter.jl")
@@ -63,6 +64,7 @@ const REGISTRY = RuleEntry[
     DuplicateStatement.ENTRY,
     FieldPrefix.ENTRY,
     FileLength.ENTRY,
+    ImplicitImport.ENTRY,
     InferenceDependent.ENTRY,
     InternalAccess.ENTRY,
     InvariantParameter.ENTRY,
