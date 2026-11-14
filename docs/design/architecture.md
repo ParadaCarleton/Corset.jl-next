@@ -48,7 +48,7 @@ end
 
 - One process per run. Corset loads target into its own process, as Aqua.jl and JET do, so later stages read compiler state directly.
 - Fresh process only: no `Corset.check()` inside `runtests.jl`. Test code would change method table, and `--code-coverage` changes optimized IR, so findings would depend on what ran before.
-- Command line always builds temporary environment: nameless project that develops target by path, starts from target Manifest, and adds test dependencies and Corset by path. Every target version stays. Version change fails loud (exit 2) and lists packages. Cache environment by hash of Manifest, Project.toml, Julia version and Corset version.
+- Command line always builds temporary environment: nameless project that develops target by path, starts from target Manifest, and adds test dependencies and Corset by path. Every target version stays when Corset accepts it. Otherwise packages Corset shares with target move, fewest first: Corset direct dependencies, then its dependency closure. Build prints each move; coverage line counts each loaded package at other version than Manifest pins as blind spot. Target compat that blocks every move fails loud (exit 2). Cache environment by hash of Manifest, Project.toml, Julia version and Corset version.
 - Relaunch Julia with `JULIA_LOAD_PATH` set to that environment and `@stdlib` only, so default environment (`@v#.#`) adds no package, trigger or method.
 - Package stage loads in place only there and in Corset tests: `Base.locate_package` must give target entry file by real path. Other path is internal error: findings would describe other code.
 - Load each extension's trigger packages: extension activates only when all triggers are loaded.

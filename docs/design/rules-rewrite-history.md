@@ -493,3 +493,11 @@ Corpus run (Distances, DataStructures, JSON and two private projects) gave these
 - `one-letter` and `annotation` stay as they are, though noisy: 1130 and 1044 findings on DataStructures.
 - Real DataStructures.jl bugs went upstream as issues #998 to #1001: `==` without `hash`, broken `enumerateall`, iterators without `eltype`, `empty(::DefaultDictBase)`.
 - `enumerateall` broke on `a || b && return` without parentheses; this backs mixed `||`/`&&` rule.
+
+### Relaunch keeps fewest Manifest pins
+
+Phase 3 design kept every target Manifest version, so any compat clash between Corset and target ended run with exit 2.
+Corpus project pinned Aqua 0.8.18; Corset needs 0.8.19, so Corset checked nothing there.
+Relaunch now moves packages Corset shares with target, within target compat, and coverage line counts each move as blind spot.
+Moved dependency changes code rules read, but compiler would use pinned version: doubt test makes it blind spot.
+Rejected: split Corset into analysis and command-line packages. It removes only ArgParse, Configurations and JSON from relaunched process.
