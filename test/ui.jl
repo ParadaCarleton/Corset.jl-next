@@ -4,7 +4,7 @@
 # Each case file starts with `# runic: off`: formatter must not normalize syntax cases test.
 
 using Corset: Corset
-using Corset.Facts: FactSet, Tier, Confidence, Role, Ban
+using Corset.Facts: FactSet, Tier, Confidence, Role, Ban, Stage
 using Corset.Config: Settings, Kind
 using Test: @test, @testset
 
@@ -25,15 +25,16 @@ end
 """Facts of file `case`, as in `corset check case.jl`: `script*.jl` parses as script, other files as package code."""
 function file_facts(case::String)::FactSet
     file = Corset.Syntax.parse_file(case, read(case, String), startswith(basename(case), "script") ? Role.script : Role.package)
-    return FactSet([file], [file.path], case_bans(dirname(case)), nothing, nothing)
+    return FactSet([file], [file.path], case_bans(dirname(case)), nothing, nothing, nothing)
 end
 
 """
-Facts of package directory `case`. Package loads, with case directory added to load path, when `load`; fixture must load.
+Facts of package directory `case` for rule of `stage`. Package loads, with case directory added to load path, for
+stage after `syntax`; fixture must load. External facts exist for `external` stage only.
 """
-function package_facts(case::String, load::Bool)::FactSet
+function package_facts(case::String, stage::Stage.T)::FactSet
     sources = Corset.Discovery.discover(case)
-    load || return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, nothing)
+    stage == Stage.syntax && return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, nothing, nothing)
     push!(LOAD_PATH, case)
     loaded = try
         Corset.Package.load(sources.project, sources.files)
@@ -41,7 +42,8 @@ function package_facts(case::String, load::Bool)::FactSet
         pop!(LOAD_PATH)
     end
     isempty(loaded.errors) || error("fixture $case does not load: $(first(loaded.errors).primary.text)")
-    return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, loaded.facts)
+    external = stage == Stage.external ? Corset.External.external_facts(loaded.facts) : nothing
+    return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, loaded.facts, external)
 end
 
 """Source file of `case` that snapshots and fixes cover: case file, or module file of package case."""
@@ -52,7 +54,7 @@ Rendered findings and fixed source of `case_file` for `case` of rule `name`. Fil
 package. Bans come from `case_bans`.
 """
 function run_case(name::Symbol, case::String)::Tuple{String, String}
-    facts = isdir(case) ? package_facts(case, Corset.Rules.entry(name).stage != Corset.Facts.Stage.syntax) : file_facts(case)
+    facts = isdir(case) ? package_facts(case, Corset.Rules.entry(name).stage) : file_facts(case)
     findings = Corset.Engine.run_rules(facts, [Corset.Rules.entry(name)])
     sources = Dict(file.path => file.text for file in facts.files)
     root = isdir(case) ? case : dirname(case)

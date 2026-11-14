@@ -1,7 +1,7 @@
 """Discover files, build facts, run registered rules; apply opt-outs, levels, confidence setting and baseline."""
 module Engine
 
-using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, ProjectFacts
+using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, ProjectFacts, PackageFacts, ExternalFacts
 using ..Rules: REGISTRY, entry
 using ..Config: Config, Flags, Settings, Level, level_of, project_root
 using ..OptOuts: OptOuts
@@ -10,6 +10,7 @@ using ..Baseline: Baseline
 using ..Discovery: Discovery
 using ..Syntax: Syntax
 using ..Package: Package
+using ..External: External
 
 """Finding with level from settings. `source` says where level was set."""
 struct Diagnostic
@@ -51,8 +52,11 @@ failed(report::Report)::Bool = !isempty(report.stale) || any(report.diagnostics)
     diagnostic.level == Level.deny || (report.settings.deny_warnings && diagnostic.level == Level.warn)
 end
 
+"""Whether `settings` enable rule `entry`: its level is not `allow`."""
+enabled(settings::Settings, entry::RuleEntry)::Bool = first(level_of(settings, entry)) != Level.allow
+
 """Whether `settings` enable any rule that reads stage after `syntax`."""
-needs_package(settings::Settings)::Bool = any(entry -> entry.stage != Stage.syntax && first(level_of(settings, entry)) != Level.allow, REGISTRY)
+needs_package(settings::Settings)::Bool = any(entry -> entry.stage != Stage.syntax && enabled(settings, entry), REGISTRY)
 
 """Whether run under `settings` loads package of `project`: package project, and enabled rule after `syntax` stage."""
 loads(project::Union{Nothing, ProjectFacts}, settings::Settings)::Bool = !isnothing(project) && needs_package(settings)
@@ -63,6 +67,12 @@ Nothing loads outside package project, and when no enabled rule reads package.
 """
 function load_package(project::Union{Nothing, ProjectFacts}, settings::Settings, files::Vector{Facts.SyntaxFile})::Package.Loaded
     return loads(project, settings) ? Package.load(project, files) : Package.Loaded(nothing, Finding[], BlindSpot[])
+end
+
+"""External facts of loaded `package` when `settings` enable `external` rule; `nothing` otherwise."""
+function external_facts(package::Union{Nothing, PackageFacts}, settings::Settings)::Union{Nothing, ExternalFacts}
+    wanted = any(entry -> entry.stage == Stage.external && enabled(settings, entry), REGISTRY)
+    return isnothing(package) || !wanted ? nothing : External.external_facts(package)
 end
 
 """Project facts of package run on `path` with `flags` loads; `nothing` when run loads no package."""
@@ -89,7 +99,7 @@ function analyze(path::String, flags::Flags)::Analysis
     settings = Config.settings(project, flags, REGISTRY)
     sources = Discovery.discover(path)
     loaded = load_package(sources.project, settings, sources.files)
-    facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts)
+    facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, external_facts(loaded.facts, settings))
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
     root = something(project, isdir(path) ? abspath(path) : dirname(abspath(path)))

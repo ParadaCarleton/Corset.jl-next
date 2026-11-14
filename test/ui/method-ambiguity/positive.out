@@ -1,0 +1,136 @@
+error[method-ambiguity]: `combine(::Int64, ::Int64)` matches two methods; neither is more specific
+ --> src/MethodAmbiguityPositive.jl:6:1
+  |
+5 | combine(left::Int, right) = left
+  | ------- also matches `combine(::Int64, ::Int64)`
+6 | combine(left, right::Int) = right
+  | ^^^^^^^ ambiguous with earlier method
+  |
+  = why: call that matches both methods throws `MethodError`
+  = fix: define `combine(::Int64, ::Int64)`, or narrow one signature   [manual]
+  = docs: corset explain method-ambiguity
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow method-ambiguity -- <reason>`
+
+error[method-ambiguity]: `scale(::Integer, ::AbstractVector{<:Integer})` matches two methods; neither is more specific
+  --> src/MethodAmbiguityPositive.jl:11:1
+   |
+ 8 | function scale(factor::Real, values::AbstractVector{<:Integer})
+   |          ----- also matches `scale(::Integer, ::AbstractVector{<:Integer})`
+...
+11 | scale(factor::Integer, values::AbstractVector) = factor .* values
+   | ^^^^^ ambiguous with earlier method
+   |
+   = why: call that matches both methods throws `MethodError`
+   = fix: define `scale(::Integer, ::AbstractVector{<:Integer})`, or narrow one signature   [manual]
+   = docs: corset explain method-ambiguity
+
+error[method-ambiguity]: `pad(::AbstractString, ::Int64)` matches two methods; neither is more specific
+  --> src/MethodAmbiguityPositive.jl:14:1
+   |
+13 | pad(text::AbstractString, width::Integer = 8; fill::Char = ' ') = lpad(text, width, fill)
+   | --- also matches `pad(::AbstractString, ::Int64)`
+14 | pad(text, width::Int) = text
+   | ^^^ ambiguous with earlier method
+   |
+   = why: call that matches both methods throws `MethodError`
+   = fix: define `pad(::AbstractString, ::Int64)`, or narrow one signature   [manual]
+   = docs: corset explain method-ambiguity
+
+error[method-ambiguity]: `Square(::Integer, ::Symbol)` matches two methods; neither is more specific
+  --> src/MethodAmbiguityPositive.jl:21:1
+   |
+20 | Square(side::Integer, unit) = Square(Float64(side))
+   | ------ also matches `Square(::Integer, ::Symbol)`
+21 | Square(side, unit::Symbol) = Square(Float64(side))
+   | ^^^^^^ ambiguous with earlier method
+   |
+   = why: call that matches both methods throws `MethodError`
+   = fix: define `Square(::Integer, ::Symbol)`, or narrow one signature   [manual]
+   = docs: corset explain method-ambiguity
+
+error[method-ambiguity]: `same(::Int64, ::Int64)` matches two methods; neither is more specific
+  --> src/MethodAmbiguityPositive.jl:24:1
+   |
+23 | same(first::T, second::T) where {T} = true
+   | ---- also matches `same(::Int64, ::Int64)`
+24 | same(first::Int, second) = false
+   | ^^^^ ambiguous with earlier method
+   |
+   = why: call that matches both methods throws `MethodError`
+   = fix: define `same(::Int64, ::Int64)`, or narrow one signature   [manual]
+   = docs: corset explain method-ambiguity
+
+error[method-ambiguity]: `gather(::Int64, ::Int64...)` matches two methods; neither is more specific
+  --> src/MethodAmbiguityPositive.jl:27:1
+   |
+26 | gather(first::Int, rest...) = first
+   | ------ also matches `gather(::Int64, ::Int64...)`
+27 | gather(first, rest::Int...) = rest
+   | ^^^^^^ ambiguous with earlier method
+   |
+   = why: call that matches both methods throws `MethodError`
+   = fix: define `gather(::Int64, ::Int64...)`, or narrow one signature   [manual]
+   = docs: corset explain method-ambiguity
+
+error[method-ambiguity]: `nest(::Array{T, N}, ::Int64) where {T, N}` matches two methods; neither is more specific
+  --> src/MethodAmbiguityPositive.jl:30:1
+   |
+29 | nest(values::AbstractArray{T, N}, index::Int) where {T, N} = values
+   | ---- also matches `nest(::Array{T, N}, ::Int64) where {T, N}`
+30 | nest(values::Array, index::Integer) = values
+   | ^^^^ ambiguous with earlier method
+   |
+   = why: call that matches both methods throws `MethodError`
+   = fix: define `nest(::Array{T, N}, ::Int64) where {T, N}`, or narrow one signature   [manual]
+   = docs: corset explain method-ambiguity
+
+error[method-ambiguity]: `twin(::Int64, ::Int64)` matches two methods; neither is more specific
+  --> src/MethodAmbiguityPositive.jl:33:1
+   |
+33 | twin(left::Int, right) = left; twin(left, right::Int) = right
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ambiguous with earlier method
+   | ------------------------------------------------------------- also matches `twin(::Int64, ::Int64)`
+   |
+   = why: call that matches both methods throws `MethodError`
+   = fix: define `twin(::Int64, ::Int64)`, or narrow one signature   [manual]
+   = docs: corset explain method-ambiguity
+
+error[method-ambiguity]: `combine(::Float64, ::Int64)` matches two methods; neither is more specific
+  --> src/MethodAmbiguityPositive.jl:37:1
+   |
+ 6 | combine(left, right::Int) = right
+   | ------- also matches `combine(::Float64, ::Int64)`
+...
+37 | combine(left::Float64, right) = left
+   | ^^^^^^^ ambiguous with earlier method
+   |
+   = why: call that matches both methods throws `MethodError`
+   = fix: define `combine(::Float64, ::Int64)`, or narrow one signature   [manual]
+   = docs: corset explain method-ambiguity
+
+error[method-ambiguity]: `combine(::Int64, ::Float64)` matches two methods; neither is more specific
+  --> src/MethodAmbiguityPositive.jl:38:1
+   |
+ 5 | combine(left::Int, right) = left
+   | ------- also matches `combine(::Int64, ::Float64)`
+...
+38 | combine(left, right::Float64) = right
+   | ^^^^^^^ ambiguous with earlier method
+   |
+   = why: call that matches both methods throws `MethodError`
+   = fix: define `combine(::Int64, ::Float64)`, or narrow one signature   [manual]
+   = docs: corset explain method-ambiguity
+
+error[method-ambiguity]: `combine(::Float64, ::Float64)` matches two methods; neither is more specific
+  --> src/MethodAmbiguityPositive.jl:38:1
+   |
+37 | combine(left::Float64, right) = left
+   | ------- also matches `combine(::Float64, ::Float64)`
+38 | combine(left, right::Float64) = right
+   | ^^^^^^^ ambiguous with earlier method
+   |
+   = why: call that matches both methods throws `MethodError`
+   = fix: define `combine(::Float64, ::Float64)`, or narrow one signature   [manual]
+   = docs: corset explain method-ambiguity
+

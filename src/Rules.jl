@@ -21,6 +21,7 @@ include("rules/inference_dependent.jl")
 include("rules/invariant_parameter.jl")
 include("rules/iterator_traits.jl")
 include("rules/juxtaposition.jl")
+include("rules/method_ambiguity.jl")
 include("rules/method_overwrite.jl")
 include("rules/missing_interface.jl")
 include("rules/mixed_return.jl")
@@ -64,6 +65,7 @@ const REGISTRY = RuleEntry[
     InvariantParameter.ENTRY,
     IteratorTraits.ENTRY,
     Juxtaposition.ENTRY,
+    MethodAmbiguity.ENTRY,
     MethodOverwrite.ENTRY,
     MissingInterface.ENTRY,
     MixedReturn.ENTRY,

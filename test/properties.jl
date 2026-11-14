@@ -15,7 +15,7 @@ const EXAMPLE_DB = Supposition.DirectoryDB(joinpath(@__DIR__, "SuppositionDB"))
 const SANDBOX = Module(:Sandbox)
 
 """Findings of every rule on `text` as one package file, so rules for package code run too."""
-findings_of(text::String)::Vector{Finding} = Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(PROGRAM, text, Role.package)], [PROGRAM], Corset.Facts.Ban[], nothing, nothing))
+findings_of(text::String)::Vector{Finding} = Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(PROGRAM, text, Role.package)], [PROGRAM], Corset.Facts.Ban[], nothing, nothing, nothing))
 
 """Edits one fix run applies to `findings` at `tier`."""
 edits_of(findings::Vector{Finding}, tier::Tier.T)::Vector{Corset.Facts.Edit} = Corset.Fixes.applicable_edits(findings, PROGRAM, tier)

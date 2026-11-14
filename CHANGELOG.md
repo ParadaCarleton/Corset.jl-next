@@ -16,6 +16,8 @@
 - New rule `iterator-traits`: a type with `iterate` and no `eltype` makes `collect` build `Vector{Any}`.
 - New rule `missing-interface`: a struct misses a method that the `AbstractArray`, `AbstractString` or iteration interface requires.
 - New rule `overspecified-type`: an argument of a public function names `Float64`, `Int`, `AbstractFloat` or a concrete container such as `Vector`. The fix writes the abstract type, as in `AbstractVector{<:Real}`.
+- New rule `method-ambiguity`: two package methods match the same call, and neither is more specific. `Test.detect_ambiguities` finds the pairs. The message names a call that matches both.
+- `method-overwrite` messages show the `where` type variables of the signature.
 - A `[sources]` entry in `test/Project.toml` can give `rev` alone or `subdir`.
 - Text output shows paths relative to the project root.
 - A precompile workload compiles the command line, so a first `corset check` starts in seconds.
