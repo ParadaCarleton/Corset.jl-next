@@ -25,6 +25,7 @@
 - `corset fix` applies a fix that edits several files to all of them or to none.
 - New rule `unused-import`: an explicit import binds a name that its module never uses. The fix removes the name, or the whole statement.
 - Import rules skip a statement when a use of its names sits in a file outside the checked files, as in `corset check src/one.jl`.
+- `implicit-import` labels the first use of each name in source order, and labels a string macro use such as `md"…"`; before, an import of a string macro stopped the check.
 - A cause label in another file than the primary label gets its own snippet in text output.
 - A `[sources]` entry in `test/Project.toml` can give `rev` alone or `subdir`.
 - Text output shows paths relative to the project root.

@@ -6,6 +6,7 @@ using LinearAlgebra: norm, dot, det, tr
 import Base: show, +, ==
 import Dates
 using Printf: @sprintf
+using Markdown: @md_str
 import Unicode: normalize as clean
 using Base64
 using Base64: var"base64encode", base64decode

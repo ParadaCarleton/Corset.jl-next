@@ -42,7 +42,8 @@ end
     analysis = Corset.External.ExplicitImports.get_names_used(main)
     parsed(path) = Corset.Syntax.parse_file(path, read(path, String), Role.package)
     # `import Dates` in module file has its only use in `clock.jl`; without it, import would look unused.
-    dates(files) = filter(imported -> imported.names == [:Dates], Corset.External.explicit_imports(analysis, files))
+    imports(files) = Corset.External.explicit_imports(analysis, files, Corset.External.global_uses(analysis))
+    dates(files) = filter(imported -> imported.names == [:Dates], imports(files))
     @test length(dates([parsed(main), parsed(joinpath(root, "clock.jl"))])) == 1
     @test isempty(dates([parsed(main)]))
 end
