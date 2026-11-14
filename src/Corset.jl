@@ -7,6 +7,7 @@ module Corset
 
 include("Facts.jl")
 include("StandIns.jl")
+include("Signatures.jl")
 include("Syntax.jl")
 include("Rules.jl")
 include("Config.jl")

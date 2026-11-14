@@ -3,6 +3,7 @@ using Test: @test, @testset
 @testset "Corset" begin
     include("units.jl")
     include("standins.jl")
+    include("signatures.jl")
     include("registry.jl")
     include("ui.jl")
     include("properties.jl")
