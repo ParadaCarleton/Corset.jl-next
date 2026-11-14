@@ -48,6 +48,22 @@ end
     @test isempty(dates([parsed(main)]))
 end
 
+@testset "bare using outside analyzed files gives no statement" begin
+    case = joinpath(@__DIR__, "ui", "implicit-import", "positive")
+    main = joinpath(case, "src", "ImplicitImportPositive.jl")
+    push!(LOAD_PATH, case)
+    mod = try
+        Base.require(Base.PkgId(Base.UUID("ec46480a-c2ea-4146-87ea-013ef373755c"), "ImplicitImportPositive"))
+    finally
+        pop!(LOAD_PATH)
+    end
+    analysis = Corset.External.ExplicitImports.get_names_used(main)
+    files(paths::String...) = Dict(path => Corset.Syntax.parse_file(path, read(path, String), Role.package) for path in paths)
+    statement(paths::String...) = Corset.External.bare_statement(mod, mod.LinearAlgebra, analysis, files(paths...))
+    @test first(statement(main)).path == main
+    @test isnothing(statement(joinpath(case, "src", "geometry.jl")))
+end
+
 @testset "render" begin
     text = "a = 1\nb = 2\nc = 3\nd = 4\ne = 5\n"
     sources = Dict("f.jl" => text, "g.jl" => "x = 1\ny = 2\n")
