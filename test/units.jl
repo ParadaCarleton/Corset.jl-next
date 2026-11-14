@@ -36,6 +36,18 @@ end
     @test length(Corset.Fixes.applicable_edits([sample_finding(1:1; fix = moved(1)), sample_finding(3:3; fix = moved(3))], Tier.safe)) == 4
 end
 
+@testset "explicit import with use outside analyzed files gives no fact" begin
+    root = joinpath(@__DIR__, "ui", "misplaced-import", "positive", "src")
+    main = joinpath(root, "MisplacedImportPositive.jl")
+    analysis = Corset.External.ExplicitImports.get_names_used(main)
+    parsed(path) = Corset.Syntax.parse_file(path, read(path, String), Role.package)
+    # `import Dates` in module file has its only use in `clock.jl`; without it, import would look unused.
+    imports(files) = Corset.External.explicit_imports(analysis, files, Corset.External.global_uses(analysis))
+    dates(files) = filter(imported -> imported.names == [:Dates], imports(files))
+    @test length(dates([parsed(main), parsed(joinpath(root, "clock.jl"))])) == 1
+    @test isempty(dates([parsed(main)]))
+end
+
 @testset "render" begin
     text = "a = 1\nb = 2\nc = 3\nd = 4\ne = 5\n"
     sources = Dict("f.jl" => text, "g.jl" => "x = 1\ny = 2\n")

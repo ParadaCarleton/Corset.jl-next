@@ -6,6 +6,7 @@ module ImplicitImportPositive
 using LinearAlgebra: LinearAlgebra, dot, norm
 using Dates, Base.Iterators
 using Unicode: Unicode
+using Markdown: Markdown, @md_str
 
 include("geometry.jl")
 include("format.jl")
@@ -13,6 +14,7 @@ area(sides::Vector{Float64}) = norm(sides) * 2
 today_year() = year(today())
 pairs_of(lists::Vector) = collect(flatten(lists))
 module_name() = LinearAlgebra
+note() = md"*string macro*"
 
 module Inner
     using LinearAlgebra: LinearAlgebra, normalize

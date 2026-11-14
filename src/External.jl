@@ -55,16 +55,19 @@ end
 
 """
 Span of `name` at ExplicitImports.jl `location` (`path:line:column`; column counts characters) in `files` by path.
-Macro location points after `@`. `nothing` outside analyzed files; location away from name throws.
+Macro location points after `@`; string macro `@r_str` written `r"…"` gets span of prefix `r`. `nothing` outside
+analyzed files; location away from name throws.
 """
-function location_span(location::String, name::String, files::Dict{String, SyntaxFile})::Union{Nothing, Span}
+function location_span(location::AbstractString, name::String, files::Dict{String, SyntaxFile})::Union{Nothing, Span}
     path, line, column = rsplit(location, ':'; limit = 3)
     file = get(files, path, nothing)
     isnothing(file) && return nothing
-    line_start = line_starts(file.text)[parse(Int, line)]
-    start = nextind(file.text, line_start - 1, parse(Int, column)) - startswith(name, '@')
-    startswith(SubString(file.text, start), name) || error("ExplicitImports.jl location $location does not point at `$name`")
-    return Span(path, start, start + ncodeunits(name) - 1, Precision.exact)
+    start = nextind(file.text, line_starts(file.text)[parse(Int, line)] - 1, parse(Int, column))
+    macro_call = startswith(name, '@') && startswith(SubString(file.text, start), SubString(name, 2))
+    written = macro_call || !startswith(name, '@') ? name : replace(name[2:end], r"_(str|cmd)$" => "")
+    start -= macro_call
+    startswith(SubString(file.text, start), written) || error("ExplicitImports.jl location $location does not point at `$name`")
+    return Span(path, start, start + ncodeunits(written) - 1, Precision.exact)
 end
 
 """`accesses` in source order, each chain merged: segment that follows `.` right after earlier segment joins it."""
@@ -126,12 +129,39 @@ function bare_statement(mod::Module, exporter::Module, files::Vector{SyntaxFile}
     return isempty(inside) ? (isempty(included) ? nothing : first(included)) : first(inside)
 end
 
+"""ExplicitImports.jl locations of global uses of each name, by module path (innermost first) and name."""
+const Uses = Dict{Tuple{Vector{Symbol}, Symbol}, Vector{String}}
+
+"""
+Unqualified global uses ExplicitImports.jl `analysis` finds, in row order. First use of name in scope decides whether
+name is global there; later uses in scope follow it.
+"""
+function global_uses(analysis::ExplicitImports.FileAnalysis)::Uses
+    rows = analysis.per_usage_info
+    global_in = Set((row.name, map(objectid, row.scope_path)) for row in rows if row.external_global_name === true)
+    uses = Uses()
+    for row in rows
+        row.import_type == :not_import && isnothing(row.qualified_by) || continue
+        # ExplicitImports.jl marks named-tuple key or field name after global use as later use; neither reads name.
+        !row.kwarg_name && !row.struct_field_name && (row.name, map(objectid, row.scope_path)) in global_in || continue
+        push!(get!(uses, (row.module_path, row.name), String[]), row.location)
+    end
+    return uses
+end
+
+"""Spans of global uses of `names` in module at `path`; `nothing` marks use outside analyzed `files`."""
+located(uses::Uses, path::Vector{Symbol}, names::Vector{Symbol}, files::Dict{String, SyntaxFile})::Vector{Tuple{Symbol, Union{Nothing, Span}}} =
+    [(name, location_span(location, string(name), files)) for name in names for location in get(uses, (path, name), String[])]
+
+"""Source order of use: file, then first byte."""
+use_order((_, use)::Tuple{Symbol, Span})::Tuple{String, Int} = (use.file, use.first_byte)
+
 """
 Names package modules reach through bare `using`, one entry per statement, in source order: ExplicitImports.jl names
-them, syntax finds statement. Names of `Base`, `Core` and package pass. Statement outside analyzed `files`, and module
-ExplicitImports.jl cannot analyze fully, give no entry.
+them, syntax finds statement, `uses` gives first use of each. Names of `Base`, `Core` and package pass. Statement
+outside analyzed `files`, and module ExplicitImports.jl cannot analyze fully, give no entry.
 """
-function bare_usings(package::PackageFacts, files::Vector{SyntaxFile}, analyses::Analyses)::Vector{BareUsing}
+function bare_usings(package::PackageFacts, files::Vector{SyntaxFile}, analyses::Analyses, uses::Uses)::Vector{BareUsing}
     root, by_path = first(package.modules), Dict(file.path => file for file in files)
     found = BareUsing[]
     for (mod, rows) in ExplicitImports.explicit_imports(root, pathof(root); file_analysis = analyses)
@@ -140,14 +170,11 @@ function bare_usings(package::PackageFacts, files::Vector{SyntaxFile}, analyses:
             statement = bare_statement(mod, exporter, files)
             isnothing(statement) && continue
             # Bare `using X` binds `X` too; fix always keeps it, so it is no brought name.
-            brought = [row for row in rows if exporter in row.exporters && row.name !== nameof(exporter)]
-            uses = Tuple{Symbol, Span}[]
-            for row in brought
-                use = location_span(row.location, string(row.name), by_path)
-                isnothing(use) || push!(uses, (row.name, use))
-            end
-            sort!(uses; by = ((_, use),) -> (use.file, use.first_byte))
-            push!(found, BareUsing(exporter, span(statement...), sort!([row.name for row in brought]), uses))
+            brought = sort!([row.name for row in rows if exporter in row.exporters && row.name !== nameof(exporter)])
+            # ExplicitImports.jl location of name is one use, picked by set order; take first in source order.
+            spans = Tuple{Symbol, Span}[entry for entry in located(uses, ExplicitImports.module_path(mod), brought, by_path) if !isnothing(last(entry))]
+            firsts = [first(sort(filter(entry -> first(entry) == name, spans); by = use_order)) for name in unique(first.(spans))]
+            push!(found, BareUsing(exporter, span(statement...), brought, sort!(firsts; by = use_order)))
         end
     end
     return sort!(found; by = imported -> (imported.statement.file, imported.statement.first_byte))
@@ -158,16 +185,14 @@ statement_of(file::SyntaxFile, name::Span)::SyntaxNode =
     only(node for kind in ("using", "import") for node in forms(file, kind) if span(file, node).first_byte <= name.first_byte <= span(file, node).last_byte)
 
 """
-Explicit import statements (`using X: a`, `import X: a`, `import X`) in analyzed `files`, each with global uses of names
-it binds in its module, in source order. Statement with `as`, statement outside `files` and module ExplicitImports.jl
-cannot analyze fully give no entry.
+Explicit import statements (`using X: a`, `import X: a`, `import X`) in analyzed `files`, each with global `uses` of
+names it binds in its module, in source order. Statement with `as`, statement or use outside `files`, and module
+ExplicitImports.jl cannot analyze fully give no entry.
 """
-function explicit_imports(analysis::ExplicitImports.FileAnalysis, files::Vector{SyntaxFile})::Vector{ExplicitImport}
-    by_path, rows = Dict(file.path => file for file in files), analysis.per_usage_info
-    # First use of name in scope decides whether name is global there; later uses carry no verdict.
-    global_in = Set((row.name, map(objectid, row.scope_path)) for row in rows if row.external_global_name === true)
+function explicit_imports(analysis::ExplicitImports.FileAnalysis, files::Vector{SyntaxFile}, uses::Uses)::Vector{ExplicitImport}
+    by_path = Dict(file.path => file for file in files)
     statements = Dict{Span, Tuple{Vector{Symbol}, Vector{Symbol}}}()
-    for row in rows
+    for row in analysis.per_usage_info
         row.import_type in (:import_RHS, :blanket_using) && row.module_path in analysis.untainted_modules || continue
         name = location_span(row.location, string(row.name), by_path)
         isnothing(name) && continue
@@ -177,15 +202,10 @@ function explicit_imports(analysis::ExplicitImports.FileAnalysis, files::Vector{
     end
     found = ExplicitImport[]
     for (statement, (module_path, names)) in statements
-        uses = Tuple{Symbol, Span}[]
-        for row in rows
-            row.name in names && row.module_path == module_path && row.import_type == :not_import && isnothing(row.qualified_by) || continue
-            # ExplicitImports.jl marks named-tuple key or field name after global use as later use; neither reads name.
-            !row.kwarg_name && !row.struct_field_name && (row.name, map(objectid, row.scope_path)) in global_in || continue
-            use = location_span(row.location, string(row.name), by_path)
-            isnothing(use) || push!(uses, (row.name, use))
-        end
-        push!(found, ExplicitImport(statement, names, sort!(uses; by = ((_, use),) -> (use.file, use.first_byte))))
+        spans = located(uses, module_path, names, by_path)
+        # Use outside analyzed files (`corset check src/one.jl`) would make import look unused or misplaced.
+        any(isnothing ∘ last, spans) && continue
+        push!(found, ExplicitImport(statement, names, sort!(Tuple{Symbol, Span}[entry for entry in spans]; by = use_order)))
     end
     return sort!(found; by = imported -> (imported.statement.file, imported.statement.first_byte))
 end
@@ -194,9 +214,10 @@ end
 function external_facts(package::PackageFacts, files::Vector{SyntaxFile})::ExternalFacts
     path = pathof(first(package.modules))
     analyses = Analyses(path => ExplicitImports.get_names_used(path))
+    uses = global_uses(analyses[path])
     return ExternalFacts(
-        ambiguities(package), piracies(package), internal_accesses(package, files, analyses), bare_usings(package, files, analyses),
-        explicit_imports(analyses[path], files),
+        ambiguities(package), piracies(package), internal_accesses(package, files, analyses), bare_usings(package, files, analyses, uses),
+        explicit_imports(analyses[path], files, uses),
     )
 end
 

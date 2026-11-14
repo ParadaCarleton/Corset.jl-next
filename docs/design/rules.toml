@@ -315,6 +315,11 @@ footguns = [67]
 note = "Fixer moves imports."
 
 [[rule]]
+name = "unused-import"
+footguns = [105]
+note = "ExplicitImports.jl."
+
+[[rule]]
 name = "threadid-buffer"
 footguns = [68]
 
