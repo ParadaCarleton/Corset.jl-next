@@ -37,7 +37,17 @@ Rule is on by default only when all hold:
 
 Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.
 
-Legacy baseline (S4, warm, whole process): Distances 9.4 s, DataStructures 16–19 s, JSON 33–37 s. Remeasure legacy in same scope (startup and target load subtracted) before comparing. Main risks: stand-in inference, 7–17 s cold per package (S1); effect summary, 17–22 s uncached (S5). Corset precompile workload and Base summary cache must close gap; per-method disk cache follows only if cold run misses budget. Effects phase gets own budget once Base cache exists.
+Cold run, same scope (target loaded first, default threads); legacy two runs, Corset four runs:
+
+| Package | Legacy | Corset (`check` + `inference` stage) | Ratio | 5× budget |
+|---|---|---|---|---|
+| Distances 0.10.12 | 12.0–12.8 s | 3.1–3.9 s | 3.5× | 2.5 s |
+| DataStructures 0.18.22 | 19.8–20.6 s | 6.9–7.6 s | 2.8× | 4.0 s |
+| JSON 1.13.4 | 42.5–43.6 s | 6.6–7.4 s | 6.1× | 8.6 s |
+
+`benchmark/cold.jl` measures Corset. Cold run misses budget on Distances and DataStructures.
+Most of `inference` stage is Julia inference of target methods, and of Base callees on target types; Corset's own share is under 0.1 s. Package image cannot hold this work, so per-method disk cache is required: later cold runs skip unchanged methods.
+Remaining risk: effect summary, 17–22 s uncached (S5). Base summary cache must close it; effects phase gets own budget once Base cache exists.
 
 Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).
 

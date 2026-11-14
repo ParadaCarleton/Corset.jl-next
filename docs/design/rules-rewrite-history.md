@@ -530,3 +530,23 @@ Codex review of phase 4 design found eight problems:
 | 6 | Array stand-in has `OneTo` axes, so F36 sees one-based array where bound allows offset axes | Accepted: axis and memory-order rules read declared argument type for stand-in arguments. |
 | 7 | Findings cache does not shorten first run; cold budget unchecked | Accepted: cold-run benchmark after source map, as go/no-go before rules. |
 | 8 | `scope` runs before `inference` in pipeline but ships in phase 6 | Accepted: stage not built yet gives no facts; no rule reads it until it ships. |
+
+### Phase 4 implementation notes
+
+- `inference` stage runs `typeinf_frame` on unoptimized code, in place of `typeinf_ircode`. TypedSyntax.jl maps unoptimized statements to `syntax` stage nodes, and literals stay call operands.
+- TypedSyntax.jl is dependency, not vendored copy.
+- Closure and do-block root patch is not built: package stage skips methods whose names start with `#`, so no closure body is analyzed method.
+
+### Phase 4 cold-run benchmark
+
+Go/no-go result: Corset is 2.8–6.1× faster than legacy cold; budget is 5×. Table and numbers: `plan.md`, speed budget.
+Causes found and fixed:
+
+| Cause | Cost before fix | Fix |
+|---|---|---|
+| Closure over type value compiles once per value when it escapes to `filter`, comprehension or generator | `Signatures` 38 s on DataStructures; `missing-interface` and `shadowed-base` once per struct or function | Loops (#208, #210) |
+| `method_sites` sort printed both signatures in each comparison | 6.6 s on DataStructures | Print only on tie (#209) |
+| Precompile workload ran script only | Package stages, rules, ExplicitImports.jl and stand-in inference compiled at first package run | Workload runs package stages and rules on Corset itself, then `inference` stage on `PackageSample` (#210) |
+
+Not fixed: loading DataStructures invalidates 263 method instances, Corset entry points among them, and costs 1.2 s of inference again. Chains run through TOML and JSON writes of abstract `Dict` types, and ExplicitImports.jl internals.
+Decision: stand-in inference stays. Per-method disk cache joins PR order after findings cache.
