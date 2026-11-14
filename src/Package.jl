@@ -180,13 +180,18 @@ function unwrapped(error::Any)::Any
 end
 
 """
-Exception and backtrace from including package `entry` into fresh anonymous module.
+Exception and backtrace from including `entry` again, into fresh anonymous module that carries uuid of package `id`.
 Precompilation runs in subprocess, so its error carries no frame inside package; this load shows them.
-`nothing` when load succeeds here.
+With uuid, `using` inside resolves dependencies of `id`. `nothing` for extension: Base matches extension by
+root module name, which anonymous module lacks, so `using` resolves from environment top level.
+Result is `nothing` when load succeeds here.
 """
-function reproduce(entry::String)::Union{Nothing, Tuple{Any, Vector{Base.StackTraces.StackFrame}}}
+function reproduce(entry::String, id::Union{Nothing, Base.PkgId})::Union{Nothing, Tuple{Any, Vector{Base.StackTraces.StackFrame}}}
+    container = Module()
+    # Module form inherits container uuid, as package module inherits uuid Base sets on `__toplevel__`.
+    isnothing(id) || ccall(:jl_set_module_uuid, Cvoid, (Any, NTuple{2, UInt64}), container, convert(NTuple{2, UInt64}, id.uuid))
     try
-        Base.include(Module(), entry)
+        Base.include(container, entry)
         return nothing
     catch error
         error isa InterruptException && rethrow()
@@ -232,7 +237,7 @@ function load_extensions(mod::Module, project::ProjectFacts, files::Vector{Synta
         foreach(Base.require, triggers)
         isnothing(Base.get_extension(mod, Symbol(name))) || continue
         # Precompile-only failure: Julia logged error, and load in anonymous module succeeds.
-        error, frames = something(reproduce(file), (ErrorException("extension `$name` failed to precompile; Julia logged error"), Base.StackTraces.StackFrame[]))
+        error, frames = something(reproduce(file, nothing), (ErrorException("extension `$name` failed to precompile; Julia logged error"), Base.StackTraces.StackFrame[]))
         finding = load_error(error, frames, file, files, "extension `$name`", "rules did not see extension")
         push!(errors, finding)
         push!(blind_spots, BlindSpot("extension did not load", finding.primary.span))
@@ -252,7 +257,7 @@ function load(project::ProjectFacts, files::Vector{SyntaxFile})::Loaded
         error isa ConfigError && rethrow()
         frames = stacktrace(catch_backtrace())
         if error isa Base.Precompilation.PkgPrecompileError
-            again = reproduce(entry)
+            again = reproduce(entry, package_id(project))
             isnothing(again) || ((error, frames) = again)
         end
         finding = load_error(error, frames, entry, files, "package", "rules after `syntax` stage did not run")

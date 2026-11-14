@@ -165,6 +165,27 @@ end
         code, _, err = corset("check", package)
         @test code == 2 && occursin("environment cannot load Lost", err)
     end
+    # Second load resolves `using` as package does: Helper is dependency of Outer only, not of environment.
+    mktempdir(@__DIR__) do root
+        outer, helper = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
+        manifest = "manifest_format = \"2.0\"\n\n[[deps.Outer]]\ndeps = [\"Helper\"]\npath = \"../Outer\"\nuuid = \"$outer\"\n\n[[deps.Helper]]\npath = \"../Helper\"\nuuid = \"$helper\"\n"
+        files = [
+            "Outer/src/Outer.jl" => "module Outer\nusing Helper: Helper\nerror(\"after dependency\")\nend\n", "Helper/src/Helper.jl" => "module Helper\nend\n",
+            "env/Project.toml" => "[deps]\nOuter = \"$outer\"\n", "env/Manifest.toml" => manifest,
+        ]
+        for (path, text) in files
+            mkpath(dirname(joinpath(root, path)))
+            write(joinpath(root, path), text)
+        end
+        pushfirst!(LOAD_PATH, joinpath(root, "env", "Project.toml"))
+        error = try
+            first(Corset.Package.reproduce(joinpath(root, "Outer", "src", "Outer.jl"), Base.PkgId(outer, "Outer")))
+        finally
+            popfirst!(LOAD_PATH)
+        end
+        cause = Corset.Package.unwrapped(error)
+        @test cause isa ErrorException && cause.msg == "after dependency"
+    end
     @test occursin("Reports package or extension", corset("explain", "load-error")[2])
 end
 
