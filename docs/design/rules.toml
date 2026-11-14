@@ -15,6 +15,11 @@ name = "juxtaposition"
 footguns = [3]
 
 [[rule]]
+name = "and-or-precedence"
+footguns = [106]
+note = "Fixer adds parentheses that keep meaning."
+
+[[rule]]
 name = "where-binding"
 footguns = [4]
 note = "Fixer adds parentheses."

@@ -869,3 +869,12 @@ example = "blank line between docstring and function: docs lost"
 group = "readability"
 stage = "syntax"
 note = "Kinds: detached docstring (blank line or comment ends attachment; rustc `unused_doc_comments`), other literal. Last statement of block is its value: exempt. Call without effect: F54."
+
+[[footgun]]
+id = 106
+area = "syntax"
+text = "`&&` on right of `||` binds tighter than reader expects"
+example = "`done || empty && return` never returns when `done` holds"
+group = "readability"
+stage = "syntax"
+note = "GCC `-Wparentheses` warns on same shape. `a && b || c` reads as Julia parses it, so it passes."

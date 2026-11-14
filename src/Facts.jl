@@ -352,7 +352,7 @@ function dead_branch(node::SyntaxNode)::Bool
         if kind_name(owner) in ("if", "elseif")
             value = settled(children_of(owner)[1])
             index = findfirst(sibling -> sibling === child, children_of(owner))
-            (value === false && index == 2 || value === true && index == 3) && return true
+            (value === false && index == 2 || (value === true && index == 3)) && return true
         end
         child = owner
     end
@@ -722,7 +722,7 @@ function owned_lines(file::SyntaxFile, span::Span)::Union{Nothing, UnitRange{Int
     stop = something(findnext(==(UInt8('\n')), codeunits(file.text), span.last_byte), ncodeunits(file.text) + 1) - 1
     before = SubString(file.text, start, prevind(file.text, span.first_byte))
     after = lstrip(SubString(file.text, nextind(file.text, span.last_byte), stop))
-    owned = isempty(strip(before)) && (isempty(after) || startswith(after, '#') && !startswith(after, "#="))
+    owned = isempty(strip(before)) && (isempty(after) || (startswith(after, '#') && !startswith(after, "#=")))
     return owned ? (start:stop) : nothing
 end
 

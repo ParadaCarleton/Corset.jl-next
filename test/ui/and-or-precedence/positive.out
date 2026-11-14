@@ -1,0 +1,57 @@
+warning[and-or-precedence]: `state === nothing || values === nothing && return nothing` means `state === nothing || (values === nothing && return nothing)`
+ --> positive.jl:3:5
+  |
+3 |     state === nothing || values === nothing && return nothing
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ parsed as `state === nothing || (values === nothing && return nothing)`
+  |                          ------------------------------------ binds first
+  |
+  = why: `&&` binds tighter than `||`; read left to right, code looks like `(a || b) && c`
+  = fix: replace with `state === nothing || (values === nothing && return nothing)`   [safe]
+  = docs: corset explain and-or-precedence
+  = note: warn from readability group, library preset
+  = note: opt out with `# corset: allow and-or-precedence -- <reason>`
+
+warning[and-or-precedence]: `a || b && c` means `a || (b && c)`
+ --> positive.jl:6:18
+  |
+6 | ready(a, b, c) = a || b && c
+  |                  ^^^^^^^^^^^ parsed as `a || (b && c)`
+  |                       ------ binds first
+  |
+  = why: `&&` binds tighter than `||`; read left to right, code looks like `(a || b) && c`
+  = fix: replace with `a || (b && c)`   [safe]
+  = docs: corset explain and-or-precedence
+
+warning[and-or-precedence]: `b || c && d` means `b || (c && d)`
+ --> positive.jl:7:28
+  |
+7 | chained(a, b, c, d) = a || b || c && d
+  |                            ^^^^^^^^^^^ parsed as `b || (c && d)`
+  |                                 ------ binds first
+  |
+  = why: `&&` binds tighter than `||`; read left to right, code looks like `(a || b) && c`
+  = fix: replace with `b || (c && d)`   [safe]
+  = docs: corset explain and-or-precedence
+
+warning[and-or-precedence]: `a || b && c` means `a || (b && c)`
+ --> positive.jl:8:27
+  |
+8 | grouped_whole(a, b, c) = (a || b && c) && return true
+  |                           ^^^^^^^^^^^ parsed as `a || (b && c)`
+  |                                ------ binds first
+  |
+  = why: `&&` binds tighter than `||`; read left to right, code looks like `(a || b) && c`
+  = fix: replace with `a || (b && c)`   [safe]
+  = docs: corset explain and-or-precedence
+
+warning[and-or-precedence]: `a || b && c` means `a || (b && c)`
+ --> positive.jl:9:28
+  |
+9 | nested(a, b, c, d) = d && (a || b && c)
+  |                            ^^^^^^^^^^^ parsed as `a || (b && c)`
+  |                                 ------ binds first
+  |
+  = why: `&&` binds tighter than `||`; read left to right, code looks like `(a || b) && c`
+  = fix: replace with `a || (b && c)`   [safe]
+  = docs: corset explain and-or-precedence
+
