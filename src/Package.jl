@@ -8,7 +8,7 @@ Each extension whose triggers environment can load gets them loaded; extension t
 module Package
 
 using ..Facts: Facts, PackageFacts, ProjectFacts, MethodSite, StructSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
-using ..Config: ConfigError
+using ..Config: ConfigError, parse_toml
 
 """Rule name load failures report under."""
 const LOAD_ERROR = Symbol("load-error")
@@ -262,6 +262,28 @@ function load_extensions(mod::Module, project::ProjectFacts, files::Vector{Synta
 end
 
 """
+Blind spots for packages this process loaded at other version than target Manifest of `project` pins; each at its entry.
+Relaunch moves version only when Corset needs other one; rules then read code target does not run.
+"""
+function moved_versions(project::ProjectFacts)::Vector{BlindSpot}
+    manifest = Base.project_file_manifest_path(joinpath(project.root, "Project.toml"))
+    isnothing(manifest) && return BlindSpot[]
+    text, spots = read(manifest, String), BlindSpot[]
+    for (name, entries) in get(parse_toml(manifest), "deps", Dict{String, Any}())
+        headers = findall("[[deps.$name]]", text)
+        for (index, entry) in enumerate(entries)
+            haskey(entry, "version") || continue
+            loaded = get(Base.loaded_modules, Base.PkgId(Base.UUID(entry["uuid"]), name), nothing)
+            (isnothing(loaded) || pkgversion(loaded) == VersionNumber(entry["version"])) && continue
+            # Hand-written header Pkg would not write (`[[deps."Name"]]`): point at line 1.
+            header = get(headers, index, 1:1)
+            push!(spots, BlindSpot("loaded version differs from Manifest", Span(manifest, first(header), last(header), Precision.line)))
+        end
+    end
+    return sort!(spots; by = spot -> spot.span.first_byte)
+end
+
+"""
 Facts of package of `project`, loaded in this process with extension triggers, with method sites in `files`.
 Precompile failure carries no frame inside package, so error comes from second load in anonymous module (`reproduce`).
 """
@@ -277,12 +299,13 @@ function load(project::ProjectFacts, files::Vector{SyntaxFile})::Loaded
             isnothing(again) || ((error, frames) = again)
         end
         finding = load_error(error, frames, entry, files, "package", "rules after `syntax` stage did not run")
-        return Loaded(nothing, [finding], [BlindSpot("package did not load", finding.primary.span)])
+        return Loaded(nothing, [finding], [BlindSpot("package did not load", finding.primary.span); moved_versions(project)])
     end
     errors, blind_spots = load_extensions(mod, project, files)
     modules = package_modules(mod, project)
     sites = method_sites(modules, files)
-    return Loaded(PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files)), errors, blind_spots)
+    facts = PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files))
+    return Loaded(facts, errors, [blind_spots; moved_versions(project)])
 end
 
 end

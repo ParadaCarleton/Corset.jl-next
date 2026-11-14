@@ -151,9 +151,12 @@ end
         @test code == 1 && occursin("--> src/PrecompileOnly.jl:1:1", out) && occursin("failed to precompile", out)
     end
     init_fails = "\"\"\"Package whose `__init__` throws.\"\"\"\nmodule InitFails\n__init__() = error(\"init failed\")\nend\n"
-    with_package(@__DIR__, "InitFails", "src/InitFails.jl" => init_fails) do package
+    # Test process loads JSON 1, so pin of 0.21 counts as blind spot even when package fails to load.
+    pinned = "manifest_format = \"2.0\"\n\n[[deps.JSON]]\nuuid = \"682c06a0-de6a-54ab-a142-c8b1cf79cde6\"\nversion = \"0.21.0\"\n"
+    with_package(@__DIR__, "InitFails", "src/InitFails.jl" => init_fails, "Manifest.toml" => pinned) do package
         out = corset("check", package)[2]
         @test occursin("--> src/InitFails.jl:3:1", out) && occursin("init failed", out)
+        @test occursin("analyzed 1 file; skipped 2 (1 loaded version differs from Manifest, 1 package did not load)", out)
     end
     mktempdir(@__DIR__) do package
         mkpath(joinpath(package, "src"))
@@ -373,6 +376,51 @@ end
     @test Corset.CLI.exit_code(run(ignorestatus(`sh -c "kill -KILL \$\$"`))) == 101
 end
 
+@testset "manifest moves" begin
+    Launch, Package = Corset.Launch, Corset.Package
+    textwrap, syntax = Base.UUID("b718987f-49a8-5099-9789-dcd902bef87d"), Base.UUID("70703baa-626e-46a2-a12c-08ffd08c73b4")
+    tiers = Launch.unpin_tiers()
+    @test length(tiers) == 3 && isempty(tiers[1]) && syntax in tiers[2] && textwrap ∉ tiers[2] && textwrap in tiers[3] && tiers[2] ⊆ tiers[3]
+    entry(uuid, version...) = Dict{String, Any}("uuid" => uuid, ("version" => v for v in version)...)
+    pinned = Dict{String, Any}("A" => [entry("a", "1.0.0")], "B" => [entry("b", "2.0.0")], "C" => [entry("c")], "D" => [entry("d", "1.0.0")])
+    used = Dict{String, Any}("A" => [entry("a", "1.1.0")], "B" => [entry("b", "2.0.0")], "C" => [entry("c", "3.0.0")])
+    @test Launch.moves(pinned, used) == [("A", "1.0.0", "1.1.0")]
+    @test Launch.freed(Dict{String, Any}("TextWrap" => [entry(string(textwrap))], "Other" => [entry(string(Base.UUID(rand(UInt128))))]), Set([textwrap, syntax])) == Set([textwrap])
+    mktempdir(@__DIR__) do root
+        json, argus = Base.PkgId(Base.UUID("682c06a0-de6a-54ab-a142-c8b1cf79cde6"), "JSON"), Base.PkgId(Base.UUID("e39743ec-b2cc-45ef-a990-b666fc093538"), "Argus")
+        write(joinpath(root, "Project.toml"), "name = \"Moved\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n")
+        manifest = """
+        manifest_format = "2.0"
+
+        [[deps.Argus]]
+        uuid = "$(argus.uuid)"
+        version = "$(pkgversion(Base.loaded_modules[argus]))"
+
+        [[deps.JSON]]
+        uuid = "$(json.uuid)"
+        version = "0.21.0"
+
+        [[deps.Ghost]]
+        uuid = "$(Base.UUID(rand(UInt128)))"
+        version = "1.0.0"
+
+        [[deps.TOML]]
+        uuid = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+
+        [[deps."EnumX"]]
+        uuid = "4e289a0a-7415-4d19-859d-a7e5c4648b56"
+        version = "0.0.1"
+        """
+        write(joinpath(root, "Manifest.toml"), manifest)
+        project = Corset.Facts.ProjectFacts("Moved", nothing, root, "", Base.PkgId[], Corset.Facts.Extension[], Corset.Facts.TestDeps.none, Base.PkgId[], nothing)
+        spots = Package.moved_versions(project)
+        header = first(findfirst("[[deps.JSON]]", manifest))
+        @test [(spot.cause, spot.span.first_byte, spot.span.last_byte) for spot in spots] == [("loaded version differs from Manifest", 1, 1), ("loaded version differs from Manifest", header, header + 12)]
+        rm(joinpath(root, "Manifest.toml"))
+        @test isempty(Package.moved_versions(project))
+    end
+end
+
 @testset "relaunch" begin
     # Packages sit off test load path, so only relaunched process can load them.
     mktempdir(@__DIR__) do scratch
@@ -401,15 +449,22 @@ end
                 code, out, err = launched("check", root, "-A", "shadowed-base")
                 @test code == 0 && !occursin("building environment", err)
             end
-            # Manifest pins TextWrap 0.3; Corset needs ArgParse 1, which needs TextWrap 1.
-            mktempdir(@__DIR__) do root
-                textwrap = "b718987f-49a8-5099-9789-dcd902bef87d"
-                write(joinpath(root, "Project.toml"), "name = \"Pinned\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n\n[deps]\nTextWrap = \"$textwrap\"\n\n[preferences.Corset]\nkind = \"library\"\n")
-                write(joinpath(root, "Manifest.toml"), "manifest_format = \"2.0\"\n\n[[deps.TextWrap]]\ndeps = [\"Compat\", \"Test\"]\ngit-tree-sha1 = \"8355cc559e85469cd4dbe927c375f61d3750e002\"\nuuid = \"$textwrap\"\nversion = \"0.3.0\"\n")
-                mkpath(joinpath(root, "src"))
-                write(joinpath(root, "src", "Pinned.jl"), "\"\"\"Package with old Manifest.\"\"\"\nmodule Pinned\nend\n")
-                code, _, err = launched("check", root)
-                @test code == 2 && occursin("cannot build environment for Pinned that keeps every Manifest version", err) && occursin("TextWrap", err)
+            # Manifest pins TextWrap 0.3; Corset needs ArgParse 1, which needs TextWrap 1. Compat bound blocks move.
+            for compat in ("", "\n[compat]\nTextWrap = \"0.3\"\n")
+                mktempdir(@__DIR__) do root
+                    textwrap = "b718987f-49a8-5099-9789-dcd902bef87d"
+                    write(joinpath(root, "Project.toml"), "name = \"Pinned\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n\n[deps]\nTextWrap = \"$textwrap\"\n$compat\n[preferences.Corset]\nkind = \"library\"\n")
+                    write(joinpath(root, "Manifest.toml"), "manifest_format = \"2.0\"\n\n[[deps.TextWrap]]\ngit-tree-sha1 = \"8355cc559e85469cd4dbe927c375f61d3750e002\"\nuuid = \"$textwrap\"\nversion = \"0.3.0\"\n")
+                    mkpath(joinpath(root, "src"))
+                    write(joinpath(root, "src", "Pinned.jl"), "\"\"\"Package with old Manifest.\"\"\"\nmodule Pinned\nend\n")
+                    code, out, err = launched("check", root)
+                    if isempty(compat)
+                        @test code == 0 && occursin("corset: Manifest pins TextWrap 0.3.0; environment uses 1.", err)
+                        @test occursin("coverage: analyzed 1 file; skipped 1 (1 loaded version differs from Manifest)", out) && occursin("  - Manifest.toml:3:1: loaded version differs from Manifest", out)
+                    else
+                        @test code == 2 && occursin("cannot build environment for Pinned from its Manifest, even with Corset dependencies moved", err) && occursin("TextWrap", err)
+                    end
+                end
             end
         end
     end
