@@ -220,6 +220,18 @@ end
     end
 end
 
+@testset "external stage" begin
+    ambiguous = "\"\"\"Package with ambiguous methods.\"\"\"\nmodule Ambiguous\ncombine(left::Int, right) = left\ncombine(left, right::Int) = right\nend\n"
+    with_package(@__DIR__, "Ambiguous", "src/Ambiguous.jl" => ambiguous) do package
+        code, out, _ = corset("check", package)
+        @test code == 1 && occursin("error[method-ambiguity]: `combine(::Int64, ::Int64)` matches two methods", out)
+        # External checks run only when some `external` rule is enabled.
+        external(flags::Corset.Config.Flags) = Corset.Engine.analyze(package, flags).facts.external
+        @test length(external(Corset.Config.Flags()).ambiguities) == 1
+        @test isnothing(external(Corset.Config.Flags(; levels = ["method-ambiguity" => Corset.Config.Level.allow])))
+    end
+end
+
 @testset "relaunch inputs" begin
     Launch, Discovery, TestDeps = Corset.Launch, Corset.Discovery, Corset.Facts.TestDeps
     uuid = Base.UUID(rand(UInt128))

@@ -27,7 +27,7 @@ end
         texts = [(file.path, file.text, file.role) for file in sources.files]
         lines = sum(((_, text, _),) -> count(==('\n'), text), texts)
         seconds = fastest(3) do
-            Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(path, text, role) for (path, text, role) in texts], sources.entries, Corset.Facts.Ban[], nothing, nothing))
+            Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(path, text, role) for (path, text, role) in texts], sources.entries, Corset.Facts.Ban[], nothing, nothing, nothing))
         end
         @test seconds * 10_000 / lines < 2.0
     end
@@ -43,7 +43,7 @@ end
                 return path
             end
             bans = Corset.Config.bans(Corset.Config.read_table(joinpath(@__DIR__, "ui", "banned", "config.toml"), ("Corset",)))
-            facts = Dict(path => FactSet([Corset.Syntax.parse_file(path, read(path, String), Role.package)], [path], bans, nothing, nothing) for path in (small, large))
+            facts = Dict(path => FactSet([Corset.Syntax.parse_file(path, read(path, String), Role.package)], [path], bans, nothing, nothing, nothing) for path in (small, large))
             findings = Dict(path => Corset.Engine.run_rules(facts[path]) for path in (small, large))
             known = Set(entry.name for entry in Corset.Rules.REGISTRY)
             stages = Dict{String, Function}(

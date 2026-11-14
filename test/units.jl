@@ -281,7 +281,7 @@ end
     @test all(diagnostic.level == Level.deny for diagnostic in report.diagnostics)
     @test occursin("= note: deny from opt-out check, always on", sprint(io -> Corset.Render.render_all(io, report)))
     file = Corset.Syntax.parse_file("end.jl", "x = 1\n# corset: allow one-letter -- nothing follows\n", Role.package)
-    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file], String[], Facts.Ban[], nothing, nothing), Finding[], Set([Symbol("one-letter")]))
+    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file], String[], Facts.Ban[], nothing, nothing, nothing), Finding[], Set([Symbol("one-letter")]))
     @test isempty(kept) && [problem.kind for problem in problems] == [:unused]
 end
 

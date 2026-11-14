@@ -13,9 +13,9 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
-export name_span, argument_type, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
+export name_span, argument_type, call_text, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal
 
@@ -219,9 +219,18 @@ struct PackageFacts
 end
 
 """
+External tool output on loaded package (`external` stage facts): pairs of package method sites `Test.detect_ambiguities`
+reports, earlier definition first.
+"""
+struct ExternalFacts
+    ambiguities::Vector{Tuple{MethodSite, MethodSite}}
+end
+
+"""
 Facts of one run: parsed files, entry files Julia loads directly (empty for directory walk, where any file may be included),
-project bans from config, enclosing package project (`nothing` outside project with `name`), and loaded package
-(`nothing` for scripts, nameless projects, failed load, or run without package rules).
+project bans from config, enclosing package project (`nothing` outside project with `name`), loaded package
+(`nothing` for scripts, nameless projects, failed load, or run without package rules), and external tool output
+(`nothing` without loaded package, or run without `external` rules).
 """
 struct FactSet
     files::Vector{SyntaxFile}
@@ -229,6 +238,7 @@ struct FactSet
     bans::Vector{Ban}
     project::Union{Nothing, ProjectFacts}
     package::Union{Nothing, PackageFacts}
+    external::Union{Nothing, ExternalFacts}
 end
 
 """Root nodes of pattern, with `~or` alternatives flattened."""
@@ -469,6 +479,18 @@ function argument_type(method::Method, position::Int)::Union{Nothing, Type}
     length(parameters) > position || return nothing
     # Julia reduces `T where T <: Walk` to `Walk`, and drops type variables argument does not use.
     return Base.rewrap_unionall(Base.unwrapva(parameters[position + 1]), method.sig)
+end
+
+"""Call of `name` with argument types of tuple type `signature` after callee, as call writes it: `area(::Int64, ::T) where T<:Real`."""
+function call_text(name::Symbol, signature::Type)::String
+    variables, body = TypeVar[], signature
+    while body isa UnionAll
+        push!(variables, body.var)
+        body = body.body
+    end
+    arguments = ("::" * (Base.isvarargtype(argument) ? "$(argument.T)..." : string(argument)) for argument in body.parameters[2:end])
+    call = "$name($(join(arguments, ", ")))"
+    return isempty(variables) ? call : "$call where {$(join(variables, ", "))}"
 end
 
 """Field name nodes of struct definition `definition`, skipping inner constructors."""

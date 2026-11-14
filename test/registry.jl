@@ -33,7 +33,7 @@ end
     file = Corset.Syntax.parse_file("quoted.jl", text, Role.package)
     @test length(Corset.Facts.forms(file, "=")) == 1
     @test isempty(Corset.Facts.leaves(file, "="))
-    facts = Corset.Facts.FactSet([file], String[], Corset.Facts.Ban[], nothing, nothing)
+    facts = Corset.Facts.FactSet([file], String[], Corset.Facts.Ban[], nothing, nothing, nothing)
     for entry in Corset.Rules.REGISTRY
         @test entry.run(facts) isa Vector{Corset.Facts.Finding}
     end

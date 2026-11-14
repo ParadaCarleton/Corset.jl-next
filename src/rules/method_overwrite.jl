@@ -29,18 +29,12 @@ using ...Facts
 
 const NAME = Symbol("method-overwrite")
 
-"""Positional signature of `method` as call writes it: `area(::Any)`."""
-function signature_text(method::Method)::String
-    arguments = Base.unwrap_unionall(method.sig).parameters[2:end]
-    return "$(method.name)($(join(("::$argument" for argument in arguments), ", ")))"
-end
-
 """Findings for each method definition that replaced earlier definition with same signature, at later definition."""
 function findings(facts::FactSet)::Vector{Finding}
     package = facts.package
     isnothing(package) && return Finding[]
     return map(package.overwrites) do (earlier, later)
-        signature = signature_text(later.method)
+        signature = call_text(later.method.name, later.method.sig)
         return Finding(
             NAME, :method_overwrite, Confidence.definite, "`$signature` defined twice; later definition replaces earlier one",
             Label(name_span(later), "replaces earlier method"), [Label(name_span(earlier), "positional calls never reach this body")],
