@@ -68,9 +68,8 @@ One policy for inferred locals, results and struct fields; argument annotations 
 ### Sum types: Moshi.jl
 
 - One package: Moshi.jl. `@match` matches nested values, tuples, arrays and types; `@derive` writes `==`, `hash` and `show`.
-- Moshi detects missing variant only when unmatched value arrives (`error("matching non-exhaustive")`). Its `src/match/verify/` module is empty. F89 and F90 fill gap at lint time.
-- Later: offer F89 and F90 logic upstream to fill Moshi `verify/`. Owner approves before any PR.
-- Moshi API may change; only F89 to F91 depend on its syntax.
+- Moshi detects missing variant only when unmatched value arrives (`error("matching non-exhaustive")`).
+- Corset has no `@match` rules. Exhaustiveness and unreachable-arm checks belong in Moshi `src/match/verify/`, which sees loaded ADT at macro expansion.
 
 ### Suggested abstract type
 
