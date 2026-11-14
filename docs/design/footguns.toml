@@ -24,7 +24,8 @@ id = 3
 area = "syntax"
 text = "Juxtaposition binds tighter than reader expects"
 example = "`2^2x == 2^(2x)`, `1/2x`"
-group = "correctness"
+group = "readability"
+note = "Code means what Julia parses; risk is reader misreading it. Clippy `precedence` is style lint too."
 stage = "syntax"
 
 [[footgun]]
@@ -221,7 +222,7 @@ text = "Method named like Base function without `Base.` shadows it"
 example = "`length(x::MyT) = …`"
 group = "correctness"
 stage = "package"
-note = "Julia 1.13 raises no error: module gets separate function, so `length([1, 2])` there throws `MethodError`."
+note = "Julia 1.13 raises no error: module gets separate function, so `length([1, 2])` there throws `MethodError`. Definite for operators and Base interface functions on package types; possible otherwise, since packages shadow `parse` or `print` on purpose."
 
 [[footgun]]
 id = 24

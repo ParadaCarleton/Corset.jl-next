@@ -484,3 +484,12 @@ Codex reviewed phase 3 code (PRs #175 to #195) by trace only. Each finding got r
 | 7 | Removing only `using X: a` stops loading `X` | Fixed: removal of only import that loads package is manual. |
 | 8 | `misplaced-import` move changes load order, but fix is `safe` | Fixed: fix tier is `likely`. |
 | 9 | Own `IteratorEltype` that returns `HasEltype` hides missing `eltype` | Fixed: inference finds trait. |
+
+### Phase 3 corpus review
+
+Corpus run (Distances, DataStructures, JSON and two private projects) gave these decisions:
+- `juxtaposition` (F3) moves to readability group. Code means what Julia parses; risk is reader misreading it. Clippy `precedence` is style lint too.
+- `shadowed-base` (F23) is definite only for operators and Base interface functions on package types. JSON.jl shadows `parse`, `print`, `skip` and `iscntrl` on purpose; intent is doubt in code, so other shadows are possible.
+- `one-letter` and `annotation` stay as they are, though noisy: 1130 and 1044 findings on DataStructures.
+- Real DataStructures.jl bugs went upstream as issues #998 to #1001: `==` without `hash`, broken `enumerateall`, iterators without `eltype`, `empty(::DefaultDictBase)`.
+- `enumerateall` broke on `a || b && return` without parentheses; this backs mixed `||`/`&&` rule.
