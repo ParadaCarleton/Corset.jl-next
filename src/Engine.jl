@@ -95,6 +95,8 @@ end
 
 """Analyze files `Discovery.discover` picks for `path`, with config of enclosing project and command-line `flags`. Opt-outs apply before levels."""
 function analyze(path::String, flags::Flags)::Analysis
+    # Relaunch develops package at real path, so Julia records method files there; analyzed files must match.
+    path = realpath(path)
     project = project_root(path)
     settings = Config.settings(project, flags, REGISTRY)
     # Package stage loads package from active environment.

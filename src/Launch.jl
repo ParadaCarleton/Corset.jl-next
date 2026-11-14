@@ -58,10 +58,16 @@ end
 """Root directory of Corset package this process runs."""
 corset_root()::String = pkgdir(Base.moduleroot(@__MODULE__))
 
-"""Cache key of environment for package at `root`: hash of target path, Corset path, Julia version and files that shape environment."""
-function cache_key(root::String)::String
-    project = joinpath(root, "Project.toml")
-    files = [project, something(Base.project_file_manifest_path(project), ""), joinpath(root, "LocalPreferences.toml"), joinpath(root, "test", "Project.toml"), joinpath(corset_root(), "Project.toml")]
+"""
+Cache key of environment for package of `project`: hash of target path, Corset path, Julia version and files that shape
+environment. Those include Project.toml of each path dependency: Manifest entry or test `[sources]` entry.
+"""
+function cache_key(project::ProjectFacts)::String
+    root, file = project.root, joinpath(project.root, "Project.toml")
+    paths = [entry["path"] for entries in values(manifest_deps(file)) for entry in entries if haskey(entry, "path")]
+    append!(paths, [spec.path for spec in test_specs(project) if !isnothing(spec.path)])
+    dependencies = [joinpath(path, "Project.toml") for path in sort!(unique!(paths))]
+    files = [file; something(Base.project_file_manifest_path(file), ""); joinpath(root, "LocalPreferences.toml"); joinpath(root, "test", "Project.toml"); joinpath(corset_root(), "Project.toml"); dependencies]
     parts = [realpath(root); realpath(corset_root()); string(VERSION); [isfile(file) ? read(file, String) : "" for file in files]]
     return bytes2hex(sha256(join(parts, '\0')))[1:16]
 end
@@ -98,7 +104,7 @@ function environment(project::ProjectFacts, err::IO)::String
     # Pkg cannot develop package without uuid: fail before build with clear error.
     id = package_id(project)
     cache = get_scratch!(Base.moduleroot(@__MODULE__), "environments")
-    env = joinpath(cache, cache_key(project.root))
+    env = joinpath(cache, cache_key(project))
     mkpidlock("$env.pid") do
         isdir(env) && return
         println(err, "corset: building environment for $(id.name); later runs reuse it")
