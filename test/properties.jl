@@ -214,7 +214,7 @@ const TIERS = Data.SampledFrom(collect(instances(Tier.T)))
 """Rules that compare code as text; fix that rewrites code into text of other code reveals real match, such as two equal lock targets."""
 const TEXT_MATCH_RULES = [Symbol("duplicate-statement"), Symbol("unguarded-release"), :unreachable]
 """Rules whose `safe` fix spells out what parser already reads: proven equivalent."""
-const EQUIVALENT = [:docstring, :juxtaposition, Symbol("mixed-return"), Symbol("unused-literal")]
+const EQUIVALENT = [Symbol("and-or-precedence"), :docstring, :juxtaposition, Symbol("mixed-return"), Symbol("unused-literal")]
 """Rules whose `safe` fix changes meaning to fix definite bug inside method."""
 const BUG_FIXES = [Symbol("where-binding"), Symbol("world-age")]
 
