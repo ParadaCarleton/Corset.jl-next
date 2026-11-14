@@ -157,6 +157,8 @@ end
         out = corset("check", package)[2]
         @test occursin("--> src/InitFails.jl:3:1", out) && occursin("init failed", out)
         @test occursin("analyzed 1 file; skipped 2 (loaded version differs from Manifest: 1, package did not load: 1)", out)
+        # Manifest holds blind spot, so it is source, but JSON counts analyzed files only.
+        @test JSON.parse(corset("check", package, "--format", "json")[2])["coverage"]["files"] == 1
     end
     mktempdir(@__DIR__) do package
         mkpath(joinpath(package, "src"))
