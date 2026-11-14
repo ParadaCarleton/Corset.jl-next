@@ -87,6 +87,23 @@ function choices(parameter::Any, position::Int, signature::Type, structs::Vector
     return Any[Base.isvarargtype(parameter) ? Vararg{value} : value for value in found]
 end
 
+"""
+First `limit` combinations of one entry per position of `options`, first position fastest as `Iterators.product`
+orders them, and whether more exist. `Iterators.product` over splatted options compiles once per argument count.
+"""
+function combinations(options::Vector{Vector{Any}}, limit::Int)::Tuple{Vector{Vector{Any}}, Bool}
+    found, indices = Vector{Any}[], ones(Int, length(options))
+    more = !any(isempty, options)
+    while more
+        length(found) < limit || return found, true
+        push!(found, Any[options[position][indices[position]] for position in eachindex(options)])
+        position = findfirst(position -> indices[position] < length(options[position]), eachindex(options))
+        more = !isnothing(position)
+        more && (indices[1:(position - 1)] .= 1; indices[position] += 1)
+    end
+    return found, false
+end
+
 """Stand-in signatures of `method`; `structs` come from `struct_stand_ins`."""
 function method_signatures(method::Method, structs::Vector{<:Type})::MethodSignatures
     instantiated = instantiate(method.sig, structs)
@@ -99,8 +116,9 @@ function method_signatures(method::Method, structs::Vector{<:Type})::MethodSigna
         for position in 2:length(parameters)
             push!(options, choices(parameters[position], position - 1, signature, structs, bare))
         end
-        for combination in Iterators.product(options...)
-            length(signatures) < LIMIT || (over_limit = true; break)
+        found, more = combinations(options, LIMIT - length(signatures))
+        over_limit |= more
+        for combination in found
             push!(signatures, Base.rewrap_unionall(Tuple{combination...}, signature))
         end
     end

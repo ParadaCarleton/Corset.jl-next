@@ -49,7 +49,7 @@ signatures_of(name::Symbol) = method_signatures(only(methods(getglobal(CASES, na
 """Signature tuple type for function `name` with `arguments`."""
 call(name::Symbol, arguments::Any...)::Type = Tuple{typeof(getglobal(CASES, name)), arguments...}
 
-"""Methods with distinct declared bounds, one per index, for each stand-in path: numbers, arrays, structs."""
+"""Methods with distinct declared bounds, one per index, for each stand-in path (numbers, arrays, structs), and with `index` arguments."""
 module CompileCases
     abstract type Shape end
     struct Square <: Shape end
@@ -57,6 +57,7 @@ module CompileCases
         @eval $(Symbol(:numbers, index))(x::Union{Real, Val{$index}}) = x
         @eval $(Symbol(:arrays, index))(x::AbstractVector{<:Union{Real, Val{$index}}}) = x
         @eval $(Symbol(:structs, index))(x::Union{Shape, Val{$index}}) = x
+        @eval $(Symbol(:arity, index))($((:($(Symbol(:x, position))::Real) for position in 1:index)...)) = nothing
     end
 end
 
@@ -106,12 +107,15 @@ include("compilation.jl")
     end
     @testset "compilation independent of signature count" begin
         # Closure capturing type value has type parameter `Type{value}`, so it once compiled anew for each signature.
-        cases = [only(methods(getglobal(CompileCases, Symbol(kind, index)))) for index in 1:6, kind in (:numbers, :arrays, :structs)]
+        # `Iterators.product` over splatted options compiled once per argument count.
+        cases = [only(methods(getglobal(CompileCases, Symbol(kind, index)))) for index in 1:6, kind in (:numbers, :arrays, :structs, :arity)]
         structs = Type[CompileCases.Square]
-        foreach(method -> method_signatures(method, structs), cases[1, :])
-        before = specializations(Corset.Signatures)
-        foreach(method -> method_signatures(method, structs), cases[2:end, :])
-        @test specializations(Corset.Signatures) == before
+        signatures_of(methods::Vector{Method})::Nothing = foreach(method -> method_signatures(method, structs), methods)
+        warm, rest = cases[1, :], vec(cases[2:end, :])
+        signatures_of(warm)
+        before = specializations(Corset.Signatures, Base)
+        signatures_of(rest)
+        @test specializations(Corset.Signatures, Base) == before
     end
     @testset "concrete struct list" begin
         # Caller may pass `Vector{DataType}`.
