@@ -265,7 +265,7 @@ text = "Call can never succeed"
 example = "no matching method; undefined global or field"
 group = "correctness"
 stage = "inference"
-note = "Package call inferred `Union{}` without explicit `throw`. Re-dispatch failing call on narrow real types (`Float32`, `Int32`, `Array`): success means stand-in blind spot, counted on coverage line. Report at deepest package frame only. Signature that works only with `Int`, `Float64` or `Vector`: `possible`. JET is test reference."
+note = "Package call inferred `Union{}` without explicit `throw`. Re-dispatch failing call on narrow real types (`Float32`, `Int32`, `Array`): success means stand-in blind spot, counted on coverage line. Report at deepest package frame only. Signature that works only with `Int`, `Float64` or `Vector`: `possible`. Callee with method that intersects declared argument type (`g(::UInt64)` reached from `x::Integer`): `possible`. JET is test reference."
 
 [[footgun]]
 id = 84
@@ -396,7 +396,7 @@ text = "`1:length(A)` assumes 1-based indices"
 example = "`OffsetArray` breaks it"
 group = "composability"
 stage = "inference"
-note = "Inferred `axes` type decides: `OneTo` gives no finding (`Array`, S4 `CircularDeque`); argument of abstract array type gives `definite`."
+note = "Inferred `axes` type decides: `OneTo` gives no finding (`Array`, S4 `CircularDeque`); argument of abstract array type gives `definite`. Array stand-in has `OneTo` axes, so rule reads declared argument type for stand-in arguments."
 
 [[footgun]]
 id = 37

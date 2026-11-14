@@ -2,7 +2,7 @@
 
 Analysis stages Corset computes, in pipeline order. Each stage computes facts once per run; rules read them.
 
-Stages run top to bottom. Rule declares last stage it reads. Engine computes only stages that selected rules need. `scope` runs after `package`: macro expansion needs evaluated imports and package macros (S3). Scripts: `scope` evaluates imports only; unresolved macros go to coverage line.
+Stages run top to bottom. Stage not built yet gives no facts; no rule reads it until it ships. Rule declares last stage it reads. Engine computes only stages that selected rules need. `scope` runs after `package`: macro expansion needs evaluated imports and package macros (S3). Scripts: `scope` evaluates imports only; unresolved macros go to coverage line.
 
 <div class="pipeline" role="img" aria-label="Analysis stages from syntax tree to effect summary, then findings, confidence filter, report and fix">
       <div class="layer"><div class="id">syntax</div><div class="what">Lossless syntax tree, index by node kind<small>JuliaSyntax · per file · milliseconds</small></div></div>

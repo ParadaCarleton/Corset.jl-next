@@ -501,3 +501,32 @@ Corpus project pinned Aqua 0.8.18; Corset needs 0.8.19, so Corset checked nothin
 Relaunch now moves packages Corset shares with target, within target compat, and coverage line counts each move as blind spot.
 Moved dependency changes code rules read, but compiler would use pinned version: doubt test makes it blind spot.
 Rejected: split Corset into analysis and command-line packages. It removes only ArgParse, Configurations and JSON from relaunched process.
+
+### Phase 4 design
+
+Reread `types.md`, `pipeline.md`, `stages.toml`, S1 and S2 reports before phase 4.
+- Stand-in function returns `Any`: inference barrier keeps later code analyzed. Opaque result type truncated frames in S1.
+- Stand-ins copy model special cases that change result type: `sum`, `prod` and `factorial` widen `Int32` to `Int`. Sweep over Base functions found them.
+- Accepted stand-in differences: range of float stand-in stores stand-in, `Float32` range stores `Float64`; stand-in has field `model`, primitive model has none.
+- Source mapping: vendor TypedSyntax.jl `map_ssas_to_source` (MIT) onto Corset's own JuliaSyntax parse, with closure and do-block root patch. CodeTracking front end stays out.
+- Stage facts: per analyzed method and stand-in signature, typed IR before inlining (`typeinf_ircode`, pass `"CC: COMPACT_1"`), so literals stay call operands. Worklist adds package methods reached from analyzed frames.
+- Blind spots: method without stand-in for argument; generated function that inference refuses; stand-in gap (call fails on stand-in, succeeds on model type).
+- Compiler internals (`typeinf_ircode`, pass name, `jl_type_intersection_with_env`) pin per Julia minor version; tests catch patch changes.
+- Per-method disk cache moves to later. Findings cache gives unchanged rerun under 1 s; measure cold run against speed budget before building per-method cache.
+- PR order: stand-ins; signatures; `inference` stage facts and source map; cold-run benchmark on corpus; `never-succeeds`; `type-disruption` and `intermediate-widening`; findings cache; other inference rules by group; `annotation` fixer.
+- Cold-run benchmark is go/no-go: measure same scope as legacy baseline before any rule group lands.
+
+### Phase 4 design: adversarial pass
+
+Codex review of phase 4 design found eight problems:
+
+| # | Finding | Outcome |
+|---|---|---|
+| 1 | `never-succeeds` gives false `definite` when callee has method for other type within bound (`g(::UInt64)` from `x::Integer`) | Accepted: callee method that intersects declared argument type gives `possible` (F83). |
+| 2 | Typed cache misses edits in path dependencies | Accepted: key hashes files of Manifest `path` entries and `[sources]` paths. |
+| 3 | Callee check alone accepts swapped spans of two calls to one callee; generated output maps to unrelated source | Accepted: gate also checks argument count and source order; generated, macro and compiler-made statements stay at line precision. |
+| 4 | Accepted stand-in differences (range storage, `model` field) can make `result-conversion` wrong | Rejected for ranges: element type agrees, only storage parameters differ. Reflection on stand-in sees wrapper; inference stage treats its result as opaque. |
+| 5 | Union facts merged across stand-in signatures report unions no call produces | Accepted: union policy reads one signature at a time. |
+| 6 | Array stand-in has `OneTo` axes, so F36 sees one-based array where bound allows offset axes | Accepted: axis and memory-order rules read declared argument type for stand-in arguments. |
+| 7 | Findings cache does not shorten first run; cold budget unchecked | Accepted: cold-run benchmark after source map, as go/no-go before rules. |
+| 8 | `scope` runs before `inference` in pipeline but ships in phase 6 | Accepted: stage not built yet gives no facts; no rule reads it until it ships. |
