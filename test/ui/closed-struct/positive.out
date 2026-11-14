@@ -1,0 +1,92 @@
+warning[closed-struct]: public struct `Model` has no abstract supertype
+ --> src/ClosedStructPositive.jl:9:8
+  |
+9 | struct Model
+  |        ^^^^^ users cannot add sibling type
+  |
+  = why: methods typed on concrete struct accept only it; users must copy or wrap it to vary it
+  = fix: declare `abstract type AbstractModel end`, subtype it, and type methods on it   [manual]
+  = docs: corset explain closed-struct
+  = note: warn from composability group, library preset
+  = note: opt out with `# corset: allow closed-struct -- <reason>`
+
+warning[closed-struct]: public struct `Point` has no abstract supertype
+  --> src/ClosedStructPositive.jl:14:8
+   |
+14 | struct Point{T}
+   |        ^^^^^ users cannot add sibling type
+   |
+   = why: methods typed on concrete struct accept only it; users must copy or wrap it to vary it
+   = fix: declare `abstract type AbstractPoint end`, subtype it, and type methods on it   [manual]
+   = docs: corset explain closed-struct
+
+warning[closed-struct]: public struct `Counter` has no abstract supertype
+  --> src/ClosedStructPositive.jl:20:16
+   |
+20 | mutable struct Counter
+   |                ^^^^^^^ users cannot add sibling type
+   |
+   = why: methods typed on concrete struct accept only it; users must copy or wrap it to vary it
+   = fix: declare `abstract type AbstractCounter end`, subtype it, and type methods on it   [manual]
+   = docs: corset explain closed-struct
+
+warning[closed-struct]: public struct `Positive` has no abstract supertype
+  --> src/ClosedStructPositive.jl:25:8
+   |
+25 | struct Positive
+   |        ^^^^^^^^ users cannot add sibling type
+   |
+   = why: methods typed on concrete struct accept only it; users must copy or wrap it to vary it
+   = fix: declare `abstract type AbstractPositive end`, subtype it, and type methods on it   [manual]
+   = docs: corset explain closed-struct
+
+warning[closed-struct]: public struct `Tagged` has no abstract supertype
+  --> src/ClosedStructPositive.jl:31:8
+   |
+31 | struct Tagged{T}
+   |        ^^^^^^ users cannot add sibling type
+   |
+   = why: methods typed on concrete struct accept only it; users must copy or wrap it to vary it
+   = fix: declare `abstract type AbstractTagged end`, subtype it, and type methods on it   [manual]
+   = docs: corset explain closed-struct
+
+warning[closed-struct]: public struct `Table` has no abstract supertype
+  --> src/ClosedStructPositive.jl:36:8
+   |
+36 | struct Table{T}
+   |        ^^^^^ users cannot add sibling type
+   |
+   = why: methods typed on concrete struct accept only it; users must copy or wrap it to vary it
+   = fix: declare `abstract type AbstractTable end`, subtype it, and type methods on it   [manual]
+   = docs: corset explain closed-struct
+
+warning[closed-struct]: public struct `Options` has no abstract supertype
+  --> src/ClosedStructPositive.jl:43:20
+   |
+43 | Base.@kwdef struct Options
+   |                    ^^^^^^^ users cannot add sibling type
+   |
+   = why: methods typed on concrete struct accept only it; users must copy or wrap it to vary it
+   = fix: declare `abstract type AbstractOptions end`, subtype it, and type methods on it   [manual]
+   = docs: corset explain closed-struct
+
+warning[closed-struct]: public struct `Marker` has no abstract supertype
+  --> src/ClosedStructPositive.jl:52:12
+   |
+52 |     struct Marker end
+   |            ^^^^^^ users cannot add sibling type
+   |
+   = why: methods typed on concrete struct accept only it; users must copy or wrap it to vary it
+   = fix: declare `abstract type AbstractMarker end`, subtype it, and type methods on it   [manual]
+   = docs: corset explain closed-struct
+
+warning[closed-struct]: public struct `Circle` has no abstract supertype
+  --> src/ClosedStructPositive.jl:55:12
+   |
+55 |     struct Circle
+   |            ^^^^^^ users cannot add sibling type
+   |
+   = why: methods typed on concrete struct accept only it; users must copy or wrap it to vary it
+   = fix: declare `abstract type AbstractCircle end`, subtype it, and type methods on it   [manual]
+   = docs: corset explain closed-struct
+
