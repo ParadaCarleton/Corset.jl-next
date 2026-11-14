@@ -6,7 +6,7 @@ warning[and-or-precedence]: `state === nothing || values === nothing && return n
   |                          ------------------------------------ binds first
   |
   = why: `&&` binds tighter than `||`; read left to right, code looks like `(a || b) && c`
-  = fix: replace with `state === nothing || (values === nothing && return nothing)`   [safe]
+  = fix: replace with `(values === nothing && return nothing)`   [safe]
   = docs: corset explain and-or-precedence
   = note: warn from readability group, library preset
   = note: opt out with `# corset: allow and-or-precedence -- <reason>`
@@ -19,7 +19,7 @@ warning[and-or-precedence]: `a || b && c` means `a || (b && c)`
   |                       ------ binds first
   |
   = why: `&&` binds tighter than `||`; read left to right, code looks like `(a || b) && c`
-  = fix: replace with `a || (b && c)`   [safe]
+  = fix: replace with `(b && c)`   [safe]
   = docs: corset explain and-or-precedence
 
 warning[and-or-precedence]: `b || c && d` means `b || (c && d)`
@@ -30,7 +30,7 @@ warning[and-or-precedence]: `b || c && d` means `b || (c && d)`
   |                                 ------ binds first
   |
   = why: `&&` binds tighter than `||`; read left to right, code looks like `(a || b) && c`
-  = fix: replace with `b || (c && d)`   [safe]
+  = fix: replace with `(c && d)`   [safe]
   = docs: corset explain and-or-precedence
 
 warning[and-or-precedence]: `a || b && c` means `a || (b && c)`
@@ -41,7 +41,7 @@ warning[and-or-precedence]: `a || b && c` means `a || (b && c)`
   |                                ------ binds first
   |
   = why: `&&` binds tighter than `||`; read left to right, code looks like `(a || b) && c`
-  = fix: replace with `a || (b && c)`   [safe]
+  = fix: replace with `(b && c)`   [safe]
   = docs: corset explain and-or-precedence
 
 warning[and-or-precedence]: `a || b && c` means `a || (b && c)`
@@ -52,6 +52,17 @@ warning[and-or-precedence]: `a || b && c` means `a || (b && c)`
   |                                 ------ binds first
   |
   = why: `&&` binds tighter than `||`; read left to right, code looks like `(a || b) && c`
-  = fix: replace with `a || (b && c)`   [safe]
+  = fix: replace with `(b && c)`   [safe]
   = docs: corset explain and-or-precedence
+
+warning[and-or-precedence]: `a || b && c || d` means `a || (b && c) || d`
+  --> positive.jl:10:22
+   |
+10 | middle(a, b, c, d) = a || b && c || d
+   |                      ^^^^^^^^^^^^^^^^ parsed as `a || (b && c) || d`
+   |                           ------ binds first
+   |
+   = why: `&&` binds tighter than `||`; read left to right, code looks like `(a || b) && c`
+   = fix: replace with `(b && c)`   [safe]
+   = docs: corset explain and-or-precedence
 
