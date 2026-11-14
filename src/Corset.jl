@@ -6,6 +6,7 @@ Stages build facts (`Facts`), rules turn facts into findings (`Rules`), `Config`
 module Corset
 
 include("Facts.jl")
+include("StandIns.jl")
 include("Syntax.jl")
 include("Rules.jl")
 include("Config.jl")
