@@ -481,6 +481,22 @@ end
     end
 end
 
+@testset "package workload" begin
+    @test isnothing(Corset.package_workload())
+    # Sample code must run: inference stops at call that always throws, so package image keeps less.
+    sample = Corset.PackageSample
+    @test sample.area(sample.Disk(2)) ≈ 4π
+    @test sample.arithmetic(1.5, 2) isa Real
+    @test sample.integers(7, 2) isa Integer
+    @test sample.reductions([1, 2, 3]) == 39
+    @test length(sample.transforms([3.0, -1.0], 2)) == 10
+    @test sample.matrices([1 2; 3 4]) == 20
+    @test sample.apply(abs, -1) == 3
+    @test sample.describe(1.234) == "value: 1.23 of Float64"
+    @test collect(sample.Countdown(3)) == [3, 2, 1]
+    @test sample.Ones(2) == [1.0, 1.0]
+end
+
 @testset "fix conflicts" begin
     span(first, last) = Corset.Facts.Span("f.jl", first, last, Corset.Facts.Precision.exact)
     fix(first, last) = Corset.Facts.Fix("t", [Corset.Facts.Edit(span(first, last), "x")], Corset.Facts.Tier.safe)
