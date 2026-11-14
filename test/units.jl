@@ -33,7 +33,8 @@ end
 
 @testset "render" begin
     text = "a = 1\nb = 2\nc = 3\nd = 4\ne = 5\n"
-    render(finding) = sprint(io -> Corset.Render.render(io, Diagnostic(finding, Level.warn, "test"), text, "f.jl", false))
+    sources = Dict("f.jl" => text, "g.jl" => "x = 1\ny = 2\n")
+    render(finding) = sprint(io -> Corset.Render.render(io, Diagnostic(finding, Level.warn, "test"), sources, ".", false))
     adjacent = render(sample_finding(13:17; causes = [Label(Span("f.jl", 1, 5, Precision.exact), "cause")]))
     @test occursin("2 | b = 2", adjacent)
     gap = render(sample_finding(25:29; causes = [Label(Span("f.jl", 1, 5, Precision.exact), "cause")]))
@@ -42,9 +43,12 @@ end
     @test occursin("  | ^^^^^ primary", whole_line)
     multi_line = render(sample_finding(1:9))
     @test occursin("  | ^^^^^ primary", multi_line)
+    # Cause in other file gets own snippet, with its own lines; once drew on primary file text.
+    elsewhere = render(sample_finding(13:17; causes = [Label(Span("g.jl", 7, 7, Precision.exact), "there"), Label(Span("f.jl", 1, 1, Precision.exact), "here")]))
+    @test occursin(" --> f.jl:3:1\n  |\n1 | a = 1\n  | - here\n2 | b = 2\n3 | c = 3\n  | ^^^^^ primary\n  |\n ::: g.jl:2:1\n  |\n2 | y = 2\n  | - there\n  |\n  = why", elsewhere)
     @test Corset.Render.line_text("x\r\n", [1, 4], 1) == "x"
     tabbed = "\ty = 1\n"
-    @test occursin("1 |     y = 1\n  |     ^ primary", sprint(io -> Corset.Render.render(io, Diagnostic(sample_finding(2:2), Level.warn, "test"), tabbed, "f.jl", false)))
+    @test occursin("1 |     y = 1\n  |     ^ primary", sprint(io -> Corset.Render.render(io, Diagnostic(sample_finding(2:2), Level.warn, "test"), Dict("f.jl" => tabbed), ".", false)))
 end
 
 @testset "facts" begin

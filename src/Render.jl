@@ -48,22 +48,10 @@ function placement(text::String, starts::Vector{Int}, span::Span)::Tuple{Int, In
     return line, first_col, max(width_between(text, span.first_byte, min(span.last_byte, line_end)), 1)
 end
 
-"""Write `diagnostic` from file with source `text` to `io`; `note` adds lines saying where level was set and how to opt out."""
-function render(io::IO, diagnostic::Diagnostic, text::String, path::String, note::Bool)::Nothing
-    finding = diagnostic.finding
-    starts = line_starts(text)
-    marked = [
-        (placement(text, starts, label.span)..., marker, label.text) for (label, marker) in
-            [(finding.primary, '^'); [(cause, '-') for cause in finding.causes]]
-    ]
-    primary_line, primary_col = marked[1][1], marked[1][2]
-    lines = sort!(unique(first.(marked)))
-    gutter = " "^ndigits(maximum(lines))
-    println(io, HEADER[diagnostic.level], "[", finding.rule, "]: ", finding.message)
-    println(io, gutter, "--> ", path, ":", primary_line, ":", primary_col)
-    println(io, gutter, " |")
+"""Write source lines that `marked` entries (line, column, width, marker, label) point at, each followed by its markers."""
+function write_lines(io::IO, text::String, starts::Vector{Int}, marked::Vector, gutter::String)::Nothing
     previous = 0
-    for line in lines
+    for line in sort!(unique(first.(marked)))
         if previous > 0 && line - previous == 2
             println(io, lpad(line - 1, length(gutter)), " | ", line_text(text, starts, line - 1))
         elseif previous > 0 && line - previous > 2
@@ -75,7 +63,31 @@ function render(io::IO, diagnostic::Diagnostic, text::String, path::String, note
         end
         previous = line
     end
-    println(io, gutter, " |")
+    return nothing
+end
+
+"""
+Write `diagnostic` to `io` with source text from `sources` by path; paths print relative to `root`.
+Primary file comes first (`-->`); labels in other files follow, one snippet per file (`:::`), as in rustc.
+`note` adds lines saying where level was set and how to opt out.
+"""
+function render(io::IO, diagnostic::Diagnostic, sources::Dict{String, String}, root::String, note::Bool)::Nothing
+    finding = diagnostic.finding
+    labels = [(finding.primary, '^'); [(cause, '-') for cause in finding.causes]]
+    files = unique(label.span.file for (label, _) in labels)
+    marked = Dict(
+        file => [(placement(sources[file], line_starts(sources[file]), label.span)..., marker, label.text) for (label, marker) in labels if label.span.file == file]
+            for file in files
+    )
+    gutter = " "^maximum(ndigits(first(entry)) for entries in values(marked) for entry in entries)
+    println(io, HEADER[diagnostic.level], "[", finding.rule, "]: ", finding.message)
+    for (index, file) in enumerate(files)
+        line, col = marked[file][1][1], marked[file][1][2]
+        println(io, gutter, index == 1 ? "--> " : "::: ", relpath(file, root), ":", line, ":", col)
+        println(io, gutter, " |")
+        write_lines(io, sources[file], line_starts(sources[file]), marked[file], gutter)
+        println(io, gutter, " |")
+    end
     println(io, gutter, " = why: ", finding.why)
     finding.confidence == Confidence.possible && println(io, gutter, " = confidence: possible")
     isnothing(finding.fix) || println(io, gutter, " = fix: ", finding.fix.text, "   [", finding.fix.tier, "]")
@@ -90,8 +102,7 @@ end
 function render_all(io::IO, report::Report)::Nothing
     noted = Set{Symbol}()
     for diagnostic in report.diagnostics
-        file = diagnostic.finding.primary.span.file
-        render(io, diagnostic, report.sources[file], relpath(file, report.root), diagnostic.finding.rule ∉ noted)
+        render(io, diagnostic, report.sources, report.root, diagnostic.finding.rule ∉ noted)
         push!(noted, diagnostic.finding.rule)
         println(io)
     end

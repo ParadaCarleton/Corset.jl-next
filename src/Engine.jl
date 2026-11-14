@@ -120,8 +120,9 @@ function check(path::String; flags::Flags = Flags())::Report
     reported = [analysis.leveled[.!covered]; analysis.problems]
     sort!(reported; by = diagnostic -> (diagnostic.finding.primary.span.file, diagnostic.finding.primary.span.first_byte, diagnostic.finding.rule))
     sources = Dict(file.path => file.text for file in analysis.facts.files)
-    # Load error and blind spot can point at entry or extension file when checked path leaves it out.
-    for path in [[diagnostic.finding.primary.span.file for diagnostic in reported]; [spot.span.file for spot in analysis.blind_spots]]
+    # Load error, cause label and blind spot can point at file checked path leaves out.
+    labels = [[diagnostic.finding.primary; diagnostic.finding.causes] for diagnostic in reported]
+    for path in [[label.span.file for group in labels for label in group]; [spot.span.file for spot in analysis.blind_spots]]
         haskey(sources, path) || (sources[path] = read(path, String))
     end
     return Report(reported, analysis.settings, analysis.root, sources, count(covered), stale, analysis.blind_spots)
