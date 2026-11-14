@@ -4,13 +4,13 @@
 `Test.detect_ambiguities` runs on package modules, as Aqua.jl does. Pair with method outside package methods
 (other module, generated method, file outside analyzed files) drops.
 Aqua.jl offers piracy check only as `@test`, so stage calls internal `Aqua.Piracy.is_pirate`; compat pins minor version.
-ExplicitImports.jl reports non-public qualified accesses and imports, and names bare `using` brings; access inside
-package passes.
+ExplicitImports.jl reports non-public qualified accesses and imports, names bare `using` brings, and uses of explicitly
+imported names; access inside package passes. One ExplicitImports.jl parse serves every check.
 """
 module External
 
-using ..Facts: ExternalFacts, PackageFacts, MethodSite, InternalAccess, BareUsing, SyntaxFile, SyntaxNode, Span, Precision
-using ..Facts: ancestors, children_of, definition_name, forms, kind_name, source, span
+using ..Facts: ExternalFacts, PackageFacts, MethodSite, InternalAccess, BareUsing, ExplicitImport, SyntaxFile, SyntaxNode, Span, Precision
+using ..Facts: ancestors, children_of, definition_name, descendants, forms, kind_name, source, span
 using ..Package: line_starts
 using Aqua: Aqua
 using ExplicitImports: ExplicitImports
@@ -83,18 +83,21 @@ function merged(accesses::Vector{InternalAccess}, files::Dict{String, SyntaxFile
     return found
 end
 
+"""ExplicitImports.jl parse of root module file, by path, as its private `file_analysis` keyword takes it."""
+const Analyses = Dict{String, ExplicitImports.FileAnalysis}
+
 """
 Accesses of package to names other modules neither export nor declare `public`, in analyzed `files`. Module that
 ExplicitImports.jl cannot analyze fully (dynamic `include`, module macro writes) gives no import rows.
 """
-function internal_accesses(package::PackageFacts, files::Vector{SyntaxFile})::Vector{InternalAccess}
+function internal_accesses(package::PackageFacts, files::Vector{SyntaxFile}, analyses::Analyses)::Vector{InternalAccess}
     root, by_path = first(package.modules), Dict(file.path => file for file in files)
     found = InternalAccess[]
-    for (_, rows) in ExplicitImports.improper_qualified_accesses(root, pathof(root)), row in rows
+    for (_, rows) in ExplicitImports.improper_qualified_accesses(root, pathof(root); file_analysis = analyses), row in rows
         span = location_span(row.location, string(row.name), by_path)
         row.self_qualified || isnothing(span) || push!(found, InternalAccess(row.accessing_from, string(row.name), span, false))
     end
-    for (_, rows) in ExplicitImports.improper_explicit_imports(root, pathof(root)), row in something(rows, ())
+    for (_, rows) in ExplicitImports.improper_explicit_imports(root, pathof(root); file_analysis = analyses), row in something(rows, ())
         span = location_span(row.location, string(row.name), by_path)
         row.public_import || isnothing(span) || push!(found, InternalAccess(row.importing_from, string(row.name), span, true))
     end
@@ -128,10 +131,10 @@ Names package modules reach through bare `using`, one entry per statement, in so
 them, syntax finds statement. Names of `Base`, `Core` and package pass. Statement outside analyzed `files`, and module
 ExplicitImports.jl cannot analyze fully, give no entry.
 """
-function bare_usings(package::PackageFacts, files::Vector{SyntaxFile})::Vector{BareUsing}
+function bare_usings(package::PackageFacts, files::Vector{SyntaxFile}, analyses::Analyses)::Vector{BareUsing}
     root, by_path = first(package.modules), Dict(file.path => file for file in files)
     found = BareUsing[]
-    for (mod, rows) in ExplicitImports.explicit_imports(root, pathof(root))
+    for (mod, rows) in ExplicitImports.explicit_imports(root, pathof(root); file_analysis = analyses)
         isnothing(rows) && continue
         for exporter in unique(reduce(vcat, (row.exporters for row in rows); init = Module[]))
             statement = bare_statement(mod, exporter, files)
@@ -150,9 +153,51 @@ function bare_usings(package::PackageFacts, files::Vector{SyntaxFile})::Vector{B
     return sort!(found; by = imported -> (imported.statement.file, imported.statement.first_byte))
 end
 
+"""`using` or `import` statement of `file` that holds `name`."""
+statement_of(file::SyntaxFile, name::Span)::SyntaxNode =
+    only(node for kind in ("using", "import") for node in forms(file, kind) if span(file, node).first_byte <= name.first_byte <= span(file, node).last_byte)
+
+"""
+Explicit import statements (`using X: a`, `import X: a`, `import X`) in analyzed `files`, each with global uses of names
+it binds in its module, in source order. Statement with `as`, statement outside `files` and module ExplicitImports.jl
+cannot analyze fully give no entry.
+"""
+function explicit_imports(analysis::ExplicitImports.FileAnalysis, files::Vector{SyntaxFile})::Vector{ExplicitImport}
+    by_path, rows = Dict(file.path => file for file in files), analysis.per_usage_info
+    # First use of name in scope decides whether name is global there; later uses carry no verdict.
+    global_in = Set((row.name, map(objectid, row.scope_path)) for row in rows if row.external_global_name === true)
+    statements = Dict{Span, Tuple{Vector{Symbol}, Vector{Symbol}}}()
+    for row in rows
+        row.import_type in (:import_RHS, :blanket_using) && row.module_path in analysis.untainted_modules || continue
+        name = location_span(row.location, string(row.name), by_path)
+        isnothing(name) && continue
+        statement = statement_of(by_path[name.file], name)
+        any(node -> kind_name(node) == "as", descendants(statement)) && continue
+        push!(last(get!(statements, span(by_path[name.file], statement), (row.module_path, Symbol[]))), row.name)
+    end
+    found = ExplicitImport[]
+    for (statement, (module_path, names)) in statements
+        uses = Tuple{Symbol, Span}[]
+        for row in rows
+            row.name in names && row.module_path == module_path && row.import_type == :not_import && isnothing(row.qualified_by) || continue
+            # ExplicitImports.jl marks named-tuple key or field name after global use as later use; neither reads name.
+            !row.kwarg_name && !row.struct_field_name && (row.name, map(objectid, row.scope_path)) in global_in || continue
+            use = location_span(row.location, string(row.name), by_path)
+            isnothing(use) || push!(uses, (row.name, use))
+        end
+        push!(found, ExplicitImport(statement, names, sort!(uses; by = ((_, use),) -> (use.file, use.first_byte))))
+    end
+    return sort!(found; by = imported -> (imported.statement.file, imported.statement.first_byte))
+end
+
 """External facts of loaded `package` with analyzed `files`."""
 function external_facts(package::PackageFacts, files::Vector{SyntaxFile})::ExternalFacts
-    return ExternalFacts(ambiguities(package), piracies(package), internal_accesses(package, files), bare_usings(package, files))
+    path = pathof(first(package.modules))
+    analyses = Analyses(path => ExplicitImports.get_names_used(path))
+    return ExternalFacts(
+        ambiguities(package), piracies(package), internal_accesses(package, files, analyses), bare_usings(package, files, analyses),
+        explicit_imports(analyses[path], files),
+    )
 end
 
 end

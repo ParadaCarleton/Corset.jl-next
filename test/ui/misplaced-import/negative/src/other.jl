@@ -1,0 +1,5 @@
+square(vector::Vector{Float64}) = dot(vector, vector)
+const ONE = det([1.0;;])
+this_year() = year(now())
+tidy(text::String) = clean(text)
+firsts(lists::Vector) = collect(Iterators.take(lists, 2))
