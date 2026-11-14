@@ -18,6 +18,7 @@ include("rules/field_prefix.jl")
 include("rules/file_length.jl")
 include("rules/inference_dependent.jl")
 include("rules/juxtaposition.jl")
+include("rules/method_overwrite.jl")
 include("rules/mixed_return.jl")
 include("rules/module_inception.jl")
 include("rules/nan_compare.jl")
@@ -53,6 +54,7 @@ const REGISTRY = RuleEntry[
     FileLength.ENTRY,
     InferenceDependent.ENTRY,
     Juxtaposition.ENTRY,
+    MethodOverwrite.ENTRY,
     MixedReturn.ENTRY,
     ModuleInception.ENTRY,
     NanCompare.ENTRY,

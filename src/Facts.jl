@@ -15,7 +15,7 @@ export Precision, Tier, Confidence, Group, Stage, Role, BindingKind
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, PackageFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
-export finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
+export name_span, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal
 
@@ -176,6 +176,7 @@ end
 """
 Loaded package (`package` stage facts): Project.toml `name`, `uuid` and root directory, package modules
 (root, submodules, loaded extensions; root first), and sites of methods they define in analyzed files.
+`methods` keeps methods later definitions replaced; `overwrites` pairs each (earlier, later) by same signature.
 """
 struct PackageFacts
     name::String
@@ -183,6 +184,7 @@ struct PackageFacts
     root::String
     modules::Vector{Module}
     methods::Vector{MethodSite}
+    overwrites::Vector{Tuple{MethodSite, MethodSite}}
 end
 
 """
@@ -392,6 +394,9 @@ function definition_name(node::SyntaxNode)::SyntaxNode
     end
     return head
 end
+
+"""Span of function name at method `site`; whole line when site has no definition node."""
+name_span(site::MethodSite)::Span = isnothing(site.node) ? site.span : span(site.file, definition_name(site.node))
 
 """Field name nodes of struct definition `definition`, skipping inner constructors."""
 function struct_fields(definition::SyntaxNode)::Vector{SyntaxNode}
