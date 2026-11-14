@@ -14,7 +14,7 @@ Each stage is one module that produces facts. Rules read facts through one API. 
 | `Package` | `package` stage: load package; module facts; Project.toml facts. |
 | `StandIns` | Stand-in types: float, integer, array, dense array and function. |
 | `Signatures` | Stand-in signatures per package method: stand-ins for generic arguments and type variables; at most 8 per method. |
-| `Inference` | `inference` stage: stand-in types; one inference per method; typed IR with source mapping. Mapping: vendored TypedSyntax.jl algorithm on syntax tree; no CodeTracking. |
+| `Inference` | `inference` stage: native inference of unoptimized code on stand-in signatures; worklist follows calls into untyped package methods. TypedSyntax.jl maps statements onto `syntax` stage tree; callee check demotes doubtful spans to line. |
 | `Effects` | `effects` stage: effect and alias summary per method. |
 | `Lifecycle` | `lifecycle` stage: local def-use per array; callee writes from `effects`. |
 | `External` | `external` stage: Aqua.jl, `Test.detect_ambiguities` and ExplicitImports.jl output as facts; jscpd later. |

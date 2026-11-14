@@ -4,6 +4,7 @@ using Test: @test, @testset
     include("units.jl")
     include("standins.jl")
     include("signatures.jl")
+    include("inference.jl")
     include("registry.jl")
     include("ui.jl")
     include("properties.jl")
