@@ -60,14 +60,7 @@ module CompileCases
     end
 end
 
-"""Specializations of methods module `mod` defines, closures included."""
-function specializations(mod::Module)::Int
-    total = Ref(0)
-    Base.visit(Core.methodtable) do method
-        method.module === mod && (total[] += count(!isnothing, Base.specializations(method)))
-    end
-    return total[]
-end
+include("compilation.jl")
 
 @testset "stand-in signatures" begin
     @test STRUCTS == Type[CASES.Circle{FloatStandIn}, CASES.Circle{IntStandIn}, CASES.Square]

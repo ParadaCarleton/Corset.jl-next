@@ -86,23 +86,23 @@ function merged(accesses::Vector{InternalAccess}, files::Dict{String, SyntaxFile
     return found
 end
 
-"""ExplicitImports.jl parse of root module file, by path, as its private `file_analysis` keyword takes it."""
+"""ExplicitImports.jl parse of module file, by path, as its private `file_analysis` keyword takes it."""
 const Analyses = Dict{String, ExplicitImports.FileAnalysis}
 
 """
-Accesses of package to names other modules neither export nor declare `public`, in analyzed `files`. Module that
-ExplicitImports.jl cannot analyze fully (dynamic `include`, module macro writes) gives no import rows.
+Accesses of package with module file `entry` to names other modules neither export nor declare `public`, in analyzed
+`files`. Module that ExplicitImports.jl cannot analyze fully (dynamic `include`, module macro writes) gives no import rows.
 """
-function internal_accesses(package::PackageFacts, files::Vector{SyntaxFile}, analyses::Analyses)::Vector{InternalAccess}
+function internal_accesses(package::PackageFacts, entry::String, files::Vector{SyntaxFile}, analyses::Analyses)::Vector{InternalAccess}
     root, by_path = first(package.modules), Dict(file.path => file for file in files)
     # Extension reaching parent package is access to own package.
     own = Set{Module}(package.modules)
     found = InternalAccess[]
-    for (_, rows) in ExplicitImports.improper_qualified_accesses(root, pathof(root); file_analysis = analyses), row in rows
+    for (_, rows) in ExplicitImports.improper_qualified_accesses(root, entry; file_analysis = analyses), row in rows
         span = location_span(row.location, string(row.name), by_path)
         row.self_qualified || row.accessing_from in own || isnothing(span) || push!(found, InternalAccess(row.accessing_from, string(row.name), span, false))
     end
-    for (_, rows) in ExplicitImports.improper_explicit_imports(root, pathof(root); file_analysis = analyses), row in something(rows, ())
+    for (_, rows) in ExplicitImports.improper_explicit_imports(root, entry; file_analysis = analyses), row in something(rows, ())
         span = location_span(row.location, string(row.name), by_path)
         row.public_import || isnothing(span) || push!(found, InternalAccess(row.importing_from, string(row.name), span, true))
     end
@@ -156,15 +156,15 @@ located(uses::Uses, path::Vector{Symbol}, names::Vector{Symbol}, files::Dict{Str
 use_order((_, use)::Tuple{Symbol, Span})::Tuple{String, Int} = (use.file, use.first_byte)
 
 """
-Names package modules reach through bare `using`, one entry per statement, in source order: ExplicitImports.jl names
-them and locates statement, `uses` gives first use of each. Names of `Base`, `Core` and package pass. Statement
-outside analyzed `files`, and module ExplicitImports.jl cannot analyze fully, give no entry.
+Names modules of package with module file `entry` reach through bare `using`, one entry per statement, in source
+order: ExplicitImports.jl names them and locates statement, `uses` gives first use of each. Names of `Base`, `Core` and
+package pass. Statement outside analyzed `files`, and module ExplicitImports.jl cannot analyze fully, give no entry.
 """
-function bare_usings(package::PackageFacts, files::Vector{SyntaxFile}, analyses::Analyses, uses::Uses)::Vector{BareUsing}
+function bare_usings(package::PackageFacts, entry::String, files::Vector{SyntaxFile}, analyses::Analyses, uses::Uses)::Vector{BareUsing}
     root, by_path = first(package.modules), Dict(file.path => file for file in files)
-    analysis = analyses[pathof(root)]
+    analysis = analyses[entry]
     found = BareUsing[]
-    for (mod, rows) in ExplicitImports.explicit_imports(root, pathof(root); file_analysis = analyses)
+    for (mod, rows) in ExplicitImports.explicit_imports(root, entry; file_analysis = analyses)
         isnothing(rows) && continue
         for exporter in unique(reduce(vcat, (row.exporters for row in rows); init = Module[]))
             statement = bare_statement(mod, exporter, analysis, by_path)
@@ -210,14 +210,13 @@ function explicit_imports(analysis::ExplicitImports.FileAnalysis, files::Vector{
     return sort!(found; by = imported -> (imported.statement.file, imported.statement.first_byte))
 end
 
-"""External facts of loaded `package` with analyzed `files`."""
-function external_facts(package::PackageFacts, files::Vector{SyntaxFile})::ExternalFacts
-    path = pathof(first(package.modules))
-    analyses = Analyses(path => ExplicitImports.get_names_used(path))
-    uses = global_uses(analyses[path])
+"""External facts of loaded `package` with module file `entry` and analyzed `files`."""
+function external_facts(package::PackageFacts, entry::String, files::Vector{SyntaxFile})::ExternalFacts
+    analyses = Analyses(entry => ExplicitImports.get_names_used(entry))
+    uses = global_uses(analyses[entry])
     return ExternalFacts(
-        ambiguities(package), piracies(package), internal_accesses(package, files, analyses), bare_usings(package, files, analyses, uses),
-        explicit_imports(analyses[path], files, uses),
+        ambiguities(package), piracies(package), internal_accesses(package, entry, files, analyses),
+        bare_usings(package, entry, files, analyses, uses), explicit_imports(analyses[entry], files, uses),
     )
 end
 
