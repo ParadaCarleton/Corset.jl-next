@@ -35,13 +35,6 @@ using ...Facts
 
 const NAME = Symbol("misplaced-import")
 
-"""Bytes of `file` line that holds `byte`: first byte, and byte before its newline."""
-function line_bytes(file::SyntaxFile, byte::Int)::UnitRange{Int}
-    newline = findnext(==(UInt8('\n')), codeunits(file.text), byte)
-    start = something(findprev(==(UInt8('\n')), codeunits(file.text), byte - 1), 0) + 1
-    return start:(isnothing(newline) ? ncodeunits(file.text) : newline - 1)
-end
-
 """First statement of module body in `file` that holds `byte`; top-level statement when no `module` form holds it."""
 function first_statement(file::SyntaxFile, byte::Int)::SyntaxNode
     holders = filter(node -> span(file, node).first_byte <= byte <= span(file, node).last_byte, forms(file, "module"))
@@ -54,21 +47,16 @@ Fix moving `statement` of `file` to new line above first statement of module cod
 Statement must own its lines, and that first statement must start its line; trailing comment moves with statement.
 """
 function move_fix(file::SyntaxFile, statement::Span, target::SyntaxFile, use::Span)::Fix
-    first_line, last_line = line_bytes(file, statement.first_byte), line_bytes(file, statement.last_byte)
-    before = file.text[first(first_line):prevind(file.text, statement.first_byte)]
-    after = file.text[nextind(file.text, statement.last_byte):last(last_line)]
+    lines = owned_lines(file, statement)
     anchor = span(target, first_statement(target, use.first_byte))
-    line_start = first(line_bytes(target, anchor.first_byte))
-    indent = target.text[line_start:prevind(target.text, anchor.first_byte)]
+    start = line_start(target, anchor.first_byte)
+    indent = target.text[start:prevind(target.text, anchor.first_byte)]
     destination = basename(target.path)
     # One-line `module M; …; end` has no line to insert above inside module.
-    isempty(strip(before)) && (isempty(strip(after)) || startswith(lstrip(after), '#')) && isempty(strip(indent)) ||
-        return manual_fix("move import to own line at top of `$destination`")
-    moved = rstrip(file.text[statement.first_byte:last(last_line)])
-    # Removal takes newline too, unless statement ends file.
-    removed = Span(file.path, first(first_line), min(last(last_line) + 1, ncodeunits(file.text)), Precision.exact)
-    inserted = Span(target.path, line_start, line_start - 1, Precision.exact)
-    return Fix("move to top of `$destination`", [Edit(removed, ""), Edit(inserted, "$indent$moved\n")], Tier.safe)
+    (isnothing(lines) || !isempty(strip(indent))) && return manual_fix("move import to own line at top of `$destination`")
+    moved = rstrip(file.text[statement.first_byte:last(lines)])
+    inserted = Span(target.path, start, start - 1, Precision.exact)
+    return Fix("move to top of `$destination`", [line_deletion(file, lines), Edit(inserted, "$indent$moved\n")], Tier.safe)
 end
 
 """Finding for `imported` when only one file other than its own uses its names; `nothing` otherwise."""
