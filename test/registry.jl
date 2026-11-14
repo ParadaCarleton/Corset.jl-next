@@ -46,8 +46,10 @@ end
 @testset "rule files import only Facts" begin
     directory = joinpath(dirname(@__DIR__), "src", "rules")
     for name in filter(endswith(".jl"), readdir(directory))
-        imports = filter(line -> occursin(r"^\s*(using|import)\b", line), readlines(joinpath(directory, name)))
-        @test imports == ["using ...Facts"]
+        path = joinpath(directory, name)
+        # Parsed statements only: docstring examples may show `using`.
+        file = Corset.Syntax.parse_file(path, read(path, String), Role.package)
+        @test [Corset.Facts.source(file, node) for kind in ("using", "import") for node in Corset.Facts.forms(file, kind)] == ["using ...Facts"]
     end
 end
 

@@ -20,6 +20,8 @@
 - `method-overwrite` messages show the `where` type variables of the signature.
 - New rule `piracy`: a package method extends a function of another module, and another module owns every argument type. Aqua.jl decides piracy. Extensions own the package types.
 - New rule `internal-access`: code reaches a name that another module neither exports nor declares `public`, as in `Base._sub2ind`. ExplicitImports.jl finds the accesses and imports.
+- New rule `implicit-import`: a bare `using X` brings names the module uses without naming them. The fix writes `using X: X, name, …`.
+- A cause label in another file than the primary label gets its own snippet in text output.
 - A `[sources]` entry in `test/Project.toml` can give `rev` alone or `subdir`.
 - Text output shows paths relative to the project root.
 - A precompile workload compiles the command line, so a first `corset check` starts in seconds.

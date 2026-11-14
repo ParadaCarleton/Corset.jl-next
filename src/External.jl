@@ -4,11 +4,13 @@
 `Test.detect_ambiguities` runs on package modules, as Aqua.jl does. Pair with method outside package methods
 (other module, generated method, file outside analyzed files) drops.
 Aqua.jl offers piracy check only as `@test`, so stage calls internal `Aqua.Piracy.is_pirate`; compat pins minor version.
-ExplicitImports.jl reports non-public qualified accesses and imports; access inside package passes.
+ExplicitImports.jl reports non-public qualified accesses and imports, and names bare `using` brings; access inside
+package passes.
 """
 module External
 
-using ..Facts: ExternalFacts, PackageFacts, MethodSite, InternalAccess, SyntaxFile, Span, Precision
+using ..Facts: ExternalFacts, PackageFacts, MethodSite, InternalAccess, BareUsing, SyntaxFile, SyntaxNode, Span, Precision
+using ..Facts: ancestors, children_of, definition_name, forms, kind_name, source, span
 using ..Package: line_starts
 using Aqua: Aqua
 using ExplicitImports: ExplicitImports
@@ -99,9 +101,58 @@ function internal_accesses(package::PackageFacts, files::Vector{SyntaxFile})::Ve
     return merged(found, by_path)
 end
 
+"""Name of innermost `module` form around `node` of `file`; `nothing` at top level of included file."""
+function enclosing_module(file::SyntaxFile, node::SyntaxNode)::Union{Nothing, Symbol}
+    index = findfirst(ancestor -> kind_name(ancestor) == "module", ancestors(node))
+    return isnothing(index) ? nothing : Symbol(source(file, definition_name(ancestors(node)[index])))
+end
+
+"""
+Module path of bare `using` in `files` that brings `exporter` into module `mod`: path ends in exporter name, and
+statement sits in `module` form named like `mod`, else at top level of included file. First in file order.
+"""
+function bare_statement(mod::Module, exporter::Module, files::Vector{SyntaxFile})::Union{Nothing, Tuple{SyntaxFile, SyntaxNode}}
+    inside, included = Tuple{SyntaxFile, SyntaxNode}[], Tuple{SyntaxFile, SyntaxNode}[]
+    for file in files, statement in forms(file, "using"), path in children_of(statement)
+        # `using X: a` holds one `:` child; bare `using A, B` holds one `importpath` per module.
+        kind_name(path) == "importpath" && source(file, last(children_of(path))) == string(nameof(exporter)) || continue
+        owner = enclosing_module(file, statement)
+        owner === nameof(mod) && push!(inside, (file, path))
+        isnothing(owner) && push!(included, (file, path))
+    end
+    return isempty(inside) ? (isempty(included) ? nothing : first(included)) : first(inside)
+end
+
+"""
+Names package modules reach through bare `using`, one entry per statement, in source order: ExplicitImports.jl names
+them, syntax finds statement. Names of `Base`, `Core` and package pass. Statement outside analyzed `files`, and module
+ExplicitImports.jl cannot analyze fully, give no entry.
+"""
+function bare_usings(package::PackageFacts, files::Vector{SyntaxFile})::Vector{BareUsing}
+    root, by_path = first(package.modules), Dict(file.path => file for file in files)
+    found = BareUsing[]
+    for (mod, rows) in ExplicitImports.explicit_imports(root, pathof(root))
+        isnothing(rows) && continue
+        for exporter in unique(reduce(vcat, (row.exporters for row in rows); init = Module[]))
+            statement = bare_statement(mod, exporter, files)
+            isnothing(statement) && continue
+            # Bare `using X` binds `X` too; fix always keeps it, so it is no brought name.
+            brought = [row for row in rows if exporter in row.exporters && row.name !== nameof(exporter)]
+            uses = Tuple{Symbol, Span}[]
+            for row in brought
+                use = location_span(row.location, string(row.name), by_path)
+                isnothing(use) || push!(uses, (row.name, use))
+            end
+            sort!(uses; by = ((_, use),) -> (use.file, use.first_byte))
+            push!(found, BareUsing(exporter, span(statement...), sort!([row.name for row in brought]), uses))
+        end
+    end
+    return sort!(found; by = imported -> (imported.statement.file, imported.statement.first_byte))
+end
+
 """External facts of loaded `package` with analyzed `files`."""
 function external_facts(package::PackageFacts, files::Vector{SyntaxFile})::ExternalFacts
-    return ExternalFacts(ambiguities(package), piracies(package), internal_accesses(package, files))
+    return ExternalFacts(ambiguities(package), piracies(package), internal_accesses(package, files), bare_usings(package, files))
 end
 
 end

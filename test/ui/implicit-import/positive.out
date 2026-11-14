@@ -1,0 +1,66 @@
+warning[implicit-import]: bare `using LinearAlgebra` brings 2 used names implicitly
+ --> src/ImplicitImportPositive.jl:5:7
+  |
+5 | using LinearAlgebra
+  |       ^^^^^^^^^^^^^ brings every name `LinearAlgebra` exports
+  |
+ ::: src/geometry.jl:1:38
+  |
+1 | length_of(vector::Vector{Float64}) = norm(vector) + dot(vector, vector)
+  |                                      ---- uses `norm`
+  |                                                     --- uses `dot`
+  |
+  = why: reader cannot tell where name comes from, and new export can clash
+  = fix: replace with `using LinearAlgebra: LinearAlgebra, dot, norm`   [likely]
+  = docs: corset explain implicit-import
+  = note: warn from composability group, library preset
+  = note: opt out with `# corset: allow implicit-import -- <reason>`
+
+warning[implicit-import]: bare `using Dates` brings 2 used names implicitly
+  --> src/ImplicitImportPositive.jl:6:7
+   |
+ 6 | using Dates, Base.Iterators
+   |       ^^^^^ brings every name `Dates` exports
+...
+12 | today_year() = year(today())
+   |                ---- uses `year`
+   |                     ----- uses `today`
+   |
+   = why: reader cannot tell where name comes from, and new export can clash
+   = fix: move `Dates` to own statement: `using Dates: Dates, today, year`   [manual]
+   = docs: corset explain implicit-import
+
+warning[implicit-import]: bare `using Unicode` brings no used name
+ --> src/ImplicitImportPositive.jl:7:7
+  |
+7 | using Unicode
+  |       ^^^^^^^ brings every name `Unicode` exports
+  |
+  = why: reader cannot tell where name comes from, and new export can clash
+  = fix: replace with `using Unicode: Unicode`   [likely]
+  = docs: corset explain implicit-import
+
+warning[implicit-import]: bare `using LinearAlgebra` brings 1 used name implicitly
+  --> src/ImplicitImportPositive.jl:17:11
+   |
+17 |     using LinearAlgebra
+   |           ^^^^^^^^^^^^^ brings every name `LinearAlgebra` exports
+18 |     unit(vector::Vector{Float64}) = normalize(vector)
+   |                                     --------- uses `normalize`
+   |
+   = why: reader cannot tell where name comes from, and new export can clash
+   = fix: replace with `using LinearAlgebra: LinearAlgebra, normalize`   [likely]
+   = docs: corset explain implicit-import
+
+warning[implicit-import]: bare `using Printf` brings 1 used name implicitly
+ --> src/format.jl:1:7
+  |
+1 | using Printf
+  |       ^^^^^^ brings every name `Printf` exports
+2 | label(value::Float64) = @sprintf("%.2f", value)
+  |                         -------- uses `@sprintf`
+  |
+  = why: reader cannot tell where name comes from, and new export can clash
+  = fix: replace with `using Printf: Printf, @sprintf`   [likely]
+  = docs: corset explain implicit-import
+
