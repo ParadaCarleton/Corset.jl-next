@@ -76,6 +76,15 @@ Base.getindex(ones::Ones, index::Int)::Float64 = (checkbounds(ones, index); 1.0)
 """`transform` applied to `number`, and to `number` doubled."""
 apply(transform::Function, number::Real)::Real = transform(number) + transform(2number)
 
+"""
+Literal of each value type source can spell. Source mapping looks up literals by value, and that lookup compiles once
+per value type.
+"""
+literals()::Tuple = (
+    1, 2.5, 2.5f0, true, 'c', "text", 0x01, 0x0001, 0x00000001, 0x0000000000000001, 0x00000000000000000000000000000001,
+    170141183460469231731687303715884105727, 1701411834604692317316873037158841057270,
+)
+
 """Text with `number` rounded to two digits."""
 describe(number::Real)::String = string("value: ", round(number; digits = 2), " of ", typeof(number))
 

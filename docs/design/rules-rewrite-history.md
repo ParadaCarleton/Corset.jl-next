@@ -539,7 +539,7 @@ Codex review of phase 4 design found eight problems:
 
 ### Phase 4 cold-run benchmark
 
-Go/no-go result: Corset is 2.8–6.1× faster than legacy cold; budget is 5×. Table and numbers: `plan.md`, speed budget.
+Go/no-go result: Corset is 2.9–6.7× faster than legacy cold; budget is 5×. Table and numbers: `plan.md`, speed budget.
 Causes found and fixed:
 
 | Cause | Cost before fix | Fix |
@@ -547,6 +547,7 @@ Causes found and fixed:
 | Closure over type value compiles once per value when it escapes to `filter`, comprehension or generator | `Signatures` 38 s on DataStructures; `missing-interface` and `shadowed-base` once per struct or function | Loops (#208, #210) |
 | `method_sites` sort printed both signatures in each comparison | 6.6 s on DataStructures | Print only on tie (#209) |
 | Precompile workload ran script only | Package stages, rules, ExplicitImports.jl and stand-in inference compiled at first package run | Workload runs package stages and rules on Corset itself, then `inference` stage on `PackageSample` (#210) |
+| `Iterators.product` over splatted options compiled once per argument count; TypedSyntax.jl literal lookup compiled once per literal type | 0.1–0.7 s per package | Odometer loop; sample spells literal of each type (#211) |
 
 Not fixed: loading DataStructures invalidates 263 method instances, Corset entry points among them, and costs 1.2 s of inference again. Chains run through TOML and JSON writes of abstract `Dict` types, and ExplicitImports.jl internals.
 Decision: stand-in inference stays. Per-method disk cache joins PR order after findings cache.

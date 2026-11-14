@@ -495,6 +495,12 @@ end
     @test sample.describe(1.234) == "value: 1.23 of Float64"
     @test collect(sample.Countdown(3)) == [3, 2, 1]
     @test sample.Ones(2) == [1.0, 1.0]
+    @test length(sample.literals()) == 13
+    # Every literal value type JuliaSyntax produces appears in sample, so workload compiles each literal lookup.
+    path = joinpath(pkgdir(Corset), "src", "PackageSample.jl")
+    tree = Corset.Syntax.parse_file(path, read(path, String), Corset.Facts.Role.package).tree
+    spelled = Set(typeof(node.val) for node in Corset.Facts.descendants(tree) if Corset.Syntax.JS.is_literal(node))
+    @test [Int64, Int128, BigInt, UInt8, UInt16, UInt32, UInt64, UInt128, Float32, Float64, Bool, Char, String] ⊆ spelled
 end
 
 @testset "fix conflicts" begin
