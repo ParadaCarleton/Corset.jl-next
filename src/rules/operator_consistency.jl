@@ -46,10 +46,10 @@ function_type(method::Method)::Any = Base.unwrap_unionall(method.sig).parameters
 
 """First argument type of equality `method` that names type package `modules` define, with signature type variables; else `nothing`."""
 function compared_type(method::Method, modules::Set{Module})::Union{Nothing, Type}
-    for argument in Base.unwrap_unionall(method.sig).parameters[2:end]
-        bound = argument isa TypeVar ? argument.ub : argument
-        body = Base.unwrap_unionall(bound)
-        body isa DataType && parentmodule(body) in modules && return Base.rewrap_unionall(bound, method.sig)
+    for position in 1:(method.nargs - 1)
+        type = argument_type(method, position)
+        body = isnothing(type) ? nothing : Base.unwrap_unionall(type)
+        body isa DataType && parentmodule(body) in modules && return type
     end
     return nothing
 end

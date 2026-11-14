@@ -36,12 +36,10 @@ const NAME = Symbol("iterator-traits")
 
 """Type of first argument of `iterate` `method` with signature type variables; `nothing` unless it names package struct."""
 function iterated(method::Method, modules::Set{Module})::Union{Nothing, Type}
-    parameters = Base.unwrap_unionall(method.sig).parameters
-    length(parameters) < 2 && return nothing
-    bound = parameters[2] isa TypeVar ? parameters[2].ub : parameters[2]
-    body = Base.unwrap_unionall(bound)
-    body isa DataType && !isabstracttype(body) && parentmodule(body) in modules || return nothing
-    return Base.rewrap_unionall(bound, method.sig)
+    type = argument_type(method, 1)
+    isnothing(type) && return nothing
+    body = Base.unwrap_unionall(type)
+    return body isa DataType && !isabstracttype(body) && parentmodule(body) in modules ? type : nothing
 end
 
 """Whether method of `trait` other than Base defaults covers every value `x` of `type`, as `trait(typeof(x))` or `trait(x)`."""
