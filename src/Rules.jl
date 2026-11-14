@@ -11,6 +11,7 @@ include("rules/banned.jl")
 include("rules/bracketed_range.jl")
 include("rules/broad_catch.jl")
 include("rules/c_type.jl")
+include("rules/closed_struct.jl")
 include("rules/docstring.jl")
 include("rules/double_include.jl")
 include("rules/duplicate_statement.jl")
@@ -50,6 +51,7 @@ const REGISTRY = RuleEntry[
     BracketedRange.ENTRY,
     BroadCatch.ENTRY,
     CType.ENTRY,
+    ClosedStruct.ENTRY,
     Docstring.ENTRY,
     DoubleInclude.ENTRY,
     DuplicateStatement.ENTRY,

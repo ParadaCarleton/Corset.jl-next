@@ -12,6 +12,7 @@
 - New rule `operator-consistency`: `==` or `isequal` without a matching `hash`, and a method on `!=`, `>` or `>=`.
 - Method sites of operators written in parentheses, as in `Base.:(==)`, get exact spans.
 - New rule `invariant-parameter`: an abstract type parameter in an argument type, as in `Vector{Real}`, rejects `Vector{Float64}`. The fix writes `Vector{<:Real}`.
+- New rule `closed-struct`: a public struct has no abstract supertype, so users cannot add a sibling type.
 - A `[sources]` entry in `test/Project.toml` can give `rev` alone or `subdir`.
 - Text output shows paths relative to the project root.
 - A precompile workload compiles the command line, so a first `corset check` starts in seconds.
