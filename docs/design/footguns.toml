@@ -531,32 +531,6 @@ group = "correctness"
 stage = "inference"
 
 [[footgun]]
-id = 89
-area = "containers"
-text = "`@match` misses variant of Moshi ADT"
-example = "no arm for `Shape.Circle`, no catch-all"
-group = "correctness"
-stage = "package"
-note = "Moshi emits runtime `error(\"matching non-exhaustive\")`. Variants come from loaded `@data` type. Fix tier `manual`."
-
-[[footgun]]
-id = 90
-area = "containers"
-text = "Unreachable `@match` arm"
-example = "arm after pattern that covers it"
-group = "correctness"
-stage = "package"
-
-[[footgun]]
-id = 91
-area = "containers"
-text = "Catch-all arm on own ADT hides later variants"
-example = "`_ => …` in `@match` on package ADT"
-group = "correctness"
-stage = "package"
-note = "Clippy `wildcard_enum_match_arm`. Default level `allow`."
-
-[[footgun]]
 id = 53
 area = "effects"
 text = "Function writes argument or global without `!`"

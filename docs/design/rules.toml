@@ -243,19 +243,6 @@ name = "missing-condition"
 footguns = [52]
 
 [[rule]]
-name = "non-exhaustive-match"
-footguns = [89]
-
-[[rule]]
-name = "unreachable-arm"
-footguns = [90]
-
-[[rule]]
-name = "wildcard-arm"
-footguns = [91]
-note = "Default `allow`."
-
-[[rule]]
 name = "bang-convention"
 footguns = [53, 86]
 note = "Kinds: missing, spurious. Methods added to other module's `!` function exempt. See `!` convention."

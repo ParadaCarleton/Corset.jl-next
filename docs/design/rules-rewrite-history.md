@@ -392,7 +392,7 @@ Principle: rule waits for layer that owns its facts. Removed syntax versions and
 | `shared-fill` | Constructor list guessed mutability | F35 moves to D. Fix tier `manual`: comprehension changes code that shares on purpose, and `fill(x, -1)` throws where comprehension returns empty. |
 | `one-based-range` | Syntax `possible` reported missing type facts as finding; `Vector` argument is always 1-based | F36 moves to D. |
 | `loop-order` | Memory order depends on array type (`Adjoint`) | F42 moves to D. |
-| `non-exhaustive-match`, `unreachable-arm`, `wildcard-arm` | Variants need loaded ADT | F89–F91 move to C. |
+| `non-exhaustive-match`, `unreachable-arm`, `wildcard-arm` | Variants need loaded ADT | Dropped as F89–F91. First two belong upstream in Moshi `verify/`: macro expansion already loads ADT. `wildcard-arm` is opinionated and needs per-rule default levels; dropped. |
 | `c-type` | Local variable named `Cint` gives false finding | Kept in A. `Cint === Int32`, so only syntax sees alias. Import `Cint as CI` still names `Cint` in import line. |
 | `untyped-empty`, `annotation` | Fixer needs inferred element or argument type | Detection stays A. Fixer reads L4 when it ran; otherwise fix is `manual`. |
 
