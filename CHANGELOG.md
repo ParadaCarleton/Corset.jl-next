@@ -11,6 +11,7 @@
 - New rule `untested-extension`: the test dependencies leave out a trigger package of an extension.
 - New rule `operator-consistency`: `==` or `isequal` without a matching `hash`, and a method on `!=`, `>` or `>=`.
 - Method sites of operators written in parentheses, as in `Base.:(==)`, get exact spans.
+- New rule `invariant-parameter`: an abstract type parameter in an argument type, as in `Vector{Real}`, rejects `Vector{Float64}`. The fix writes `Vector{<:Real}`.
 - A `[sources]` entry in `test/Project.toml` can give `rev` alone or `subdir`.
 - Text output shows paths relative to the project root.
 - A precompile workload compiles the command line, so a first `corset check` starts in seconds.

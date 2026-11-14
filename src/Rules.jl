@@ -17,6 +17,7 @@ include("rules/duplicate_statement.jl")
 include("rules/field_prefix.jl")
 include("rules/file_length.jl")
 include("rules/inference_dependent.jl")
+include("rules/invariant_parameter.jl")
 include("rules/juxtaposition.jl")
 include("rules/method_overwrite.jl")
 include("rules/mixed_return.jl")
@@ -55,6 +56,7 @@ const REGISTRY = RuleEntry[
     FieldPrefix.ENTRY,
     FileLength.ENTRY,
     InferenceDependent.ENTRY,
+    InvariantParameter.ENTRY,
     Juxtaposition.ENTRY,
     MethodOverwrite.ENTRY,
     MixedReturn.ENTRY,

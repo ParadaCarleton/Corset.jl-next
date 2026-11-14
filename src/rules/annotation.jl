@@ -29,16 +29,6 @@ using ...Facts
 
 const NAME = :annotation
 
-"""Signature call of definition `node` and whether result has type; `nothing` for anonymous function."""
-function signature(definition::SyntaxNode)::Union{Nothing, Tuple{SyntaxNode, Bool}}
-    head, typed = children_of(definition)[1], false
-    while kind_name(head) in ("where", "::") && length(children_of(head)) == 2
-        typed |= kind_name(head) == "::"
-        head = children_of(head)[1]
-    end
-    return kind_name(head) == "call" ? (head, typed) : nothing
-end
-
 """Untyped names bound by argument `node`, through default value, splat and keyword group; `_` binds nothing."""
 function untyped(node::SyntaxNode)::Vector{SyntaxNode}
     kind = kind_name(node)

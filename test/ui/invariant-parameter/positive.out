@@ -1,0 +1,52 @@
+error[invariant-parameter]: `Vector{Real}` matches parameter `Real` exactly; subtypes of `Real` miss
+ --> src/InvariantParameterPositive.jl:9:22
+  |
+9 | total(values::Vector{Real})::Real = sum(values)
+  |                      ^^^^ invariant parameter
+  |
+  = why: type parameters are invariant: `Vector{Float64}` is not `Vector{Real}`
+  = fix: replace with `<:Real`   [likely]
+  = docs: corset explain invariant-parameter
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow invariant-parameter -- <reason>`
+
+error[invariant-parameter]: `Dict{String, Shape}` matches parameter `Shape` exactly; subtypes of `Shape` miss
+  --> src/InvariantParameterPositive.jl:12:36
+   |
+12 | function areas(table::Dict{String, Shape}; scale::AbstractVector{Base.Real} = Real[1.0])::Dict{String, Real}
+   |                                    ^^^^^ invariant parameter
+   |
+   = why: type parameters are invariant: `Vector{Float64}` is not `Vector{Real}`
+   = fix: replace with `<:Shape`   [likely]
+   = docs: corset explain invariant-parameter
+
+error[invariant-parameter]: `AbstractVector{Base.Real}` matches parameter `Base.Real` exactly; subtypes of `Base.Real` miss
+  --> src/InvariantParameterPositive.jl:12:66
+   |
+12 | function areas(table::Dict{String, Shape}; scale::AbstractVector{Base.Real} = Real[1.0])::Dict{String, Real}
+   |                                                                  ^^^^^^^^^ invariant parameter
+   |
+   = why: type parameters are invariant: `Vector{Float64}` is not `Vector{Real}`
+   = fix: replace with `<:Base.Real`   [likely]
+   = docs: corset explain invariant-parameter
+
+error[invariant-parameter]: `Vector{Real}` matches parameter `Real` exactly; subtypes of `Real` miss
+  --> src/InvariantParameterPositive.jl:17:21
+   |
+17 | widths(rows::Vector{Real}...; factor = 2)::Vector{Int} = [factor * length(row) for row in rows]
+   |                     ^^^^ invariant parameter
+   |
+   = why: type parameters are invariant: `Vector{Float64}` is not `Vector{Real}`
+   = fix: replace with `<:Real`   [likely]
+   = docs: corset explain invariant-parameter
+
+error[invariant-parameter]: `Vector{Shape}` matches parameter `Shape` exactly; subtypes of `Shape` miss
+  --> src/InvariantParameterPositive.jl:20:24
+   |
+20 | counted(shapes::Vector{Shape}, count::Int = 1)::Int = count * length(shapes)
+   |                        ^^^^^ invariant parameter
+   |
+   = why: type parameters are invariant: `Vector{Float64}` is not `Vector{Real}`
+   = fix: replace with `<:Shape`   [likely]
+   = docs: corset explain invariant-parameter
+
