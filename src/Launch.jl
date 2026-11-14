@@ -2,7 +2,8 @@
 Command-line relaunch: build temporary environment for target package, then run command line again inside it.
 
 Environment is nameless project that starts from target Manifest, develops target and Corset by path, and adds test dependencies.
-Every target Manifest version stays; resolution that needs other version is config error.
+Every target Manifest version stays when Corset accepts it. Otherwise packages Corset shares with target move, fewest first;
+build prints each move, and relaunched process counts it as blind spot. Resolution that still fails is config error.
 Relaunched process loads only from that environment and `@stdlib`, so default environment adds no package, trigger or method.
 """
 module Launch
@@ -72,31 +73,72 @@ function cache_key(project::ProjectFacts)::String
     return bytes2hex(sha256(join(parts, '\0')))[1:16]
 end
 
-"""Build temporary environment for package of `project` in empty directory `env`."""
-function build!(env::String, project::ProjectFacts)::Nothing
+"""
+Package sets relaunch may move off target Manifest version, in order tried: none, then Corset direct dependencies,
+then every package this process loaded. Corset loads its dependencies at start, so last set holds its dependency closure.
+"""
+function unpin_tiers()::Vector{Set{Base.UUID}}
+    direct = Set(Base.UUID(uuid) for uuid in values(parse_toml(joinpath(corset_root(), "Project.toml"))["deps"]))
+    loaded = Set(id.uuid for id in keys(Base.loaded_modules) if !isnothing(id.uuid))
+    return [Set{Base.UUID}(), direct, union(direct, loaded)]
+end
+
+"""Uuids of Manifest entries `deps` that `free` holds."""
+freed(deps::Dict{String, Any}, free::Set{Base.UUID})::Set{Base.UUID} =
+    Set(uuid for entries in values(deps) for entry in entries for uuid in (Base.UUID(entry["uuid"]),) if uuid in free)
+
+"""
+Write Project.toml and Manifest.toml of `env` from target Manifest entries `deps`. Project.toml lists each versioned entry
+outside `free` as direct dependency, so `PRESERVE_DIRECT` keeps its version. Name with two entries stays unlisted.
+"""
+function write_env!(env::String, preferences::Dict{String, Any}, deps::Dict{String, Any}, free::Set{Base.UUID})::Nothing
+    kept = Dict(name => only(entries)["uuid"] for (name, entries) in deps if length(entries) == 1 && haskey(only(entries), "version") && Base.UUID(only(entries)["uuid"]) ∉ free)
+    open(io -> TOML.print(io, Dict("preferences" => preferences, "deps" => kept)), joinpath(env, "Project.toml"), "w")
+    open(io -> TOML.print(io, Dict("manifest_format" => "2.0", "deps" => deps)), joinpath(env, "Manifest.toml"), "w")
+    return nothing
+end
+
+"""Versions that Manifest entries `used` give packages of `pinned` in place of pinned version: name, pinned, used; sorted."""
+function moves(pinned::Dict{String, Any}, used::Dict{String, Any})::Vector{Tuple{String, String, String}}
+    versions = Dict(entry["uuid"] => entry["version"] for entries in values(used) for entry in entries if haskey(entry, "version"))
+    moved = [(name, entry["version"], get(versions, entry["uuid"], entry["version"])) for (name, entries) in pinned for entry in entries if haskey(entry, "version")]
+    return sort!(filter(((_, from, to),) -> from != to, moved))
+end
+
+"""
+Build temporary environment for package of `project` in empty directory `env`; return Manifest versions it moved.
+Each set of `tiers` frees its packages; first set that resolves wins. Set that frees no new Manifest entry is skipped.
+"""
+function build!(env::String, project::ProjectFacts, tiers::Vector{Set{Base.UUID}})::Vector{Tuple{String, String, String}}
     root = project.root
     preferences = get(parse_toml(joinpath(root, "Project.toml")), "preferences", Dict{String, Any}())
-    open(io -> TOML.print(io, Dict("preferences" => preferences)), joinpath(env, "Project.toml"), "w")
-    manifest = Dict("manifest_format" => "2.0", "deps" => manifest_deps(joinpath(root, "Project.toml")))
-    open(io -> TOML.print(io, manifest), joinpath(env, "Manifest.toml"), "w")
+    deps = manifest_deps(joinpath(root, "Project.toml"))
     local_preferences = joinpath(root, "LocalPreferences.toml")
     isfile(local_preferences) && cp(local_preferences, joinpath(env, "LocalPreferences.toml"))
-    develop = unique!([realpath(root), realpath(corset_root())])
+    develop = [Pkg.PackageSpec(; path) for path in unique!([realpath(root), realpath(corset_root())])]
     tests = test_specs(project)
-    try
-        # Relaunched process precompiles what it loads. Pkg's task-local switch leaves process environment alone.
-        @with Pkg._autoprecompilation_enabled_scoped => false Pkg.activate(env) do
-            Pkg.develop([Pkg.PackageSpec(; path) for path in develop]; preserve = Pkg.PRESERVE_ALL, io = devnull)
-            local_tests = filter(spec -> !isnothing(spec.path), tests)
-            isempty(local_tests) || Pkg.develop(local_tests; preserve = Pkg.PRESERVE_ALL, io = devnull)
-            registered = filter(spec -> isnothing(spec.path), tests)
-            isempty(registered) || Pkg.add(registered; preserve = Pkg.PRESERVE_ALL, io = devnull)
+    local_tests, registered = filter(spec -> !isnothing(spec.path), tests), filter(spec -> isnothing(spec.path), tests)
+    failures, tried = Exception[], Set{Set{Base.UUID}}()
+    for free in tiers
+        uuids = freed(deps, free)
+        uuids in tried && continue
+        push!(tried, uuids)
+        write_env!(env, preferences, deps, uuids)
+        preserve = isempty(uuids) ? Pkg.PRESERVE_ALL : Pkg.PRESERVE_DIRECT
+        try
+            # Relaunched process precompiles what it loads. Pkg's task-local switch leaves process environment alone.
+            @with Pkg._autoprecompilation_enabled_scoped => false Pkg.activate(env) do
+                Pkg.develop(develop; preserve, io = devnull)
+                isempty(local_tests) || Pkg.develop(local_tests; preserve, io = devnull)
+                isempty(registered) || Pkg.add(registered; preserve, io = devnull)
+            end
+            return moves(deps, manifest_deps(joinpath(env, "Project.toml")))
+        catch error
+            error isa Pkg.Types.PkgError || error isa Pkg.Resolve.ResolverError || rethrow()
+            push!(failures, error)
         end
-    catch error
-        error isa Pkg.Types.PkgError || error isa Pkg.Resolve.ResolverError || rethrow()
-        throw(ConfigError("cannot build environment for $(project.name) that keeps every Manifest version: $(sprint(showerror, error))"))
     end
-    return nothing
+    throw(ConfigError("cannot build environment for $(project.name) from its Manifest, even with Corset dependencies moved: $(sprint(showerror, last(failures)))"))
 end
 
 """Cached temporary environment for package of `project`; build it first when missing, with note to `err`."""
@@ -111,7 +153,10 @@ function environment(project::ProjectFacts, err::IO)::String
         # Relaunched process writes to same stream; note must come first.
         flush(err)
         mktempdir(cache) do staging
-            build!(staging, project)
+            for (name, from, to) in build!(staging, project, unpin_tiers())
+                println(err, "corset: Manifest pins $name $from; environment uses $to, which Corset needs")
+            end
+            flush(err)
             mv(staging, env)
         end
     end

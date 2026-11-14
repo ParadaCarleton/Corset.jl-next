@@ -120,7 +120,7 @@ end
 
 """Write coverage line: analyzed file count and blind spots by cause, then one line per blind spot."""
 function render_coverage(io::IO, report::Report)::Nothing
-    files = length(report.sources)
+    files = report.analyzed
     print(io, "coverage: analyzed ", files, files == 1 ? " file" : " files")
     if !isempty(report.blind_spots)
         causes = sort!(unique(spot.cause for spot in report.blind_spots))
