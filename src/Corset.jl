@@ -22,6 +22,7 @@ include("Output.jl")
 include("CLI.jl")
 
 using .Engine: check
+public check
 using PrecompileTools: @compile_workload, @setup_workload
 
 """Script precompile workload checks: rules find something in it, and every output format and fix path runs."""
