@@ -4,6 +4,7 @@ version = "0.6.0-DEV"
 authors = ["Carlos Parada <71727937+ParadaCarleton@users.noreply.github.com>"]
 
 [deps]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
 Argus = "e39743ec-b2cc-45ef-a990-b666fc093538"
 Configurations = "5218b696-f38b-4ac9-8b61-a12ec717816d"
@@ -21,6 +22,7 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
+Aqua = "0.8.19"
 ArgParse = "1"
 Argus = "0.4.2"
 Configurations = "0.17"

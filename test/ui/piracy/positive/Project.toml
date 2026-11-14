@@ -1,0 +1,8 @@
+name = "PiracyPositive"
+uuid = "1b5533cc-4f45-4502-a8ac-ea75fc2c1719"
+
+[weakdeps]
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+
+[extensions]
+PiracyPositiveDatesExt = "Dates"
