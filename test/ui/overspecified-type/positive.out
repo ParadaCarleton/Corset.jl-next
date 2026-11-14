@@ -1,0 +1,199 @@
+warning[overspecified-type]: `Vector{Float64}` rejects callers `AbstractVector{<:Real}` accepts
+ --> src/OverspecifiedTypePositive.jl:9:15
+  |
+9 | scale(values::Vector{Float64}, factor::Float64) = values .* factor
+  |               ^^^^^^^^^^^^^^^ narrower than code needs
+  |               ------ names specific type
+  |                      ------- names specific type
+  |
+  = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+  = fix: replace with `AbstractVector{<:Real}`   [likely]
+  = docs: corset explain overspecified-type
+  = note: warn from composability group, library preset
+  = note: opt out with `# corset: allow overspecified-type -- <reason>`
+
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+ --> src/OverspecifiedTypePositive.jl:9:40
+  |
+9 | scale(values::Vector{Float64}, factor::Float64) = values .* factor
+  |                                        ^^^^^^^ narrower than code needs
+  |
+  = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+  = fix: replace with `Real`   [likely]
+  = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `AbstractFloat` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:12:14
+   |
+12 | area(radius::AbstractFloat) = pi * radius^2
+   |              ^^^^^^^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Dict{String, Int}` rejects callers `AbstractDict{String, <:Integer}` accepts
+  --> src/OverspecifiedTypePositive.jl:15:15
+   |
+15 | total(counts::Dict{String, Int}) = sum(values(counts))
+   |               ^^^^^^^^^^^^^^^^^ narrower than code needs
+   |               ---- names specific type
+   |                            --- names specific type
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `AbstractDict{String, <:Integer}`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Union{Int32, Int64}` rejects callers `Integer` accepts
+  --> src/OverspecifiedTypePositive.jl:18:13
+   |
+18 | middle(low::Union{Int32, Int64}, high::Union{Int32, Float64}) = (low + high) / 2
+   |             ^^^^^^^^^^^^^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Integer`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Union{Int32, Float64}` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:18:40
+   |
+18 | middle(low::Union{Int32, Int64}, high::Union{Int32, Float64}) = (low + high) / 2
+   |                                        ^^^^^^^^^^^^^^^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `NTuple{2, Float64}` rejects callers `NTuple{2, Real}` accepts
+  --> src/OverspecifiedTypePositive.jl:21:16
+   |
+21 | weighted(pair::NTuple{2, Float64}; weight::Float32 = 1.0f0) = weight * sum(pair) / 2
+   |                ^^^^^^^^^^^^^^^^^^ narrower than code needs
+   |                          ------- names specific type
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `NTuple{2, Real}`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Float32` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:21:44
+   |
+21 | weighted(pair::NTuple{2, Float64}; weight::Float32 = 1.0f0) = weight * sum(pair) / 2
+   |                                            ^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Union{Nothing, Float64}` rejects callers `Union{Nothing, Real}` accepts
+  --> src/OverspecifiedTypePositive.jl:24:16
+   |
+24 | present(value::Union{Nothing, Float64}) = value !== nothing
+   |                ^^^^^^^^^^^^^^^^^^^^^^^ narrower than code needs
+   |                               ------- names specific type
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Union{Nothing, Real}`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Matrix{<:Real}` rejects callers `AbstractMatrix{<:Real}` accepts
+  --> src/OverspecifiedTypePositive.jl:27:12
+   |
+27 | rows(grid::Matrix{<:Real}) = size(grid, 1)
+   |            ^^^^^^^^^^^^^^ narrower than code needs
+   |            ------ names specific type
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `AbstractMatrix{<:Real}`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Base.Vector{Float64}` rejects callers `AbstractVector{<:Real}` accepts
+  --> src/OverspecifiedTypePositive.jl:30:18
+   |
+30 | absolute(values::Base.Vector{Float64}) = sum(abs, values)
+   |                  ^^^^^^^^^^^^^^^^^^^^ narrower than code needs
+   |                  ----------- names specific type
+   |                              ------- names specific type
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `AbstractVector{<:Real}`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Vector{Int}` rejects callers `AbstractVector{<:Integer}` accepts
+  --> src/OverspecifiedTypePositive.jl:33:16
+   |
+33 | counted(items::Vector{Int}, start::Int = 0) = start + length(items)
+   |                ^^^^^^^^^^^ narrower than code needs
+   |                ------ names specific type
+   |                       --- names specific type
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `AbstractVector{<:Integer}`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Int` rejects callers `Integer` accepts
+  --> src/OverspecifiedTypePositive.jl:33:36
+   |
+33 | counted(items::Vector{Int}, start::Int = 0) = start + length(items)
+   |                                    ^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Integer`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:39:14
+   |
+39 |     Point(x::Float64, y::Float64) = new(x, y)
+   |              ^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:39:26
+   |
+39 |     Point(x::Float64, y::Float64) = new(x, y)
+   |                          ^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Union{Vector, Set}` rejects callers `Union{AbstractVector, AbstractSet}` accepts
+  --> src/OverspecifiedTypePositive.jl:43:21
+   |
+43 | members(collection::Union{Vector, Set}) = length(collection)
+   |                     ^^^^^^^^^^^^^^^^^^ narrower than code needs
+   |                           ------ names specific type
+   |                                   --- names specific type
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Union{AbstractVector, AbstractSet}`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `AbstractVector{<:Float64}` rejects callers `AbstractVector{<:Real}` accepts
+  --> src/OverspecifiedTypePositive.jl:46:14
+   |
+46 | mean(values::AbstractVector{<:Float64}) = sum(values) / length(values)
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^ narrower than code needs
+   |                               ------- names specific type
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `AbstractVector{<:Real}`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Dict{Symbol, Vector{Float64}}` rejects callers `AbstractDict{Symbol, <:AbstractVector{<:Real}}` accepts
+  --> src/OverspecifiedTypePositive.jl:49:15
+   |
+49 | sizes(groups::Dict{Symbol, Vector{Float64}}) = Dict(name => length(group) for (name, group) in groups)
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ narrower than code needs
+   |               ---- names specific type
+   |                            ------ names specific type
+   |                                   ------- names specific type
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `AbstractDict{Symbol, <:AbstractVector{<:Real}}`   [likely]
+   = docs: corset explain overspecified-type
+

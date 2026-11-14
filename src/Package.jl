@@ -1,5 +1,5 @@
 """
-`package` stage: load target package into this process; collect package modules, method sites and struct sites.
+`package` stage: load target package into this process; collect package modules, public values, method sites and struct sites.
 
 Environment must load package from its root (`Base.locate_package`); other environment is config error.
 Load that throws becomes `load-error` finding, as `parse-error`.
@@ -47,6 +47,28 @@ end
 function package_modules(root::Module, project::ProjectFacts)::Vector{Module}
     loaded = filter(!isnothing, [Base.get_extension(root, Symbol(extension.name)) for extension in project.extensions])
     return reduce(vcat, map(module_tree, loaded); init = module_tree(root))
+end
+
+"""
+Values public names reach: names root module, first of package `modules`, exports or declares `public`, then public
+names of package submodules those names reach.
+"""
+function public_values(modules::Vector{Module})::Base.IdSet{Any}
+    package, queue = Set(modules), [first(modules)]
+    reached, found = Set(queue), Base.IdSet{Any}()
+    while !isempty(queue)
+        mod = pop!(queue)
+        for name in names(mod)
+            isdefined(mod, name) || continue
+            binding = getglobal(mod, name)
+            push!(found, binding)
+            if binding isa Module && binding in package && !(binding in reached)
+                push!(reached, binding)
+                push!(queue, binding)
+            end
+        end
+    end
+    return found
 end
 
 """Whether Julia generated `method`: closure, keyword body or keyword sorter. Signatures there repeat user methods."""
@@ -239,7 +261,7 @@ function load(project::ProjectFacts, files::Vector{SyntaxFile})::Loaded
     errors, blind_spots = load_extensions(mod, project, files)
     modules = package_modules(mod, project)
     sites = method_sites(modules, files)
-    return Loaded(PackageFacts(modules, sites, overwrites(sites), struct_sites(sites, files)), errors, blind_spots)
+    return Loaded(PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files)), errors, blind_spots)
 end
 
 end

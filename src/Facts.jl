@@ -16,7 +16,7 @@ export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, argument_type, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
-export definition_name, signature, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
+export definition_name, signature, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
@@ -206,12 +206,13 @@ struct ProjectFacts
 end
 
 """
-Loaded package (`package` stage facts): package modules (root, submodules, loaded extensions; root first),
-and sites of methods and structs they define in analyzed files.
+Loaded package (`package` stage facts): package modules (root, submodules, loaded extensions; root first), values
+public names reach, and sites of methods and structs package modules define in analyzed files.
 `methods` keeps methods later definitions replaced; `overwrites` pairs each (earlier, later) by same signature.
 """
 struct PackageFacts
     modules::Vector{Module}
+    public::Base.IdSet{Any}
     methods::Vector{MethodSite}
     overwrites::Vector{Tuple{MethodSite, MethodSite}}
     structs::Vector{StructSite}
@@ -435,6 +436,25 @@ function signature(definition::SyntaxNode)::Union{Nothing, Tuple{SyntaxNode, Boo
         head = children_of(head)[1]
     end
     return kind_name(head) == "call" ? (head, typed) : nothing
+end
+
+"""Type annotation nodes of argument `node` of signature call, through default value, splat and keyword group."""
+function argument_annotations(node::SyntaxNode)::Vector{SyntaxNode}
+    kind = kind_name(node)
+    kind == "parameters" && return reduce(vcat, map(argument_annotations, children_of(node)); init = SyntaxNode[])
+    kind in ("=", "kw", "...") && return argument_annotations(children_of(node)[1])
+    return kind == "::" ? [children_of(node)[end]] : SyntaxNode[]
+end
+
+"""Type name `node` (identifier or dotted name) of `file` refers to from `mod`; `nothing` for other syntax or value."""
+function resolve_type(mod::Module, file::SyntaxFile, node::SyntaxNode)::Union{Nothing, Type}
+    kind_name(node) in ("Identifier", ".") || return nothing
+    value = mod
+    for part in split(source(file, node), '.')
+        value isa Module && isdefined(value, Symbol(part)) || return nothing
+        value = getglobal(value, Symbol(part))
+    end
+    return value isa Type ? value : nothing
 end
 
 """Span of function name at method `site`; whole line when site has no definition node."""

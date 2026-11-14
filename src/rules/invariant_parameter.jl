@@ -29,14 +29,6 @@ using ...Facts
 
 const NAME = Symbol("invariant-parameter")
 
-"""Type annotation nodes of argument `node`, through default value, splat and keyword group."""
-function annotations(node::SyntaxNode)::Vector{SyntaxNode}
-    kind = kind_name(node)
-    kind == "parameters" && return reduce(vcat, map(annotations, children_of(node)); init = SyntaxNode[])
-    kind in ("=", "kw", "...") && return annotations(children_of(node)[1])
-    return kind == "::" ? [children_of(node)[end]] : SyntaxNode[]
-end
-
 """Names of type variables `where` clauses of signature `sig` bind."""
 function type_variables(sig::Type)::Set{Symbol}
     names = Set{Symbol}()
@@ -45,17 +37,6 @@ function type_variables(sig::Type)::Set{Symbol}
         sig = sig.body
     end
     return names
-end
-
-"""Type name `node` (identifier or dotted name) of `file` refers to from `mod`; `nothing` for other syntax or value."""
-function resolve(mod::Module, file::SyntaxFile, node::SyntaxNode)::Union{Nothing, Type}
-    kind_name(node) in ("Identifier", ".") || return nothing
-    value = mod
-    for part in split(source(file, node), '.')
-        value isa Module && isdefined(value, Symbol(part)) || return nothing
-        value = getglobal(value, Symbol(part))
-    end
-    return value isa Type ? value : nothing
 end
 
 """Whether parametric type `head` matches its parameters exactly: not `Tuple`, `Type` or `Val`."""
@@ -75,14 +56,14 @@ function site_findings(site::MethodSite, seen::Base.IdSet{SyntaxNode})::Vector{F
     call = first(parts)
     file, mod, bound = site.file, site.method.module, type_variables(site.method.sig)
     found = Finding[]
-    for argument in children_of(call)[2:end], annotation in annotations(argument)
+    for argument in children_of(call)[2:end], annotation in argument_annotations(argument)
         kind_name(annotation) == "curly" || continue
-        head = resolve(mod, file, children_of(annotation)[1])
+        head = resolve_type(mod, file, children_of(annotation)[1])
         (isnothing(head) || !invariant(head)) && continue
         for parameter in children_of(annotation)[2:end]
             parameter in seen && continue
             kind_name(parameter) == "Identifier" && Symbol(identifier_name(parameter)) in bound && continue
-            resolved = resolve(mod, file, parameter)
+            resolved = resolve_type(mod, file, parameter)
             (isnothing(resolved) || !abstract_parameter(resolved)) && continue
             push!(seen, parameter)
             name = source(file, parameter)
