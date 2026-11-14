@@ -254,6 +254,10 @@ end
         write(joinpath(root, "Project.toml"), project * "\n[targets]\ntest = [\"JSON\", \"TOML\", \"Test\"]\n")
         facts = Discovery.project_facts(root)
         @test facts.test_deps == TestDeps.target && [spec.name for spec in Launch.test_specs(facts)] == ["TOML", "Test"]
+        # `[targets].test` reads `[sources]` of Project.toml; Corset test dependency gives way to running Corset.
+        corset = "\nCorset = \"$(Base.PkgId(Corset).uuid)\"\n\n[sources]\nTest = {path = \"vendor/Test\"}\nCorset = {url = \"https://example.com/Corset.jl\"}\n"
+        write(joinpath(root, "Project.toml"), project * corset * "\n[targets]\ntest = [\"Corset\", \"Test\"]\n")
+        @test only(Launch.test_specs(Discovery.project_facts(root))).path == joinpath(root, "vendor", "Test")
         write(joinpath(root, "Project.toml"), project * "\n[targets]\ntest = [\"Lost\"]\n")
         @test_throws "test target names Lost, which [extras] lacks" Discovery.project_facts(root)
         # `test/Project.toml` drops package and direct dependencies, and reads `[sources]` relative to its own directory.

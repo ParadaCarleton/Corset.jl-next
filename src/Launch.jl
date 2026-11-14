@@ -44,12 +44,15 @@ function source_spec(id::Base.PkgId, source::Union{Nothing, Dict{String, Any}}, 
     return Pkg.PackageSpec(; name, uuid, url = get(source, "url", nothing), rev = get(source, "rev", nothing), subdir = get(source, "subdir", nothing))
 end
 
-"""Specs of test dependencies of `project`, at path or repository test/Project.toml `[sources]` gives."""
+"""
+Specs of test dependencies of `project`, at path or repository `[sources]` gives: test/Project.toml for its own list,
+else Project.toml. Corset is left out: environment develops running Corset instead.
+"""
 function test_specs(project::ProjectFacts)::Vector{Pkg.PackageSpec}
-    directory = joinpath(project.root, "test")
-    listed = project.test_deps == TestDeps.project
-    sources = listed ? get(parse_toml(joinpath(directory, "Project.toml")), "sources", Dict{String, Any}()) : Dict{String, Any}()
-    return [source_spec(id, get(sources, id.name, nothing), directory) for id in project.tests]
+    directory = project.test_deps == TestDeps.project ? joinpath(project.root, "test") : project.root
+    sources = get(parse_toml(joinpath(directory, "Project.toml")), "sources", Dict{String, Any}())
+    corset = Base.PkgId(Base.moduleroot(@__MODULE__))
+    return [source_spec(id, get(sources, id.name, nothing), directory) for id in project.tests if id != corset]
 end
 
 """Root directory of Corset package this process runs."""
@@ -99,6 +102,8 @@ function environment(project::ProjectFacts, err::IO)::String
     mkpidlock("$env.pid") do
         isdir(env) && return
         println(err, "corset: building environment for $(id.name); later runs reuse it")
+        # Relaunched process writes to same stream; note must come first.
+        flush(err)
         mktempdir(cache) do staging
             build!(staging, project)
             mv(staging, env)
