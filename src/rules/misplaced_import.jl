@@ -5,6 +5,7 @@
 Reports `using X: a`, `import X: a` and `import X` when its own file uses none of its names and exactly one other file of
 its module uses them. ExplicitImports.jl finds uses. Labels mark first use of each name.
 Fix moves statement, with its trailing comment, to new line above first statement of module code in that file.
+Fix tier is `likely`: moved statement loads its package later, and code that runs between can see that.
 
 ## Rationale
 Julia binds import in whole module, so placement is style. Reader of using file cannot see where name comes from.
@@ -56,7 +57,7 @@ function move_fix(file::SyntaxFile, statement::Span, target::SyntaxFile, use::Sp
     (isnothing(lines) || !isempty(strip(indent))) && return manual_fix("move import to own line at top of `$destination`")
     moved = rstrip(file.text[statement.first_byte:last(lines)])
     inserted = Span(target.path, start, start - 1, Precision.exact)
-    return Fix("move to top of `$destination`", [line_deletion(file, lines), Edit(inserted, "$indent$moved\n")], Tier.safe)
+    return Fix("move to top of `$destination`", [line_deletion(file, lines), Edit(inserted, "$indent$moved\n")], Tier.likely)
 end
 
 """Finding for `imported` when only one file other than its own uses its names; `nothing` otherwise."""

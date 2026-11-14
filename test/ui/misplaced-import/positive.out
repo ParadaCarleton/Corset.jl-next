@@ -11,7 +11,7 @@ warning[misplaced-import]: import is used only in `solve.jl`
   |                                                 --- uses `dot`
   |
   = why: reader of using file cannot see where names come from
-  = fix: move to top of `solve.jl`   [safe]
+  = fix: move to top of `solve.jl`   [likely]
   = docs: corset explain misplaced-import
   = note: warn from readability group, library preset
   = note: opt out with `# corset: allow misplaced-import -- <reason>`
@@ -28,7 +28,7 @@ warning[misplaced-import]: import is used only in `clock.jl`
   |              ----- uses `Dates`
   |
   = why: reader of using file cannot see where names come from
-  = fix: move to top of `clock.jl`   [safe]
+  = fix: move to top of `clock.jl`   [likely]
   = docs: corset explain misplaced-import
 
 warning[misplaced-import]: import is used only in `clock.jl`
@@ -73,7 +73,7 @@ warning[misplaced-import]: import is used only in `inner.jl`
    |                                                       ----- uses `cross`
    |
    = why: reader of using file cannot see where names come from
-   = fix: move to top of `inner.jl`   [safe]
+   = fix: move to top of `inner.jl`   [likely]
    = docs: corset explain misplaced-import
 
 warning[misplaced-import]: import is used only in `MisplacedImportPositive.jl`
@@ -88,7 +88,7 @@ warning[misplaced-import]: import is used only in `MisplacedImportPositive.jl`
    |                       --------- uses `normalize`
    |
    = why: reader of using file cannot see where names come from
-   = fix: move to top of `MisplacedImportPositive.jl`   [safe]
+   = fix: move to top of `MisplacedImportPositive.jl`   [likely]
    = docs: corset explain misplaced-import
 
 warning[misplaced-import]: import is used only in `MisplacedImportPositive.jl`
@@ -103,7 +103,7 @@ warning[misplaced-import]: import is used only in `MisplacedImportPositive.jl`
    |                                         -- uses `tr`
    |
    = why: reader of using file cannot see where names come from
-   = fix: move to top of `MisplacedImportPositive.jl`   [safe]
+   = fix: move to top of `MisplacedImportPositive.jl`   [likely]
    = docs: corset explain misplaced-import
 
 warning[misplaced-import]: import is used only in `MisplacedImportPositive.jl`

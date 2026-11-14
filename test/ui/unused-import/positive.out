@@ -71,10 +71,30 @@ warning[unused-import]: unused import: `cross`
    = fix: remove import   [manual]
    = docs: corset explain unused-import
 
-warning[unused-import]: unused import: `lu`
-  --> src/UnusedImportPositive.jl:19:26
+warning[unused-import]: unused import: `uuid4`
+  --> src/UnusedImportPositive.jl:12:14
    |
-19 |     using LinearAlgebra: lu
+12 | using UUIDs: uuid4  # only import that loads UUIDs
+   |              ^^^^^ never used
+   |
+   = why: reader looks for use that does not exist
+   = fix: remove import, unless loading `UUIDs` has intended effect   [manual]
+   = docs: corset explain unused-import
+
+warning[unused-import]: unused import: `cycle`
+  --> src/UnusedImportPositive.jl:13:23
+   |
+13 | using Base.Iterators: cycle  # Julia loads Base anyway
+   |                       ^^^^^ never used
+   |
+   = why: reader looks for use that does not exist
+   = fix: remove import   [likely]
+   = docs: corset explain unused-import
+
+warning[unused-import]: unused import: `lu`
+  --> src/UnusedImportPositive.jl:21:26
+   |
+21 |     using LinearAlgebra: lu
    |                          ^^ never used
    |
    = why: reader looks for use that does not exist
@@ -82,9 +102,9 @@ warning[unused-import]: unused import: `lu`
    = docs: corset explain unused-import
 
 warning[unused-import]: unused import: `Inner`
-  --> src/UnusedImportPositive.jl:21:8
+  --> src/UnusedImportPositive.jl:23:8
    |
-21 | import .Inner
+23 | import .Inner
    |        ^^^^^^ never used
    |
    = why: reader looks for use that does not exist

@@ -9,6 +9,8 @@ import Unicode, Base64
 using Printf: Printf
 using LinearAlgebra: tr; const ONE = 1
 using LinearAlgebra: cross #= note =# ; const TWO = 2
+using UUIDs: uuid4  # only import that loads UUIDs
+using Base.Iterators: cycle  # Julia loads Base anyway
 include("geometry.jl")
 
 area(sides::Vector{Float64}) = norm(sides) + dot(sides, sides)
