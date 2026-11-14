@@ -8,6 +8,8 @@ Reports argument annotation of method on public function or constructor of publi
 - concrete container: `Vector`, `Matrix`, `Array`, `Dict`, `Set`.
 Union of number types only, as `Union{Int32, Int64}`, reports as whole and widens to `Integer` or `Real`.
 Method passes when other method of same function covers its signature: it is fast path beside generic method.
+Fix is `likely` when widened method and each other method of function, widened too or not, are disjoint or nested.
+Otherwise fix is manual: Julia could find call ambiguous, or drop method with same widened signature.
 
 ## Rationale
 Julia compiles method for each concrete argument type, so wider annotation runs as fast.
@@ -48,6 +50,59 @@ const WIDER = Dict{String, Tuple{Type, String}}(
 function replacement(mod::Module, file::SyntaxFile, node::SyntaxNode)::Union{Nothing, String}
     entry = get(WIDER, last(split(source(file, node), '.')), nothing)
     return !isnothing(entry) && resolve_type(mod, file, node) === first(entry) ? last(entry) : nothing
+end
+
+"""Base types rule widens, by type: wider type each becomes, as `WIDER` gives for its name."""
+const WIDER_TYPES = IdDict{Any, Type}(first(entry) => getglobal(Base, Symbol(last(entry))) for entry in values(WIDER) if isconcretetype(first(entry)) || first(entry) === AbstractFloat)
+
+"""Concrete containers rule widens, by type name: abstract type of same parameters."""
+const CONTAINERS = Dict{Core.TypeName, Type}(Array.body.body.name => AbstractArray, Dict.body.body.name => AbstractDict, Set.body.name => AbstractSet)
+
+"""
+Type `type` with every listed type widened, as `widened_text` widens annotation: Base number types, containers, and
+upper bounds of `<:` parameters. Changed parameter of invariant type becomes `<:` parameter. Aliases widen too.
+"""
+function widened_type(@nospecialize(type::Any))::Any
+    Base.isvarargtype(type) && return isdefined(type, :N) ? Vararg{widened_type(type.T), type.N} : Vararg{widened_type(type.T)}
+    if type isa UnionAll
+        variable = TypeVar(type.var.name, type.var.lb, widened_type(type.var.ub))
+        return UnionAll(variable, widened_type(type{variable}))
+    end
+    type isa Union && return Union{widened_type(type.a), widened_type(type.b)}
+    type isa DataType || return type
+    haskey(WIDER_TYPES, type) && return WIDER_TYPES[type]
+    (isempty(type.parameters) || type.name in (Type.body.name, Val.body.name)) && return type
+    head = get(CONTAINERS, type.name, type.name.wrapper)
+    parameters, variables = Any[], TypeVar[]
+    for parameter in type.parameters
+        wider = widened_type(parameter)
+        if wider === parameter || type.name === Tuple.name
+            push!(parameters, wider)
+        else
+            push!(variables, TypeVar(gensym(:T), wider))
+            push!(parameters, last(variables))
+        end
+    end
+    return foldr(UnionAll, variables; init = head{parameters...})
+end
+
+"""Signature `signature` with every argument widened; callee and `where` bounds of method stay."""
+widened_signature(signature::Type)::Type = Base.rewrap_unionall(Tuple{widened_type.(Base.unwrap_unionall(signature).parameters)...}, signature)
+
+"""Whether `inner` is strict subtype of `outer`: Julia picks method of `inner` for calls both match."""
+nested(inner::Type, outer::Type)::Bool = inner <: outer && !(outer <: inner)
+
+"""
+Whether method `wide`, widened from `method`, and each other method of its function, before and after its own widening,
+are disjoint or nested: no call becomes ambiguous and no method replaces other.
+"""
+function dispatch_safe(method::Method, wide::Type)::Bool
+    callee = Base.unwrap_unionall(method.sig).parameters[1]
+    matches = Base._methods_by_ftype(Base.rewrap_unionall(Tuple{callee, Vararg{Any}}, method.sig), -1, Base.get_world_counter())
+    for match in matches, other in (match.method.sig, widened_signature(match.method.sig))
+        match.method === method || typeintersect(wide, other) === Union{} || nested(wide, other) || nested(other, wide) || return false
+    end
+    return true
 end
 
 """Whether type `head` takes subtypes in its parameters: `Union` and tuple types."""
@@ -96,13 +151,17 @@ end
 fast_path(site::MethodSite, sites::Vector{MethodSite})::Bool =
     any(other -> site.method.sig <: other.method.sig && !(other.method.sig <: site.method.sig), sites)
 
-"""Finding for overspecified `annotation` of `file`, widened to `wider`, with reported parts `found`."""
-function overspecified_finding(file::SyntaxFile, annotation::SyntaxNode, wider::String, found::Vector{SyntaxNode})::Finding
+"""
+Finding for overspecified `annotation` of `file`, widened to `wider`, with reported parts `found`. Fix is manual unless
+widened method is `safe` for dispatch.
+"""
+function overspecified_finding(file::SyntaxFile, annotation::SyntaxNode, wider::String, found::Vector{SyntaxNode}, safe::Bool)::Finding
     text = source(file, annotation)
     causes = [Label(span(file, part), "names specific type") for part in found if part !== annotation]
+    fix = safe ? replace_fix(file, annotation, wider, Tier.likely) : manual_fix("replace with `$wider` after other methods change: widened method overlaps them")
     return Finding(
         NAME, :overspecified, Confidence.definite, "`$text` rejects callers `$wider` accepts", Label(span(file, annotation), "narrower than code needs"),
-        causes, "Julia compiles method for each concrete argument type, so wider annotation runs as fast", replace_fix(file, annotation, wider, Tier.likely),
+        causes, "Julia compiles method for each concrete argument type, so wider annotation runs as fast", fix,
     )
 end
 
@@ -117,12 +176,15 @@ function findings(facts::FactSet)::Vector{Finding}
     for site in package.methods
         parts = isnothing(site.node) ? nothing : signature(site.node)
         (isnothing(parts) || !public_function(site.method, package.public, types) || fast_path(site, package.methods)) && continue
+        safe = nothing
         for argument in children_of(first(parts))[2:end], annotation in argument_annotations(argument)
             annotation in seen && continue
             push!(seen, annotation)
             reported = SyntaxNode[]
             wider = widened_text(site.method.module, site.file, annotation, reported)
-            isempty(reported) || push!(found, overspecified_finding(site.file, annotation, wider, reported))
+            isempty(reported) && continue
+            isnothing(safe) && (safe = dispatch_safe(site.method, widened_signature(site.method.sig)))
+            push!(found, overspecified_finding(site.file, annotation, wider, reported, safe))
         end
     end
     return found
