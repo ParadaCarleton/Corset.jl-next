@@ -177,7 +177,7 @@ function findings(facts::FactSet)::Vector{Finding}
         parts = isnothing(site.node) ? nothing : signature(site.node)
         (isnothing(parts) || !public_function(site.method, package.public, types) || fast_path(site, package.methods)) && continue
         safe = nothing
-        for argument in children_of(first(parts))[2:end], annotation in argument_annotations(argument)
+        for argument in parts.arguments, annotation in argument_annotations(argument)
             annotation in seen && continue
             push!(seen, annotation)
             reported = SyntaxNode[]

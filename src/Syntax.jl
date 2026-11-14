@@ -4,6 +4,7 @@ module Syntax
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
 using ..Facts: SyntaxFile, Role, FactSet, Finding, Label, Span, Precision, Confidence, BindingKind, BindingSite
 using ..Facts: manual_fix, trimmed, trimmed_bytes, children_of, kind_name, parent_of, identifier_name, definition_name, struct_fields
+using ..Facts: signature, callee_node
 
 """Rule name parse errors report under; outside registry, like opt-out problems."""
 const PARSE_ERROR = Symbol("parse-error")
@@ -48,13 +49,14 @@ function binding_sites(forms::Dict{Kind, Vector{SyntaxNode}})::Vector{BindingSit
     sites = BindingSite[]
     nodes(kind::String)::Vector{SyntaxNode} = get(forms, JS.Kind(kind), SyntaxNode[])
     site!(node::SyntaxNode, kind::BindingKind.T)::Nothing = (foreach(name -> push!(sites, BindingSite(name, kind)), bound_identifiers(node)); nothing)
+    callables = Base.IdSet{SyntaxNode}()
     for definition in nodes("function")
-        signature = children_of(definition)[1]
-        while kind_name(signature) in ("where", "::")
-            signature = children_of(signature)[1]
-        end
-        kind_name(signature) == "call" || continue
-        for parameter in children_of(signature)[2:end], node in (kind_name(parameter) == "parameters" ? children_of(parameter) : [parameter])
+        parts = signature(definition)
+        isnothing(parts) && continue
+        # Callable object method `(s::S)(x)` binds `s` as parameter and defines no name.
+        callee = callee_node(parts.call)
+        kind_name(callee) == "::" && (push!(callables, definition); site!(callee, BindingKind.parameter))
+        for parameter in parts.arguments, node in (kind_name(parameter) == "parameters" ? children_of(parameter) : [parameter])
             site!(node, BindingKind.parameter)
         end
     end
@@ -67,7 +69,7 @@ function binding_sites(forms::Dict{Kind, Vector{SyntaxNode}})::Vector{BindingSit
         kind_name(parent_of(clause)) == "iteration" && site!(children_of(clause)[1], BindingKind.loop)
     end
     for kind in NAMED, definition in nodes(kind)
-        site!(definition_name(definition), BindingKind.definition)
+        definition in callables || site!(definition_name(definition), BindingKind.definition)
     end
     for definition in nodes("struct"), field in struct_fields(definition)
         push!(sites, BindingSite(field, BindingKind.field))

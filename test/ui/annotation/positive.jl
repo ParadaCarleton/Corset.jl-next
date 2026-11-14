@@ -15,3 +15,7 @@ struct Box
     side::Float64
     Box(side) = new(side)
 end
+
+left ⊕ right::Int = left
+
+(box::Box)(scale) = box.side * scale

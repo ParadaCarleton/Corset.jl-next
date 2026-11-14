@@ -546,23 +546,34 @@ const NO_CHILDREN = ReadOnlyVector(SyntaxNode[])
 children_of(node::SyntaxNode)::ReadOnlyVector{SyntaxNode, Vector{SyntaxNode}} =
     JS.is_leaf(node) ? NO_CHILDREN : ReadOnlyVector(JS.children(node))
 
-"""Name node of definition `node` (function, macro, struct, module): strips `where`, result type, arguments, type parameters, supertype."""
+"""
+Name node of definition `node` (function, macro, struct, module): strips `where`, result type, arguments, type parameters,
+supertype. Infix definition `a ⊕ b = …` names operator; callable object method `(s::S)(x) = …` names type `S`.
+"""
 function definition_name(node::SyntaxNode)::SyntaxNode
     head = children_of(node)[1]
     while kind_name(head) in ("where", "::", "call", "curly", "<:") && !isempty(children_of(head))
-        head = children_of(head)[1]
+        if kind_name(head) == "call"
+            head = callee_node(head)
+            kind_name(head) == "::" && (head = last(children_of(head)))
+        else
+            head = children_of(head)[1]
+        end
     end
     return head
 end
 
-"""Signature call of function definition `node` under `where` and result type, and whether result has type; `nothing` for anonymous function."""
-function signature(definition::SyntaxNode)::Union{Nothing, Tuple{SyntaxNode, Bool}}
+"""
+Signature of function definition `node` under `where` and result type: call node, argument nodes in source order with
+keyword group last, and whether result has type; `nothing` for anonymous function. Infix callee is no argument.
+"""
+function signature(definition::SyntaxNode)::Union{Nothing, @NamedTuple{call::SyntaxNode, arguments::Vector{SyntaxNode}, typed::Bool}}
     head, typed = children_of(definition)[1], false
     while kind_name(head) in ("where", "::") && length(children_of(head)) == 2
         typed |= kind_name(head) == "::"
         head = children_of(head)[1]
     end
-    return kind_name(head) == "call" ? (head, typed) : nothing
+    return kind_name(head) == "call" ? (call = head, arguments = call_arguments(head), typed) : nothing
 end
 
 """Callee node of call `node`: operator of infix call `a ⊕ b`, first child otherwise."""

@@ -18,3 +18,5 @@ end
 handler = function (event)
     return event
 end
+
+(left::Int ⊗ right::Int)::Int = left

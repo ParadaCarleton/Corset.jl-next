@@ -18,4 +18,10 @@ widths(rows::Vector{Real}...; factor = 2)::Vector{Int} = [factor * length(row) f
 
 """Lengths of `shapes`, with default count."""
 counted(shapes::Vector{Shape}, count::Int = 1)::Int = count * length(shapes)
+
+"""Shapes of both lists."""
+left::Vector{Shape} ⊕ right::Vector{Shape} = vcat(left, right)
+
+"""Sum of `scale`, called on shape."""
+(shape::Shape)(scale::Vector{Real})::Real = sum(scale)
 end

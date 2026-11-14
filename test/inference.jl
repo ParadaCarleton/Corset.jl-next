@@ -87,6 +87,11 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         # Own signatures come before reached ones.
         @test findfirst(code -> code.site.method.name === :helper, FACTS.typed) > findfirst(code -> code.site.method.name === :caller, FACTS.typed)
     end
+    @testset "definition sites" begin
+        # Infix definition and callable object method once got no definition node.
+        @test !isnothing(only(sites("⊕")).node) && typed("⊕", FloatStandIn, FloatStandIn).result == FloatStandIn
+        @test !isnothing(only(site for site in PACKAGE.methods if Base.unwrap_unionall(site.method.sig).parameters[1] <: MODULE.Circle).node)
+    end
     @testset "untyped arguments" begin
         # Typed keyword leaves positional `x` untyped.
         @test untyped(only(sites("hk"))) && !untyped(only(sites("keyed"))) && !untyped(only(sites("slurpy")))

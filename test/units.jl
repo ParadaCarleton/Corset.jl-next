@@ -178,8 +178,18 @@ const SYNTAX_ONLY = Corset.Config.Flags(;
 @testset "defined name" begin
     # Parenthesized operator once lost exact method site: `(==)` never matched method name `==`.
     text = "Base.:(==)(a, b) = true\nBase.:+(a, b) = a\nfunction Base.show(io, x) end\n(!=)(a, b) = false\nlocal_name(x) = x\n"
+    # Infix definition once named its first argument; callable object method named its instance.
+    text *= "left ⊕ right = left\n(s::S)(x) = x\n(::S{T})(x) where {T} = x\n"
     file = Corset.Syntax.parse_file("names.jl", text, Role.package)
-    @test [Corset.Package.defined_name(file, node) for node in Corset.Facts.forms(file, "function")] == ["==", "+", "show", "!=", "local_name"]
+    definitions = Corset.Facts.forms(file, "function")
+    @test [Corset.Package.defined_name(file, node) for node in definitions] == ["==", "+", "show", "!=", "local_name", "⊕", "S", "S"]
+    @test [Facts.source(file, node) for node in Facts.signature(definitions[6]).arguments] == ["left", "right"]
+    # Infix operator is no parameter; callable object binds instance and defines no name.
+    bound = Corset.Syntax.parse_file("bound.jl", "left ⊕ right = left\n(s::S)(x) = x\n", Role.package)
+    @test [(Facts.source(bound, site.name), site.kind) for site in bound.bindings] == [
+        ("left", Facts.BindingKind.parameter), ("right", Facts.BindingKind.parameter), ("s", Facts.BindingKind.parameter),
+        ("x", Facts.BindingKind.parameter), ("⊕", Facts.BindingKind.definition),
+    ]
 end
 
 @testset "discovery" begin
