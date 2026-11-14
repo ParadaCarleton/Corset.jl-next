@@ -9,3 +9,7 @@ abs(x) < 1.0e-8
 # Quoted code and macro arguments with `{}` are data.
 expression = :(x ≈ 0)
 pattern = @pattern {x} ≈ 0
+
+# Test macros pass trailing keywords to `isapprox`.
+@test x ≈ 0 atol = 1e-10
+@test_broken isapprox(x, 0) atol = 1e-10
