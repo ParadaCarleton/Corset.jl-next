@@ -1,3 +1,4 @@
+# ==> src/ImplicitImportPositive.jl
 # runic: off
 """Names reached through bare `using`."""
 module ImplicitImportPositive
@@ -19,3 +20,6 @@ module Inner
 end
 
 end
+# ==> src/format.jl
+using Printf: Printf, @sprintf
+label(value::Float64) = @sprintf("%.2f", value)

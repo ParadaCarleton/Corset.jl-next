@@ -19,7 +19,7 @@ Each stage is one module that produces facts. Rules read facts through one API. 
 | `Facts` | Fact types and query API. Only module rule code may import. |
 | `Rules` | One pure function per rule; registry as data. |
 | `Engine` | Salsa.jl query graph: pick stages that enabled rules need; run them; apply levels, confidence, opt-outs, baseline. |
-| `Fix` | Apply edits to lossless tree; filter by tier. |
+| `Fix` | Apply edits to lossless tree; filter by tier. Fix that edits several files applies whole or not at all. |
 | `Report` | Render text, JSON, SARIF; `explain`. |
 | `Cache` | Disk cache keys and storage. |
 | `Config` | Project.toml and LocalPreferences.toml tables, presets, command-line flags; level per rule. |

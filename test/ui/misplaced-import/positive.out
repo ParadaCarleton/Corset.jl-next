@@ -1,0 +1,123 @@
+warning[misplaced-import]: import is used only in `solve.jl`
+ --> src/MisplacedImportPositive.jl:5:1
+  |
+5 | using LinearAlgebra: norm, dot  # vector math
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this file uses none of its names
+  |
+ ::: src/solve.jl:2:34
+  |
+2 | solve(vector::Vector{Float64}) = norm(vector) / dot(vector, vector)
+  |                                  ---- uses `norm`
+  |                                                 --- uses `dot`
+  |
+  = why: reader of using file cannot see where names come from
+  = fix: move to top of `solve.jl`   [safe]
+  = docs: corset explain misplaced-import
+  = note: warn from readability group, library preset
+  = note: opt out with `# corset: allow misplaced-import -- <reason>`
+
+warning[misplaced-import]: import is used only in `clock.jl`
+ --> src/MisplacedImportPositive.jl:6:1
+  |
+6 | import Dates
+  | ^^^^^^^^^^^^ this file uses none of its names
+  |
+ ::: src/clock.jl:1:14
+  |
+1 | now_year() = Dates.year(Dates.now())
+  |              ----- uses `Dates`
+  |
+  = why: reader of using file cannot see where names come from
+  = fix: move to top of `clock.jl`   [safe]
+  = docs: corset explain misplaced-import
+
+warning[misplaced-import]: import is used only in `clock.jl`
+ --> src/MisplacedImportPositive.jl:7:1
+  |
+7 | using Printf: @sprintf; const DIGITS = 2
+  | ^^^^^^^^^^^^^^^^^^^^^^ this file uses none of its names
+  |
+ ::: src/clock.jl:2:25
+  |
+2 | label(value::Float64) = @sprintf("%.2f", value)
+  |                         -------- uses `@sprintf`
+  |
+  = why: reader of using file cannot see where names come from
+  = fix: move import to own line at top of `clock.jl`   [manual]
+  = docs: corset explain misplaced-import
+
+warning[misplaced-import]: import is used only in `helpers.jl`
+ --> src/MisplacedImportPositive.jl:8:17
+  |
+8 | const ZONE = 0; using Unicode: graphemes
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^ this file uses none of its names
+  |
+ ::: src/helpers.jl:3:33
+  |
+3 | letters(text::String) = collect(graphemes(text))
+  |                                 --------- uses `graphemes`
+  |
+  = why: reader of using file cannot see where names come from
+  = fix: move import to own line at top of `helpers.jl`   [manual]
+  = docs: corset explain misplaced-import
+
+warning[misplaced-import]: import is used only in `inner.jl`
+  --> src/MisplacedImportPositive.jl:16:5
+   |
+16 |     using LinearAlgebra: cross
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ this file uses none of its names
+   |
+  ::: src/inner.jl:2:55
+   |
+ 2 | turn(left::Vector{Float64}, right::Vector{Float64}) = cross(left, right)
+   |                                                       ----- uses `cross`
+   |
+   = why: reader of using file cannot see where names come from
+   = fix: move to top of `inner.jl`   [safe]
+   = docs: corset explain misplaced-import
+
+warning[misplaced-import]: import is used only in `MisplacedImportPositive.jl`
+  --> src/helpers.jl:1:1
+   |
+ 1 | using Unicode: normalize
+   | ^^^^^^^^^^^^^^^^^^^^^^^^ this file uses none of its names
+   |
+  ::: src/MisplacedImportPositive.jl:13:23
+   |
+13 | clean(text::String) = normalize(text)
+   |                       --------- uses `normalize`
+   |
+   = why: reader of using file cannot see where names come from
+   = fix: move to top of `MisplacedImportPositive.jl`   [safe]
+   = docs: corset explain misplaced-import
+
+warning[misplaced-import]: import is used only in `MisplacedImportPositive.jl`
+  --> src/inner.jl:1:1
+   |
+ 1 | using LinearAlgebra: tr
+   | ^^^^^^^^^^^^^^^^^^^^^^^ this file uses none of its names
+   |
+  ::: src/MisplacedImportPositive.jl:18:41
+   |
+18 |     trace_of(matrix::Matrix{Float64}) = tr(matrix)
+   |                                         -- uses `tr`
+   |
+   = why: reader of using file cannot see where names come from
+   = fix: move to top of `MisplacedImportPositive.jl`   [safe]
+   = docs: corset explain misplaced-import
+
+warning[misplaced-import]: import is used only in `MisplacedImportPositive.jl`
+  --> src/tiny.jl:1:1
+   |
+ 1 | using Dates: today
+   | ^^^^^^^^^^^^^^^^^^ this file uses none of its names
+   |
+  ::: src/MisplacedImportPositive.jl:21:44
+   |
+21 | module Tiny; include("tiny.jl"); stamp() = today(); end
+   |                                            ----- uses `today`
+   |
+   = why: reader of using file cannot see where names come from
+   = fix: move import to own line at top of `MisplacedImportPositive.jl`   [manual]
+   = docs: corset explain misplaced-import
+

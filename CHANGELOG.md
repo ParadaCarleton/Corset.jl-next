@@ -21,6 +21,8 @@
 - New rule `piracy`: a package method extends a function of another module, and another module owns every argument type. Aqua.jl decides piracy. Extensions own the package types.
 - New rule `internal-access`: code reaches a name that another module neither exports nor declares `public`, as in `Base._sub2ind`. ExplicitImports.jl finds the accesses and imports.
 - New rule `implicit-import`: a bare `using X` brings names the module uses without naming them. The fix writes `using X: X, name, …`.
+- New rule `misplaced-import`: an explicit import sits in a file that uses none of its names, and one other file uses them all. The fix moves the import to the top of that file.
+- `corset fix` applies a fix that edits several files to all of them or to none.
 - A cause label in another file than the primary label gets its own snippet in text output.
 - A `[sources]` entry in `test/Project.toml` can give `rev` alone or `subdir`.
 - Text output shows paths relative to the project root.

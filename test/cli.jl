@@ -345,6 +345,6 @@ end
     span(first, last) = Corset.Facts.Span("f.jl", first, last, Corset.Facts.Precision.exact)
     fix(first, last) = Corset.Facts.Fix("t", [Corset.Facts.Edit(span(first, last), "x")], Corset.Facts.Tier.safe)
     finding(first, last) = Corset.Facts.Finding(:sample, :kind, Corset.Facts.Confidence.definite, "m", Corset.Facts.Label(span(first, last), "l"), Corset.Facts.Label[], "w", fix(first, last))
-    edits = Corset.Fixes.applicable_edits([finding(1, 3), finding(2, 4), finding(5, 6)], "f.jl", Corset.Facts.Tier.safe)
+    edits = Corset.Fixes.applicable_edits([finding(1, 3), finding(2, 4), finding(5, 6)], Corset.Facts.Tier.safe)
     @test [edit.span.first_byte for edit in edits] == [1, 5]
 end

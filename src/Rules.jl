@@ -25,6 +25,7 @@ include("rules/iterator_traits.jl")
 include("rules/juxtaposition.jl")
 include("rules/method_ambiguity.jl")
 include("rules/method_overwrite.jl")
+include("rules/misplaced_import.jl")
 include("rules/missing_interface.jl")
 include("rules/mixed_return.jl")
 include("rules/module_inception.jl")
@@ -72,6 +73,7 @@ const REGISTRY = RuleEntry[
     Juxtaposition.ENTRY,
     MethodAmbiguity.ENTRY,
     MethodOverwrite.ENTRY,
+    MisplacedImport.ENTRY,
     MissingInterface.ENTRY,
     MixedReturn.ENTRY,
     ModuleInception.ENTRY,
