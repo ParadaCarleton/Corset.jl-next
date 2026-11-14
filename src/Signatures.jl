@@ -20,11 +20,23 @@ struct MethodSignatures
     over_limit::Bool
 end
 
+"""
+Members of `candidates` below `bound`. Loop instead of closure: closure capturing type value has type parameter
+`Type{value}`, so it compiles once per bound.
+"""
+function fitting(candidates::Any, bound::Type)::Vector{Type}
+    found = Type[]
+    for candidate in candidates
+        candidate <: bound && push!(found, candidate)
+    end
+    return found
+end
+
 """Array stand-ins for `bound`: element `Any` when bound allows any element; number stand-ins; else bound element type."""
 function arrays(bound::Type)::Vector{Type}
     for dimensions in 1:3, kind in (ArrayStandIn, DenseStandIn)
         kind{Any, dimensions} <: bound && return Type[kind{Any, dimensions}]
-        found = Type[kind{element, dimensions} for element in StandIns.NUMBERS if kind{element, dimensions} <: bound]
+        found = fitting((kind{element, dimensions} for element in StandIns.NUMBERS), bound)
         isempty(found) || return found
         kind{eltype(bound), dimensions} <: bound && return Type[kind{eltype(bound), dimensions}]
     end
@@ -35,12 +47,12 @@ end
 function stand_ins(bound::Type, structs::Vector{<:Type})::Vector{Type}
     bound === Any && return Type[]
     isconcretetype(bound) && return Type[bound]
-    numbers = Type[number for number in StandIns.NUMBERS if number <: bound]
+    numbers = fitting(StandIns.NUMBERS, bound)
     isempty(numbers) || return numbers
     found = bound <: AbstractArray ? arrays(bound) : Type[]
     isempty(found) || return found
     FunctionStandIn <: bound && return Type[FunctionStandIn]
-    return Type[type for type in structs if type <: bound]
+    return fitting(structs, bound)
 end
 
 """
@@ -83,7 +95,10 @@ function method_signatures(method::Method, structs::Vector{<:Type})::MethodSigna
     for signature in first(instantiated, LIMIT)
         parameters = Base.unwrap_unionall(signature).parameters
         options = Vector{Any}[Any[first(parameters)]]
-        append!(options, (choices(parameters[position], position - 1, signature, structs, bare) for position in 2:length(parameters)))
+        # Loop instead of generator: closure capturing `signature` compiles once per method (`fitting`).
+        for position in 2:length(parameters)
+            push!(options, choices(parameters[position], position - 1, signature, structs, bare))
+        end
         for combination in Iterators.product(options...)
             length(signatures) < LIMIT || (over_limit = true; break)
             push!(signatures, Base.rewrap_unionall(Tuple{combination...}, signature))
