@@ -318,10 +318,13 @@ function load(project::ProjectFacts, files::Vector{SyntaxFile})::Loaded
         return Loaded(nothing, [finding], [BlindSpot("package did not load", finding.primary.span); moved_versions(project)])
     end
     errors, blind_spots = load_extensions(mod, project, files)
-    modules = package_modules(mod, project)
+    return Loaded(package_facts(package_modules(mod, project), files), errors, [blind_spots; moved_versions(project)])
+end
+
+"""Facts of loaded package `modules`, root module first, with method and struct sites in `files`."""
+function package_facts(modules::Vector{Module}, files::Vector{SyntaxFile})::PackageFacts
     sites = method_sites(modules, files)
-    facts = PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files))
-    return Loaded(facts, errors, [blind_spots; moved_versions(project)])
+    return PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files))
 end
 
 end

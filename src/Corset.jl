@@ -23,6 +23,7 @@ include("Engine.jl")
 include("Render.jl")
 include("Output.jl")
 include("CLI.jl")
+include("InferenceSample.jl")
 
 using .Engine: check
 public check
@@ -57,7 +58,19 @@ function workload(directory::String)::Nothing
     return nothing
 end
 
-@setup_workload @compile_workload mktempdir(workload)
+"""
+Run `inference` stage on `InferenceSample`, so package image keeps inference of Base callees on stand-in types and
+compiled source mapping.
+"""
+function inference_workload()::Nothing
+    path = joinpath(@__DIR__, "InferenceSample.jl")
+    files = [Syntax.parse_file(path, read(path, String), Facts.Role.package)]
+    facts, _ = Inference.inference_facts(Package.package_facts([InferenceSample], files), files)
+    isempty(facts.typed) && error("precompile workload: inference stage typed no sample method")
+    return nothing
+end
+
+@setup_workload @compile_workload (mktempdir(workload); inference_workload())
 
 """Command-line entry point for `corset` app and `julia -m Corset`; package runs relaunch in temporary environment."""
 function (@main)(args::Vector{String})::Int
