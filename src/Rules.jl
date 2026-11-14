@@ -18,6 +18,7 @@ include("rules/duplicate_statement.jl")
 include("rules/field_prefix.jl")
 include("rules/file_length.jl")
 include("rules/inference_dependent.jl")
+include("rules/internal_access.jl")
 include("rules/invariant_parameter.jl")
 include("rules/iterator_traits.jl")
 include("rules/juxtaposition.jl")
@@ -63,6 +64,7 @@ const REGISTRY = RuleEntry[
     FieldPrefix.ENTRY,
     FileLength.ENTRY,
     InferenceDependent.ENTRY,
+    InternalAccess.ENTRY,
     InvariantParameter.ENTRY,
     IteratorTraits.ENTRY,
     Juxtaposition.ENTRY,

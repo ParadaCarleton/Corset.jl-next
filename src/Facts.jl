@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, InternalAccess, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, argument_type, call_text, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -219,12 +219,25 @@ struct PackageFacts
 end
 
 """
+Use of name other module neither exports nor declares `public` (`external` stage fact): module code reaches into, name
+or name chain (`Precompilation.PkgPrecompileError`), its span, and whether import statement names it.
+"""
+struct InternalAccess
+    owner::Module
+    name::String
+    span::Span
+    imported::Bool
+end
+
+"""
 External tool output on loaded package (`external` stage facts): pairs of package method sites `Test.detect_ambiguities`
-reports, earlier definition first; package method sites Aqua.jl calls type piracy.
+reports, earlier definition first; package method sites Aqua.jl calls type piracy; internal accesses ExplicitImports.jl
+finds in analyzed files, in source order.
 """
 struct ExternalFacts
     ambiguities::Vector{Tuple{MethodSite, MethodSite}}
     piracies::Vector{MethodSite}
+    internal_accesses::Vector{InternalAccess}
 end
 
 """

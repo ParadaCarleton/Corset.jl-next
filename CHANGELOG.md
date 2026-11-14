@@ -19,6 +19,7 @@
 - New rule `method-ambiguity`: two package methods match the same call, and neither is more specific. `Test.detect_ambiguities` finds the pairs. The message names a call that matches both.
 - `method-overwrite` messages show the `where` type variables of the signature.
 - New rule `piracy`: a package method extends a function of another module, and another module owns every argument type. Aqua.jl decides piracy. Extensions own the package types.
+- New rule `internal-access`: code reaches a name that another module neither exports nor declares `public`, as in `Base._sub2ind`. ExplicitImports.jl finds the accesses and imports.
 - A `[sources]` entry in `test/Project.toml` can give `rev` alone or `subdir`.
 - Text output shows paths relative to the project root.
 - A precompile workload compiles the command line, so a first `corset check` starts in seconds.
