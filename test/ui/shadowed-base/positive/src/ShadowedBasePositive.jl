@@ -16,6 +16,8 @@ length(squares::Vector{Square}) = sum(length, squares)
 
 first(name::Symbol) = name
 
+hash(name::Symbol, seed::UInt) = seed
+
 last(square::Square; scale = 1) = scale * square.side
 
 for name in (:eltype,)

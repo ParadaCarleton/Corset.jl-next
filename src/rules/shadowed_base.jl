@@ -4,10 +4,12 @@
 ## Description
 Reports function that package module creates under name of exported Base function, such as `show` or `length`.
 Module gets separate function of same name, so Base function gains no method.
+Finding is definite for operators and Base interface functions when each signature names package type; otherwise possible.
 
 ## Rationale
 Method meant to extend Base function lands on new function. Callers outside module call `Base.show` and never reach it.
 Inside module, name no longer reaches Base function: `show(stdout, 1)` throws `MethodError`. Julia 1.13 raises no error.
+Packages also shadow names on purpose, such as own `parse` for file format; Corset cannot tell intent there.
 
 ## Example
 ```julia
@@ -26,7 +28,8 @@ Base.show(io::IO, square::Square) = print(io, "Square(", square.side, ")")
 ```
 
 ## Limitations
-Rule sees exported Base names only. Fix qualifies each method with `Base.` only when each signature names package type;
+Rule sees exported Base names only. Interface list holds functions that Julia manual interfaces ask types to extend, plus display, comparison and conversion.
+Fix qualifies each method with `Base.` only when each signature names package type;
 otherwise method on Base function would be type piracy, and fix is manual.
 """
 module ShadowedBase
@@ -57,6 +60,20 @@ function own_signature(method::Method, modules::Set{Module})::Bool
     return any(argument -> names_own_type(argument, modules), arguments)
 end
 
+"""Exported Base functions that Julia manual interfaces ask types to extend, plus display, comparison and conversion."""
+const INTERFACE = Set(
+    [
+        :iterate, :eltype, :length, :size, :getindex, :setindex!, :firstindex, :lastindex, :axes, :similar, :IndexStyle, :strides, :stride,
+        :propertynames, :getproperty, :setproperty!, :copy, :copyto!, :show, :isequal, :hash, :isless, :convert, :promote_rule,
+    ]
+)
+
+"""Confidence of shadow `name` with method `sites`: definite for operator or interface function when each signature names package type."""
+function shadow_confidence(name::Symbol, sites::Vector{MethodSite}, modules::Set{Module})::Confidence.T
+    meant = (Base.isoperator(name) || name in INTERFACE) && all(site -> own_signature(site.method, modules), sites)
+    return meant ? Confidence.definite : Confidence.possible
+end
+
 """Qualified name of Base function `name` as definition writes it: `Base.show`, `Base.:+`."""
 qualified(name::Symbol)::String = Base.isoperator(name) ? "Base.:$name" : "Base.$name"
 
@@ -82,7 +99,7 @@ function findings(facts::FactSet)::Vector{Finding}
         others = [Label(name_span(site), "another method of new function") for site in sites[2:end]]
         push!(
             found, Finding(
-                NAME, :shadowed_base, Confidence.definite, "`$name` defines new function; `Base.$name` gains no method",
+                NAME, :shadowed_base, shadow_confidence(name, sites, modules), "`$name` defines new function; `Base.$name` gains no method",
                 Label(name_span(sites[1]), "creates `$(nameof(mod)).$name`"), others,
                 "callers of `Base.$name` never reach these methods, and `$name` inside module no longer reaches Base",
                 shadow_fix(name, sites, modules),

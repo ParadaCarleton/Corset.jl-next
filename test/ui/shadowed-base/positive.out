@@ -40,23 +40,36 @@ error[shadowed-base]: `first` defines new function; `Base.first` gains no method
    | ^^^^^ creates `ShadowedBasePositive.first`
    |
    = why: callers of `Base.first` never reach these methods, and `first` inside module no longer reaches Base
+   = confidence: possible
    = fix: rename function, or extend `Base.first` for package types only   [manual]
    = docs: corset explain shadowed-base
 
-error[shadowed-base]: `last` defines new function; `Base.last` gains no method
+error[shadowed-base]: `hash` defines new function; `Base.hash` gains no method
   --> src/ShadowedBasePositive.jl:19:1
    |
-19 | last(square::Square; scale = 1) = scale * square.side
+19 | hash(name::Symbol, seed::UInt) = seed
+   | ^^^^ creates `ShadowedBasePositive.hash`
+   |
+   = why: callers of `Base.hash` never reach these methods, and `hash` inside module no longer reaches Base
+   = confidence: possible
+   = fix: rename function, or extend `Base.hash` for package types only   [manual]
+   = docs: corset explain shadowed-base
+
+error[shadowed-base]: `last` defines new function; `Base.last` gains no method
+  --> src/ShadowedBasePositive.jl:21:1
+   |
+21 | last(square::Square; scale = 1) = scale * square.side
    | ^^^^ creates `ShadowedBasePositive.last`
    |
    = why: callers of `Base.last` never reach these methods, and `last` inside module no longer reaches Base
+   = confidence: possible
    = fix: extend `Base.last`   [likely]
    = docs: corset explain shadowed-base
 
 error[shadowed-base]: `eltype` defines new function; `Base.eltype` gains no method
-  --> src/ShadowedBasePositive.jl:22:5
+  --> src/ShadowedBasePositive.jl:24:5
    |
-22 |     @eval $name(::Square) = Float64
+24 |     @eval $name(::Square) = Float64
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ creates `ShadowedBasePositive.eltype`
    |
    = why: callers of `Base.eltype` never reach these methods, and `eltype` inside module no longer reaches Base
