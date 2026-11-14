@@ -69,10 +69,10 @@ function load_package(project::Union{Nothing, ProjectFacts}, settings::Settings,
     return loads(project, settings) ? Package.load(project, files) : Package.Loaded(nothing, Finding[], BlindSpot[])
 end
 
-"""External facts of loaded `package` when `settings` enable `external` rule; `nothing` otherwise."""
-function external_facts(package::Union{Nothing, PackageFacts}, settings::Settings)::Union{Nothing, ExternalFacts}
+"""External facts of loaded `package` with analyzed `files` when `settings` enable `external` rule; `nothing` otherwise."""
+function external_facts(package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, settings::Settings)::Union{Nothing, ExternalFacts}
     wanted = any(entry -> entry.stage == Stage.external && enabled(settings, entry), REGISTRY)
-    return isnothing(package) || !wanted ? nothing : External.external_facts(package)
+    return isnothing(package) || !wanted ? nothing : External.external_facts(package, files)
 end
 
 """Project facts of package run on `path` with `flags` loads; `nothing` when run loads no package."""
@@ -99,7 +99,7 @@ function analyze(path::String, flags::Flags)::Analysis
     settings = Config.settings(project, flags, REGISTRY)
     sources = Discovery.discover(path)
     loaded = load_package(sources.project, settings, sources.files)
-    facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, external_facts(loaded.facts, settings))
+    facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, external_facts(loaded.facts, sources.files, settings))
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
     root = something(project, isdir(path) ? abspath(path) : dirname(abspath(path)))

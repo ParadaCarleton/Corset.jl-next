@@ -1,0 +1,102 @@
+warning[internal-access]: `Dates.CONVERSION_SPECIFIERS` is internal to `Dates`
+ --> ext/InternalAccessPositiveDatesExt.jl:6:22
+  |
+6 | specifiers() = Dates.CONVERSION_SPECIFIERS
+  |                      ^^^^^^^^^^^^^^^^^^^^^ reaches internal name
+  |
+  = why: owner may rename or remove internal name in any release
+  = fix: use public API, or ask `Dates` to declare name `public`   [manual]
+  = docs: corset explain internal-access
+  = note: warn from composability group, library preset
+  = note: opt out with `# corset: allow internal-access -- <reason>`
+
+warning[internal-access]: `Base._sub2ind` is internal to `Base`
+ --> src/InternalAccessPositive.jl:5:14
+  |
+5 | import Base: _sub2ind
+  |              ^^^^^^^^ imports internal name
+  |
+  = why: owner may rename or remove internal name in any release
+  = fix: use public API, or ask `Base` to declare name `public`   [manual]
+  = docs: corset explain internal-access
+
+warning[internal-access]: `Base.unwrapva` is internal to `Base`
+ --> src/InternalAccessPositive.jl:6:14
+  |
+6 | import Base: unwrapva,isvarargtype
+  |              ^^^^^^^^ imports internal name
+  |
+  = why: owner may rename or remove internal name in any release
+  = fix: use public API, or ask `Base` to declare name `public`   [manual]
+  = docs: corset explain internal-access
+
+warning[internal-access]: `Base.isvarargtype` is internal to `Base`
+ --> src/InternalAccessPositive.jl:6:23
+  |
+6 | import Base: unwrapva,isvarargtype
+  |                       ^^^^^^^^^^^^ imports internal name
+  |
+  = why: owner may rename or remove internal name in any release
+  = fix: use public API, or ask `Base` to declare name `public`   [manual]
+  = docs: corset explain internal-access
+
+warning[internal-access]: `Base.rewrap_unionall` is internal to `Base`
+  --> src/InternalAccessPositive.jl:11:28
+   |
+11 | wrapper(type::Type) = Base.rewrap_unionall(type, type)
+   |                            ^^^^^^^^^^^^^^^ reaches internal name
+   |
+   = why: owner may rename or remove internal name in any release
+   = fix: use public API, or ask `Base` to declare name `public`   [manual]
+   = docs: corset explain internal-access
+
+warning[internal-access]: `Base.Precompilation.PkgPrecompileError` is internal to `Base`
+  --> src/InternalAccessPositive.jl:12:43
+   |
+12 | failed(error::Exception) = error isa Base.Precompilation.PkgPrecompileError
+   |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reaches internal name
+   |
+   = why: owner may rename or remove internal name in any release
+   = fix: use public API, or ask `Base` to declare name `public`   [manual]
+   = docs: corset explain internal-access
+
+warning[internal-access]: `Base.isType` is internal to `Base`
+  --> src/InternalAccessPositive.jl:13:25
+   |
+13 | café(type::Type) = Base.isType(type)
+   |                         ^^^^^^ reaches internal name
+   |
+   = why: owner may rename or remove internal name in any release
+   = fix: use public API, or ask `Base` to declare name `public`   [manual]
+   = docs: corset explain internal-access
+
+warning[internal-access]: `Base.@_inline_meta` is internal to `Base`
+  --> src/InternalAccessPositive.jl:14:29
+   |
+14 | inlined(value::Int) = (Base.@_inline_meta; value)
+   |                             ^^^^^^^^^^^^^ reaches internal name
+   |
+   = why: owner may rename or remove internal name in any release
+   = fix: use public API, or ask `Base` to declare name `public`   [manual]
+   = docs: corset explain internal-access
+
+warning[internal-access]: `Base.Experimental.@opaque` is internal to `Base`
+  --> src/InternalAccessPositive.jl:16:27
+   |
+16 | opaque(value::Int) = Base.Experimental.@opaque (input -> input)
+   |                           ^^^^^^^^^^^^^^^^^^^^ reaches internal name
+   |
+   = why: owner may rename or remove internal name in any release
+   = fix: use public API, or ask `Base` to declare name `public`   [manual]
+   = docs: corset explain internal-access
+
+warning[internal-access]: `Base.isvarargtype` is internal to `Base`
+  --> src/InternalAccessPositive.jl:19:28
+   |
+19 | generic(type::Type) = Base.isvarargtype(type)
+   |                            ^^^^^^^^^^^^ reaches internal name
+   |
+   = why: owner may rename or remove internal name in any release
+   = fix: use public API, or ask `Base` to declare name `public`   [manual]
+   = docs: corset explain internal-access
+

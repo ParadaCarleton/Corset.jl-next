@@ -64,7 +64,7 @@ uuid = "5218b696-f38b-4ac9-8b61-a12ec717816d"
 version = "0.17.8"
 
 [[deps.Corset]]
-deps = ["Aqua", "ArgParse", "Argus", "Configurations", "EnumX", "FileWatching", "IntervalTrees", "JSON", "JuliaSyntax", "Pkg", "PrecompileTools", "ReadOnlyArrays", "SHA", "Scratch", "TOML", "Test"]
+deps = ["Aqua", "ArgParse", "Argus", "Configurations", "EnumX", "ExplicitImports", "FileWatching", "IntervalTrees", "JSON", "JuliaSyntax", "Pkg", "PrecompileTools", "ReadOnlyArrays", "SHA", "Scratch", "TOML", "Test"]
 path = ".."
 uuid = "09bf9df1-bea6-4267-acd1-e930da7492cc"
 version = "0.6.0-DEV"
@@ -84,6 +84,13 @@ git-tree-sha1 = "c49898e8438c828577f04b92fc9368c388ac783c"
 registries = "General"
 uuid = "4e289a0a-7415-4d19-859d-a7e5c4648b56"
 version = "1.0.7"
+
+[[deps.ExplicitImports]]
+deps = ["Markdown", "Pkg", "PrecompileTools", "TOML", "Test"]
+git-tree-sha1 = "a8b6c26bf0ea9f8c4bad71e109a5fa64f34be392"
+registries = "General"
+uuid = "7d51a73a-1435-4ff3-83d9-f097790105c7"
+version = "1.15.0"
 
 [[deps.ExprTools]]
 git-tree-sha1 = "d2e49e7efd29719d6f28b891b0e0e159daa9d2b4"

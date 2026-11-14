@@ -221,10 +221,14 @@ end
 end
 
 @testset "external stage" begin
-    ambiguous = "\"\"\"Package with ambiguous methods.\"\"\"\nmodule Ambiguous\ncombine(left::Int, right) = left\ncombine(left, right::Int) = right\nend\n"
-    with_package(@__DIR__, "Ambiguous", "src/Ambiguous.jl" => ambiguous) do package
+    ambiguous = "\"\"\"Package with ambiguous methods.\"\"\"\nmodule Ambiguous\ncombine(left::Int, right) = left\ncombine(left, right::Int) = right\nbody(type::Type) = Base.unwrap_unionall(type)\ninclude(\"side.jl\")\nend\n"
+    side = "side(value::Int)::Int = value\n"
+    with_package(@__DIR__, "Ambiguous", "src/Ambiguous.jl" => ambiguous, "src/side.jl" => side) do package
         code, out, _ = corset("check", package)
         @test code == 1 && occursin("error[method-ambiguity]: `combine(::Int64, ::Int64)` matches two methods", out)
+        @test occursin("warning[internal-access]: `Base.unwrap_unionall` is internal to `Base`\n --> src/Ambiguous.jl:5:25", out)
+        # Access in file outside checked path drops.
+        @test !occursin("internal-access", corset("check", joinpath(package, "src", "side.jl"))[2])
         # External checks run only when some `external` rule is enabled.
         external(flags::Corset.Config.Flags) = Corset.Engine.analyze(package, flags).facts.external
         @test length(external(Corset.Config.Flags()).ambiguities) == 1
