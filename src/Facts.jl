@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, PackageFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -175,6 +175,13 @@ struct MethodSite
     span::Span
 end
 
+"""Struct package code defines, as written (`UnionAll` for parametric struct), and its `struct` form in analyzed `file`."""
+struct StructSite
+    type::Type
+    file::SyntaxFile
+    node::SyntaxNode
+end
+
 """Package extension: name, file Julia loads (`ext/<name>.jl` or `ext/<name>/<name>.jl`), and trigger packages."""
 struct Extension
     name::String
@@ -200,13 +207,14 @@ end
 
 """
 Loaded package (`package` stage facts): package modules (root, submodules, loaded extensions; root first),
-and sites of methods they define in analyzed files.
+and sites of methods and structs they define in analyzed files.
 `methods` keeps methods later definitions replaced; `overwrites` pairs each (earlier, later) by same signature.
 """
 struct PackageFacts
     modules::Vector{Module}
     methods::Vector{MethodSite}
     overwrites::Vector{Tuple{MethodSite, MethodSite}}
+    structs::Vector{StructSite}
 end
 
 """

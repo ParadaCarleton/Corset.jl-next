@@ -1,5 +1,5 @@
 """
-`package` stage: load target package into this process; collect package modules and method sites.
+`package` stage: load target package into this process; collect package modules, method sites and struct sites.
 
 Environment must load package from its root (`Base.locate_package`); other environment is config error.
 Load that throws becomes `load-error` finding, as `parse-error`.
@@ -7,7 +7,7 @@ Each extension whose triggers environment can load gets them loaded; extension t
 """
 module Package
 
-using ..Facts: Facts, PackageFacts, ProjectFacts, MethodSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
+using ..Facts: Facts, PackageFacts, ProjectFacts, MethodSite, StructSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
 using ..Config: ConfigError
 
 """Rule name load failures report under."""
@@ -100,6 +100,38 @@ function method_sites(modules::Vector{Module}, files::Vector{SyntaxFile})::Vecto
         isnothing(file) || method.line > length(lines[file.path].starts) || push!(sites, method_site(method, file, lines[file.path]))
     end
     return sort!(sites; by = site -> (site.span.file, site.span.first_byte, string(site.method.sig)))
+end
+
+"""Type name of struct that constructor `method` builds; `nothing` for other method."""
+function constructed(method::Method)::Union{Nothing, Core.TypeName}
+    callee = Base.unwrap_unionall(Base.unwrap_unionall(method.sig).parameters[1])
+    Base.isType(callee) || return nothing
+    target = Base.unwrap_unionall(callee.parameters[1])
+    return target isa DataType ? target.name : nothing
+end
+
+"""
+Sites of structs that constructor method `sites` tie to `struct` forms in `files`.
+Default constructors start on first field line, or on struct line for struct without fields; inner constructors start
+in body. So constructor of same name that starts between line start of form and its end builds its type.
+"""
+function struct_sites(sites::Vector{MethodSite}, files::Vector{SyntaxFile})::Vector{StructSite}
+    built = Dict{String, Vector{Tuple{Int, Core.TypeName}}}()
+    for site in sites
+        name = constructed(site.method)
+        isnothing(name) || push!(get!(built, site.span.file, Tuple{Int, Core.TypeName}[]), (site.span.first_byte, name))
+    end
+    found = StructSite[]
+    for file in files
+        starts, constructors = line_starts(file.text), get(built, file.path, Tuple{Int, Core.TypeName}[])
+        for node in Facts.forms(file, "struct")
+            bytes = Facts.trimmed_bytes(file.text, node)
+            lines, name = starts[searchsortedlast(starts, first(bytes))]:last(bytes), Symbol(Facts.source(file, Facts.definition_name(node)))
+            index = findfirst(((byte, type),) -> byte in lines && type.name === name, constructors)
+            isnothing(index) || push!(found, StructSite(last(constructors[index]).wrapper, file, node))
+        end
+    end
+    return found
 end
 
 """
@@ -207,7 +239,7 @@ function load(project::ProjectFacts, files::Vector{SyntaxFile})::Loaded
     errors, blind_spots = load_extensions(mod, project, files)
     modules = package_modules(mod, project)
     sites = method_sites(modules, files)
-    return Loaded(PackageFacts(modules, sites, overwrites(sites)), errors, blind_spots)
+    return Loaded(PackageFacts(modules, sites, overwrites(sites), struct_sites(sites, files)), errors, blind_spots)
 end
 
 end
