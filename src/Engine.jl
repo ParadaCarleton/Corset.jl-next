@@ -80,9 +80,24 @@ function load_package(project::Union{Nothing, ProjectFacts}, settings::Settings,
     return loads(project, settings) ? Package.load(project, files) : Package.Loaded(nothing, Finding[], BlindSpot[])
 end
 
-"""Inference facts of `package` in analyzed `files`, and their blind spots, when `settings` enable `inference` rule; else none."""
-function inference_facts(package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, settings::Settings)::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}}
-    return isnothing(package) || !wants(settings, Stage.inference) ? (nothing, BlindSpot[]) : Inference.inference_facts(package, files)
+"""Name of method store entry of checked `path` in cache directory, beside analysis entry of `path`."""
+method_entry(path::String)::String = "$path\nmethod store"
+
+"""
+Inference facts of `package` in analyzed `files`, and their blind spots, when `settings` enable `inference` rule; else
+none. Cache directory `cache` keeps method store of checked `path` (`architecture.md`); `nothing` turns store off.
+"""
+function inference_facts(path::String, package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, settings::Settings, cache::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}}
+    (isnothing(package) || !wants(settings, Stage.inference)) && return nothing, BlindSpot[]
+    if isnothing(cache)
+        facts, spots, _ = Inference.inference_facts(package, files, nothing)
+        return facts, spots
+    end
+    key = Cache.method_key(path, something(project_root(path)), [file.path for file in files], Inference.shape(package), Base.load_path(), cache)
+    store = something(Cache.lookup(Inference.Store, cache, method_entry(path), key), Inference.Store())
+    facts, spots, used = Inference.inference_facts(package, files, store)
+    Cache.store!(cache, method_entry(path), key, something(used))
+    return facts, spots
 end
 
 """
@@ -113,10 +128,13 @@ struct Analysis
     blind_spots::Vector{BlindSpot}
 end
 
-"""Facts and analysis of real `path` with discovered `sources` under `settings`. Opt-outs apply before levels."""
-function analyze(path::String, settings::Settings, sources::Discovery.Sources)::Tuple{FactSet, Analysis}
+"""
+Facts and analysis of real `path` with discovered `sources` under `settings`. Opt-outs apply before levels. Cache
+directory `cache` keeps method store unless `nothing`.
+"""
+function analyze(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String})::Tuple{FactSet, Analysis}
     loaded = load_package(sources.project, settings, sources.files)
-    inference, inference_spots = inference_facts(loaded.facts, sources.files, settings)
+    inference, inference_spots = inference_facts(path, loaded.facts, sources.files, settings, cache)
     facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, inference, external_facts(sources.project, loaded.facts, sources.files, settings))
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
@@ -153,11 +171,11 @@ end
 """Settings and analysis of `path` with `flags`; cache directory `cache` serves and stores analysis unless `nothing`."""
 function analysis(path::String, flags::Flags, cache::Union{Nothing, String})::Tuple{Settings, Analysis}
     path, settings, sources = inputs(path, flags)
-    isnothing(cache) && return settings, last(analyze(path, settings, sources))
+    isnothing(cache) && return settings, last(analyze(path, settings, sources, nothing))
     key = cache_key(path, flags, sources, Base.load_path(), cache)
     stored = Cache.lookup(Analysis, cache, path, key)
     isnothing(stored) || return settings, stored
-    fresh = last(analyze(path, settings, sources))
+    fresh = last(analyze(path, settings, sources, cache))
     Cache.store!(cache, path, key, fresh)
     return settings, fresh
 end

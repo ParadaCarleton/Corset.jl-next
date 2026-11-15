@@ -18,6 +18,9 @@
 - New rule `overspecified-type`: an argument of a public function names `Float64`, `Int`, `AbstractFloat` or a concrete container such as `Vector`. The fix writes the abstract type, as in `AbstractVector{<:Real}`.
 - New rule `method-ambiguity`: two package methods match the same call, and neither is more specific. `Test.detect_ambiguities` finds the pairs. The message names a call that matches both.
 - `method-overwrite` messages show the `where` type variables of the signature.
+- Corset keeps a disk cache of analyses in the Julia depot. A rerun with no change reads the cache and loads no package. `--no-cache` turns the cache off.
+- New rule `never-succeeds`: inference proves that a call never returns. No method matches, a field is missing, or the callee always throws.
+- The `inference` stage keeps its results per method in the disk cache. A rerun after an edit infers only the changed methods and the methods that read their code.
 - New rule `piracy`: a package method extends a function of another module, and another module owns every argument type. Aqua.jl decides piracy. Extensions own the package types.
 - New rule `internal-access`: code reaches a name that another module neither exports nor declares `public`, as in `Base._sub2ind`. ExplicitImports.jl finds the accesses and imports.
 - New rule `implicit-import`: a bare `using X` brings names the module uses without naming them. The fix writes `using X: X, name, …`.

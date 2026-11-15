@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, TypedCode, FailingCall, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -221,35 +221,22 @@ struct PackageFacts
 end
 
 """
-Typed code of package method on one signature (`inference` stage fact): method site, signature, unoptimized typed
-statements, inferred result type, and span of each statement. Span is exact where syntax node spells statement
-(`Inference.statement_nodes`); line precision elsewhere.
-"""
-struct TypedCode
-    site::MethodSite
-    signature::Type
-    code::Core.CodeInfo
-    result::Type
-    spans::Vector{Span}
-end
-
-"""
-Call that never returns (`inference` stage fact): typed code, index of call statement, and name of called function.
-`definite`: inference of method on its declared signature finds no argument type that lets call return; `possible`: it finds one.
+Call that never returns (`inference` stage fact): span of call statement, name span of method that holds it, name of
+called function, and confidence. `definite`: inference of method on its declared signature finds no argument type that
+lets call return; `possible`: it finds one. Fact holds plain data, so method store can keep it (`architecture.md`).
 """
 struct FailingCall
-    code::TypedCode
-    statement::Int
+    span::Span
+    declared::Span
     callee::String
     confidence::Confidence.T
 end
 
 """
-`inference` stage facts: typed code of package methods on stand-in signatures, then of methods their calls reach; calls
-that never return, one per statement, without explicit throws and calls of package methods (their own frame reports).
+`inference` stage facts: calls that never return, one per statement, without explicit throws and calls of package
+methods (their own frame reports). Typed code stays inside stage.
 """
 struct InferenceFacts
-    typed::Vector{TypedCode}
     failing::Vector{FailingCall}
 end
 
@@ -463,6 +450,18 @@ function trimmed(text::String, range::UnitRange{Int})::UnitRange{Int}
         last -= 1
     end
     return first:last
+end
+
+"""
+Byte where each line of `text` starts. Loop, since SparseArrays.jl `_cat` method invalidates `vcat` of number and
+vector, and with it every stage that indexes lines.
+"""
+function line_starts(text::String)::Vector{Int}
+    starts = [1]
+    for (index, byte) in enumerate(codeunits(text))
+        byte == UInt8('\n') && push!(starts, index + 1)
+    end
+    return starts
 end
 
 """Byte range of `node` in `text` without surrounding whitespace; infix nodes start at leading trivia."""

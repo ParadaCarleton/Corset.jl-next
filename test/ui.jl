@@ -43,7 +43,7 @@ function package_facts(case::String, stage::Stage.T)::FactSet
         pop!(LOAD_PATH)
     end
     isempty(loaded.errors) || error("fixture $case does not load: $(first(loaded.errors).primary.text)")
-    inference = stage == Stage.inference ? first(Corset.Inference.inference_facts(loaded.facts, sources.files)) : nothing
+    inference = stage == Stage.inference ? first(Corset.Inference.inference_facts(loaded.facts, sources.files, nothing)) : nothing
     external = stage == Stage.external ? Corset.External.external_facts(loaded.facts, sources.project.entry, sources.files) : nothing
     return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, loaded.facts, inference, external)
 end

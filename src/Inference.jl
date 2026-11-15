@@ -3,17 +3,69 @@
 
 Inference runs on unoptimized code, since TypedSyntax.jl maps unoptimized statements to nodes of `syntax` stage tree.
 Method with untyped argument is inferred only where inferred package code calls it with stand-in types.
+Method store keeps result per method and signature across runs; entry holds while file and code it read stay same.
 """
 module Inference
 
+using Serialization: serialize, deserialize
+using SHA: sha256
 using TypedSyntax: TypedSyntax
-using ..Facts: Facts, PackageFacts, InferenceFacts, TypedCode, FailingCall, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence
-using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments
+using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence
+using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span
 using ..Package: Package
 using ..StandIns: StandIns
 using ..Signatures: LIMIT, method_signatures, struct_stand_ins
 
 const CC = Core.Compiler
+
+"""
+Typed code of package method on one signature: method site, signature, unoptimized typed statements, inferred result
+type, and span of each statement. Span is exact where syntax node spells statement (`statement_nodes`); line precision
+elsewhere. Code stays inside stage; method store keeps `Inferred` record of it.
+"""
+struct TypedCode
+    site::MethodSite
+    signature::Type
+    code::Core.CodeInfo
+    result::Type
+    spans::Vector{Span}
+end
+
+"""
+Result of inferring one method on one signature, as method store keeps it: call signatures of package methods its calls
+reach, call statements that never return by statement index (`failures!`), and whether inference gave code.
+"""
+struct Inferred
+    reached::Vector{Type}
+    failures::Vector{Pair{Int, Union{FailingCall, BlindSpot}}}
+    coded::Bool
+end
+
+"""
+Instance of `@generated` package method that inference read: `method_id`, serialized signature, `entry_key` and digest
+of generated code. Generator can call any package code, so store checks its output.
+"""
+struct Staged
+    method::String
+    signature::Vector{UInt8}
+    key::String
+    code::String
+end
+
+"""
+Method store entry: content hash of file of method, since spans hold byte offsets; `code_digest` of each package method
+inference read, by `method_id`; generated code it read; and serialized `Inferred` result. Result stays bytes until entry
+proves valid: it can name closure type that edit removed.
+"""
+struct Entry
+    file::Pair{String, String}
+    methods::Vector{Pair{String, String}}
+    staged::Vector{Staged}
+    inferred::Vector{UInt8}
+end
+
+"""Method store: entries by `entry_key` of method and signature."""
+const Store = Dict{String, Entry}
 
 """Callees lowering inserts, so source need not spell them; callee check passes their nodes unchecked."""
 const LOWERED = Set(
@@ -61,12 +113,15 @@ function instance(method::Method, signature::Type)::Union{Nothing, Core.MethodIn
     return intersection === Union{} ? nothing : CC.specialize_method(method, intersection, environment)
 end
 
-"""Unoptimized typed code of `method` on `signature`, its method instance and result type; `nothing` when inference gives none."""
-function infer(method::Method, signature::Type)::Union{Nothing, Tuple{Core.MethodInstance, Core.CodeInfo, Type}}
+"""
+Unoptimized typed code of `method` on `signature`, its method instance, result type and compiler edges (callees result
+depends on); `nothing` when inference gives none.
+"""
+function infer(method::Method, signature::Type)::Union{Nothing, Tuple{Core.MethodInstance, Core.CodeInfo, Type, Vector{Any}}}
     specialized = instance(method, signature)
     isnothing(specialized) && return nothing
     frame = CC.typeinf_frame(CC.NativeInterpreter(), specialized, false)
-    return isnothing(frame) ? nothing : (specialized, frame.src, CC.widenconst(CC.ignorelimited(frame.result.result)))
+    return isnothing(frame) ? nothing : (specialized, frame.src, CC.widenconst(CC.ignorelimited(frame.result.result)), frame.edges)
 end
 
 """Call expression of `statement`, through slot assignment (`_4 = f(x)`); `nothing` for other statement."""
@@ -149,10 +204,10 @@ end
 """Whether `type` is stand-in type or holds one as parameter: `ArrayStandIn{FloatStandIn, 1}`, `Circle{IntStandIn}`."""
 holds_stand_in(type::Any)::Bool = type isa DataType && (parentmodule(type) === StandIns || any(holds_stand_in, type.parameters))
 
-"""Methods calls of `code` reach with concrete argument types that hold stand-in, with call signature."""
-function reached(code::Core.CodeInfo, instance::Core.MethodInstance)::Vector{Tuple{Method, Type}}
+"""Signatures of calls in `code` with concrete argument types that hold stand-in and dispatch to one method."""
+function reached(code::Core.CodeInfo, instance::Core.MethodInstance)::Vector{Type}
     parameters = CC.sptypes_from_meth_instance(instance)
-    found = Tuple{Method, Type}[]
+    found = Type[]
     for statement in code.code
         call = statement_call(statement)
         isnothing(call) && continue
@@ -160,20 +215,30 @@ function reached(code::Core.CodeInfo, instance::Core.MethodInstance)::Vector{Tup
         call_signature = Tuple{types...}
         isconcretetype(call_signature) && any(holds_stand_in, types) || continue
         matches = Base._methods_by_ftype(call_signature, 1, Base.get_world_counter())
-        matches isa Vector && length(matches) == 1 || continue
-        push!(found, (only(matches).method, call_signature))
+        matches isa Vector && length(matches) == 1 && push!(found, call_signature)
     end
     return found
 end
 
+"""Method call `signature` dispatches to; stage keeps only signatures that dispatch to one method."""
+dispatched(signature::Type)::Method = only(Base._methods_by_ftype(signature, 1, Base.get_world_counter())::Vector).method
+
 """
-Throw helper: `throw`, or function each of whose methods throws for every argument type it declares (`error`, `rethrow`,
-`Base.Enums.enum_argument_error`). Fallback method that throws for one missing interface does not make function helper.
+Throw helper verdict on `callee`, with compiler edges of inferences it ran. Helper: `throw`, or function each of whose
+methods throws for every argument type it declares (`error`, `rethrow`, `Base.Enums.enum_argument_error`). Fallback
+method that throws for one missing interface does not make function helper.
 """
-function throw_helper(callee::Any)::Bool
-    callee === throw && return true
-    found = methods(callee)
-    return !isempty(found) && all(method -> (inferred = infer(method, method.sig); !isnothing(inferred) && last(inferred) === Union{}), found)
+function throw_helper(callee::Any)::Tuple{Bool, Vector{Any}}
+    callee === throw && return true, Any[]
+    found, edges = methods(callee), Any[]
+    isempty(found) && return false, edges
+    for method in found
+        inferred = infer(method, method.sig)
+        isnothing(inferred) && return false, edges
+        append!(edges, inferred[4])
+        inferred[3] === Union{} || return false, edges
+    end
+    return true, edges
 end
 
 """
@@ -206,46 +271,256 @@ function package_call(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.Var
     return matches isa Vector && length(matches) == 1 && haskey(files, string(only(matches).method.file))
 end
 
-"""Inferred type of statement `index` of `method` on `signature`; `Union{}` when it never returns, `nothing` without code."""
-function statement_type(method::Method, signature::Type, index::Int)::Union{Nothing, Type}
+"""
+Inferred type of statement `index` of `method` on `signature`, `Union{}` when it never returns, `nothing` without code.
+Adds compiler edges of inference to `edges`.
+"""
+function statement_type!(edges::Vector{Any}, method::Method, signature::Type, index::Int)::Union{Nothing, Type}
     inferred = infer(method, signature)
-    return isnothing(inferred) ? nothing : CC.widenconst(inferred[2].ssavaluetypes[index])
+    isnothing(inferred) && return nothing
+    append!(edges, inferred[4])
+    return CC.widenconst(inferred[2].ssavaluetypes[index])
 end
 
 """Name of called function or type; text of other callable value."""
 callee_text(callee::Any)::String = callee isa Union{Function, DataType, UnionAll} ? string(nameof(callee)) : repr(callee)
 
 """
-Calls in `typed` that never return, one per statement, and blind spots where call returns once stand-ins become their
-models. Skips unknown callees, calls of package methods in `files` and throw helpers (`throw_helper`).
+Call statements of `typed` that never return, by statement index: fact, or blind spot where call returns once stand-ins
+become their models. Skips unknown callees, calls of package methods in `files` and throw helpers. Adds compiler edges of
+inferences it runs to `edges`; `helpers` caches throw-helper verdicts with their edges.
 """
-function failing_calls(typed::Vector{TypedCode}, files::Dict{String, SyntaxFile})::Tuple{Vector{FailingCall}, Vector{BlindSpot}}
-    failing, spots, seen, helpers = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), IdDict{Any, Bool}()
-    for code in typed, (index, statement) in enumerate(code.code.code)
+function failures!(edges::Vector{Any}, helpers::IdDict{Any, Tuple{Bool, Vector{Any}}}, typed::TypedCode, files::Dict{String, SyntaxFile})::Vector{Pair{Int, Union{FailingCall, BlindSpot}}}
+    found = Pair{Int, Union{FailingCall, BlindSpot}}[]
+    method, code = typed.site.method, typed.code
+    for (index, statement) in enumerate(code.code)
         # Unreached statement is wrapped in `Core.Const`, so it is no call.
         call = statement_call(statement)
-        (isnothing(call) || code.code.ssavaluetypes[index] !== Union{}) && continue
-        method = code.site.method
-        (method, index) in seen && continue
-        parameters = CC.sptypes_from_meth_instance(something(instance(method, code.signature)))
-        callee = called(code.code, call, parameters)
-        (isnothing(callee) || package_call(code.code, call, parameters, files) || get!(() -> throw_helper(callee), helpers, callee)) && continue
+        (isnothing(call) || code.ssavaluetypes[index] !== Union{}) && continue
+        parameters = CC.sptypes_from_meth_instance(something(instance(method, typed.signature)))
+        callee = called(code, call, parameters)
+        (isnothing(callee) || package_call(code, call, parameters, files)) && continue
+        helper, helper_edges = get!(() -> throw_helper(callee), helpers, callee)
+        append!(edges, helper_edges)
+        helper && continue
         # Model signature without code cannot confirm failure either, so it also counts as blind spot.
-        modeled = statement_type(method, StandIns.model_type(code.signature), index)
-        modeled !== Union{} && (push!(spots, BlindSpot("call fails on stand-in only", code.spans[index])); continue)
-        push!(seen, (method, index))
-        confidence = statement_type(method, method.sig, index) === Union{} ? Confidence.definite : Confidence.possible
-        push!(failing, FailingCall(code, index, callee_text(callee), confidence))
+        modeled = statement_type!(edges, method, StandIns.model_type(typed.signature), index)
+        modeled !== Union{} && (push!(found, index => BlindSpot("call fails on stand-in only", typed.spans[index])); continue)
+        confidence = statement_type!(edges, method, method.sig, index) === Union{} ? Confidence.definite : Confidence.possible
+        push!(found, index => FailingCall(typed.spans[index], name_span(typed.site), callee_text(callee), confidence))
     end
-    return failing, spots
+    return found
+end
+
+"""Method instance compiler edge `edge` stands for; `nothing` for other edge (binding, method-table lookup)."""
+function edge_instance(edge::Any)::Union{Nothing, Core.MethodInstance}
+    edge isa Core.CodeInstance && (edge = edge.def)
+    edge isa Core.ABIOverride && (edge = edge.def)
+    return edge isa Core.MethodInstance ? edge : nothing
+end
+
+"""Compiler edges of inference behind `edge`: those of code instance, or of first cached code instance of method instance."""
+function edges_of(edge::Any)::Core.SimpleVector
+    edge isa Core.CodeInstance && return edge.edges
+    instance = edge_instance(edge)
+    return isnothing(instance) || !isdefined(instance, :cache) ? Core.svec() : instance.cache.edges
+end
+
+"""Whether `type` names type or function of package `modules`, parameters included; `named` caches answers."""
+function names_package!(named::IdDict{Any, Bool}, type::Any, modules::Set{Module})::Bool
+    haskey(named, type) && return named[type]
+    # Guard for type that names itself through parameter.
+    named[type] = false
+    answer = if type isa Union
+        names_package!(named, type.a, modules) || names_package!(named, type.b, modules)
+    elseif type isa UnionAll
+        names_package!(named, type.body, modules)
+    elseif type isa TypeVar
+        names_package!(named, type.ub, modules)
+    elseif type isa Core.TypeofVararg
+        isdefined(type, :T) && names_package!(named, type.T, modules)
+    elseif type isa DataType
+        parentmodule(type) in modules || any(parameter -> names_package!(named, parameter, modules), type.parameters)
+    else
+        false
+    end
+    named[type] = answer
+    return answer
 end
 
 """
-Typed code of package methods in `files` on stand-in signatures, then of package methods their calls reach, and blind spots:
-signatures over `LIMIT`, argument without stand-in, inference that gives no code, untyped method no call reaches, call that
-fails on stand-in only. Facts also hold calls that never return (`failing_calls`).
+Package methods in analyzed `files` that inference results behind compiler `edges` read, with instances of `@generated`
+ones apart. Walk passes through package methods and through dependency specializations that name package type
+(`map(f, xs)` with package `f`). `nothing` when generated instance has signature store cannot read back (`holds_gensym`).
+`named` caches `names_package!` answers.
 """
-function inference_facts(package::PackageFacts, files::Vector{SyntaxFile})::Tuple{InferenceFacts, Vector{BlindSpot}}
+function dependency_methods!(named::IdDict{Any, Bool}, edges::Vector{Any}, files::Dict{String, SyntaxFile}, modules::Set{Module})::Union{Nothing, Tuple{Vector{Method}, Vector{Core.MethodInstance}}}
+    found, staged, visited, stack = Method[], Core.MethodInstance[], Base.IdSet{Core.MethodInstance}(), copy(edges)
+    while !isempty(stack)
+        edge = pop!(stack)
+        instance = edge_instance(edge)
+        (isnothing(instance) || instance in visited) && continue
+        push!(visited, instance)
+        method = instance.def
+        method isa Method || continue
+        if haskey(files, string(method.file))
+            Base.hasgenerator(method) ? (holds_gensym(instance.specTypes) && return nothing; push!(staged, instance)) : push!(found, method)
+        else
+            names_package!(named, instance.specTypes, modules) || continue
+        end
+        append!(stack, edges_of(edge))
+    end
+    return found, staged
+end
+
+"""
+Whether `type` names type lowering names, parameters included: closure (`#g##0#g##1`) or keyword body (`#f#1`). Edit can
+remove name, and then serialized type cannot load. Function `f` has type `#f`, but its `singletonname` is `f`.
+"""
+function holds_gensym(type::Any)::Bool
+    type isa Union && return holds_gensym(type.a) || holds_gensym(type.b)
+    type isa UnionAll && return holds_gensym(type.body)
+    type isa DataType || return false
+    return occursin('#', string(type.name.singletonname)) || any(holds_gensym, type.parameters)
+end
+
+"""Store key of `method` on `signature`: digest of both."""
+entry_key(method::Method, signature::Type)::String = digest(Any[method.sig, signature])
+
+"""Store name of `method`: digest of its signature, which no other method shares."""
+method_id(method::Method)::String = digest(method.sig)
+
+"""
+Digest of lowered code of `method` as package load left it, macro output and `@eval` code included. Closure renamed by
+edit has other code, so digest also checks what closure name means.
+"""
+code_digest(method::Method)::String = digest(Base.uncompressed_ast(method))
+
+"""Digest of code generator of `@generated` method gives for `instance`; `nothing` digests too when generator throws."""
+staged_digest(instance::Core.MethodInstance)::String = digest(CC.get_staged(instance, Base.get_world_counter()))
+
+"""Methods defined in analyzed `files` by `method_id`, keyword bodies and closures included; `ids` keeps each one's id."""
+function method_index(files::Dict{String, SyntaxFile})::Tuple{Dict{String, Method}, IdDict{Method, String}}
+    ids = IdDict{Method, String}()
+    Base.visit(method -> haskey(files, string(method.file)) && (ids[method] = method_id(method)), Core.methodtable)
+    return Dict(id => method for (method, id) in ids), ids
+end
+
+"""
+Entry `store` holds under `key` when file of method keeps its hash in `hashes`, each method entry read keeps its code,
+and each generator it read gives same code. `index` finds methods by id; `codes` caches digests by id or staged key.
+"""
+function valid_entry(store::Store, key::String, hashes::Dict{String, String}, index::Dict{String, Method}, codes::Dict{String, String})::Union{Nothing, Entry}
+    entry = get(store, key, nothing)
+    (isnothing(entry) || get(hashes, first(entry.file), "") != last(entry.file)) && return nothing
+    for (id, code) in entry.methods
+        method = get(index, id, nothing)
+        (isnothing(method) || get!(() -> code_digest(method), codes, id) != code) && return nothing
+    end
+    for staged in entry.staged
+        method = get(index, staged.method, nothing)
+        isnothing(method) && return nothing
+        specialized = instance(method, deserialize(IOBuffer(staged.signature))::Type)
+        (isnothing(specialized) || get!(() -> staged_digest(specialized), codes, staged.key) != staged.code) && return nothing
+    end
+    return entry
+end
+
+"""
+Store entry of `inferred` result of `site` on `signature`, whose inferences gave compiler `edges`; `nothing` when walk
+gives none (`dependency_methods!`). `ids` and `codes` cache method ids and digests.
+"""
+function entry!(named::IdDict{Any, Bool}, ids::IdDict{Method, String}, codes::Dict{String, String}, site::MethodSite, signature::Type, inferred::Inferred, edges::Vector{Any}, files::Dict{String, SyntaxFile}, hashes::Dict{String, String}, modules::Set{Module})::Union{Nothing, Entry}
+    read = dependency_methods!(named, edges, files, modules)
+    isnothing(read) && return nothing
+    found, generated = read
+    if Base.hasgenerator(site.method)
+        holds_gensym(signature) && return nothing
+        push!(generated, something(instance(site.method, signature)))
+    else
+        push!(found, site.method)
+    end
+    methods = Dict(get!(() -> method_id(method), ids, method) => method for method in found)
+    digests = [id => get!(() -> code_digest(method), codes, id) for (id, method) in methods]
+    records = Staged[]
+    for specialized in unique(generated)
+        method, key = specialized.def::Method, entry_key(specialized.def::Method, specialized.specTypes)
+        push!(records, Staged(get!(() -> method_id(method), ids, method), serialized(specialized.specTypes), key, get!(() -> staged_digest(specialized), codes, key)))
+    end
+    return Entry(site.file.path => hashes[site.file.path], sort!(digests), sort!(records; by = record -> record.key), serialized(inferred))
+end
+
+"""Serialized bytes of `data`, as store entry holds it."""
+serialized(@nospecialize(data::Any))::Vector{UInt8} = (bytes = IOBuffer(); serialize(bytes, data); take!(bytes))
+
+"""
+Digest of serialized `data`: printed types depend on `Main` imports. Vector of `Any` compiles serializer once; tuple of
+types would compile it once per tuple type.
+"""
+digest(@nospecialize(data::Any))::String = bytes2hex(sha256(sprint(serialize, Any[data])))
+
+"""Whether `value` is number, character, string, symbol, or tuple of those: data that `@eval` loops of other files read."""
+function plain(value::Any)::Bool
+    value isa Union{Number, AbstractChar, String, Symbol} && return true
+    value isa Union{Tuple, NamedTuple} || return false
+    # Loop, since `all` over tuple compiles once per tuple type.
+    for index in 1:nfields(value)
+        plain(getfield(value, index)) || return false
+    end
+    return true
+end
+
+"""
+Shape text of constant `value`: type layout for type, name for function or module, code for enum value, serialized value
+for `plain` value, else type. Inference reads constants (`const op = +`). Serializer throws for `@enum` value.
+"""
+function constant_text(value::Any)::String
+    # Closure value would serialize its methods with their lines; name is stable.
+    value isa Union{Function, Module} && return "$(parentmodule(value)).$(nameof(value))"
+    if value isa Type
+        bare = Base.unwrap_unionall(value)
+        bare isa DataType || return digest(value)
+        layout = Any[value, supertype(bare), ismutabletype(bare)]
+        # Field tuples would compile `append!` once per tuple type, so loop pushes each field.
+        isstructtype(bare) && for index in 1:fieldcount(bare)
+            push!(layout, fieldname(bare, index), fieldtype(bare, index))
+        end
+        return digest(layout)
+    end
+    value isa Enum && return digest(Any[typeof(value), Integer(value)])
+    return plain(value) ? digest(value) : digest(typeof(value))
+end
+
+"""
+Package shape that method store key hashes: signature and file of each package method; type of each global and shape
+text of each constant (`constant_text`) in package modules, gensym names left out; text of each file that holds method
+whose signature names no package type (piracy: any call can reach it, and walk sees no edge).
+"""
+function shape(package::PackageFacts)::Vector{String}
+    modules, named, parts = Set(package.modules), IdDict{Any, Bool}(), String[]
+    for site in package.methods
+        push!(parts, "method $(site.file.path) $(digest(site.method.sig))")
+        names_package!(named, site.method.sig, modules) || push!(parts, "piracy $(site.file.path) $(bytes2hex(sha256(site.file.text)))")
+    end
+    for mod in package.modules, name in names(mod; all = true)
+        # Lowering names function types, closures and keyword bodies; entries check their code (`code_digest`).
+        (isdefined(mod, name) && !occursin('#', string(name))) || continue
+        if isconst(mod, name)
+            push!(parts, "constant $mod.$name $(constant_text(getglobal(mod, name)))")
+        else
+            push!(parts, "global $mod.$name $(digest(Core.get_binding_type(mod, name)))")
+        end
+    end
+    return unique!(parts)
+end
+
+"""
+Run of inference stage: facts, blind spots, typed code of signatures it inferred, and store of entries it used.
+Signatures: stand-in signatures of package methods in `files`, then those their calls reach. Blind spots: signatures over
+`LIMIT`, argument without stand-in, inference that gives no code, untyped method no call reaches, call that fails on
+stand-in only. `store` serves entries whose files are unchanged; `nothing` turns store off and gives no store.
+"""
+function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::Union{Nothing, Store})::Tuple{InferenceFacts, Vector{BlindSpot}, Vector{TypedCode}, Union{Nothing, Store}}
     structs = struct_stand_ins(Type[site.type for site in package.structs])
     spots = BlindSpot[]
     pending, skipped = Tuple{MethodSite, Type}[], MethodSite[]
@@ -260,31 +535,59 @@ function inference_facts(package::PackageFacts, files::Vector{SyntaxFile})::Tupl
     by_path = Dict(file.path => file for file in files)
     lines = Dict(file.path => Package.Lines(file) for file in files)
     sites = Dict(site.method => site for site in package.methods)
-    typed, seen, counts = TypedCode[], Set{Tuple{Method, Type}}(), Dict{Method, Int}()
+    hashes = Dict(file.path => bytes2hex(sha256(file.text)) for file in files)
+    used, modules, named, helpers = isnothing(store) ? nothing : Store(), Set(package.modules), IdDict{Any, Bool}(), IdDict{Any, Tuple{Bool, Vector{Any}}}()
+    index, ids = isnothing(store) ? (Dict{String, Method}(), IdDict{Method, String}()) : method_index(by_path)
+    codes = Dict{String, String}()
+    typed, seen, counts, coded = TypedCode[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
+    failing, gaps, settled = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}()
     while !isempty(pending)
         site, call_signature = popfirst!(pending)
-        key = (site.method, call_signature)
-        key in seen && continue
-        push!(seen, key)
+        (site.method, call_signature) in seen && continue
+        push!(seen, (site.method, call_signature))
         # Calls can reach one method with ever new types (`f(x) = f((x,))`), so reached signatures stop at limit.
         counts[site.method] = get(counts, site.method, 0) + 1
         counts[site.method] > LIMIT && (push!(spots, BlindSpot("signatures over limit", site.span)); continue)
-        inferred = infer(site.method, call_signature)
-        isnothing(inferred) && (push!(spots, BlindSpot("inference gave no code", site.span)); continue)
-        instance, code, result = inferred
-        push!(typed, TypedCode(site, call_signature, code, result, spans(code, instance, site, lines[site.file.path].starts)))
+        key = isnothing(store) ? "" : entry_key(site.method, call_signature)
+        entry = isnothing(store) ? nothing : valid_entry(store, key, hashes, index, codes)
+        if isnothing(entry)
+            edges = Any[]
+            result = infer(site.method, call_signature)
+            inferred = if isnothing(result)
+                Inferred(Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false)
+            else
+                instance, code, returned, frame_edges = result
+                append!(edges, frame_edges)
+                push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts)))
+                Inferred(reached(code, instance), failures!(edges, helpers, last(typed), by_path), true)
+            end
+            entry = isnothing(used) ? nothing : entry!(named, ids, codes, site, call_signature, inferred, edges, by_path, hashes, modules)
+        else
+            inferred = deserialize(IOBuffer(entry.inferred))::Inferred
+        end
+        isnothing(used) || isnothing(entry) || (used[key] = entry)
+        inferred.coded || (push!(spots, BlindSpot("inference gave no code", site.span)); continue)
+        push!(coded, site.method)
         # Package methods are those analyzed files define; others (Base) stay outside.
-        for (method, signature) in reached(code, instance)
+        for signature in inferred.reached
+            method = dispatched(signature)
             file = get(by_path, string(method.file), nothing)
             isnothing(file) && continue
-            callee = get!(() -> Package.method_site(method, file, lines[file.path]), sites, method)
-            push!(pending, (callee, signature))
+            push!(pending, (get!(() -> Package.method_site(method, file, lines[file.path]), sites, method), signature))
+        end
+        for (index, failure) in inferred.failures
+            (site.method, index) in settled && continue
+            failure isa BlindSpot ? push!(gaps, failure) : (push!(settled, (site.method, index)); push!(failing, failure))
         end
     end
-    inferred = Set(code.site.method for code in typed)
-    append!(spots, BlindSpot("untyped method no call reaches", site.span) for site in skipped if !(site.method in inferred))
-    failing, gaps = failing_calls(typed, by_path)
-    return InferenceFacts(typed, failing), unique!(append!(spots, gaps))
+    append!(spots, BlindSpot("untyped method no call reaches", site.span) for site in skipped if !(site.method in coded))
+    return InferenceFacts(failing), unique!(append!(spots, gaps)), typed, used
+end
+
+"""Inference facts of `package` in analyzed `files`, their blind spots, and store of entries run used (`infer_package`)."""
+function inference_facts(package::PackageFacts, files::Vector{SyntaxFile}, store::Union{Nothing, Store})::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Store}}
+    facts, spots, _, used = infer_package(package, files, store)
+    return facts, spots, used
 end
 
 end

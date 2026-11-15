@@ -82,8 +82,14 @@ function package_workload()::Nothing
     path = joinpath(@__DIR__, "PackageSample.jl")
     files = [Syntax.parse_file(path, read(path, String), Facts.Role.package)]
     package = Package.package_facts([PackageSample], files)
-    facts, _ = Inference.inference_facts(package, files)
-    isempty(facts.typed) && error("precompile workload: inference stage typed no sample method")
+    Inference.shape(package)
+    facts, _, store = Inference.inference_facts(package, files, Inference.Store())
+    isempty(something(store)) && error("precompile workload: inference stage stored no sample method")
+    # Second run takes every entry from store, as rerun after edit of other file does.
+    mktempdir() do directory
+        Cache.store!(directory, path, "sample", something(store))
+        Inference.inference_facts(package, files, something(Cache.lookup(Inference.Store, directory, path, "sample")))
+    end
     package_rules(package, facts, files, [path], path, nothing)
     return nothing
 end

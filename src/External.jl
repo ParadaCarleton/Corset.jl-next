@@ -10,8 +10,7 @@ imported names; access inside package passes. One ExplicitImports.jl parse serve
 module External
 
 using ..Facts: ExternalFacts, PackageFacts, MethodSite, InternalAccess, BareUsing, ExplicitImport, SyntaxFile, SyntaxNode, Span, Precision
-using ..Facts: children_of, descendants, forms, kind_name, span
-using ..Package: line_starts
+using ..Facts: children_of, descendants, forms, kind_name, span, line_starts
 using Aqua: Aqua
 using ExplicitImports: ExplicitImports
 using Test: Test

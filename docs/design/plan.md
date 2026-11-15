@@ -13,7 +13,7 @@ Draft. Spikes retire risks first. Each later phase ships usable rules. Phase ord
 | 4 types | Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); `inference` stage and type-disruption scan; findings disk cache; `annotation` fixer guesses argument types and fills result types (annotation transition, `types.md`). | {{count:inference}} | Precision gate passes on corpus. `unverified-inbounds` agrees with julia-in-lean site verdicts. |
 | 5 effects | `effects` stage: effect and alias summary; `lifecycle` stage reads callee writes from it; `!` convention flow. | {{count:effects lifecycle}} | Flow fixtures pass, IO, RNG and memo exemptions included. |
 | 6 scope | `scope` stage on JuliaLowering (S3). | {{count:scope}} | Scope fixtures pass on packages and scripts. |
-| later | F12, F45, F46, F49, F76 (off by default); string and dict stand-in types; language server mode; directory discovery reads `.gitignore` and `.ignore`, like Ruff; test helper that runs rules on macro expansion, so macro authors check generated code (other packages' macro output gets no findings); replace `{}` stopgap with skip of macro arguments Julia rejects as written (`{x}`, `x ~ Normal()`), once `scope` lowering and `package` method tables can supply it; dimension-aware stand-in for `Number` (catches `x + 1` on Unitful quantity); nursery group for rules before quality gate; upstream `@match` exhaustiveness and unreachable-arm checks to Moshi `verify/` (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for `manual` fixes; concrete probes for Base widening; per-method disk cache; warm daemon with incremental runs; borrow checking. | {{count:later}} | — |
+| later | F12, F45, F46, F49, F76 (off by default); string and dict stand-in types; language server mode; directory discovery reads `.gitignore` and `.ignore`, like Ruff; test helper that runs rules on macro expansion, so macro authors check generated code (other packages' macro output gets no findings); replace `{}` stopgap with skip of macro arguments Julia rejects as written (`{x}`, `x ~ Normal()`), once `scope` lowering and `package` method tables can supply it; dimension-aware stand-in for `Number` (catches `x + 1` on Unitful quantity); nursery group for rules before quality gate; upstream `@match` exhaustiveness and unreachable-arm checks to Moshi `verify/` (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for `manual` fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking. | {{count:later}} | — |
 
 ### Spikes
 
@@ -46,8 +46,18 @@ Cold run, same scope (target loaded first, default threads):
 | JSON 1.13.4 | 42.5–43.6 s | 6.4 s | 6.7× | 8.6 s |
 
 `benchmark/cold.jl` measures Corset. Cold run misses budget on Distances and DataStructures.
-Nearly all of `inference` stage is Julia inference of target methods at declared or stand-in signatures; Corset machinery and Base callees on stand-ins add about 0.1 s. Package image holds neither Corset's signatures nor target's: target's own precompile workload caches concrete calls only (JSON ships one). So per-method disk cache is required: later cold runs skip unchanged methods.
+Nearly all of `inference` stage is Julia inference of target methods at declared or stand-in signatures; Corset machinery and Base callees on stand-ins add about 0.1 s. Package image holds neither Corset's signatures nor target's: target's own precompile workload caches concrete calls only (JSON ships one). So method store keeps facts per method: later runs infer only methods that edit touched.
 Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Whole process takes 2.2–2.6 s; loading Corset takes 1.3 s of it.
+
+Rerun after edit of one file: `inference` stage with method store, seconds; store key and shape add 0.1–0.3 s.
+
+| Package | Cold | Unchanged | Edited file | After edit |
+|---|---|---|---|---|
+| DataStructures | 3.0 | 0.21 | `heaps/binary_heap.jl` | 0.26 |
+| Distances | 3.2 | 1.1 | `haversine.jl` | 1.1 |
+| JSON | 3.3 | 0.28 | `lazy.jl` | 0.94 |
+
+Distances loads ChainRulesCore.jl, whose `promote_rule` invalidates JuliaSyntax.jl line lookup; stage recompiles about 1 s of Corset code.
 Remaining risk: effect summary, 17–22 s uncached (S5). Base summary cache must close it; effects phase gets own budget once Base cache exists.
 
 Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).

@@ -42,15 +42,14 @@ function findings(facts::FactSet)::Vector{Finding}
     inference = facts.inference
     isnothing(inference) && return Finding[]
     return map(inference.failing) do failing
-        span = failing.code.spans[failing.statement]
         definite = failing.confidence == Confidence.definite
         # Line span cannot show which call of line fails.
-        confidence = definite && span.precision == Precision.exact ? Confidence.definite : Confidence.possible
+        confidence = definite && failing.span.precision == Precision.exact ? Confidence.definite : Confidence.possible
         label = definite ? "throws for every argument type method declares" : "throws for some argument types method declares"
         why = definite ? "every run of this call throws, so code after it never runs" : "call throws for some arguments, so code after it never runs for them"
         return Finding(
-            NAME, :never_succeeds, confidence, "call to `$(failing.callee)` never succeeds", Label(span, label),
-            [Label(name_span(failing.code.site), "method declares argument types here")], why,
+            NAME, :never_succeeds, confidence, "call to `$(failing.callee)` never succeeds", Label(failing.span, label),
+            [Label(failing.declared, "method declares argument types here")], why,
             manual_fix("fix call, add method for these argument types, or narrow method signature"),
         )
     end

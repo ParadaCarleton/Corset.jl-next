@@ -7,7 +7,7 @@ Each extension whose triggers environment can load gets them loaded; extension t
 """
 module Package
 
-using ..Facts: Facts, PackageFacts, ProjectFacts, MethodSite, StructSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
+using ..Facts: Facts, line_starts, PackageFacts, ProjectFacts, MethodSite, StructSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
 using ..Config: ConfigError, parse_toml
 
 """Rule name load failures report under."""
@@ -83,9 +83,6 @@ unqualified(text::AbstractString)::String = strip(lstrip(last(split(text, '.')),
 
 """Function name definition `node` writes, without module qualifier, quote or parentheses: `==` for `Base.:(==)(a, b) = …`."""
 defined_name(file::SyntaxFile, node::SyntaxNode)::String = unqualified(Facts.source(file, Facts.definition_name(node)))
-
-"""Byte where each line of `text` starts."""
-line_starts(text::String)::Vector{Int} = [1; findall(==(UInt8('\n')), codeunits(text)) .+ 1]
 
 """Line index of one file: line starts, and function definition nodes by line where they start."""
 struct Lines

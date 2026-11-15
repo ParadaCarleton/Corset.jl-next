@@ -1,0 +1,7 @@
+stepped(x::Real) = increment(x)
+mapped(xs::AbstractVector{<:Real}) = map(step_of, xs)
+closured(x::Real) = apply_to(y -> y + x, x)
+apply_to(f, x) = f(x)
+redoubled(x::Real) = doubled(x)
+regenerated(x::Real) = generated_apply(y -> y, x)
+@generated generated_apply(f, x) = :(f(x))

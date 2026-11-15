@@ -358,7 +358,7 @@ end
 
 @testset "opt-outs" begin
     report = Corset.check(joinpath(@__DIR__, "optout", "cases.jl"))
-    lines = Dict(path => Corset.Render.line_starts(text) for (path, text) in report.sources)
+    lines = Dict(path => Corset.Facts.line_starts(text) for (path, text) in report.sources)
     located = [
         (diagnostic.finding.rule, diagnostic.finding.kind, searchsortedlast(lines[diagnostic.finding.primary.span.file], diagnostic.finding.primary.span.first_byte))
             for diagnostic in report.diagnostics

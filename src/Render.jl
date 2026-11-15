@@ -1,7 +1,7 @@
 """Render diagnostics as Rust-style text messages."""
 module Render
 
-using ..Facts: Span, Precision, Confidence, BlindSpot
+using ..Facts: Span, Precision, Confidence, BlindSpot, line_starts
 using ..Config: Level
 using ..Engine: Diagnostic, Report
 using ..Rules: REGISTRY
@@ -9,9 +9,6 @@ using ..Baseline: Baseline
 
 """Header word for `level`, as in rustc."""
 const HEADER = Dict(Level.deny => "error", Level.warn => "warning")
-
-"""Byte offset of first byte of each line of `text`."""
-line_starts(text::String)::Vector{Int} = [1; findall(==(UInt8('\n')), codeunits(text)) .+ 1]
 
 """Line and code-point column of byte `byte` in `text`; `byte` may sit one past end."""
 function line_column(text::String, byte::Int)::Tuple{Int, Int}

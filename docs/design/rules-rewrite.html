@@ -886,8 +886,22 @@ end
 <li>Location: Corset scratch space <code>analyses</code> in Julia depot. CI that saves depot keeps cache. <code>--no-cache</code> turns cache off.</li>
 <li>Relaunching process computes key of relaunched process (temporary environment, load path <code>@:@stdlib</code>) and asks cache first. Hit loads no package and starts no process. <code>fix</code> always relaunches.</li>
 <li>Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.</li>
-<li>Later, per-file and per-method entries. <code>syntax</code> stage: findings per file, keyed by file content hash.</li>
-<li>Later, typed stages: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. <code>@generated</code> method depends on whole package. Run then loads package and infers only invalid methods.</li>
+<li>Later: <code>syntax</code> stage findings per file, keyed by file content hash.</li>
+<li><code>inference</code> stage keeps method store per checked path beside analysis entry. Store holds one entry per inferred method and signature: reached signatures, stage facts and blind spots.</li>
+<li>Entry holds plain data: spans, names, call signatures. Typed code stays inside stage, so no rule reads data that store leaves out.</li>
+<li>Entry depends on content hash of file of its method, since spans hold byte offsets.</li>
+<li>Entry also depends on lowered code of each package method that inference read through compiler edges, transitively. Lowered code holds macro output and <code>@eval</code> code.</li>
+<li>Closure that edit renumbers has other code, so lowered code also checks what closure and keyword body names mean.</li>
+<li>Edge walk passes through dependency method whose specialization names package type or function: <code>map(f, xs)</code> with package <code>f</code> depends on <code>f</code>.</li>
+<li>Entry records generated code of each <code>@generated</code> instance it read. Run calls generator again and compares.</li>
+<li>Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.</li>
+<li>Store key line hashes environment, Corset source, analyzed file list and package shape. Other key drops whole store.</li>
+<li>Package shape: signature and file of each package method, struct layouts, global types and constants. Non-analyzed files in <code>src</code>, <code>ext</code> and <code>deps</code> count too.</li>
+<li>Constant counts by value when plain (number, string, symbol, tuple of those), by name when function or module, else by type.</li>
+<li>Shape also counts text of files that hold pirate methods: any call can reach them, and walk sees no edge.</li>
+<li>Run checks each entry against file hash, lowered code and generated code; infers only invalid ones; writes store with entries this run used.</li>
+<li>Result stays serialized until entry proves valid: it can name closure type that edit removed.</li>
+<li>Edit of one method invalidates entries of its file and entries that read its code.</li>
 <li>Later, engine runs on Salsa.jl (julia-vscode, MIT; JuliaWorkspaces.jl uses it): inputs are file texts and Project.toml; derived queries are parse trees, facts and findings. Edit recomputes only dependents; early cutoff stops at unchanged facts. Salsa keeps tables in memory only; disk cache starts new process warm.</li>
 <li>Inference runs inside compiler, outside Salsa tracking: typed dependencies come from compiler edges between methods.</li>
 <li>Later: warm daemon keeps Salsa tables and loaded package, so edit costs only its dependents.</li>
@@ -961,7 +975,7 @@ end
 </tr>
 <tr>
 <td>later</td>
-<td>F12, F45, F46, F49, F76 (off by default); string and dict stand-in types; language server mode; directory discovery reads <code>.gitignore</code> and <code>.ignore</code>, like Ruff; test helper that runs rules on macro expansion, so macro authors check generated code (other packages' macro output gets no findings); replace <code>{}</code> stopgap with skip of macro arguments Julia rejects as written (<code>{x}</code>, <code>x ~ Normal()</code>), once <code>scope</code> lowering and <code>package</code> method tables can supply it; dimension-aware stand-in for <code>Number</code> (catches <code>x + 1</code> on Unitful quantity); nursery group for rules before quality gate; upstream <code>@match</code> exhaustiveness and unreachable-arm checks to Moshi <code>verify/</code> (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for <code>manual</code> fixes; concrete probes for Base widening; per-method disk cache; warm daemon with incremental runs; borrow checking.</td>
+<td>F12, F45, F46, F49, F76 (off by default); string and dict stand-in types; language server mode; directory discovery reads <code>.gitignore</code> and <code>.ignore</code>, like Ruff; test helper that runs rules on macro expansion, so macro authors check generated code (other packages' macro output gets no findings); replace <code>{}</code> stopgap with skip of macro arguments Julia rejects as written (<code>{x}</code>, <code>x ~ Normal()</code>), once <code>scope</code> lowering and <code>package</code> method tables can supply it; dimension-aware stand-in for <code>Number</code> (catches <code>x + 1</code> on Unitful quantity); nursery group for rules before quality gate; upstream <code>@match</code> exhaustiveness and unreachable-arm checks to Moshi <code>verify/</code> (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for <code>manual</code> fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking.</td>
 <td>6</td>
 <td>—</td>
 </tr>
@@ -1023,8 +1037,44 @@ end
 </tbody>
 </table></div>
 <p><code>benchmark/cold.jl</code> measures Corset. Cold run misses budget on Distances and DataStructures.
-Nearly all of <code>inference</code> stage is Julia inference of target methods at declared or stand-in signatures; Corset machinery and Base callees on stand-ins add about 0.1 s. Package image holds neither Corset's signatures nor target's: target's own precompile workload caches concrete calls only (JSON ships one). So per-method disk cache is required: later cold runs skip unchanged methods.
-Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Whole process takes 2.2–2.6 s; loading Corset takes 1.3 s of it.
+Nearly all of <code>inference</code> stage is Julia inference of target methods at declared or stand-in signatures; Corset machinery and Base callees on stand-ins add about 0.1 s. Package image holds neither Corset's signatures nor target's: target's own precompile workload caches concrete calls only (JSON ships one). So method store keeps facts per method: later runs infer only methods that edit touched.
+Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Whole process takes 2.2–2.6 s; loading Corset takes 1.3 s of it.</p>
+<p>Rerun after edit of one file: <code>inference</code> stage with method store, seconds; store key and shape add 0.1–0.3 s.</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Cold</th>
+<th>Unchanged</th>
+<th>Edited file</th>
+<th>After edit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DataStructures</td>
+<td>3.0</td>
+<td>0.21</td>
+<td><code>heaps/binary_heap.jl</code></td>
+<td>0.26</td>
+</tr>
+<tr>
+<td>Distances</td>
+<td>3.2</td>
+<td>1.1</td>
+<td><code>haversine.jl</code></td>
+<td>1.1</td>
+</tr>
+<tr>
+<td>JSON</td>
+<td>3.3</td>
+<td>0.28</td>
+<td><code>lazy.jl</code></td>
+<td>0.94</td>
+</tr>
+</tbody>
+</table></div>
+<p>Distances loads ChainRulesCore.jl, whose <code>promote_rule</code> invalidates JuliaSyntax.jl line lookup; stage recompiles about 1 s of Corset code.
 Remaining risk: effect summary, 17–22 s uncached (S5). Base summary cache must close it; effects phase gets own budget once Base cache exists.</p>
 <p>Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).</p>
 </div><div class="decision"><h3>Design reviews</h3>
