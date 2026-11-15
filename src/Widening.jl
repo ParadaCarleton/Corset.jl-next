@@ -162,7 +162,7 @@ function renames(name::Type)::Bool
 end
 
 """Whether position `position` of call to `callee` takes type name that converts: callee, `convert(T, x)`, `T.(x)`."""
-conversion(callee::Any, position::Int)::Bool = position == 1 || (position == 2 && callee in (convert, Base.Broadcast.broadcasted))
+conversion(callee::Any, position::Int)::Bool = position == 1 || (position == 2 && (callee === convert || callee === Base.Broadcast.broadcasted))
 
 """
 Result type of call with argument types `types`, callee first, over at most `MATCHES` methods; `Any` when unknown.
@@ -335,7 +335,8 @@ end
 function converts(code::Core.CodeInfo, target::Any, store::Any, parameters::Vector{CC.VarState})::Bool
     isnothing(store) && return isconcretetype(target)
     callee, call = store
-    callee in (setfield!, setproperty!) || return isconcretetype(target <: AbstractDict ? valtype(target) : eltype(target))
+    # Identity test: `in` compares with `==`, which gives `missing` for `missing` callee.
+    callee === setfield! || callee === setproperty! || return isconcretetype(target <: AbstractDict ? valtype(target) : eltype(target))
     field = CC.argextype(call.args[3], code, parameters)
     (field isa Core.Const && target isa DataType && isconcretetype(target) && hasfield(target, field.val)) || return false
     return isconcretetype(fieldtype(target, field.val))
