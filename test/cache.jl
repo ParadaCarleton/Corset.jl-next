@@ -40,10 +40,11 @@ end
             gone = "\n[[deps.Gone]]\npath = \"../gone\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n"
             manifest = "manifest_format = \"2.0\"\n\n[[deps.D]]\npath = \"../dependency\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n$gone"
             write_files(environment, "Project.toml" => "", "Manifest.toml" => manifest)
-            script = joinpath(scratch, "script.jl")
+            script, link = joinpath(scratch, "script.jl"), joinpath(scratch, "link.jl")
             write(script, "x = 1\n")
+            symlink(script, link)
             project = joinpath(environment, "Project.toml")
-            parts, files = Cache.inputs(root, "flags", root, [joinpath(root, "src", "a.jl"), script], [project, Sys.STDLIB], joinpath(root, "cache"))
+            parts, files = Cache.inputs(root, "flags", root, [joinpath(root, "src", "a.jl"), link], [project, Sys.STDLIB], joinpath(root, "cache"))
             @test parts == [string(VERSION), repr(Base.CacheFlags()), root, "flags", project, Sys.STDLIB]
             corset = realpath(pkgdir(Corset))
             listed = [
@@ -52,7 +53,7 @@ end
                 joinpath(corset, "Project.toml"), joinpath(corset, "src", "Cache.jl"),
             ]
             @test issubset(listed, files) && issorted(files) && allunique(files)
-            @test !any(file -> occursin("hidden", file) || occursin("gone", file), files)
+            @test !any(file -> occursin("hidden", file) || occursin("gone", file) || occursin("link", file), files)
             # Manifest format 1 keeps entries at top level.
             write_files(environment, "Manifest.toml" => "[[D]]\npath = \"../dependency\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n")
             @test Cache.path_entries(project) == [dependency]

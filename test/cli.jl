@@ -455,6 +455,8 @@ end
                 @test launched("check", root, "-A", "annotation") == (code, out, "")
                 @test launched("baseline", root, "-A", "annotation") == (0, "", "corset: wrote 1 findings to $(Corset.Baseline.FILE)\n")
                 rm(joinpath(root, Corset.Baseline.FILE))
+                # Fix writes files, so it relaunches even when cache holds analysis.
+                @test startswith(launched("fix", root, "-A", "annotation")[3], "corset: applied 1 edits\n")
                 code, out, err = launched("check", root, "-A", "shadowed-base")
                 @test code == 0 && !occursin("building environment", err)
             end

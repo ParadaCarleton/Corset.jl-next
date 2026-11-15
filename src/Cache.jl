@@ -39,7 +39,7 @@ function path_entries(environment::String)::Vector{String}
     manifest = Base.project_file_manifest_path(environment)
     isnothing(manifest) && return String[]
     deps = Base.get_deps(TOML.parsefile(manifest))
-    return [abspath(dirname(manifest), entry["path"]) for entries in values(deps) if entries isa Vector for entry in entries if haskey(entry, "path")]
+    return [abspath(dirname(manifest), entry["path"]) for entries in values(deps) for entry in entries if haskey(entry, "path")]
 end
 
 """Add `text` to `context` with its length first, so neighboring parts cannot run together."""
@@ -53,8 +53,7 @@ directory left out.
 """
 function inputs(path::String, flags::String, root::Union{Nothing, String}, files::Vector{String}, load_path::Vector{String}, cache::String)::Tuple{Vector{String}, Vector{String}}
     parts = [string(VERSION), repr(Base.CacheFlags()), path, flags]
-    # Relaunching process and relaunched one must agree, so Corset counts by real path.
-    corset = realpath(corset_root())
+    corset = corset_root()
     trees = [joinpath(corset, "src"); something(root, String[])]
     listed = [files; joinpath(corset, "Project.toml")]
     for environment in load_path
@@ -66,7 +65,9 @@ function inputs(path::String, flags::String, root::Union{Nothing, String}, files
         append!(trees, path_entries(environment))
     end
     # Stale `path` entry names directory that is gone; it adds no file.
-    return parts, sort!(unique!([listed; (tree_files(tree, cache) for tree in unique(trees) if isdir(tree))...]))
+    found = [listed; (tree_files(tree, cache) for tree in unique(trees) if isdir(tree))...]
+    # Processes that reach file through other links must agree, so files count by real path.
+    return parts, sort!(unique!([ispath(file) ? realpath(file) : file for file in found]))
 end
 
 """SHA-256 of `parts`, then of path and content of each of `files`. Missing file counts too: file that appears changes digest."""
@@ -101,7 +102,7 @@ end
 """Store `analysis` under `key` as entry of checked `path` in cache `directory`. Entry file changes in one step."""
 function store!(directory::String, path::String, key::String, analysis::T)::Nothing where {T}
     mkpath(directory)
-    staging, io = mktemp(directory; cleanup = false)
+    staging, io = mktemp(directory)
     println(io, key)
     serialize(io, analysis)
     close(io)
