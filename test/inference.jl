@@ -5,7 +5,9 @@ using Corset.StandIns: FloatStandIn, IntStandIn, ArrayStandIn, DenseStandIn, Fun
 using Corset.Package: source_name
 using Corset.Signatures: LIMIT
 using Corset.Inference:
-    TypedCode, infer_package, infer, mappings, statement_nodes, statement_call, callee_name, spells, untyped, throw_helper, callable, callee_text
+    TypedCode, infer_package, infer, mappings, statement_nodes, broadcast_node, callee_name, spells, untyped, throw_helper, callable, callee_text
+using Corset.Widening: statement_call
+using Base.Broadcast: broadcasted
 using Corset.Inference:
     Store, Entry, Staged, entry_key, method_id, code_digest, staged_digest, method_index, instance, shape, constant_text, digest, names_package!, holds_gensym
 
@@ -65,6 +67,9 @@ sites(name::String)::Vector{MethodSite} = [site for site in PACKAGE.methods if s
 
 """Line where definition of function `name` starts in fixture."""
 line_of(name::String)::Int = findfirst(line -> occursin(Regex("^(@generated )?$name\\("), line), split(FILE.text, '\n'))
+
+"""Lazy broadcast that method returns unconsumed."""
+lazy_scaled(xs) = broadcasted(*, xs, 0.5)
 
 """Span of first statement of `code` that calls function `name`."""
 call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
@@ -163,6 +168,12 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         swapped = statement_nodes(code.code, mapped, code.site.file)
         @test !isnothing(swapped[first(calls)]) && isnothing(swapped[last(calls)])
     end
+    @testset "lazy broadcast" begin
+        # Returned lazy broadcast has no consumer call, so it maps to no node.
+        lazy = first(only(code_typed(lazy_scaled, (Vector{Float64},); optimize = false)))
+        index = findfirst(statement -> (call = statement_call(statement); !isnothing(call) && callee_name(lazy, call) === :broadcasted), lazy.code)
+        @test isnothing(broadcast_node(lazy, Union{Nothing, Corset.Facts.SyntaxNode}[nothing for _ in lazy.code], something(index)))
+    end
     @testset "blind spots" begin
         unreached = ["lonely", "splatted", "first_of", "unreached", "joined", "hk"]
         @test spot_lines("untyped method no call reaches") == sort!(line_of.(unreached))
@@ -185,8 +196,9 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test all(name -> isempty(failing(name)), ("halved", "checked"))
     end
     @testset "engine infers only for inference rule" begin
+        rules = [entry.name for entry in Corset.Rules.REGISTRY if entry.stage == Corset.Facts.Stage.inference]
         causes(level::Corset.Config.Level.T)::Set{String} = Set(
-            spot.cause for spot in Corset.check(CASE; flags = Corset.Config.Flags(; levels = ["never-succeeds" => level])).blind_spots
+            spot.cause for spot in Corset.check(CASE; flags = Corset.Config.Flags(; levels = [string(rule) => level for rule in rules])).blind_spots
         )
         push!(LOAD_PATH, CASE)
         try
@@ -200,11 +212,11 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         facts, spots, fresh, used = infer_package(PACKAGE, FILES, Store())
         stored(code::TypedCode)::Bool = haskey(used, entry_key(code.site.method, code.signature))
         named(codes)::Vector{String} = sort!(unique([source_name(code.site.method) for code in codes]))
-        @test facts.failing == FACTS.failing && spots == SPOTS && isnothing(last(infer_package(PACKAGE, FILES, nothing)))
+        @test facts.failing == FACTS.failing && facts.disruptions == FACTS.disruptions && spots == SPOTS && isnothing(last(infer_package(PACKAGE, FILES, nothing)))
         # Store keeps closures, keyword bodies and generated code, but no generated instance on closure type.
         @test named(code for code in fresh if !stored(code)) == ["generated_apply", "regenerated"]
         again = infer_package(PACKAGE, FILES, used)
-        @test again[1].failing == facts.failing && again[2] == spots && keys(again[4]) == keys(used) && !any(stored, again[3])
+        @test again[1].failing == facts.failing && again[1].disruptions == facts.disruptions && again[2] == spots && keys(again[4]) == keys(used) && !any(stored, again[3])
         refreshed(files::Vector{SyntaxFile}, store::Store)::Vector{String} = named(code for code in infer_package(PACKAGE, files, store)[3] if stored(code))
         # Edit of file invalidates its methods: their spans hold byte offsets.
         edited = [basename(file.path) == "callees.jl" ? Corset.Syntax.parse_file(file.path, file.text * "\n", file.role) : file for file in FILES]

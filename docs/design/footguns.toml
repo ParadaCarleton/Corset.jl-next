@@ -50,10 +50,10 @@ note = "Kinds: repeated side-effect-free branch condition (Clippy `ifs_same_cond
 id = 5
 area = "numbers"
 text = "Literal or constant changes input type"
-example = "`x::Float32 * 0.5`, `x::Int32 * 2`"
+example = "`x::Float32 * 0.5`, `Float64(x)` on `Float32`"
 group = "composability"
 stage = "inference"
-note = "Report when converting literal to input type would change type of escaping value. Applies to generic and overspecified arguments."
+note = "Report when converting literal to input type would change type of escaping value. Applies to generic and overspecified arguments. Float input only: Julia promotes small integers to `Int` on purpose."
 
 [[footgun]]
 id = 6

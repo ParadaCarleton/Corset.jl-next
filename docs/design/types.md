@@ -20,7 +20,7 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 
 | Kind | Inputs combine as | Literal or constant | Example finding |
 |---|---|---|---|
-| Numbers | normal promotion; `Int32` with `Int64` gives `Int64` (pass) | weak: must not widen | `x::Int32 * 2` gives `Int64` |
+| Numbers | normal promotion; `Float32` with `Float64` gives `Float64` (pass) | weak: must not widen float input | `x::Float32 * 0.5` gives `Float64` |
 | Arrays | keep container kind; element types promote | fresh `Array` must not take over container | `x::JLArray .+ zeros(n)` gives `Array` |
 | Strings (later) | `String` is correct common type | literal is `String` already | rare; Julia already does this |
 | Dicts, sets (later) | keep container kind; key and value types promote | as for arrays | rare |
@@ -28,14 +28,19 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 - **Stand-in types**: types Corset defines to stand for whatever type caller passes, so inference sees concrete type. Numbers: float stand-in and integer stand-in; arrays: stand-in array type. Each is ordinary well-behaved type, and promotes like narrowest real type of its kind: float stand-in absorbs `Int` and loses to `Float64`, like `Float32`; integer stand-in loses to `Int`, like `Int32`. Base code runs on them unchanged. Array stand-in has `OneTo` axes and column-major memory: rules about axes or memory order read declared argument type, never stand-in.
 - **Inference**: infer each package method with stand-in types in place of generic arguments (`::Real`, `T <: Real`, `AbstractArray{T}`). Use native inference and its cache. No JET, no Cthulhu, no custom interpreter.
 - **Scan** (`inference` stage, package methods only):
-  - Literal, constant, global or type name meets input (stand-in, or overspecified argument type): report when converting it to input type would change type of escaping value: returned, or written to argument or global. Intermediate that does not escape (`Float32(x * 0.5)`) goes to `intermediate-widening` (performance). Each site gets one finding.
-  - Examples: `x::Int32 * 2` (Int64 vs Int32) and `x::Float32 * 0.5` (Float64 vs Float32) and `Float64(x)` on `Float32` are reported. `x::Float32 * 2` and `x::Int32 / 2` (Float64 either way) pass.
-  - Generic `x::Real` runs both number stand-ins, so `x * 2` is reported through integer case.
-  - Escape test: own data-flow pass follows value to returns and stores. Escape analysis tracks heap objects only, so it cannot decide this.
-  - **No downstream consequence, no finding**: disruption is correct when every use converts value back before it matters. Indexing converts index to `Int`, so `heapleft(i::Integer) = 2i` feeding `a[heapleft(i)]` is fine. Store into concrete field or element type also converts.
-    - Exact rule: follow disrupted value through returns into package call sites; exempt when every path ends in conversion. Public function with unknown callers: report as `possible`.
-    - First version: exempt values whose uses are only indexing (`getindex`, `setindex!`, `view`). Range bound counts as indexing only when range and its elements are used only for indexing (`a[lo:2i]`, `for j in 1:2i; a[j]; end`). Fixtures: range used only for indexing (exempt); range returned, stored or iterated for values (reported). Revisit after phase 4: replace with exact rule.
-  - Definite: narrowest Base type of kind gives concrete counterexample. Promotion rules of user number types are out of scope.
+  - Weak value: number literal, constant, call of weak values only (`sqrt(2)`, `2π`, `(1.0, 2.0)`), variable assigned one (`s = 0`), or Base number type name as callee, `convert` target or broadcast function.
+  - Float input only. Julia promotes small integers to `Int` on purpose (`sum(Int32[1])` is `Int64`; index math runs in `Int`), so integer input takes no part.
+  - Integer and float weak values convert to float stand-in. Type name counts when it widens float input (`Float64(x)`); model (`Float32(x)`), narrower type (`Float16(x)`) and other kind (`Int(x)`) pass.
+  - Meeting: call takes weak value and argument that holds float stand-in. With weak value converted, result type changes. Input absorbs weak value: with input swapped to `Float64`, conversion changes nothing. Pair, tuple and struct with own parameter per field fail this test (`x => 0.5`), and so does default value (`get(table, x, 0.5)`). Lazy broadcast compares array it materializes to. Builtins (`getfield(t, 2)`) change no result type.
+  - Report when converting weak value to input type would change type of escaping value: returned, or written to argument or global. Intermediate that does not escape (`Float32(x * 0.5)`) goes to `intermediate-widening` (performance). Each site gets one finding.
+  - Examples: `x::Float32 * 0.5` (Float64 vs Float32) and `Float64(x)` on `Float32` are reported. `x::Float32 * 2` passes; `x::Int32 * 2` and `x::Int32 / 2` pass as integer input.
+  - Generic `x::Real` runs both number stand-ins; float case reports `x * 0.5`.
+  - Escape test: differential inference. Copy lowered code, convert every meeting weak value to stand-in type, and run native inference on copy. Converted value meets more input (`x * 2.0 + 1.0`), so rounds repeat until no new meeting. Then each weak value stays unconverted alone: changed returned or stored type is escape; changed number intermediate only is widening. Escape analysis tracks heap objects only, so it cannot decide this.
+  - Store: `setindex!`, `setproperty!`, `push!`, `materialize!` (`.=`) and others into argument, or `setglobal!`. Concrete element, dictionary value, field or global type converts value.
+  - Weak value whose conversion makes reached call throw is dropped, and stays dropped in later rounds: callee takes only `Float64` there.
+  - **No downstream consequence, no finding**: disruption is correct when every use converts value back before it matters. Integer input takes no part, so index math (`heapleft(i::Integer) = 2i` feeding `a[heapleft(i)]`) gives no finding. Store into concrete field, element or dictionary value type converts.
+    - Exact rule, not built: follow widened value through returns into package call sites; exempt when every path ends in conversion. Public function with unknown callers: report as `possible`.
+  - Definite: `Float32` gives concrete counterexample. Promotion rules of user number types are out of scope.
   - Overspecified argument types (`x::Int32`, `v::AbstractVector{Float64}`) are rare in libraries: `overspecified-type` reports them.
   - Branch on type (`x isa Float64`, `T === Float32`): report as `possible`.
 - **Why stand-in type**: Base has fast paths for `Float32` and `Float64`. Real float probe takes them; stand-in type takes only generic path, same as user number type.

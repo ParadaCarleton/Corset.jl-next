@@ -40,11 +40,13 @@ model(::Type{FloatStandIn})::Type{Float32} = Float32
 model(::Type{IntStandIn})::Type{Int32} = Int32
 
 """
-`type` with each stand-in replaced by its model, parameters included: `ArrayStandIn{FloatStandIn, 1}` gives `Vector{Float32}`.
+`type` with each stand-in replaced by its model, parameters and union members included: `ArrayStandIn{FloatStandIn, 1}`
+gives `Vector{Float32}`.
 Function stand-in has no model and stays.
 """
 function model_type(type::Any)::Any
     type in NUMBERS && return model(type)
+    type isa Union && return Union{model_type(type.a), model_type(type.b)}
     type isa DataType || return type
     parameters = map(model_type, type.parameters)
     type <: Union{ArrayStandIn, DenseStandIn} && return Array{parameters...}

@@ -176,7 +176,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tr data-group="readability"><td>F3</td><td>syntax</td><td>Juxtaposition binds tighter than reader expects</td><td><code>2^2x == 2^(2x)</code>, <code>1/2x</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>Code means what Julia parses; risk is reader misreading it. Clippy <code>precedence</code> is style lint too.</td></tr>
 <tr data-group="correctness"><td>F4</td><td>syntax</td><td><code>where</code> after result annotation binds result type</td><td><code>f(x::T)::T where {T}</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>Errors, or silently binds global <code>T</code> if one exists; report both. Upstream rejected precedence change (JuliaLang/julia#21847).</td></tr>
 <tr data-group="correctness"><td>F96</td><td>syntax</td><td>Code never runs</td><td><code>elseif</code> repeats earlier condition; statement after <code>return</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>Kinds: repeated side-effect-free branch condition (Clippy <code>ifs_same_cond</code>); statement after <code>return</code>, <code>break</code>, <code>continue</code>, <code>throw</code> (rustc <code>unreachable_code</code>). Branch dead by type belongs to inference.</td></tr>
-<tr data-group="composability"><td>F5</td><td>numbers</td><td>Literal or constant changes input type</td><td><code>x::Float32 * 0.5</code>, <code>x::Int32 * 2</code></td><td><span class="chip g-composability">composability</span></td><td>inference</td><td>Report when converting literal to input type would change type of escaping value. Applies to generic and overspecified arguments.</td></tr>
+<tr data-group="composability"><td>F5</td><td>numbers</td><td>Literal or constant changes input type</td><td><code>x::Float32 * 0.5</code>, <code>Float64(x)</code> on <code>Float32</code></td><td><span class="chip g-composability">composability</span></td><td>inference</td><td>Report when converting literal to input type would change type of escaping value. Applies to generic and overspecified arguments. Float input only: Julia promotes small integers to <code>Int</code> on purpose.</td></tr>
 <tr data-group="composability"><td>F6</td><td>numbers</td><td>Float constant where irrational exists; promotes generic code</td><td><code>sqrt(2)</code>, <code>3.14159</code></td><td><span class="chip g-composability">composability</span></td><td>inference</td><td>Suggest <code>π</code>, IrrationalConstants.jl (<code>sqrt2</code>).</td></tr>
 <tr data-group="performance"><td>F87</td><td>numbers</td><td>Literal widens intermediate that does not escape</td><td><code>Float32(x * 0.5)</code> computes in <code>Float64</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td>Same test as F5; slow on GPU. Fix changes rounding, so tier <code>likely</code>.</td></tr>
 <tr data-group="correctness"><td>F7</td><td>numbers</td><td>Signed <code>%</code> and <code>÷</code> round toward zero</td><td><code>-1 % 3 == -1</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
@@ -575,9 +575,9 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <tbody>
 <tr>
 <td>Numbers</td>
-<td>normal promotion; <code>Int32</code> with <code>Int64</code> gives <code>Int64</code> (pass)</td>
-<td>weak: must not widen</td>
-<td><code>x::Int32 * 2</code> gives <code>Int64</code></td>
+<td>normal promotion; <code>Float32</code> with <code>Float64</code> gives <code>Float64</code> (pass)</td>
+<td>weak: must not widen float input</td>
+<td><code>x::Float32 * 0.5</code> gives <code>Float64</code></td>
 </tr>
 <tr>
 <td>Arrays</td>
@@ -604,17 +604,22 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li><strong>Inference</strong>: infer each package method with stand-in types in place of generic arguments (<code>::Real</code>, <code>T &lt;: Real</code>, <code>AbstractArray{T}</code>). Use native inference and its cache. No JET, no Cthulhu, no custom interpreter.</li>
 <li><strong>Scan</strong> (<code>inference</code> stage, package methods only):
 <ul>
-<li>Literal, constant, global or type name meets input (stand-in, or overspecified argument type): report when converting it to input type would change type of escaping value: returned, or written to argument or global. Intermediate that does not escape (<code>Float32(x * 0.5)</code>) goes to <code>intermediate-widening</code> (performance). Each site gets one finding.</li>
-<li>Examples: <code>x::Int32 * 2</code> (Int64 vs Int32) and <code>x::Float32 * 0.5</code> (Float64 vs Float32) and <code>Float64(x)</code> on <code>Float32</code> are reported. <code>x::Float32 * 2</code> and <code>x::Int32 / 2</code> (Float64 either way) pass.</li>
-<li>Generic <code>x::Real</code> runs both number stand-ins, so <code>x * 2</code> is reported through integer case.</li>
-<li>Escape test: own data-flow pass follows value to returns and stores. Escape analysis tracks heap objects only, so it cannot decide this.</li>
-<li><strong>No downstream consequence, no finding</strong>: disruption is correct when every use converts value back before it matters. Indexing converts index to <code>Int</code>, so <code>heapleft(i::Integer) = 2i</code> feeding <code>a[heapleft(i)]</code> is fine. Store into concrete field or element type also converts.
+<li>Weak value: number literal, constant, call of weak values only (<code>sqrt(2)</code>, <code>2π</code>, <code>(1.0, 2.0)</code>), variable assigned one (<code>s = 0</code>), or Base number type name as callee, <code>convert</code> target or broadcast function.</li>
+<li>Float input only. Julia promotes small integers to <code>Int</code> on purpose (<code>sum(Int32[1])</code> is <code>Int64</code>; index math runs in <code>Int</code>), so integer input takes no part.</li>
+<li>Integer and float weak values convert to float stand-in. Type name counts when it widens float input (<code>Float64(x)</code>); model (<code>Float32(x)</code>), narrower type (<code>Float16(x)</code>) and other kind (<code>Int(x)</code>) pass.</li>
+<li>Meeting: call takes weak value and argument that holds float stand-in. With weak value converted, result type changes. Input absorbs weak value: with input swapped to <code>Float64</code>, conversion changes nothing. Pair, tuple and struct with own parameter per field fail this test (<code>x =&gt; 0.5</code>), and so does default value (<code>get(table, x, 0.5)</code>). Lazy broadcast compares array it materializes to. Builtins (<code>getfield(t, 2)</code>) change no result type.</li>
+<li>Report when converting weak value to input type would change type of escaping value: returned, or written to argument or global. Intermediate that does not escape (<code>Float32(x * 0.5)</code>) goes to <code>intermediate-widening</code> (performance). Each site gets one finding.</li>
+<li>Examples: <code>x::Float32 * 0.5</code> (Float64 vs Float32) and <code>Float64(x)</code> on <code>Float32</code> are reported. <code>x::Float32 * 2</code> passes; <code>x::Int32 * 2</code> and <code>x::Int32 / 2</code> pass as integer input.</li>
+<li>Generic <code>x::Real</code> runs both number stand-ins; float case reports <code>x * 0.5</code>.</li>
+<li>Escape test: differential inference. Copy lowered code, convert every meeting weak value to stand-in type, and run native inference on copy. Converted value meets more input (<code>x * 2.0 + 1.0</code>), so rounds repeat until no new meeting. Then each weak value stays unconverted alone: changed returned or stored type is escape; changed number intermediate only is widening. Escape analysis tracks heap objects only, so it cannot decide this.</li>
+<li>Store: <code>setindex!</code>, <code>setproperty!</code>, <code>push!</code>, <code>materialize!</code> (<code>.=</code>) and others into argument, or <code>setglobal!</code>. Concrete element, dictionary value, field or global type converts value.</li>
+<li>Weak value whose conversion makes reached call throw is dropped, and stays dropped in later rounds: callee takes only <code>Float64</code> there.</li>
+<li><strong>No downstream consequence, no finding</strong>: disruption is correct when every use converts value back before it matters. Integer input takes no part, so index math (<code>heapleft(i::Integer) = 2i</code> feeding <code>a[heapleft(i)]</code>) gives no finding. Store into concrete field, element or dictionary value type converts.
 <ul>
-<li>Exact rule: follow disrupted value through returns into package call sites; exempt when every path ends in conversion. Public function with unknown callers: report as <code>possible</code>.</li>
-<li>First version: exempt values whose uses are only indexing (<code>getindex</code>, <code>setindex!</code>, <code>view</code>). Range bound counts as indexing only when range and its elements are used only for indexing (<code>a[lo:2i]</code>, <code>for j in 1:2i; a[j]; end</code>). Fixtures: range used only for indexing (exempt); range returned, stored or iterated for values (reported). Revisit after phase 4: replace with exact rule.</li>
+<li>Exact rule, not built: follow widened value through returns into package call sites; exempt when every path ends in conversion. Public function with unknown callers: report as <code>possible</code>.</li>
 </ul>
 </li>
-<li>Definite: narrowest Base type of kind gives concrete counterexample. Promotion rules of user number types are out of scope.</li>
+<li>Definite: <code>Float32</code> gives concrete counterexample. Promotion rules of user number types are out of scope.</li>
 <li>Overspecified argument types (<code>x::Int32</code>, <code>v::AbstractVector{Float64}</code>) are rare in libraries: <code>overspecified-type</code> reports them.</li>
 <li>Branch on type (<code>x isa Float64</code>, <code>T === Float32</code>): report as <code>possible</code>.</li>
 </ul>

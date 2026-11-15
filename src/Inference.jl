@@ -4,16 +4,18 @@
 Inference runs on unoptimized code, since TypedSyntax.jl maps unoptimized statements to nodes of `syntax` stage tree.
 Method with untyped argument is inferred only where inferred package code calls it with stand-in types.
 Method store keeps result per method and signature across runs; entry holds while file and code it read stay same.
+`Widening` scans typed code for weak values that change input type.
 """
 module Inference
 
 using Serialization: serialize, deserialize
 using SHA: sha256
 using TypedSyntax: TypedSyntax
-using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence
+using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence, Weak, Exit
 using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span
 using ..Package: Package
 using ..StandIns: StandIns
+using ..Widening: Widening, statement_call
 using ..Signatures: LIMIT, method_signatures, struct_stand_ins
 
 const CC = Core.Compiler
@@ -33,12 +35,14 @@ end
 
 """
 Result of inferring one method on one signature, as method store keeps it: call signatures of package methods its calls
-reach, call statements that never return by statement index (`failures!`), and whether inference gave code.
+reach, call statements that never return by statement index (`failures!`), whether inference gave code, and weak
+values that change input type (`disruptions`).
 """
 struct Inferred
     reached::Vector{Type}
     failures::Vector{Pair{Int, Union{FailingCall, BlindSpot}}}
     coded::Bool
+    disruptions::Vector{Disruption}
 end
 
 """
@@ -124,12 +128,6 @@ function infer(method::Method, signature::Type)::Union{Nothing, Tuple{Core.Metho
     return isnothing(frame) ? nothing : (specialized, frame.src, CC.widenconst(CC.ignorelimited(frame.result.result)), frame.edges)
 end
 
-"""Call expression of `statement`, through slot assignment (`_4 = f(x)`); `nothing` for other statement."""
-function statement_call(statement::Any)::Union{Nothing, Expr}
-    statement isa Expr && statement.head === :(=) && (statement = statement.args[2])
-    return statement isa Expr && statement.head === :call ? statement : nothing
-end
-
 """Name of function `call` calls: global, or global earlier statement reads; `nothing` for computed callee."""
 function callee_name(code::Core.CodeInfo, call::Expr)::Union{Nothing, Symbol}
     callee = call.args[1]
@@ -137,9 +135,13 @@ function callee_name(code::Core.CodeInfo, call::Expr)::Union{Nothing, Symbol}
     return callee isa GlobalRef ? callee.name : nothing
 end
 
-"""Whether `node` spells call to `name` with `arguments` positional arguments; callee lowering inserts passes."""
+"""
+Whether `node` spells call to `name` with `arguments` positional arguments; callee lowering inserts passes. Product
+`2x` spells call to `*`.
+"""
 function spells(file::SyntaxFile, node::SyntaxNode, name::Symbol, arguments::Int)::Bool
     name in LOWERED && return true
+    kind_name(node) == "juxtapose" && return name === :* && length(children_of(node)) == arguments
     kind_name(node) == "call" || return false
     positional = count(part -> kind_name(part) != "parameters", call_arguments(node))
     return positional == arguments && Package.unqualified(source(file, callee_node(node))) == string(name)
@@ -176,21 +178,39 @@ function statement_nodes(code::Core.CodeInfo, mapped::Vector{Vector{SyntaxNode}}
         end
         nodes[index] = node
     end
+    for (index, statement) in enumerate(code.code)
+        call = statement_call(statement)
+        isnothing(nodes[index]) && !isnothing(call) && callee_name(code, call) === :broadcasted || continue
+        nodes[index] = broadcast_node(code, nodes, index)
+    end
     return nodes
 end
 
 """
-Span of each statement of `code`: node span from `statement_nodes`; else start of debuginfo line, when that line lies in
-definition; else method site span. Statement without own line takes line of statement before it.
+Dotcall node of `broadcasted` statement `index` of `code`: node of `materialize` statement that consumes it. Mapping
+gives outermost broadcast of `xs .* 0.5 .+ 1.0` to its `materialize` statement only. `nothing` for other consumer.
+"""
+function broadcast_node(code::Core.CodeInfo, nodes::Vector{Union{Nothing, SyntaxNode}}, index::Int)::Union{Nothing, SyntaxNode}
+    for user in (index + 1):length(code.code)
+        call = statement_call(code.code[user])
+        (isnothing(call) || !(Core.SSAValue(index) in call.args)) && continue
+        return callee_name(code, call) === :materialize ? nodes[user] : nothing
+    end
+    return nothing
+end
+
+"""
+Span of each statement of `code`: span of its node in `nodes` (`statement_nodes`); else start of debuginfo line, when
+that line lies in definition; else method site span. Statement without own line takes line of statement before it.
 Code from macro of same file carries line of macro body, outside definition, so it gets method site span.
 """
-function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodSite, starts::Vector{Int})::Vector{Span}
+function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodSite, starts::Vector{Int}, nodes::Vector{Union{Nothing, SyntaxNode}})::Vector{Span}
     path = site.file.path
     lines = isnothing(site.node) ? (1:length(starts)) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
     found, line = Span[], 0
     # Lowering gives method for omitted defaults first body line, though definition line holds defaults and forwarding call.
     wrapper = forwards(site)
-    for (index, node) in enumerate(statement_nodes(code, mappings(code, instance, site), site.file))
+    for (index, node) in enumerate(nodes)
         scopes = Base.IRShow.buildLineInfoNode(code.debuginfo, instance, index)
         if !isempty(scopes)
             # Outermost scope is method itself, even for code from macro of other file; corpus run found no exception.
@@ -199,6 +219,80 @@ function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodS
             line = scope_line in lines ? Int(scope_line) : 0
         end
         push!(found, !isnothing(node) ? Facts.span(site.file, node) : line > 0 ? Span(path, starts[line], starts[line], Precision.line) : site.span)
+    end
+    return found
+end
+
+"""
+Node of weak value of `origin` inside its statement `node` of `code`: right side of assignment `s = 0`, which mapping
+can give alone, argument or callee of call node that spells call (`spells`), or element of array literal. Broadcast
+`f.(x)` lowers to `broadcasted(f, x)`, so positions shift by one. `nothing` when node cannot narrow: `[x 0.5; 1 2]`
+lowers to `hvcat((2, 2), x, 0.5, 1, 2)`.
+"""
+function weak_node(code::Core.CodeInfo, node::Union{Nothing, SyntaxNode}, origin::Widening.Origin, file::SyntaxFile)::Union{Nothing, SyntaxNode}
+    isnothing(node) && return nothing
+    if origin.position == 0
+        kind_name(node) == "=" && return children_of(node)[2]
+        # Mapping that gives variable name holds no value.
+        return source(file, node) == string(code.slotnames[(code.code[origin.index]::Expr).args[1].id]) ? nothing : node
+    end
+    call = something(statement_call(code.code[origin.index]))
+    name, kind = callee_name(code, call), kind_name(node)
+    # Product `2x` and array literal `[x, 0.5]` name no callee.
+    if kind == "juxtapose" || (kind in ("vect", "hcat", "vcat") && name === Symbol(kind))
+        parts, shift = children_of(node), 0
+    elseif kind == "dotcall" && name === :broadcasted
+        parts, shift = call_arguments(node), 1
+    elseif kind == "call" && !isnothing(name) && Package.unqualified(source(file, callee_node(node))) == string(name)
+        parts, shift = call_arguments(node), 0
+    else
+        return nothing
+    end
+    origin.position == 1 + shift && return kind in ("call", "dotcall") ? callee_node(node) : nothing
+    positional = filter(part -> kind_name(part) != "parameters", parts)
+    length(positional) == length(call.args) - 1 - shift || return nothing
+    return positional[origin.position - 1 - shift]
+end
+
+"""
+Text of type `type` with stand-ins as their models (`StandIns.model_type`); lazy broadcast prints as array it
+materializes to.
+"""
+function type_text(type::Type)::String
+    type <: Base.Broadcast.Broadcasted && (type = CC.return_type(Tuple{typeof(Base.Broadcast.materialize), type}))
+    return string(StandIns.model_type(type))
+end
+
+"""Line precision span of line where `span` starts in `file`."""
+function line_span(file::SyntaxFile, span::Span)::Span
+    start = something(findprev(==(UInt8('\n')), codeunits(file.text), span.first_byte - 1), 0) + 1
+    return Span(span.file, start, start, Precision.line)
+end
+
+"""
+Disruption facts of `typed` code from weak value `changes` (`Widening.changes!`); `nodes` are its statement nodes.
+Finding is `possible` when method tests type (`branch`) or node cannot narrow to weak value.
+"""
+function disruptions(typed::TypedCode, nodes::Vector{Union{Nothing, SyntaxNode}}, changes::Vector{Widening.Change}, branch::Bool)::Vector{Disruption}
+    found = Disruption[]
+    for change in changes
+        origin, file = change.origin, typed.site.file
+        node = weak_node(typed.code, nodes[origin.index], origin, file)
+        statement = typed.code.code[origin.index]
+        variable = origin.kind == Weak.variable ? string(typed.code.slotnames[(statement::Expr).args[1].id]) : ""
+        confidence = branch || isnothing(node) ? Confidence.possible : Confidence.definite
+        # Statement node that cannot narrow may be wrong one (`hvcat` maps to last row), so line stands for it.
+        span = isnothing(node) ? line_span(file, typed.spans[origin.index]) : Facts.span(file, node)
+        meeting, exit = isnothing(node) && origin.site == origin.index ? span : typed.spans[origin.site], typed.spans[change.at]
+        # Implicit return maps to line only; on meeting line, meeting span shows it better.
+        exit.precision == Precision.line && exit.first_byte <= meeting.first_byte && !occursin('\n', file.text[exit.first_byte:meeting.first_byte]) && (exit = meeting)
+        push!(
+            found, Disruption(
+                span, meeting, exit,
+                origin.kind, isnothing(node) ? repr(origin.value) : source(file, node), origin.value isa AbstractFloat ? Float64(origin.value) : nothing,
+                string(origin.kind == Weak.name ? origin.value : typeof(origin.value)), variable, type_text(StandIns.model(StandIns.FloatStandIn)), type_text(change.found), type_text(change.expected), change.exit, confidence,
+            )
+        )
     end
     return found
 end
@@ -251,7 +345,8 @@ function callable(type::Any)::Any
     singleton = CC.singleton_type(type)
     !isnothing(singleton) && return singleton
     bare = Base.unwrap_unionall(CC.widenconst(type))
-    bare isa DataType && bare.name === Base.typename(Type) || return nothing
+    bare isa DataType || return nothing
+    bare.name === Base.typename(Type) || return nothing
     constructed = Base.unwrap_unionall(only(bare.parameters))
     return constructed isa DataType ? constructed.name.wrapper : nothing
 end
@@ -551,7 +646,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     index, ids = isnothing(store) ? (Dict{String, Method}(), IdDict{Method, String}()) : method_index(by_path)
     codes = Dict{String, String}()
     typed, seen, counts, coded = TypedCode[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
-    failing, gaps, settled = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}()
+    failing, gaps, settled, disrupting = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[]
     while !isempty(pending)
         site, call_signature = popfirst!(pending)
         (site.method, call_signature) in seen && continue
@@ -565,12 +660,14 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
             edges = Any[]
             result = infer(site.method, call_signature)
             inferred = if isnothing(result)
-                Inferred(Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false)
+                Inferred(Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, Disruption[])
             else
                 instance, code, returned, frame_edges = result
                 append!(edges, frame_edges)
-                push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts)))
-                Inferred(reached(code, instance), failures!(edges, helpers, last(typed), by_path), true)
+                nodes = statement_nodes(code, mappings(code, instance, site), site.file)
+                push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes)))
+                changes, branch = Widening.changes!(edges, instance, code)
+                Inferred(reached(code, instance), failures!(edges, helpers, last(typed), by_path), true, disruptions(last(typed), nodes, changes, branch))
             end
             entry = isnothing(used) ? nothing : entry!(named, ids, codes, site, call_signature, inferred, edges, by_path, hashes, modules)
         else
@@ -590,9 +687,12 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
             (site.method, index) in settled && continue
             failure isa BlindSpot ? push!(gaps, failure) : (push!(settled, (site.method, index)); push!(failing, failure))
         end
+        append!(disrupting, inferred.disruptions)
     end
     append!(spots, BlindSpot("untyped method no call reaches", site.span) for site in skipped if !(site.method in coded))
-    return InferenceFacts(failing), unique!(append!(spots, gaps)), typed, used
+    # One finding per weak value: escape before intermediate, definite before possible.
+    sort!(disrupting; by = disruption -> (disruption.exit == Exit.intermediate, disruption.confidence == Confidence.possible))
+    return InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting)), unique!(append!(spots, gaps)), typed, used
 end
 
 """Inference facts of `package` in analyzed `files`, their blind spots, and store of entries run used (`infer_package`)."""

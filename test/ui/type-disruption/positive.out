@@ -1,0 +1,174 @@
+warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
+ --> src/TypeDisruptionPositive.jl:4:32
+  |
+4 | scaled(x::AbstractFloat) = x * 0.5
+  |                            ------- meets `Float32` input here and returns `Float64` instead of `Float32`
+  |                                ^^^ `Float64` for every input type
+  |
+  = why: result takes weak value's type, so callers lose their number type
+  = fix: convert `0.5` to input type, as in `oftype(x, 0.5)` or `T(0.5)`   [manual]
+  = docs: corset explain type-disruption
+  = note: warn from composability group, library preset
+  = note: opt out with `# corset: allow type-disruption -- <reason>`
+
+warning[type-disruption]: start value of `s` turns `Float32` input into `Union{Float32, Int64}`
+  --> src/TypeDisruptionPositive.jl:7:9
+   |
+ 7 |     s = 0
+   |         ^ starts `s` as `Int64`
+ 8 |     for x in xs
+ 9 |         s += x
+   |         ------ meets `Float32` input here
+10 |     end
+11 |     return s
+   |     -------- returns `Union{Float32, Int64}` instead of `Float32`
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = fix: start `s` with input type, as in `zero(T)` or `zero(eltype(xs))`   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: constant `HALF` turns `Float32` input into `Float64`
+  --> src/TypeDisruptionPositive.jl:15:28
+   |
+15 | halved(x::AbstractFloat) = HALF * x
+   |                            ^^^^ `Float64` for every input type
+   |                            -------- meets `Float32` input here and returns `Float64` instead of `Float32`
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = fix: convert `HALF` to input type, as in `oftype(x, HALF)` or `T(HALF)`   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: constant `sqrt(2)` turns `Float32` input into `Float64`
+  --> src/TypeDisruptionPositive.jl:16:30
+   |
+16 | diagonal(x::AbstractFloat) = sqrt(2) * x
+   |                              ^^^^^^^ `Float64` for every input type
+   |                              ----------- meets `Float32` input here and returns `Float64` instead of `Float32`
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = fix: use irrational `sqrt2` from IrrationalConstants.jl; it takes input type   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: literal `3.14159` turns `Float32` input into `Float64`
+  --> src/TypeDisruptionPositive.jl:18:31
+   |
+18 | area(radius::AbstractFloat) = 3.14159 * radius^2
+   |                               ^^^^^^^ `Float64` for every input type
+   |                               ------------------ meets `Float32` input here and returns `Float64` instead of `Float32`
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = fix: use irrational `π`; it takes input type   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: conversion to `Float64` turns `Float32` input into `Float64`
+  --> src/TypeDisruptionPositive.jl:19:29
+   |
+19 | widened(x::AbstractFloat) = Float64(x) + x
+   |                             ^^^^^^^ converts every input type to `Float64`
+   |                             ---------- meets `Float32` input here and returns `Float64` instead of `Float32`
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = fix: drop conversion, or keep input type with `float(x)` or `oftype(x, y)`   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: literal `2.0` turns `Float32` input into `Float64`
+  --> src/TypeDisruptionPositive.jl:22:18
+   |
+22 |     log[1] = x * 2.0
+   |              ------- meets `Float32` input here and stores `Float64` instead of `Float32`
+   |                  ^^^ `Float64` for every input type
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = fix: convert `2.0` to input type, as in `oftype(x, 2.0)` or `T(2.0)`   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float64}`
+  --> src/TypeDisruptionPositive.jl:25:57
+   |
+25 | scaled_all(xs::AbstractVector{<:AbstractFloat}) = xs .* 0.5
+   |                                                   --------- meets `Float32` input here and returns `Vector{Float64}` instead of `Vector{Float32}`
+   |                                                         ^^^ `Float64` for every input type
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = fix: convert `0.5` to input type, as in `oftype(x, 0.5)` or `T(0.5)`   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: conversion to `Float64` turns `Float32` input into `Vector{Float64}`
+  --> src/TypeDisruptionPositive.jl:26:52
+   |
+26 | widened_all(xs::AbstractVector{<:AbstractFloat}) = Float64.(xs)
+   |                                                    ^^^^^^^ converts every input type to `Float64`
+   |                                                    ------------ meets `Float32` input here and returns `Vector{Float64}` instead of `Vector{Float32}`
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = fix: drop conversion, or keep input type with `float(x)` or `oftype(x, y)`   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: literal `1.0` turns `Float32` input into `Vector{Float64}`
+  --> src/TypeDisruptionPositive.jl:27:84
+   |
+27 | shifted_all(xs::AbstractVector{<:AbstractFloat}) = xs .* oftype(first(xs), 0.5) .+ 1.0
+   |                                                    ----------------------------------- meets `Float32` input here and returns `Vector{Float64}` instead of `Vector{Float32}`
+   |                                                                                    ^^^ `Float64` for every input type
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = fix: convert `1.0` to input type, as in `oftype(x, 1.0)` or `T(1.0)`   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float64}`
+  --> src/TypeDisruptionPositive.jl:29:18
+   |
+29 |     out .= xs .* 0.5
+   |            --------- meets `Float32` input here and stores `Vector{Float64}` instead of `Vector{Float32}`
+   |                  ^^^ `Float64` for every input type
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = fix: convert `0.5` to input type, as in `oftype(x, 0.5)` or `T(0.5)`   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: conversion to `Float64` turns `Float32` input into `Float64`
+  --> src/TypeDisruptionPositive.jl:32:39
+   |
+32 | converted(x::AbstractFloat) = convert(Float64, x)
+   |                               ------------------- meets `Float32` input here and returns `Float64` instead of `Float32`
+   |                                       ^^^^^^^ converts every input type to `Float64`
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = fix: drop conversion, or keep input type with `float(x)` or `oftype(x, y)`   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float64}`
+  --> src/TypeDisruptionPositive.jl:33:32
+   |
+33 | paired(x::AbstractFloat) = [x, 0.5]
+   |                            -------- meets `Float32` input here and returns `Vector{Float64}` instead of `Vector{Float32}`
+   |                                ^^^ `Float64` for every input type
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = fix: convert `0.5` to input type, as in `oftype(x, 0.5)` or `T(0.5)`   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: literal `0.5` turns `Float32` input into `Matrix{Float64}`
+  --> src/TypeDisruptionPositive.jl:35:1
+   |
+35 | grid(x::AbstractFloat) = [x 0.5; 1.0 2.0]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Float64` for every input type
+   | ----------------------------------------- meets `Float32` input here and returns `Matrix{Float64}` instead of `Matrix{Float32}`
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = confidence: possible
+   = fix: convert `0.5` to input type, as in `oftype(x, 0.5)` or `T(0.5)`   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
+  --> src/TypeDisruptionPositive.jl:37:54
+   |
+37 | adjusted(x::AbstractFloat) = x isa Float64 ? x : x * 0.5
+   |                                                  ------- meets `Float32` input here and returns `Float64` instead of `Float32`
+   |                                                      ^^^ `Float64` for every input type
+   |
+   = why: result takes weak value's type, so callers lose their number type
+   = confidence: possible
+   = fix: convert `0.5` to input type, as in `oftype(x, 0.5)` or `T(0.5)`   [manual]
+   = docs: corset explain type-disruption
+

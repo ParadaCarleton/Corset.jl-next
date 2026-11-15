@@ -576,3 +576,18 @@ Causes found and fixed:
 
 Not fixed: loading DataStructures invalidates 263 method instances, Corset entry points among them, and costs 1.2 s of inference again. Chains run through TOML and JSON writes of abstract `Dict` types, and ExplicitImports.jl internals.
 Decision: stand-in inference stays. Per-method disk cache joins PR order after findings cache.
+
+### Phase 4 type disruption
+
+- `Widening` engine converts weak values in copy of lowered code and runs native inference on copy (`InferenceState` from edited `CodeInfo`). No custom interpreter.
+- First draft converted one weak value at a time. `x * 2.0 + 1.0` then found only `2.0`: `1.0` meets input only once `2.0` converts. Engine now converts all, repeats rounds until no new meeting, then leaves each weak value out alone. Nested polynomial needs one round per level.
+- Type names count only as callee, `convert` target and broadcast function. As argument (`zeros(Float64, n)`), name is hard-coded array type: F16.
+- Julia 1.13 lowering reads globals and variables into own statements (`%3 = Main.HALF`); engine resolves reads. It turns `global g = v` into `setglobal!` behind `isa` test of declared type; that test is no type branch.
+- Inference wraps unreached statements in `Core.Const`. Only reached `Union{}` statements count as throwing.
+- TypedSyntax.jl maps broadcast to `materialize` statement only. `statement_nodes` gives each `broadcasted` statement dotcall node of its consumer. Product `2x` parses as `juxtapose`; `spells` accepts it for `*`.
+- Corpus run, integer input: DataStructures gave 22 findings, all index math (`heapleft(i) = 2i`, page ids) or `UInt64(n)` bit masks; JSON gave 3 in digit loop. Julia promotes small integers to `Int` on purpose (`sum(Int32[1])`), and design already called `heapleft` fine. Rules now take float input only; index-only analysis served integer input alone and went.
+- Corpus also found: conversion to narrower or other-kind type counted as widening; dictionary store ignored value type; weak value dropped for breaking call met input again each round. Each has regression test.
+- First meeting test asked whether result follows input. `x => 0.5` and struct with own parameter per field passed it, though they promote nothing. Meeting now needs input to absorb weak value: with input at `Float64`, conversion changes nothing. Lazy broadcast compares array it materializes to.
+- Mutation check of `Widening`: 27 of 33 mutants killed at first. Three checks were redundant and went (`isa` branch case, name kind, type-name variable); two gaps got tests (tuple builtin, intermediate behind tuple). `Bool` and builtin skips change no finding; they save meeting tests.
+- Corpus cost, uncached, branch against main: DataStructures 85 s against 82 s, Distances 20 s against 21 s, JSON 87 s against 86 s. Distances writes no float literal in generic code and gave no finding.
+- Float corpus evidence stays thin. irv-extremism crashed on main before inference (DynamicPPL `@model` evaluator; struct bound rejecting array stand-in; fixed in #217). After that fix, inference with stand-ins runs Enzyme `@generated` thunk generator, which aborts process in LLVM. Open: interpreter that skips dependency generators, or inference in child process.
