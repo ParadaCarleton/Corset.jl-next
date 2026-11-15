@@ -17,12 +17,17 @@ using TOML: TOML
 using ..Config: ConfigError, parse_toml
 using ..Facts: ProjectFacts, TestDeps
 using ..Package: package_id
+using ..Inference: records, last_crash, log_file
 
 """Load path of relaunched process: active project, then standard library."""
 const LOAD_PATH = "@:@stdlib"
 
-"""Code relaunched process runs: same command line, without relaunch, with cache directory `cache` of relaunching process."""
-child(cache::Union{Nothing, String})::String = "using Corset: Corset; exit(Corset.CLI.execute(ARGS, stdout, stderr; launch = false, cache = $(repr(cache))))"
+"""
+Code relaunched process runs: same command line, without relaunch, with cache directory `cache` of relaunching process
+and crash `journal` directory.
+"""
+child(cache::Union{Nothing, String}, journal::String)::String =
+    "using Corset: Corset; exit(Corset.CLI.execute(ARGS, stdout, stderr; launch = false, cache = $(repr(cache)), journal = $(repr(journal))))"
 
 """`Base.load_path()` of process that `relaunch` starts in `env`: `LOAD_PATH` expanded."""
 load_path(env::String)::Vector{String} = [joinpath(env, "Project.toml"), Sys.STDLIB]
@@ -173,10 +178,35 @@ later flag wins, so relaunched process writes no `.cov` or `.mem` files into tre
 """
 untracked(julia::Cmd)::Cmd = `$julia --code-coverage=none --track-allocation=none`
 
-"""Finished Julia process that ran command line `args` again with cache directory `cache`, loading only from `env` and `@stdlib`."""
-function relaunch(env::String, args::Vector{String}, cache::Union{Nothing, String}, out::IO, err::IO)::Base.Process
-    command = `$(untracked(Base.julia_cmd())) --startup-file=no --project=$env -e $(child(cache)) -- $args`
+"""
+Finished Julia process that ran command line `args` again with cache directory `cache` and crash `journal` directory,
+loading only from `env` and `@stdlib`.
+"""
+function relaunch(env::String, args::Vector{String}, cache::Union{Nothing, String}, journal::String, out::IO, err::IO)::Base.Process
+    command = `$(untracked(Base.julia_cmd())) --startup-file=no --project=$env -e $(child(cache, journal)) -- $args`
     return run(pipeline(ignorestatus(addenv(command, "JULIA_LOAD_PATH" => LOAD_PATH)); stdout = out, stderr = err))
+end
+
+"""Most crashes one run survives; each costs one more package load."""
+const CRASHES = 32
+
+"""
+Last relaunched process of run `relaunch` starts: process that native abort kills during inference runs again, and
+journal makes that run skip crashed inference. Prints note per crash to `err`; throws after `limit` crashes. Journal
+directory stays when note names its crash log. Julia exception never reruns.
+"""
+function supervise(env::String, args::Vector{String}, cache::Union{Nothing, String}, out::IO, err::IO, limit::Int)::Base.Process
+    journal = mktempdir(get_scratch!(Base.moduleroot(@__MODULE__), "crashes"); cleanup = false)
+    for crashes in 0:limit
+        process = relaunch(env, args, cache, journal, out, err)
+        crash = process.termsignal == 0 ? nothing : last_crash(records(journal))
+        if isnothing(crash)
+            crashes == 0 && rm(journal; recursive = true)
+            return process
+        end
+        println(err, "corset: Julia crashed inferring ", crash.label, "; running again without it (blind spot). Report: ", log_file(journal))
+    end
+    error("relaunched process crashed $(limit + 1) times, over limit $limit; reports in $(log_file(journal))")
 end
 
 end

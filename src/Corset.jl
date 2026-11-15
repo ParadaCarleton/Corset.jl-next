@@ -84,12 +84,12 @@ function package_workload()::Nothing
     files = [Syntax.parse_file(path, read(path, String), Facts.Role.package)]
     package = Package.package_facts([PackageSample], files)
     Inference.shape(package)
-    facts, _, store = Inference.inference_facts(package, files, Inference.Store())
+    facts, _, store = Inference.inference_facts(package, files, Inference.Store(), nothing)
     isempty(something(store)) && error("precompile workload: inference stage stored no sample method")
     # Second run takes every entry from store, as rerun after edit of other file does.
     mktempdir() do directory
         Cache.store!(directory, path, "sample", something(store))
-        Inference.inference_facts(package, files, something(Cache.lookup(Inference.Store, directory, path, "sample")))
+        Inference.inference_facts(package, files, something(Cache.lookup(Inference.Store, directory, path, "sample")), nothing)
     end
     package_rules(package, facts, files, [path], path, nothing)
     return nothing

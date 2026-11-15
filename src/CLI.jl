@@ -173,10 +173,10 @@ Run command line `args`: report to `out`, messages to `err`. Return exit code. `
 `nothing` or `--no-cache` turns cache off.
 
 With `launch`, run that loads package builds temporary environment and runs again in new Julia process there,
-unless cache holds analysis for that process. Without `launch`, current environment must load package from its root:
-relaunched process and tests.
+unless cache holds analysis for that process; native abort reruns it (`Launch.supervise`). Without `launch`, current
+environment must load package from its root: relaunched process and tests. Relaunched process gets crash `journal`.
 """
-function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err::IO); launch::Bool, cache::Union{Nothing, String})::Int
+function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err::IO); launch::Bool, cache::Union{Nothing, String}, journal::Union{Nothing, String} = nothing)::Int
     try
         levels, deny_warnings, rest = level_flags(args)
         parsed = parse_args(rest, argument_settings())
@@ -194,12 +194,12 @@ function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err
             env = Launch.environment(target, err)
             # Fix writes files and checks again, so it always runs in relaunched process.
             stored = command == "fix" || isnothing(cache) ? nothing : Engine.cached(path, flags, cache, Launch.load_path(env))
-            isnothing(stored) && return exit_code(Launch.relaunch(env, args, cache, out, err))
+            isnothing(stored) && return exit_code(Launch.supervise(env, args, cache, out, err, Launch.CRASHES))
             return finish(command, stored..., out, err, options["format"])
         end
         isnothing(cache) || !Cache.cold(cache, realpath(path)) || println(err, "corset: no cached analysis of ", path, "; first run can be slow, later runs reuse it")
-        command == "fix" && println(err, "corset: applied ", Engine.fix!(path; flags, cache), " edits")
-        return finish(command, Engine.analysis(path, flags, cache)..., out, err, options["format"])
+        command == "fix" && println(err, "corset: applied ", Engine.fix!(path; flags, cache, journal), " edits")
+        return finish(command, Engine.analysis(path, flags, cache, journal)..., out, err, options["format"])
     catch error
         if error isa ArgParseError || error isa ConfigError || error isa UsageError
             println(err, "corset: ", sprint(showerror, error))

@@ -4,7 +4,7 @@ using Corset: Corset
 using JSON: JSON
 using JSONSchema: JSONSchema
 using Scratch: Scratch
-using Test: @test, @testset
+using Test: @test, @testset, @test_throws
 
 """Exit code, standard output and standard error of `corset args...`."""
 function corset(args::String...)::Tuple{Int, String, String}
@@ -214,6 +214,13 @@ end
     with_package(@__DIR__, "Newer", "src/Newer.jl" => newer) do package
         _, out, err = corset("check", package)
         @test occursin("warning[type-disruption]", out) && occursin("THIRD", out) && isempty(err)
+        # Crash journal changes no finding; run without crash leaves only finished records.
+        mktempdir() do directory
+            journaled = IOBuffer()
+            Corset.CLI.execute(["check", package], journaled, IOBuffer(); launch = false, cache = nothing, journal = directory)
+            written = Corset.Inference.records(directory)
+            @test String(take!(journaled)) == out && !isempty(written) && isempty(Corset.Inference.crashed(written))
+        end
     end
 end
 
@@ -285,7 +292,7 @@ end
         # Access in file outside checked path drops.
         @test !occursin("internal-access", corset("check", joinpath(package, "src", "side.jl"))[2])
         # External checks run only when some `external` rule is enabled.
-        external(flags::Corset.Config.Flags) = first(Corset.Engine.analyze(Corset.Engine.inputs(package, flags)..., nothing)).external
+        external(flags::Corset.Config.Flags) = first(Corset.Engine.analyze(Corset.Engine.inputs(package, flags)..., nothing, nothing)).external
         @test length(external(Corset.Config.Flags()).ambiguities) == 1
         allowed = [string(entry.name) => Corset.Config.Level.allow for entry in Corset.Rules.REGISTRY if entry.stage == Corset.Facts.Stage.external]
         @test length(allowed) > 1 && isnothing(external(Corset.Config.Flags(; levels = allowed)))
@@ -489,6 +496,32 @@ end
                 @test startswith(launched("fix", root, "-A", "annotation")[3], "corset: applied 1 edits\n")
                 code, out, err = launched("check", root, "-A", "shadowed-base")
                 @test code == 0 && !occursin("building environment", err)
+            end
+            # Generator aborts Julia on float stand-in, as Enzyme generator does; rerun skips that inference.
+            crashing = """
+            \"\"\"Package whose generator aborts Julia on float stand-in.\"\"\"
+            module Crashing
+            \"\"\"`x`; generator aborts process for float stand-in.\"\"\"
+            @generated function generated(x)
+                nameof(x) === :FloatStandIn && ccall(:abort, Cvoid, ())
+                return :(x)
+            end
+            \"\"\"`x` plus one, through generated function.\"\"\"
+            outer(x::Real) = generated(x) + 1
+            end
+            """
+            mktempdir(@__DIR__) do root
+                write(joinpath(root, "Project.toml"), "name = \"Crashing\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n\n[preferences.Corset]\nkind = \"library\"\n")
+                mkpath(joinpath(root, "src"))
+                write(joinpath(root, "src", "Crashing.jl"), crashing)
+                code, out, err = launched("check", root)
+                @test code == 0 && occursin("corset: Julia crashed inferring Crashing.outer at Crashing.jl:9; running again without it", err)
+                @test occursin("inference crashed process: 1", out) && !occursin("signal", err)
+                report = last(split(only(filter(contains("Report: "), split(err, '\n'))), "Report: "))
+                @test occursin("signal", read(report, String))
+                # Crash past limit throws.
+                env = Corset.Launch.environment(something(Corset.Engine.load_target(root, Corset.Config.Flags())), IOBuffer())
+                @test_throws "over limit 0" Corset.Launch.supervise(env, ["check", root], nothing, IOBuffer(), IOBuffer(), 0)
             end
             # Manifest pins TextWrap 0.3; Corset needs ArgParse 1, which needs TextWrap 1. Compat bound blocks move.
             for compat in ("", "\n[compat]\nTextWrap = \"0.3\"\n")
