@@ -56,18 +56,33 @@ function stand_ins(bound::Type, structs::Vector{<:Type})::Vector{Type}
     return fitting(structs, bound)
 end
 
+"""`type` with `value` for its outer type variable; `nothing` when struct parameter bound inside `type` rejects `value`."""
+function applied(type::UnionAll, value::Type)::Union{Nothing, Type}
+    return try
+        type{value}
+    catch error
+        # `Bounded{E, V} where V <: AbstractVector` takes `V` only below `AbstractVector{E}`, as struct declares.
+        error isa TypeError || rethrow()
+        nothing
+    end
+end
+
 """
 Types with stand-ins for type variables of `type`, outermost first; variable that no stand-in fits stays free.
 Stops after more than `LIMIT` types, so caller sees overflow.
 """
 function instantiate(type::Type, structs::Vector{<:Type})::Vector{Type}
     type isa UnionAll || return Type[type]
-    variable = type.var
-    values = filter(value -> variable.lb <: value, stand_ins(variable.ub, structs))
-    isempty(values) && return Type[UnionAll(variable, inner) for inner in instantiate(type.body, structs)]
+    variable, applications = type.var, Type[]
+    for value in stand_ins(variable.ub, structs)
+        variable.lb <: value || continue
+        application = applied(type, value)
+        isnothing(application) || push!(applications, application)
+    end
+    isempty(applications) && return Type[UnionAll(variable, inner) for inner in instantiate(type.body, structs)]
     found = Type[]
-    for value in values
-        append!(found, instantiate(type{value}, structs))
+    for application in applications
+        append!(found, instantiate(application, structs))
         length(found) > LIMIT && break
     end
     return found

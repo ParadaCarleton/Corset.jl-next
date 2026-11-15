@@ -38,6 +38,10 @@ module SignatureCases
     exact(x::T) where {T <: Int} = x
     mixed(x::T, n::Int) where {T} = x
     pick(shape::T) where {T <: Shape} = shape
+    struct Bounded{E <: Real, V <: AbstractVector{E}}
+        values::V
+    end
+    paired(::Type{E}, bounded::Bounded{E, V}) where {E <: Real, V <: AbstractVector} = bounded
 end
 
 const CASES = SignatureCases
@@ -116,6 +120,12 @@ include("compilation.jl")
         before = specializations(Corset.Signatures, Base)
         signatures_of(rest)
         @test specializations(Corset.Signatures, Base) == before
+    end
+    @testset "struct bound rejects stand-in" begin
+        # Array stand-in with element `Any` fits method bound of `V`, not struct bound `V <: AbstractVector{E}`.
+        found = signatures_of(:paired)
+        @test found.signatures == [Tuple{typeof(CASES.paired), Type{element}, CASES.Bounded{element, V}} where {V <: AbstractVector} for element in (FloatStandIn, IntStandIn)]
+        @test found.bare == [2]
     end
     @testset "concrete struct list" begin
         # Caller may pass `Vector{DataType}`.
