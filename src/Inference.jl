@@ -71,6 +71,74 @@ end
 """Method store: entries by `entry_key` of method and signature."""
 const Store = Dict{String, Entry}
 
+"""
+Record of crash journal: inference of store `key` started (`finished` false; `label` names method for crash note), or
+finished with store `entry` (`nothing` when store keeps none). Journal lets relaunching process run inference again
+past native abort that Julia `try` cannot catch (`architecture.md`, process model).
+"""
+struct Record
+    key::String
+    label::String
+    finished::Bool
+    entry::Union{Nothing, Entry}
+end
+
+"""Journal file of journal `directory`; directory also holds `log_file`."""
+journal_file(directory::String)::String = joinpath(directory, "journal")
+
+"""Crash log of journal `directory`: stderr of inference, with Julia abort report of each crash."""
+log_file(directory::String)::String = joinpath(directory, "crash.log")
+
+"""Records of journal `directory`, oldest first; empty before first run writes any."""
+function records(directory::String)::Vector{Record}
+    path = journal_file(directory)
+    isfile(path) || return Record[]
+    return open(path) do io
+        found = Record[]
+        while !eof(io)
+            push!(found, deserialize(io)::Record)
+        end
+        found
+    end
+end
+
+"""
+Keys of inferences that crashed: started record of `records` that no later finished record of same key closes. Key
+can finish in one analysis and crash in next (`fix` checks again after edit).
+"""
+function crashed(records::Vector{Record})::Set{String}
+    running = Set{String}()
+    for record in records
+        record.finished ? delete!(running, record.key) : push!(running, record.key)
+    end
+    return running
+end
+
+"""Store of entries that finished records of `records` hold."""
+finished_store(records::Vector{Record})::Store = Store(record.key => something(record.entry) for record in records if record.finished && !isnothing(record.entry))
+
+"""Crash journal open for one run: stream that appends records, and keys whose inference crashed earlier runs."""
+struct Journal
+    io::IOStream
+    crashed::Set{String}
+end
+
+"""Journal of `directory` open for append, with crashed keys of earlier runs."""
+open_journal(directory::String)::Journal = Journal(open(journal_file(directory), "a"), crashed(records(directory)))
+
+"""Name of `method` with file and line, for crash note: `Newer.scaled at Newer.jl:12`."""
+method_label(method::Method)::String = "$(method.module).$(method.name) at $(basename(string(method.file))):$(method.line)"
+
+"""Last record of `records` when it starts inference no record finishes: crash of run that wrote it; else `nothing`."""
+last_crash(records::Vector{Record})::Union{Nothing, Record} = isempty(records) || last(records).finished ? nothing : last(records)
+
+"""Write `record` to `journal` and flush it, so process that aborts next leaves it on disk."""
+function record!(journal::Journal, record::Record)::Nothing
+    serialize(journal.io, record)
+    flush(journal.io)
+    return nothing
+end
+
 """Callees lowering inserts, so source need not spell them; callee check passes their nodes unchecked."""
 const LOWERED = Set(
     [
@@ -625,8 +693,10 @@ Run of inference stage: facts, blind spots, typed code of signatures it inferred
 Signatures: stand-in signatures of package methods in `files`, then those their calls reach. Blind spots: signatures over
 `LIMIT`, argument without stand-in, inference that gives no code, untyped method no call reaches, call that fails on
 stand-in only. `store` serves entries whose files are unchanged; `nothing` turns store off and gives no store.
+`journal` records each inference; key that crashed earlier run gets blind spot and no inference. Journal needs store.
 """
-function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::Union{Nothing, Store})::Tuple{InferenceFacts, Vector{BlindSpot}, Vector{TypedCode}, Union{Nothing, Store}}
+function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::Union{Nothing, Store}, journal::Union{Nothing, Journal})::Tuple{InferenceFacts, Vector{BlindSpot}, Vector{TypedCode}, Union{Nothing, Store}}
+    isnothing(journal) || !isnothing(store) || throw(ArgumentError("crash journal records store keys, so it needs method store"))
     structs = struct_stand_ins(Type[site.type for site in package.structs])
     spots = BlindSpot[]
     pending, skipped = Tuple{MethodSite, Type}[], MethodSite[]
@@ -655,8 +725,10 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
         counts[site.method] = get(counts, site.method, 0) + 1
         counts[site.method] > LIMIT && (push!(spots, BlindSpot("signatures over limit", site.span)); continue)
         key = isnothing(store) ? "" : entry_key(site.method, call_signature)
+        isnothing(journal) || !(key in journal.crashed) || (push!(spots, BlindSpot("inference crashed process", site.span)); continue)
         entry = isnothing(store) ? nothing : valid_entry(store, key, hashes, index, codes)
         if isnothing(entry)
+            isnothing(journal) || record!(journal, Record(key, method_label(site.method), false, nothing))
             edges = Any[]
             result = infer(site.method, call_signature)
             inferred = if isnothing(result)
@@ -670,6 +742,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
                 Inferred(reached(code, instance), failures!(edges, helpers, last(typed), by_path), true, disruptions(last(typed), nodes, changes, branch))
             end
             entry = isnothing(used) ? nothing : entry!(named, ids, codes, site, call_signature, inferred, edges, by_path, hashes, modules)
+            isnothing(journal) || record!(journal, Record(key, "", true, entry))
         else
             inferred = deserialize(IOBuffer(entry.inferred))::Inferred
         end
@@ -695,9 +768,12 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     return InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting)), unique!(append!(spots, gaps)), typed, used
 end
 
-"""Inference facts of `package` in analyzed `files`, their blind spots, and store of entries run used (`infer_package`)."""
-function inference_facts(package::PackageFacts, files::Vector{SyntaxFile}, store::Union{Nothing, Store})::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Store}}
-    facts, spots, _, used = infer_package(package, files, store)
+"""
+Inference facts of `package` in analyzed `files`, their blind spots, and store of entries run used (`infer_package`).
+`journal` as in `infer_package`.
+"""
+function inference_facts(package::PackageFacts, files::Vector{SyntaxFile}, store::Union{Nothing, Store}, journal::Union{Nothing, Journal})::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Store}}
+    facts, spots, _, used = infer_package(package, files, store, journal)
     return facts, spots, used
 end
 

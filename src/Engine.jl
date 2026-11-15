@@ -86,18 +86,37 @@ method_entry(path::String)::String = "$path\nmethod store"
 """
 Inference facts of `package` in analyzed `files`, and their blind spots, when `settings` enable `inference` rule; else
 none. Cache directory `cache` keeps method store of checked `path` (`architecture.md`); `nothing` turns store off.
+Crash journal `directory` of relaunched process records each inference (`journaled`); `nothing` records none.
 """
-function inference_facts(path::String, package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, settings::Settings, cache::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}}
+function inference_facts(path::String, package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, settings::Settings, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}}
     (isnothing(package) || !wants(settings, Stage.inference)) && return nothing, BlindSpot[]
-    if isnothing(cache)
-        facts, spots, _ = Inference.inference_facts(package, files, nothing)
-        return facts, spots
+    key = isnothing(cache) ? "" : Cache.method_key(path, something(project_root(path)), [file.path for file in files], Inference.shape(package), Base.load_path(), cache)
+    cached = isnothing(cache) ? nothing : something(Cache.lookup(Inference.Store, cache, method_entry(path), key), Inference.Store())
+    facts, spots, used = if isnothing(directory)
+        Inference.inference_facts(package, files, cached, nothing)
+    else
+        # Entries of runs that crashed serve as store, so finished work stays done.
+        store = merge(something(cached, Inference.Store()), Inference.finished_store(Inference.records(directory)))
+        journaled(journal -> Inference.inference_facts(package, files, store, journal), directory)
     end
-    key = Cache.method_key(path, something(project_root(path)), [file.path for file in files], Inference.shape(package), Base.load_path(), cache)
-    store = something(Cache.lookup(Inference.Store, cache, method_entry(path), key), Inference.Store())
-    facts, spots, used = Inference.inference_facts(package, files, store)
-    Cache.store!(cache, method_entry(path), key, something(used))
+    isnothing(cache) || Cache.store!(cache, method_entry(path), key, something(used))
     return facts, spots
+end
+
+"""
+Inference facts that `infer` gives with journal of crash journal `directory`. Stderr goes to crash log meanwhile, so
+Julia abort report of crash stays there; return or Julia exception copies log text of this run to stderr.
+"""
+function journaled(infer::Function, directory::String)::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Inference.Store}}
+    log = Inference.log_file(directory)
+    start = isfile(log) ? filesize(log) : 0
+    journal = Inference.open_journal(directory)
+    try
+        return open(stream -> redirect_stderr(() -> infer(journal), stream), log, "a")
+    finally
+        close(journal.io)
+        write(stderr, open(stream -> (seek(stream, start); read(stream)), log))
+    end
 end
 
 """
@@ -130,17 +149,17 @@ end
 
 """
 Facts and analysis of real `path` with discovered `sources` under `settings`. Opt-outs apply before levels. Cache
-directory `cache` keeps method store unless `nothing`.
+directory `cache` keeps method store unless `nothing`; crash `journal` directory as in `inference_facts`.
 """
-function analyze(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String})::Tuple{FactSet, Analysis}
+function analyze(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, journal::Union{Nothing, String})::Tuple{FactSet, Analysis}
     loaded = load_package(sources.project, settings, sources.files)
     # Target methods are newer than this call; in its world, `Float32(::TargetIrrational)` throws and `show` falls back.
-    return Base.invokelatest(analyze_loaded, path, settings, sources, cache, loaded)::Tuple{FactSet, Analysis}
+    return Base.invokelatest(analyze_loaded, path, settings, sources, cache, journal, loaded)::Tuple{FactSet, Analysis}
 end
 
 """Facts and analysis of `analyze` once package of `sources` is `loaded`; runs in world that sees package methods."""
-function analyze_loaded(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, loaded::Package.Loaded)::Tuple{FactSet, Analysis}
-    inference, inference_spots = inference_facts(path, loaded.facts, sources.files, settings, cache)
+function analyze_loaded(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, journal::Union{Nothing, String}, loaded::Package.Loaded)::Tuple{FactSet, Analysis}
+    inference, inference_spots = inference_facts(path, loaded.facts, sources.files, settings, cache, journal)
     facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, inference, external_facts(sources.project, loaded.facts, sources.files, settings))
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
@@ -174,14 +193,17 @@ function inputs(path::String, flags::Flags)::Tuple{String, Settings, Discovery.S
     return path, Config.settings(project_root(path), flags, REGISTRY), Discovery.discover(path; environment = Base.active_project())
 end
 
-"""Settings and analysis of `path` with `flags`; cache directory `cache` serves and stores analysis unless `nothing`."""
-function analysis(path::String, flags::Flags, cache::Union{Nothing, String})::Tuple{Settings, Analysis}
+"""
+Settings and analysis of `path` with `flags`; cache directory `cache` serves and stores analysis unless `nothing`.
+Crash `journal` directory of relaunched process records inferences (`inference_facts`); `nothing` records none.
+"""
+function analysis(path::String, flags::Flags, cache::Union{Nothing, String}, journal::Union{Nothing, String})::Tuple{Settings, Analysis}
     path, settings, sources = inputs(path, flags)
-    isnothing(cache) && return settings, last(analyze(path, settings, sources, nothing))
+    isnothing(cache) && return settings, last(analyze(path, settings, sources, nothing, journal))
     key = cache_key(path, flags, sources, Base.load_path(), cache)
     stored = Cache.lookup(Analysis, cache, path, key)
     isnothing(stored) || return settings, stored
-    fresh = last(analyze(path, settings, sources, cache))
+    fresh = last(analyze(path, settings, sources, cache, journal))
     Cache.store!(cache, path, key, fresh)
     return settings, fresh
 end
@@ -211,8 +233,11 @@ function report(settings::Settings, analyzed::Analysis)::Report
     return Report(reported, settings, analyzed.root, sources, length(analyzed.files), count(covered), stale, analyzed.blind_spots)
 end
 
-"""Report for files discovered from `path`; cache directory `cache` serves and stores analysis unless `nothing`."""
-check(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing)::Report = report(analysis(path, flags, cache)...)
+"""
+Report for files discovered from `path`; cache directory `cache` serves and stores analysis unless `nothing`. Only
+relaunched process passes crash `journal` directory.
+"""
+check(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing, journal::Union{Nothing, String} = nothing)::Report = report(analysis(path, flags, cache, journal)...)
 
 """Write baseline of `analyzed` at its project root from every reported finding; return entry count."""
 function baseline(analyzed::Analysis)::Int
@@ -221,11 +246,11 @@ function baseline(analyzed::Analysis)::Int
 end
 
 """Write baseline at project root of `path` from every reported finding; return entry count. `cache` as in `check`."""
-baseline(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing)::Int = baseline(last(analysis(path, flags, cache)))
+baseline(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing)::Int = baseline(last(analysis(path, flags, cache, nothing)))
 
-"""Apply fixes of reported findings under `path` up to fix tier; return number of edits applied. `cache` as in `check`."""
-function fix!(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing)::Int
-    report = check(path; flags, cache)
+"""Apply fixes of reported findings under `path` up to fix tier; return number of edits applied. `cache`, `journal` as in `check`."""
+function fix!(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing, journal::Union{Nothing, String} = nothing)::Int
+    report = check(path; flags, cache, journal)
     edits = Fixes.applicable_edits([diagnostic.finding for diagnostic in report.diagnostics], report.settings.tier)
     # Fix may span files; edit in unread file throws `KeyError` before any write.
     files = unique(edit.span.file for edit in edits)
