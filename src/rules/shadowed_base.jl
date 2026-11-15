@@ -56,7 +56,7 @@ end
 
 """Whether `method` signature names package type in argument other than function itself."""
 function own_signature(method::Method, modules::Set{Module})::Bool
-    arguments = Base.unwrap_unionall(method.sig).parameters[2:end]
+    arguments = tuple_parameters(method.sig)[2:end]
     return any(argument -> names_own_type(argument, modules), arguments)
 end
 
@@ -90,7 +90,7 @@ function function_sites(sites::Vector{MethodSite}, created::Type)::Vector{Method
     # Loop: closure over type value passed to `filter` compiles once per value.
     found = MethodSite[]
     for site in sites
-        Base.unwrap_unionall(site.method.sig).parameters[1] === created && push!(found, site)
+        tuple_parameters(site.method.sig)[1] === created && push!(found, site)
     end
     return found
 end

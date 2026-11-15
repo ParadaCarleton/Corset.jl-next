@@ -94,7 +94,7 @@ function untyped(site::MethodSite)::Bool
     parts = isnothing(site.node) ? nothing : signature(site.node)
     isnothing(parts) && return false
     # Keyword group comes last, and method for omitted default values declares fewer arguments, so slice leaves out both.
-    return any(untyped_argument, parts.arguments[1:(length(Base.unwrap_unionall(site.method.sig).parameters) - 1)])
+    return any(untyped_argument, parts.arguments[1:(length(Facts.tuple_parameters(site.method.sig)) - 1)])
 end
 
 """
@@ -104,7 +104,7 @@ default values or keyword group.
 function forwards(site::MethodSite)::Bool
     parts = isnothing(site.node) ? nothing : signature(site.node)
     isnothing(parts) && return false
-    return length(Base.unwrap_unionall(site.method.sig).parameters) - 1 < length(parts.arguments)
+    return length(Facts.tuple_parameters(site.method.sig)) - 1 < length(parts.arguments)
 end
 
 """Method instance of `method` on `signature`, with static parameters bound; `nothing` when `signature` misses method."""
@@ -152,7 +152,9 @@ function mappings(code::Core.CodeInfo, instance::Core.MethodInstance, site::Meth
     # would skip call that never returns; unwrapped copy shows those reads.
     unwrapped = copy(code)
     unwrapped.code = Any[statement isa Core.Const ? statement.val : statement for statement in code.code]
-    return [collect(SyntaxNode, found) for found in first(TypedSyntax.map_ssas_to_source(unwrapped, instance, site.node, 0))]
+    # Barrier: package that loads later invalidates TypedSyntax.jl line lookup (`promote_rule`), which would take caller too.
+    mapped = Base.inferencebarrier(TypedSyntax.map_ssas_to_source)(unwrapped, instance, site.node, 0)[1]::Vector{Vector{TypedSyntax.MaybeTypedSyntaxNode}}
+    return [collect(SyntaxNode, found) for found in mapped]
 end
 
 """

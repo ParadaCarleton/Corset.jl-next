@@ -46,7 +46,11 @@ call(callee::Union{Function, Type}, type::Type, arguments::Any...)::Type = Base.
 
 """Whether method of `callee` covers `query` with first argument narrower than `interface`; methods on `interface` or wider are fallbacks."""
 function implemented(callee::Union{Function, Type}, query::Type, interface::Type)::Bool
-    return any(method -> query <: method.sig && !(interface <: argument_type(method, 1)), methods(callee))
+    # Loop: closure over type values compiles once per value.
+    for method in methods(callee)
+        query <: method.sig && !(interface <: argument_type(method, 1)) && return true
+    end
+    return false
 end
 
 """Text of call to `callee` on struct `name` with `arguments` after it: `getindex(::Ones, ::Int)`."""
@@ -103,7 +107,7 @@ end
 function iterated_types(package::PackageFacts)::Vector{Tuple{Type, MethodSite}}
     found = Tuple{Type, MethodSite}[]
     for site in package.methods
-        Base.unwrap_unionall(site.method.sig).parameters[1] === typeof(Base.iterate) || continue
+        tuple_parameters(site.method.sig)[1] === typeof(Base.iterate) || continue
         type = argument_type(site.method, 1)
         isnothing(type) || push!(found, (type, site))
     end

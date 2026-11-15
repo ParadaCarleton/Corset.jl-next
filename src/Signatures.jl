@@ -5,6 +5,7 @@ Generic argument gets stand-ins that fit its bound; package abstract type gets e
 module Signatures
 
 using ..StandIns: StandIns, ArrayStandIn, DenseStandIn, FunctionStandIn
+using ..Facts: tuple_parameters
 
 """Most signatures per method; inference skips further combinations."""
 const LIMIT = 8
@@ -110,7 +111,7 @@ function method_signatures(method::Method, structs::Vector{<:Type})::MethodSigna
     signatures, bare = Type[], Int[]
     over_limit = length(instantiated) > LIMIT
     for signature in first(instantiated, LIMIT)
-        parameters = Base.unwrap_unionall(signature).parameters
+        parameters = tuple_parameters(signature)
         options = Vector{Any}[Any[first(parameters)]]
         # Loop instead of generator: closure capturing `signature` compiles once per method (`fitting`).
         for position in 2:length(parameters)

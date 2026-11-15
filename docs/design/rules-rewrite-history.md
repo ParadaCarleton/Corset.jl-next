@@ -558,7 +558,9 @@ Codex review of phase 4 design found eight problems:
 - `@enum` value made serializer throw in package shape. Shape serializes only plain constants: numbers, strings, symbols and immutable structs of those.
 - Shape serialized tuple per struct layout and compiled serializer once per tuple type: 1.9 s on DataStructures. `Vector{Any}` and field loop fix it.
 - SparseArrays.jl `_cat` invalidated `line_starts` (`vcat` of number and vector) and every caller: package and inference stages recompiled after trigger load. Loop fixes it.
-- ChainRulesCore.jl `promote_rule` invalidates JuliaSyntax.jl line lookup, and with it 98 Corset instances: rules, config, discovery, inference. Not fixed yet.
+- ChainRulesCore.jl `promote_rule` invalidated 99 Corset instances: first `check` of inference fixture took 2.9 s, against 0.68 s.
+- Corset half: signature parameters inferred `Any` (`tuple_parameters` fixes it); `location_span` took `AbstractString`; `path_parts` built `Vector{Any}`. Barriers guard calls into Argus.jl, TypedSyntax.jl, Aqua.jl and Pkg. Run: 2.2 s.
+- Other half sits in dependencies: Argus.jl `_infix_ops` calls `Kind(::Any)`; TypedSyntax.jl calls `source_line(::Any)`. Their re-inference costs 0.86 s and 0.72 s. One type assertion in each brings run to 0.7 s.
 
 ### Phase 4 cold-run benchmark
 

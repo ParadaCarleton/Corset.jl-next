@@ -87,7 +87,7 @@ function widened_type(@nospecialize(type::Any))::Any
 end
 
 """Signature `signature` with every argument widened; callee and `where` bounds of method stay."""
-widened_signature(signature::Type)::Type = Base.rewrap_unionall(Tuple{widened_type.(Base.unwrap_unionall(signature).parameters)...}, signature)
+widened_signature(signature::Type)::Type = Base.rewrap_unionall(Tuple{widened_type.(tuple_parameters(signature))...}, signature)
 
 """Whether `inner` is strict subtype of `outer`: Julia picks method of `inner` for calls both match."""
 nested(inner::Type, outer::Type)::Bool = inner <: outer && !(outer <: inner)
@@ -97,7 +97,7 @@ Whether method `wide`, widened from `method`, and each other method of its funct
 are disjoint or nested: no call becomes ambiguous and no method replaces other.
 """
 function dispatch_safe(method::Method, wide::Type)::Bool
-    callee = Base.unwrap_unionall(method.sig).parameters[1]
+    callee = tuple_parameters(method.sig)[1]
     matches = Base._methods_by_ftype(Base.rewrap_unionall(Tuple{callee, Vararg{Any}}, method.sig), -1, Base.get_world_counter())
     for match in matches, other in (match.method.sig, widened_signature(match.method.sig))
         match.method === method || typeintersect(wide, other) === Union{} || nested(wide, other) || nested(other, wide) || return false
@@ -141,7 +141,7 @@ end
 
 """Whether `public` values hold function `method` belongs to, or type it constructs, by type name in `types`."""
 function public_function(method::Method, public::Base.IdSet{Any}, types::Set{Core.TypeName})::Bool
-    callee = Base.unwrap_unionall(method.sig).parameters[1]
+    callee = tuple_parameters(method.sig)[1]
     Base.isType(callee) || return isdefined(callee, :instance) && callee.instance in public
     target = Base.unwrap_unionall(callee.parameters[1])
     return target isa DataType && target.name in types

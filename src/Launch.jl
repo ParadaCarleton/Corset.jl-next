@@ -130,10 +130,11 @@ function build!(env::String, project::ProjectFacts, tiers::Vector{Set{Base.UUID}
         preserve = isempty(uuids) ? Pkg.PRESERVE_ALL : Pkg.PRESERVE_DIRECT
         try
             # Relaunched process precompiles what it loads. Pkg's task-local switch leaves process environment alone.
+            # Barriers: method that target adds (`promote_rule`) invalidates Pkg internals, and would take caller too.
             @with Pkg._autoprecompilation_enabled_scoped => false Pkg.activate(env) do
-                Pkg.develop(develop; preserve, io = devnull)
-                isempty(local_tests) || Pkg.develop(local_tests; preserve, io = devnull)
-                isempty(registered) || Pkg.add(registered; preserve, io = devnull)
+                Base.inferencebarrier(Pkg.develop)(develop; preserve, io = devnull)
+                isempty(local_tests) || Base.inferencebarrier(Pkg.develop)(local_tests; preserve, io = devnull)
+                isempty(registered) || Base.inferencebarrier(Pkg.add)(registered; preserve, io = devnull)
             end
             return moves(deps, manifest_deps(joinpath(env, "Project.toml")))
         catch error
