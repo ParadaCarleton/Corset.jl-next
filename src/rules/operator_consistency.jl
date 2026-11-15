@@ -42,7 +42,7 @@ const NAME = Symbol("operator-consistency")
 const DERIVED = [(operator = !=, source = "==", definition = "!(a == b)"), (operator = >, source = "<", definition = "b < a"), (operator = >=, source = "<=", definition = "b <= a")]
 
 """Function type of `method`: `typeof(==)` for method of `==`."""
-function_type(method::Method)::Any = Base.unwrap_unionall(method.sig).parameters[1]
+function_type(method::Method)::Any = tuple_parameters(method.sig)[1]
 
 """First argument type of equality `method` that names type package `modules` define, with signature type variables; else `nothing`."""
 function compared_type(method::Method, modules::Set{Module})::Union{Nothing, Type}

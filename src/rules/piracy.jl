@@ -38,7 +38,7 @@ Callee of `method` as call writes it, and function owner qualified by module: (`
 Constructor on type variable names its bound as owner; union of types has no module, so it names itself.
 """
 function callee_texts(method::Method)::Tuple{String, String}
-    callee = Base.unwrap_unionall(method.sig).parameters[1]
+    callee = tuple_parameters(method.sig)[1]
     if !Base.isType(callee)
         name = Base.isoperator(method.name) ? ":$(method.name)" : string(method.name)
         return string(method.name), "$(parentmodule(callee)).$name"

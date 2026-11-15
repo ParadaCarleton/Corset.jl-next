@@ -139,7 +139,7 @@ end
 
 """Type name of struct that constructor `method` builds; `nothing` for other method."""
 function constructed(method::Method)::Union{Nothing, Core.TypeName}
-    callee = Base.unwrap_unionall(Base.unwrap_unionall(method.sig).parameters[1])
+    callee = Base.unwrap_unionall(Facts.tuple_parameters(method.sig)[1])
     Base.isType(callee) || return nothing
     target = Base.unwrap_unionall(callee.parameters[1])
     return target isa DataType ? target.name : nothing

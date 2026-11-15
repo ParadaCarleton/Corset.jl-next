@@ -15,7 +15,7 @@ export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
-export name_span, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
+export name_span, tuple_parameters, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal, line_start, owned_lines, line_deletion
 
@@ -150,7 +150,8 @@ function parse_pattern(text::String)::IndexedPattern
     isnothing(expression) && throw(ArgumentError("pattern is empty"))
     Meta.isexpr(expression, :incomplete) && throw(ArgumentError("pattern ends early: $(repr(text))"))
     try
-        return IndexedPattern(Pattern(Argus.SyntaxPatternNode(expression)))
+        # Barriers here and in `try_match!`: package that loads later can invalidate Argus.jl internals and their callers.
+        return IndexedPattern(Pattern(Base.inferencebarrier(Argus.SyntaxPatternNode)(expression)::Argus.SyntaxPatternNode))
     catch error
         error isa Argus.SyntaxError || rethrow()
         throw(ArgumentError(sprint(showerror, error)))
@@ -393,8 +394,14 @@ function path_parts(file::SyntaxFile, node::SyntaxNode)::Union{Nothing, Vector{S
     kind_name(node) == "macrocall" && leaf_value(pieces[1]) == "@raw_str" && return path_parts(file, pieces[2])
     kind_name(node) == "macrocall" && leaf_value(pieces[1]) == "@__DIR__" && return [dirname(file.path)]
     call_head(node) == "joinpath" || return nothing
-    parts = [path_parts(file, piece) for piece in pieces[2:end]]
-    return any(isnothing, parts) ? nothing : reduce(vcat, parts; init = String[])
+    parts = String[]
+    # Loop: recursive call infers `Any` inside comprehension, and `reduce` result then converts at run time.
+    for piece in pieces[2:end]
+        found = path_parts(file, piece)
+        isnothing(found) && return nothing
+        append!(parts, found)
+    end
+    return parts
 end
 
 """Name of node kind as string; Argus pattern forms start with `~`."""
@@ -431,7 +438,7 @@ end
 
 """Push match of `indexed` at `node` to `found` when pattern matches."""
 function try_match!(found::Vector{Match}, indexed::IndexedPattern, node::SyntaxNode)::Nothing
-    result = syntax_match(indexed.pattern, node)
+    result = Base.inferencebarrier(syntax_match)(indexed.pattern, node)
     result isa BindingSet && push!(found, Match(node, result))
     return nothing
 end
@@ -620,11 +627,17 @@ end
 name_span(site::MethodSite)::Span = isnothing(site.node) ? site.span : span(site.file, definition_name(site.node))
 
 """
+Parameters of tuple type `type` under its `where`: callee type, then argument types. Declared result type lets callers
+infer `SimpleVector`; with `Any`, they dispatch at run time, and package that loads later can invalidate them.
+"""
+tuple_parameters(type::Type)::Core.SimpleVector = Base.unwrap_unionall(type).parameters
+
+"""
 Type of argument `position` of `method`, wrapped in signature `where`: element type for `Vararg`, bound for type variable.
 `nothing` when method has no such argument.
 """
 function argument_type(method::Method, position::Int)::Union{Nothing, Type}
-    parameters = Base.unwrap_unionall(method.sig).parameters
+    parameters = tuple_parameters(method.sig)
     length(parameters) > position || return nothing
     # Julia reduces `T where T <: Walk` to `Walk`, and drops type variables argument does not use.
     return Base.rewrap_unionall(Base.unwrapva(parameters[position + 1]), method.sig)
@@ -643,7 +656,7 @@ function call_text(name::Symbol, signature::Type)::String
         push!(variables, body.var)
         body = body.body
     end
-    arguments = ("::" * (Base.isvarargtype(argument) ? "$(argument.T)..." : string(argument)) for argument in body.parameters[2:end])
+    arguments = ("::" * (Base.isvarargtype(argument) ? "$(argument.T)..." : string(argument)) for argument in tuple_parameters(signature)[2:end])
     call = "$name($(join(arguments, ", ")))"
     return isempty(variables) ? call : "$call where {$(join(variables, ", "))}"
 end

@@ -49,7 +49,8 @@ end
 """Sites of `package` methods Aqua.jl calls type piracy: package owns neither function nor any argument type."""
 function piracies(package::PackageFacts)::Vector{MethodSite}
     own = owned(package.modules)
-    return filter(site -> Aqua.Piracy.is_pirate(site.method; treat_as_own = own), package.methods)
+    # Barrier: package that loads later can invalidate Aqua.jl internals (`promote_rule`) and their callers.
+    return filter(site -> Base.inferencebarrier(Aqua.Piracy.is_pirate)(site.method; treat_as_own = own)::Bool, package.methods)
 end
 
 """
@@ -57,7 +58,7 @@ Span of `name` at ExplicitImports.jl `location` (`path:line:column`; column coun
 Macro location points after `@`; string macro `@r_str` written `r"…"` gets span of prefix `r`. `nothing` outside
 analyzed files; location away from name throws.
 """
-function location_span(location::AbstractString, name::String, files::Dict{String, SyntaxFile})::Union{Nothing, Span}
+function location_span(location::String, name::String, files::Dict{String, SyntaxFile})::Union{Nothing, Span}
     path, line, column = rsplit(location, ':'; limit = 3)
     file = get(files, path, nothing)
     isnothing(file) && return nothing

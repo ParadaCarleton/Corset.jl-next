@@ -70,7 +70,7 @@ function findings(facts::FactSet)::Vector{Finding}
     modules = Set(package.modules)
     iterators = Dict{Core.TypeName, Tuple{Type, MethodSite}}()
     for site in package.methods
-        Base.unwrap_unionall(site.method.sig).parameters[1] === typeof(Base.iterate) || continue
+        tuple_parameters(site.method.sig)[1] === typeof(Base.iterate) || continue
         type = iterated(site.method, modules)
         isnothing(type) || get!(iterators, Base.unwrap_unionall(type).name, (type, site))
     end
