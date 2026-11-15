@@ -541,6 +541,16 @@ Codex review of phase 4 design found eight problems:
 - `Base.julia_cmd()` copies coverage flags into relaunched process, which then wrote `.cov` files into hashed trees after it stored entry. Relaunch turns coverage and allocation tracking off.
 - Loading DataStructures invalidated 45 Corset method instances through abstract inferred types. Concrete containers and two inference barriers fix it: cold check inference falls from 1.32 s to 0.63 s.
 - Cache hit, whole process: 2.2–2.6 s against 4.8–7.6 s without cache. Corset load takes 1.3 s; Pkg and REPL take 0.3 s of it, and only environment build needs them.
+- `never-succeeds` reads `failing` fact: reached call statement that inference gives `Union{}`. Engine computes `inference` stage only when inference rule is on.
+- Throw helper counts as explicit throw: `throw`, or function each of whose methods infers `Union{}` on declared signature (`error`, `@enum` argument check).
+- Keyword and splatted calls name inner callee. Constructor with unknown parameters names its type: `DefaultDictBase{K,V,F}(...; passkey)`.
+- Inference wraps unreached statements in `Core.Const`. TypedSyntax.jl maps only statements later code reads, so it skipped failing calls; stage maps unwrapped copy.
+- TypedSyntax.jl maps no call with string literal argument: `skipped_parent` skips `quote` and `...` wrappers, and `string` node is neither. Such call keeps line span.
+- Lowering gives method for omitted defaults first body line. Stage puts its statements on definition line, which holds defaults.
+- Unbounded array argument gets `ArrayStandIn{Any}`, so calls on its elements (`zero(Any)`) give `possible` findings.
+- Undefined global infers `Any` on Julia 1.13, so `never-succeeds` does not report it.
+- Corpus: DataStructures 1 `definite` (`empty` of `DefaultDictBase`) and 1 `possible` (`SortedSet{K,Ord}()` default ordering fails `Ord`); both reproduce. Distances 12 `possible`, from `Any` elements. JSON none.
+- Coverage line listed 930 DataStructures blind spots. Text report now lists three per cause; JSON and SARIF list each one.
 
 ### Phase 4 cold-run benchmark
 

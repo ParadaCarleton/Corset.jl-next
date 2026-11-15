@@ -143,6 +143,7 @@ coverage: analyzed 12 files; skipped 1 (include with computed path: 1)
 ```
 
 A skipped place is a blind spot. Corset can miss findings there.
+The text report lists three blind spots per cause and counts the rest. JSON and SARIF reports list each blind spot.
 
 ## Parse errors
 

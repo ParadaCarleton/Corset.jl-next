@@ -1,7 +1,7 @@
 """Render diagnostics as Rust-style text messages."""
 module Render
 
-using ..Facts: Span, Precision, Confidence
+using ..Facts: Span, Precision, Confidence, BlindSpot
 using ..Config: Level
 using ..Engine: Diagnostic, Report
 using ..Rules: REGISTRY
@@ -118,20 +118,26 @@ function render_summary(io::IO, report::Report)::Nothing
     return nothing
 end
 
-"""Write coverage line: analyzed file count and blind spots by cause, then one line per blind spot."""
+"""Blind spots coverage line lists per cause; JSON and SARIF reports list each one."""
+const LISTED = 3
+
+"""Write coverage line: analyzed file count and blind spots by cause, then first `LISTED` blind spots of each cause."""
 function render_coverage(io::IO, report::Report)::Nothing
     files = report.analyzed
     print(io, "coverage: analyzed ", files, files == 1 ? " file" : " files")
-    if !isempty(report.blind_spots)
-        causes = sort!(unique(spot.cause for spot in report.blind_spots))
-        # Count follows cause, so verb phrase reads right in singular and plural.
-        counts = join(("$cause: $(count(spot -> spot.cause == cause, report.blind_spots))" for cause in causes), ", ")
-        print(io, "; skipped ", length(report.blind_spots), " (", counts, ")")
-    end
+    by_cause = Dict{String, Vector{BlindSpot}}()
+    foreach(spot -> push!(get!(Vector{BlindSpot}, by_cause, spot.cause), spot), report.blind_spots)
+    causes = sort!(collect(keys(by_cause)))
+    # Count follows cause, so verb phrase reads right in singular and plural.
+    isempty(causes) || print(io, "; skipped ", length(report.blind_spots), " (", join(("$cause: $(length(by_cause[cause]))" for cause in causes), ", "), ")")
     println(io)
-    for spot in report.blind_spots
-        line, column = line_column(report.sources[spot.span.file], spot.span.first_byte)
-        println(io, "  - ", relpath(spot.span.file, report.root), ":", line, ":", column, ": ", spot.cause)
+    for cause in causes
+        spots = by_cause[cause]
+        for spot in first(spots, LISTED)
+            line, column = line_column(report.sources[spot.span.file], spot.span.first_byte)
+            println(io, "  - ", relpath(spot.span.file, report.root), ":", line, ":", column, ": ", cause)
+        end
+        length(spots) > LISTED && println(io, "  - ", length(spots) - LISTED, " more: ", cause)
     end
     return nothing
 end

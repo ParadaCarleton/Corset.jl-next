@@ -1,7 +1,7 @@
 """Discover files, build facts, run registered rules; apply opt-outs, levels, confidence setting and baseline."""
 module Engine
 
-using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, ProjectFacts, PackageFacts, ExternalFacts
+using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, ProjectFacts, PackageFacts, InferenceFacts, ExternalFacts
 using ..Rules: REGISTRY, entry
 using ..Config: Config, Flags, Settings, Level, level_of, project_root
 using ..OptOuts: OptOuts
@@ -10,6 +10,7 @@ using ..Baseline: Baseline
 using ..Discovery: Discovery
 using ..Syntax: Syntax
 using ..Package: Package
+using ..Inference: Inference
 using ..External: External
 using ..Cache: Cache
 using Serialization: serialize
@@ -62,6 +63,9 @@ end
 """Whether `settings` enable rule `entry`: its level is not `allow`."""
 enabled(settings::Settings, entry::RuleEntry)::Bool = first(level_of(settings, entry)) != Level.allow
 
+"""Whether `settings` enable any rule that reads `stage` last."""
+wants(settings::Settings, stage::Stage.T)::Bool = any(entry -> entry.stage == stage && enabled(settings, entry), REGISTRY)
+
 """Whether `settings` enable any rule that reads stage after `syntax`."""
 needs_package(settings::Settings)::Bool = any(entry -> entry.stage != Stage.syntax && enabled(settings, entry), REGISTRY)
 
@@ -76,13 +80,17 @@ function load_package(project::Union{Nothing, ProjectFacts}, settings::Settings,
     return loads(project, settings) ? Package.load(project, files) : Package.Loaded(nothing, Finding[], BlindSpot[])
 end
 
+"""Inference facts of `package` in analyzed `files`, and their blind spots, when `settings` enable `inference` rule; else none."""
+function inference_facts(package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, settings::Settings)::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}}
+    return isnothing(package) || !wants(settings, Stage.inference) ? (nothing, BlindSpot[]) : Inference.inference_facts(package, files)
+end
+
 """
 External facts of `package` that `project` loads, with analyzed `files`, when `settings` enable `external` rule;
 `nothing` otherwise.
 """
 function external_facts(project::Union{Nothing, ProjectFacts}, package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, settings::Settings)::Union{Nothing, ExternalFacts}
-    wanted = any(entry -> entry.stage == Stage.external && enabled(settings, entry), REGISTRY)
-    return isnothing(package) || !wanted ? nothing : External.external_facts(package, project.entry, files)
+    return isnothing(package) || !wants(settings, Stage.external) ? nothing : External.external_facts(package, project.entry, files)
 end
 
 """Project facts of package run on `path` with `flags` loads; `nothing` when run loads no package."""
@@ -108,7 +116,8 @@ end
 """Facts and analysis of real `path` with discovered `sources` under `settings`. Opt-outs apply before levels."""
 function analyze(path::String, settings::Settings, sources::Discovery.Sources)::Tuple{FactSet, Analysis}
     loaded = load_package(sources.project, settings, sources.files)
-    facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, external_facts(sources.project, loaded.facts, sources.files, settings))
+    inference, inference_spots = inference_facts(loaded.facts, sources.files, settings)
+    facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, inference, external_facts(sources.project, loaded.facts, sources.files, settings))
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
     root = something(project_root(path), isdir(path) ? path : dirname(path))
@@ -118,7 +127,7 @@ function analyze(path::String, settings::Settings, sources::Discovery.Sources)::
         [Diagnostic(problem, Level.deny, Package.LOAD_SOURCE) for problem in loaded.errors];
         [Diagnostic(problem, Level.deny, OptOuts.SOURCE) for problem in problems]
     ]
-    blind_spots = [sources.blind_spots; loaded.blind_spots]
+    blind_spots = [sources.blind_spots; loaded.blind_spots; inference_spots]
     return facts, Analysis(root, [file.path for file in sources.files], leveled, keys, checks, blind_spots)
 end
 

@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, TypedCode, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, TypedCode, FailingCall, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -233,9 +233,24 @@ struct TypedCode
     spans::Vector{Span}
 end
 
-"""`inference` stage facts: typed code of package methods on stand-in signatures, then of methods their calls reach."""
+"""
+Call that never returns (`inference` stage fact): typed code, index of call statement, and name of called function.
+`definite`: inference of method on its declared signature finds no argument type that lets call return; `possible`: it finds one.
+"""
+struct FailingCall
+    code::TypedCode
+    statement::Int
+    callee::String
+    confidence::Confidence.T
+end
+
+"""
+`inference` stage facts: typed code of package methods on stand-in signatures, then of methods their calls reach; calls
+that never return, one per statement, without explicit throws and calls of package methods (their own frame reports).
+"""
 struct InferenceFacts
     typed::Vector{TypedCode}
+    failing::Vector{FailingCall}
 end
 
 """
@@ -286,8 +301,8 @@ end
 """
 Facts of one run: parsed files, entry files Julia loads directly (empty for directory walk, where any file may be included),
 project bans from config, enclosing package project (`nothing` outside project with `name`), loaded package
-(`nothing` for scripts, nameless projects, failed load, or run without package rules), and external tool output
-(`nothing` without loaded package, or run without `external` rules).
+(`nothing` for scripts, nameless projects, failed load, or run without package rules), inference facts and external
+tool output (each `nothing` without loaded package, or run without rules of its stage).
 """
 struct FactSet
     files::Vector{SyntaxFile}
@@ -295,6 +310,7 @@ struct FactSet
     bans::Vector{Ban}
     project::Union{Nothing, ProjectFacts}
     package::Union{Nothing, PackageFacts}
+    inference::Union{Nothing, InferenceFacts}
     external::Union{Nothing, ExternalFacts}
 end
 

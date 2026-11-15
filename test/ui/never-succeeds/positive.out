@@ -1,0 +1,48 @@
+error[never-succeeds]: call to `getproperty` never succeeds
+ --> src/NeverSucceedsPositive.jl:8:35
+  |
+8 | norm2(point::Point) = point.x^2 + point.y^2
+  | ----- method declares argument types here
+  |                                   ^^^^^^^ throws for every argument type method declares
+  |
+  = why: every run of this call throws, so code after it never runs
+  = fix: fix call, add method for these argument types, or narrow method signature   [manual]
+  = docs: corset explain never-succeeds
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow never-succeeds -- <reason>`
+
+error[never-succeeds]: call to `label` never succeeds
+  --> src/NeverSucceedsPositive.jl:11:28
+   |
+11 | describe(count::Integer) = label(count)
+   | -------- method declares argument types here
+   |                            ^^^^^^^^^^^^ throws for every argument type method declares
+   |
+   = why: every run of this call throws, so code after it never runs
+   = fix: fix call, add method for these argument types, or narrow method signature   [manual]
+   = docs: corset explain never-succeeds
+
+error[never-succeeds]: call to `half` never succeeds
+  --> src/NeverSucceedsPositive.jl:14:25
+   |
+14 | halve(count::Integer) = half(count)
+   | ----- method declares argument types here
+   |                         ^^^^^^^^^^^ throws for some argument types method declares
+   |
+   = why: call throws for some arguments, so code after it never runs for them
+   = confidence: possible
+   = fix: fix call, add method for these argument types, or narrow method signature   [manual]
+   = docs: corset explain never-succeeds
+
+error[never-succeeds]: call to `scaled` never succeeds
+  --> src/NeverSucceedsPositive.jl:19:1
+   |
+19 | function scaled(count::Integer, factor::Integer = 1.5)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ throws for every argument type method declares
+   |          ------ method declares argument types here
+   |
+   = why: every run of this call throws, so code after it never runs
+   = confidence: possible
+   = fix: fix call, add method for these argument types, or narrow method signature   [manual]
+   = docs: corset explain never-succeeds
+

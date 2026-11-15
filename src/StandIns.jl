@@ -39,6 +39,18 @@ const NUMBERS = (FloatStandIn, IntStandIn)
 model(::Type{FloatStandIn})::Type{Float32} = Float32
 model(::Type{IntStandIn})::Type{Int32} = Int32
 
+"""
+`type` with each stand-in replaced by its model, parameters included: `ArrayStandIn{FloatStandIn, 1}` gives `Vector{Float32}`.
+Function stand-in has no model and stays.
+"""
+function model_type(type::Any)::Any
+    type in NUMBERS && return model(type)
+    type isa DataType || return type
+    parameters = map(model_type, type.parameters)
+    type <: Union{ArrayStandIn, DenseStandIn} && return Array{parameters...}
+    return isempty(parameters) ? type : type.name.wrapper{parameters...}
+end
+
 """Base number types stand-ins convert to and promote with."""
 const PARTNERS = (Bool, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, Float16, Float32, Float64, BigInt, BigFloat)
 
