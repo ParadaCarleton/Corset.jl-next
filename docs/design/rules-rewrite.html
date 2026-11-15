@@ -558,6 +558,11 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 </div><div class="decision"><h3>Arguments without stand-in</h3>
 <ul>
 <li>Package abstract type (<code>s::Shape</code>): infer once per concrete subtype package defines, with stand-ins for its parameters.</li>
+<li>Struct parameter takes every stand-in its bound fits, package struct stand-ins included (<code>Outer{S &lt;: Inner}</code>).</li>
+<li>Struct parameter no stand-in fits takes its bound. Field of type <code>Any</code> acts as <code>::Any</code> argument: its data gives no findings.</li>
+<li>Struct that bound makes empty gets no stand-in: <code>Sized{N}</code> with <code>N = Any</code> has field type <code>Union{}</code>.</li>
+<li>Union or abstract argument takes first stand-in of each struct before second of any, so cut at signature limit reaches most structs.</li>
+<li>Macro that rebuilds struct (<code>@concrete struct</code>) gives constructors its own file; struct ties to its form by name.</li>
 <li>Function argument: stand-in function returns <code>Any</code> (inference barrier). Method stable under that assumption is exempt: stable whenever <code>f</code> is. Problems method causes itself are reported. Code after <code>f</code>'s result stays analyzed; values from that result give no findings. Opaque result type truncated frames in S1.</li>
 <li>No stand-in yet (<code>AbstractString</code>, <code>AbstractDict</code>, abstract type without package subtype) and explicit <code>::Any</code>: no findings from that argument's data.</li>
 <li>Unannotated method reached from analyzed caller is analyzed through caller inference: <code>inference</code> stage keeps explicit worklist of package frames reached from stand-in callers. Unannotated method nothing calls is skipped; <code>annotation</code> reports it. Expect low coverage on unannotated packages (Distances: 165 of 283 methods) until <code>annotation</code> fixer runs.</li>

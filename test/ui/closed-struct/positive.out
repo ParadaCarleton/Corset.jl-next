@@ -70,10 +70,20 @@ warning[closed-struct]: public struct `Options` has no abstract supertype
    = fix: declare `abstract type AbstractOptions end`, subtype it, and type methods on it   [manual]
    = docs: corset explain closed-struct
 
-warning[closed-struct]: public struct `Marker` has no abstract supertype
-  --> src/ClosedStructPositive.jl:52:12
+warning[closed-struct]: public struct `Rebuilt` has no abstract supertype
+  --> src/ClosedStructPositive.jl:54:17
    |
-52 |     struct Marker end
+54 | @rebuilt struct Rebuilt
+   |                 ^^^^^^^ users cannot add sibling type
+   |
+   = why: methods typed on concrete struct accept only it; users must copy or wrap it to vary it
+   = fix: declare `abstract type AbstractRebuilt end`, subtype it, and type methods on it   [manual]
+   = docs: corset explain closed-struct
+
+warning[closed-struct]: public struct `Marker` has no abstract supertype
+  --> src/ClosedStructPositive.jl:68:12
+   |
+68 |     struct Marker end
    |            ^^^^^^ users cannot add sibling type
    |
    = why: methods typed on concrete struct accept only it; users must copy or wrap it to vary it
@@ -81,9 +91,9 @@ warning[closed-struct]: public struct `Marker` has no abstract supertype
    = docs: corset explain closed-struct
 
 warning[closed-struct]: public struct `Circle` has no abstract supertype
-  --> src/ClosedStructPositive.jl:55:12
+  --> src/ClosedStructPositive.jl:71:12
    |
-55 |     struct Circle
+71 |     struct Circle
    |            ^^^^^^ users cannot add sibling type
    |
    = why: methods typed on concrete struct accept only it; users must copy or wrap it to vary it

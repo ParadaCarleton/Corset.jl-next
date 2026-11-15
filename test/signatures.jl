@@ -42,10 +42,22 @@ module SignatureCases
         values::V
     end
     paired(::Type{E}, bounded::Bounded{E, V}) where {E <: Real, V <: AbstractVector} = bounded
+    struct Holder{S <: Circle}
+        inner::S
+    end
+    hold(holder::Holder) = holder.inner
+    struct Sized{N}
+        values::NTuple{N, Float64}
+    end
+    measure(sized::Sized) = sized.values
+    abstract type Tree end
+    struct Node{C <: Tree} <: Tree
+        child::C
+    end
 end
 
 const CASES = SignatureCases
-const STRUCTS = struct_stand_ins(Type[CASES.Circle, CASES.Square, CASES.Box])
+const STRUCTS = struct_stand_ins(Type[CASES.Circle, CASES.Square, CASES.Box, CASES.Holder, CASES.Sized])
 
 """Stand-in signatures of only method of `name` in `SignatureCases`."""
 signatures_of(name::Symbol) = method_signatures(only(methods(getglobal(CASES, name))), STRUCTS)
@@ -68,9 +80,18 @@ end
 include("compilation.jl")
 
 @testset "stand-in signatures" begin
-    @test STRUCTS == Type[CASES.Circle{FloatStandIn}, CASES.Circle{IntStandIn}, CASES.Square]
+    # Unbounded `T` of `Box` takes bound `Any`; `Holder` takes `Circle` stand-ins of round before.
+    # `Sized{Any}` has field type `Union{}`, so it has no values and no stand-in.
+    # Union argument cut at `LIMIT` reaches most structs and data: stand-ins without bound first, then first
+    # stand-in of each struct before second of any.
+    @test STRUCTS == Type[
+        CASES.Circle{FloatStandIn}, CASES.Square, CASES.Holder{CASES.Circle{FloatStandIn}},
+        CASES.Circle{IntStandIn}, CASES.Holder{CASES.Circle{IntStandIn}}, CASES.Box{Any},
+    ]
+    # Recursive bound nests one level per round, so rounds end.
+    @test only(struct_stand_ins(Type[CASES.Node])) == CASES.Node{CASES.Node{CASES.Node{CASES.Node{CASES.Tree}}}}
     expected = Dict(
-        :area => [call(:area, CASES.Circle{FloatStandIn}), call(:area, CASES.Circle{IntStandIn}), call(:area, CASES.Square)],
+        :area => [call(:area, CASES.Circle{FloatStandIn}), call(:area, CASES.Square), call(:area, CASES.Circle{IntStandIn})],
         :scale => [call(:scale, FloatStandIn, IntStandIn), call(:scale, IntStandIn, IntStandIn)],
         :total => [call(:total, ArrayStandIn{FloatStandIn, 1}), call(:total, ArrayStandIn{IntStandIn, 1})],
         :first_item => [call(:first_item, ArrayStandIn{Any, 1})],
@@ -84,6 +105,8 @@ include("compilation.jl")
         :counts => [call(:counts, ArrayStandIn{IntStandIn, 2})],
         :cube => [call(:cube, ArrayStandIn{Float64, 3})],
         :exact => [call(:exact, Int)],
+        :unbox => [call(:unbox, CASES.Box{Any})],
+        :hold => [call(:hold, CASES.Holder{CASES.Circle{FloatStandIn}}), call(:hold, CASES.Holder{CASES.Circle{IntStandIn}})],
     )
     @testset "$name" for (name, signatures) in expected
         found = signatures_of(name)
@@ -93,7 +116,7 @@ include("compilation.jl")
         @test signatures_of(:apply).signatures == [call(:apply, FunctionStandIn, Any)] && signatures_of(:apply).bare == [2]
         @test signatures_of(:text).signatures == [call(:text, AbstractString)] && signatures_of(:text).bare == [1]
         @test signatures_of(:tensor).signatures == [call(:tensor, AbstractArray{Float64, 4})] && signatures_of(:tensor).bare == [1]
-        @test signatures_of(:unbox).signatures == [call(:unbox, CASES.Box)] && signatures_of(:unbox).bare == [1]
+        @test signatures_of(:measure).signatures == [call(:measure, CASES.Sized)] && signatures_of(:measure).bare == [1]
         free = signatures_of(:free)
         @test free.signatures == [only(methods(CASES.free)).sig] && free.bare == [1]
         # Integer stand-in is no supertype of `Int32`, so lower bound leaves `T` free.

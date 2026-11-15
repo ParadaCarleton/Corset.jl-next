@@ -88,9 +88,53 @@ function instantiate(type::Type, structs::Vector{<:Type})::Vector{Type}
     return found
 end
 
-"""Concrete stand-ins for package `structs` as written (`UnionAll` for parametric struct); parameters get no struct stand-ins."""
-struct_stand_ins(structs::Vector{<:Type})::Vector{Type} =
-    filter(isconcretetype, reduce(vcat, (instantiate(type, Type[]) for type in structs); init = Type[]))
+"""Most rounds of `struct_stand_ins`: depth of struct parameter bounded by package struct."""
+const ROUNDS = 4
+
+"""`type` with each free variable set to its upper bound; stays `UnionAll` when struct rejects bound."""
+function bounded(type::Type)::Type
+    type isa UnionAll || return type
+    application = applied(type, type.var.ub)
+    return isnothing(application) ? type : bounded(application)
+end
+
+"""Whether struct `type` has values: concrete, and no field type `Union{}` (`Sized{Any}` for `x::NTuple{N}`)."""
+inhabited(type::Type)::Bool = isconcretetype(type) && !any(field -> field === Union{}, fieldtypes(type))
+
+"""First member of each of `groups`, then second of each, and so on."""
+function interleaved(groups::Vector{Vector{Type}})::Vector{Type}
+    found = Type[]
+    for index in 1:maximum(length, groups; init = 0), group in groups
+        index <= length(group) && push!(found, group[index])
+    end
+    return found
+end
+
+"""
+Concrete stand-ins for package `structs` as written (`UnionAll` for parametric struct). Each round gives parameters
+struct stand-ins of round before, so `Outer{S <: Inner}` gets one once `Inner` has one. Parameter no stand-in fits
+takes its bound: field of type `Any` holds data that gives no findings, as `::Any` argument does. Union argument cut
+at `LIMIT` reaches most structs and most data: stand-ins without bound come first, and first stand-in of each struct
+comes before second of any.
+"""
+function struct_stand_ins(structs::Vector{<:Type})::Vector{Type}
+    found = Type[]
+    for _ in 1:ROUNDS
+        exact, filled = Vector{Type}[], Vector{Type}[]
+        for type in structs
+            push!(exact, Type[]), push!(filled, Type[])
+            for instance in instantiate(type, found)
+                stand_in = bounded(instance)
+                inhabited(stand_in) && push!(stand_in === instance ? last(exact) : last(filled), stand_in)
+            end
+        end
+        # No `unique!`: target methods invalidate it on `Vector{Type}`, and distinct structs give distinct stand-ins.
+        next = [interleaved(exact); interleaved(filled)]
+        next == found && break
+        found = next
+    end
+    return found
+end
 
 """Choices for argument `parameter` of `signature`; records position in `bare` when no stand-in fits."""
 function choices(parameter::Any, position::Int, signature::Type, structs::Vector{<:Type}, bare::Vector{Int})::Vector{Any}
