@@ -45,11 +45,14 @@ function untyped(site::MethodSite)::Bool
     return any(untyped_argument, parts.arguments[1:(length(Base.unwrap_unionall(site.method.sig).parameters) - 1)])
 end
 
-"""Whether method of `site` is one lowering makes for omitted default values: it declares fewer positional arguments than source."""
-function omits_defaults(site::MethodSite)::Bool
+"""
+Whether method of `site` is one lowering makes to forward call: it declares fewer arguments than source, for omitted
+default values or keyword group.
+"""
+function forwards(site::MethodSite)::Bool
     parts = isnothing(site.node) ? nothing : signature(site.node)
     isnothing(parts) && return false
-    return length(Base.unwrap_unionall(site.method.sig).parameters) - 1 < count(node -> kind_name(node) != "parameters", parts.arguments)
+    return length(Base.unwrap_unionall(site.method.sig).parameters) - 1 < length(parts.arguments)
 end
 
 """Method instance of `method` on `signature`, with static parameters bound; `nothing` when `signature` misses method."""
@@ -129,7 +132,7 @@ function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodS
     lines = isnothing(site.node) ? (1:length(starts)) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
     found, line = Span[], 0
     # Lowering gives method for omitted defaults first body line, though definition line holds defaults and forwarding call.
-    wrapper = omits_defaults(site)
+    wrapper = forwards(site)
     for (index, node) in enumerate(statement_nodes(code, mappings(code, instance, site), site.file))
         scopes = Base.IRShow.buildLineInfoNode(code.debuginfo, instance, index)
         if !isempty(scopes)
@@ -169,7 +172,6 @@ Throw helper: `throw`, or function each of whose methods throws for every argume
 """
 function throw_helper(callee::Any)::Bool
     callee === throw && return true
-    callee isa Core.Builtin && return false
     found = methods(callee)
     return !isempty(found) && all(method -> (inferred = infer(method, method.sig); !isnothing(inferred) && last(inferred) === Union{}), found)
 end

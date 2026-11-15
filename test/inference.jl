@@ -183,6 +183,8 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test throw_helper(throw) && throw_helper(error) && throw_helper(rethrow)
         # Builtin, function without methods, and function that returns for some argument types are no helpers.
         @test !throw_helper(Core.tuple) && !throw_helper(MODULE.declared) && !throw_helper(MODULE.single)
+        # Signature that misses method gives no code.
+        @test isnothing(infer(only(methods(MODULE.single)), Tuple{typeof(MODULE.single), Float64}))
         @test callable(Core.Const(sin)) === sin && callable(Type{Int}) === Int
         @test callable(Type{MODULE.Wrap{T}} where {T}) === MODULE.Wrap
         @test isnothing(callable(Type{<:MODULE.Wrap})) && isnothing(callable(Function))

@@ -23,9 +23,9 @@ error[never-succeeds]: call to `label` never succeeds
    = docs: corset explain never-succeeds
 
 error[never-succeeds]: call to `half` never succeeds
-  --> src/NeverSucceedsPositive.jl:16:25
+  --> src/NeverSucceedsPositive.jl:14:25
    |
-16 | halve(count::Integer) = half(count)
+14 | halve(count::Integer) = half(count)
    | ----- method declares argument types here
    |                         ^^^^^^^^^^^ throws for some argument types method declares
    |
