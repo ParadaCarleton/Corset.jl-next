@@ -63,11 +63,10 @@ function workload(directory::String)::Nothing
     return nothing
 end
 
-"""Run package stages and every rule on package `modules` with analyzed `files`, their `entries`, module file `entry` and `project`."""
-function package_rules(modules::Vector{Module}, files::Vector{Facts.SyntaxFile}, entries::Vector{String}, entry::String, project::Union{Nothing, Facts.ProjectFacts})::Facts.PackageFacts
-    package = Package.package_facts(modules, files)
-    Engine.run_rules(Facts.FactSet(files, entries, Facts.Ban[], project, package, External.external_facts(package, entry, files)))
-    return package
+"""Run `external` stage and every rule on `package` and `inference` facts of analyzed `files`, their `entries`, module file `entry` and `project`."""
+function package_rules(package::Facts.PackageFacts, inference::Union{Nothing, Facts.InferenceFacts}, files::Vector{Facts.SyntaxFile}, entries::Vector{String}, entry::String, project::Union{Nothing, Facts.ProjectFacts})::Nothing
+    Engine.run_rules(Facts.FactSet(files, entries, Facts.Ban[], project, package, inference, External.external_facts(package, entry, files)))
+    return nothing
 end
 
 """
@@ -78,12 +77,14 @@ Own project also keys temporary environment, as relaunching process does before 
 function package_workload()::Nothing
     root = dirname(@__DIR__)
     own = Discovery.discover(root; environment = joinpath(root, "Project.toml"))
-    package_rules(Package.module_tree(Corset), own.files, own.entries, own.project.entry, own.project)
+    package_rules(Package.package_facts(Package.module_tree(Corset), own.files), nothing, own.files, own.entries, own.project.entry, own.project)
     Launch.cache_key(own.project)
     path = joinpath(@__DIR__, "PackageSample.jl")
     files = [Syntax.parse_file(path, read(path, String), Facts.Role.package)]
-    facts, _ = Inference.inference_facts(package_rules([PackageSample], files, [path], path, nothing), files)
+    package = Package.package_facts([PackageSample], files)
+    facts, _ = Inference.inference_facts(package, files)
     isempty(facts.typed) && error("precompile workload: inference stage typed no sample method")
+    package_rules(package, facts, files, [path], path, nothing)
     return nothing
 end
 

@@ -1,7 +1,7 @@
 # Unit tests for skeleton pieces that UI snapshots do not reach.
 
 using Corset: Corset
-using Corset.Facts: Facts, Span, Label, Edit, Fix, Finding, Precision, Tier, Confidence, Group, Role, IndexedPattern, @pattern
+using Corset.Facts: Facts, Span, Label, Edit, Fix, Finding, Precision, Tier, Confidence, Group, Role, IndexedPattern, @pattern, BlindSpot
 using Corset.Config: Config, ConfigError, Flags, Kind, Level, Settings
 using Corset.Engine: Diagnostic, Report
 using Corset.Rules: REGISTRY, entry
@@ -227,8 +227,8 @@ end
         @test isempty(Corset.Discovery.discover(joinpath(root, "scripts"); environment = nothing).entries)
         @test sprint(Corset.Render.render_coverage, Corset.check(root; flags = SYNTAX_ONLY)) == """
             coverage: analyzed 7 files; skipped 2 (include of missing file: 1, include with computed path: 1)
-              - src/Pkg.jl:4:1: include with computed path
               - src/Pkg.jl:5:1: include of missing file
+              - src/Pkg.jl:4:1: include with computed path
             """
         rm(joinpath(root, "Project.toml"))
         @test all(file -> file.role == Role.script, Corset.Discovery.discover(root; environment = nothing).files)
@@ -341,6 +341,21 @@ end
     @test Corset.Engine.failed(Report(warned.diagnostics, strict, @__DIR__, Dict{String, String}(), 0, 0, [], []))
 end
 
+@testset "coverage line lists three blind spots per cause" begin
+    path = joinpath(@__DIR__, "f.jl")
+    spot(line::Int, cause::String)::BlindSpot = BlindSpot(cause, Span(path, 2line - 1, 2line - 1, Precision.line))
+    spots = [spot(5, "macro"); [spot(line, "include") for line in 1:5]]
+    report = Report([], Config.settings(nothing, Flags(), REGISTRY), @__DIR__, Dict(path => "a\nb\nc\nd\ne\n"), 1, 0, [], spots)
+    @test sprint(Corset.Render.render_coverage, report) == """
+        coverage: analyzed 1 file; skipped 6 (include: 5, macro: 1)
+          - f.jl:1:1: include
+          - f.jl:2:1: include
+          - f.jl:3:1: include
+          - 2 more: include
+          - f.jl:5:1: macro
+        """
+end
+
 @testset "opt-outs" begin
     report = Corset.check(joinpath(@__DIR__, "optout", "cases.jl"))
     lines = Dict(path => Corset.Render.line_starts(text) for (path, text) in report.sources)
@@ -356,7 +371,7 @@ end
     @test all(diagnostic.level == Level.deny for diagnostic in report.diagnostics)
     @test occursin("= note: deny from opt-out check, always on", sprint(io -> Corset.Render.render_all(io, report)))
     file = Corset.Syntax.parse_file("end.jl", "x = 1\n# corset: allow one-letter -- nothing follows\n", Role.package)
-    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file], String[], Facts.Ban[], nothing, nothing, nothing), Finding[], Set([Symbol("one-letter")]))
+    kept, problems = Corset.OptOuts.apply(Facts.FactSet([file], String[], Facts.Ban[], nothing, nothing, nothing, nothing), Finding[], Set([Symbol("one-letter")]))
     @test isempty(kept) && [problem.kind for problem in problems] == [:unused]
 end
 

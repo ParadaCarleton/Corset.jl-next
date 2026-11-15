@@ -1,10 +1,11 @@
 using Test: @test, @testset
 using Corset: Corset
-using Corset.Facts: InferenceFacts, TypedCode, Precision, BlindSpot, SyntaxFile, Role, PackageFacts, MethodSite, call_arguments, source
-using Corset.StandIns: FloatStandIn, IntStandIn, ArrayStandIn
+using Corset.Facts: InferenceFacts, TypedCode, Precision, BlindSpot, SyntaxFile, Role, PackageFacts, MethodSite, FailingCall, Confidence, call_arguments, source
+using Corset.StandIns: FloatStandIn, IntStandIn, ArrayStandIn, DenseStandIn, FunctionStandIn, model_type
 using Corset.Package: source_name
 using Corset.Signatures: LIMIT
-using Corset.Inference: inference_facts, infer, mappings, statement_nodes, statement_call, callee_name, spells, untyped
+using Corset.Inference:
+    inference_facts, infer, mappings, statement_nodes, statement_call, callee_name, spells, untyped, throw_helper, callable, callee_text
 
 const CASE = joinpath(@__DIR__, "inference", "InferenceCases")
 
@@ -121,6 +122,8 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         made = typed("made", FloatStandIn)
         @test isnothing(made.site.node) && all(span -> span.precision == Precision.line, made.spans)
         @test length(Set(line(FILE, span.first_byte) for span in made.spans)) == 2
+        # Lowering gives method for omitted default first body line; its statements sit on definition line.
+        @test all(span -> line(FILE, span.first_byte) == line_of("function padded"), typed("padded", FloatStandIn).spans)
         # Loop statements without exact span sit on their own line inside definition.
         loop = typed("total", ArrayStandIn{FloatStandIn, 1})
         lines = Set(line(FILE, span.first_byte) for span in loop.spans)
@@ -146,9 +149,46 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
     @testset "blind spots" begin
         unreached = ["lonely", "splatted", "first_of", "unreached", "joined", "hk"]
         @test spot_lines("untyped method no call reaches") == sort!(line_of.(unreached))
-        @test spot_lines("argument without stand-in") == sort!(line_of.(["text", "mixed"]))
+        @test spot_lines("argument without stand-in") == sort!(line_of.(["text", "mixed", "rewrapped"]))
         @test spot_lines("signatures over limit") == sort!(line_of.(["wide", "nest"]))
         @test spot_lines("inference gave no code") == [line_of("refused")]
-        @test length(SPOTS) == 11
+        @test spot_lines("call fails on stand-in only") == [line_of("halved")]
+        @test length(SPOTS) == 13
+    end
+    @testset "failing calls" begin
+        failing(name::String)::Vector{FailingCall} = [call for call in FACTS.failing if source_name(call.code.site.method) == name]
+        # Two stand-in signatures fail at one statement: one fact. Span is exact though no later code reads call.
+        broken = only(failing("broken"))
+        @test (broken.callee, broken.confidence, text(broken.code.spans[broken.statement])) == ("+", Confidence.definite, "x + nothing")
+        # Splatted and keyword calls name inner callee; constructor with unknown parameters names its type.
+        @test [only(failing(name)).callee for name in ("spread", "boxed", "rewrapped")] == ["max", "Circle", "Wrap"]
+        @test only(failing("called_unit")).callee == repr(MODULE.unit)
+        # Method for `UInt8` intersects declared `Integer`, so call may succeed.
+        @test only(failing("oddly")).confidence == Confidence.possible
+        @test all(name -> isempty(failing(name)), ("halved", "checked"))
+    end
+    @testset "engine infers only for inference rule" begin
+        causes(level::Corset.Config.Level.T)::Set{String} = Set(
+            spot.cause for spot in Corset.check(CASE; flags = Corset.Config.Flags(; levels = ["never-succeeds" => level])).blind_spots
+        )
+        push!(LOAD_PATH, CASE)
+        try
+            @test "untyped method no call reaches" in causes(Corset.Config.Level.warn)
+            @test !("untyped method no call reaches" in causes(Corset.Config.Level.allow))
+        finally
+            pop!(LOAD_PATH)
+        end
+    end
+    @testset "failing call helpers" begin
+        @test throw_helper(throw) && throw_helper(error) && throw_helper(rethrow)
+        # Builtin, function without methods, and function that returns for some argument types are no helpers.
+        @test !throw_helper(Core.tuple) && !throw_helper(MODULE.declared) && !throw_helper(MODULE.single)
+        @test callable(Core.Const(sin)) === sin && callable(Type{Int}) === Int
+        @test callable(Type{MODULE.Wrap{T}} where {T}) === MODULE.Wrap
+        @test isnothing(callable(Type{<:MODULE.Wrap})) && isnothing(callable(Function))
+        @test callee_text(MODULE.Wrap) == "Wrap" && callee_text(Union{Int, String}) == "Union{Int64, String}"
+        @test model_type(Tuple{typeof(sin), FloatStandIn, ArrayStandIn{IntStandIn, 2}, MODULE.Circle{FloatStandIn}}) ==
+            Tuple{typeof(sin), Float32, Matrix{Int32}, MODULE.Circle{Float32}}
+        @test model_type(DenseStandIn{FloatStandIn, 1}) == Vector{Float32} && model_type(FunctionStandIn) == FunctionStandIn
     end
 end

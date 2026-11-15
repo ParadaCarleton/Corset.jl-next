@@ -51,6 +51,5 @@ julia = "1.13"
 [preferences.Corset]
 kind = "library"
 
-[preferences.Corset.levels]
-# Corset reads compiler and method-table internals by design; it supports only latest Julia release.
-internal-access = "allow"
+    [preferences.Corset.levels]
+    internal-access = "allow"

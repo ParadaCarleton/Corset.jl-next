@@ -1,2 +1,5 @@
 name = "InferenceCases"
 uuid = "ee6dc483-9674-4c8e-879f-2c278fa59848"
+
+[preferences.Corset]
+kind = "library"

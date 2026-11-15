@@ -18,7 +18,7 @@ area(shape::Shape) = pi * shape.radius^2
 a::Real ⊕ b::Real = a + b
 (shape::Circle)(x::Real) = shape.radius * x
 scale(x::Real, factor::Integer) = x * factor
-broken(x::Real) = x + "a"
+broken(x::Real) = x + nothing
 helper(x) = 2x
 caller(x::Real) = helper(x) + 1
 caller_too(x::Real) = helper(x) * 2
@@ -61,6 +61,23 @@ for name in (:made,)
         y = x + 1
         return y * 2
     end
+end
+struct Wrap{T}
+    v::T
+end
+function declared end
+const unit = Circle(1.0)
+spread(x::Real) = max(x, ("a",)...)
+boxed(x::Real) = Circle(x; tag = 1)
+rewrapped(w::Wrap{T}) where {T} = Wrap{T}(w.v; tag = 1)
+called_unit(x::Real) = unit(x, x)
+odd(x::UInt8) = x
+oddly(x::Integer) = odd(x)
+single(x::Float32) = x / 2
+halved(x::AbstractFloat) = single(x)
+checked(x::Real) = x > 0 ? x : error("negative")
+function padded(x::Real, y = 2)
+    return x + y
 end
 include("uses.jl")
 

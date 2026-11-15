@@ -7,7 +7,7 @@ Method with untyped argument is inferred only where inferred package code calls 
 module Inference
 
 using TypedSyntax: TypedSyntax
-using ..Facts: Facts, PackageFacts, InferenceFacts, TypedCode, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot
+using ..Facts: Facts, PackageFacts, InferenceFacts, TypedCode, FailingCall, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence
 using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments
 using ..Package: Package
 using ..StandIns: StandIns
@@ -45,12 +45,25 @@ function untyped(site::MethodSite)::Bool
     return any(untyped_argument, parts.arguments[1:(length(Base.unwrap_unionall(site.method.sig).parameters) - 1)])
 end
 
+"""Whether method of `site` is one lowering makes for omitted default values: it declares fewer positional arguments than source."""
+function omits_defaults(site::MethodSite)::Bool
+    parts = isnothing(site.node) ? nothing : signature(site.node)
+    isnothing(parts) && return false
+    return length(Base.unwrap_unionall(site.method.sig).parameters) - 1 < count(node -> kind_name(node) != "parameters", parts.arguments)
+end
+
+"""Method instance of `method` on `signature`, with static parameters bound; `nothing` when `signature` misses method."""
+function instance(method::Method, signature::Type)::Union{Nothing, Core.MethodInstance}
+    intersection, environment = ccall(:jl_type_intersection_with_env, Any, (Any, Any), signature, method.sig)::Core.SimpleVector
+    return intersection === Union{} ? nothing : CC.specialize_method(method, intersection, environment)
+end
+
 """Unoptimized typed code of `method` on `signature`, its method instance and result type; `nothing` when inference gives none."""
 function infer(method::Method, signature::Type)::Union{Nothing, Tuple{Core.MethodInstance, Core.CodeInfo, Type}}
-    intersection, environment = ccall(:jl_type_intersection_with_env, Any, (Any, Any), signature, method.sig)::Core.SimpleVector
-    instance = CC.specialize_method(method, intersection, environment)
-    frame = CC.typeinf_frame(CC.NativeInterpreter(), instance, false)
-    return isnothing(frame) ? nothing : (instance, frame.src, CC.widenconst(CC.ignorelimited(frame.result.result)))
+    specialized = instance(method, signature)
+    isnothing(specialized) && return nothing
+    frame = CC.typeinf_frame(CC.NativeInterpreter(), specialized, false)
+    return isnothing(frame) ? nothing : (specialized, frame.src, CC.widenconst(CC.ignorelimited(frame.result.result)))
 end
 
 """Call expression of `statement`, through slot assignment (`_4 = f(x)`); `nothing` for other statement."""
@@ -77,7 +90,11 @@ end
 """Syntax nodes TypedSyntax.jl maps each statement of `code` to; none for generated function output or site without definition node."""
 function mappings(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodSite)::Vector{Vector{SyntaxNode}}
     (isnothing(site.node) || Base.hasgenerator(site.method)) && return [SyntaxNode[] for _ in code.code]
-    return [collect(SyntaxNode, found) for found in first(TypedSyntax.map_ssas_to_source(code, instance, site.node, 0))]
+    # Inference wraps unreached statements in `Core.Const`. TypedSyntax.jl maps only statements later code reads, so it
+    # would skip call that never returns; unwrapped copy shows those reads.
+    unwrapped = copy(code)
+    unwrapped.code = Any[statement isa Core.Const ? statement.val : statement for statement in code.code]
+    return [collect(SyntaxNode, found) for found in first(TypedSyntax.map_ssas_to_source(unwrapped, instance, site.node, 0))]
 end
 
 """
@@ -111,12 +128,15 @@ function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodS
     path = site.file.path
     lines = isnothing(site.node) ? (1:length(starts)) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
     found, line = Span[], 0
+    # Lowering gives method for omitted defaults first body line, though definition line holds defaults and forwarding call.
+    wrapper = omits_defaults(site)
     for (index, node) in enumerate(statement_nodes(code, mappings(code, instance, site), site.file))
         scopes = Base.IRShow.buildLineInfoNode(code.debuginfo, instance, index)
         if !isempty(scopes)
             # Outermost scope is method itself, even for code from macro of other file; corpus run found no exception.
             string(first(scopes).file) == path || error("debuginfo of $(site.method) starts outside its file: $(first(scopes).file)")
-            line = first(scopes).line in lines ? Int(first(scopes).line) : 0
+            scope_line = wrapper ? site.method.line : first(scopes).line
+            line = scope_line in lines ? Int(scope_line) : 0
         end
         push!(found, !isnothing(node) ? Facts.span(site.file, node) : line > 0 ? Span(path, starts[line], starts[line], Precision.line) : site.span)
     end
@@ -144,8 +164,84 @@ function reached(code::Core.CodeInfo, instance::Core.MethodInstance)::Vector{Tup
 end
 
 """
+Throw helper: `throw`, or function each of whose methods throws for every argument type it declares (`error`, `rethrow`,
+`Base.Enums.enum_argument_error`). Fallback method that throws for one missing interface does not make function helper.
+"""
+function throw_helper(callee::Any)::Bool
+    callee === throw && return true
+    callee isa Core.Builtin && return false
+    found = methods(callee)
+    return !isempty(found) && all(method -> (inferred = infer(method, method.sig); !isnothing(inferred) && last(inferred) === Union{}), found)
+end
+
+"""
+Callable value of inferred `type`: its singleton, or type name of constructor with unknown parameters
+(`Type{Point{T}} where T` gives `Point`); else `nothing`.
+"""
+function callable(type::Any)::Any
+    singleton = CC.singleton_type(type)
+    !isnothing(singleton) && return singleton
+    bare = Base.unwrap_unionall(CC.widenconst(type))
+    bare isa DataType && bare.name === Base.typename(Type) || return nothing
+    constructed = Base.unwrap_unionall(only(bare.parameters))
+    return constructed isa DataType ? constructed.name.wrapper : nothing
+end
+
+"""
+Function or type `call` calls, when inference knows it: inner callee of splatted call (`Core._apply_iterate`) and keyword
+call (`Core.kwcall`); else `nothing`.
+"""
+function called(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.VarState})::Any
+    callee = callable(CC.argextype(call.args[1], code, parameters))
+    callee in (Core._apply_iterate, Core.kwcall) && length(call.args) >= 3 && return callable(CC.argextype(call.args[3], code, parameters))
+    return callee
+end
+
+"""Whether `call` dispatches to one method that analyzed `files` define; its own frame reports failure inside it."""
+function package_call(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.VarState}, files::Dict{String, SyntaxFile})::Bool
+    types = Any[CC.widenconst(CC.argextype(argument, code, parameters)) for argument in call.args]
+    matches = Base._methods_by_ftype(Tuple{types...}, 1, Base.get_world_counter())
+    return matches isa Vector && length(matches) == 1 && haskey(files, string(only(matches).method.file))
+end
+
+"""Inferred type of statement `index` of `method` on `signature`; `Union{}` when it never returns, `nothing` without code."""
+function statement_type(method::Method, signature::Type, index::Int)::Union{Nothing, Type}
+    inferred = infer(method, signature)
+    return isnothing(inferred) ? nothing : CC.widenconst(inferred[2].ssavaluetypes[index])
+end
+
+"""Name of called function or type; text of other callable value."""
+callee_text(callee::Any)::String = callee isa Union{Function, DataType, UnionAll} ? string(nameof(callee)) : repr(callee)
+
+"""
+Calls in `typed` that never return, one per statement, and blind spots where call returns once stand-ins become their
+models. Skips unknown callees, calls of package methods in `files` and throw helpers (`throw_helper`).
+"""
+function failing_calls(typed::Vector{TypedCode}, files::Dict{String, SyntaxFile})::Tuple{Vector{FailingCall}, Vector{BlindSpot}}
+    failing, spots, seen, helpers = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), IdDict{Any, Bool}()
+    for code in typed, (index, statement) in enumerate(code.code.code)
+        # Unreached statement is wrapped in `Core.Const`, so it is no call.
+        call = statement_call(statement)
+        (isnothing(call) || code.code.ssavaluetypes[index] !== Union{}) && continue
+        method = code.site.method
+        (method, index) in seen && continue
+        parameters = CC.sptypes_from_meth_instance(something(instance(method, code.signature)))
+        callee = called(code.code, call, parameters)
+        (isnothing(callee) || package_call(code.code, call, parameters, files) || get!(() -> throw_helper(callee), helpers, callee)) && continue
+        # Model signature without code cannot confirm failure either, so it also counts as blind spot.
+        modeled = statement_type(method, StandIns.model_type(code.signature), index)
+        modeled !== Union{} && (push!(spots, BlindSpot("call fails on stand-in only", code.spans[index])); continue)
+        push!(seen, (method, index))
+        confidence = statement_type(method, method.sig, index) === Union{} ? Confidence.definite : Confidence.possible
+        push!(failing, FailingCall(code, index, callee_text(callee), confidence))
+    end
+    return failing, spots
+end
+
+"""
 Typed code of package methods in `files` on stand-in signatures, then of package methods their calls reach, and blind spots:
-signatures over `LIMIT`, argument without stand-in, inference that gives no code, untyped method no call reaches.
+signatures over `LIMIT`, argument without stand-in, inference that gives no code, untyped method no call reaches, call that
+fails on stand-in only. Facts also hold calls that never return (`failing_calls`).
 """
 function inference_facts(package::PackageFacts, files::Vector{SyntaxFile})::Tuple{InferenceFacts, Vector{BlindSpot}}
     structs = struct_stand_ins(Type[site.type for site in package.structs])
@@ -185,7 +281,8 @@ function inference_facts(package::PackageFacts, files::Vector{SyntaxFile})::Tupl
     end
     inferred = Set(code.site.method for code in typed)
     append!(spots, BlindSpot("untyped method no call reaches", site.span) for site in skipped if !(site.method in inferred))
-    return InferenceFacts(typed), unique!(spots)
+    failing, gaps = failing_calls(typed, by_path)
+    return InferenceFacts(typed, failing), unique!(append!(spots, gaps))
 end
 
 end

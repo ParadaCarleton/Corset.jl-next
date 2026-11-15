@@ -53,7 +53,7 @@ end
         texts = [(file.path, file.text, file.role) for file in sources.files]
         lines = sum(((_, text, _),) -> count(==('\n'), text), texts)
         seconds = fastest(3) do
-            Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(path, text, role) for (path, text, role) in texts], sources.entries, Corset.Facts.Ban[], nothing, nothing, nothing))
+            Corset.Engine.run_rules(FactSet([Corset.Syntax.parse_file(path, text, role) for (path, text, role) in texts], sources.entries, Corset.Facts.Ban[], nothing, nothing, nothing, nothing))
         end
         @test seconds * 10_000 / lines < 2.0
     end
@@ -82,7 +82,7 @@ end
                 files = [Corset.Syntax.parse_file(path, read(path, String), Role.package)]
                 # `names` in running function misses bindings `include` adds later; newest world sees them.
                 package = Base.invokelatest(Corset.Package.package_facts, [mod], files)
-                return FactSet(files, String[], Corset.Facts.Ban[], nothing, package, nothing)
+                return FactSet(files, String[], Corset.Facts.Ban[], nothing, package, nothing, nothing)
             end
             rules(facts::FactSet)::Vector{Symbol} = sort!([finding.rule for finding in Base.invokelatest(Corset.Engine.run_rules, facts) if finding.rule in RULES])
             @test rules(first(facts)) == RULES
@@ -103,7 +103,7 @@ end
                 return path
             end
             bans = Corset.Config.bans(Corset.Config.read_table(joinpath(@__DIR__, "ui", "banned", "config.toml"), ("Corset",)))
-            facts = Dict(path => FactSet([Corset.Syntax.parse_file(path, read(path, String), Role.package)], [path], bans, nothing, nothing, nothing) for path in (small, large))
+            facts = Dict(path => FactSet([Corset.Syntax.parse_file(path, read(path, String), Role.package)], [path], bans, nothing, nothing, nothing, nothing) for path in (small, large))
             findings = Dict(path => Corset.Engine.run_rules(facts[path]) for path in (small, large))
             known = Set(entry.name for entry in Corset.Rules.REGISTRY)
             stages = Dict{String, Function}(
