@@ -20,6 +20,7 @@ include("rules/field_prefix.jl")
 include("rules/file_length.jl")
 include("rules/implicit_import.jl")
 include("rules/inference_dependent.jl")
+include("rules/intermediate_widening.jl")
 include("rules/internal_access.jl")
 include("rules/invariant_parameter.jl")
 include("rules/iterator_traits.jl")
@@ -42,6 +43,7 @@ include("rules/process_state.jl")
 include("rules/repeated_concat.jl")
 include("rules/shadowed_base.jl")
 include("rules/threadid_buffer.jl")
+include("rules/type_disruption.jl")
 include("rules/unguarded_release.jl")
 include("rules/unreachable.jl")
 include("rules/untested_extension.jl")
@@ -71,6 +73,7 @@ const REGISTRY = RuleEntry[
     FileLength.ENTRY,
     ImplicitImport.ENTRY,
     InferenceDependent.ENTRY,
+    IntermediateWidening.ENTRY,
     InternalAccess.ENTRY,
     InvariantParameter.ENTRY,
     IteratorTraits.ENTRY,
@@ -93,6 +96,7 @@ const REGISTRY = RuleEntry[
     RepeatedConcat.ENTRY,
     ShadowedBase.ENTRY,
     ThreadidBuffer.ENTRY,
+    TypeDisruption.ENTRY,
     UnguardedRelease.ENTRY,
     Unreachable.ENTRY,
     UntestedExtension.ENTRY,

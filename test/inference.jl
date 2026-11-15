@@ -185,8 +185,9 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test all(name -> isempty(failing(name)), ("halved", "checked"))
     end
     @testset "engine infers only for inference rule" begin
+        rules = [entry.name for entry in Corset.Rules.REGISTRY if entry.stage == Corset.Facts.Stage.inference]
         causes(level::Corset.Config.Level.T)::Set{String} = Set(
-            spot.cause for spot in Corset.check(CASE; flags = Corset.Config.Flags(; levels = ["never-succeeds" => level])).blind_spots
+            spot.cause for spot in Corset.check(CASE; flags = Corset.Config.Flags(; levels = [string(rule) => level for rule in rules])).blind_spots
         )
         push!(LOAD_PATH, CASE)
         try
@@ -200,11 +201,11 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         facts, spots, fresh, used = infer_package(PACKAGE, FILES, Store())
         stored(code::TypedCode)::Bool = haskey(used, entry_key(code.site.method, code.signature))
         named(codes)::Vector{String} = sort!(unique([source_name(code.site.method) for code in codes]))
-        @test facts.failing == FACTS.failing && spots == SPOTS && isnothing(last(infer_package(PACKAGE, FILES, nothing)))
+        @test facts.failing == FACTS.failing && facts.disruptions == FACTS.disruptions && spots == SPOTS && isnothing(last(infer_package(PACKAGE, FILES, nothing)))
         # Store keeps closures, keyword bodies and generated code, but no generated instance on closure type.
         @test named(code for code in fresh if !stored(code)) == ["generated_apply", "regenerated"]
         again = infer_package(PACKAGE, FILES, used)
-        @test again[1].failing == facts.failing && again[2] == spots && keys(again[4]) == keys(used) && !any(stored, again[3])
+        @test again[1].failing == facts.failing && again[1].disruptions == facts.disruptions && again[2] == spots && keys(again[4]) == keys(used) && !any(stored, again[3])
         refreshed(files::Vector{SyntaxFile}, store::Store)::Vector{String} = named(code for code in infer_package(PACKAGE, files, store)[3] if stored(code))
         # Edit of file invalidates its methods: their spans hold byte offsets.
         edited = [basename(file.path) == "callees.jl" ? Corset.Syntax.parse_file(file.path, file.text * "\n", file.role) : file for file in FILES]

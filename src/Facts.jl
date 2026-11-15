@@ -11,11 +11,11 @@ using EnumX: @enumx
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
 using ReadOnlyArrays: ReadOnlyVector
 
-export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps
+export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, Weak, Exit
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
-export name_span, tuple_parameters, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
+export name_span, tuple_parameters, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal, line_start, owned_lines, line_deletion
 
@@ -35,6 +35,10 @@ export takes_docstring, comment_lines_above, comments_in, discarded, literal, li
 @enumx BindingKind parameter assignment loop definition field
 """Where package lists test dependencies: `[targets].test` of Project.toml, test/Project.toml, or nowhere."""
 @enumx TestDeps target project none
+"""Weak value: number `literal` (tuple of them included), `constant` or call of weak values, type `name`, `variable` assigned one."""
+@enumx Weak literal constant name variable
+"""Where weak value changes type: value method `returned`, value it `stored` in argument or global, or `intermediate` only."""
+@enumx Exit returned stored intermediate
 
 """Byte range `first_byte:last_byte` of `file`, 1-based and inclusive."""
 struct Span
@@ -234,11 +238,35 @@ struct FailingCall
 end
 
 """
+Weak value that changes input type (`inference` stage fact). `span`: weak value, or statement that holds it when
+mapping cannot narrow; `meeting`: call where it meets input; `exit_span`: statement where type changes, and `exit` how.
+`value`: source text of weak value; `float`: its value when it is float number; `weak_type`: its type, or type it names;
+`variable`: name variable starts with it, else empty. Types print stand-ins as models: `input` type, `found` type at
+exit, `expected` type with weak value converted. `possible` when method branches on type or span cannot narrow.
+"""
+struct Disruption
+    span::Span
+    meeting::Span
+    exit_span::Span
+    kind::Weak.T
+    value::String
+    float::Union{Nothing, Float64}
+    weak_type::String
+    variable::String
+    input::String
+    found::String
+    expected::String
+    exit::Exit.T
+    confidence::Confidence.T
+end
+
+"""
 `inference` stage facts: calls that never return, one per statement, without explicit throws and calls of package
-methods (their own frame reports). Typed code stays inside stage.
+methods (their own frame reports); weak values that change input type, one per span. Typed code stays inside stage.
 """
 struct InferenceFacts
     failing::Vector{FailingCall}
+    disruptions::Vector{Disruption}
 end
 
 """
@@ -795,5 +823,57 @@ line_deletion(file::SyntaxFile, lines::UnitRange{Int})::Edit =
 
 """Fix with no edits; shown, never applied."""
 manual_fix(text::String)::Fix = Fix(text, Edit[], Tier.manual)
+
+"""Irrational constants float literal can spell, with name of each: Base names, then IrrationalConstants.jl names."""
+const IRRATIONALS = (
+    (π, "π"), (ℯ, "ℯ"), (Base.MathConstants.γ, "γ"), (Base.MathConstants.φ, "φ"), (2π, "twoπ"), (π / 2, "halfπ"),
+    (π / 4, "quartπ"), (1 / π, "invπ"), (sqrt(2), "sqrt2"), (1 / sqrt(2), "invsqrt2"), (sqrt(π), "sqrtπ"),
+    (sqrt(2π), "sqrt2π"), (1 / sqrt(2π), "invsqrt2π"), (log(2), "logtwo"), (log(10), "logten"), (log(π), "logπ"),
+)
+
+"""Base names of `IRRATIONALS`; others come from IrrationalConstants.jl."""
+const BASE_IRRATIONALS = ("π", "ℯ", "γ", "φ")
+
+"""Name of irrational constant float `value` spells to five significant digits; `nothing` when none."""
+function irrational_name(value::Float64)::Union{Nothing, String}
+    for (constant, name) in IRRATIONALS
+        isapprox(value, Float64(constant); rtol = 1.0e-5) && return name
+    end
+    return nothing
+end
+
+"""Words for weak value of `disruption` in message: literal `0.5`, constant `HALF`, conversion to `Float64`, or start value of `s`."""
+function weak_words(disruption::Disruption)::String
+    disruption.kind == Weak.literal && return "literal `$(disruption.value)`"
+    disruption.kind == Weak.constant && return "constant `$(disruption.value)`"
+    disruption.kind == Weak.name && return "conversion to `$(disruption.weak_type)`"
+    return "start value of `$(disruption.variable)`"
+end
+
+"""Label at weak value of `disruption`: type weak value keeps for every input type."""
+function weak_label(disruption::Disruption)::String
+    disruption.kind == Weak.name && return "converts every input type to `$(disruption.weak_type)`"
+    disruption.kind == Weak.variable && return "starts `$(disruption.variable)` as `$(disruption.weak_type)`"
+    return "`$(disruption.weak_type)` for every input type"
+end
+
+"""Manual fix of `disruption`: irrational constant for float literal that spells one; else conversion to input type."""
+function weak_fix(disruption::Disruption)::Fix
+    irrational = isnothing(disruption.float) ? nothing : irrational_name(something(disruption.float))
+    if !isnothing(irrational)
+        package = irrational in BASE_IRRATIONALS ? "" : " from IrrationalConstants.jl"
+        return manual_fix("use irrational `$irrational`$package; it takes input type")
+    end
+    disruption.kind == Weak.name && return manual_fix("drop conversion, or keep input type with `float(x)` or `oftype(x, y)`")
+    disruption.kind == Weak.variable && return manual_fix("start `$(disruption.variable)` with input type, as in `zero(T)` or `zero(eltype(xs))`")
+    return manual_fix("convert `$(disruption.value)` to input type, as in `oftype(x, $(disruption.value))` or `T($(disruption.value))`")
+end
+
+"""Cause labels of `disruption`: meeting call, then statement where type changes as `exit_text` says; equal spans merge."""
+function weak_causes(disruption::Disruption, exit_text::String)::Vector{Label}
+    meeting = "meets `$(disruption.input)` input here"
+    disruption.meeting == disruption.exit_span && return [Label(disruption.meeting, "$meeting and $exit_text")]
+    return [Label(disruption.meeting, meeting), Label(disruption.exit_span, exit_text)]
+end
 
 end

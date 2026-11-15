@@ -1,0 +1,24 @@
+warning[intermediate-widening]: literal `0.5` makes `Float32` input compute in `Float64`
+ --> src/IntermediateWideningPositive.jl:4:40
+  |
+4 | half32(x::AbstractFloat) = Float32(x * 0.5)
+  |                                    ------- meets `Float32` input here and computes `Float64` instead of `Float32`
+  |                                        ^^^ `Float64` for every input type
+  |
+  = why: intermediate runs in wider type, though result keeps input type
+  = fix: convert `0.5` to input type, as in `oftype(x, 0.5)` or `T(0.5)`   [manual]
+  = docs: corset explain intermediate-widening
+  = note: warn from performance group, library preset
+  = note: opt out with `# corset: allow intermediate-widening -- <reason>`
+
+warning[intermediate-widening]: literal `2.0` makes `Float32` input compute in `Float64`
+ --> src/IntermediateWideningPositive.jl:7:18
+  |
+7 |     log[1] = x * 2.0
+  |              ------- meets `Float32` input here and computes `Float64` instead of `Float32`
+  |                  ^^^ `Float64` for every input type
+  |
+  = why: intermediate runs in wider type, though result keeps input type
+  = fix: convert `2.0` to input type, as in `oftype(x, 2.0)` or `T(2.0)`   [manual]
+  = docs: corset explain intermediate-widening
+
