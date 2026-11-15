@@ -351,7 +351,8 @@ function callable(type::Any)::Any
     singleton = CC.singleton_type(type)
     !isnothing(singleton) && return singleton
     bare = Base.unwrap_unionall(CC.widenconst(type))
-    bare isa DataType && bare.name === Base.typename(Type) || return nothing
+    bare isa DataType || return nothing
+    bare.name === Base.typename(Type) || return nothing
     constructed = Base.unwrap_unionall(only(bare.parameters))
     return constructed isa DataType ? constructed.name.wrapper : nothing
 end

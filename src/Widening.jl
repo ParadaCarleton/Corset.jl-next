@@ -65,7 +65,8 @@ end
 function swapped(type::Any)::Any
     type === FloatStandIn && return Float64
     type isa Union && return Union{swapped(type.a), swapped(type.b)}
-    (type isa DataType && !isempty(type.parameters)) || return type
+    type isa DataType || return type
+    isempty(type.parameters) && return type
     return try
         type.name.wrapper{Any[swapped(parameter) for parameter in type.parameters]...}
     catch error
@@ -90,7 +91,8 @@ so it never widens; leaving it out saves meeting tests.
 """
 function weak_data(value::Any)::Bool
     value isa Number && return !(value isa Bool)
-    (value isa Tuple && !isempty(value)) || return false
+    value isa Tuple || return false
+    isempty(value) && return false
     for element in value
         (element isa Number && !(element isa Bool)) || return false
     end
@@ -113,7 +115,8 @@ function weak(code::Core.CodeInfo, argument::Any)::Union{Nothing, Tuple{Any, Wea
     elseif argument isa Core.SSAValue
         call, type = called(code.code[argument.id]), code.ssavaluetypes[argument.id]
         (!isnothing(call) && length(call.args) >= 2) || return nothing
-        (type isa Core.Const && weak_data(type.val)) || return nothing
+        type isa Core.Const || return nothing
+        weak_data(type.val) || return nothing
         parts = [weak(code, part) for part in call.args[2:end]]
         any(isnothing, parts) && return nothing
         # Tuple of literals (`@evalpoly` coefficients) reads as literal in source.
@@ -136,10 +139,13 @@ called(statement::Any)::Union{Nothing, Expr} = statement isa Expr && statement.h
 function variable_origins(code::Core.CodeInfo)::Dict{Int, Vector{Tuple{Int, Any}}}
     found = Dict{Int, Vector{Tuple{Int, Any}}}()
     for (index, statement) in enumerate(code.code)
-        statement isa Expr && statement.head === :(=) && statement.args[1] isa Core.SlotNumber || continue
+        statement isa Expr || continue
+        statement.head === :(=) || continue
+        slot = statement.args[1]
+        slot isa Core.SlotNumber || continue
         value = weak(code, statement.args[2])
         # Type name holds no number, so `replacement` drops it.
-        isnothing(value) || push!(get!(found, statement.args[1].id, Tuple{Int, Any}[]), (index, value[1]))
+        isnothing(value) || push!(get!(found, slot.id, Tuple{Int, Any}[]), (index, value[1]))
     end
     return found
 end
@@ -176,7 +182,8 @@ Adds instances it infers to compiler `edges`.
 """
 function call_result!(edges::Vector{Any}, types::Vector{Any})::Type
     matches = Base._methods_by_ftype(Tuple{types...}, MATCHES, Base.get_world_counter())
-    (matches isa Vector && !isempty(matches)) || return Any
+    matches isa Vector || return Any
+    isempty(matches) && return Any
     interpreter, result = CC.NativeInterpreter(), Union{}
     for match in matches
         instance = CC.specialize_method(match::Core.MethodMatch)
@@ -328,7 +335,8 @@ function exit_value(code::Core.CodeInfo, statement::Any, parameters::Vector{CC.V
     # Lowering turns `global g = v` into `setglobal!(module, :g, v)`.
     if callee.val === Core.setglobal! && length(call.args) == 4
         owner, name = CC.argextype(call.args[2], code, parameters), CC.argextype(call.args[3], code, parameters)
-        (owner isa Core.Const && name isa Core.Const) || return nothing
+        owner isa Core.Const || return nothing
+        name isa Core.Const || return nothing
         return call.args[4], Core.get_binding_type(owner.val, name.val), nothing
     end
     (haskey(STORES, callee.val) && length(call.args) >= STORES[callee.val]) || return nothing
@@ -344,7 +352,9 @@ function converts(code::Core.CodeInfo, target::Any, store::Any, parameters::Vect
     # Identity test: `in` compares with `==`, which gives `missing` for `missing` callee.
     callee === setfield! || callee === setproperty! || return isconcretetype(target <: AbstractDict ? valtype(target) : eltype(target))
     field = CC.argextype(call.args[3], code, parameters)
-    (field isa Core.Const && target isa DataType && isconcretetype(target) && hasfield(target, field.val)) || return false
+    field isa Core.Const || return false
+    target isa DataType || return false
+    (isconcretetype(target) && hasfield(target, field.val)) || return false
     return isconcretetype(fieldtype(target, field.val))
 end
 
