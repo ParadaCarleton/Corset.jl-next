@@ -11,6 +11,9 @@ using ..Discovery: Discovery
 using ..Syntax: Syntax
 using ..Package: Package
 using ..External: External
+using ..Cache: Cache
+using Serialization: serialize
+using SHA: sha256
 
 """Finding with level from settings. `source` says where level was set."""
 struct Diagnostic
@@ -89,30 +92,26 @@ function load_target(path::String, flags::Flags)::Union{Nothing, ProjectFacts}
     return loads(project, Config.settings(root, flags, REGISTRY)) ? project : nothing
 end
 
-"""One analysis of `path`: settings, facts, baseline root, leveled diagnostics with their baseline keys, and always-on check problems."""
+"""
+Analysis of checked path that disk cache stores: baseline root, analyzed files, leveled diagnostics with their baseline
+keys, always-on check problems and blind spots.
+"""
 struct Analysis
-    settings::Settings
-    facts::FactSet
     root::String
+    files::Vector{String}
     leveled::Vector{Diagnostic}
     keys::Vector{Baseline.Key}
     problems::Vector{Diagnostic}
     blind_spots::Vector{BlindSpot}
 end
 
-"""Analyze files `Discovery.discover` picks for `path`, with config of enclosing project and command-line `flags`. Opt-outs apply before levels."""
-function analyze(path::String, flags::Flags)::Analysis
-    # Relaunch develops package at real path, so Julia records method files there; analyzed files must match.
-    path = realpath(path)
-    project = project_root(path)
-    settings = Config.settings(project, flags, REGISTRY)
-    # Package stage loads package from active environment.
-    sources = Discovery.discover(path; environment = Base.active_project())
+"""Facts and analysis of real `path` with discovered `sources` under `settings`. Opt-outs apply before levels."""
+function analyze(path::String, settings::Settings, sources::Discovery.Sources)::Tuple{FactSet, Analysis}
     loaded = load_package(sources.project, settings, sources.files)
     facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, external_facts(sources.project, loaded.facts, sources.files, settings))
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
-    root = something(project, isdir(path) ? abspath(path) : dirname(abspath(path)))
+    root = something(project_root(path), isdir(path) ? path : dirname(path))
     keys = Baseline.finding_keys(facts, root, [diagnostic.finding for diagnostic in leveled])
     checks = [
         [Diagnostic(problem, Level.deny, Syntax.PARSE_SOURCE) for problem in Syntax.parse_problems(facts)];
@@ -120,34 +119,80 @@ function analyze(path::String, flags::Flags)::Analysis
         [Diagnostic(problem, Level.deny, OptOuts.SOURCE) for problem in problems]
     ]
     blind_spots = [sources.blind_spots; loaded.blind_spots]
-    return Analysis(settings, facts, root, leveled, keys, checks, blind_spots)
+    return facts, Analysis(root, [file.path for file in sources.files], leveled, keys, checks, blind_spots)
 end
 
-"""Report for files discovered from `path`; baseline at project root hides known findings."""
-function check(path::String; flags::Flags = Flags())::Report
-    analysis = analyze(path, flags)
-    covered, stale = Baseline.cover(Baseline.read_baseline(analysis.root), analysis.keys)
-    reported = [analysis.leveled[.!covered]; analysis.problems]
+"""
+Key in cache directory `cache` of run on real `path` with `flags` and discovered `sources`, in process with `load_path`.
+Flags count by serialized bytes: `repr` names types relative to `Main` imports, which differ between processes.
+"""
+function cache_key(path::String, flags::Flags, sources::Discovery.Sources, load_path::Vector{String}, cache::String)::String
+    flags_hash = bytes2hex(sha256(sprint(serialize, flags)))
+    return Cache.key(path, flags_hash, project_root(path), [file.path for file in sources.files], load_path, cache)
+end
+
+"""
+Real `path`, settings from config of enclosing project and command-line `flags`, and sources `Discovery.discover` picks.
+Project facts come from active environment, which package stage loads package from.
+"""
+function inputs(path::String, flags::Flags)::Tuple{String, Settings, Discovery.Sources}
+    # Relaunch develops package at real path, so Julia records method files there; analyzed files must match.
+    path = realpath(path)
+    return path, Config.settings(project_root(path), flags, REGISTRY), Discovery.discover(path; environment = Base.active_project())
+end
+
+"""Settings and analysis of `path` with `flags`; cache directory `cache` serves and stores analysis unless `nothing`."""
+function analysis(path::String, flags::Flags, cache::Union{Nothing, String})::Tuple{Settings, Analysis}
+    path, settings, sources = inputs(path, flags)
+    isnothing(cache) && return settings, last(analyze(path, settings, sources))
+    key = cache_key(path, flags, sources, Base.load_path(), cache)
+    stored = Cache.lookup(Analysis, cache, path, key)
+    isnothing(stored) || return settings, stored
+    fresh = last(analyze(path, settings, sources))
+    Cache.store!(cache, path, key, fresh)
+    return settings, fresh
+end
+
+"""
+Settings and analysis that cache directory `cache` holds for run on `path` with `flags`, in process with `load_path`;
+`nothing` when cache misses. Relaunching process asks before it relaunches: hit loads no package.
+"""
+function cached(path::String, flags::Flags, cache::String, load_path::Vector{String})::Union{Nothing, Tuple{Settings, Analysis}}
+    path = realpath(path)
+    sources = Discovery.discover(path; environment = nothing)
+    stored = Cache.lookup(Analysis, cache, path, cache_key(path, flags, sources, load_path, cache))
+    return isnothing(stored) ? nothing : (Config.settings(project_root(path), flags, REGISTRY), stored)
+end
+
+"""Report of `analyzed` under `settings`; baseline at project root hides known findings."""
+function report(settings::Settings, analyzed::Analysis)::Report
+    covered, stale = Baseline.cover(Baseline.read_baseline(analyzed.root), analyzed.keys)
+    reported = [analyzed.leveled[.!covered]; analyzed.problems]
     sort!(reported; by = diagnostic -> (diagnostic.finding.primary.span.file, diagnostic.finding.primary.span.first_byte, diagnostic.finding.rule))
-    sources = Dict(file.path => file.text for file in analysis.facts.files)
+    sources = Dict(file => read(file, String) for file in analyzed.files)
     # Load error, cause label and blind spot can point at file checked path leaves out.
     labels = [[diagnostic.finding.primary; diagnostic.finding.causes] for diagnostic in reported]
-    for path in [[label.span.file for group in labels for label in group]; [spot.span.file for spot in analysis.blind_spots]]
+    for path in [[label.span.file for group in labels for label in group]; [spot.span.file for spot in analyzed.blind_spots]]
         haskey(sources, path) || (sources[path] = read(path, String))
     end
-    return Report(reported, analysis.settings, analysis.root, sources, length(analysis.facts.files), count(covered), stale, analysis.blind_spots)
+    return Report(reported, settings, analyzed.root, sources, length(analyzed.files), count(covered), stale, analyzed.blind_spots)
 end
 
-"""Write baseline at project root of `path` from every reported finding; return entry count."""
-function baseline(path::String; flags::Flags = Flags())::Int
-    analysis = analyze(path, flags)
-    Baseline.write_baseline(analysis.root, analysis.keys)
-    return length(analysis.keys)
+"""Report for files discovered from `path`; cache directory `cache` serves and stores analysis unless `nothing`."""
+check(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing)::Report = report(analysis(path, flags, cache)...)
+
+"""Write baseline of `analyzed` at its project root from every reported finding; return entry count."""
+function baseline(analyzed::Analysis)::Int
+    Baseline.write_baseline(analyzed.root, analyzed.keys)
+    return length(analyzed.keys)
 end
 
-"""Apply fixes of reported findings under `path` up to fix tier; return number of edits applied."""
-function fix!(path::String; flags::Flags = Flags())::Int
-    report = check(path; flags)
+"""Write baseline at project root of `path` from every reported finding; return entry count. `cache` as in `check`."""
+baseline(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing)::Int = baseline(last(analysis(path, flags, cache)))
+
+"""Apply fixes of reported findings under `path` up to fix tier; return number of edits applied. `cache` as in `check`."""
+function fix!(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing)::Int
+    report = check(path; flags, cache)
     edits = Fixes.applicable_edits([diagnostic.finding for diagnostic in report.diagnostics], report.settings.tier)
     # Fix may span files; edit in unread file throws `KeyError` before any write.
     files = unique(edit.span.file for edit in edits)

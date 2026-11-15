@@ -536,6 +536,10 @@ Codex review of phase 4 design found eight problems:
 - `inference` stage runs `typeinf_frame` on unoptimized code, in place of `typeinf_ircode`. TypedSyntax.jl maps unoptimized statements to `syntax` stage nodes, and literals stay call operands.
 - TypedSyntax.jl is dependency, not vendored copy.
 - Closure and do-block root patch is not built: package stage skips methods whose names start with `#`, so no closure body is analyzed method.
+- Findings cache lands before `never-succeeds`. First version stores whole analysis per checked path; key hashes every input file by content.
+- `repr` names types relative to `Main` imports, so relaunching and relaunched processes printed flags differently. Key hashes serialized flags.
+- Coverage run writes `.cov` files into hashed trees after relaunched process stores entry. Key skips `.cov` and `.mem` files.
+- Cache hit, whole process: 2.2–2.6 s against 4.8–7.6 s without cache. Corset load takes 1.3 s; Pkg and REPL take 0.3 s of it, and only environment build needs them.
 
 ### Phase 4 cold-run benchmark
 

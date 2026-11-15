@@ -14,7 +14,8 @@ name, root = ARGS
 Base.require(Main, Symbol(name))
 # Inference stage runs outside check until rule needs it; then check time covers it.
 any(entry -> entry.stage == Corset.Facts.Stage.inference, Corset.Rules.REGISTRY) && error("check runs inference stage: drop separate timing")
-check = @elapsed code = Corset.CLI.execute(["check", root], IOBuffer(), IOBuffer(); launch = false)
+# Disk cache would skip analysis this benchmark times.
+check = @elapsed code = Corset.CLI.execute(["check", root], IOBuffer(), IOBuffer(); launch = false, cache = nothing)
 code in (Corset.CLI.EXIT_PASS, Corset.CLI.EXIT_FAIL) || error("corset check exited with $code")
 sources = Corset.Discovery.discover(root; environment = Base.active_project())
 inference = @elapsed Corset.Inference.inference_facts(Corset.Package.load(sources.project, sources.files).facts, sources.files)
