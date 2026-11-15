@@ -9,7 +9,7 @@ using Test: @test, @testset
 """Exit code, standard output and standard error of `corset args...`."""
 function corset(args::String...)::Tuple{Int, String, String}
     out, err = IOBuffer(), IOBuffer()
-    code = Corset.CLI.execute(String[args...], out, err; launch = false)
+    code = Corset.CLI.execute(String[args...], out, err; launch = false, cache = nothing)
     return code, String(take!(out)), String(take!(err))
 end
 
@@ -262,7 +262,7 @@ end
         # Access in file outside checked path drops.
         @test !occursin("internal-access", corset("check", joinpath(package, "src", "side.jl"))[2])
         # External checks run only when some `external` rule is enabled.
-        external(flags::Corset.Config.Flags) = Corset.Engine.analyze(package, flags).facts.external
+        external(flags::Corset.Config.Flags) = first(Corset.Engine.analyze(Corset.Engine.inputs(package, flags)...)).external
         @test length(external(Corset.Config.Flags()).ambiguities) == 1
         allowed = [string(entry.name) => Corset.Config.Level.allow for entry in Corset.Rules.REGISTRY if entry.stage == Corset.Facts.Stage.external]
         @test length(allowed) > 1 && isnothing(external(Corset.Config.Flags(; levels = allowed)))
@@ -427,7 +427,7 @@ end
     # Packages sit off test load path, so only relaunched process can load them.
     mktempdir(@__DIR__) do scratch
         Scratch.with_scratch_directory(scratch) do
-            launched(args::String...) = (out = IOBuffer(); err = IOBuffer(); code = Corset.CLI.execute(String[args...], out, err; launch = true); (code, String(take!(out)), String(take!(err))))
+            launched(args::String...) = (out = IOBuffer(); err = IOBuffer(); code = Corset.CLI.execute(String[args...], out, err; launch = true, cache = Corset.Cache.directory()); (code, String(take!(out)), String(take!(err))))
             box = "\"\"\"Package only relaunched process loads.\"\"\"\nmodule Relaunched\n\"\"\"Number in box.\"\"\"\nstruct Box\n    number::Int\nend\nlength(box::Box)::Int = box.number\nend\n"
             mktempdir(@__DIR__) do root
                 uuid, helper = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
@@ -447,7 +447,14 @@ end
                 @test occursin("environment cannot load Relaunched", corset("check", root)[3])
                 code, out, err = launched("check", root, "-A", "annotation")
                 @test code == 1 && occursin("error[shadowed-base]", out) && !occursin("annotation", out) && !occursin("untested-extension", out)
-                @test occursin("building environment for Relaunched", err)
+                @test occursin("building environment for Relaunched", err) && occursin("no cached analysis", err)
+                # Relaunched process stored analysis under key relaunching process computes, so repeat run loads nothing.
+                flags = Corset.Config.Flags(; levels = ["annotation" => Corset.Config.Level.allow])
+                env = Corset.Launch.environment(Corset.Engine.load_target(root, flags), IOBuffer())
+                @test !isnothing(Corset.Engine.cached(root, flags, Corset.Cache.directory(), Corset.Launch.load_path(env)))
+                @test launched("check", root, "-A", "annotation") == (code, out, "")
+                @test launched("baseline", root, "-A", "annotation") == (0, "", "corset: wrote 1 findings to $(Corset.Baseline.FILE)\n")
+                rm(joinpath(root, Corset.Baseline.FILE))
                 code, out, err = launched("check", root, "-A", "shadowed-base")
                 @test code == 0 && !occursin("building environment", err)
             end

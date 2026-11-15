@@ -9,6 +9,7 @@ using Test: @test, @testset
     include("ui.jl")
     include("properties.jl")
     include("cli.jl")
+    include("cache.jl")
     # Coverage instrumentation slows code many times, so speed tests run in process without it.
     if Base.JLOptions().code_coverage == 0
         include("perf.jl")

@@ -16,6 +16,7 @@ include("Package.jl")
 include("Inference.jl")
 include("External.jl")
 include("Launch.jl")
+include("Cache.jl")
 include("Fixes.jl")
 include("OptOuts.jl")
 include("Baseline.jl")
@@ -52,7 +53,7 @@ function workload(directory::String)::Nothing
     write(script, SAMPLE)
     commands = [["check", script, "--format", format] for format in ("text", "json", "sarif")]
     for args in [commands; [["fix", script], ["baseline", script], ["check", script], ["explain", "approx-zero"]]]
-        code = CLI.execute(args, IOBuffer(), IOBuffer(); launch = false)
+        code = CLI.execute(args, IOBuffer(), IOBuffer(); launch = false, cache = joinpath(directory, "cache"))
         code in (CLI.EXIT_PASS, CLI.EXIT_FAIL) || error("precompile workload: `corset $(join(args, ' '))` exited with $code")
     end
     return nothing
@@ -84,7 +85,7 @@ end
 
 """Command-line entry point for `corset` app and `julia -m Corset`; package runs relaunch in temporary environment."""
 function (@main)(args::Vector{String})::Int
-    return CLI.execute(args, stdout, stderr; launch = true)
+    return CLI.execute(args, stdout, stderr; launch = true, cache = Cache.directory())
 end
 
 end

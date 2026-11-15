@@ -11,7 +11,9 @@ using JSON: JSON
 using ..Facts: Confidence, Tier
 using ..Config: ConfigError, Flags, Level
 using ..Rules: Rules
-using ..Engine: Engine, Report
+using ..Engine: Engine, Report, Analysis
+using ..Config: Settings
+using ..Cache: Cache
 using ..Render: render_all, render_summary, render_coverage
 using ..Output: json_report, sarif_report
 using ..OptOuts: OptOuts
@@ -96,6 +98,9 @@ function argument_settings()::ArgParseSettings
             help = "output format: text, json or sarif"
             default = "text"
             range_tester = in(["text", "json", "sarif"])
+            "--no-cache"
+            help = "analyze again; read and write no cached analysis"
+            action = :store_true
         end
     end
     @add_arg_table! settings["fix"] begin
@@ -151,13 +156,26 @@ end
 """Exit code of finished relaunched `process`; signal that ended it is internal error."""
 exit_code(process::Base.Process)::Int = process.termsignal == 0 ? process.exitcode : EXIT_INTERNAL
 
-"""
-Run command line `args`: report to `out`, messages to `err`. Return exit code.
+"""Finish `command` on `analyzed` under `settings`: write baseline, or write report to `out` in `format`. Return exit code."""
+function finish(command::String, settings::Settings, analyzed::Analysis, @nospecialize(out::IO), @nospecialize(err::IO), format::String)::Int
+    if command == "baseline"
+        println(err, "corset: wrote ", Engine.baseline(analyzed), " findings to ", Baseline.FILE)
+        return EXIT_PASS
+    end
+    report = Engine.report(settings, analyzed)
+    write_report(out, report, format)
+    return Engine.failed(report) ? EXIT_FAIL : EXIT_PASS
+end
 
-With `launch`, run that loads package builds temporary environment and runs again in new Julia process there.
-Without `launch`, current environment must load package from its root: relaunched process and tests.
 """
-function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err::IO); launch::Bool)::Int
+Run command line `args`: report to `out`, messages to `err`. Return exit code. `cache` directory holds analyses;
+`nothing` or `--no-cache` turns cache off.
+
+With `launch`, run that loads package builds temporary environment and runs again in new Julia process there,
+unless cache holds analysis for that process. Without `launch`, current environment must load package from its root:
+relaunched process and tests.
+"""
+function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err::IO); launch::Bool, cache::Union{Nothing, String})::Int
     try
         levels, deny_warnings, rest = level_flags(args)
         parsed = parse_args(rest, argument_settings())
@@ -169,16 +187,18 @@ function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err
         path = options["path"]
         ispath(path) || throw(UsageError("no such file or directory: $path"))
         flags = Flags(; levels, deny_warnings, confidence = enum_option(Confidence.T, options, "confidence"), tier = enum_option(Tier.T, options, "tier"))
+        cache = options["no-cache"] ? nothing : cache
         target = launch ? Engine.load_target(path, flags) : nothing
-        isnothing(target) || return exit_code(Launch.relaunch(Launch.environment(target, err), args, out, err))
-        if command == "baseline"
-            println(err, "corset: wrote ", Engine.baseline(path; flags), " findings to ", Baseline.FILE)
-            return EXIT_PASS
+        if !isnothing(target)
+            env = Launch.environment(target, err)
+            # Fix writes files and checks again, so it always runs in relaunched process.
+            stored = command == "fix" || isnothing(cache) ? nothing : Engine.cached(path, flags, cache, Launch.load_path(env))
+            isnothing(stored) && return exit_code(Launch.relaunch(env, args, cache, out, err))
+            return finish(command, stored..., out, err, options["format"])
         end
-        command == "fix" && println(err, "corset: applied ", Engine.fix!(path; flags), " edits")
-        report = Engine.check(path; flags)
-        write_report(out, report, options["format"])
-        return Engine.failed(report) ? EXIT_FAIL : EXIT_PASS
+        isnothing(cache) || !Cache.cold(cache, realpath(path)) || println(err, "corset: no cached analysis of ", path, "; first run can be slow, later runs reuse it")
+        command == "fix" && println(err, "corset: applied ", Engine.fix!(path; flags, cache), " edits")
+        return finish(command, Engine.analysis(path, flags, cache)..., out, err, options["format"])
     catch error
         if error isa ArgParseError || error isa ConfigError || error isa UsageError
             println(err, "corset: ", sprint(showerror, error))

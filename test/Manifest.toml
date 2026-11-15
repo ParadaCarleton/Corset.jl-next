@@ -71,7 +71,7 @@ uuid = "5218b696-f38b-4ac9-8b61-a12ec717816d"
 version = "0.17.8"
 
 [[deps.Corset]]
-deps = ["Aqua", "ArgParse", "Argus", "Configurations", "EnumX", "ExplicitImports", "FileWatching", "IntervalTrees", "JSON", "JuliaSyntax", "Pkg", "PrecompileTools", "ReadOnlyArrays", "SHA", "Scratch", "TOML", "Test", "TypedSyntax"]
+deps = ["Aqua", "ArgParse", "Argus", "Configurations", "EnumX", "ExplicitImports", "FileWatching", "IntervalTrees", "JSON", "JuliaSyntax", "Pkg", "PrecompileTools", "ReadOnlyArrays", "SHA", "Scratch", "Serialization", "TOML", "Test", "TypedSyntax"]
 path = ".."
 uuid = "09bf9df1-bea6-4267-acd1-e930da7492cc"
 version = "0.6.0-DEV"

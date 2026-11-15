@@ -21,8 +21,11 @@ using ..Package: package_id
 """Load path of relaunched process: active project, then standard library."""
 const LOAD_PATH = "@:@stdlib"
 
-"""Code relaunched process runs: same command line, without relaunch."""
-const CHILD = "using Corset: Corset; exit(Corset.CLI.execute(ARGS, stdout, stderr; launch = false))"
+"""Code relaunched process runs: same command line, without relaunch, with cache directory `cache` of relaunching process."""
+child(cache::Union{Nothing, String})::String = "using Corset: Corset; exit(Corset.CLI.execute(ARGS, stdout, stderr; launch = false, cache = $(repr(cache))))"
+
+"""`Base.load_path()` of process that `relaunch` starts in `env`: `LOAD_PATH` expanded."""
+load_path(env::String)::Vector{String} = [joinpath(env, "Project.toml"), Sys.STDLIB]
 
 """Package specs of Manifest entries of project file `project`, with relative paths made absolute; empty without Manifest."""
 function manifest_deps(project::String)::Dict{String, Any}
@@ -163,9 +166,9 @@ function environment(project::ProjectFacts, err::IO)::String
     return env
 end
 
-"""Finished Julia process that ran command line `args` again, loading only from `env` and `@stdlib`."""
-function relaunch(env::String, args::Vector{String}, out::IO, err::IO)::Base.Process
-    command = `$(Base.julia_cmd()) --startup-file=no --project=$env -e $CHILD -- $args`
+"""Finished Julia process that ran command line `args` again with cache directory `cache`, loading only from `env` and `@stdlib`."""
+function relaunch(env::String, args::Vector{String}, cache::Union{Nothing, String}, out::IO, err::IO)::Base.Process
+    command = `$(Base.julia_cmd()) --startup-file=no --project=$env -e $(child(cache)) -- $args`
     return run(pipeline(ignorestatus(addenv(command, "JULIA_LOAD_PATH" => LOAD_PATH)); stdout = out, stderr = err))
 end
 
