@@ -134,6 +134,12 @@ directory `cache` keeps method store unless `nothing`.
 """
 function analyze(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String})::Tuple{FactSet, Analysis}
     loaded = load_package(sources.project, settings, sources.files)
+    # Target methods are newer than this call; in its world, `Float32(::TargetIrrational)` throws and `show` falls back.
+    return Base.invokelatest(analyze_loaded, path, settings, sources, cache, loaded)::Tuple{FactSet, Analysis}
+end
+
+"""Facts and analysis of `analyze` once package of `sources` is `loaded`; runs in world that sees package methods."""
+function analyze_loaded(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, loaded::Package.Loaded)::Tuple{FactSet, Analysis}
     inference, inference_spots = inference_facts(path, loaded.facts, sources.files, settings, cache)
     facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, inference, external_facts(sources.project, loaded.facts, sources.files, settings))
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))

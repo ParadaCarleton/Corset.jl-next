@@ -105,6 +105,11 @@ module WideningCases
     broke(x) = (takes_double(x * 2.0), x * 3.0)
     broke_all(x) = takes_double(x * 2.0)
     @inline static(x::T) where {T} = x * T(0.5) + 0.5
+    """Number type without conversion to other number types."""
+    struct Opaque <: Real end
+    Base.:*(::Opaque, x::AbstractFloat) = x
+    const OPAQUE = Opaque()
+    opaque(x) = OPAQUE * x
 end
 
 """Changes `Widening` finds in `f` on argument types `arguments`, as (kind, value, exit, found, expected), and type branch."""
@@ -205,6 +210,8 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         # Swap to `Float64` breaks bound of `Picky` or signature of `narrow`, so meeting test cannot tell.
         @test isempty(reported(cases.picky, F))
         @test isempty(reported(cases.narrowly, F))
+        # Constant of number type without conversion cannot take input type.
+        @test isempty(reported(cases.opaque, F))
     end
     @testset "helpers" begin
         @test holds_float(Union{Nothing, F})
@@ -218,6 +225,7 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         @test something(replacement((1, 2.0))) === (F(1.0f0), F(2.0f0))
         @test isnothing(replacement((1, 2im)))
         @test isnothing(replacement(1 + 2im))
+        @test isnothing(replacement(WideningCases.Opaque()))
         @test call_result!(Any[], Any[typeof(+), Symbol, Symbol]) === Any
         @test ROUNDS >= 10
         @test Corset.Facts.irrational_name(3.14159) == "π"

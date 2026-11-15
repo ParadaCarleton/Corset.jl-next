@@ -194,6 +194,29 @@ end
     @test occursin("Reports package or extension", corset("explain", "load-error")[2])
 end
 
+@testset "stages see package methods" begin
+    # Package loads during `execute`, after it starts; type-disruption converts `THIRD` with package `Float32` method.
+    newer = """
+    \"\"\"Package whose number type converts only through its own methods.\"\"\"
+    module Newer
+    \"\"\"One third.\"\"\"
+    struct Third <: AbstractIrrational end
+    Base.Float32(::Third) = 1.0f0 / 3
+    Base.Float64(::Third) = 1 / 3
+    const THIRD = Third()
+    \"\"\"`x` when `y` has its type; `2.0` otherwise.\"\"\"
+    paired(x::T, y::T) where {T} = x
+    paired(x, y) = 2.0
+    \"\"\"`2.0`, since `THIRD` has no float type.\"\"\"
+    scaled(x::Real) = paired(x, THIRD)
+    end
+    """
+    with_package(@__DIR__, "Newer", "src/Newer.jl" => newer) do package
+        _, out, err = corset("check", package)
+        @test occursin("warning[type-disruption]", out) && occursin("THIRD", out) && isempty(err)
+    end
+end
+
 @testset "extensions" begin
     trigger, absent, failing = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
     project = """

@@ -153,7 +153,10 @@ function variable_origins(code::Core.CodeInfo)::Dict{Int, Vector{Tuple{Int, Any}
     return found
 end
 
-"""Value that replaces weak `value`: real number converted to float stand-in, tuple element-wise; else `nothing`."""
+"""
+Value that replaces weak `value`: real number converted to float stand-in, tuple element-wise; `nothing` for other
+value and for number without conversion.
+"""
 function replacement(value::Any)::Union{Nothing, Some{Any}}
     if value isa Tuple
         elements = Any[]
@@ -164,7 +167,14 @@ function replacement(value::Any)::Union{Nothing, Some{Any}}
         end
         return Some{Any}(Tuple(elements))
     end
-    return value isa Real ? Some{Any}(convert(FloatStandIn, value)) : nothing
+    value isa Real || return nothing
+    return try
+        Some{Any}(convert(FloatStandIn, value))
+    catch error
+        # Package number type without `Float32` conversion cannot take input type.
+        error isa MethodError || rethrow()
+        nothing
+    end
 end
 
 """
