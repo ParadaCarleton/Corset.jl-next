@@ -5,7 +5,9 @@ using Corset.StandIns: FloatStandIn, IntStandIn, ArrayStandIn, DenseStandIn, Fun
 using Corset.Package: source_name
 using Corset.Signatures: LIMIT
 using Corset.Inference:
-    TypedCode, infer_package, infer, mappings, statement_nodes, statement_call, callee_name, spells, untyped, throw_helper, callable, callee_text
+    TypedCode, infer_package, infer, mappings, statement_nodes, broadcast_node, callee_name, spells, untyped, throw_helper, callable, callee_text
+using Corset.Widening: statement_call
+using Base.Broadcast: broadcasted
 using Corset.Inference:
     Store, Entry, Staged, entry_key, method_id, code_digest, staged_digest, method_index, instance, shape, constant_text, digest, names_package!, holds_gensym
 
@@ -65,6 +67,9 @@ sites(name::String)::Vector{MethodSite} = [site for site in PACKAGE.methods if s
 
 """Line where definition of function `name` starts in fixture."""
 line_of(name::String)::Int = findfirst(line -> occursin(Regex("^(@generated )?$name\\("), line), split(FILE.text, '\n'))
+
+"""Lazy broadcast that method returns unconsumed."""
+lazy_scaled(xs) = broadcasted(*, xs, 0.5)
 
 """Span of first statement of `code` that calls function `name`."""
 call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
@@ -162,6 +167,12 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         mapped[calls] = mapped[reverse(calls)]
         swapped = statement_nodes(code.code, mapped, code.site.file)
         @test !isnothing(swapped[first(calls)]) && isnothing(swapped[last(calls)])
+    end
+    @testset "lazy broadcast" begin
+        # Returned lazy broadcast has no consumer call, so it maps to no node.
+        lazy = first(only(code_typed(lazy_scaled, (Vector{Float64},); optimize = false)))
+        index = findfirst(statement -> (call = statement_call(statement); !isnothing(call) && callee_name(lazy, call) === :broadcasted), lazy.code)
+        @test isnothing(broadcast_node(lazy, Union{Nothing, Corset.Facts.SyntaxNode}[nothing for _ in lazy.code], something(index)))
     end
     @testset "blind spots" begin
         unreached = ["lonely", "splatted", "first_of", "unreached", "joined", "hk"]

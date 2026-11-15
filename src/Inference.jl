@@ -15,7 +15,7 @@ using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, Met
 using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span
 using ..Package: Package
 using ..StandIns: StandIns
-using ..Widening: Widening
+using ..Widening: Widening, statement_call
 using ..Signatures: LIMIT, method_signatures, struct_stand_ins
 
 const CC = Core.Compiler
@@ -126,12 +126,6 @@ function infer(method::Method, signature::Type)::Union{Nothing, Tuple{Core.Metho
     isnothing(specialized) && return nothing
     frame = CC.typeinf_frame(CC.NativeInterpreter(), specialized, false)
     return isnothing(frame) ? nothing : (specialized, frame.src, CC.widenconst(CC.ignorelimited(frame.result.result)), frame.edges)
-end
-
-"""Call expression of `statement`, through slot assignment (`_4 = f(x)`); `nothing` for other statement."""
-function statement_call(statement::Any)::Union{Nothing, Expr}
-    statement isa Expr && statement.head === :(=) && (statement = statement.args[2])
-    return statement isa Expr && statement.head === :call ? statement : nothing
 end
 
 """Name of function `call` calls: global, or global earlier statement reads; `nothing` for computed callee."""
