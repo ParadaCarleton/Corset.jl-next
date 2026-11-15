@@ -139,6 +139,11 @@ name = "runtime-dispatch"
 footguns = [27]
 
 [[rule]]
+name = "lost-narrowing"
+footguns = [107]
+note = "Fixer splits guard, one guard per term; `safe`. Guard whose value is used (last expression of block) gets manual fix."
+
+[[rule]]
 name = "dynamic-splat"
 footguns = [28]
 

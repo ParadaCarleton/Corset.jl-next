@@ -68,7 +68,7 @@ Design is draft until code proves it. Revisit at each checkpoint:
 
 - After phase 0: spike results confirm or replace stand-in inference, scope stage, syntax matcher and effect summary. Rewrite affected parts before phase 1.
 - After first release: corpus findings and real use test footgun list, levels, presets and messages.
-- After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (`types.md`). Replace indexing exemption of `type-disruption` with exact conversion rule.
+- After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (`types.md`). Revisit integer input of `type-disruption` if corpus shows integer widening outside index math.
 - Before each later phase: reread parts that phase builds on; question decisions that no longer fit.
 - Before phase 5: decide whether `lifecycle` def-use runs on syntax tree or reuses `effects` points-to graph over IR (one producer per fact).
 - Each review: adversarial pass by second model on changed parts; log findings and outcomes in `rules-rewrite-history.md`.
