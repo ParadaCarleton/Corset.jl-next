@@ -897,7 +897,8 @@ end
 <li>Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.</li>
 <li>Store key line hashes environment, Corset source, analyzed file list and package shape. Other key drops whole store.</li>
 <li>Package shape: signature and file of each package method, struct layouts, global types and constants. Non-analyzed files in <code>src</code>, <code>ext</code> and <code>deps</code> count too.</li>
-<li>Constant counts by value when plain (number, string, symbol, tuple of those), by name when function or module, else by type.</li>
+<li>Constant counts by value when plain (number, string, symbol, immutable struct of those), by name when function or module, else by type.</li>
+<li>Type counts by layout: field names and types. Struct that edit redefines serializes as before.</li>
 <li>Shape also counts text of files that hold pirate methods: any call can reach them, and walk sees no edge.</li>
 <li>Run checks each entry against file hash, lowered code and generated code; infers only invalid ones; writes store with entries this run used.</li>
 <li>Result stays serialized until entry proves valid: it can name closure type that edit removed.</li>

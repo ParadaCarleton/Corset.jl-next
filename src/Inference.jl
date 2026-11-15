@@ -443,11 +443,11 @@ function entry!(named::IdDict{Any, Bool}, ids::IdDict{Method, String}, codes::Di
     methods = Dict(get!(() -> method_id(method), ids, method) => method for method in found)
     digests = [id => get!(() -> code_digest(method), codes, id) for (id, method) in methods]
     records = Staged[]
-    for specialized in unique(generated)
+    for specialized in generated
         method, key = specialized.def::Method, entry_key(specialized.def::Method, specialized.specTypes)
         push!(records, Staged(get!(() -> method_id(method), ids, method), serialized(specialized.specTypes), key, get!(() -> staged_digest(specialized), codes, key)))
     end
-    return Entry(site.file.path => hashes[site.file.path], sort!(digests), sort!(records; by = record -> record.key), serialized(inferred))
+    return Entry(site.file.path => hashes[site.file.path], digests, records, serialized(inferred))
 end
 
 """Serialized bytes of `data`, as store entry holds it."""
@@ -459,34 +459,43 @@ types would compile it once per tuple type.
 """
 digest(@nospecialize(data::Any))::String = bytes2hex(sha256(sprint(serialize, Any[data])))
 
-"""Whether `value` is number, character, string, symbol, or tuple of those: data that `@eval` loops of other files read."""
+"""
+Whether `value` is number, character, string, symbol, or immutable struct of those, tuples included: data that inference
+or `@eval` loops of other files read.
+"""
 function plain(value::Any)::Bool
     value isa Union{Number, AbstractChar, String, Symbol} && return true
-    value isa Union{Tuple, NamedTuple} || return false
-    # Loop, since `all` over tuple compiles once per tuple type.
+    (isstructtype(typeof(value)) && !ismutable(value)) || return false
+    # Loop, since `all` over tuple compiles once per tuple type. Serializer writes undefined field too.
     for index in 1:nfields(value)
-        plain(getfield(value, index)) || return false
+        (!isdefined(value, index) || plain(getfield(value, index))) || return false
     end
     return true
 end
 
 """
-Shape text of constant `value`: type layout for type, name for function or module, code for enum value, serialized value
-for `plain` value, else type. Inference reads constants (`const op = +`). Serializer throws for `@enum` value.
+Digest of layout of type `value`: type, supertype, mutability, and name and type of each field. Struct that edit
+redefines serializes as before, so its fields count apart.
+"""
+function type_layout(value::Type)::String
+    bare = Base.unwrap_unionall(value)
+    bare isa DataType || return digest(value)
+    layout = Any[value, supertype(bare), ismutabletype(bare)]
+    # Field tuples would compile `append!` once per tuple type, so loop pushes each field.
+    isstructtype(bare) && for index in 1:fieldcount(bare)
+        push!(layout, fieldname(bare, index), fieldtype(bare, index))
+    end
+    return digest(layout)
+end
+
+"""
+Shape text of constant `value`: layout for type (`type_layout`), name for function or module, code for enum value,
+serialized value for `plain` value, else type. Inference reads constants (`const op = +`). Serializer throws for `@enum` value.
 """
 function constant_text(value::Any)::String
     # Closure value would serialize its methods with their lines; name is stable.
     value isa Union{Function, Module} && return "$(parentmodule(value)).$(nameof(value))"
-    if value isa Type
-        bare = Base.unwrap_unionall(value)
-        bare isa DataType || return digest(value)
-        layout = Any[value, supertype(bare), ismutabletype(bare)]
-        # Field tuples would compile `append!` once per tuple type, so loop pushes each field.
-        isstructtype(bare) && for index in 1:fieldcount(bare)
-            push!(layout, fieldname(bare, index), fieldtype(bare, index))
-        end
-        return digest(layout)
-    end
+    value isa Type && return type_layout(value)
     value isa Enum && return digest(Any[typeof(value), Integer(value)])
     return plain(value) ? digest(value) : digest(typeof(value))
 end

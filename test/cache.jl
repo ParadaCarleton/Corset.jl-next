@@ -75,7 +75,8 @@ end
             original = key(["shape"], analyzed)
             write_files(root, "src/A.jl" => "a = 2\n", "test/runtests.jl" => "b = 1\n")
             @test key(["shape"], analyzed) == original
-            @test key(["other shape"], analyzed) != original && key(["shape"], [analyzed; joinpath(root, "src", "b.jl")]) != original
+            # Stage reads which files hold package code, so analyzed file list counts.
+            @test key(["other shape"], analyzed) != original && key(["shape"], [analyzed; joinpath(root, "test", "runtests.jl")]) != original
             # File of `src` that run does not analyze can change package code.
             write_files(root, "src/b.jl" => "b = 1\n")
             @test key(["shape"], analyzed) != original

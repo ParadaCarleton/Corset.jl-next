@@ -90,7 +90,7 @@ function method_key(path::String, root::String, files::Vector{String}, shape::Ve
     kept = [filter(tree -> !(ispath(tree) && realpath(tree) == root), trees); joinpath.(root, ["src", "ext", "deps"])]
     analyzed = Set(ispath(file) ? realpath(file) : file for file in files)
     outside = filter(file -> !(file in analyzed), found_files(listed, kept, cache))
-    return digest([string(VERSION), repr(Base.CacheFlags()), path, parts..., sort(files)..., shape...], outside)
+    return digest([string(VERSION), repr(Base.CacheFlags()), path, parts..., files..., shape...], outside)
 end
 
 """SHA-256 of `parts`, then of path and content of each of `files`. Missing file counts too: file that appears changes digest."""

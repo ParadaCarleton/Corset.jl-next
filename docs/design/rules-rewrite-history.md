@@ -555,7 +555,7 @@ Codex review of phase 4 design found eight problems:
 - File hashes missed macro output: expansion lands in caller's file and leaves no compiler edge. Entry now records lowered code of each method inference read.
 - Lowered code also covers `@eval` code and closure names: closure that edit renumbers has other code. Edit of one method invalidates only entries that read it.
 - Generated code depends on generator and its callees, so entry records generated code per instance; run calls generator again to check it.
-- `@enum` value made serializer throw in package shape. Shape serializes only plain constants: numbers, strings, symbols and tuples of those.
+- `@enum` value made serializer throw in package shape. Shape serializes only plain constants: numbers, strings, symbols and immutable structs of those.
 - Shape serialized tuple per struct layout and compiled serializer once per tuple type: 1.9 s on DataStructures. `Vector{Any}` and field loop fix it.
 - SparseArrays.jl `_cat` invalidated `line_starts` (`vcat` of number and vector) and every caller: package and inference stages recompiled after trigger load. Loop fixes it.
 - ChainRulesCore.jl `promote_rule` invalidates JuliaSyntax.jl line lookup, and with it 98 Corset instances: rules, config, discovery, inference. Not fixed yet.

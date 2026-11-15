@@ -6,7 +6,8 @@ using Corset.Package: source_name
 using Corset.Signatures: LIMIT
 using Corset.Inference:
     TypedCode, infer_package, infer, mappings, statement_nodes, statement_call, callee_name, spells, untyped, throw_helper, callable, callee_text
-using Corset.Inference: Store, Entry, Staged, entry_key, method_id, shape, constant_text, digest, names_package!, holds_gensym
+using Corset.Inference:
+    Store, Entry, Staged, entry_key, method_id, code_digest, staged_digest, method_index, instance, shape, constant_text, digest, names_package!, holds_gensym
 
 const CASE = joinpath(@__DIR__, "inference", "InferenceCases")
 
@@ -25,6 +26,19 @@ end
 
 const MODULE, FILES, PACKAGE, FACTS, SPOTS, TYPED = case_facts()
 const FILE = only(file for file in FILES if basename(file.path) == "InferenceCases.jl")
+
+"""Code that tests redefine, as edit and reload would: struct `Point`, methods `f` and `leveled`. `Partial` leaves its field undefined."""
+module Redefined
+    struct Point
+        x::Int
+    end
+    f(x::Int) = 1
+    @generated leveled(x) = :(1)
+    struct Partial
+        text::String
+        Partial() = new()
+    end
+end
 
 """Typed code of method named `name` (source name for keyword body) on signature with argument types `arguments`."""
 function typed(name::String, arguments::Type...)::TypedCode
@@ -202,9 +216,25 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         # Generator that gives other code invalidates entries that read its output.
         regenerated = Store(key => Entry(entry.file, entry.methods, [Staged(staged.method, staged.signature, staged.key, "stale") for staged in entry.staged], entry.inferred) for (key, entry) in used)
         @test refreshed(FILES, regenerated) == ["doubled", "redoubled"]
-        # Method gone from table: entries that read it infer again.
-        gone = Store(key => Entry(entry.file, [entry.methods; "gone" => "code"], [entry.staged; Staged("gone", UInt8[], "gone", "code")], entry.inferred) for (key, entry) in used)
-        @test length(infer_package(PACKAGE, FILES, gone)[3]) == length(fresh)
+        # Method gone from table: entries that read it, or its generated code, infer again.
+        gone = Store(key => Entry(entry.file, [entry.methods; "gone" => "code"], entry.staged, entry.inferred) for (key, entry) in used)
+        signature = Corset.Inference.serialized(Tuple{Int})
+        gone_staged = Store(key => Entry(entry.file, entry.methods, [entry.staged; Staged("gone", signature, "gone", "code")], entry.inferred) for (key, entry) in used)
+        @test length(infer_package(PACKAGE, FILES, gone)[3]) == length(infer_package(PACKAGE, FILES, gone_staged)[3]) == length(fresh)
+        # Redefined method keeps its id, so stored entry finds it; its code digest changes.
+        before = only(methods(Redefined.f))
+        Core.eval(Redefined, :(f(x::Int) = 2))
+        after = invokelatest(() -> only(methods(Redefined.f)))
+        @test method_id(before) == method_id(after) && code_digest(before) != code_digest(after)
+        # Generator that gives other code for same signature changes staged digest.
+        generated() = something(instance(only(methods(Redefined.leveled)), Tuple{typeof(Redefined.leveled), Int}))
+        old = generated()
+        Core.eval(Redefined, :(@generated leveled(x) = :(2)))
+        @test staged_digest(old) != staged_digest(invokelatest(generated))
+        # Index holds methods of analyzed files only, keyword bodies and closures included.
+        index, ids = method_index(Dict(file.path => file for file in FILES))
+        @test all(method -> any(file -> file.path == string(method.file), FILES), values(index)) && length(index) > length(PACKAGE.methods)
+        @test all(site -> haskey(ids, site.method), PACKAGE.methods) && all(ids[method] == id for (id, method) in index)
     end
     @testset "package shape" begin
         parts = shape(PACKAGE)
@@ -220,6 +250,19 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test constant_text(MODULE.fast) != constant_text(MODULE.slow) && constant_text((1, ("a", 'b'))) != constant_text((1, ("a", 'c')))
         # Value of other type counts by type: run can change mutable value.
         @test constant_text([1]) == constant_text([2]) != constant_text([1.0]) && constant_text((1, [2])) == constant_text((1, [3]))
+        @test constant_text(MODULE.Wrap(1)) != constant_text(MODULE.Wrap(2)) && constant_text(MODULE.Wrap([1])) == constant_text(MODULE.Wrap([2]))
+        @test constant_text(Redefined.Partial()) == digest(Redefined.Partial()) && constant_text(Ref(1)) == constant_text(Ref(2))
+        # Struct that edit redefines serializes as before; its layout differs.
+        point = Redefined.Point
+        Core.eval(
+            Redefined, :(
+                struct Point
+                    x::Float64
+                end
+            )
+        )
+        redefined = invokelatest(getglobal, Redefined, :Point)
+        @test digest(point) == digest(redefined) && constant_text(point) != constant_text(redefined)
     end
     @testset "gensyms and package types" begin
         closure = typeof(x -> x)

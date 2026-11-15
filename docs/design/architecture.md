@@ -130,7 +130,8 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 - Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.
 - Store key line hashes environment, Corset source, analyzed file list and package shape. Other key drops whole store.
 - Package shape: signature and file of each package method, struct layouts, global types and constants. Non-analyzed files in `src`, `ext` and `deps` count too.
-- Constant counts by value when plain (number, string, symbol, tuple of those), by name when function or module, else by type.
+- Constant counts by value when plain (number, string, symbol, immutable struct of those), by name when function or module, else by type.
+- Type counts by layout: field names and types. Struct that edit redefines serializes as before.
 - Shape also counts text of files that hold pirate methods: any call can reach them, and walk sees no edge.
 - Run checks each entry against file hash, lowered code and generated code; infers only invalid ones; writes store with entries this run used.
 - Result stays serialized until entry proves valid: it can name closure type that edit removed.
