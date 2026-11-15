@@ -296,7 +296,7 @@ function disruptions(typed::TypedCode, nodes::Vector{Union{Nothing, SyntaxNode}}
             found, Disruption(
                 span, meeting, exit,
                 origin.kind, isnothing(node) ? repr(origin.value) : source(file, node), origin.value isa AbstractFloat ? Float64(origin.value) : nothing,
-                string(origin.kind == Weak.name ? origin.value : typeof(origin.value)), variable, type_text(StandIns.model(origin.stand_in)), type_text(change.found), type_text(change.expected), change.exit, confidence,
+                string(origin.kind == Weak.name ? origin.value : typeof(origin.value)), variable, type_text(StandIns.model(StandIns.FloatStandIn)), type_text(change.found), type_text(change.expected), change.exit, confidence,
             )
         )
     end

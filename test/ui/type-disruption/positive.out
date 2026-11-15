@@ -11,27 +11,16 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
   = note: warn from composability group, library preset
   = note: opt out with `# corset: allow type-disruption -- <reason>`
 
-warning[type-disruption]: literal `2` turns `Int32` input into `Int64`
- --> src/TypeDisruptionPositive.jl:5:23
-  |
-5 | doubled(n::Integer) = 2n
-  |                       ^ `Int64` for every input type
-  |                       -- meets `Int32` input here and returns `Int64` instead of `Int32`
-  |
-  = why: result takes weak value's type, so callers lose their number type
-  = fix: convert `2` to input type, as in `oftype(x, 2)` or `T(2)`   [manual]
-  = docs: corset explain type-disruption
-
 warning[type-disruption]: start value of `s` turns `Float32` input into `Union{Float32, Int64}`
-  --> src/TypeDisruptionPositive.jl:8:9
+  --> src/TypeDisruptionPositive.jl:7:9
    |
- 8 |     s = 0
+ 7 |     s = 0
    |         ^ starts `s` as `Int64`
- 9 |     for x in xs
-10 |         s += x
+ 8 |     for x in xs
+ 9 |         s += x
    |         ------ meets `Float32` input here
-11 |     end
-12 |     return s
+10 |     end
+11 |     return s
    |     -------- returns `Union{Float32, Int64}` instead of `Float32`
    |
    = why: result takes weak value's type, so callers lose their number type
@@ -39,9 +28,9 @@ warning[type-disruption]: start value of `s` turns `Float32` input into `Union{F
    = docs: corset explain type-disruption
 
 warning[type-disruption]: constant `HALF` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:16:28
+  --> src/TypeDisruptionPositive.jl:15:28
    |
-16 | halved(x::AbstractFloat) = HALF * x
+15 | halved(x::AbstractFloat) = HALF * x
    |                            ^^^^ `Float64` for every input type
    |                            -------- meets `Float32` input here and returns `Float64` instead of `Float32`
    |
@@ -50,9 +39,9 @@ warning[type-disruption]: constant `HALF` turns `Float32` input into `Float64`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: constant `sqrt(2)` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:17:30
+  --> src/TypeDisruptionPositive.jl:16:30
    |
-17 | diagonal(x::AbstractFloat) = sqrt(2) * x
+16 | diagonal(x::AbstractFloat) = sqrt(2) * x
    |                              ^^^^^^^ `Float64` for every input type
    |                              ----------- meets `Float32` input here and returns `Float64` instead of `Float32`
    |
@@ -61,9 +50,9 @@ warning[type-disruption]: constant `sqrt(2)` turns `Float32` input into `Float64
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `3.14159` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:19:31
+  --> src/TypeDisruptionPositive.jl:18:31
    |
-19 | area(radius::AbstractFloat) = 3.14159 * radius^2
+18 | area(radius::AbstractFloat) = 3.14159 * radius^2
    |                               ^^^^^^^ `Float64` for every input type
    |                               ------------------ meets `Float32` input here and returns `Float64` instead of `Float32`
    |
@@ -72,9 +61,9 @@ warning[type-disruption]: literal `3.14159` turns `Float32` input into `Float64`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: conversion to `Float64` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:20:29
+  --> src/TypeDisruptionPositive.jl:19:29
    |
-20 | widened(x::AbstractFloat) = Float64(x) + x
+19 | widened(x::AbstractFloat) = Float64(x) + x
    |                             ^^^^^^^ converts every input type to `Float64`
    |                             ---------- meets `Float32` input here and returns `Float64` instead of `Float32`
    |
@@ -83,9 +72,9 @@ warning[type-disruption]: conversion to `Float64` turns `Float32` input into `Fl
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `2.0` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:23:18
+  --> src/TypeDisruptionPositive.jl:22:18
    |
-23 |     log[1] = x * 2.0
+22 |     log[1] = x * 2.0
    |              ------- meets `Float32` input here and stores `Float64` instead of `Float32`
    |                  ^^^ `Float64` for every input type
    |
@@ -94,9 +83,9 @@ warning[type-disruption]: literal `2.0` turns `Float32` input into `Float64`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float64}`
-  --> src/TypeDisruptionPositive.jl:26:57
+  --> src/TypeDisruptionPositive.jl:25:57
    |
-26 | scaled_all(xs::AbstractVector{<:AbstractFloat}) = xs .* 0.5
+25 | scaled_all(xs::AbstractVector{<:AbstractFloat}) = xs .* 0.5
    |                                                   --------- meets `Float32` input here and returns `Vector{Float64}` instead of `Vector{Float32}`
    |                                                         ^^^ `Float64` for every input type
    |
@@ -105,9 +94,9 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float
    = docs: corset explain type-disruption
 
 warning[type-disruption]: conversion to `Float64` turns `Float32` input into `Vector{Float64}`
-  --> src/TypeDisruptionPositive.jl:27:52
+  --> src/TypeDisruptionPositive.jl:26:52
    |
-27 | widened_all(xs::AbstractVector{<:AbstractFloat}) = Float64.(xs)
+26 | widened_all(xs::AbstractVector{<:AbstractFloat}) = Float64.(xs)
    |                                                    ^^^^^^^ converts every input type to `Float64`
    |                                                    ------------ meets `Float32` input here and returns `Vector{Float64}` instead of `Vector{Float32}`
    |
@@ -116,9 +105,9 @@ warning[type-disruption]: conversion to `Float64` turns `Float32` input into `Ve
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `1.0` turns `Float32` input into `Vector{Float64}`
-  --> src/TypeDisruptionPositive.jl:28:84
+  --> src/TypeDisruptionPositive.jl:27:84
    |
-28 | shifted_all(xs::AbstractVector{<:AbstractFloat}) = xs .* oftype(first(xs), 0.5) .+ 1.0
+27 | shifted_all(xs::AbstractVector{<:AbstractFloat}) = xs .* oftype(first(xs), 0.5) .+ 1.0
    |                                                    ----------------------------------- meets `Float32` input here and returns `Vector{Float64}` instead of `Vector{Float32}`
    |                                                                                    ^^^ `Float64` for every input type
    |
@@ -127,9 +116,9 @@ warning[type-disruption]: literal `1.0` turns `Float32` input into `Vector{Float
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float64}`
-  --> src/TypeDisruptionPositive.jl:30:18
+  --> src/TypeDisruptionPositive.jl:29:18
    |
-30 |     out .= xs .* 0.5
+29 |     out .= xs .* 0.5
    |            --------- meets `Float32` input here and stores `Vector{Float64}` instead of `Vector{Float32}`
    |                  ^^^ `Float64` for every input type
    |
@@ -138,9 +127,9 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float
    = docs: corset explain type-disruption
 
 warning[type-disruption]: conversion to `Float64` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:33:39
+  --> src/TypeDisruptionPositive.jl:32:39
    |
-33 | converted(x::AbstractFloat) = convert(Float64, x)
+32 | converted(x::AbstractFloat) = convert(Float64, x)
    |                               ------------------- meets `Float32` input here and returns `Float64` instead of `Float32`
    |                                       ^^^^^^^ converts every input type to `Float64`
    |
@@ -149,9 +138,9 @@ warning[type-disruption]: conversion to `Float64` turns `Float32` input into `Fl
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float64}`
-  --> src/TypeDisruptionPositive.jl:34:32
+  --> src/TypeDisruptionPositive.jl:33:32
    |
-34 | paired(x::AbstractFloat) = [x, 0.5]
+33 | paired(x::AbstractFloat) = [x, 0.5]
    |                            -------- meets `Float32` input here and returns `Vector{Float64}` instead of `Vector{Float32}`
    |                                ^^^ `Float64` for every input type
    |
@@ -160,9 +149,9 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Matrix{Float64}`
-  --> src/TypeDisruptionPositive.jl:36:1
+  --> src/TypeDisruptionPositive.jl:35:1
    |
-36 | grid(x::AbstractFloat) = [x 0.5; 1.0 2.0]
+35 | grid(x::AbstractFloat) = [x 0.5; 1.0 2.0]
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Float64` for every input type
    | ----------------------------------------- meets `Float32` input here and returns `Matrix{Float64}` instead of `Matrix{Float32}`
    |
@@ -172,9 +161,9 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Matrix{Float
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:38:54
+  --> src/TypeDisruptionPositive.jl:37:54
    |
-38 | adjusted(x::AbstractFloat) = x isa Float64 ? x : x * 0.5
+37 | adjusted(x::AbstractFloat) = x isa Float64 ? x : x * 0.5
    |                                                  ------- meets `Float32` input here and returns `Float64` instead of `Float32`
    |                                                      ^^^ `Float64` for every input type
    |

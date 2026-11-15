@@ -2,8 +2,8 @@
 `inference` stage scan for weak values that widen input types (`type-disruption`, `intermediate-widening`).
 
 Weak value: number literal, constant, call of weak values only (`sqrt(2)`), variable assigned one, or Base number type
-name. Inputs combine by normal promotion; weak value must not change result type. Kinds follow NumPy 2: integer weak
-value takes either input kind, float weak value only float kind.
+name. Inputs combine by normal promotion; weak value must not change result type. Only float input counts: Julia
+promotes small integers to `Int` on purpose (`sum(Int32[1])`, index math).
 Scan converts each weak value that meets input to stand-in type in copy of lowered code, and native inference runs on
 it. Rounds repeat until no new weak value meets input, so `x * 2.0 + 1.0` converts both. Then each weak value stays
 unconverted alone: changed type of returned or stored value is escape; changed number intermediate only is widening.
@@ -11,7 +11,7 @@ unconverted alone: changed type of returned or stored value is escape; changed n
 module Widening
 
 using ..Facts: Weak, Exit
-using ..StandIns: StandIns, FloatStandIn, IntStandIn
+using ..StandIns: StandIns, FloatStandIn
 
 const CC = Core.Compiler
 
@@ -26,8 +26,8 @@ const MATCHES = 4
 
 """
 Weak value at statement `index`: call argument `position` (1 is callee), or 0 for right side of variable assignment.
-`value` is number, or number type for name. `replacement` takes its place: `value` converted to `stand_in`, or
-`stand_in` itself for name. `site` is first statement where weak value meets input.
+`value` is number, or number type for name. `replacement` takes its place: `value` converted to float stand-in, or
+float stand-in itself for name. `site` is first statement where weak value meets input.
 """
 struct Origin
     index::Int
@@ -36,7 +36,6 @@ struct Origin
     value::Any
     replacement::Any
     site::Int
-    stand_in::Type
 end
 
 """
@@ -51,32 +50,24 @@ struct Change
     expected::Type
 end
 
-"""Number stand-in that `type` holds, parameters and union members included; `nothing` when none."""
-function number_stand_in(type::Any)::Union{Nothing, Type}
-    type in StandIns.NUMBERS && return type
-    type isa Union && return something(number_stand_in(type.a), number_stand_in(type.b), Some(nothing))
-    type isa UnionAll && return number_stand_in(type.body)
-    type isa DataType || return nothing
-    for parameter in type.parameters
-        found = number_stand_in(parameter)
-        isnothing(found) || return found
-    end
-    return nothing
+"""Whether `type` holds float stand-in, parameters and union members included."""
+function holds_float(type::Any)::Bool
+    type === FloatStandIn && return true
+    type isa Union && return holds_float(type.a) || holds_float(type.b)
+    type isa UnionAll && return holds_float(type.body)
+    return type isa DataType && any(holds_float, type.parameters)
 end
 
-"""Widest Base type of stand-in kind: `Float64` for float, `Int` for integer. Meeting test swaps input to it."""
-widest(stand_in::Type)::Type = stand_in === FloatStandIn ? Float64 : Int
-
 """
-`type` with `stand_in` replaced by `widest` type of its kind, parameters included; `nothing` when parameter bound
-rejects that type.
+`type` with float stand-in replaced by `Float64`, parameters included; `nothing` when parameter bound rejects
+`Float64`. Meeting test swaps input to it.
 """
-function swapped(type::Any, stand_in::Type)::Any
-    type === stand_in && return widest(stand_in)
-    type isa Union && return Union{swapped(type.a, stand_in), swapped(type.b, stand_in)}
+function swapped(type::Any)::Any
+    type === FloatStandIn && return Float64
+    type isa Union && return Union{swapped(type.a), swapped(type.b)}
     (type isa DataType && !isempty(type.parameters)) || return type
     return try
-        type.name.wrapper{Any[swapped(parameter, stand_in) for parameter in type.parameters]...}
+        type.name.wrapper{Any[swapped(parameter) for parameter in type.parameters]...}
     catch error
         error isa TypeError || rethrow()
         nothing
@@ -143,37 +134,27 @@ function variable_origins(code::Core.CodeInfo)::Dict{Int, Vector{Tuple{Int, Any}
     return found
 end
 
-"""
-Value that replaces weak `value` for `stand_in`, by NumPy 2 kinds: integer converts to either stand-in, other real
-number to float stand-in only; tuple converts each element. `nothing` when kind or range rejects conversion.
-"""
-function replacement(value::Any, stand_in::Type)::Union{Nothing, Some{Any}}
+"""Value that replaces weak `value`: real number converted to float stand-in, tuple element by element; else `nothing`."""
+function replacement(value::Any)::Union{Nothing, Some{Any}}
     if value isa Tuple
         elements = Any[]
         for element in value
-            swap = replacement(element, stand_in)
+            swap = replacement(element)
             isnothing(swap) && return nothing
             push!(elements, something(swap))
         end
         return Some{Any}(Tuple(elements))
     end
-    (value isa Integer || (stand_in === FloatStandIn && value isa Real)) || return nothing
-    return try
-        Some{Any}(convert(stand_in, value))
-    catch error
-        # Integer beyond `Int32` range needs wider type.
-        error isa InexactError || rethrow()
-        nothing
-    end
+    return value isa Real ? Some{Any}(convert(FloatStandIn, value)) : nothing
 end
 
 """
-Whether Base number type `name` widens input of `stand_in` kind and keeps kind: `Float64(x)` on float input.
-Conversion to narrower type (`UInt8(d)`) or other kind (`UInt64(n)` on signed input) changes input on purpose.
+Whether Base number type `name` widens float input: `Float64(x)`. Conversion to narrower type (`Float16(x)`) or other
+kind (`Int(x)`) changes input on purpose.
 """
-function renames(name::Type, stand_in::Type)::Bool
-    model = StandIns.model(stand_in)
-    return name !== model && name <: (stand_in === FloatStandIn ? AbstractFloat : Signed) && promote_type(name, model) === name
+function renames(name::Type)::Bool
+    model = StandIns.model(FloatStandIn)
+    return name !== model && name <: AbstractFloat && promote_type(name, model) === name
 end
 
 """Whether position `position` of call to `callee` takes type name that converts: callee, `convert(T, x)`, `T.(x)`."""
@@ -208,10 +189,11 @@ function with_swaps(types::Vector{Any}, swaps::Dict{Int, Any}, positions::Any)::
 end
 
 """
-Add to `found` weak values of typed `code` that meet input, except `dropped` keys; whether any is new. Call meets input when argument holds
-number stand-in, weak value converts, and with weak values converted, result type changes and follows input type: swap
-of input to `widest` type changes it. So `fill(0, n)` does not meet size `n`. Name that converts input meets it at once.
-Builtins (`getfield(t, 2)`) take no number data. Adds instances meeting test infers to compiler `edges`.
+Add to `found` weak values of typed `code` that meet input, except `dropped` keys; whether any is new. Call meets
+input when argument holds float stand-in, weak value converts, and with weak values converted, result type changes and
+follows input type: swap of input to `Float64` changes it. So `get(table, x, 0.5)` does not meet key `x`. Name that
+converts input meets it at once. Builtins (`getfield(t, 2)`) take no number data. Adds instances meeting test infers
+to compiler `edges`.
 """
 function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int, Int}}, edges::Vector{Any}, code::Core.CodeInfo, parameters::Vector{CC.VarState})::Bool
     variables = variable_origins(code)
@@ -225,28 +207,26 @@ function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int,
         types = Any[CC.widenconst(CC.argextype(argument, code, parameters)) for argument in call.args]
         values = Union{Nothing, Tuple{Any, Weak.T}}[weak(code, argument) for argument in call.args]
         held = Union{Nothing, Vector{Tuple{Int, Any}}}[(read = resolved(code, argument); read isa Core.SlotNumber ? get(variables, read.id, nothing) : nothing) for argument in call.args]
-        inputs = [number_stand_in(types[position]) for position in eachindex(types) if isnothing(values[position]) && isnothing(held[position])]
-        FloatStandIn in inputs || IntStandIn in inputs || continue
-        stand_in = FloatStandIn in inputs ? FloatStandIn : IntStandIn
+        any(position -> isnothing(values[position]) && isnothing(held[position]) && holds_float(types[position]), eachindex(types)) || continue
         # Origins by call position, and type each position takes once its weak value converts.
         new, swaps, named = Pair{Int, Origin}[], Dict{Int, Any}(), false
         for position in eachindex(call.args)
             if !isnothing(values[position])
                 value, kind = something(values[position])
                 if kind == Weak.name
-                    (conversion(callee, position) && renames(value, stand_in)) || continue
-                    push!(new, position => Origin(index, position, kind, value, stand_in, index, stand_in))
-                    swaps[position], named = Type{stand_in}, true
+                    (conversion(callee, position) && renames(value)) || continue
+                    push!(new, position => Origin(index, position, kind, value, FloatStandIn, index))
+                    swaps[position], named = Type{FloatStandIn}, true
                 else
-                    swap = replacement(value, stand_in)
+                    swap = replacement(value)
                     position > 1 && !isnothing(swap) || continue
-                    push!(new, position => Origin(index, position, kind, value, something(swap), index, stand_in))
+                    push!(new, position => Origin(index, position, kind, value, something(swap), index))
                     swaps[position] = typeof(something(swap))
                 end
             elseif !isnothing(held[position])
                 for (assignment, value) in something(held[position])
-                    swap = replacement(value, stand_in)
-                    isnothing(swap) || (push!(new, position => Origin(assignment, 0, Weak.variable, value, something(swap), index, stand_in)); swaps[position] = typeof(something(swap)))
+                    swap = replacement(value)
+                    isnothing(swap) || (push!(new, position => Origin(assignment, 0, Weak.variable, value, something(swap), index)); swaps[position] = typeof(something(swap)))
                 end
             end
         end
@@ -265,7 +245,7 @@ function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int,
             known(result) || continue
             # Variable type itself changes (`s = 0` then `s += x`), so call result need not.
             all(pair -> last(pair).position > 0, new) && result == CC.widenconst(code.ssavaluetypes[index]) && continue
-            alternative = Any[(isnothing(values[position]) && isnothing(held[position])) ? swapped(converted[position], stand_in) : converted[position] for position in eachindex(converted)]
+            alternative = Any[(isnothing(values[position]) && isnothing(held[position])) ? swapped(converted[position]) : converted[position] for position in eachindex(converted)]
             any(isnothing, alternative) && continue
             call_result!(edges, alternative) == result && continue
         end
@@ -344,7 +324,7 @@ function exit_value(code::Core.CodeInfo, statement::Any, parameters::Vector{CC.V
     return call.args[STORES[callee.val]], argument_type(code, target, parameters), callee.val => call
 end
 
-"""Whether store of `exit_value` converts value: concrete global type, field type, value type of dictionary, or element type."""
+"""Whether store of `exit_value` converts value: concrete global, field, dictionary value or element type."""
 function converts(code::Core.CodeInfo, target::Any, store::Any, parameters::Vector{CC.VarState})::Bool
     isnothing(store) && return isconcretetype(target)
     callee, call = store
@@ -376,79 +356,14 @@ function exit_types(left::Core.CodeInfo, baseline::Core.CodeInfo, parameters::Ve
     return argument_type(left, exit[1], parameters), argument_type(baseline, exit[1], parameters)
 end
 
-"""Value id of `argument`: statement index for SSA value, negative slot number for variable; `nothing` otherwise."""
-value_id(argument::Any)::Union{Nothing, Int} = argument isa Core.SSAValue ? argument.id : argument isa Core.SlotNumber ? -argument.id : nothing
-
-"""Value id statement `index` defines: assigned variable, or statement itself."""
-result_id(statement::Any, index::Int)::Int = statement isa Expr && statement.head === :(=) && statement.args[1] isa Core.SlotNumber ? -statement.args[1].id : index
-
-"""Indexing callees with first index position; index converts to `Int`, so its type cannot escape."""
-const INDEXERS = IdDict{Any, Int}(getindex => 3, setindex! => 4, view => 3, Base.maybeview => 3, Base.dotview => 3, checkbounds => 3)
-
-"""Callees whose result carries index on: arithmetic, ranges, iteration and its tuple fields, type assertion."""
-const CARRIERS = Base.IdSet{Any}([+, -, *, div, rem, mod, fld, cld, <<, >>, >>>, min, max, abs, (:), Base.OneTo, UnitRange, iterate, getfield, typeassert])
-
-"""Comparisons: `Bool` result drops type of operands."""
-const COMPARISONS = Base.IdSet{Any}([<, <=, >, >=, ==, !=, isless, isequal, ===])
-
-"""Use target of value that leaves index use."""
-const ESCAPE = typemin(Int)
-
-"""Use target that ends use: index position or comparison."""
-const HARMLESS = 0
-
-"""
-Value ids of typed `code` used only as index (`INDEXERS`), through arithmetic, ranges, iteration and variables
-(`CARRIERS`) and comparisons. Range bound counts when range and its elements are used only for indexing.
-"""
-function index_only(code::Core.CodeInfo, parameters::Vector{CC.VarState})::Set{Int}
-    targets = Dict{Int, Vector{Int}}()
-    use!(argument::Any, target::Int)::Nothing = (id = value_id(argument); isnothing(id) || push!(get!(targets, id, Int[]), target); nothing)
-    for (index, statement) in enumerate(code.code)
-        right, result = assigned(statement), result_id(statement, index)
-        if statement isa Core.ReturnNode
-            isdefined(statement, :val) && use!(statement.val, ESCAPE)
-        elseif right isa Union{Core.SSAValue, Core.SlotNumber}
-            use!(right, result)
-        elseif right isa Expr && right.head === :call
-            callee = CC.argextype(right.args[1], code, parameters)
-            callee = callee isa Core.Const ? callee.val : nothing
-            for (position, argument) in enumerate(right.args)
-                target = if position == 1
-                    ESCAPE
-                elseif haskey(INDEXERS, callee)
-                    position >= INDEXERS[callee] ? HARMLESS : ESCAPE
-                else
-                    callee in COMPARISONS ? HARMLESS : callee in CARRIERS ? result : ESCAPE
-                end
-                use!(argument, target)
-            end
-        elseif right isa Expr
-            foreach(argument -> use!(argument, ESCAPE), right.args)
-        end
-    end
-    only = Set(keys(targets))
-    # Greatest fixed point: loop variables use themselves.
-    changed = true
-    while changed
-        changed = false
-        for id in collect(only)
-            all(target -> target == HARMLESS || target in only, targets[id]) && continue
-            delete!(only, id)
-            changed = true
-        end
-    end
-    return only
-end
-
 """Whether call result `type` can carry widened number: number, array, or lazy broadcast."""
 carries_number(type::Type)::Bool = type !== Union{} && (type <: Number || type <: AbstractArray || type <: Base.Broadcast.Broadcasted)
 
-"""First number statement of typed `left` whose type differs in `baseline` and is not index only; `nothing` when none."""
-function widened_statement(left::Core.CodeInfo, baseline::Core.CodeInfo, indices::Set{Int})::Union{Nothing, Int}
-    for (index, statement) in enumerate(left.code)
+"""First number statement of typed `left` whose type differs in `baseline`; `nothing` when none."""
+function widened_statement(left::Core.CodeInfo, baseline::Core.CodeInfo)::Union{Nothing, Int}
+    for index in eachindex(left.code)
         found = statement_type(left, index)
-        carries_number(found) && found != statement_type(baseline, index) && !(result_id(statement, index) in indices) && return index
+        carries_number(found) && found != statement_type(baseline, index) && return index
     end
     return nothing
 end
@@ -505,7 +420,7 @@ function changes!(edges::Vector{Any}, instance::Core.MethodInstance, code::Core.
         end
         (rounds += 1) < ROUNDS && meetings!(found, dropped, edges, baseline, parameters) || break
     end
-    indices, arguments = index_only(code, parameters), Int(instance.def.nargs)
+    arguments = Int(instance.def.nargs)
     changed = Change[]
     for origin in origins()
         rest = filter(other -> other !== origin, origins())
@@ -513,7 +428,7 @@ function changes!(edges::Vector{Any}, instance::Core.MethodInstance, code::Core.
         isnothing(left) && continue
         exit = exit_statement(left, baseline, parameters, arguments)
         if isnothing(exit)
-            widened = widened_statement(left, baseline, indices)
+            widened = widened_statement(left, baseline)
             isnothing(widened) && continue
             exit = (widened, Exit.intermediate)
         end

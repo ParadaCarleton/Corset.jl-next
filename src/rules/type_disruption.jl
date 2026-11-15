@@ -2,15 +2,15 @@
 `type-disruption` (F5, F6, F16): literal, constant or type name changes type of input that method returns or stores.
 
 ## Description
-Reports weak value that meets generic number input and changes type of value method returns or stores in argument or
+Reports weak value that meets generic float input and changes type of value method returns or stores in argument or
 global. Weak value: number literal, constant, call of weak values only (`sqrt(2)`, `2π`), variable assigned one, or
-conversion to Base number type (`Float64(x)`). Integer weak value must keep integer and float input type; float weak
-value must keep float input type, as Python scalars do in NumPy 2.
+conversion to wider Base float type (`Float64(x)`). Weak value must keep float input type, as Python scalars do in
+NumPy 2.
 
 ## Rationale
 Generic method should give back caller's number type. `x * 0.5` turns `Float32` into `Float64`, which doubles memory and
-leaves GPU fast path; `2x` turns `Int32` into `Int64`. Float literal close to `π` or `sqrt(2)` widens too, where
-irrational constant would take input type.
+leaves GPU fast path. Float literal close to `π` or `sqrt(2)` widens too, where irrational constant would take input
+type.
 
 ## Example
 ```julia
@@ -37,10 +37,11 @@ end
 ```
 
 ## Limitations
-Rule sees methods inference reaches, with stand-in types for generic arguments. Value used only as index is exempt:
-`xs[2i]` converts index to `Int`. Store into concrete element or field type converts value; `intermediate-widening`
-reports work in wider type there. Base callees count as type-preserving. Finding is `possible` when method branches on
-type or span cannot show weak value. Rule does not report hard-coded `Array` construction (F16) yet.
+Rule sees methods inference reaches, with stand-in types for generic arguments. Integer input is exempt: Julia promotes
+small integers to `Int` on purpose (`sum(Int32[1])`, index math). Store into concrete element, dictionary value or field
+type converts value; `intermediate-widening` reports work in wider type there. Base callees count as type-preserving.
+Finding is `possible` when method branches on type or span cannot show weak value. Rule does not report hard-coded
+`Array` construction (F16) yet.
 """
 module TypeDisruption
 

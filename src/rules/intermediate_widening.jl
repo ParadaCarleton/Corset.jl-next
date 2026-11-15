@@ -2,7 +2,7 @@
 `intermediate-widening` (F87): literal or constant makes intermediate run in wider type than input.
 
 ## Description
-Reports weak value that meets generic number input and widens intermediate value, while returned and stored values keep
+Reports weak value that meets generic float input and widens intermediate value, while returned and stored values keep
 their type: conversion or concrete store narrows result again. Weak values as in `type-disruption`, which reports
 widening that escapes.
 
@@ -21,8 +21,8 @@ half32(x::AbstractFloat) = Float32(x * oftype(x, 0.5))
 ```
 
 ## Limitations
-Fix changes rounding of intermediate, so it can change result in last bit. Value used only as index is exempt.
-Finding is `possible` when method branches on type or span cannot show weak value.
+Fix changes rounding of intermediate, so it can change result in last bit. Integer input is exempt, as in
+`type-disruption`. Finding is `possible` when method branches on type or span cannot show weak value.
 """
 module IntermediateWidening
 

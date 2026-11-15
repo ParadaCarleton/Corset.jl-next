@@ -2,7 +2,6 @@
 module TypeDisruptionPositive
 
 scaled(x::AbstractFloat) = x * 0.5
-doubled(n::Integer) = 2n
 
 function total(xs::AbstractVector{<:Real})
     s = 0

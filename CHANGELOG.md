@@ -28,7 +28,7 @@
 - New rule `misplaced-import`: an explicit import sits in a file that uses none of its names, and one other file uses them all. The fix moves the import to the top of that file.
 - `corset fix` applies a fix that edits several files to all of them or to none.
 - New rule `unused-import`: an explicit import binds a name that its module never uses. The fix removes the name, or the whole statement.
-- New rule `type-disruption`: a literal, constant or number type conversion changes the type that a generic method returns or stores. `x * 0.5` turns `Float32` input into `Float64`. A float literal close to an irrational constant gets that constant as fix.
+- New rule `type-disruption`: a literal, constant or float type conversion changes the type that a generic method returns or stores for float input. `x * 0.5` turns `Float32` input into `Float64`. A float literal close to an irrational constant gets that constant as fix. Integer input is exempt, since Julia promotes small integers to `Int` on purpose.
 - New rule `intermediate-widening`: a literal makes an intermediate value use a wider type, though the result keeps the input type, as in `Float32(x * 0.5)`.
 - Import rules skip a statement when a use of its names sits in a file outside the checked files, as in `corset check src/one.jl`.
 - `implicit-import` labels the first use of each name in source order, and labels a string macro use such as `md"…"`; before, an import of a string macro stopped the check.
