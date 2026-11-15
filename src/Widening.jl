@@ -167,8 +167,14 @@ function replacement(value::Any, stand_in::Type)::Union{Nothing, Some{Any}}
     end
 end
 
-"""Whether Base number type `name` converts input of `stand_in` kind to other type: `Float64(x)` on float input."""
-renames(name::Type, stand_in::Type)::Bool = name !== StandIns.model(stand_in) && (stand_in === FloatStandIn ? name <: AbstractFloat : name <: Integer && name !== Bool)
+"""
+Whether Base number type `name` widens input of `stand_in` kind and keeps kind: `Float64(x)` on float input.
+Conversion to narrower type (`UInt8(d)`) or other kind (`UInt64(n)` on signed input) changes input on purpose.
+"""
+function renames(name::Type, stand_in::Type)::Bool
+    model = StandIns.model(stand_in)
+    return name !== model && name <: (stand_in === FloatStandIn ? AbstractFloat : Signed) && promote_type(name, model) === name
+end
 
 """Whether position `position` of call to `callee` takes type name that converts: callee, `convert(T, x)`, `T.(x)`."""
 conversion(callee::Any, position::Int)::Bool = position == 1 || (position == 2 && callee in (convert, Base.Broadcast.broadcasted))
@@ -202,12 +208,12 @@ function with_swaps(types::Vector{Any}, swaps::Dict{Int, Any}, positions::Any)::
 end
 
 """
-Add to `found` weak values of typed `code` that meet input; whether any is new. Call meets input when argument holds
+Add to `found` weak values of typed `code` that meet input, except `dropped` keys; whether any is new. Call meets input when argument holds
 number stand-in, weak value converts, and with weak values converted, result type changes and follows input type: swap
 of input to `widest` type changes it. So `fill(0, n)` does not meet size `n`. Name that converts input meets it at once.
 Builtins (`getfield(t, 2)`) take no number data. Adds instances meeting test infers to compiler `edges`.
 """
-function meetings!(found::Dict{Tuple{Int, Int}, Origin}, edges::Vector{Any}, code::Core.CodeInfo, parameters::Vector{CC.VarState})::Bool
+function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int, Int}}, edges::Vector{Any}, code::Core.CodeInfo, parameters::Vector{CC.VarState})::Bool
     variables = variable_origins(code)
     count = length(found)
     for (index, statement) in enumerate(code.code)
@@ -264,7 +270,8 @@ function meetings!(found::Dict{Tuple{Int, Int}, Origin}, edges::Vector{Any}, cod
             call_result!(edges, alternative) == result && continue
         end
         for (_, origin) in new
-            haskey(found, (origin.index, origin.position)) || (found[(origin.index, origin.position)] = origin)
+            key = (origin.index, origin.position)
+            haskey(found, key) || key in dropped || (found[key] = origin)
         end
     end
     return length(found) > count
@@ -337,11 +344,11 @@ function exit_value(code::Core.CodeInfo, statement::Any, parameters::Vector{CC.V
     return call.args[STORES[callee.val]], argument_type(code, target, parameters), callee.val => call
 end
 
-"""Whether store of `exit_value` converts value: concrete global type, element type, or field type."""
+"""Whether store of `exit_value` converts value: concrete global type, field type, value type of dictionary, or element type."""
 function converts(code::Core.CodeInfo, target::Any, store::Any, parameters::Vector{CC.VarState})::Bool
     isnothing(store) && return isconcretetype(target)
     callee, call = store
-    callee in (setfield!, setproperty!) || return target <: AbstractArray && isconcretetype(eltype(target))
+    callee in (setfield!, setproperty!) || return isconcretetype(target <: AbstractDict ? valtype(target) : eltype(target))
     field = CC.argextype(call.args[3], code, parameters)
     (field isa Core.Const && target isa DataType && isconcretetype(target) && hasfield(target, field.val)) || return false
     return isconcretetype(fieldtype(target, field.val))
@@ -480,21 +487,23 @@ makes statement throw is dropped: it was index or field number there.
 """
 function changes!(edges::Vector{Any}, instance::Core.MethodInstance, code::Core.CodeInfo)::Tuple{Vector{Change}, Bool}
     parameters = CC.sptypes_from_meth_instance(instance)
-    found = Dict{Tuple{Int, Int}, Origin}()
-    meetings!(found, edges, code, parameters) || return Change[], false
+    found, dropped = Dict{Tuple{Int, Int}, Origin}(), Set{Tuple{Int, Int}}()
+    meetings!(found, dropped, edges, code, parameters) || return Change[], false
     origins() = sort!(collect(values(found)); by = origin -> (origin.index, origin.position))
     baseline, rounds = code, 0
     while true
         baseline = converted!(edges, instance, origins())
         if isnothing(baseline) || breaks(baseline, code)
-            filter!(found) do (_, origin)
+            for (key, origin) in collect(found)
                 alone = converted!(edges, instance, [origin])
-                !isnothing(alone) && !breaks(alone, code)
+                isnothing(alone) || breaks(alone, code) || continue
+                push!(dropped, key)
+                delete!(found, key)
             end
             baseline = isempty(found) ? nothing : converted!(edges, instance, origins())
             (isnothing(baseline) || breaks(baseline, code)) && return Change[], false
         end
-        (rounds += 1) < ROUNDS && meetings!(found, edges, baseline, parameters) || break
+        (rounds += 1) < ROUNDS && meetings!(found, dropped, edges, baseline, parameters) || break
     end
     indices, arguments = index_only(code, parameters), Int(instance.def.nargs)
     changed = Change[]

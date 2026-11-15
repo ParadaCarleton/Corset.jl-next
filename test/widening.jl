@@ -30,6 +30,22 @@ module WideningCases
     converted(x) = convert(Float64, x)
     broadcast_named(xs) = Float64.(xs)
     constant(x) = HALF * x
+    precise(x) = BigFloat(x) * x
+    grid(x) = [x 0.5; 1.0 2.0]
+    fused(x) = muladd(x, 3.0, 2)
+    masked(n) = (UInt64(n) - 1) & 63
+    unsigned(n) = convert(UInt64, n)
+    digit(n) = UInt8(n % 10)
+    halfwidth(x) = Float16(x) * x
+    function keyed!(table, x)
+        table[:a] = x * 2.0
+        return nothing
+    end
+    function local_store(x)
+        buffer = Vector{Real}(undef, 1)
+        buffer[1] = x * 2.0
+        return Float32(x)
+    end
     loose_global(x) = untyped_total * x
     rooted(x) = sqrt(2) * x
     circled(x) = 2π * x
@@ -124,11 +140,18 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         @test reported(cases.summed, IV) == [(Weak.variable, 0, Exit.returned)]
         @test reported(cases.range_out, I) == [(Weak.literal, 2, Exit.returned), (Weak.literal, 1, Exit.returned)]
         @test reported(cases.static, F) == [(Weak.literal, 0.5, Exit.returned)]
+        # Row lengths of matrix literal cannot convert; elements still do.
+        @test reported(cases.grid, F) == [(Weak.literal, 0.5, Exit.returned), (Weak.literal, 1.0, Exit.returned), (Weak.literal, 2.0, Exit.returned)]
+        # Integer addend takes input type once other weak value converts.
+        @test reported(cases.fused, F) == [(Weak.literal, 3.0, Exit.returned)]
     end
     @testset "stores" begin
         @test reported(cases.stored!, Vector{Real}, F) == [(Weak.literal, 2.0, Exit.stored)]
         @test reported(cases.stored!, Vector{Float32}, F) == [(Weak.literal, 2.0, Exit.intermediate)]
         @test reported(cases.pushed!, Vector{Real}, F) == [(Weak.literal, 2.0, Exit.stored)]
+        # Dictionary converts value to its value type.
+        @test reported(cases.keyed!, Dict{Symbol, Real}, F) == [(Weak.literal, 2.0, Exit.stored)]
+        @test reported(cases.keyed!, Dict{Symbol, Float32}, F) == [(Weak.literal, 2.0, Exit.intermediate)]
         # Abstract field keeps stored value; concrete field converts it, so only intermediate widens.
         @test reported(cases.held!, cases.Holder, F) == [(Weak.literal, 2.0, Exit.stored), (Weak.literal, 2.0, Exit.intermediate)]
         @test scan(cases.global_store, F) == ([(Weak.literal, 2.0, Exit.stored, Float64, F), (Weak.literal, 2.0, Exit.intermediate, Float64, F)], false)
@@ -156,9 +179,25 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         @test isempty(reported(cases.kinded, I))
         # `10^12` needs `Int64`.
         @test isempty(reported(cases.huge, I))
+        # Conversion to unsigned type changes kind on purpose; literals then meet `UInt64`.
+        @test isempty(reported(cases.masked, I))
+        @test isempty(reported(cases.unsigned, I))
+        # Conversion to narrower type narrows on purpose.
+        @test reported(cases.digit, I) == [(Weak.literal, 10, Exit.intermediate)]
+        @test isempty(reported(cases.halfwidth, F))
         # Converted literal would make call of `Int` method throw: no finding, and other weak value still counts.
         @test isempty(reported(cases.broke_all, I))
         @test reported(cases.broke, I) == [(Weak.literal, 3, Exit.returned)]
+        # Dropped weak value stays dropped: search ends after few inferences.
+        signature = Tuple{typeof(cases.broke), I}
+        instance, code, _, _ = something(Corset.Inference.infer(only(methods(cases.broke)), signature))
+        edges = Any[]
+        changes!(edges, instance, code)
+        @test length(edges) < 60
+        # Store into local array stays inside method.
+        @test reported(cases.local_store, F) == [(Weak.literal, 2.0, Exit.intermediate)]
+        # Base number type outside `Core` widens on purpose.
+        @test isempty(reported(cases.precise, F))
         # Global that can change holds caller data.
         @test isempty(reported(cases.loose_global, F))
         # Swap to `Float64` breaks bound of `Picky`, so meeting test cannot tell.
@@ -179,5 +218,8 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         @test isnothing(replacement(typemax(Int), I))
         @test call_result!(Any[], Any[typeof(+), Symbol, Symbol]) === Any
         @test ROUNDS >= 10
+        @test Corset.Facts.irrational_name(3.14159) == "π"
+        @test Corset.Facts.irrational_name(0.70710678) == "invsqrt2"
+        @test isnothing(Corset.Facts.irrational_name(3.14))
     end
 end
