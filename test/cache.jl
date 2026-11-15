@@ -25,7 +25,7 @@ end
     @testset "tree files" begin
         mktempdir(@__DIR__) do root
             write_files(root, "b.jl" => "", "a/c.jl" => "", ".hidden.jl" => "", ".git/config" => "", "a/.d/e.jl" => "")
-            write_files(root, "a/c.jl.123.cov" => "", "a/c.jl.123.mem" => "", "cache/entry" => "", "cached/entry" => "")
+            write_files(root, "cache/entry" => "", "cached/entry" => "")
             symlink(joinpath(root, "a"), joinpath(root, "directory link"))
             symlink(joinpath(root, "b.jl"), joinpath(root, "file link"))
             @test Cache.tree_files(root, joinpath(root, "cache")) == joinpath.(root, ["a/c.jl", "b.jl", "cached/entry", "file link"])

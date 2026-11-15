@@ -52,6 +52,8 @@ end
 - Fresh process only: no `Corset.check()` inside `runtests.jl`. Test code would change method table, and `--code-coverage` changes optimized IR, so findings would depend on what ran before.
 - Command line always builds temporary environment: nameless project that develops target by path, starts from target Manifest, and adds test dependencies and Corset by path. Every target version stays when Corset accepts it. Otherwise packages Corset shares with target move, fewest first: Corset direct dependencies, then its dependency closure. Build prints each move; coverage line counts each loaded package at other version than Manifest pins as blind spot. Target compat that blocks every move fails loud (exit 2). Cache environment by hash of Manifest, Project.toml, Julia version and Corset version.
 - Relaunch Julia with `JULIA_LOAD_PATH` set to that environment and `@stdlib` only, so default environment (`@v#.#`) adds no package, trigger or method.
+- Relaunched process runs with coverage and allocation tracking off, whatever flags relaunching process has.
+- Target loads after Corset, so its methods must invalidate no Corset code. Keep inferred types concrete; put inference barrier on dependency callee that infers abstract types. `test/invalidation.jl` checks.
 - Package stage loads in place only there and in Corset tests: `Base.locate_package` must give target entry file by real path. Other path is internal error: findings would describe other code.
 - Load each extension's trigger packages: extension activates only when all triggers are loaded.
 - Cache check runs before package load: unchanged rerun loads nothing.
@@ -113,7 +115,7 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 
 - Disk cache (`Cache`) holds one entry per checked path: key line, then serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.
 - Key: SHA-256 of Julia version, `Base.CacheFlags`, checked path, serialized flags, each load path environment with Manifest and preferences, Corset source, analyzed files, and every file of project root and Manifest `path` entries.
-- Key reads file content, so fresh CI checkout hits. Names that start with dot, `.cov` and `.mem` files, and cache directory stay out of key.
+- Key reads file content, so fresh CI checkout hits. Names that start with dot and cache directory stay out of key.
 - Location: Corset scratch space `analyses` in Julia depot. CI that saves depot keeps cache. `--no-cache` turns cache off.
 - Relaunching process computes key of relaunched process (temporary environment, load path `@:@stdlib`) and asks cache first. Hit loads no package and starts no process. `fix` always relaunches.
 - Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.

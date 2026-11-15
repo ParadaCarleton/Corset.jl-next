@@ -87,7 +87,7 @@ function write_baseline(root::String, keys::Vector{Key})::Nothing
     counts = Dict{Key, Int}()
     foreach(key -> counts[key] = get(counts, key, 0) + 1, keys)
     tables = [
-        Dict("rule" => key.rule, "file" => key.file, "definition" => key.definition, "snippet" => key.snippet, "count" => count)
+        Dict{String, Any}("rule" => key.rule, "file" => key.file, "definition" => key.definition, "snippet" => key.snippet, "count" => count)
             for (key, count) in sort!(collect(counts); by = pair -> (pair[1].file, pair[1].rule, pair[1].definition, pair[1].snippet))
     ]
     open(joinpath(root, FILE), "w") do io

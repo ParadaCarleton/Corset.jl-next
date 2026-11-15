@@ -13,19 +13,16 @@ using ..Launch: corset_root
 """Cache directory of command line: scratch space of Corset in Julia depot. CI that saves depot keeps it."""
 directory()::String = get_scratch!(Base.moduleroot(@__MODULE__), "analyses")
 
-"""Coverage and allocation files Julia writes beside source while code runs; no analysis reads them."""
-const RUN_OUTPUT = r"\.(cov|mem)$"
-
 """
-Files under `root`, sorted. Names that start with dot stay out, with everything below them; so do `RUN_OUTPUT` files
-and directory `cache`, whose entries would change key they are stored under.
+Files under `root`, sorted. Names that start with dot stay out, with everything below them; so does directory `cache`,
+whose entries would change key they are stored under.
 """
 function tree_files(root::String, cache::String)::Vector{String}
     files = String[]
     for (directory, directories, names) in walkdir(root)
         filter!(name -> !startswith(name, '.') && joinpath(directory, name) != cache, directories)
         # Symbolic link to directory arrives in `names`; `isfile` drops it.
-        kept = [joinpath(directory, name) for name in names if !startswith(name, '.') && !occursin(RUN_OUTPUT, name)]
+        kept = [joinpath(directory, name) for name in names if !startswith(name, '.')]
         append!(files, filter(isfile, kept))
     end
     return sort!(files)

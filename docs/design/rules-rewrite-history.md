@@ -538,7 +538,8 @@ Codex review of phase 4 design found eight problems:
 - Closure and do-block root patch is not built: package stage skips methods whose names start with `#`, so no closure body is analyzed method.
 - Findings cache lands before `never-succeeds`. First version stores whole analysis per checked path; key hashes every input file by content.
 - `repr` names types relative to `Main` imports, so relaunching and relaunched processes printed flags differently. Key hashes serialized flags.
-- Coverage run writes `.cov` files into hashed trees after relaunched process stores entry. Key skips `.cov` and `.mem` files.
+- `Base.julia_cmd()` copies coverage flags into relaunched process, which then wrote `.cov` files into hashed trees after it stored entry. Relaunch turns coverage and allocation tracking off.
+- Loading DataStructures invalidated 45 Corset method instances through abstract inferred types. Concrete containers and two inference barriers fix it: cold check inference falls from 1.32 s to 0.63 s.
 - Cache hit, whole process: 2.2–2.6 s against 4.8–7.6 s without cache. Corset load takes 1.3 s; Pkg and REPL take 0.3 s of it, and only environment build needs them.
 
 ### Phase 4 cold-run benchmark

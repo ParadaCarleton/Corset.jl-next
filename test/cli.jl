@@ -378,6 +378,13 @@ end
     @test Corset.CLI.exit_code(run(ignorestatus(`sh -c "kill -KILL \$\$"`))) == 101
 end
 
+@testset "untracked relaunch" begin
+    tracked = `$(Base.julia_cmd()) --code-coverage=user --track-allocation=user`
+    options = "print(Base.JLOptions().code_coverage, Base.JLOptions().malloc_log)"
+    @test read(`$tracked --startup-file=no -e $options`, String) == "11"
+    @test read(`$(Corset.Launch.untracked(tracked)) --startup-file=no -e $options`, String) == "00"
+end
+
 @testset "manifest moves" begin
     Launch, Package = Corset.Launch, Corset.Package
     textwrap, syntax = Base.UUID("b718987f-49a8-5099-9789-dcd902bef87d"), Base.UUID("70703baa-626e-46a2-a12c-08ffd08c73b4")
