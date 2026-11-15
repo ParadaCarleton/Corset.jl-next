@@ -9,6 +9,11 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 ### Arguments without stand-in
 
 - Package abstract type (`s::Shape`): infer once per concrete subtype package defines, with stand-ins for its parameters.
+- Struct parameter takes every stand-in its bound fits, package struct stand-ins included (`Outer{S <: Inner}`).
+- Struct parameter no stand-in fits takes its bound. Field of type `Any` acts as `::Any` argument: its data gives no findings.
+- Struct that bound makes empty gets no stand-in: `Sized{N}` with `N = Any` has field type `Union{}`.
+- Union or abstract argument takes first stand-in of each struct before second of any, so cut at signature limit reaches most structs.
+- Macro that rebuilds struct (`@concrete struct`) gives constructors its own file; struct ties to its form by name.
 - Function argument: stand-in function returns `Any` (inference barrier). Method stable under that assumption is exempt: stable whenever `f` is. Problems method causes itself are reported. Code after `f`'s result stays analyzed; values from that result give no findings. Opaque result type truncated frames in S1.
 - No stand-in yet (`AbstractString`, `AbstractDict`, abstract type without package subtype) and explicit `::Any`: no findings from that argument's data.
 - Unannotated method reached from analyzed caller is analyzed through caller inference: `inference` stage keeps explicit worklist of package frames reached from stand-in callers. Unannotated method nothing calls is skipped; `annotation` reports it. Expect low coverage on unannotated packages (Distances: 165 of 283 methods) until `annotation` fixer runs.

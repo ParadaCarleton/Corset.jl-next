@@ -2,7 +2,7 @@
 """Package whose public structs have no abstract supertype."""
 module ClosedStructPositive
 
-export Model, Counter, Positive, Circle, Grid, Options
+export Model, Counter, Positive, Circle, Grid, Options, Rebuilt
 public Point, Tagged, Shapes
 
 """Linear model."""
@@ -42,6 +42,22 @@ const Grid = Table{Int}
 """Options with keyword constructor."""
 Base.@kwdef struct Options
     verbose::Bool = false
+end
+
+"""Rebuild struct `definition` with line of this macro, as `ConcreteStructs.@concrete` does."""
+macro rebuilt(definition)
+    fields = filter(field -> !(field isa LineNumberNode), definition.args[3].args)
+    return esc(Expr(:struct, definition.args[1], definition.args[2], Expr(:block, LineNumberNode(@__LINE__, Symbol(@__FILE__)), fields...)))
+end
+
+"""Size whose constructors carry macro line, so struct ties by name."""
+@rebuilt struct Rebuilt
+    size::Int
+end
+
+# Branch Julia never runs defines no struct; `Counter` stays tied to its definition alone.
+@static if VERSION < v"1.6"
+    struct Counter end
 end
 
 """Public submodule; parent also exports its `Circle`."""

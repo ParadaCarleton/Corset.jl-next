@@ -164,28 +164,48 @@ function constructed(method::Method)::Union{Nothing, Core.TypeName}
     return target isa DataType ? target.name : nothing
 end
 
+"""Struct types named `name` that package `modules` define."""
+function named_structs(modules::Vector{Module}, name::Symbol)::Vector{Type}
+    found = Type[]
+    for mod in modules
+        isdefined(mod, name) || continue
+        body = Base.unwrap_unionall(getglobal(mod, name))
+        body isa DataType && isstructtype(body) && parentmodule(body) === mod && body.name.name === name && push!(found, body.name.wrapper)
+    end
+    return found
+end
+
 """
 Sites of structs that constructor method `sites` tie to `struct` forms in `files`.
 Default constructors start on first field line, or on struct line for struct without fields; inner constructors start
 in body. So constructor of same name that starts between line start of form and its end builds its type.
+Macro that builds struct (`@concrete struct`) gives constructors its own file; then sole struct of that name in
+package `modules` ties.
 """
-function struct_sites(sites::Vector{MethodSite}, files::Vector{SyntaxFile})::Vector{StructSite}
+function struct_sites(sites::Vector{MethodSite}, files::Vector{SyntaxFile}, modules::Vector{Module})::Vector{StructSite}
     built = Dict{String, Vector{Tuple{Int, Core.TypeName}}}()
     for site in sites
         name = constructed(site.method)
         isnothing(name) || push!(get!(built, site.span.file, Tuple{Int, Core.TypeName}[]), (site.span.first_byte, name))
     end
-    found = StructSite[]
+    # Untied form keeps its slot, so sites stay in file order: stand-in order decides which signatures fit `LIMIT`.
+    found, untied = Union{Nothing, StructSite}[], Tuple{Int, SyntaxFile, SyntaxNode, Symbol}[]
     for file in files
         starts, constructors = line_starts(file.text), get(built, file.path, Tuple{Int, Core.TypeName}[])
         for node in Facts.forms(file, "struct")
             bytes = Facts.trimmed_bytes(file.text, node)
             lines, name = starts[searchsortedlast(starts, first(bytes))]:last(bytes), Symbol(Facts.source(file, Facts.definition_name(node)))
             index = findfirst(((byte, type),) -> byte in lines && type.name === name, constructors)
-            isnothing(index) || push!(found, StructSite(last(constructors[index]).wrapper, file, node))
+            push!(found, isnothing(index) ? nothing : StructSite(last(constructors[index]).wrapper, file, node))
+            isnothing(index) && push!(untied, (length(found), file, node, name))
         end
     end
-    return found
+    tied = Set{Type}(site.type for site in found if !isnothing(site))
+    for (slot, file, node, name) in untied
+        named = filter(type -> !(type in tied), named_structs(modules, name))
+        length(named) == 1 && (found[slot] = StructSite(only(named), file, node))
+    end
+    return StructSite[site for site in found if !isnothing(site)]
 end
 
 """
@@ -340,7 +360,7 @@ end
 """Facts of loaded package `modules`, root module first, with method and struct sites in `files`."""
 function package_facts(modules::Vector{Module}, files::Vector{SyntaxFile})::PackageFacts
     sites = method_sites(modules, files)
-    return PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files))
+    return PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files, modules))
 end
 
 end
