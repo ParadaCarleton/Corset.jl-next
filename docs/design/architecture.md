@@ -57,6 +57,11 @@ end
 - Package stage loads in place only there and in Corset tests: `Base.locate_package` must give target entry file by real path. Other path is internal error: findings would describe other code.
 - Load each extension's trigger packages: extension activates only when all triggers are loaded.
 - Cache check runs before package load: unchanged rerun loads nothing.
+- Native abort kills relaunched process, and Julia `try` cannot catch it: LLVM `UNREACHABLE` in Enzyme generator that inference runs on stand-in types.
+- Relaunched process keeps crash journal: store key of each method and signature before its inference, store entry after it. Inference writes stderr to crash log.
+- Relaunching process supervises: relaunched process that dies by signal, with key in journal that has no entry, runs again. It prints one note per crash with log path.
+- Next run reads journal: entries serve as method store, so finished work stays done; crashed key gets no inference and becomes blind spot `inference crashed process`.
+- Run ends with internal error after 32 crashes. Julia exception never reruns: it stays internal error.
 
 ### Tests
 
