@@ -10,6 +10,17 @@ macro add_one(ex)
     end
 end
 
+"""Defines function and evaluator with two more leading arguments at its line, as DynamicPPL `@model` does."""
+macro modeled(definition)
+    call, body = definition.args
+    evaluator = Expr(:function, Expr(:call, call.args[1], :model, :info, call.args[2:end]...), body)
+    return esc(Expr(:block, definition, evaluator))
+end
+
+@modeled function evaluated(x::Real)
+    return x
+end
+
 abstract type Shape end
 struct Circle{T <: Real} <: Shape
     radius::T

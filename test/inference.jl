@@ -111,6 +111,8 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
     @testset "untyped arguments" begin
         # Typed keyword leaves positional `x` untyped.
         @test untyped(only(sites("hk"))) && !untyped(only(sites("keyed"))) && !untyped(only(sites("slurpy")))
+        # Evaluator that macro adds at definition line takes more arguments than definition, so it gets line site.
+        @test sort!([isnothing(site.node) for site in sites("evaluated")]) == [false, true]
         # Method for omitted default leaves out untyped `y`.
         @test sort!(untyped.(sites("defaulted"))) == [false, true]
     end

@@ -106,9 +106,28 @@ function source_name(method::Method)::String
     return isnothing(body) ? name : body[1]
 end
 
-"""Site of `method` in `file`: exact when one definition of its source name starts on method line, line precision otherwise."""
+"""
+Whether definition `node` declares at least as many arguments as `method` takes. Macro can add arguments at definition
+line: DynamicPPL `@model f(x)` also defines `f(__model__, __varinfo__, x)`.
+"""
+function fits(node::SyntaxNode, method::Method)::Bool
+    parts = Facts.signature(node)
+    isnothing(parts) && return true
+    declared = 0
+    for part in parts.arguments
+        # Keyword body `#f#3` takes keywords and function itself before positional arguments.
+        keywords = Facts.kind_name(part) == "parameters"
+        declared += keywords ? (source_name(method) == string(method.name) ? 0 : length(Facts.children_of(part)) + 1) : 1
+    end
+    return declared >= length(Facts.tuple_parameters(method.sig)) - 1
+end
+
+"""
+Site of `method` in `file`: exact when one definition of its source name and fitting arity (`fits`) starts on method
+line, line precision otherwise.
+"""
 function method_site(method::Method, file::SyntaxFile, lines::Lines)::MethodSite
-    candidates = filter(node -> defined_name(file, node) == source_name(method), get(lines.definitions, method.line, SyntaxNode[]))
+    candidates = filter(node -> defined_name(file, node) == source_name(method) && fits(node, method), get(lines.definitions, method.line, SyntaxNode[]))
     length(candidates) == 1 && return MethodSite(method, file, only(candidates), Facts.span(file, only(candidates)))
     start = lines.starts[method.line]
     return MethodSite(method, file, nothing, Span(file.path, start, start, Precision.line))
