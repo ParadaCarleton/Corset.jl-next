@@ -28,8 +28,25 @@ The guide section "Load errors" describes this environment.
 | --- | --- | --- |
 | `--format` | `text`, `json`, `sarif` | `text` |
 | `--confidence` | `definite`, `possible` | from the configuration |
+| `--no-cache` | (flag) | cache on |
 
 `fix` also takes `--tier` with `safe`, `likely` or `breaking`. The default comes from the configuration.
+
+## Cache
+
+Corset stores the analysis of each checked path in its scratch space in the Julia depot.
+A later run with the same inputs prints the stored findings. It loads no package and starts no second Julia process.
+The inputs are:
+
+- the Julia version and its cache flags, such as `--check-bounds`
+- the Corset source
+- the options and level flags
+- the environment, with its Manifest and preferences
+- every file of the project and of its path dependencies
+
+Hidden files and directories do not count. Coverage files (`.cov`, `.mem`) do not count.
+The first run on a path prints a note. `--no-cache` analyzes again and reads or writes no cache.
+CI that saves the Julia depot between runs keeps the cache.
 
 ## Level flags
 

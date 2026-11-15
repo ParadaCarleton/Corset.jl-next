@@ -111,16 +111,16 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 
 ### Incremental runs and disk cache
 
-- Engine runs on Salsa.jl (julia-vscode, MIT; JuliaWorkspaces.jl uses it): inputs are file texts and Project.toml; derived queries are parse trees, facts and findings. Edit recomputes only dependents; early cutoff stops at unchanged facts.
-- Salsa keeps tables in memory only. Disk cache stores findings (plain data) by input key, so new process starts warm.
-- Inference runs inside compiler, outside Salsa tracking: typed dependencies come from compiler edges between methods.
+- Disk cache (`Cache`) holds one entry per checked path: key line, then serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.
+- Key: SHA-256 of Julia version, `Base.CacheFlags`, checked path, serialized flags, each load path environment with Manifest and preferences, Corset source, analyzed files, and every file of project root and Manifest `path` entries.
+- Key reads file content, so fresh CI checkout hits. Names that start with dot, `.cov` and `.mem` files, and cache directory stay out of key.
+- Location: Corset scratch space `analyses` in Julia depot. CI that saves depot keeps cache. `--no-cache` turns cache off.
+- Relaunching process computes key of relaunched process (temporary environment, load path `@:@stdlib`) and asks cache first. Hit loads no package and starts no process. `fix` always relaunches.
 - Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.
-- Location: user cache directory, one entry set per project. CI saves it between runs.
-- Global key: Julia version, Corset version, config hash, Manifest hash, preferences, active extensions. Any change clears all entries.
-- `syntax` stage: findings per file, keyed by file content hash.
-- Typed stages, first version: findings keyed by hash of every package file and every file of path dependencies (Manifest `path` entries, `[sources]` paths); any change reruns inference. Registry dependencies change Manifest hash.
-- Typed stages, later: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. `@generated` method depends on whole package.
-- Run parses every file (cheap) and computes keys. Nothing changed: no package load; cached findings print. Otherwise load package and infer invalid methods: all of them until per-method keys exist.
+- Later, per-file and per-method entries. `syntax` stage: findings per file, keyed by file content hash.
+- Later, typed stages: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. `@generated` method depends on whole package. Run then loads package and infers only invalid methods.
+- Later, engine runs on Salsa.jl (julia-vscode, MIT; JuliaWorkspaces.jl uses it): inputs are file texts and Project.toml; derived queries are parse trees, facts and findings. Edit recomputes only dependents; early cutoff stops at unchanged facts. Salsa keeps tables in memory only; disk cache starts new process warm.
+- Inference runs inside compiler, outside Salsa tracking: typed dependencies come from compiler edges between methods.
 - Later: warm daemon keeps Salsa tables and loaded package, so edit costs only its dependents.
 
 ### Reference linters

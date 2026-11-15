@@ -7,7 +7,8 @@ module Cache
 using Serialization: serialize, deserialize
 using SHA: SHA, sha256
 using Scratch: get_scratch!
-using ..Launch: manifest_deps, corset_root
+using TOML: TOML
+using ..Launch: corset_root
 
 """Cache directory of command line: scratch space of Corset in Julia depot. CI that saves depot keeps it."""
 directory()::String = get_scratch!(Base.moduleroot(@__MODULE__), "analyses")
@@ -28,6 +29,17 @@ function tree_files(root::String, cache::String)::Vector{String}
         append!(files, filter(isfile, kept))
     end
     return sort!(files)
+end
+
+"""
+Directories of `path` entries in Manifest of project file `environment`, made absolute. Reads Manifest format 1 too:
+any environment can sit on load path, and old format must not break run.
+"""
+function path_entries(environment::String)::Vector{String}
+    manifest = Base.project_file_manifest_path(environment)
+    isnothing(manifest) && return String[]
+    deps = Base.get_deps(TOML.parsefile(manifest))
+    return [abspath(dirname(manifest), entry["path"]) for entries in values(deps) if entries isa Vector for entry in entries if haskey(entry, "path")]
 end
 
 """Add `text` to `context` with its length first, so neighboring parts cannot run together."""
@@ -51,7 +63,7 @@ function inputs(path::String, flags::String, root::Union{Nothing, String}, files
         isfile(environment) || continue
         directory = dirname(environment)
         append!(listed, [environment; something(Base.project_file_manifest_path(environment), String[]); joinpath.(directory, ["LocalPreferences.toml", "JuliaLocalPreferences.toml"])])
-        append!(trees, entry["path"] for entries in values(manifest_deps(environment)) for entry in entries if haskey(entry, "path"))
+        append!(trees, path_entries(environment))
     end
     # Stale `path` entry names directory that is gone; it adds no file.
     return parts, sort!(unique!([listed; (tree_files(tree, cache) for tree in unique(trees) if isdir(tree))...]))

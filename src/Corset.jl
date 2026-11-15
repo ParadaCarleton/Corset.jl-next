@@ -45,7 +45,10 @@ function pick(flag::Bool)
 end
 """
 
-"""Run command line on `SAMPLE` in empty `directory`: every format, then fix, baseline, check and explain."""
+"""
+Run command line on `SAMPLE` in empty `directory`: every format, then fix, baseline, check and explain. Then ask cache
+for sample analysis, as relaunching process does before relaunch.
+"""
 function workload(directory::String)::Nothing
     # Own Project.toml makes `directory` project root, so baseline cannot land in project above it.
     write(joinpath(directory, "Project.toml"), "[preferences.Corset]\nkind = \"library\"\n")
@@ -56,6 +59,7 @@ function workload(directory::String)::Nothing
         code = CLI.execute(args, IOBuffer(), IOBuffer(); launch = false, cache = joinpath(directory, "cache"))
         code in (CLI.EXIT_PASS, CLI.EXIT_FAIL) || error("precompile workload: `corset $(join(args, ' '))` exited with $code")
     end
+    isnothing(Engine.cached(script, Config.Flags(), joinpath(directory, "cache"), Base.load_path())) && error("precompile workload: cache missed sample analysis")
     return nothing
 end
 
@@ -69,11 +73,13 @@ end
 """
 Run package stages and every rule on Corset itself, then on `PackageSample` with `inference` stage. Own source covers
 wide range of syntax and project shape; sample covers interfaces and inference of Base callees on stand-in types.
+Own project also keys temporary environment, as relaunching process does before cache lookup.
 """
 function package_workload()::Nothing
     root = dirname(@__DIR__)
     own = Discovery.discover(root; environment = joinpath(root, "Project.toml"))
     package_rules(Package.module_tree(Corset), own.files, own.entries, own.project.entry, own.project)
+    Launch.cache_key(own.project)
     path = joinpath(@__DIR__, "PackageSample.jl")
     files = [Syntax.parse_file(path, read(path, String), Facts.Role.package)]
     facts, _ = Inference.inference_facts(package_rules([PackageSample], files, [path], path, nothing), files)

@@ -47,6 +47,7 @@ Cold run, same scope (target loaded first, default threads):
 
 `benchmark/cold.jl` measures Corset. Cold run misses budget on Distances and DataStructures.
 Nearly all of `inference` stage is Julia inference of target methods at declared or stand-in signatures; Corset machinery and Base callees on stand-ins add about 0.1 s. Package image holds neither Corset's signatures nor target's: target's own precompile workload caches concrete calls only (JSON ships one). So per-method disk cache is required: later cold runs skip unchanged methods.
+Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Whole process takes 2.2–2.6 s; loading Corset takes 1.3 s of it.
 Remaining risk: effect summary, 17–22 s uncached (S5). Base summary cache must close it; effects phase gets own budget once Base cache exists.
 
 Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).

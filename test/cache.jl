@@ -53,6 +53,9 @@ end
             ]
             @test issubset(listed, files) && issorted(files) && allunique(files)
             @test !any(file -> occursin("hidden", file) || occursin("gone", file), files)
+            # Manifest format 1 keeps entries at top level.
+            write_files(environment, "Manifest.toml" => "[[D]]\npath = \"../dependency\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n")
+            @test Cache.path_entries(project) == [dependency]
             # Script outside project counts only its own files.
             @test !any(startswith(root), last(Cache.inputs(script, "flags", nothing, [script], String[], joinpath(scratch, "cache"))))
         end
