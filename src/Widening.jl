@@ -111,8 +111,8 @@ function weak(code::Core.CodeInfo, argument::Any)::Union{Nothing, Tuple{Any, Wea
         # Package number type defines its own promotion.
         value isa DataType && value <: Number && isconcretetype(value) && parentmodule(value) === Core && return value, Weak.name
     elseif argument isa Core.SSAValue
-        call, type = code.code[argument.id], code.ssavaluetypes[argument.id]
-        (call isa Expr && call.head === :call && length(call.args) >= 2) || return nothing
+        call, type = called(code.code[argument.id]), code.ssavaluetypes[argument.id]
+        (!isnothing(call) && length(call.args) >= 2) || return nothing
         (type isa Core.Const && weak_data(type.val)) || return nothing
         parts = [weak(code, part) for part in call.args[2:end]]
         any(isnothing, parts) && return nothing
@@ -125,6 +125,12 @@ end
 
 """Right side of assignment `statement`; statement itself otherwise."""
 assigned(statement::Any)::Any = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
+
+"""
+Call expression `statement` is, else `nothing`. Inference drops `isa` narrowing after `(x isa Expr && …) || continue`,
+so `x.args` dispatches at run time; `isnothing` test on this result keeps it.
+"""
+called(statement::Any)::Union{Nothing, Expr} = statement isa Expr && statement.head === :call ? statement : nothing
 
 """Weak values each variable of `code` takes from assignment, as (statement, value) pairs: `s = 0` makes `s` weak."""
 function variable_origins(code::Core.CodeInfo)::Dict{Int, Vector{Tuple{Int, Any}}}
@@ -206,8 +212,8 @@ function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int,
     variables = variable_origins(code)
     count = length(found)
     for (index, statement) in enumerate(code.code)
-        call = assigned(statement)
-        call isa Expr && call.head === :call || continue
+        call = called(assigned(statement))
+        isnothing(call) && continue
         callee = CC.argextype(call.args[1], code, parameters)
         callee = callee isa Core.Const ? callee.val : nothing
         callee isa Core.Builtin && continue
@@ -243,7 +249,7 @@ function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int,
             result = call_result!(edges, with_swaps(types, swaps, positions))
             if !known(result)
                 # Count argument cannot convert (`hvcat((2, 2), x, 0.5, 1, 2)`): keep positions that convert alone.
-                positions = Set(position for position in positions if known(call_result!(edges, with_swaps(types, swaps, (position,)))))
+                filter!(position -> known(call_result!(edges, with_swaps(types, swaps, (position,)))), positions)
                 filter!(pair -> first(pair) in positions, new)
                 isempty(new) && continue
                 result = call_result!(edges, with_swaps(types, swaps, positions))
@@ -315,8 +321,8 @@ Value statement of typed `code` returns or stores in argument or global: (value,
 """
 function exit_value(code::Core.CodeInfo, statement::Any, parameters::Vector{CC.VarState}, arguments::Int)::Union{Nothing, Tuple{Any, Any, Any}}
     statement isa Core.ReturnNode && return isdefined(statement, :val) ? (statement.val, nothing, nothing) : nothing
-    call = assigned(statement)
-    (call isa Expr && call.head === :call) || return nothing
+    call = called(assigned(statement))
+    isnothing(call) && return nothing
     callee = CC.argextype(call.args[1], code, parameters)
     callee isa Core.Const || return nothing
     # Lowering turns `global g = v` into `setglobal!(module, :g, v)`.
@@ -379,8 +385,8 @@ end
 """Whether `argument` of `code` is result of `Core.get_binding_type`: declared type of global."""
 function binding_type(code::Core.CodeInfo, argument::Any, parameters::Vector{CC.VarState})::Bool
     argument isa Core.SSAValue || return false
-    call = code.code[argument.id]
-    return call isa Expr && call.head === :call && CC.argextype(call.args[1], code, parameters) == Core.Const(Core.get_binding_type)
+    call = called(code.code[argument.id])
+    return !isnothing(call) && CC.argextype(call.args[1], code, parameters) == Core.Const(Core.get_binding_type)
 end
 
 """Type tests that make findings `possible`: branch on type can pick other code for other input type."""
@@ -392,8 +398,8 @@ lowering adds to `global g = v`, does not count.
 """
 function type_branch(code::Core.CodeInfo, parameters::Vector{CC.VarState})::Bool
     for statement in code.code
-        call = assigned(statement)
-        (call isa Expr && call.head === :call) || continue
+        call = called(assigned(statement))
+        isnothing(call) && continue
         callee = CC.argextype(call.args[1], code, parameters)
         (callee isa Core.Const && callee.val in TYPE_TESTS) || continue
         any(argument -> binding_type(code, argument, parameters), call.args[2:end]) && continue
