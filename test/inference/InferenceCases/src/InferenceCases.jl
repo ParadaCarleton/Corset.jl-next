@@ -80,5 +80,9 @@ function padded(x::Real, y = 2)
     return x + y
 end
 include("uses.jl")
+include("callees.jl")
+include("callers.jl")
+# Serializer has no method for enum value.
+@enum Mode fast slow
 
 end

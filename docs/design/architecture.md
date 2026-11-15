@@ -119,8 +119,23 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 - Location: Corset scratch space `analyses` in Julia depot. CI that saves depot keeps cache. `--no-cache` turns cache off.
 - Relaunching process computes key of relaunched process (temporary environment, load path `@:@stdlib`) and asks cache first. Hit loads no package and starts no process. `fix` always relaunches.
 - Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.
-- Later, per-file and per-method entries. `syntax` stage: findings per file, keyed by file content hash.
-- Later, typed stages: findings per method, keyed by method source hash plus compiler dependency record: methods reached and method-table lookups (new, more specific method invalidates entry), struct definitions, globals. Dynamic call: key covers every method of called function. `@generated` method depends on whole package. Run then loads package and infers only invalid methods.
+- Later: `syntax` stage findings per file, keyed by file content hash.
+- `inference` stage keeps method store per checked path beside analysis entry. Store holds one entry per inferred method and signature: reached signatures, stage facts and blind spots.
+- Entry holds plain data: spans, names, call signatures. Typed code stays inside stage, so no rule reads data that store leaves out.
+- Entry depends on content hash of file of its method, since spans hold byte offsets.
+- Entry also depends on lowered code of each package method that inference read through compiler edges, transitively. Lowered code holds macro output and `@eval` code.
+- Closure that edit renumbers has other code, so lowered code also checks what closure and keyword body names mean.
+- Edge walk passes through dependency method whose specialization names package type or function: `map(f, xs)` with package `f` depends on `f`.
+- Entry records generated code of each `@generated` instance it read. Run calls generator again and compares.
+- Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.
+- Store key line hashes environment, Corset source, analyzed file list and package shape. Other key drops whole store.
+- Package shape: signature and file of each package method, struct layouts, global types and constants. Non-analyzed files in `src`, `ext` and `deps` count too.
+- Constant counts by value when plain (number, string, symbol, immutable struct of those), by name when function or module, else by type.
+- Type counts by layout: field names and types. Struct that edit redefines serializes as before.
+- Shape also counts text of files that hold pirate methods: any call can reach them, and walk sees no edge.
+- Run checks each entry against file hash, lowered code and generated code; infers only invalid ones; writes store with entries this run used.
+- Result stays serialized until entry proves valid: it can name closure type that edit removed.
+- Edit of one method invalidates entries of its file and entries that read its code.
 - Later, engine runs on Salsa.jl (julia-vscode, MIT; JuliaWorkspaces.jl uses it): inputs are file texts and Project.toml; derived queries are parse trees, facts and findings. Edit recomputes only dependents; early cutoff stops at unchanged facts. Salsa keeps tables in memory only; disk cache starts new process warm.
 - Inference runs inside compiler, outside Salsa tracking: typed dependencies come from compiler edges between methods.
 - Later: warm daemon keeps Salsa tables and loaded package, so edit costs only its dependents.

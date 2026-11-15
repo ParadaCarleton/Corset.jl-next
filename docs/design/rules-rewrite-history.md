@@ -545,12 +545,20 @@ Codex review of phase 4 design found eight problems:
 - Throw helper counts as explicit throw: `throw`, or function each of whose methods infers `Union{}` on declared signature (`error`, `@enum` argument check).
 - Keyword and splatted calls name inner callee. Constructor with unknown parameters names its type: `DefaultDictBase{K,V,F}(...; passkey)`.
 - Inference wraps unreached statements in `Core.Const`. TypedSyntax.jl maps only statements later code reads, so it skipped failing calls; stage maps unwrapped copy.
-- TypedSyntax.jl maps no call with string literal argument: `skipped_parent` skips `quote` and `...` wrappers, and `string` node is neither. Such call keeps line span.
+- TypedSyntax.jl maps no call with string literal as last argument: `skipped_parent` skips `quote` and `...` wrappers, and `string` node is neither. Such call keeps line span. Filed as JuliaDebug/Cthulhu.jl#715; call that never returns maps to no node, #716.
 - Lowering gives method for omitted defaults first body line. Stage puts its statements on definition line, which holds defaults.
 - Unbounded array argument gets `ArrayStandIn{Any}`, so calls on its elements (`zero(Any)`) give `possible` findings.
 - Undefined global infers `Any` on Julia 1.13, so `never-succeeds` does not report it.
 - Corpus: DataStructures 1 `definite` (`empty` of `DefaultDictBase`) and 1 `possible` (`SortedSet{K,Ord}()` default ordering fails `Ord`); both reproduce. Distances 12 `possible`, from `Any` elements. JSON none.
 - Coverage line listed 930 DataStructures blind spots. Text report now lists three per cause; JSON and SARIF list each one.
+- Method store keeps stage facts per method and signature; rules run each time. Design planned file hashes of reached methods as dependencies.
+- File hashes missed macro output: expansion lands in caller's file and leaves no compiler edge. Entry now records lowered code of each method inference read.
+- Lowered code also covers `@eval` code and closure names: closure that edit renumbers has other code. Edit of one method invalidates only entries that read it.
+- Generated code depends on generator and its callees, so entry records generated code per instance; run calls generator again to check it.
+- `@enum` value made serializer throw in package shape. Shape serializes only plain constants: numbers, strings, symbols and immutable structs of those.
+- Shape serialized tuple per struct layout and compiled serializer once per tuple type: 1.9 s on DataStructures. `Vector{Any}` and field loop fix it.
+- SparseArrays.jl `_cat` invalidated `line_starts` (`vcat` of number and vector) and every caller: package and inference stages recompiled after trigger load. Loop fixes it.
+- ChainRulesCore.jl `promote_rule` invalidates JuliaSyntax.jl line lookup, and with it 98 Corset instances: rules, config, discovery, inference. Not fixed yet.
 
 ### Phase 4 cold-run benchmark
 

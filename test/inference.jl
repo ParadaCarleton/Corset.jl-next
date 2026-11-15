@@ -1,16 +1,18 @@
 using Test: @test, @testset
 using Corset: Corset
-using Corset.Facts: InferenceFacts, TypedCode, Precision, BlindSpot, SyntaxFile, Role, PackageFacts, MethodSite, FailingCall, Confidence, call_arguments, source
+using Corset.Facts: InferenceFacts, Precision, BlindSpot, SyntaxFile, Role, PackageFacts, MethodSite, FailingCall, Confidence, call_arguments, source
 using Corset.StandIns: FloatStandIn, IntStandIn, ArrayStandIn, DenseStandIn, FunctionStandIn, model_type
 using Corset.Package: source_name
 using Corset.Signatures: LIMIT
 using Corset.Inference:
-    inference_facts, infer, mappings, statement_nodes, statement_call, callee_name, spells, untyped, throw_helper, callable, callee_text
+    TypedCode, infer_package, infer, mappings, statement_nodes, statement_call, callee_name, spells, untyped, throw_helper, callable, callee_text
+using Corset.Inference:
+    Store, Entry, Staged, entry_key, method_id, code_digest, staged_digest, method_index, instance, shape, constant_text, digest, names_package!, holds_gensym
 
 const CASE = joinpath(@__DIR__, "inference", "InferenceCases")
 
-"""Inference facts and blind spots of `InferenceCases` fixture package, loaded with case directory on load path."""
-function case_facts()::Tuple{Module, Vector{SyntaxFile}, PackageFacts, InferenceFacts, Vector{BlindSpot}}
+"""Inference facts, blind spots and typed code of `InferenceCases` fixture package, loaded with case directory on load path."""
+function case_facts()::Tuple{Module, Vector{SyntaxFile}, PackageFacts, InferenceFacts, Vector{BlindSpot}, Vector{TypedCode}}
     sources = Corset.Discovery.discover(CASE; environment = nothing)
     push!(LOAD_PATH, CASE)
     loaded = try
@@ -18,17 +20,30 @@ function case_facts()::Tuple{Module, Vector{SyntaxFile}, PackageFacts, Inference
     finally
         pop!(LOAD_PATH)
     end
-    facts, spots = inference_facts(loaded.facts, sources.files)
-    return first(loaded.facts.modules), sources.files, loaded.facts, facts, spots
+    facts, spots, typed, _ = infer_package(loaded.facts, sources.files, nothing)
+    return first(loaded.facts.modules), sources.files, loaded.facts, facts, spots, typed
 end
 
-const MODULE, FILES, PACKAGE, FACTS, SPOTS = case_facts()
+const MODULE, FILES, PACKAGE, FACTS, SPOTS, TYPED = case_facts()
 const FILE = only(file for file in FILES if basename(file.path) == "InferenceCases.jl")
+
+"""Code that tests redefine, as edit and reload would: struct `Point`, methods `f` and `leveled`. `Partial` leaves its field undefined."""
+module Redefined
+    struct Point
+        x::Int
+    end
+    f(x::Int) = 1
+    @generated leveled(x) = :(1)
+    struct Partial
+        text::String
+        Partial() = new()
+    end
+end
 
 """Typed code of method named `name` (source name for keyword body) on signature with argument types `arguments`."""
 function typed(name::String, arguments::Type...)::TypedCode
     return only(
-        code for code in FACTS.typed if source_name(code.site.method) == name &&
+        code for code in TYPED if source_name(code.site.method) == name &&
             collect(Base.unwrap_unionall(code.signature).parameters[2:end]) == collect(arguments)
     )
 end
@@ -67,7 +82,7 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         # `_` binds nothing, so method counts as typed.
         @test typed("ignored", Any, FloatStandIn).result == FloatStandIn
         # Free type variable keeps declared signature.
-        @test only(code.result for code in FACTS.typed if code.signature == only(methods(MODULE.free)).sig) == Any
+        @test only(code.result for code in TYPED if code.signature == only(methods(MODULE.free)).sig) == Any
     end
     @testset "calls reach untyped methods" begin
         @test typed("helper", FloatStandIn).result == FloatStandIn
@@ -79,14 +94,14 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test typed("assigned", FloatStandIn).result == FloatStandIn
         @test typed("radius_of", MODULE.Circle{FloatStandIn}).result == FloatStandIn
         unreached = ("lonely", "splatted", "first_of", "unreached", "joined", "hk")
-        @test !any(code -> source_name(code.site.method) in unreached, FACTS.typed)
+        @test !any(code -> source_name(code.site.method) in unreached, TYPED)
         # Wrapper passes empty keyword splat, so body gets concrete signature.
-        slurpy = [code for code in FACTS.typed if source_name(code.site.method) == "slurpy"]
+        slurpy = [code for code in TYPED if source_name(code.site.method) == "slurpy"]
         @test length(slurpy) == 4 && all(code -> isconcretetype(code.signature), slurpy)
         # Calls reach `nest` with ever deeper tuples until limit.
-        @test count(code -> code.site.method.name === :nest, FACTS.typed) == LIMIT
+        @test count(code -> code.site.method.name === :nest, TYPED) == LIMIT
         # Own signatures come before reached ones.
-        @test findfirst(code -> code.site.method.name === :helper, FACTS.typed) > findfirst(code -> code.site.method.name === :caller, FACTS.typed)
+        @test findfirst(code -> code.site.method.name === :helper, TYPED) > findfirst(code -> code.site.method.name === :caller, TYPED)
     end
     @testset "definition sites" begin
         # Infix definition and callable object method once got no definition node.
@@ -156,10 +171,10 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test length(SPOTS) == 13
     end
     @testset "failing calls" begin
-        failing(name::String)::Vector{FailingCall} = [call for call in FACTS.failing if source_name(call.code.site.method) == name]
+        failing(name::String)::Vector{FailingCall} = [call for call in FACTS.failing if text(call.declared) == name]
         # Two stand-in signatures fail at one statement: one fact. Span is exact though no later code reads call.
         broken = only(failing("broken"))
-        @test (broken.callee, broken.confidence, text(broken.code.spans[broken.statement])) == ("+", Confidence.definite, "x + nothing")
+        @test (broken.callee, broken.confidence, text(broken.span)) == ("+", Confidence.definite, "x + nothing")
         # Splatted and keyword calls name inner callee; constructor with unknown parameters names its type.
         @test [only(failing(name)).callee for name in ("spread", "boxed", "rewrapped")] == ["max", "Circle", "Wrap"]
         @test only(failing("called_unit")).callee == repr(MODULE.unit)
@@ -179,10 +194,89 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
             pop!(LOAD_PATH)
         end
     end
+    @testset "method store" begin
+        facts, spots, fresh, used = infer_package(PACKAGE, FILES, Store())
+        stored(code::TypedCode)::Bool = haskey(used, entry_key(code.site.method, code.signature))
+        named(codes)::Vector{String} = sort!(unique([source_name(code.site.method) for code in codes]))
+        @test facts.failing == FACTS.failing && spots == SPOTS && isnothing(last(infer_package(PACKAGE, FILES, nothing)))
+        # Store keeps closures, keyword bodies and generated code, but no generated instance on closure type.
+        @test named(code for code in fresh if !stored(code)) == ["generated_apply", "regenerated"]
+        again = infer_package(PACKAGE, FILES, used)
+        @test again[1].failing == facts.failing && again[2] == spots && keys(again[4]) == keys(used) && !any(stored, again[3])
+        refreshed(files::Vector{SyntaxFile}, store::Store)::Vector{String} = named(code for code in infer_package(PACKAGE, files, store)[3] if stored(code))
+        # Edit of file invalidates its methods: their spans hold byte offsets.
+        edited = [basename(file.path) == "callees.jl" ? Corset.Syntax.parse_file(file.path, file.text * "\n", file.role) : file for file in FILES]
+        @test refreshed(edited, used) == ["increment", "isless", "step_of"]
+        # Method whose code changed invalidates callers that read it, through `map` too.
+        function stale(name::String)::Store
+            id = method_id(only(methods(getglobal(MODULE, Symbol(name)))))
+            return Store(key => Entry(entry.file, [read => (read == id ? "stale" : code) for (read, code) in entry.methods], entry.staged, entry.inferred) for (key, entry) in used)
+        end
+        @test refreshed(FILES, stale("increment")) == ["increment", "stepped"] && refreshed(FILES, stale("step_of")) == ["mapped", "step_of"]
+        # Generator that gives other code invalidates entries that read its output.
+        regenerated = Store(key => Entry(entry.file, entry.methods, [Staged(staged.method, staged.signature, staged.key, "stale") for staged in entry.staged], entry.inferred) for (key, entry) in used)
+        @test refreshed(FILES, regenerated) == ["doubled", "redoubled"]
+        # Method gone from table: entries that read it, or its generated code, infer again.
+        gone = Store(key => Entry(entry.file, [entry.methods; "gone" => "code"], entry.staged, entry.inferred) for (key, entry) in used)
+        signature = Corset.Inference.serialized(Tuple{Int})
+        gone_staged = Store(key => Entry(entry.file, entry.methods, [entry.staged; Staged("gone", signature, "gone", "code")], entry.inferred) for (key, entry) in used)
+        @test length(infer_package(PACKAGE, FILES, gone)[3]) == length(infer_package(PACKAGE, FILES, gone_staged)[3]) == length(fresh)
+        # Redefined method keeps its id, so stored entry finds it; its code digest changes.
+        before = only(methods(Redefined.f))
+        Core.eval(Redefined, :(f(x::Int) = 2))
+        after = invokelatest(() -> only(methods(Redefined.f)))
+        @test method_id(before) == method_id(after) && code_digest(before) != code_digest(after)
+        # Generator that gives other code for same signature changes staged digest.
+        generated() = something(instance(only(methods(Redefined.leveled)), Tuple{typeof(Redefined.leveled), Int}))
+        old = generated()
+        Core.eval(Redefined, :(@generated leveled(x) = :(2)))
+        @test staged_digest(old) != staged_digest(invokelatest(generated))
+        # Index holds methods of analyzed files only, keyword bodies and closures included.
+        index, ids = method_index(Dict(file.path => file for file in FILES))
+        @test all(method -> any(file -> file.path == string(method.file), FILES), values(index)) && length(index) > length(PACKAGE.methods)
+        @test all(site -> haskey(ids, site.method), PACKAGE.methods) && all(ids[method] == id for (id, method) in index)
+    end
+    @testset "package shape" begin
+        parts = shape(PACKAGE)
+        whole(name::String)::Bool = any(startswith("piracy $(only(file.path for file in FILES if basename(file.path) == name)) "), parts)
+        # Pirate method makes its file count whole; macro output counts through code of methods that hold it.
+        @test whole("callees.jl") && !whole("macros.jl") && !whole("callers.jl")
+        @test count(startswith("method "), parts) == length(PACKAGE.methods) && !any(contains('#'), parts)
+        @test "global $MODULE.counter $(digest(Int))" in parts && "constant $MODULE.declared $MODULE.declared" in parts
+        @test any(startswith("constant $MODULE.unit "), parts) && allunique(parts)
+        @test constant_text(MODULE.Circle) != constant_text(MODULE.Wrap) && constant_text(+) == "Base.+"
+        @test constant_text(Union{Int, String}) == digest(Union{Int, String}) && constant_text(Int) != constant_text(Int32)
+        @test constant_text(1) != constant_text(2) && constant_text("a") != constant_text("b") && constant_text((:a,)) != constant_text((:b,))
+        @test constant_text(MODULE.fast) != constant_text(MODULE.slow) && constant_text((1, ("a", 'b'))) != constant_text((1, ("a", 'c')))
+        # Value of other type counts by type: run can change mutable value.
+        @test constant_text([1]) == constant_text([2]) != constant_text([1.0]) && constant_text((1, [2])) == constant_text((1, [3]))
+        @test constant_text(MODULE.Wrap(1)) != constant_text(MODULE.Wrap(2)) && constant_text(MODULE.Wrap([1])) == constant_text(MODULE.Wrap([2]))
+        @test constant_text(Redefined.Partial()) == digest(Redefined.Partial()) && constant_text(Ref(1)) == constant_text(Ref(2))
+        # Struct that edit redefines serializes as before; its layout differs.
+        point = Redefined.Point
+        Core.eval(
+            Redefined, :(
+                struct Point
+                    x::Float64
+                end
+            )
+        )
+        redefined = invokelatest(getglobal, Redefined, :Point)
+        @test digest(point) == digest(redefined) && constant_text(point) != constant_text(redefined)
+    end
+    @testset "gensyms and package types" begin
+        closure = typeof(x -> x)
+        @test holds_gensym(closure) && holds_gensym(Union{Int, closure}) && holds_gensym(Vector{closure}) && holds_gensym(Tuple{closure, T} where {T})
+        @test !holds_gensym(typeof(sin)) && !holds_gensym(Vector{Int}) && !holds_gensym(TypeVar(:T))
+        named(type::Any)::Bool = names_package!(IdDict{Any, Bool}(), type, Set([MODULE]))
+        @test named(Union{Int, MODULE.Wrap{Int}}) && named(Vector{T} where {T <: MODULE.Shape}) && named(Tuple{Vararg{MODULE.Shape}})
+        @test !named(Tuple{Vararg}) && !named(Vector{Int}) && !named(1)
+    end
     @testset "failing call helpers" begin
-        @test throw_helper(throw) && throw_helper(error) && throw_helper(rethrow)
+        helper(callee::Any)::Bool = first(throw_helper(callee))
+        @test helper(throw) && helper(error) && helper(rethrow)
         # Builtin, function without methods, and function that returns for some argument types are no helpers.
-        @test !throw_helper(Core.tuple) && !throw_helper(MODULE.declared) && !throw_helper(MODULE.single)
+        @test !helper(Core.tuple) && !helper(MODULE.declared) && !helper(MODULE.single)
         # Signature that misses method gives no code.
         @test isnothing(infer(only(methods(MODULE.single)), Tuple{typeof(MODULE.single), Float64}))
         @test callable(Core.Const(sin)) === sin && callable(Type{Int}) === Int

@@ -49,10 +49,17 @@ with its Manifest and preferences, and every file of project root `root` and of 
 directory left out.
 """
 function inputs(path::String, flags::String, root::Union{Nothing, String}, files::Vector{String}, load_path::Vector{String}, cache::String)::Tuple{Vector{String}, Vector{String}}
-    parts = [string(VERSION), repr(Base.CacheFlags()), path, flags]
+    parts, listed, trees = environment_inputs(load_path)
+    return [string(VERSION), repr(Base.CacheFlags()), path, flags, parts...], found_files([files; listed], [trees; something(root, String[])], cache)
+end
+
+"""
+Environment parts of key: each environment of `load_path`. Files: Corset project file, and each project environment
+with its Manifest and preferences. Trees: Corset source and Manifest `path` entries.
+"""
+function environment_inputs(load_path::Vector{String})::Tuple{Vector{String}, Vector{String}, Vector{String}}
     corset = corset_root()
-    trees = [joinpath(corset, "src"); something(root, String[])]
-    listed = [files; joinpath(corset, "Project.toml")]
+    parts, listed, trees = String[], [joinpath(corset, "Project.toml")], [joinpath(corset, "src")]
     for environment in load_path
         push!(parts, environment)
         # Directory environment, such as standard library, counts by path.
@@ -61,10 +68,29 @@ function inputs(path::String, flags::String, root::Union{Nothing, String}, files
         append!(listed, [environment; something(Base.project_file_manifest_path(environment), String[]); joinpath.(directory, ["LocalPreferences.toml", "JuliaLocalPreferences.toml"])])
         append!(trees, path_entries(environment))
     end
+    return parts, listed, trees
+end
+
+"""`listed` files and every file of `trees`, `cache` directory left out, by real path and sorted."""
+function found_files(listed::Vector{String}, trees::Vector{String}, cache::String)::Vector{String}
     # Stale `path` entry names directory that is gone; it adds no file.
     found = [listed; (tree_files(tree, cache) for tree in unique(trees) if isdir(tree))...]
     # Processes that reach file through other links must agree, so files count by real path.
-    return parts, sort!(unique!([ispath(file) ? realpath(file) : file for file in found]))
+    return sort!(unique!([ispath(file) ? realpath(file) : file for file in found]))
+end
+
+"""
+Key line of method store of checked `path`: Julia version, cache flags, `path`, environment (`environment_inputs`),
+analyzed `files` by path, package `shape`, and files of project `root` that package code loads from (`src`, `ext`,
+`deps`) but `files` leave out. Store entries count analyzed files by content, so Manifest `path` entry of `root` stays out.
+"""
+function method_key(path::String, root::String, files::Vector{String}, shape::Vector{String}, load_path::Vector{String}, cache::String)::String
+    parts, listed, trees = environment_inputs(load_path)
+    root = realpath(root)
+    kept = [filter(tree -> !(ispath(tree) && realpath(tree) == root), trees); joinpath.(root, ["src", "ext", "deps"])]
+    analyzed = Set(ispath(file) ? realpath(file) : file for file in files)
+    outside = filter(file -> !(file in analyzed), found_files(listed, kept, cache))
+    return digest([string(VERSION), repr(Base.CacheFlags()), path, parts..., files..., shape...], outside)
 end
 
 """SHA-256 of `parts`, then of path and content of each of `files`. Missing file counts too: file that appears changes digest."""

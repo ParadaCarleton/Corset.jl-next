@@ -62,6 +62,27 @@ end
         end
     end
 
+    @testset "method store key" begin
+        mktempdir(@__DIR__) do scratch
+            root, environment = joinpath.(scratch, ["root", "environment"])
+            write_files(root, "Project.toml" => "", "src/A.jl" => "a = 1\n", "src/b.jl" => "", "test/runtests.jl" => "")
+            # Environment develops root by path; entries count analyzed files, so root tree stays out.
+            manifest = "manifest_format = \"2.0\"\n\n[[deps.A]]\npath = \"../root\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n"
+            write_files(environment, "Project.toml" => "", "Manifest.toml" => manifest)
+            analyzed = [joinpath(root, "src", "A.jl")]
+            key(shape::Vector{String}, files::Vector{String})::String =
+                Cache.method_key(root, root, files, shape, [joinpath(environment, "Project.toml")], joinpath(root, "cache"))
+            original = key(["shape"], analyzed)
+            write_files(root, "src/A.jl" => "a = 2\n", "test/runtests.jl" => "b = 1\n")
+            @test key(["shape"], analyzed) == original
+            # Stage reads which files hold package code, so analyzed file list counts.
+            @test key(["other shape"], analyzed) != original && key(["shape"], [analyzed; joinpath(root, "test", "runtests.jl")]) != original
+            # File of `src` that run does not analyze can change package code.
+            write_files(root, "src/b.jl" => "b = 1\n")
+            @test key(["shape"], analyzed) != original
+        end
+    end
+
     @testset "digest" begin
         mktempdir(@__DIR__) do root
             file, missing_file = joinpath(root, "a.jl"), joinpath(root, "b.jl")
@@ -133,6 +154,31 @@ end
             # Fix through cache matches fix without it.
             fixed, plain = cached_corset(cache, "fix", directory), corset("fix", other)
             @test fixed[1:2] == plain[1:2] && read(joinpath(directory, "a.jl"), String) == read(joinpath(other, "a.jl"), String)
+        end
+        # Rerun after edit takes facts of unchanged files from method store.
+        entry = "\"\"\"Package with two files.\"\"\"\nmodule Stored\ninclude(\"a.jl\")\ninclude(\"b.jl\")\nend\n"
+        first_part, second_part = "first_part(x::Real) = x + 1\n", "second_part(x::Real) = x * 2\n"
+        with_package(@__DIR__, "Stored", "src/Stored.jl" => entry, "src/a.jl" => first_part, "src/b.jl" => second_part) do package
+            mktempdir(@__DIR__) do cache
+                @test first(cached_corset(cache, "check", package)) == 0
+                checked, store_entry = realpath(package), Corset.Engine.method_entry(realpath(package))
+                key, b = readline(Cache.entry(cache, store_entry)), joinpath(realpath(package), "src", "b.jl")
+                store = Cache.lookup(Corset.Inference.Store, cache, store_entry, key)
+                # Entry of `second_part` that claims failing call shows store serves facts.
+                held = first(name for (name, held) in store if first(held.file) == b)
+                span = Corset.Facts.Span(b, 1, 11, Corset.Facts.Precision.exact)
+                fake = Corset.Facts.FailingCall(span, span, "fake", Corset.Facts.Confidence.definite)
+                bytes = Corset.Inference.serialized(Corset.Inference.Inferred(Type[], [1 => fake], true))
+                store[held] = Corset.Inference.Entry(store[held].file, store[held].methods, store[held].staged, bytes)
+                Cache.store!(cache, store_entry, key, store)
+                write(joinpath(checked, "src", "a.jl"), first_part * "\n")
+                @test occursin("call to `fake` never succeeds", cached_corset(cache, "check", package)[2])
+                write(b, second_part * "\n")
+                @test first(cached_corset(cache, "check", package)) == 0
+                rm(Cache.entry(cache, store_entry))
+                write(b, second_part)
+                @test first(cached_corset(cache, "check", package, "--no-cache")) == 0 && Cache.cold(cache, store_entry)
+            end
         end
         # Package run: blind spots and load problems come back from cache.
         computed = "\"\"\"Package with computed include.\"\"\"\nmodule Cached\ninclude(string(\"part\", \".jl\"))\nend\n"

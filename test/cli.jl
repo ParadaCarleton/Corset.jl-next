@@ -262,7 +262,7 @@ end
         # Access in file outside checked path drops.
         @test !occursin("internal-access", corset("check", joinpath(package, "src", "side.jl"))[2])
         # External checks run only when some `external` rule is enabled.
-        external(flags::Corset.Config.Flags) = first(Corset.Engine.analyze(Corset.Engine.inputs(package, flags)...)).external
+        external(flags::Corset.Config.Flags) = first(Corset.Engine.analyze(Corset.Engine.inputs(package, flags)..., nothing)).external
         @test length(external(Corset.Config.Flags()).ambiguities) == 1
         allowed = [string(entry.name) => Corset.Config.Level.allow for entry in Corset.Rules.REGISTRY if entry.stage == Corset.Facts.Stage.external]
         @test length(allowed) > 1 && isnothing(external(Corset.Config.Flags(; levels = allowed)))
