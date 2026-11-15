@@ -275,8 +275,9 @@ function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int,
                 result = call_result!(edges, with_swaps(types, swaps, positions))
             end
             known(result) || continue
-            # Variable type itself changes (`s = 0` then `s += x`), so call result need not.
-            all(pair -> last(pair).position > 0, new) && result == CC.widenconst(code.ssavaluetypes[index]) && continue
+            # Variable type itself changes (`s = 0` then `s += x`), so call result need not. Lazy broadcast type holds
+            # argument types, so `xs .+ 1` changes it; array it materializes to stays same.
+            all(pair -> last(pair).position > 0, new) && materialized!(edges, result) == materialized!(edges, statement_type(code, index)) && continue
             wide = Any[(isnothing(values[position]) && isnothing(held[position])) ? swapped(types[position]) : types[position] for position in eachindex(types)]
             any(isnothing, wide) && continue
             absorbed = call_result!(edges, wide)

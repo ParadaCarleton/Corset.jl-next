@@ -105,6 +105,11 @@ module WideningCases
     broke(x) = (takes_double(x * 2.0), x * 3.0)
     broke_all(x) = takes_double(x * 2.0)
     @inline static(x::T) where {T} = x * T(0.5) + 0.5
+    shifted_all(xs) = xs .+ 1
+    function rescaled!(x, a, s)
+        x .= a .+ (x .+ 1) .* s
+        return x
+    end
     """Number type without conversion to other number types."""
     struct Opaque <: Real end
     Base.:*(::Opaque, x::AbstractFloat) = x
@@ -210,6 +215,9 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         # Swap to `Float64` breaks bound of `Picky` or signature of `narrow`, so meeting test cannot tell.
         @test isempty(reported(cases.picky, F))
         @test isempty(reported(cases.narrowly, F))
+        # Integer literal changes only argument type of lazy broadcast; materialized array keeps input type.
+        @test isempty(reported(cases.shifted_all, FV))
+        @test isempty(reported(cases.rescaled!, FV, F, F))
         # Constant of number type without conversion cannot take input type.
         @test isempty(reported(cases.opaque, F))
     end
