@@ -2,7 +2,7 @@
 
 julia_version = "1.13.4"
 manifest_format = "2.1"
-project_hash = "639077256056f2e66c47fadc445f03eece3b2581"
+project_hash = "778e01d3d9a952e84750723ae54ab14f261bb162"
 
 [[deps.Aqua]]
 deps = ["Compat", "Pkg", "Test"]
@@ -325,6 +325,13 @@ version = "1.3.0"
 [[deps.Serialization]]
 uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 version = "1.11.0"
+
+[[deps.SnoopCompileCore]]
+deps = ["Serialization"]
+git-tree-sha1 = "29b8a009c2da0fc47e61de6742d124dc79e7161c"
+registries = "General"
+uuid = "e2b509da-e806-4183-be48-004708413034"
+version = "3.1.4"
 
 [[deps.Sockets]]
 uuid = "6462fe0b-24de-5631-8697-dd941f90decc"

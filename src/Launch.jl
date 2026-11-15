@@ -68,7 +68,7 @@ environment. Those include Project.toml of each path dependency: Manifest entry 
 """
 function cache_key(project::ProjectFacts)::String
     root, file = project.root, joinpath(project.root, "Project.toml")
-    paths = [entry["path"] for entries in values(manifest_deps(file)) for entry in entries if haskey(entry, "path")]
+    paths = String[entry["path"] for entries in values(manifest_deps(file)) for entry in entries if haskey(entry, "path")]
     append!(paths, [spec.path for spec in test_specs(project) if !isnothing(spec.path)])
     dependencies = [joinpath(path, "Project.toml") for path in sort!(unique!(paths))]
     files = [file; something(Base.project_file_manifest_path(file), ""); joinpath(root, "LocalPreferences.toml"); joinpath(root, "test", "Project.toml"); joinpath(corset_root(), "Project.toml"); dependencies]
@@ -81,21 +81,21 @@ Package sets relaunch may move off target Manifest version, in order tried: none
 then every package this process loaded. Corset loads its dependencies at start, so last set holds its dependency closure.
 """
 function unpin_tiers()::Vector{Set{Base.UUID}}
-    direct = Set(Base.UUID(uuid) for uuid in values(parse_toml(joinpath(corset_root(), "Project.toml"))["deps"]))
-    loaded = Set(id.uuid for id in keys(Base.loaded_modules) if !isnothing(id.uuid))
+    direct = Set{Base.UUID}(Base.UUID(uuid) for uuid in values(parse_toml(joinpath(corset_root(), "Project.toml"))["deps"]))
+    loaded = Set{Base.UUID}(id.uuid for id in keys(Base.loaded_modules) if !isnothing(id.uuid))
     return [Set{Base.UUID}(), direct, union(direct, loaded)]
 end
 
 """Uuids of Manifest entries `deps` that `free` holds."""
 freed(deps::Dict{String, Any}, free::Set{Base.UUID})::Set{Base.UUID} =
-    Set(uuid for entries in values(deps) for entry in entries for uuid in (Base.UUID(entry["uuid"]),) if uuid in free)
+    Set{Base.UUID}(uuid for entries in values(deps) for entry in entries for uuid in (Base.UUID(entry["uuid"]),) if uuid in free)
 
 """
 Write Project.toml and Manifest.toml of `env` from target Manifest entries `deps`. Project.toml lists each versioned entry
 outside `free` as direct dependency, so `PRESERVE_DIRECT` keeps its version. Name with two entries stays unlisted.
 """
 function write_env!(env::String, preferences::Dict{String, Any}, deps::Dict{String, Any}, free::Set{Base.UUID})::Nothing
-    kept = Dict(name => only(entries)["uuid"] for (name, entries) in deps if length(entries) == 1 && haskey(only(entries), "version") && Base.UUID(only(entries)["uuid"]) ∉ free)
+    kept = Dict{String, Any}(name => only(entries)["uuid"] for (name, entries) in deps if length(entries) == 1 && haskey(only(entries), "version") && Base.UUID(only(entries)["uuid"]) ∉ free)
     open(io -> TOML.print(io, Dict("preferences" => preferences, "deps" => kept)), joinpath(env, "Project.toml"), "w")
     open(io -> TOML.print(io, Dict("manifest_format" => "2.0", "deps" => deps)), joinpath(env, "Manifest.toml"), "w")
     return nothing
@@ -166,9 +166,15 @@ function environment(project::ProjectFacts, err::IO)::String
     return env
 end
 
+"""
+Command `julia` with coverage and allocation tracking off. `Base.julia_cmd()` copies both flags from running process;
+later flag wins, so relaunched process writes no `.cov` or `.mem` files into trees that cache key hashes.
+"""
+untracked(julia::Cmd)::Cmd = `$julia --code-coverage=none --track-allocation=none`
+
 """Finished Julia process that ran command line `args` again with cache directory `cache`, loading only from `env` and `@stdlib`."""
 function relaunch(env::String, args::Vector{String}, cache::Union{Nothing, String}, out::IO, err::IO)::Base.Process
-    command = `$(Base.julia_cmd()) --startup-file=no --project=$env -e $(child(cache)) -- $args`
+    command = `$(untracked(Base.julia_cmd())) --startup-file=no --project=$env -e $(child(cache)) -- $args`
     return run(pipeline(ignorestatus(addenv(command, "JULIA_LOAD_PATH" => LOAD_PATH)); stdout = out, stderr = err))
 end
 

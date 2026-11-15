@@ -147,7 +147,8 @@ function write_report(out::IO, report::Report, format::String)::Nothing
         render_coverage(buffer, report)
     else
         data = format == "json" ? json_report(report) : sarif_report(report, string(pkgversion(Base.moduleroot(@__MODULE__))))
-        println(buffer, JSON.json(data; pretty = true))
+        # Barrier keeps JSON writer out of this method's inference, so packages that target loads cannot invalidate it.
+        println(buffer, Base.inferencebarrier(JSON.json)(data; pretty = true)::String)
     end
     write(out, take!(buffer))
     return nothing

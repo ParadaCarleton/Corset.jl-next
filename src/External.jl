@@ -102,11 +102,18 @@ function internal_accesses(package::PackageFacts, entry::String, files::Vector{S
         span = location_span(row.location, string(row.name), by_path)
         row.self_qualified || row.accessing_from in own || isnothing(span) || push!(found, InternalAccess(row.accessing_from, string(row.name), span, false))
     end
-    for (_, rows) in ExplicitImports.improper_explicit_imports(root, entry; file_analysis = analyses), row in something(rows, ())
+    # Base `unique!` inside this call infers abstract `Set` calls; barrier keeps their invalidation out of Corset callers.
+    explicit_accesses!(found, Base.inferencebarrier(ExplicitImports.improper_explicit_imports)(root, entry; file_analysis = analyses), by_path)
+    return merged(found, by_path)
+end
+
+"""Push accesses to internal names onto `found` from `explicit`, ExplicitImports.jl rows of explicit imports by module."""
+function explicit_accesses!(found::Vector{InternalAccess}, explicit::Vector{<:Pair{Module}}, by_path::Dict{String, SyntaxFile})::Vector{InternalAccess}
+    for (_, rows) in explicit, row in something(rows, ())
         span = location_span(row.location, string(row.name), by_path)
         row.public_import || isnothing(span) || push!(found, InternalAccess(row.importing_from, string(row.name), span, true))
     end
-    return merged(found, by_path)
+    return found
 end
 
 """

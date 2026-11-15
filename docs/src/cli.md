@@ -44,7 +44,7 @@ The inputs are:
 - the environment, with its Manifest and preferences
 - every file of the project and of its path dependencies
 
-Hidden files and directories do not count. Coverage files (`.cov`, `.mem`) do not count.
+Hidden files and directories do not count.
 The first run on a path prints a note. `--no-cache` analyzes again and reads or writes no cache.
 CI that saves the Julia depot between runs keeps the cache.
 
