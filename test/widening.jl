@@ -22,6 +22,10 @@ module WideningCases
         value::T
     end
     picked(p::Picky, y) = p.value + y
+    """Method whose signature admits float stand-in but not `Float64`."""
+    narrow(x::Union{Float32, FloatStandIn}, y) = x + y
+    narrowly(x) = narrow(x, 0.5)
+    scaled_all(xs) = xs .* 0.5
     scaled(x) = x * 0.5
     doubled(x) = 2x
     named(x) = Float64(x) + x
@@ -35,6 +39,14 @@ module WideningCases
     grid(x) = [x 0.5; 1.0 2.0]
     fused(x) = muladd(x, 3.0, 2)
     lookup(x) = get(TABLE, x, 0.5)
+    struct Point{A, B}
+        a::A
+        b::B
+    end
+    paired(x) = x => 0.5
+    pointed(x) = Point(x, 0.5)
+    tupled_pair(x) = (x, 0.5)
+    promoted(x) = Float32(first(promote(x, 0.5)))
     function keyed!(table, x)
         table[:a] = x * 2.0
         return nothing
@@ -123,6 +135,8 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         @test reported(cases.named, F) == [(Weak.name, Float64, Exit.returned)]
         @test reported(cases.converted, F) == [(Weak.name, Float64, Exit.returned)]
         @test reported(cases.broadcast_named, FV) == [(Weak.name, Float64, Exit.returned)]
+        # Lazy broadcast keeps argument types; meeting test compares arrays it materializes to.
+        @test reported(cases.scaled_all, FV) == [(Weak.literal, 0.5, Exit.returned)]
         @test reported(cases.constant, F) == [(Weak.constant, 0.5, Exit.returned)]
         @test reported(cases.rooted, F) == [(Weak.constant, sqrt(2), Exit.returned)]
         @test reported(cases.circled, F) == [(Weak.constant, 2π, Exit.returned)]
@@ -153,6 +167,8 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
     end
     @testset "intermediate" begin
         @test scan(cases.inner, F) == ([(Weak.literal, 0.5, Exit.intermediate, Float64, F)], false)
+        # Tuple that `promote` returns carries no number itself; its element does.
+        @test scan(cases.promoted, F) == ([(Weak.literal, 0.5, Exit.intermediate, Float64, F)], false)
     end
     @testset "type branch" begin
         @test scan(cases.branched, F) == ([(Weak.literal, 0.5, Exit.returned, Float64, F)], true)
@@ -172,8 +188,11 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         # Conversion to narrower type or other kind changes input on purpose.
         @test isempty(reported(cases.halfwidth, F))
         @test isempty(reported(cases.truncated, F))
-        # Default value takes table value type, whatever key type is.
+        # Input does not absorb weak value: default takes table value type; pair, tuple and struct keep each type.
         @test isempty(reported(cases.lookup, F))
+        @test isempty(reported(cases.paired, F))
+        @test isempty(reported(cases.pointed, F))
+        @test isempty(reported(cases.tupled_pair, F))
         # Converted literal would make call of `Float64` method throw: no finding, and other weak value still counts.
         @test isempty(reported(cases.broke_all, F))
         @test reported(cases.broke, F) == [(Weak.literal, 3.0, Exit.returned)]
@@ -183,8 +202,9 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         @test isempty(reported(cases.precise, F))
         # Global that can change holds caller data.
         @test isempty(reported(cases.loose_global, F))
-        # Swap to `Float64` breaks bound of `Picky`, so meeting test cannot tell.
+        # Swap to `Float64` breaks bound of `Picky` or signature of `narrow`, so meeting test cannot tell.
         @test isempty(reported(cases.picky, F))
+        @test isempty(reported(cases.narrowly, F))
     end
     @testset "helpers" begin
         @test holds_float(Union{Nothing, F})

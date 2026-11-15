@@ -84,7 +84,10 @@ function resolved(code::Core.CodeInfo, argument::Any)::Any
     return argument
 end
 
-"""Whether `value` is weak data: number other than `Bool`, or tuple of them (`evalpoly` coefficients)."""
+"""
+Whether `value` is weak data: number, or tuple of numbers (`evalpoly` coefficients). `Bool` promotes to any number type,
+so it never widens; leaving it out saves meeting tests.
+"""
 function weak_data(value::Any)::Bool
     value isa Number && return !(value isa Bool)
     (value isa Tuple && !isempty(value)) || return false
@@ -129,12 +132,13 @@ function variable_origins(code::Core.CodeInfo)::Dict{Int, Vector{Tuple{Int, Any}
     for (index, statement) in enumerate(code.code)
         statement isa Expr && statement.head === :(=) && statement.args[1] isa Core.SlotNumber || continue
         value = weak(code, statement.args[2])
-        isnothing(value) || value[2] == Weak.name || push!(get!(found, statement.args[1].id, Tuple{Int, Any}[]), (index, value[1]))
+        # Type name holds no number, so `replacement` drops it.
+        isnothing(value) || push!(get!(found, statement.args[1].id, Tuple{Int, Any}[]), (index, value[1]))
     end
     return found
 end
 
-"""Value that replaces weak `value`: real number converted to float stand-in, tuple element by element; else `nothing`."""
+"""Value that replaces weak `value`: real number converted to float stand-in, tuple element-wise; else `nothing`."""
 function replacement(value::Any)::Union{Nothing, Some{Any}}
     if value isa Tuple
         elements = Any[]
@@ -150,11 +154,11 @@ end
 
 """
 Whether Base number type `name` widens float input: `Float64(x)`. Conversion to narrower type (`Float16(x)`) or other
-kind (`Int(x)`) changes input on purpose.
+kind (`Int(x)`) changes input on purpose; `Float32` absorbs both.
 """
 function renames(name::Type)::Bool
     model = StandIns.model(FloatStandIn)
-    return name !== model && name <: AbstractFloat && promote_type(name, model) === name
+    return name !== model && promote_type(name, model) === name
 end
 
 """Whether position `position` of call to `callee` takes type name that converts: callee, `convert(T, x)`, `T.(x)`."""
@@ -179,6 +183,9 @@ end
 """Whether call result type `type` tells meeting test something: call neither throws nor infers `Any`."""
 known(type::Type)::Bool = type !== Union{} && type !== Any
 
+"""Type call result `type` stands for: array that lazy broadcast materializes to, else `type`. Adds to `edges`."""
+materialized!(edges::Vector{Any}, type::Type)::Type = type <: Base.Broadcast.Broadcasted ? call_result!(edges, Any[typeof(Base.Broadcast.materialize), type]) : type
+
 """Argument `types` with type of each of `positions` replaced by its converted type in `swaps`."""
 function with_swaps(types::Vector{Any}, swaps::Dict{Int, Any}, positions::Any)::Vector{Any}
     converted = copy(types)
@@ -190,10 +197,10 @@ end
 
 """
 Add to `found` weak values of typed `code` that meet input, except `dropped` keys; whether any is new. Call meets
-input when argument holds float stand-in, weak value converts, and with weak values converted, result type changes and
-follows input type: swap of input to `Float64` changes it. So `get(table, x, 0.5)` does not meet key `x`. Name that
-converts input meets it at once. Builtins (`getfield(t, 2)`) take no number data. Adds instances meeting test infers
-to compiler `edges`.
+input when argument holds float stand-in, weak value converts, result type changes with weak values converted, and
+input absorbs them: with input swapped to `Float64`, conversion changes nothing. So `x => 0.5` and `get(table, x, 0.5)`
+do not meet `x`. Name that converts input meets it at once. Builtins (`getfield(t, 2)`) change no result type, so scan
+skips them. Adds instances meeting test infers to compiler `edges`.
 """
 function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int, Int}}, edges::Vector{Any}, code::Core.CodeInfo, parameters::Vector{CC.VarState})::Bool
     variables = variable_origins(code)
@@ -232,22 +239,22 @@ function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int,
         end
         isempty(new) && continue
         if !named
-            converted = with_swaps(types, swaps, keys(swaps))
-            result = call_result!(edges, converted)
+            positions = Set(keys(swaps))
+            result = call_result!(edges, with_swaps(types, swaps, positions))
             if !known(result)
                 # Count argument cannot convert (`hvcat((2, 2), x, 0.5, 1, 2)`): keep positions that convert alone.
-                kept = Set(position for position in keys(swaps) if known(call_result!(edges, with_swaps(types, swaps, (position,)))))
-                filter!(pair -> first(pair) in kept, new)
+                positions = Set(position for position in positions if known(call_result!(edges, with_swaps(types, swaps, (position,)))))
+                filter!(pair -> first(pair) in positions, new)
                 isempty(new) && continue
-                converted = with_swaps(types, swaps, kept)
-                result = call_result!(edges, converted)
+                result = call_result!(edges, with_swaps(types, swaps, positions))
             end
             known(result) || continue
             # Variable type itself changes (`s = 0` then `s += x`), so call result need not.
             all(pair -> last(pair).position > 0, new) && result == CC.widenconst(code.ssavaluetypes[index]) && continue
-            alternative = Any[(isnothing(values[position]) && isnothing(held[position])) ? swapped(converted[position]) : converted[position] for position in eachindex(converted)]
-            any(isnothing, alternative) && continue
-            call_result!(edges, alternative) == result && continue
+            wide = Any[(isnothing(values[position]) && isnothing(held[position])) ? swapped(types[position]) : types[position] for position in eachindex(types)]
+            any(isnothing, wide) && continue
+            absorbed = call_result!(edges, wide)
+            known(absorbed) && materialized!(edges, absorbed) == materialized!(edges, call_result!(edges, with_swaps(wide, swaps, positions))) || continue
         end
         for (_, origin) in new
             key = (origin.index, origin.position)
@@ -389,7 +396,6 @@ function type_branch(code::Core.CodeInfo, parameters::Vector{CC.VarState})::Bool
         callee = CC.argextype(call.args[1], code, parameters)
         (callee isa Core.Const && callee.val in TYPE_TESTS) || continue
         any(argument -> binding_type(code, argument, parameters), call.args[2:end]) && continue
-        callee.val in (isa, <:) && return true
         any(argument -> argument_type(code, argument, parameters) <: Type, call.args[2:end]) && return true
     end
     return false
