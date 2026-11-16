@@ -641,7 +641,7 @@ Engine starts new (`effects.md`, Effects engine). Decisions and reasons:
 - Allocation in loop or recursion gives may-alias only. Element events carry index; call facts record result use (F86).
 - Contracts stay for open dispatch: rules assume Base contracts (`findings.md`).
 - Solver cost and accuracy are unmeasured; engine PR measures them before rule PRs.
-- PR order: `plan.md`, Phase 5.
+- PR order: `phase5.md`.
 
 ### Phase 5 redesign: adversarial pass
 

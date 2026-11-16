@@ -135,7 +135,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
   <h1>Corset Rewrite Plan</h1>
   <p class="lede">Footguns, rules, shared analyses and decisions for rewrite of Corset. Source files: <code>docs/design/README.md</code> lists them. Legacy rule names live in <code>rules-rewrite-history.md</code>.</p>
   <div class="meta"><span><b>102</b> footguns</span><span><b>94</b> rules</span><span><b>7</b> analysis stages</span></div>
-  <nav class="note"><a href="#principles">principles</a> · <a href="#footguns">footguns</a> · <a href="#pipeline">pipeline</a> · <a href="#stages">stages</a> · <a href="#rules">rules</a> · <a href="#findings">findings</a> · <a href="#types">types</a> · <a href="#effects">effects</a> · <a href="#architecture">architecture</a> · <a href="#plan">plan</a> · <a href="#glossary">glossary</a></nav>
+  <nav class="note"><a href="#principles">principles</a> · <a href="#footguns">footguns</a> · <a href="#pipeline">pipeline</a> · <a href="#stages">stages</a> · <a href="#rules">rules</a> · <a href="#findings">findings</a> · <a href="#types">types</a> · <a href="#effects">effects</a> · <a href="#architecture">architecture</a> · <a href="#plan">plan</a> · <a href="#phase5">phase5</a> · <a href="#glossary">glossary</a></nav>
 </header>
 
 <section id="principles">
@@ -1099,7 +1099,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 
 <section id="plan">
 <h2>Build plan</h2>
-<p>Phases, phase 5 PR order, quality gate and speed budget.</p>
+<p>Phases, quality gate and speed budget. Phase 5 PR plan: <code>phase5.md</code>.</p>
 <p>Draft. Each phase ships usable rules. Phase order follows stage cost: syntax needs no package load, so it works on every project.</p>
 <div class="scroll"><table>
 <thead>
@@ -1139,7 +1139,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <td>5 effects</td>
 <td><code>effects</code> stage: effect and alias summary; <code>lifecycle</code> stage reads callee writes from it; <code>!</code> convention flow.</td>
 <td>15</td>
-<td>Flow fixtures pass, IO, RNG and memo exemptions included. Call resolution meets go/no-go (design reviews).</td>
+<td>Flow fixtures pass, IO, RNG and memo exemptions included. Call resolution meets go/no-go (<code>phase5.md</code>, PR 5).</td>
 </tr>
 <tr>
 <td>6 scope</td>
@@ -1155,81 +1155,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 </tr>
 </tbody>
 </table></div>
-<div class="decision"><h3>Phase 5</h3>
-<p>Design: <code>effects.md</code>, Effects engine. One PR per row, in order. Status: PR number when merged.</p>
-<div class="scroll"><table>
-<thead>
-<tr>
-<th>#</th>
-<th>PR</th>
-<th>Holds</th>
-<th>Status</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>Engine core</td>
-<td><code>inference</code> stage hands typed code to effects; units; IR; points-to; builtins (call step 1); SCC solve; fixtures; soundness property</td>
-<td>next</td>
-</tr>
-<tr>
-<td>2</td>
-<td>Call resolution</td>
-<td>Call steps 2–7: foreign calls, static calls, callback records, join, Base contracts, open calls</td>
-<td>—</td>
-</tr>
-<tr>
-<td>3</td>
-<td>Engine limits</td>
-<td>Compiler-effects shortcut; stand-in cuts; effect kinds and audited Base table</td>
-<td>—</td>
-</tr>
-<tr>
-<td>4</td>
-<td>Library cache</td>
-<td>Disk cache of library summaries; package summaries in method store</td>
-<td>—</td>
-</tr>
-<tr>
-<td>5</td>
-<td>Corpus go/no-go</td>
-<td>Gate in <strong>Design reviews</strong>; revise call resolution if it fails</td>
-<td>—</td>
-</tr>
-<tr>
-<td>6</td>
-<td><code>bang-convention</code></td>
-<td><code>!</code> decision flow</td>
-<td>—</td>
-</tr>
-<tr>
-<td>7</td>
-<td>Effect rules</td>
-<td><code>unused-call</code>, <code>hidden-input</code>, <code>impure-lambda</code>, <code>false-effects</code></td>
-<td>—</td>
-</tr>
-<tr>
-<td>8</td>
-<td>Alias rules</td>
-<td><code>iteration-mutation</code>, <code>self-alias</code>, <code>stateful-reuse</code></td>
-<td>—</td>
-</tr>
-<tr>
-<td>9</td>
-<td>Lifecycle facts</td>
-<td><code>lifecycle</code> stage reads effects events</td>
-<td>—</td>
-</tr>
-<tr>
-<td>10</td>
-<td>Lifecycle rules</td>
-<td>Rules of <code>lifecycle</code> stage</td>
-<td>—</td>
-</tr>
-</tbody>
-</table></div>
-</div><div class="decision"><h3>Quality gate</h3>
+<div class="decision"><h3>Quality gate</h3>
 <p>Rule is on by default only when all hold:</p>
 <ul>
 <li>Fixture per footgun: positive, negative, and fix result.</li>
@@ -1324,9 +1250,228 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <li>After first release: corpus findings and real use test footgun list, levels, presets and messages.</li>
 <li>After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (<code>types.md</code>). Revisit integer input of <code>type-disruption</code> if corpus shows integer widening outside index math.</li>
 <li>Before each later phase: reread parts that phase builds on; question decisions that no longer fit.</li>
-<li>After phase 5 call resolution, go/no-go per corpus package on <code>inference</code> stage units: share of package methods with verdict (closures and keyword bodies included) with <code>possible</code> write at most 30%; coverage line counts methods without verdict; hand audit of 20 contract and join verdicts finds no false definite; <code>effects</code> stage with warm Base cache at most <code>inference</code> stage time; full cold run with library cache from other corpus package inside speed budget, first run with empty library cache measured; cold Base cache build measured. Else revise call resolution before rule PRs.</li>
+<li>After phase 5 call resolution: go/no-go in <code>phase5.md</code>, PR 5.</li>
 <li>Each review: adversarial pass by second model on changed parts; log findings and outcomes in <code>rules-rewrite-history.md</code>.</li>
 <li>Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.</li>
+</ul>
+</div>
+</section>
+
+<section id="phase5">
+<h2>Phase 5 plan</h2>
+<p>PR plan for <code>effects</code> and <code>lifecycle</code> stages and their rules. Design: <code>effects.md</code>, <code>stages.toml</code>. Phase exit: <code>plan.md</code>, phase 5 row.</p>
+<div class="decision"><h3>Order</h3>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>PR</th>
+<th>Holds</th>
+<th>Needs</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Engine core</td>
+<td>Units, IR, origins, points-to, builtins, static calls, solve, soundness property</td>
+<td>—</td>
+<td>next</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Call resolution</td>
+<td>Foreign calls, callback records, join, Base contracts, open calls</td>
+<td>1</td>
+<td>—</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Engine limits</td>
+<td>Compiler-effects shortcut, stand-in cuts, effect kinds, throw paths, call facts</td>
+<td>2</td>
+<td>—</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Summary cache</td>
+<td>Library summary disk cache; package summaries in method store</td>
+<td>3</td>
+<td>—</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Corpus go/no-go</td>
+<td>Gate below; no rule PR before it passes</td>
+<td>4</td>
+<td>—</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>bang-convention</code></td>
+<td>F53, F86</td>
+<td>5</td>
+<td>—</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Effect rules</td>
+<td>F54, F55, F56, F58</td>
+<td>5</td>
+<td>—</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Alias rules</td>
+<td>F48, F50, F51</td>
+<td>5</td>
+<td>—</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Lifecycle facts</td>
+<td><code>lifecycle</code> stage</td>
+<td>5</td>
+<td>—</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Lifecycle rules</td>
+<td>F32, F33, F34, F39, F40, F41</td>
+<td>9</td>
+<td>—</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>One PR per row. Status gets PR number at merge.</li>
+<li>Rows 6 to 9 can merge in any order after row 5.</li>
+</ul>
+</div><div class="decision"><h3>Every PR</h3>
+<ul>
+<li>Work in jj workspace <code>.worktrees/&lt;name&gt;</code> from <code>main</code>; one bookmark per PR.</li>
+<li>Cover every new line; run mutation check on copy; add regression test per bug found.</li>
+<li>Pass Runic check, self-lint, <code>test/invalidation.jl</code> and full local suite before merge.</li>
+<li>Engine PR: no rule reads its facts yet. Tests call <code>Effects</code> API directly.</li>
+<li>Rule PR: UI case per footgun with positive, negative and fix case (<code>architecture.md</code>, Tests).</li>
+</ul>
+</div><div class="decision"><h3>1 Engine core</h3>
+<p>Sound summaries for package units through builtins and static calls. Other calls stay open (step 7) until PR 2.</p>
+<ul>
+<li><code>inference</code> stage keeps <code>TypedCode</code> of units it infers this run; <code>inference_facts</code> returns them to <code>Engine</code>.</li>
+<li><code>Engine</code> runs <code>effects</code> after <code>inference</code> when enabled rule reads <code>effects</code>. <code>FactSet</code> gains <code>effects</code> field.</li>
+<li><code>src/Effects/</code>: units, IR, origins, points-to, builtins (call step 1), static calls (call step 3), solve.</li>
+<li>IR: copy unit code, then run passes until <code>CC: COMPACT_1</code>. Instance outside package: native inference first.</li>
+<li>Solve: call graph over instances; SCCs from Graphs.jl (new dependency); worklist inside component.</li>
+<li>Facts: verdict per method, parameter and global; cause spans; result aliases; blind spots by reason.</li>
+<li>Coverage reasons: <code>always throws on stand-ins</code>, incomplete method causes, <code>alias</code>.</li>
+</ul>
+<p>Tests:</p>
+<ul>
+<li>Fixture package <code>test/effects/EffectsCases</code>: method per builtin transfer function, origin kind and path depth (1, 2, <code>deep</code>).</li>
+<li>Result alias fixtures: write through returned view of argument; write through returned global.</li>
+<li>Soundness property (Supposition.jl): generate inputs per fixture method; compare deep copies before and after call.</li>
+<li>Observed write without definite or <code>possible</code> write in summary fails property.</li>
+</ul>
+<p>Done: every fixture gives expected verdict; property passes; every-PR bar met.
+Measure on corpus: instances, time, memory, share of methods with <code>possible</code> write. Log numbers in history.</p>
+</div><div class="decision"><h3>2 Call resolution</h3>
+<p>Resolve calls that PR 1 leaves open: steps 2, 4, 5, 6 and 7 of <code>effects.md</code>, Calls.</p>
+<ul>
+<li>Foreign call table: <code>memmove</code>, runtime type queries. Unknown foreign call gives <code>possible</code> write.</li>
+<li>Callback record: call of parameter, static-parameter type or field callable. Caller substitutes callee summary and captured aliases.</li>
+<li>Join over at most 8 matching methods. Disagreement gives <code>possible</code>.</li>
+<li>Base contract table holds documented behavior only. <code>iterate</code> on <code>Iterators.Stateful</code> gives <code>possible</code> write.</li>
+<li>Open call: provenance decides finding, blind spot or nothing.</li>
+</ul>
+<p>Tests:</p>
+<ul>
+<li>Fixture per step: closure, <code>Base.Fix1</code>, callable struct, <code>foreach</code> with writing closure.</li>
+<li><code>f(x::Any) = setfield!(x, :n, 0)</code> keeps definite write.</li>
+<li>Open call on opaque argument gives blind spot only.</li>
+</ul>
+<p>Measure: <code>possible</code> share per corpus package; methods per join; contract hits. Tune limit 8; keep it at least compiler <code>max_methods</code>.</p>
+</div><div class="decision"><h3>3 Engine limits</h3>
+<p>Compiler effects for speed; stand-in cuts and effect kinds for correct verdicts.</p>
+<ul>
+<li>Shortcut: empty summary for instance with <code>effect_free</code>, <code>inaccessiblememonly</code> and result without reference.</li>
+<li>Skip shortcut when reached method outside Base carries effects override.</li>
+<li>Cuts: <code>inference</code> stage finds units with dead call or store statements, then infers those at declared signature.</li>
+<li>Effect kinds and audited Base table (<code>effects.md</code>, Effect kinds).</li>
+<li>Throw paths: writes before throw stay. Calls that only build thrown value add nothing.</li>
+<li>Call facts: callee, kinds, may throw, result used or discarded.</li>
+</ul>
+<p>Tests:</p>
+<ul>
+<li>Fixture per effect kind and per audited table entry.</li>
+<li><code>x isa BigFloat &amp;&amp; (STATE[] += 1)</code> gives <code>cut</code>.</li>
+<li>False <code>@assume_effects</code> in fixture dependency turns shortcut off.</li>
+<li><code>foreign_mutate!(x); error()</code> keeps write on <code>x</code>.</li>
+</ul>
+<p>Measure: share of instances shortcut skips; time it saves.</p>
+</div><div class="decision"><h3>4 Summary cache</h3>
+<ul>
+<li>Library summaries: disk cache in Corset scratch space. Key: <code>effects.md</code>, Solve and cache.</li>
+<li>Package unit summaries: method store entry beside <code>Inferred</code>, same invalidation.</li>
+</ul>
+<p>Tests: cache hit gives same summaries as cold run. Edit of path dependency, or other Julia version, changes key.
+Measure: cold run with empty cache; cold run with cache from other corpus package; warm rerun.</p>
+</div><div class="decision"><h3>5 Corpus go/no-go</h3>
+<p>Run engine on each corpus package (<code>plan.md</code>, Corpus). Every item holds per package:</p>
+<ul>
+<li><code>possible</code> write on at most 30% of package methods with verdict; closures and keyword bodies count.</li>
+<li>Coverage line counts methods without verdict.</li>
+<li>Hand audit of 20 contract and join verdicts finds no false definite.</li>
+<li>With warm library cache, <code>effects</code> stage takes at most <code>inference</code> stage time.</li>
+<li>Full cold run with library cache from other corpus package stays inside speed budget.</li>
+<li>First run with empty library cache and cold Base cache build are measured.</li>
+</ul>
+<p>Fail: revise call resolution, then run gate again. Log result in history; put timings in <code>plan.md</code> speed budget.</p>
+</div><div class="decision"><h3>6 <code>bang-convention</code></h3>
+<ul>
+<li>F53 <code>missing</code>: method writes argument or global; name has no <code>!</code>. Decision flow: <code>effects.md</code>.</li>
+<li>F86 <code>spurious</code>: <code>!</code> method writes nothing on any path; callers drop its result.</li>
+<li>Methods added to other module's <code>!</code> function are exempt.</li>
+<li>Definite write gives <code>definite</code> finding. <code>possible</code> findings stay off until quality gate passes.</li>
+<li>Fix: rename definition and package call sites.</li>
+</ul>
+</div><div class="decision"><h3>7 Effect rules</h3>
+<ul>
+<li><code>unused-call</code> (F54): discarded call without effect of any kind, without throw, and with termination.</li>
+<li><code>hidden-input</code> (F55): reads default RNG, task-local state, <code>ScopedValue</code> or mutable global.</li>
+<li><code>impure-lambda</code> (F56): anonymous function captures mutable state.</li>
+<li><code>false-effects</code> (F58): own analysis contradicts package <code>@assume_effects</code> claim.</li>
+</ul>
+</div><div class="decision"><h3>8 Alias rules</h3>
+<p>Rules read per-unit statement events and must-alias pairs.</p>
+<ul>
+<li><code>iteration-mutation</code> (F48): container written inside loop that iterates it.</li>
+<li><code>self-alias</code> (F50): same container passed twice to writing call.</li>
+<li><code>stateful-reuse</code> (F51): <code>Iterators.Stateful</code> consumed twice.</li>
+</ul>
+</div><div class="decision"><h3>9 Lifecycle facts</h3>
+<ul>
+<li><code>lifecycle</code> stage builds def-use per array from allocation sites, events, must-alias pairs and escapes of <code>effects</code>.</li>
+<li>Callee reads and writes come from summaries. Array passed to callee that does not write it does not escape.</li>
+<li>Element events carry index operand; stage decides which elements writes cover.</li>
+<li>Definite facts need straight-line pattern. Branch join gives <code>possible</code>.</li>
+</ul>
+</div><div class="decision"><h3>10 Lifecycle rules</h3>
+<p><code>temporary-array</code> (F32), <code>unwritten-element</code> (F33, F34), <code>constant-array</code> (F39), <code>slice-copy</code> (F40), <code>broadcast-rebind</code> (F41). Split by rule if PR grows large.</p>
+</div><div class="decision"><h3>Phase end</h3>
+<ul>
+<li>Codex adversarial review of whole phase diff. Brief holds design parts and <code>src/</code> only. Log findings in history.</li>
+<li>Run all phase 5 rules on corpus. Owner approves each upstream issue.</li>
+<li>Update <code>plan.md</code> phase 5 row and speed budget.</li>
+</ul>
+</div><div class="decision"><h3>Open decisions</h3>
+<p>Owner decides before PR that names decision:</p>
+<ul>
+<li>PR 1: sum types with data (origin kinds, call resolution outcome). Proposal: Moshi.jl <code>@data</code>; EnumX stays for ordered enums without data.</li>
+<li>PR 1: native inference of instance outside package can abort process. Proposal: crash journal covers it; aborted instance gets open summary and blind spot.</li>
+<li>PR 3: lock writes. <code>lock(q.lk)</code> on argument writes lock state, so <code>bang-convention</code> would demand <code>!</code>. Proposal: exempt synchronization.</li>
+<li>PR 6: fix tier of rename. Proposal: <code>breaking</code> for public or exported name; <code>likely</code> for other names.</li>
 </ul>
 </div>
 </section>

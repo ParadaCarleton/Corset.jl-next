@@ -14,9 +14,10 @@ Never hand-edit `rules-rewrite.html`.
 | `types.md` | Stand-in types, type-disruption, lost narrowing, arguments without stand-in, annotations, union policy, Moshi, arrays |
 | `effects.md` | `!` convention, effect summary |
 | `architecture.md` | Code layout, core types, process model, tests, command line, rule contract, package load, cache, reference linters |
-| `plan.md` | Phases, phase 5 PR order, quality gate, speed budget |
+| `plan.md` | Phases, quality gate, speed budget |
+| `phase5.md` | Phase 5 PR plan: `effects` and `lifecycle` stages and rules |
 | `glossary.md` | Coined terms |
-| `rules-rewrite-history.md` | Legacy rule names, early decisions, review log. Frozen |
+| `rules-rewrite-history.md` | Legacy rule names, early decisions, design review log. Add each review at end |
 | `page.css` | Page style |
 
 | Task | Read |
@@ -25,6 +26,6 @@ Never hand-edit `rules-rewrite.html`.
 | Typed analysis | `types.md`, `pipeline.md` |
 | `!` or effects | `effects.md` |
 | Engine, cache, CLI, tests | `architecture.md` |
-| Pick next work | `plan.md` |
+| Pick next work | `plan.md`, `phase5.md` |
 | Unknown term | `glossary.md` |
 | Why legacy rule changed | `rules-rewrite-history.md` |

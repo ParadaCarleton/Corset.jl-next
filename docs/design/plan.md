@@ -1,6 +1,6 @@
 # Build plan
 
-Phases, phase 5 PR order, quality gate and speed budget.
+Phases, quality gate and speed budget. Phase 5 PR plan: `phase5.md`.
 
 Draft. Each phase ships usable rules. Phase order follows stage cost: syntax needs no package load, so it works on every project.
 
@@ -10,26 +10,9 @@ Draft. Each phase ships usable rules. Phase order follows stage cost: syntax nee
 | 2 syntax | `syntax` stage. Copy ReLint.jl rules (Argus patterns) and LintApp.jl rules (in JuliaWorkspaces) where they exist. Parse errors as findings; file role fact; reference comparison harness with allowlist. | {{count:syntax}} | Works on scripts. Reference comparison clean or allowlisted. **First release.** |
 | 3 module | Package load: command line builds temporary environment and relaunches (architecture.md, "Process model"). Extension triggers loaded. Load errors as findings. Stages `package` and `external`. | {{count:package external}} | Load and rules run on every corpus package. |
 | 4 types | Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); `inference` stage and type-disruption scan; findings disk cache; `annotation` fixer guesses argument types and fills result types (annotation transition, `types.md`). | {{count:inference}} | Precision gate passes on corpus. `unverified-inbounds` agrees with julia-in-lean site verdicts. |
-| 5 effects | `effects` stage: effect and alias summary; `lifecycle` stage reads callee writes from it; `!` convention flow. | {{count:effects lifecycle}} | Flow fixtures pass, IO, RNG and memo exemptions included. Call resolution meets go/no-go (design reviews). |
+| 5 effects | `effects` stage: effect and alias summary; `lifecycle` stage reads callee writes from it; `!` convention flow. | {{count:effects lifecycle}} | Flow fixtures pass, IO, RNG and memo exemptions included. Call resolution meets go/no-go (`phase5.md`, PR 5). |
 | 6 scope | `scope` stage on JuliaLowering. | {{count:scope}} | Scope fixtures pass on packages and scripts. |
 | later | F12, F45, F46, F49, F76 (off by default); string and dict stand-in types; language server mode; directory discovery reads `.gitignore` and `.ignore`, like Ruff; test helper that runs rules on macro expansion, so macro authors check generated code (other packages' macro output gets no findings); replace `{}` stopgap with skip of macro arguments Julia rejects as written (`{x}`, `x ~ Normal()`), once `scope` lowering and `package` method tables can supply it; dimension-aware stand-in for `Number` (catches `x + 1` on Unitful quantity); nursery group for rules before quality gate; upstream `@match` exhaustiveness and unreachable-arm checks to Moshi `verify/` (owner approves PR); upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for `manual` fixes; concrete probes for Base widening; warm daemon with incremental runs; borrow checking. | {{count:later}} | — |
-
-### Phase 5
-
-Design: `effects.md`, Effects engine. One PR per row, in order. Status: PR number when merged.
-
-| # | PR | Holds | Status |
-|---|---|---|---|
-| 1 | Engine core | `inference` stage hands typed code to effects; units; IR; points-to; builtins (call step 1); SCC solve; fixtures; soundness property | next |
-| 2 | Call resolution | Call steps 2–7: foreign calls, static calls, callback records, join, Base contracts, open calls | — |
-| 3 | Engine limits | Compiler-effects shortcut; stand-in cuts; effect kinds and audited Base table | — |
-| 4 | Library cache | Disk cache of library summaries; package summaries in method store | — |
-| 5 | Corpus go/no-go | Gate in **Design reviews**; revise call resolution if it fails | — |
-| 6 | `bang-convention` | `!` decision flow | — |
-| 7 | Effect rules | `unused-call`, `hidden-input`, `impure-lambda`, `false-effects` | — |
-| 8 | Alias rules | `iteration-mutation`, `self-alias`, `stateful-reuse` | — |
-| 9 | Lifecycle facts | `lifecycle` stage reads effects events | — |
-| 10 | Lifecycle rules | Rules of `lifecycle` stage | — |
 
 ### Quality gate
 
@@ -79,6 +62,6 @@ Design is draft until code proves it. Revisit at each checkpoint:
 - After first release: corpus findings and real use test footgun list, levels, presets and messages.
 - After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (`types.md`). Revisit integer input of `type-disruption` if corpus shows integer widening outside index math.
 - Before each later phase: reread parts that phase builds on; question decisions that no longer fit.
-- After phase 5 call resolution, go/no-go per corpus package on `inference` stage units: share of package methods with verdict (closures and keyword bodies included) with `possible` write at most 30%; coverage line counts methods without verdict; hand audit of 20 contract and join verdicts finds no false definite; `effects` stage with warm Base cache at most `inference` stage time; full cold run with library cache from other corpus package inside speed budget, first run with empty library cache measured; cold Base cache build measured. Else revise call resolution before rule PRs.
+- After phase 5 call resolution: go/no-go in `phase5.md`, PR 5.
 - Each review: adversarial pass by second model on changed parts; log findings and outcomes in `rules-rewrite-history.md`.
 - Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.

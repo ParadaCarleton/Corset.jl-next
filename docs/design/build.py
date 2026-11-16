@@ -19,7 +19,7 @@ GROUPS = ("correctness", "performance", "composability", "readability")
 # (file or generated table, section id) in page order
 ORDER = [("principles.md", "principles"), ("footguns", "footguns"), ("pipeline.md", "pipeline"), ("stages", "stages"),
          ("rules", "rules"), ("findings.md", "findings"), ("types.md", "types"), ("effects.md", "effects"),
-         ("architecture.md", "architecture"), ("plan.md", "plan"), ("glossary.md", "glossary")]
+         ("architecture.md", "architecture"), ("plan.md", "plan"), ("phase5.md", "phase5"), ("glossary.md", "glossary")]
 
 
 def load(name: str, table: str) -> list[dict]:
