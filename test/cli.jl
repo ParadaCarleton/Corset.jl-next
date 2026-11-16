@@ -6,34 +6,8 @@ using JSONSchema: JSONSchema
 using Scratch: Scratch
 using Test: @test, @testset, @test_throws
 
-"""Exit code, standard output and standard error of `corset args...`."""
-function corset(args::String...)::Tuple{Int, String, String}
-    out, err = IOBuffer(), IOBuffer()
-    code = Corset.CLI.execute(String[args...], out, err; launch = false, cache = nothing)
-    return code, String(take!(out)), String(take!(err))
-end
+include("helpers.jl")
 
-const LIBRARY = joinpath(@__DIR__, "config", "library")
-# Package stage loads fixture packages in place, so test environment must load them from their roots.
-LIBRARY in LOAD_PATH || push!(LOAD_PATH, LIBRARY)
-
-"""Run `body` on new package `name` written under `parent` from `files` (path => text), with package on load path."""
-function with_package(body::Function, parent::String, name::String, files::Pair{String, String}...)::Nothing
-    mktempdir(parent) do package
-        write(joinpath(package, "Project.toml"), "name = \"$name\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n\n[preferences.Corset]\nkind = \"library\"\n")
-        for (path, text) in files
-            mkpath(dirname(joinpath(package, path)))
-            write(joinpath(package, path), text)
-        end
-        push!(LOAD_PATH, package)
-        try
-            body(package)
-        finally
-            pop!(LOAD_PATH)
-        end
-    end
-    return nothing
-end
 const SARIF_SCHEMA = JSONSchema.Schema(JSON.parsefile(joinpath(@__DIR__, "fixtures", "sarif-schema-2.1.0.json")))
 
 @testset "cli check" begin
