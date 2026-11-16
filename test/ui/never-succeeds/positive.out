@@ -34,10 +34,21 @@ error[never-succeeds]: call to `half` never succeeds
    = fix: fix call, add method for these argument types, or narrow method signature   [manual]
    = docs: corset explain never-succeeds
 
-error[never-succeeds]: call to `scaled` never succeeds
-  --> src/NeverSucceedsPositive.jl:19:1
+error[never-succeeds]: call to `Vector{Float64}` never succeeds
+  --> src/NeverSucceedsPositive.jl:19:22
    |
-19 | function scaled(count::Integer, factor::Integer = 1.5)
+19 | buffer(count::Int) = Vector{Float64}(count)
+   | ------ method declares argument types here
+   |                      ^^^^^^^^^^^^^^^^^^^^^^ throws for every argument type method declares
+   |
+   = why: every run of this call throws, so code after it never runs
+   = fix: fix call, add method for these argument types, or narrow method signature   [manual]
+   = docs: corset explain never-succeeds
+
+error[never-succeeds]: call to `scaled` never succeeds
+  --> src/NeverSucceedsPositive.jl:22:1
+   |
+22 | function scaled(count::Integer, factor::Integer = 1.5)
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ throws for every argument type method declares
    |          ------ method declares argument types here
    |

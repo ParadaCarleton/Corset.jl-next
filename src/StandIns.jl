@@ -27,6 +27,17 @@ struct DenseStandIn{T, N} <: DenseArray{T, N}
     data::Array{T, N}
 end
 
+"""
+Wrapper of array constructor (`zeros`, `Vector{T}`): call converts result to stand-in array type `W`, as `similar` of
+argument of that type would build it. `inference` stage puts it in place of hard-coded constructor.
+"""
+struct Templated{W, F} <: Function
+    constructor::F
+    ((::Type{Templated{W}})(constructor::Any)::Templated{W}) where {W} = new{W, Core.Typeof(constructor)}(constructor)
+end
+
+((made::Templated{W})(arguments::Any...)::W) where {W} = W(made.constructor(arguments...))
+
 """Function stand-in: each call returns `Any` to inference, so later code stays analyzed and its values give no findings."""
 struct FunctionStandIn <: Function end
 

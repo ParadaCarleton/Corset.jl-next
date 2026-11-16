@@ -15,6 +15,9 @@ halve(count::Integer) = half(count)
 # Failure inside `halve` reports there only.
 quarter(count::Integer) = halve(halve(count))
 
+# Curly callee: `Vector{T}(n)` needs `undef` since Julia 1.0. Its span once went unmatched.
+buffer(count::Int) = Vector{Float64}(count)
+
 # Default value fails declared type, so call that omits it throws.
 function scaled(count::Integer, factor::Integer = 1.5)
     return count * factor

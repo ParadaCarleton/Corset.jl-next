@@ -262,10 +262,136 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float
    = fix: convert `0.5` to input type, as in `oftype(x, 0.5)` or `T(0.5)`   [manual]
    = docs: corset explain type-disruption
 
-warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:52:54
+warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
+  --> src/TypeDisruptionPositive.jl:53:11
    |
-52 | adjusted(x::AbstractFloat) = x isa Float64 ? x : x * 0.5
+53 |     out = zeros(length(xs))
+   |           ^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type
+54 |     out .= 2 .* xs
+55 |     return out
+   |     ---------- returns it here
+   |
+   = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
+   = fix: build from `xs`: `fill!(similar(xs, Float64, length(xs)), 0.0)`   [likely]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
+  --> src/TypeDisruptionPositive.jl:57:39
+   |
+57 | counted(xs::AbstractVector, n::Int) = zeros(Int, n)
+   |                                       ^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
+   |
+   = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
+   = fix: build from `xs`: `fill!(similar(xs, Int, n), zero(Int))`   [likely]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: hard-coded `Matrix` drops array type of `xs`
+  --> src/TypeDisruptionPositive.jl:58:45
+   |
+58 | uninitialized(xs::AbstractMatrix{<:Real}) = Matrix{Float64}(undef, size(xs))
+   |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ builds `Matrix` for every input array type and returns it
+   |
+   = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
+   = fix: build from `xs`: `similar(xs, Float64, size(xs))`   [likely]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
+  --> src/TypeDisruptionPositive.jl:59:39
+   |
+59 | indexed(xs::AbstractVector{<:Real}) = similar(Vector{Int}, length(xs))
+   |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
+   |
+   = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
+   = fix: build from `xs`: `similar(xs, Int, length(xs))`   [likely]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
+  --> src/TypeDisruptionPositive.jl:60:49
+   |
+60 | repeated(xs::AbstractVector{<:Real}, x::Real) = fill(x, length(xs))
+   |                                                 ^^^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
+   |
+   = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
+   = fix: build from `xs`: `fill!(similar(xs, typeof(x), length(xs)), x)`   [likely]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
+  --> src/TypeDisruptionPositive.jl:61:38
+   |
+61 | halves(xs::AbstractVector{<:Real}) = fill(0.5, length(xs))
+   |                                      ^^^^^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
+   |
+   = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
+   = fix: build from `xs`: `fill!(similar(xs, Float64, length(xs)), 0.5)`   [likely]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
+  --> src/TypeDisruptionPositive.jl:63:16
+   |
+63 |     cache[1] = ones(length(xs))
+   |                ^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and stores it
+   |
+   = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
+   = fix: build from `xs`: `fill!(similar(xs, Float64, length(xs)), 1.0)`   [likely]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
+  --> src/TypeDisruptionPositive.jl:68:14
+   |
+68 |     buffer = Vector{Float64}(undef, length(xs))
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type
+69 |     buffer .= xs .* 2
+   |     ----------------- mixes it with `xs` here
+   |
+   = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
+   = confidence: possible
+   = fix: build from `xs`: `similar(xs, Float64, length(xs))`   [likely]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
+  --> src/TypeDisruptionPositive.jl:73:34
+   |
+73 | randomized(xs::AbstractVector) = fill(rand(), length(xs))
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
+   |
+   = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
+   = fix: build it with `similar(xs, T, dims)`, so it keeps caller's array type   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
+  --> src/TypeDisruptionPositive.jl:74:31
+   |
+74 | untyped(xs::AbstractVector) = Vector(undef, length(xs))
+   |                               ^^^^^^^^^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
+   |
+   = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
+   = fix: build it with `similar(xs, T, dims)`, so it keeps caller's array type   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: hard-coded `Array` drops array type of `xs`
+  --> src/TypeDisruptionPositive.jl:75:29
+   |
+75 | boxed(xs::AbstractVector) = zeros(Float64)
+   |                             ^^^^^^^^^^^^^^ builds `Array` for every input array type and returns it
+   |
+   = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
+   = fix: build it with `similar(xs, T, dims)`, so it keeps caller's array type   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
+  --> src/TypeDisruptionPositive.jl:78:12
+   |
+78 |     return zeros(length(xs))
+   |            ^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
+   |
+   = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
+   = fix: build it with `similar(xs, T, dims)`, so it keeps caller's array type   [manual]
+   = docs: corset explain type-disruption
+
+warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
+  --> src/TypeDisruptionPositive.jl:81:54
+   |
+81 | adjusted(x::AbstractFloat) = x isa Float64 ? x : x * 0.5
    |                                                  ------- meets `Float32` input here and returns `Float64` instead of `Float32`
    |                                                      ^^^ `Float64` for every input type
    |

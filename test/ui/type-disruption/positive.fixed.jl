@@ -49,6 +49,35 @@ function decayed(x::AbstractFloat)
 end
 doubled(x::AbstractFloat) = 2.0x
 dotted(xs::AbstractVector{<:AbstractFloat}) = @. xs * 0.5
+# Hard-coded `Array` drops caller's array type.
+function doubled_all(xs::AbstractVector{<:AbstractFloat})
+    out = fill!(similar(xs, Float64, length(xs)), 0.0)
+    out .= 2 .* xs
+    return out
+end
+counted(xs::AbstractVector, n::Int) = fill!(similar(xs, Int, n), zero(Int))
+uninitialized(xs::AbstractMatrix{<:Real}) = similar(xs, Float64, size(xs))
+indexed(xs::AbstractVector{<:Real}) = similar(xs, Int, length(xs))
+repeated(xs::AbstractVector{<:Real}, x::Real) = fill!(similar(xs, typeof(x), length(xs)), x)
+halves(xs::AbstractVector{<:Real}) = fill!(similar(xs, Float64, length(xs)), 0.5)
+function stash!(cache::Vector{Any}, xs::AbstractVector)
+    cache[1] = fill!(similar(xs, Float64, length(xs)), 1.0)
+    return nothing
+end
+# Buffer meets input; GPU array cannot mix with CPU `Array`.
+function buffered(xs::AbstractVector{<:AbstractFloat})
+    buffer = similar(xs, Float64, length(xs))
+    buffer .= xs .* 2
+    return sum(buffer)
+end
+# Fix stays manual: fill value would run twice, type has no parameter, no dimensions, argument reassigned.
+randomized(xs::AbstractVector) = fill(rand(), length(xs))
+untyped(xs::AbstractVector) = Vector(undef, length(xs))
+boxed(xs::AbstractVector) = zeros(Float64)
+function trimmed(xs::AbstractVector)
+    xs = xs[2:end]
+    return zeros(length(xs))
+end
 # Branch on type can pick other code for other input type.
 adjusted(x::AbstractFloat) = x isa Float64 ? x : x * oftype(x, 0.5)
 

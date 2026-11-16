@@ -311,7 +311,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tr data-group="readability"><td><code>and-or-precedence</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>F106 <code>&amp;&amp;</code> on right of <code>||</code> binds tighter than reader expects</td><td>Fixer adds parentheses that keep meaning.</td></tr>
 <tr data-group="correctness"><td><code>where-binding</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F4 <code>where</code> after result annotation binds result type</td><td>Fixer adds parentheses.</td></tr>
 <tr data-group="performance"><td><code>intermediate-widening</code></td><td><span class="chip g-performance">performance</span></td><td>inference</td><td>F87 Literal widens intermediate that does not escape</td><td>Sites where widened type escapes go to <code>type-disruption</code>.</td></tr>
-<tr data-group="composability"><td><code>type-disruption</code></td><td><span class="chip g-composability">composability</span></td><td>inference</td><td>F5 Literal or constant changes input type<br>F6 Float constant where irrational exists; promotes generic code<br>F16 Hard-coded <code>Array</code> drops caller's array type</td><td>Stand-in engine. Kinds: literal, float constant, array type. Fix <code>likely</code>: <code>T(0.5)</code>, <code>oftype(x, 0.5)</code> or <code>eltype(xs)(0.5)</code>.</td></tr>
+<tr data-group="composability"><td><code>type-disruption</code></td><td><span class="chip g-composability">composability</span></td><td>inference</td><td>F5 Literal or constant changes input type<br>F6 Float constant where irrational exists; promotes generic code<br>F16 Hard-coded <code>Array</code> drops caller's array type</td><td>Stand-in engine. Kinds: literal, float constant, type name, hard-coded <code>Array</code> with input array. Fix <code>likely</code>: <code>T(0.5)</code>, <code>oftype(x, 0.5)</code>, <code>eltype(xs)(0.5)</code>, <code>similar(xs, T, dims)</code>.</td></tr>
 <tr data-group="correctness"><td><code>signed-division</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F7 Signed <code>%</code> and <code>÷</code> round toward zero<br>F8 Mixed signed and unsigned division</td><td></td></tr>
 <tr data-group="correctness"><td><code>inexact-conversion</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F9 Float-to-integer constructor throws on fractions</td><td></td></tr>
 <tr data-group="correctness"><td><code>approx-zero</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>F10 Approximate compare to zero without <code>atol</code> is always false</td><td></td></tr>
@@ -590,7 +590,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <td>Arrays</td>
 <td>keep container kind; element types promote</td>
 <td>fresh <code>Array</code> must not take over container</td>
-<td><code>x::JLArray .+ zeros(n)</code> gives <code>Array</code></td>
+<td><code>zeros(n)</code> returned for <code>JLArray</code> input</td>
 </tr>
 <tr>
 <td>Strings (later)</td>
@@ -641,7 +641,6 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li><strong>Cost</strong> (S1 spike): number stand-ins about 200 lines; mixing check (differential, escape, filters, classifier) about 360; signature mapping about 190. Source mapping: TypedSyntax.jl as dependency; its CodeTracking dependency loads REPL, about 0.25 s per run. Vendor algorithm (about 500 lines) if cold-run budget needs it.</li>
 <li><strong>Stand-in fidelity</strong>: stand-in copies every <code>Float32</code> and <code>Int32</code> special case that changes result type: irrational rule (<code>irrationals.jl</code>); <code>sum</code>, <code>prod</code> and <code>factorial</code> widen <code>Int32</code> to <code>Int</code>. Reflection on stand-in (<code>fieldnames</code>, <code>propertynames</code>) sees wrapper; inference stage treats its result as opaque. Stand-in test suite runs <code>Test.detect_ambiguities</code> against Base and compares inferred result types with model type.</li>
 <li><strong>No tests</strong>: stand-in types come from annotations; see <strong>Arguments without stand-in</strong>.</li>
-<li>Syntax rule stays for hard-coded <code>Array</code> without template. Shared fix helper finds in-scope type source (<code>T</code>, <code>eltype(x)</code>, template array).</li>
 </ul>
 </div><div class="decision"><h3><code>lost-narrowing</code> scan</h3>
 <ul>
@@ -688,7 +687,19 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Revisit after phase 4: evidence ranking, widening and tiers are first guesses. Measure on corpus how many guesses survive review; adjust. Candidate extra sources: docstring signatures, opt-in run-time type trace, LLM handoff for <code>manual</code> guesses.</li>
 </ul>
 </div><div class="decision"><h3>Hard-coded arrays</h3>
-<p><code>type-disruption</code> reports hard-coded <code>Vector</code>/<code>Matrix</code>/<code>Array</code> construction everywhere, <code>zeros</code>, <code>ones</code>, <code>fill</code> included. With template array: autofix to <code>similar(template, T, dims)</code>. Without template: message teaches caller-supplied template or array type; autofix adds parameter in <code>breaking</code> tier. One shared initializer fixer serves <code>type-disruption</code>, <code>constant-array</code> and <code>unwritten-element</code>.</p>
+<p><code>type-disruption</code> reports hard-coded <code>Array</code> construction in method with input array (<code>HardArrays</code> scan, <code>inference</code> stage).</p>
+<ul>
+<li>Construction: <code>zeros</code>, <code>ones</code>, <code>fill</code>, <code>similar(Vector{T}, dims)</code>, and <code>Array</code> type called with <code>undef</code> (<code>Vector{T}(undef, n)</code>).</li>
+<li>Template: argument of stand-in array type. Prefer argument that dimensions read (<code>zeros(length(ys))</code> takes <code>ys</code>); else first.</li>
+<li>Scan: put <code>StandIns.Templated</code> callee in place of constructor in copy of lowered code, so result takes template's stand-in array type. Then leave each construction unconverted alone, as <code>Widening</code> does.</li>
+<li>Escape (returned, or stored where store does not convert): <code>definite</code>. Meeting (call takes construction and array from input, <code>buffer .= xs</code>): <code>possible</code>, since mixing fails only for some array types (GPU).</li>
+<li>Callee that takes <code>Array</code> only drops construction, as weak number that makes call throw.</li>
+<li>No input array: no finding. Method has no caller's array type to keep, and adding array type parameter changes its API.</li>
+<li>Fix (<code>likely</code>): <code>zeros(n)</code> gives <code>fill!(similar(xs, Float64, n), 0.0)</code>; <code>zeros(T, n)</code> gives <code>fill!(similar(xs, T, n), zero(T))</code>; <code>Vector{T}(undef, n)</code> and <code>similar(Vector{T}, n)</code> give <code>similar(xs, T, n)</code>.</li>
+<li>Fix stays <code>manual</code> for <code>fill</code> value other than literal or name (it would run twice), type without parameter, no dimensions, and reassigned template.</li>
+<li>Messages name container only (<code>Vector</code>): element type of stand-in would print as its model.</li>
+<li>Later: <code>constant-array</code> (FillArrays.jl) and <code>unwritten-element</code> may share fix text builder.</li>
+</ul>
 </div><div class="decision"><h3>Specialization count</h3>
 <p><code>specialization-blowup</code> predicts from source: <code>package</code> stage finds methods that specialize on <code>Function</code> or <code>Type</code> argument; <code>syntax</code> stage counts distinct closures or types passed at package call sites.</p>
 </div>

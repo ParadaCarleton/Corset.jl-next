@@ -11,12 +11,13 @@ module Inference
 using Serialization: serialize, deserialize
 using SHA: sha256
 using TypedSyntax: TypedSyntax
-using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, NarrowingLoss, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence, Weak, Exit
+using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, HardArray, NarrowingLoss, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence, Weak, Exit
 using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span, parent_of, ancestors, base_macro
 using ..Package: Package
 using ..StandIns: StandIns
 using ..Widening: Widening, statement_call
 using ..Narrowing: Narrowing
+using ..HardArrays: HardArrays
 using ..Signatures: LIMIT, method_signatures, struct_stand_ins
 
 const CC = Core.Compiler
@@ -44,6 +45,7 @@ struct Inferred
     failures::Vector{Pair{Int, Union{FailingCall, BlindSpot}}}
     coded::Bool
     disruptions::Vector{Disruption}
+    hard_arrays::Vector{HardArray}
     narrowings::Vector{NarrowingLoss}
 end
 
@@ -199,10 +201,17 @@ function infer(method::Method, signature::Type)::Union{Nothing, Tuple{Core.Metho
     return specialized, frame.src, CC.widenconst(CC.ignorelimited(frame.result.result)), frame.edges, Narrowing.Flow(frame.cfg, frame.bb_vartables)
 end
 
-"""Name of function `call` calls: global, or global earlier statement reads; `nothing` for computed callee."""
+"""
+Name of function `call` calls: global, or global earlier statement reads, or parametric type `Vector{T}` that earlier
+statement applies; `nothing` for computed callee.
+"""
 function callee_name(code::Core.CodeInfo, call::Expr)::Union{Nothing, Symbol}
     callee = call.args[1]
     callee isa Core.SSAValue && (callee = code.code[callee.id])
+    if callee isa Expr && callee.head === :call && length(callee.args) >= 2 && callee.args[1] == GlobalRef(Core, :apply_type)
+        callee = callee.args[2]
+        callee isa Core.SSAValue && (callee = code.code[callee.id])
+    end
     return callee isa GlobalRef ? callee.name : nothing
 end
 
@@ -215,7 +224,10 @@ function spells(file::SyntaxFile, node::SyntaxNode, name::Symbol, arguments::Int
     kind_name(node) == "juxtapose" && return name === :* && length(children_of(node)) == arguments
     kind_name(node) == "call" || return false
     positional = count(part -> kind_name(part) != "parameters", call_arguments(node))
-    return positional == arguments && Package.unqualified(source(file, callee_node(node))) == string(name)
+    callee = callee_node(node)
+    # Parametric type callee `Vector{T}(undef, n)` spells its type name.
+    kind_name(callee) == "curly" && (callee = children_of(callee)[1])
+    return positional == arguments && Package.unqualified(source(file, callee)) == string(name)
 end
 
 """Syntax nodes TypedSyntax.jl maps each statement of `code` to; none for generated function output or site without definition node."""
@@ -342,6 +354,19 @@ function line_span(file::SyntaxFile, span::Span)::Span
 end
 
 """
+Names of variables `code` assigns. Lowering copies reassigned argument into local of same name, so argument name
+in this set may not hold argument.
+"""
+function assigned_names(code::Core.CodeInfo)::Set{Symbol}
+    # Typed loop: `Set(generator)` of unknown element type calls `grow_to!`, which package `iterate` methods invalidate.
+    found = Set{Symbol}()
+    for statement in code.code
+        statement isa Expr && statement.head === :(=) && statement.args[1] isa Core.SlotNumber && push!(found, code.slotnames[statement.args[1].id])
+    end
+    return found
+end
+
+"""
 Prefix and suffix that convert value to input float type of `typed` code of `instance`: static parameter bound to float
 stand-in (`T(`), else argument of float stand-in type (`oftype(x, `), else array argument of float stand-in elements
 (`eltype(xs)(`). Code must never assign argument name: lowering copies reassigned argument into local of same name.
@@ -359,11 +384,7 @@ function converter(typed::TypedCode, instance::Core.MethodInstance)::Union{Nothi
             return (parameter.ub <: AbstractFloat ? "$(parameter.name)(" : "float($(parameter.name))(") => ")"
         end
     end
-    # Typed loop: `Set(generator)` of unknown element type calls `grow_to!`, which package `iterate` methods invalidate.
-    assigned = Set{Symbol}()
-    for statement in typed.code.code
-        statement isa Expr && statement.head === :(=) && statement.args[1] isa Core.SlotNumber && push!(assigned, typed.code.slotnames[statement.args[1].id])
-    end
+    assigned = assigned_names(typed.code)
     arguments, found = Facts.tuple_parameters(typed.signature), nothing
     for slot in 2:length(arguments)
         name, type, declared = typed.code.slotnames[slot], arguments[slot], Facts.argument_type(method, slot - 1)
@@ -388,6 +409,76 @@ function converted_text(file::SyntaxFile, node::Union{Nothing, SyntaxNode}, orig
     kind_name(parent_of(node)) == "juxtapose" && return nothing
     all(ancestor -> kind_name(ancestor) != "macrocall" || base_macro(ancestor) in PLAIN_MACROS, ancestors(node)) || return nothing
     return first(something(conversion)) * source(file, node) * last(something(conversion))
+end
+
+"""Container name of `Array` type `array`: `Vector`, `Matrix`, else `Array`. Element type of stand-in would mislead."""
+container_text(array::Type)::String = array <: Vector ? "Vector" : array <: Matrix ? "Matrix" : "Array"
+
+"""Literal kinds `fill` value may have in fix: value repeats in fix text, so it must evaluate to same value each time."""
+const FILL_LITERALS = ("Integer", "Float", "Float32", "Bool", "Char", "HexInt", "BinInt", "OctInt")
+
+"""Source text of first type parameter of `node` (`T` of `Vector{T}`); `nothing` for other syntax."""
+function type_parameter(file::SyntaxFile, node::SyntaxNode)::Union{Nothing, String}
+    kind_name(node) == "curly" || return nothing
+    parts = children_of(node)
+    return length(parts) >= 2 ? source(file, parts[2]) : nothing
+end
+
+"""
+Text that builds array of construction `node` with `similar(template, T, dims)`, so it keeps template's array type:
+`zeros(n)` gives `fill!(similar(xs, Float64, n), 0.0)`, `Vector{T}(undef, n)` gives `similar(xs, T, n)`. `nothing`
+when code assigns template name or call has other form: no dimensions, `fill` value other than literal or name, or type
+without parameter syntax. Keyword call lowers to `kwcall`, which is no construction.
+"""
+function rebuilt(typed::TypedCode, instance::Core.MethodInstance, construction::HardArrays.Construction, node::Union{Nothing, SyntaxNode}, template::String)::Union{Nothing, String}
+    (isnothing(node) || !Base.isidentifier(template) || Symbol(template) in assigned_names(typed.code)) && return nothing
+    file, callee, parts = typed.site.file, construction.callee, call_arguments(node)
+    texts = [source(file, part) for part in parts]
+    if callee === zeros || callee === ones
+        call = something(statement_call(typed.code.code[construction.index]))
+        typed_first = CC.widenconst(CC.argextype(call.args[2], typed.code, CC.sptypes_from_meth_instance(instance))) <: Type
+        element = typed_first ? texts[1] : "Float64"
+        value = typed_first ? "$(callee === zeros ? "zero" : "one")($element)" : callee === zeros ? "0.0" : "1.0"
+        dimensions = typed_first ? texts[2:end] : texts
+    elseif callee === fill
+        kind = kind_name(parts[1])
+        element = kind == "Identifier" ? "typeof($(texts[1]))" : kind in FILL_LITERALS ? string(eltype(construction.array)) : nothing
+        value, dimensions = texts[1], texts[2:end]
+    else
+        # `similar(Vector{T}, n)` names type first; `Vector{T}(undef, n)` names it as callee.
+        element = type_parameter(file, callee === similar ? parts[1] : callee_node(node))
+        value, dimensions = nothing, texts[2:end]
+    end
+    (isnothing(element) || isempty(dimensions)) && return nothing
+    built = "similar($template, $element, $(join(dimensions, ", ")))"
+    return isnothing(value) ? built : "fill!($built, $value)"
+end
+
+"""
+Hard-coded array facts of `typed` code of `instance` from `changes` (`HardArrays.changes!`); `nodes` are its statement
+nodes. Escape is `possible` when method tests type (`branch`) or node cannot narrow; meeting is `possible` always, since
+caller's array type decides whether mixing fails (GPU array with CPU array).
+"""
+function hard_arrays(typed::TypedCode, instance::Core.MethodInstance, nodes::Vector{Union{Nothing, SyntaxNode}}, changes::Vector{HardArrays.Change}, branch::Bool)::Vector{HardArray}
+    found, file = HardArray[], typed.site.file
+    for change in changes
+        construction = change.construction
+        node = nodes[construction.index]
+        (isnothing(node) || kind_name(node) == "call") || (node = nothing)
+        span = isnothing(node) ? line_span(file, typed.spans[construction.index]) : Facts.span(file, node)
+        exit = typed.spans[change.at]
+        # Implicit return maps to line only; on construction line, construction span shows it better.
+        exit.precision == Precision.line && exit.first_byte <= span.first_byte && !occursin('\n', file.text[exit.first_byte:span.first_byte]) && (exit = span)
+        template = string(typed.code.slotnames[construction.template])
+        definite = change.exit != Exit.intermediate && !branch && !isnothing(node)
+        push!(
+            found, HardArray(
+                span, exit, change.exit, isnothing(node) ? "" : source(file, node), container_text(construction.array), template,
+                rebuilt(typed, instance, construction, node, template), definite ? Confidence.definite : Confidence.possible,
+            )
+        )
+    end
+    return found
 end
 
 """
@@ -521,8 +612,8 @@ function statement_type!(edges::Vector{Any}, method::Method, signature::Type, in
     return CC.widenconst(inferred[2].ssavaluetypes[index])
 end
 
-"""Name of called function or type; text of other callable value."""
-callee_text(callee::Any)::String = callee isa Union{Function, DataType, UnionAll} ? string(nameof(callee)) : repr(callee)
+"""Name of called function; called type as `scope` prints it (`Vector{Float64}`); text of other callable value."""
+callee_text(callee::Any, scope::Module)::String = callee isa Function ? string(nameof(callee)) : callee isa Type ? sprint(show, callee; context = :module => scope) : repr(callee)
 
 """
 Call statements of `typed` that never return, by statement index: fact, or blind spot where call returns once stand-ins
@@ -546,7 +637,7 @@ function failures!(edges::Vector{Any}, helpers::IdDict{Any, Tuple{Bool, Vector{A
         modeled = statement_type!(edges, method, StandIns.model_type(typed.signature), index)
         modeled !== Union{} && (push!(found, index => BlindSpot("call fails on stand-in only", typed.spans[index])); continue)
         confidence = statement_type!(edges, method, method.sig, index) === Union{} ? Confidence.definite : Confidence.possible
-        push!(found, index => FailingCall(typed.spans[index], name_span(typed.site), callee_text(callee), confidence))
+        push!(found, index => FailingCall(typed.spans[index], name_span(typed.site), callee_text(callee, method.module), confidence))
     end
     return found
 end
@@ -791,6 +882,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     codes = Dict{String, String}()
     typed, seen, counts, coded = TypedCode[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
     failing, gaps, settled, disrupting, narrowing = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[], NarrowingLoss[]
+    hard = HardArray[]
     while !isempty(pending)
         site, call_signature = popfirst!(pending)
         (site.method, call_signature) in seen && continue
@@ -806,15 +898,19 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
             edges = Any[]
             result = infer(site.method, call_signature)
             inferred = if isnothing(result)
-                Inferred(Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, Disruption[], NarrowingLoss[])
+                Inferred(Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, Disruption[], HardArray[], NarrowingLoss[])
             else
                 instance, code, returned, frame_edges, flow = result
                 append!(edges, frame_edges)
                 nodes = statement_nodes(code, mappings(code, instance, site), site.file)
                 push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes)))
                 changes, branch = Widening.changes!(edges, instance, code)
+                constructions, array_branch = HardArrays.changes!(edges, instance, code)
                 lost = narrowings(last(typed), nodes, Narrowing.losses(code, flow, CC.sptypes_from_meth_instance(instance)))
-                Inferred(reached(code, instance), failures!(edges, helpers, last(typed), by_path), true, disruptions(last(typed), instance, nodes, changes, branch), lost)
+                Inferred(
+                    reached(code, instance), failures!(edges, helpers, last(typed), by_path), true, disruptions(last(typed), instance, nodes, changes, branch),
+                    hard_arrays(last(typed), instance, nodes, constructions, array_branch), lost,
+                )
             end
             entry = isnothing(used) ? nothing : entry!(named, ids, codes, site, call_signature, inferred, edges, by_path, hashes, modules)
             isnothing(journal) || record!(journal, Record(key, "", true, entry))
@@ -836,12 +932,14 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
             failure isa BlindSpot ? push!(gaps, failure) : (push!(settled, (site.method, index)); push!(failing, failure))
         end
         append!(disrupting, inferred.disruptions)
+        append!(hard, inferred.hard_arrays)
         append!(narrowing, inferred.narrowings)
     end
     append!(spots, BlindSpot("untyped method no call reaches", site.span) for site in skipped if !(site.method in coded))
     # One finding per weak value: escape before intermediate, definite before possible.
     sort!(disrupting; by = disruption -> (disruption.exit == Exit.intermediate, disruption.confidence == Confidence.possible))
-    facts = InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting), unique!(lost -> lost.test, narrowing))
+    sort!(hard; by = array -> (array.exit == Exit.intermediate, array.confidence == Confidence.possible))
+    facts = InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting), unique!(array -> array.span, hard), unique!(lost -> lost.test, narrowing))
     return facts, unique!(append!(spots, gaps)), typed, used
 end
 

@@ -32,7 +32,7 @@ note = "Sites where widened type escapes go to `type-disruption`."
 [[rule]]
 name = "type-disruption"
 footguns = [5, 6, 16]
-note = "Stand-in engine. Kinds: literal, float constant, array type. Fix `likely`: `T(0.5)`, `oftype(x, 0.5)` or `eltype(xs)(0.5)`."
+note = "Stand-in engine. Kinds: literal, float constant, type name, hard-coded `Array` with input array. Fix `likely`: `T(0.5)`, `oftype(x, 0.5)`, `eltype(xs)(0.5)`, `similar(xs, T, dims)`."
 
 [[rule]]
 name = "signed-division"
