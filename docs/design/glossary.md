@@ -22,3 +22,4 @@ Terms this design coins.
 | baseline | Stored existing findings that never fail run. |
 | opt-out | `# corset: allow <rule> -- <reason>` comment. |
 | coverage line | End-of-run count of blind spots by cause. |
+| order chain | Moshi `@data` body `A() < B() < C()`: declares singleton variants and their order. |

@@ -657,3 +657,12 @@ Codex review of redesign saw design parts and `src/` only. Eight problems:
 | 6 | `iterate` read-only contract hides `Iterators.Stateful` writes | Accepted: contracts hold documented behavior only; Base breaker gives `possible` write. |
 | 7 | `inference` stage drops typed code; effects has no IR | Accepted: stage hands typed units of this run to effects; store keeps summaries. |
 | 8 | Warm-only gate passes while cold run misses speed budget | Accepted: go/no-go adds cold full run inside budget and measures empty library cache. |
+
+### Enums and sum types
+
+- Branch over cases: extensible cases use dispatch on subtypes; fixed cases use sum types, so checks find unhandled cases. Base `@enum` gives neither, so `unchecked-enum` (F108) reports it.
+- Rule waits for Moshi release with exhaustiveness check: without it, Moshi finds missing arm only at run time, as `@enum` does.
+- Ordered enum needs order in Moshi. Order chain (`Safe() < Likely()`) defines `isless` alone; `@derive Ord` beside it would give two ways to say one thing.
+- Chain names every variant: `sort` assumes total order. Singletons only in first version. Mixed `<` and `>` is error. Ordered type is immutable, so `===` agrees with `isless`.
+- Enum with explicit values or base type is exempt: C interop, bit flags and wire formats need stable integers.
+- Corset enums move from EnumX to Moshi in `unchecked-enum` PR. Ordering serves fix tiers (`fix.tier > allowed`) and stages (`fix_stage >= stage`).

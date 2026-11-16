@@ -123,6 +123,11 @@ name = "closed-struct"
 footguns = [84]
 
 [[rule]]
+name = "unchecked-enum"
+footguns = [108]
+note = "Ordered enum becomes Moshi order chain (`Safe() < Likely()`). Corset enums move to Moshi in same PR."
+
+[[rule]]
 name = "missing-interface"
 footguns = [92]
 

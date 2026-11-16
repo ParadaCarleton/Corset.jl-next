@@ -37,6 +37,7 @@ Sound summaries for package units through builtins and static calls. Other calls
 - `src/Effects/`: units, IR, origins, points-to, builtins (call step 1), static calls (call step 3), solve.
 - IR: copy unit code, then run passes until `CC: COMPACT_1`. Instance outside package: native inference first.
 - Solve: call graph over instances; SCCs from Graphs.jl (new dependency); worklist inside component.
+- Sum types with data (origin kinds, call outcomes) use Moshi `@data` (new dependency). Ordered enums stay EnumX (`types.md`, Sum types).
 - Facts: verdict per method, parameter and global; cause spans; result aliases; blind spots by reason.
 - Coverage reasons: `always throws on stand-ins`, incomplete method causes, `alias`.
 
@@ -153,7 +154,6 @@ Rules read per-unit statement events and must-alias pairs.
 
 Owner decides before PR that names decision:
 
-- PR 1: sum types with data (origin kinds, call resolution outcome). Proposal: Moshi.jl `@data`; EnumX stays for ordered enums without data.
 - PR 1: native inference of instance outside package can abort process. Proposal: crash journal covers it; aborted instance gets open summary and blind spot.
 - PR 3: lock writes. `lock(q.lk)` on argument writes lock state, so `bang-convention` would demand `!`. Proposal: exempt synchronization.
 - PR 6: fix tier of rename. Proposal: `breaking` for public or exported name; `likely` for other names.

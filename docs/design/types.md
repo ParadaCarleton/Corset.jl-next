@@ -93,6 +93,11 @@ One policy for inferred locals, results and struct fields; argument annotations 
 - One package: Moshi.jl. `@match` matches nested values, tuples, arrays and types; `@derive` writes `==`, `hash` and `show`.
 - Moshi detects missing variant only when unmatched value arrives (`error("matching non-exhaustive")`).
 - Corset has no `@match` rules. Exhaustiveness and unreachable-arm checks belong in Moshi `src/match/verify/`, which sees loaded ADT at macro expansion.
+- Branch over cases has two correct forms. Cases others extend: dispatch on subtypes (`closed-struct`). Fixed cases: Moshi `@data`, so `@match` checks exhaustiveness.
+- Base `@enum` is neither: nobody extends it, and no check finds unhandled case. `unchecked-enum` reports it.
+- Ordered enum becomes order chain: `@data Tier begin Safe() < Likely() < Manual() end` defines `isless` by chain position.
+- Order chain names every variant, holds singletons only, uses one operator (`<` smallest first, `>` largest first). Ordered type is immutable.
+- Corset code uses Moshi `@data` for sum types with data. EnumX enums move to Moshi with `unchecked-enum`.
 
 ### Suggested abstract type
 
