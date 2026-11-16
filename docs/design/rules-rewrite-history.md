@@ -645,3 +645,10 @@ Codex review of phase 5 design found seven problems:
 | 7 | S5 drops writes before caught throw | Accepted: definite writes on throwing paths stay; unknown calls there add nothing; throw-only exemption needs no write on any path. |
 
 - Phase 4 history names `typeinf_ircode` at `"CC: COMPACT_1"`; `inference` stage uses unoptimized typed code from `typeinf_frame`. Effects engine builds SSA IR before inlining on same inference.
+
+### Equality contract
+
+- `operator-consistency` follows Base `isequal` and `hash` docs. Earlier fix text ("define `hash` from fields `==` compares") left signed zeros broken: `isequal` falls back to `==`, which calls `0.0` and `-0.0` equal, and their hashes differ.
+- New kinds: `hash` reads field equality ignores; float fields without `isequal`; `hash` without equality; 1-argument `hash`; `isless` against equality fields.
+- Field sets come from lowered code (`x.field`, `getfield(x, :field)`); any other use of argument leaves set unknown and skips field checks.
+- Corpus case: QuadGK `Segment` (`==` without `hash`, `isless` by error only); upstream issue JuliaMath/QuadGK.jl#145.

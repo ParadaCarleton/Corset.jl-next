@@ -6,8 +6,8 @@ error[operator-consistency]: `==` defined for `Tags` without `hash`
 10 | Base.isequal(a::Tags, b::Tags) = isequal(a.names, b.names)
    | ------------ also defines equality
    |
-   = why: `Dict` and `Set` find keys by `hash`; Base default hashes identity, so equal values miss
-   = fix: define `Base.hash(x::Tags, h::UInt)` from fields equality compares   [manual]
+   = why: `Dict` and `Set` need `isequal(x, y)` to imply equal hashes; Base default `hash` follows `===`, so equal values miss
+   = fix: define `Base.hash(x::Tags, h::UInt)` over fields equality compares   [manual]
    = docs: corset explain operator-consistency
    = note: deny from correctness group, library preset
    = note: opt out with `# corset: allow operator-consistency -- <reason>`
@@ -18,14 +18,14 @@ error[operator-consistency]: `==` defined for `Point` without `hash`
 16 | Base.:(==)(a::Point{T}, b::Point{T}) where {T} = a.x == b.x
    | ^^^^^^^^^^ equality without matching `hash`
    |
-   = why: `Dict` and `Set` find keys by `hash`; Base default hashes identity, so equal values miss
-   = fix: define `Base.hash(x::Point, h::UInt)` from fields equality compares   [manual]
+   = why: `Dict` and `Set` need `isequal(x, y)` to imply equal hashes; Base default `hash` follows `===`, so equal values miss
+   = fix: define `Base.isequal` and `Base.hash(x::Point, h::UInt)` that apply `isequal` and `hash` to fields `==` compares   [manual]
    = docs: corset explain operator-consistency
 
 error[operator-consistency]: method on `!=`, which Base derives from `==`
-  --> src/OperatorConsistencyPositive.jl:25:1
+  --> src/OperatorConsistencyPositive.jl:26:1
    |
-25 | Base.:(!=)(a::Ring, b::Ring) = a.radius != b.radius
+26 | Base.:(!=)(a::Ring, b::Ring) = a.radius != b.radius
    | ^^^^^^^^^^ can disagree with `==`
    |
    = why: Base defines `a != b` as `!(a == b)`; own method can drift from it
@@ -33,9 +33,9 @@ error[operator-consistency]: method on `!=`, which Base derives from `==`
    = docs: corset explain operator-consistency
 
 error[operator-consistency]: method on `>`, which Base derives from `<`
-  --> src/OperatorConsistencyPositive.jl:26:1
+  --> src/OperatorConsistencyPositive.jl:27:1
    |
-26 | Base.:(>)(a::Ring, b::Ring) = a.radius > b.radius
+27 | Base.:(>)(a::Ring, b::Ring) = a.radius > b.radius
    | ^^^^^^^^^ can disagree with `<`
    |
    = why: Base defines `a > b` as `b < a`; own method can drift from it
@@ -43,12 +43,80 @@ error[operator-consistency]: method on `>`, which Base derives from `<`
    = docs: corset explain operator-consistency
 
 error[operator-consistency]: method on `>=`, which Base derives from `<=`
-  --> src/OperatorConsistencyPositive.jl:27:1
+  --> src/OperatorConsistencyPositive.jl:28:1
    |
-27 | Base.:(>=)(a::Ring, b::Ring) = a.radius >= b.radius
+28 | Base.:(>=)(a::Ring, b::Ring) = a.radius >= b.radius
    | ^^^^^^^^^^ can disagree with `<=`
    |
    = why: Base defines `a >= b` as `b <= a`; own method can drift from it
    = fix: delete method; define `<=` only   [manual]
+   = docs: corset explain operator-consistency
+
+error[operator-consistency]: `==` defined for `Span` without `isequal`; compared fields hold floats
+  --> src/OperatorConsistencyPositive.jl:34:1
+   |
+34 | Base.:(==)(a::Span, b::Span) = a.ends == b.ends
+   | ^^^^^^^^^^ `isequal` falls back to this `==`
+   |
+   = why: `0.0 == -0.0` holds, but their hashes differ; `isequal` must tell them apart, as it does for `Float64`
+   = fix: define `Base.isequal(a::Span, b::Span)` that applies `isequal` to fields `==` compares   [manual]
+   = docs: corset explain operator-consistency
+
+error[operator-consistency]: `hash` for `Account` reads `cache`, which equality ignores
+  --> src/OperatorConsistencyPositive.jl:43:10
+   |
+42 | Base.:(==)(a::Account, b::Account) = a.id == b.id
+   | ---------- equality
+43 | function Base.hash(account::Account, h::UInt)
+   |          ^^^^^^^^^ hashes more than equality compares
+   |
+   = why: values `isequal` calls equal can differ in `cache`, so their hashes differ and `Dict` keys miss
+   = fix: hash only fields equality compares   [manual]
+   = docs: corset explain operator-consistency
+
+error[operator-consistency]: `hash` defined for `Node` without `==`
+  --> src/OperatorConsistencyPositive.jl:52:1
+   |
+52 | Base.hash(node::Node, h::UInt) = hash(node.id, h)
+   | ^^^^^^^^^ `isequal` still compares by `===`
+   |
+   = why: `Dict` and `Set` compare `Node` keys by identity; values with equal fields stay separate keys
+   = confidence: possible
+   = fix: define `==` over fields `hash` reads; delete `hash` when identity is intended   [manual]
+   = docs: corset explain operator-consistency
+
+error[operator-consistency]: `hash` defined for `Bag` without `==`
+  --> src/OperatorConsistencyPositive.jl:58:1
+   |
+58 | Base.hash(bag::Bag, h::UInt) = hash(bag.items, h)
+   | ^^^^^^^^^ `isequal` still compares by `===`
+   |
+   = why: `Dict` and `Set` compare `Bag` keys by identity; values with equal fields stay separate keys
+   = confidence: possible
+   = fix: define `==` over fields `hash` reads; delete `hash` when identity is intended   [manual]
+   = docs: corset explain operator-consistency
+
+error[operator-consistency]: 1-argument `hash` method for `Key`
+  --> src/OperatorConsistencyPositive.jl:65:1
+   |
+65 | Base.hash(key::Key, h::UInt = zero(UInt)) = hash(key.id, h)
+   | ^^^^^^^^^ replaces Base seed
+   |
+   = why: Base `hash(x)` calls `hash(x, HASH_SEED)`; this method uses other seed, so `isequal` values of other types can hash differently
+   = fix: define 2-argument form only; delete default of `h`   [manual]
+   = docs: corset explain operator-consistency
+
+error[operator-consistency]: `isless` for `Job` compares `priority`; equality compares `name`, `priority`
+  --> src/OperatorConsistencyPositive.jl:74:1
+   |
+72 | Base.:(==)(a::Job, b::Job) = a.name == b.name && a.priority == b.priority
+   | ---------- equality
+73 | Base.hash(job::Job, h::UInt) = hash(job.priority, hash(job.name, h))
+74 | Base.isless(a::Job, b::Job) = isless(getfield(a, :priority), b.priority)
+   | ^^^^^^^^^^^ orders by other fields than equality
+   |
+   = why: exactly one of `isequal(x, y)`, `isless(x, y)` and `isless(y, x)` must hold for every `x` and `y`
+   = confidence: possible
+   = fix: compare fields equality compares; for sort key, sort with `by` instead   [manual]
    = docs: corset explain operator-consistency
 

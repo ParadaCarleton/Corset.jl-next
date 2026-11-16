@@ -210,10 +210,11 @@ stage = "syntax"
 [[footgun]]
 id = 22
 area = "types"
-text = "`==` defined without `hash`"
-example = "`Dict` and `Set` disagree with `==`"
+text = "Equality, `hash` and `isless` break `isequal` contract"
+example = "`==` without `hash`; `==` on float fields without `isequal`"
 group = "correctness"
 stage = "package"
+note = "Contract from Base `isequal` and `hash` docs: `isequal(x, y)` implies equal hashes; own `==` or `isequal` needs own `hash`, and type with float values defines `isequal`; `hash` implements 2-argument form; exactly one of `isequal(x, y)`, `isless(x, y)`, `isless(y, x)` holds. `possible` for `hash` without equality on identity-compared type and for `isless` against equality fields."
 
 [[footgun]]
 id = 23
