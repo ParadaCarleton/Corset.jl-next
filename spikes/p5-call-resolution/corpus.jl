@@ -4,31 +4,8 @@ include("src/EffectSpike.jl")
 using .EffectSpike
 using Random: AbstractRNG
 
-const PKG = Symbol(only(ARGS))
-const T_LOAD = @elapsed Base.require(Main, PKG)
-@eval using $PKG
-const ROOT = getglobal(Main, PKG)::Module
-
-"""Package module and its submodules."""
-function package_modules(root::Module)::Set{Module}
-    mods, todo = Set{Module}(), [root]
-    while !isempty(todo)
-        m = pop!(todo)
-        m in mods && continue
-        push!(mods, m)
-        for n in names(m; all = true)
-            isdefined(m, n) || continue
-            v = getglobal(m, n)
-            v isa Module && parentmodule(v) === m && v !== m && push!(todo, v)
-        end
-    end
-    return mods
-end
-
-const MODS = package_modules(ROOT)
+include("package.jl")
 get(ENV, "S5_PKGJOIN", "1") == "1" && push!(PACKAGE_ROOTS, ROOT)
-const METHODS = Method[]
-Base.visit(m -> m.module in MODS && push!(METHODS, m), Core.methodtable)
 
 bang(name::Symbol)::Bool = name !== :! && endswith(string(name), "!")
 generated(name::Symbol)::Bool = startswith(string(name), "#")
@@ -91,16 +68,66 @@ function root_instance(m::Method)::Core.MethodInstance
     return i === nothing ? declared_instance(m) : Base.specialize_method(ms[i])
 end
 
+const ROOTS = get(ENV, "S5_ROOTS", "declared")
+ROOTS in ("declared", "standin") || error("S5_ROOTS must be declared or standin, got $(ROOTS)")
+ROOTS == "standin" && include("corset_shim.jl")
+
+"""Whether every argument of `m` is declared `Any`: `inference` stage reaches it only through callers."""
+function unannotated(m::Method)::Bool
+    ps = Base.unwrap_unionall(m.sig).parameters
+    untyped(p) = p === Any || (Base.isvarargtype(p) && (!isdefined(p, :T) || p.T === Any))
+    return length(ps) > 1 && all(untyped, ps[2:end])
+end
+
+const STRUCTS = ROOTS == "standin" ? Signatures.struct_stand_ins(package_structs()) : Type[]
+const STRUCT_SET = Set{Type}(STRUCTS)
+# Struct stand-in counts too: `Accumulator{Any, Any}` cuts path at `zero(Any)` as `ArrayStandIn{Any}` does.
+ROOTS == "standin" && (EffectSpike.IS_STANDIN[] = t -> parentmodule(t) === StandIns || t in STRUCT_SET)
+
+"""Root instances of `m`: declared signature, or stand-in signatures (none for unannotated method)."""
+function roots(m::Method)::Vector{Core.MethodInstance}
+    ROOTS == "declared" && return [root_instance(m)]
+    unannotated(m) && return Core.MethodInstance[]
+    found = Core.MethodInstance[]
+    for sig in Signatures.method_signatures(m, STRUCTS).signatures
+        ms = Base._methods_by_ftype(sig, -1, Base.get_world_counter())
+        ms isa Vector || continue
+        i = findfirst(x -> x.method === m, ms)
+        i === nothing || push!(found, Base.specialize_method(ms[i]))
+    end
+    return unique(found)
+end
+
+const ROOT_MIS = Dict(m => roots(m) for m in METHODS)
+
+const THROWING = Set{Method}()  # stand-in mode: method whose every analyzed instance always throws
+
+"""
+Summaries deciding verdict of each package method: roots, plus concrete package instances in stand-in mode (caller
+inference). Stand-in instance that always throws decides nothing: stand-in does not fit method (coverage line).
+"""
+function method_summaries(e::Engine)::Dict{Method, Vector{Summary}}
+    out = Dict{Method, Vector{Summary}}(m => Summary[] for m in METHODS)
+    for (mi, s) in e.summaries
+        (s isa Summary && mi.def isa Method && haskey(out, mi.def)) || continue
+        (mi in ROOT_MIS[mi.def] || (ROOTS == "standin" && Base.isdispatchtuple(mi.specTypes))) || continue
+        ROOTS == "standin" && always_throws(mi) && (push!(THROWING, mi.def); continue)
+        push!(out[mi.def], s)
+    end
+    foreach(m -> isempty(out[m]) || delete!(THROWING, m), METHODS)
+    return out
+end
+
 index_constants!()
 eng = Engine(; budget = 200_000)
-sums = Dict{Method, Union{Nothing, Summary}}()
 const T_RUN = @elapsed on_big_stack() do
-    for m in METHODS
+    for m in METHODS, mi in ROOT_MIS[m]
         t0 = time()
-        sums[m] = summary!(eng, root_instance(m))
+        summary!(eng, mi)
         println(stderr, "root ", round(time() - t0; digits = 2), "s instances=", eng.stats.instances, " ", m.name); flush(stderr)
     end
 end
+sums = method_summaries(eng)
 
 """Whether type `t` mentions type owned by package modules."""
 function mentions_package(@nospecialize(t))::Bool
@@ -124,13 +151,12 @@ for (mi, s) in eng.summaries
     mi in eng.effect_free && push!(warm.effect_free, mi)
 end
 const N_CACHED = length(warm.summaries)
-warm_sums = Dict{Method, Union{Nothing, Summary}}()
 using Profile
 get(ENV, "S5_PROFILE", "0") == "1" && Profile.init(; n = 10^7, delay = 0.002)
 const T_WARM = @elapsed on_big_stack() do
     get(ENV, "S5_PROFILE", "0") == "1" && Profile.start_timer()
-    for m in METHODS
-        warm_sums[m] = summary!(warm, root_instance(m))
+    for m in METHODS, mi in ROOT_MIS[m]
+        summary!(warm, mi)
     end
     get(ENV, "S5_PROFILE", "0") == "1" && Profile.stop_timer()
 end
@@ -142,13 +168,12 @@ if get(ENV, "S5_PROFILE", "0") == "1"
         Profile.print(IOContext(io, :displaysize => (10000, 400)); format = :tree, maxdepth = 60, mincount = 100, noisefloor = 2.0)
     end
 end
-const WARM_DIFF = count(m -> warm_sums[m] != sums[m], METHODS)
+const WARM_DIFF = count(mi -> get(warm.summaries, mi, nothing) != get(eng.summaries, mi, nothing), Iterators.flatten(values(ROOT_MIS)))
 
 # memo rule: package global, not public, written by own statements of exactly one package method
 direct_writers = Dict{GlobalKey, Int}()
-for s in values(sums)
-    s === nothing && continue
-    foreach(k -> k.mod in MODS && (direct_writers[k] = get(direct_writers, k, 0) + 1), s.direct)
+for ss in values(sums)
+    foreach(k -> k.mod in MODS && (direct_writers[k] = get(direct_writers, k, 0) + 1), unique(Iterators.flatten(s.direct for s in ss)))
 end
 memo = Set(k for (k, n) in direct_writers if n == 1 && !Base.ispublic(k.mod, k.name))
 
@@ -178,21 +203,37 @@ rows = String[]
 causes = Tuple{String, String}[]
 tally = Dict{Tuple{Symbol, Certainty}, Int}()
 assumed = Dict{Symbol, Int}()  # NONE verdicts that rely on contract
+# Doubt test kinds of `compare/doubt.py`: doubt in code 0, open dispatch 1, blind spot 2.
+const CAUSE_RANK = Dict(
+    "join" => 0, "typecall" => 0, "callee_unknown" => 0, "callback" => 0, "foreign" => 0,
+    "too_many_candidates" => 1, "apply_unresolved" => 1, "alias" => 2, "candidate_nosummary" => 2,
+)
+"""Rank of possible cause: method with doubt in code in some instance has finding, whatever other instances say."""
+cause_rank(cause::String)::Int = CAUSE_RANK[first(split(cause))]
+
 self_writes = Ref(0)
 failed = Ref(0)
+skipped = Ref(0)  # stand-in mode: unannotated method no analyzed caller reaches (coverage line)
+throwing = Ref(0)  # stand-in mode: every instance always throws (coverage line)
+lossy = Ref(0)  # stand-in mode: verdict none, but stand-in cut some path (coverage line)
 for m in METHODS
-    s = sums[m]
-    s === nothing && (failed[] += 1; continue)
-    c, why, cause = verdict(m, s)
+    ss = sums[m]
+    isempty(ss) && (m in THROWING ? (throwing[] += 1) : isempty(ROOT_MIS[m]) ? (skipped[] += 1) : (failed[] += 1); continue)
+    vs = [verdict(m, s) for s in ss]
+    c = maximum(first, vs)
+    c == NONE && any(s -> s.lossy, ss) && (lossy[] += 1; continue)
+    why = unique(collect(Iterators.flatten(v[2] for v in vs)))
+    found = sort!([v[3] for v in vs if v[1] == POSSIBLE && !isempty(v[3])]; by = c -> (cause_rank(c), c))
+    cause = isempty(found) ? "" : first(found)
     c == POSSIBLE && push!(causes, (string(m.name, " ", m.file, ":", m.line), isempty(cause) ? "?" : cause))
-    self_writes[] += written(s.params[1]) != NONE
+    self_writes[] += any(s -> written(s.params[1]) != NONE, ss)
     kind = generated(m.name) ? :generated : bang(m.name) ? :bang : :plain
     tally[(kind, c)] = get(tally, (kind, c), 0) + 1
-    c == NONE && s.assumed && (assumed[kind] = get(assumed, kind, 0) + 1)
+    c == NONE && any(s -> s.assumed, ss) && (assumed[kind] = get(assumed, kind, 0) + 1)
     kind === :generated && continue
     flag = kind === :plain && c == DEFINITE ? "MISSING!" : kind === :plain && c == POSSIBLE ? "missing?" :
         kind === :bang && c == NONE ? "SPURIOUS!" : kind === :bang && c == POSSIBLE ? "bang-possible" : ""
-    isempty(flag) || push!(rows, join([flag, string(m.name), string(m.file, ":", m.line), string(s.opaque), join(why, "; ")], '\t'))
+    isempty(flag) || push!(rows, join([flag, string(m.name), string(m.file, ":", m.line), string(any(s -> s.opaque, ss)), join(why, "; ")], '\t'))
 end
 
 mkpath(joinpath(@__DIR__, "results"))
@@ -202,9 +243,9 @@ open(joinpath(@__DIR__, "results", "$(PKG)-$(get(ENV, "S5_TAG", "run"))-flags.ts
 end
 st = eng.stats
 open(joinpath(@__DIR__, "results", "$(PKG)-$(get(ENV, "S5_TAG", "run")).txt"), "w") do io
-    println(io, "package $(PKG) $(pkgversion(ROOT))  julia $(VERSION)  standin=$(STANDIN)")
+    println(io, "package $(PKG) $(pkgversion(ROOT))  julia $(VERSION)  standin=$(STANDIN) roots=$(ROOTS)")
     println(io, "load_s=$(round(T_LOAD; digits = 2)) summary_s=$(round(T_RUN; digits = 2)) ir_s=$(round(st.ir_seconds; digits = 2))")
-    println(io, "package_methods=$(length(METHODS)) failed=$(failed[]) instances=$(st.instances) ir_failures=$(st.ir_failures)")
+    println(io, "package_methods=$(length(METHODS)) failed=$(failed[]) skipped=$(skipped[]) throwing=$(throwing[]) lossy=$(lossy[]) lossy_errors=$(EffectSpike.LOSSY_ERRORS[]) roots=$(sum(length, values(ROOT_MIS))) instances=$(st.instances) ir_failures=$(st.ir_failures)")
     println(io, "sccs=$(st.sccs) max_scc=$(st.max_scc) scc_iterations=$(st.iterations)")
     println(io, "warm_s=$(round(T_WARM; digits = 2)) warm_ir_s=$(round(warm.stats.ir_seconds; digits = 2)) warm_instances=$(warm.stats.instances) warm_pkg_ir_s=$(round(warm.stats.pkg_ir_seconds; digits = 2)) warm_pkg_instances=$(warm.stats.pkg_instances) cached=$(N_CACHED) warm_diff=$(WARM_DIFF)")
     slow = sort(warm.stats.slow_sccs; rev = true)
