@@ -75,8 +75,9 @@ function merged(accesses::Vector{InternalAccess}, files::Dict{String, SyntaxFile
     found = InternalAccess[]
     for access in sort(accesses; by = access -> (access.span.file, access.span.first_byte))
         previous = isempty(found) ? nothing : last(found)
-        same_file = !isnothing(previous) && previous.span.file == access.span.file
-        if same_file && SubString(files[access.span.file].text, previous.span.last_byte + 1, access.span.first_byte - 1) == "."
+        # Condition in `if` keeps narrowing of `previous`; stored in variable, it would drop it.
+        if !isnothing(previous) && previous.span.file == access.span.file &&
+                SubString(files[access.span.file].text, previous.span.last_byte + 1, access.span.first_byte - 1) == "."
             span = Span(access.span.file, previous.span.first_byte, access.span.last_byte, Precision.exact)
             found[end] = InternalAccess(previous.owner, "$(previous.name).$(access.name)", span, previous.imported)
         else
