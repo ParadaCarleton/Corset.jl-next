@@ -1,6 +1,0 @@
-target=fixtures/script.jl mode=sandbox forms=13 ok=13 failed=0 seconds=0.27
-facts: boxed=2 softscope_local=1 local_and_global=1
-  boxed n line=6
-  softscope_local total line=21
-  local_and_global y line=37
-  boxed s line=46

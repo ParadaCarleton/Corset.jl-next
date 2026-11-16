@@ -1,9 +1,0 @@
-WARNING: Detected access to binding `Main.JSON` in a world prior to its definition world.
-  Julia 1.12 has introduced more strict world age semantics for global bindings.
-  !!! This code may malfunction under Revise.
-  !!! This code will error in future versions of Julia.
-Hint: Add an appropriate `invokelatest` around the access to this binding.
-To make this warning an error, and hence obtain a stack trace, use `julia --depwarn=error`.
-target=JSON mode=loaded forms=450 full_ok=450 scope_ok=450 failed_scope=0 seconds=2.72 lower_seconds=1.72
-refs exact=9611 coarse=100 line_only=5160
-line_only by outermost macro: @inline=1462 @noinline=747 @checkn=663 @_applyvalue=577 Core.var"@doc"=468 @nextbyte=364 @inbounds=206 @kwdef=172

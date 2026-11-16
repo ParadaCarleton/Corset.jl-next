@@ -1,6 +1,0 @@
-target=JSON mode=sandbox forms=450 ok=434 failed=16 seconds=1.92
-  fail x6  LoadError: UndefVarError: `@checkn` not defined in `Main.Sandbox.JSON`
-  fail x5  LoadError: UndefVarError: `@nextbyte` not defined in `Main.Sandbox.JSON`
-  fail x4  LoadError: UndefVarError: `@_applyvalue` not defined in `Main.Sandbox.JSON`
-  fail x1  LoadError: UndefVarError: `@jsonlines_checks` not defined in `Main.Sandbox.JSON`
-facts: boxed=0 softscope_local=0 local_and_global=13

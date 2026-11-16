@@ -1,9 +1,0 @@
-WARNING: Detected access to binding `Main.Distances` in a world prior to its definition world.
-  Julia 1.12 has introduced more strict world age semantics for global bindings.
-  !!! This code may malfunction under Revise.
-  !!! This code will error in future versions of Julia.
-Hint: Add an appropriate `invokelatest` around the access to this binding.
-To make this warning an error, and hence obtain a stack trace, use `julia --depwarn=error`.
-target=Distances mode=loaded forms=271 full_ok=271 scope_ok=271 failed_scope=0 seconds=1.9 lower_seconds=0.94
-refs exact=3385 coarse=42 line_only=3630
-line_only by outermost macro: Core.var"@doc"=1032 @inline=974 @inbounds=659 Base.var"@propagate_inbounds"=475 @simd=379 @views=72 @doc=30 @noinline=9
