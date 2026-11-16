@@ -14,7 +14,7 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 - Struct that bound makes empty gets no stand-in: `Sized{N}` with `N = Any` has field type `Union{}`.
 - Union or abstract argument takes first stand-in of each struct before second of any, so cut at signature limit reaches most structs.
 - Macro that rebuilds struct (`@concrete struct`) gives constructors its own file; struct ties to its form by name.
-- Function argument: stand-in function returns `Any` (inference barrier). Method stable under that assumption is exempt: stable whenever `f` is. Problems method causes itself are reported. Code after `f`'s result stays analyzed; values from that result give no findings. Opaque result type truncated frames in S1.
+- Function argument: stand-in function returns `Any` (inference barrier). Method stable under that assumption is exempt: stable whenever `f` is. Problems method causes itself are reported. Code after `f`'s result stays analyzed; values from that result give no findings. Opaque result type truncates inference frames.
 - No stand-in yet (`AbstractString`, `AbstractDict`, abstract type without package subtype) and explicit `::Any`: no findings from that argument's data.
 - Unannotated method reached from analyzed caller is analyzed through caller inference: `inference` stage keeps explicit worklist of package frames reached from stand-in callers. Unannotated method nothing calls is skipped; `annotation` reports it. Expect low coverage on unannotated packages (Distances: 165 of 283 methods) until `annotation` fixer runs.
 - Method Corset cannot analyze is blind spot: coverage line counts it with reason.
@@ -55,7 +55,6 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 - **Why stand-in type**: Base has fast paths for `Float32` and `Float64`. Real float probe takes them; stand-in type takes only generic path, same as user number type.
 - **Base**: assume Base callees preserve types; analysis is sound only modulo Base. Optional concrete probes (`Int32`, `Float32`) catch Base-caused widening such as `middle(::Int32)` → `Float64`. Collect real Base widening bugs for upstream report.
 - **Scope**: version 1 covers numbers and arrays (F5, F6, F16). Strings and dicts need only new stand-in type and result rule; engine stays same. Interfaces.jl can declare each kind's contract.
-- **Cost** (S1 spike): number stand-ins about 200 lines; mixing check (differential, escape, filters, classifier) about 360; signature mapping about 190. Source mapping: TypedSyntax.jl as dependency; its CodeTracking dependency loads REPL, about 0.25 s per run. Vendor algorithm (about 500 lines) if cold-run budget needs it.
 - **Stand-in fidelity**: stand-in copies every `Float32` and `Int32` special case that changes result type: irrational rule (`irrationals.jl`); `sum`, `prod` and `factorial` widen `Int32` to `Int`. Reflection on stand-in (`fieldnames`, `propertynames`) sees wrapper; inference stage treats its result as opaque. Stand-in test suite runs `Test.detect_ambiguities` against Base and compares inferred result types with model type.
 - **No tests**: stand-in types come from annotations; see **Arguments without stand-in**.
 

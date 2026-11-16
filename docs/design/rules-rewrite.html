@@ -143,7 +143,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <p>Principles behind every design choice, and what Corset does not do.</p>
 <ul>
 <li>When unsure, do what Rust and Clippy do.</li>
-<li>Every decision is revisable. Evidence from spikes, corpus runs and users outranks earlier reasoning; see design reviews in <code>plan.md</code>.</li>
+<li>Every decision is revisable. Evidence from corpus runs and users outranks earlier reasoning; see design reviews in <code>plan.md</code>.</li>
 <li>Compute each expensive step once per run. Share output with every rule.</li>
 <li>Footguns are source of truth. Rules group footguns by analysis they read. User-facing group is metadata only.</li>
 <li>Give each finding confidence: <code>definite</code> (problem exists) or <code>possible</code> (compiler cannot resolve doubt either). One setting filters them. Corset blind spots go to coverage line only (<code>findings.md</code>).</li>
@@ -217,7 +217,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tr data-group="correctness"><td>F33</td><td>arrays</td><td>Uninitialized element read before write</td><td><code>similar(x)</code> then <code>sum</code></td><td><span class="chip g-correctness">correctness</span></td><td>lifecycle</td><td>Definite only for straight-line pattern; loops, branches, aliases, views give <code>possible</code>.</td></tr>
 <tr data-group="correctness"><td>F34</td><td>arrays</td><td>Placeholder value looks like data after partial fill</td><td><code>zeros(n)</code>, half written</td><td><span class="chip g-correctness">correctness</span></td><td>lifecycle</td><td>Definite only for straight-line pattern; loops, branches, aliases, views give <code>possible</code>.</td></tr>
 <tr data-group="correctness"><td>F35</td><td>arrays</td><td><code>fill</code> shares one mutable object</td><td><code>fill(zeros(3), n)</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>Inferred value type decides mutability; syntax list of mutable constructors would guess it. Fix tier <code>manual</code>: comprehension also changes code that shares on purpose.</td></tr>
-<tr data-group="composability"><td>F36</td><td>arrays</td><td><code>1:length(A)</code> assumes 1-based indices</td><td><code>OffsetArray</code> breaks it</td><td><span class="chip g-composability">composability</span></td><td>inference</td><td>Inferred <code>axes</code> type decides: <code>OneTo</code> gives no finding (<code>Array</code>, S4 <code>CircularDeque</code>); argument of abstract array type gives <code>definite</code>. Array stand-in has <code>OneTo</code> axes, so rule reads declared argument type for stand-in arguments.</td></tr>
+<tr data-group="composability"><td>F36</td><td>arrays</td><td><code>1:length(A)</code> assumes 1-based indices</td><td><code>OffsetArray</code> breaks it</td><td><span class="chip g-composability">composability</span></td><td>inference</td><td>Inferred <code>axes</code> type decides: <code>OneTo</code> gives no finding (<code>Array</code>, DataStructures <code>CircularDeque</code>); argument of abstract array type gives <code>definite</code>. Array stand-in has <code>OneTo</code> axes, so rule reads declared argument type for stand-in arguments.</td></tr>
 <tr data-group="correctness"><td>F37</td><td>arrays</td><td>Index safety removed without proof</td><td><code>@inbounds</code> on unchecked index</td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
 <tr data-group="correctness"><td>F38</td><td>arrays</td><td>String indexed by character count</td><td><code>s[i]</code> for <code>i in 1:length(s)</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
 <tr data-group="performance"><td>F39</td><td>arrays</td><td>Never-written constant array allocates</td><td><code>ones(n)</code> read only</td><td><span class="chip g-performance">performance</span></td><td>lifecycle</td><td></td></tr>
@@ -245,7 +245,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tr data-group="correctness"><td>F60</td><td>effects</td><td>Same statement twice in block</td><td>copy-paste duplicate</td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td></td></tr>
 <tr data-group="correctness"><td>F61</td><td>scope</td><td>Top-level loop assigns global; REPL and file differ</td><td><code>for …; total += x; end</code> in script</td><td><span class="chip g-correctness">correctness</span></td><td>scope</td><td></td></tr>
 <tr data-group="correctness"><td>F62</td><td>scope</td><td>Variable first assigned in <code>try</code> read after it</td><td><code>try; y = f(); end; y</code></td><td><span class="chip g-correctness">correctness</span></td><td>scope</td><td></td></tr>
-<tr data-group="correctness"><td>F63</td><td>scope</td><td>Function defined by <code>eval</code> called in same world</td><td><code>@eval g() = 1; g()</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>Syntactic; needs no scope facts (S3).</td></tr>
+<tr data-group="correctness"><td>F63</td><td>scope</td><td>Function defined by <code>eval</code> called in same world</td><td><code>@eval g() = 1; g()</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>Syntactic; needs no scope facts.</td></tr>
 <tr data-group="correctness"><td>F64</td><td>scope</td><td>Same file included twice</td><td>two copies of module</td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td></td></tr>
 <tr data-group="readability"><td>F103</td><td>scope</td><td>Binding never read</td><td>local, argument or <code>where</code> parameter never used</td><td><span class="chip g-readability">readability</span></td><td>scope</td><td>rustc <code>unused_variables</code>; often marks typo. Opt out: name <code>_</code>, or argument type without name (<code>::T</code>) for dispatch-only argument.</td></tr>
 <tr data-group="composability"><td>F65</td><td>modules</td><td>Name reached through bare <code>using</code></td><td>two packages export <code>solve</code></td><td><span class="chip g-composability">composability</span></td><td>external</td><td></td></tr>
@@ -279,7 +279,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <section id="pipeline">
 <h2>Pipeline</h2>
 <p>Analysis stages Corset computes, in pipeline order. Each stage computes facts once per run; rules read them.</p>
-<p>Stages run top to bottom. Stage not built yet gives no facts; no rule reads it until it ships. Rule declares two stages: <code>stage</code> for findings and <code>fix_stage</code> for fixes, never earlier. Engine computes only stages selected rules need for either. <code>scope</code> runs after <code>package</code>: macro expansion needs evaluated imports and package macros (S3). Scripts: <code>scope</code> evaluates imports only; unresolved macros go to coverage line.</p>
+<p>Stages run top to bottom. Stage not built yet gives no facts; no rule reads it until it ships. Rule declares two stages: <code>stage</code> for findings and <code>fix_stage</code> for fixes, never earlier. Engine computes only stages selected rules need for either. <code>scope</code> runs after <code>package</code>: macro expansion needs evaluated imports and package macros. Scripts: <code>scope</code> evaluates imports only; unresolved macros go to coverage line.</p>
 <div class="pipeline" role="img" aria-label="Analysis stages from syntax tree to effect summary, then findings, confidence filter, report and fix">
       <div class="layer"><div class="id">syntax</div><div class="what">Lossless syntax tree, index by node kind<small>JuliaSyntax · per file · milliseconds</small></div></div>
       <div class="divider">package code runs below · same process, target environment</div>
@@ -563,7 +563,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Struct that bound makes empty gets no stand-in: <code>Sized{N}</code> with <code>N = Any</code> has field type <code>Union{}</code>.</li>
 <li>Union or abstract argument takes first stand-in of each struct before second of any, so cut at signature limit reaches most structs.</li>
 <li>Macro that rebuilds struct (<code>@concrete struct</code>) gives constructors its own file; struct ties to its form by name.</li>
-<li>Function argument: stand-in function returns <code>Any</code> (inference barrier). Method stable under that assumption is exempt: stable whenever <code>f</code> is. Problems method causes itself are reported. Code after <code>f</code>'s result stays analyzed; values from that result give no findings. Opaque result type truncated frames in S1.</li>
+<li>Function argument: stand-in function returns <code>Any</code> (inference barrier). Method stable under that assumption is exempt: stable whenever <code>f</code> is. Problems method causes itself are reported. Code after <code>f</code>'s result stays analyzed; values from that result give no findings. Opaque result type truncates inference frames.</li>
 <li>No stand-in yet (<code>AbstractString</code>, <code>AbstractDict</code>, abstract type without package subtype) and explicit <code>::Any</code>: no findings from that argument's data.</li>
 <li>Unannotated method reached from analyzed caller is analyzed through caller inference: <code>inference</code> stage keeps explicit worklist of package frames reached from stand-in callers. Unannotated method nothing calls is skipped; <code>annotation</code> reports it. Expect low coverage on unannotated packages (Distances: 165 of 283 methods) until <code>annotation</code> fixer runs.</li>
 <li>Method Corset cannot analyze is blind spot: coverage line counts it with reason.</li>
@@ -638,7 +638,6 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li><strong>Why stand-in type</strong>: Base has fast paths for <code>Float32</code> and <code>Float64</code>. Real float probe takes them; stand-in type takes only generic path, same as user number type.</li>
 <li><strong>Base</strong>: assume Base callees preserve types; analysis is sound only modulo Base. Optional concrete probes (<code>Int32</code>, <code>Float32</code>) catch Base-caused widening such as <code>middle(::Int32)</code> → <code>Float64</code>. Collect real Base widening bugs for upstream report.</li>
 <li><strong>Scope</strong>: version 1 covers numbers and arrays (F5, F6, F16). Strings and dicts need only new stand-in type and result rule; engine stays same. Interfaces.jl can declare each kind's contract.</li>
-<li><strong>Cost</strong> (S1 spike): number stand-ins about 200 lines; mixing check (differential, escape, filters, classifier) about 360; signature mapping about 190. Source mapping: TypedSyntax.jl as dependency; its CodeTracking dependency loads REPL, about 0.25 s per run. Vendor algorithm (about 500 lines) if cold-run budget needs it.</li>
 <li><strong>Stand-in fidelity</strong>: stand-in copies every <code>Float32</code> and <code>Int32</code> special case that changes result type: irrational rule (<code>irrationals.jl</code>); <code>sum</code>, <code>prod</code> and <code>factorial</code> widen <code>Int32</code> to <code>Int</code>. Reflection on stand-in (<code>fieldnames</code>, <code>propertynames</code>) sees wrapper; inference stage treats its result as opaque. Stand-in test suite runs <code>Test.detect_ambiguities</code> against Base and compares inferred result types with model type.</li>
 <li><strong>No tests</strong>: stand-in types come from annotations; see <strong>Arguments without stand-in</strong>.</li>
 </ul>
@@ -729,7 +728,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Known memo forms: <code>@memoize</code> (Memoize.jl, Memoization.jl), <code>@cached</code> (Caching.jl), <code>get!</code> on LRUCache.jl <code>LRU</code>.</li>
 <li>Other caches need opt-out comment with reason. Do not invest in deep invisibility proofs.</li>
 <li>Same cache exemption applies to <code>hidden-input</code>: cache read is invisible to caller.</li>
-<li>Callee name is never write evidence. On S5 corpus, trusting <code>!</code> names gave 7 false definite findings in Distances (<code>colwise!</code> writes second argument).</li>
+<li>Callee name is never write evidence: <code>!</code> does not tell which argument changes.</li>
 <li>Requirement propagates: caller of <code>!</code> function on global state needs <code>!</code> too.</li>
 </ul>
 <div class="decision"><h3>Effects engine</h3>
@@ -1100,8 +1099,8 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 
 <section id="plan">
 <h2>Build plan</h2>
-<p>Phases, spikes, quality gate and speed budget.</p>
-<p>Draft. Spikes retire risks first. Each later phase ships usable rules. Phase order follows stage cost: syntax needs no package load, so it works on every project.</p>
+<p>Phases, phase 5 PR order, quality gate and speed budget.</p>
+<p>Draft. Each phase ships usable rules. Phase order follows stage cost: syntax needs no package load, so it works on every project.</p>
 <div class="scroll"><table>
 <thead>
 <tr>
@@ -1112,12 +1111,6 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 </tr>
 </thead>
 <tbody>
-<tr>
-<td>0 spikes</td>
-<td>S1 stand-in inference · S2 source mapping · S3 scope stage · S4 syntax matcher · S5 effect API. Measure legacy Corset on corpus as speed baseline.</td>
-<td>—</td>
-<td>Each spike works on Julia 1.13, or fallback is chosen.</td>
-</tr>
 <tr>
 <td>1 skeleton</td>
 <td>Julia app <code>corset</code>; facts API and rule contract; config, project kind, groups, confidence, fix tiers; finding type with cause spans; message renderer; <code>corset explain</code>; opt-outs; baseline; text, JSON, SARIF output; fixer engine on lossless tree; UI snapshot tests and other harnesses.</td>
@@ -1150,7 +1143,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 </tr>
 <tr>
 <td>6 scope</td>
-<td><code>scope</code> stage on JuliaLowering (S3).</td>
+<td><code>scope</code> stage on JuliaLowering.</td>
 <td>5</td>
 <td>Scope fixtures pass on packages and scripts.</td>
 </tr>
@@ -1162,14 +1155,80 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 </tr>
 </tbody>
 </table></div>
-<div class="decision"><h3>Spikes</h3>
-<ul>
-<li><strong>S1 stand-in inference</strong> (done, works with limits): every corpus method infers; 2 generated functions refused. Differential check right on 12 fixtures. Re-dispatch on real types separates stand-in blind spots. Found real bug (<code>DataStructures.empty(::DefaultDictBase)</code>).</li>
-<li><strong>S2 source mapping</strong> (done, works with limits): 65% of findable statements map to exact bytes; about 2% of checked spans wrong. Code macros write maps to line only.</li>
-<li><strong>S3 scope stage</strong> (done, works with limits): JuliaLowering at julia commit <code>f0188d597b</code> lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload in Corset. <code>Meta.lower</code> fallback dropped.</li>
-<li><strong>S4 syntax matcher</strong> (done, <code>spikes/s4-syntax-matcher/REPORT.md</code>): Argus.jl 0.4.2 is MIT. Use Argus behind thin wrapper so matcher stays swappable. Argus searches whole tree once per rule (about 8× slower than kind-indexed walk); own walk with root-kind index removes most of gap. Phase 2 measure: 21 rules take 15–40 ms per 10,000 lines; rule time grows linearly with rule count.</li>
-<li><strong>S5 effect summary</strong> (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). <code>possible</code> covers 77%, 57% and 61% of methods (Distances, DataStructures, JSON), all from unknown callees or unknown foreign calls. Base interface functions make 91–95% of calls with more than 4 candidates. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.</li>
-</ul>
+<div class="decision"><h3>Phase 5</h3>
+<p>Design: <code>effects.md</code>, Effects engine. One PR per row, in order. Status: PR number when merged.</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>PR</th>
+<th>Holds</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Engine core</td>
+<td><code>inference</code> stage hands typed code to effects; units; IR; points-to; builtins (call step 1); SCC solve; fixtures; soundness property</td>
+<td>next</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Call resolution</td>
+<td>Call steps 2–7: foreign calls, static calls, callback records, join, Base contracts, open calls</td>
+<td>—</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Engine limits</td>
+<td>Compiler-effects shortcut; stand-in cuts; effect kinds and audited Base table</td>
+<td>—</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Library cache</td>
+<td>Disk cache of library summaries; package summaries in method store</td>
+<td>—</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Corpus go/no-go</td>
+<td>Gate in <strong>Design reviews</strong>; revise call resolution if it fails</td>
+<td>—</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>bang-convention</code></td>
+<td><code>!</code> decision flow</td>
+<td>—</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Effect rules</td>
+<td><code>unused-call</code>, <code>hidden-input</code>, <code>impure-lambda</code>, <code>false-effects</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Alias rules</td>
+<td><code>iteration-mutation</code>, <code>self-alias</code>, <code>stateful-reuse</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Lifecycle facts</td>
+<td><code>lifecycle</code> stage reads effects events</td>
+<td>—</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Lifecycle rules</td>
+<td>Rules of <code>lifecycle</code> stage</td>
+<td>—</td>
+</tr>
+</tbody>
+</table></div>
 </div><div class="decision"><h3>Quality gate</h3>
 <p>Rule is on by default only when all hold:</p>
 <ul>
@@ -1182,6 +1241,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li>Run time stays inside budget in CI perf test. Same test checks each rule, parse and whole run for cost linear in function size.</li>
 </ul>
 <p>Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.</p>
+<p>Syntax stage: 21 rules take 15–40 ms per 10,000 lines; rule time grows linearly with rule count.</p>
 <p>Cold run, same scope (target loaded first, default threads):</p>
 <div class="scroll"><table>
 <thead>
@@ -1256,17 +1316,15 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 </tbody>
 </table></div>
 <p>Distances loads ChainRulesCore.jl, whose <code>promote_rule</code> invalidates JuliaSyntax.jl line lookup; stage recompiles about 1 s of Corset code.
-Remaining risk: effect summary, 17–22 s uncached (S5). Shared IR, compiler-effects skip and library cache must close it; engine PR measures new solver before rule PRs.</p>
+Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects skip and library cache must keep it inside budget; engine PR measures solver before rule PRs.</p>
 <p>Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).</p>
 </div><div class="decision"><h3>Design reviews</h3>
 <p>Design is draft until code proves it. Revisit at each checkpoint:</p>
 <ul>
-<li>After phase 0: spike results confirm or replace stand-in inference, scope stage, syntax matcher and effect summary. Rewrite affected parts before phase 1.</li>
 <li>After first release: corpus findings and real use test footgun list, levels, presets and messages.</li>
 <li>After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (<code>types.md</code>). Revisit integer input of <code>type-disruption</code> if corpus shows integer widening outside index math.</li>
 <li>Before each later phase: reread parts that phase builds on; question decisions that no longer fit.</li>
-<li>Before phase 5: <code>lifecycle</code> reuses <code>effects</code> classes over IR (one producer per fact).</li>
-<li>After phase 5 call resolution, go/no-go per corpus package on <code>inference</code> stage units: share of package methods with verdict (closures and keyword bodies included) with <code>possible</code> write at most half of S5 (77%, 57%, 61%); coverage line counts methods without verdict; hand audit of 20 contract and join verdicts finds no false definite; <code>effects</code> stage with warm Base cache at most <code>inference</code> stage time; full cold run with library cache from other corpus package inside speed budget, first run with empty library cache measured; cold Base cache build measured. Else revise call resolution before rule PRs.</li>
+<li>After phase 5 call resolution, go/no-go per corpus package on <code>inference</code> stage units: share of package methods with verdict (closures and keyword bodies included) with <code>possible</code> write at most 30%; coverage line counts methods without verdict; hand audit of 20 contract and join verdicts finds no false definite; <code>effects</code> stage with warm Base cache at most <code>inference</code> stage time; full cold run with library cache from other corpus package inside speed budget, first run with empty library cache measured; cold Base cache build measured. Else revise call resolution before rule PRs.</li>
 <li>Each review: adversarial pass by second model on changed parts; log findings and outcomes in <code>rules-rewrite-history.md</code>.</li>
 <li>Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.</li>
 </ul>

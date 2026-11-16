@@ -406,7 +406,7 @@ text = "`1:length(A)` assumes 1-based indices"
 example = "`OffsetArray` breaks it"
 group = "composability"
 stage = "inference"
-note = "Inferred `axes` type decides: `OneTo` gives no finding (`Array`, S4 `CircularDeque`); argument of abstract array type gives `definite`. Array stand-in has `OneTo` axes, so rule reads declared argument type for stand-in arguments."
+note = "Inferred `axes` type decides: `OneTo` gives no finding (`Array`, DataStructures `CircularDeque`); argument of abstract array type gives `definite`. Array stand-in has `OneTo` axes, so rule reads declared argument type for stand-in arguments."
 
 [[footgun]]
 id = 37
@@ -637,7 +637,7 @@ text = "Function defined by `eval` called in same world"
 example = "`@eval g() = 1; g()`"
 group = "correctness"
 stage = "syntax"
-note = "Syntactic; needs no scope facts (S3)."
+note = "Syntactic; needs no scope facts."
 
 [[footgun]]
 id = 64

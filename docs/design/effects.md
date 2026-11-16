@@ -19,7 +19,7 @@
 - Known memo forms: `@memoize` (Memoize.jl, Memoization.jl), `@cached` (Caching.jl), `get!` on LRUCache.jl `LRU`.
 - Other caches need opt-out comment with reason. Do not invest in deep invisibility proofs.
 - Same cache exemption applies to `hidden-input`: cache read is invisible to caller.
-- Callee name is never write evidence. On S5 corpus, trusting `!` names gave 7 false definite findings in Distances (`colwise!` writes second argument).
+- Callee name is never write evidence: `!` does not tell which argument changes.
 - Requirement propagates: caller of `!` function on global state needs `!` too.
 
 ### Effects engine

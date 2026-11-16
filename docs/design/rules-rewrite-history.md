@@ -328,7 +328,7 @@ Codex reviewed design page; each finding with its outcome.
 
 | # | Finding | Outcome |
 |---|---|---|
-| 1 | `infer_effects` gives no per-argument writes | Fixed: own bottom-up write summary (S5, `!` convention). Unknown callee gives `possible`. |
+| 1 | `infer_effects` gives no per-argument writes | Fixed: own bottom-up write summary (`!` convention). Unknown callee gives `possible`. |
 | 2 | Integer literal widening also guards overflow; user promotion rules | Rule kept by owner. Definite via Base counterexample; user promotion rules out of scope. |
 | 3 | Cache keys miss method-table, preferences, extensions, generated methods | Fixed: compiler dependency record, global key additions, `@generated` depends on package. |
 | 4 | Escape analysis skips small numbers | Fixed: own data-flow pass to returns and stores. |
@@ -342,31 +342,7 @@ Codex reviewed design page; each finding with its outcome.
 | 12 | Concurrency non-goal contradicts phases; stale counts | Fixed: non-goal is race and ownership analysis; counts generated. |
 | 13 | Method ambiguity missing | Fixed: F94 `method-ambiguity` (Aqua.jl). |
 
-## Phase 0 design review
-
-Spike reports: `spikes/s1-stand-in-inference` to `spikes/s5-effect-summary`, file `REPORT.md` each.
-
-| Spike | Finding | Outcome |
-|---|---|---|
-| S1 | Opaque function result truncates frames | Function stand-in returns `Any`. |
-| S1 | Unannotated entry points leave most methods without stand-in | Family D keeps explicit worklist of frames reached from stand-in callers. |
-| S1 | `Union{}` alone cannot drive `never-succeeds` | Re-dispatch on real types; deepest frame only; `Int`-only signatures `possible`. |
-| S1 | Integer-literal findings were all index arithmetic | Disruption converted away downstream is exempt; first version exempts indexing. Exact rule after phase 4. |
-| S1 | Stand-in loses `Float32` special cases | Stand-in copies result-type special cases; ambiguity test. |
-| S2 | Lowering keeps no call-site provenance on 1.13 | Macro-written code maps to nearest in-definition line. |
-| S2 | Not every finding has byte span | `Span` gains precision; definite typed finding needs validated span. |
-| S2 | CodeTracking front end loses closures and offsets | Vendor TypedSyntax mapping algorithm onto L1 tree. |
-| S3 | Macro expansion needs loaded package | L2 runs after L3; lowering per top-level form in include order. |
-| S3 | Base macros give lines only | Own replacement expansions for common Base macros; precompile workload. |
-| S3 | F63 needs no scope facts | F63 moves to family A. |
-| S4 | Argus.jl is MIT; slower by search order | Use Argus behind own root-kind walk; upstream index later (owner approves PR). |
-| S4 | 5× legacy budget includes Julia startup | Budget measures Corset ready to findings out; startup and target load excluded. |
-| S5 | Callee summaries need dependency code | Rule reworded: analysis reads dependency code; findings stay in package. Base summaries cached per Julia version. |
-| S5 | `possible` comes only from unknown callees | `possible` effect findings off until dispatch resolution passes gate. |
-| S5 | Exemption list incomplete | Lazy-init caches, task-local state, locks, error paths, other modules' globals exempt; IO decided by declared type. |
-| S5 | Error-only `!` method flagged spurious | Exempt from F86. |
-
-### Phase 0 review: adversarial pass
+## Early design review: adversarial pass
 
 | # | Finding | Outcome |
 |---|---|---|
@@ -374,13 +350,12 @@ Spike reports: `spikes/s1-stand-in-inference` to `spikes/s5-effect-summary`, fil
 | 2 | Error-path exemption hides write before caught throw | Fixed: only fresh local objects exempt; argument and global writes stay. |
 | 3 | 5× target compares different scopes; effects too slow | Fixed: remeasure legacy in same scope; effects phase gets own budget. |
 | 4 | Argus candidate-node speed unmeasured | Fixed: benchmark first in phase 2. |
-| 5 | Range exemption rests on open S1 question | Fixtures added. Rejected "keep possible": exemption covers only uses proven index-only; rest reports as before. |
+| 5 | Range exemption rests on open question | Fixtures added. Rejected "keep possible": exemption covers only uses proven index-only; rest reports as before. |
 | 6 | Family B on L1 and L2 | Fixed: B on L1 only. |
 | 7 | Soft-scope predeclaration missing | Fixed: Scope contract declares globals in include order. |
 | 8 | "Every package method" overstates coverage | Fixed: eligible methods; coverage line counts rest. |
 | 9 | F1 needs whitespace; Argus ignores trivia | Fixed: F1 reads source bytes. |
-| 10 | S5 percentage wrong | Fixed: per-package shares. |
-| 11 | LintApp check source stale | Fixed: JuliaWorkspaces named. |
+| 10 | LintApp check source stale | Fixed: JuliaWorkspaces named. |
 
 ### Layer audit after first family A checks
 
@@ -504,8 +479,8 @@ Rejected: split Corset into analysis and command-line packages. It removes only 
 
 ### Phase 4 design
 
-Reread `types.md`, `pipeline.md`, `stages.toml`, S1 and S2 reports before phase 4.
-- Stand-in function returns `Any`: inference barrier keeps later code analyzed. Opaque result type truncated frames in S1.
+Reread `types.md`, `pipeline.md`, `stages.toml` before phase 4.
+- Stand-in function returns `Any`: inference barrier keeps later code analyzed.
 - Stand-ins copy model special cases that change result type: `sum`, `prod` and `factorial` widen `Int32` to `Int`. Sweep over Base functions found them.
 - Accepted stand-in differences: range of float stand-in stores stand-in, `Float32` range stores `Float64`; stand-in has field `model`, primitive model has none.
 - Source mapping: vendor TypedSyntax.jl `map_ssas_to_source` (MIT) onto Corset's own JuliaSyntax parse, with closure and do-block root patch. CodeTracking front end stays out.
@@ -619,16 +594,13 @@ Codex reviewed phase 4 code (`a0a64e4` to annotation guesses) by trace only. Eac
 
 ### Phase 5 design
 
-Reread `effects.md`, `stages.toml`, S5 report before phase 5.
+Reread `effects.md`, `stages.toml` before phase 5. Superseded by **Phase 5 redesign**.
 - Legacy Corset and julia-anal Method B reached low unknown share by name trust: `!` callee writes first argument, other callee writes nothing. julia-anal Branch 3 retracted that policy. Sound Branch 3 left 74.4% of Base methods undecided.
-- S5 rerun with name trust: `possible` drops to 25%, 46%, 46%. All 7 new definite findings in Distances are false (`colwise`, `pairwise` said to write `metric`).
-- S5 counted generated methods in denominator only. Consistent shares: 77%, 57%, 61%.
-- Calls with more than 4 candidates: 91–95% are Base interface functions; 30 functions (`getindex`, `iterate`, arithmetic, `==`, `length`, `convert`, `getproperty`, `setindex!`) make 80%. Contract table closes them; breach at implementing method is finding.
+- Name trust is rejected: `!` does not tell which argument changes.
+- Base interface functions (`getindex`, `iterate`, arithmetic, `==`, `length`, `convert`, `getproperty`, `setindex!`) dominate open calls. Contract table closes them; breach at implementing method is finding.
 - Callback writes belong to callback: summary keeps call of parameter symbolic until caller supplies callee (julia-anal Branch 3 sees through `_apply_iterate` too).
-- Unknown call ties result to operands in one direction. S5 merged all operands into one class.
-- Compiler effect bits change no definite verdict on corpus and add 0–4 points. Not used.
+- Unknown call ties result to operands in one direction.
 - IR: pre-inline, shared with `inference` stage, so allocation and consumer calls map through phase 4 source map. Risk: more instances than optimized IR; measure in engine PR.
-- PR order: engine with S5 fixtures; call resolution (callback parameters, contracts, closed-world join); Base summary cache; corpus measure (go/no-go, `plan.md`); `bang-convention`; `unused-call`, `hidden-input`, `impure-lambda`, `false-effects`; `iteration-mutation`, `self-alias`, `stateful-reuse`; lifecycle facts; lifecycle rules.
 
 ### Phase 5 design: adversarial pass
 
@@ -642,7 +614,7 @@ Codex review of phase 5 design found seven problems:
 | 4 | Flow-insensitive classes cannot order reads and writes per allocation | Accepted: lifecycle keeps allocation identity, must-alias facts and statement events; branch join is `possible`. |
 | 5 | `possible` share rewards unsound shortcuts; denominator undefined | Accepted: denominator fixed, hand audit of contract and join verdicts, threshold in phase 5 exit row. |
 | 6 | Pre-inline IR and full joins lack cost data | Accepted: engine PR measures instances, foreign calls, memory, cold and warm time; join over more than 64 methods is unknown. |
-| 7 | S5 drops writes before caught throw | Accepted: definite writes on throwing paths stay; unknown calls there add nothing; throw-only exemption needs no write on any path. |
+| 7 | Summary drops writes before caught throw | Accepted: definite writes on throwing paths stay; unknown calls there add nothing; throw-only exemption needs no write on any path. |
 
 - Phase 4 history names `typeinf_ircode` at `"CC: COMPACT_1"`; `inference` stage uses unoptimized typed code from `typeinf_frame`. Effects engine builds SSA IR before inlining on same inference.
 
@@ -669,7 +641,7 @@ Engine starts new (`effects.md`, Effects engine). Decisions and reasons:
 - Allocation in loop or recursion gives may-alias only. Element events carry index; call facts record result use (F86).
 - Contracts stay for open dispatch: rules assume Base contracts (`findings.md`).
 - Solver cost and accuracy are unmeasured; engine PR measures them before rule PRs.
-- PR order: engine core (units, IR, points-to, builtins, solve, soundness property); call resolution; compiler-effects shortcut, cuts, effect kinds; library cache; corpus go/no-go; `bang-convention`; `unused-call`, `hidden-input`, `impure-lambda`, `false-effects`; `iteration-mutation`, `self-alias`, `stateful-reuse`; lifecycle facts; lifecycle rules.
+- PR order: `plan.md`, Phase 5.
 
 ### Phase 5 redesign: adversarial pass
 

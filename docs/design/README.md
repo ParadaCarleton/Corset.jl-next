@@ -14,7 +14,7 @@ Never hand-edit `rules-rewrite.html`.
 | `types.md` | Stand-in types, type-disruption, lost narrowing, arguments without stand-in, annotations, union policy, Moshi, arrays |
 | `effects.md` | `!` convention, effect summary |
 | `architecture.md` | Code layout, core types, process model, tests, command line, rule contract, package load, cache, reference linters |
-| `plan.md` | Phases, spikes, quality gate, speed budget |
+| `plan.md` | Phases, phase 5 PR order, quality gate, speed budget |
 | `glossary.md` | Coined terms |
 | `rules-rewrite-history.md` | Legacy rule names, early decisions, review log. Frozen |
 | `page.css` | Page style |
