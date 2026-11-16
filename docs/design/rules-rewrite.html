@@ -746,17 +746,20 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Effects reads units of <code>inference</code> stage: method and stand-in signature, plus signatures package calls reach. Effects adds no roots.</li>
 <li>Method gets verdict from its units only. Unannotated method no call reaches has none; <code>inference</code> stage counts it.</li>
 <li>Verdict of method: worst over its units.</li>
+<li>Incomplete method gets no definite none: signatures over limit, crash, inference without code, or type test (<code>inference</code> stage <code>incomplete</code>). Coverage reason names cause.</li>
 <li>Unit that always throws on its signature gives no verdict. Coverage reason: <code>always throws on stand-ins</code>.</li>
 </ul>
 <h4>IR</h4>
 <ul>
+<li><code>inference</code> stage hands typed code of units it inferred this run to effects. Method store keeps facts only; stored unit keeps its stored summary.</li>
 <li>Typed SSA IR before inlining: copy unit's unoptimized code; run compiler passes until <code>CC: COMPACT_1</code>. Package units need no second inference.</li>
 <li>Calls stay call statements, so allocations and consumers map to source through <code>inference</code> stage spans.</li>
 <li>Instance outside package: native inference, then same passes. Library cache skips both (see <strong>Solve and cache</strong>).</li>
 </ul>
 <h4>Origins and points-to</h4>
 <ul>
-<li>Origin: abstract object or value. Kinds: parameter path, global path, allocation site, call result site, constant.</li>
+<li>Origin: abstract object or value. Kinds: parameter path, global path, allocation site, call result site, constant, <code>unknown</code>.</li>
+<li><code>unknown</code>: object open call can return that no operand names, global included. Write to it is <code>possible</code> global write.</li>
 <li>Path: field name or element, at most 2 steps. Longer path collapses to <code>deep</code>.</li>
 <li>Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.</li>
 <li>Unification is rejected: it merges unrelated objects at each unknown call.</li>
@@ -782,6 +785,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Opt-out: explicit <code>::Any</code> argument, field or element type declared <code>Any</code> (<code>types.md</code>, Explicit <code>Any</code>). Its data gives no finding and no blind spot.</li>
 <li>Code: every other origin, untyped argument and untyped field included. Compiler sees same open type.</li>
 <li>Provenance flows with origins through points-to and callee result aliases. No separate taint pass.</li>
+<li>Provenance judges doubt from open dispatch only (step 7). Writes code performs, and resolved, joined or contract writes, keep certainty on every origin: <code>f(x::Any) = setfield!(x, :n, 0)</code> writes <code>x</code>.</li>
 </ul>
 <h4>Calls</h4>
 <p>Resolution of each call statement, first match wins:</p>
@@ -791,11 +795,12 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Static call (<code>:invoke</code>, or one method matches): callee summary.</li>
 <li>Callee is parameter, type from static parameter, or field callable: summary records call with operands. Caller that knows callee substitutes its summary, captured aliases included.</li>
 <li>Run-time dispatch with at most 8 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.</li>
-<li>Base interface function with documented contract (<code>setindex!</code> writes collection; <code>getindex</code>, <code>iterate</code>, <code>length</code> read only; <code>view</code> result lies within array). Breach in package method is finding.</li>
-<li>Else open: <code>possible</code> write on operands; result may point into operands, one direction.</li>
+<li>Base interface function with documented contract (<code>setindex!</code> writes collection; <code>length</code> reads only; <code>view</code> result lies within array). Breach in package method is finding.</li>
+<li>Else open: <code>possible</code> write on operands; result may point into operands, one direction, and to <code>unknown</code>.</li>
 </ol>
 <ul>
 <li>Steps 5 and 6 assume methods loaded now. Write they find keeps certainty. &quot;Writes nothing&quot; from them is at most <code>possible</code>.</li>
+<li>Contract entry holds only behavior Base documents. Base type that writes where others read (<code>iterate</code> on <code>Iterators.Stateful</code>) gives <code>possible</code> write when operand type admits it.</li>
 <li>Open call (step 7) whose open operands point to opaque and opt-out origins only: no finding. Opaque origin counts on coverage line: <code>open dispatch on opaque data</code>.</li>
 <li>Other open call: doubt in code, <code>possible</code> finding.</li>
 <li>Limit 8 is first guess; engine PR measures it. Never below compiler <code>max_methods</code>.</li>
@@ -807,7 +812,8 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li><code>effect_free</code> proves one direction. True: instance writes nothing caller sees, so its own verdict is none.</li>
 <li>False proves no write: dynamic call or IO also clears it. Own analysis decides then, per argument and global.</li>
 <li>Callee summary needs more than <code>effect_free</code>: result aliases. <code>view</code> writes nothing, but caller writes <code>A</code> through <code>view(A, 1:2)</code>.</li>
-<li><code>@assume_effects</code> makes compiler trust claim. Engine runs own analysis on package methods with claim; <code>false-effects</code> compares.</li>
+<li><code>@assume_effects</code> makes compiler trust claim. Shortcut holds only when no method instance reaches outside Base carries effects override; call graph tells.</li>
+<li>Own analysis runs on every method with claim outside Base. <code>false-effects</code> compares claims of package methods.</li>
 </ul>
 <h4>Stand-in cuts</h4>
 <ul>
@@ -832,7 +838,8 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Package <code>setfieldonce!</code> and package caches follow memo-cache rule above: cheap proof or opt-out.</li>
 <li>Write to other module's global outside audited table counts as global write; requirement propagates.</li>
 <li>Writes to fresh local objects inside error paths (message building) are local writes.</li>
-<li>Argument or global write before throw stays in summary: caller that catches sees it. Unknown calls on throwing paths add no <code>possible</code> writes.</li>
+<li>Argument or global write before throw stays in summary: caller that catches sees it, open calls included (<code>foreign_mutate!(x); error()</code>).</li>
+<li>Calls whose results feed only thrown value (message building) add no <code>possible</code> writes.</li>
 <li>Throw-only exemption (F86) needs no write on any path.</li>
 </ul>
 <h4>Solve and cache</h4>
@@ -850,7 +857,8 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Per package method: summary verdict per parameter and global, cause spans, result aliases, blind spots by reason.</li>
 <li>Per unit, for <code>lifecycle</code> and statement rules (F48, F50, F51): allocation sites, read and write events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.</li>
 <li>Element event carries index operand: constant or SSA value. <code>lifecycle</code> decides which elements writes cover (F33, F34).</li>
-<li>Per call statement: callee, effect kinds, result used or discarded (F54, F86).</li>
+<li>Per call statement: callee, effect kinds, may throw, result used or discarded (F54, F86).</li>
+<li><code>unused-call</code> needs no effect of any kind, no throw and termination: discarded <code>parse(Int, text)</code> validates input.</li>
 <li>Join of two allocations at branch (<code>y = flag ? a : b</code>) makes fact <code>possible</code>.</li>
 <li>Callee content reads come from summaries: <code>sum</code> reads, <code>fill!</code> does not.</li>
 <li><code>possible</code> effect findings stay off until call resolution passes quality gate.</li>
@@ -1258,7 +1266,7 @@ Remaining risk: effect summary, 17–22 s uncached (S5). Shared IR, compiler-eff
 <li>After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (<code>types.md</code>). Revisit integer input of <code>type-disruption</code> if corpus shows integer widening outside index math.</li>
 <li>Before each later phase: reread parts that phase builds on; question decisions that no longer fit.</li>
 <li>Before phase 5: <code>lifecycle</code> reuses <code>effects</code> classes over IR (one producer per fact).</li>
-<li>After phase 5 call resolution, go/no-go per corpus package on <code>inference</code> stage units: share of package methods with verdict (closures and keyword bodies included) with <code>possible</code> write at most half of S5 (77%, 57%, 61%); coverage line counts methods without verdict; hand audit of 20 contract and join verdicts finds no false definite; <code>effects</code> stage with warm Base cache at most <code>inference</code> stage time; cold Base cache build measured. Else revise call resolution before rule PRs.</li>
+<li>After phase 5 call resolution, go/no-go per corpus package on <code>inference</code> stage units: share of package methods with verdict (closures and keyword bodies included) with <code>possible</code> write at most half of S5 (77%, 57%, 61%); coverage line counts methods without verdict; hand audit of 20 contract and join verdicts finds no false definite; <code>effects</code> stage with warm Base cache at most <code>inference</code> stage time; full cold run with library cache from other corpus package inside speed budget, first run with empty library cache measured; cold Base cache build measured. Else revise call resolution before rule PRs.</li>
 <li>Each review: adversarial pass by second model on changed parts; log findings and outcomes in <code>rules-rewrite-history.md</code>.</li>
 <li>Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.</li>
 </ul>

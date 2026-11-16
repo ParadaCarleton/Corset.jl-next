@@ -669,3 +669,19 @@ Engine starts new (`effects.md`, Effects engine). Decisions and reasons:
 - Allocation in loop or recursion gives may-alias only. Element events carry index; call facts record result use (F86).
 - Contracts stay for open dispatch: rules assume Base contracts (`findings.md`).
 - Solver cost and accuracy are unmeasured; engine PR measures them before rule PRs.
+- PR order: engine core (units, IR, points-to, builtins, solve, soundness property); call resolution; compiler-effects shortcut, cuts, effect kinds; library cache; corpus go/no-go; `bang-convention`; `unused-call`, `hidden-input`, `impure-lambda`, `false-effects`; `iteration-mutation`, `self-alias`, `stateful-reuse`; lifecycle facts; lifecycle rules.
+
+### Phase 5 redesign: adversarial pass
+
+Codex review of redesign saw design parts and `src/` only. Eight problems:
+
+| # | Finding | Outcome |
+|---|---|---|
+| 1 | Opt-out provenance hides direct write to `::Any` argument (`setfield!(x, :n, 0)`) | Accepted: provenance judges open dispatch only; code, resolved, joined and contract writes keep certainty. |
+| 2 | Open call can return global that no operand names; write through it is lost | Accepted: origin `unknown`; write to it is `possible` global write. |
+| 3 | Dropped unknown calls on throwing paths hide `foreign_mutate!(x); error()`; `unused-call` can delete call that throws | Accepted: only message-building calls add nothing; call facts carry may-throw; `unused-call` needs no throw. |
+| 4 | Signatures over limit leave writes unseen, yet verdict can be none | Accepted: incomplete method gets no definite none. |
+| 5 | False `@assume_effects` in dependency makes shortcut unsound | Accepted: shortcut needs no effects override outside Base on reached methods; own analysis runs on claimed methods. |
+| 6 | `iterate` read-only contract hides `Iterators.Stateful` writes | Accepted: contracts hold documented behavior only; Base breaker gives `possible` write. |
+| 7 | `inference` stage drops typed code; effects has no IR | Accepted: stage hands typed units of this run to effects; store keeps summaries. |
+| 8 | Warm-only gate passes while cold run misses speed budget | Accepted: go/no-go adds cold full run inside budget and measures empty library cache. |

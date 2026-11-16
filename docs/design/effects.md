@@ -39,17 +39,20 @@ Engine code lives in `src/Effects/`.
 - Effects reads units of `inference` stage: method and stand-in signature, plus signatures package calls reach. Effects adds no roots.
 - Method gets verdict from its units only. Unannotated method no call reaches has none; `inference` stage counts it.
 - Verdict of method: worst over its units.
+- Incomplete method gets no definite none: signatures over limit, crash, inference without code, or type test (`inference` stage `incomplete`). Coverage reason names cause.
 - Unit that always throws on its signature gives no verdict. Coverage reason: `always throws on stand-ins`.
 
 #### IR
 
+- `inference` stage hands typed code of units it inferred this run to effects. Method store keeps facts only; stored unit keeps its stored summary.
 - Typed SSA IR before inlining: copy unit's unoptimized code; run compiler passes until `CC: COMPACT_1`. Package units need no second inference.
 - Calls stay call statements, so allocations and consumers map to source through `inference` stage spans.
 - Instance outside package: native inference, then same passes. Library cache skips both (see **Solve and cache**).
 
 #### Origins and points-to
 
-- Origin: abstract object or value. Kinds: parameter path, global path, allocation site, call result site, constant.
+- Origin: abstract object or value. Kinds: parameter path, global path, allocation site, call result site, constant, `unknown`.
+- `unknown`: object open call can return that no operand names, global included. Write to it is `possible` global write.
 - Path: field name or element, at most 2 steps. Longer path collapses to `deep`.
 - Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.
 - Unification is rejected: it merges unrelated objects at each unknown call.
@@ -74,6 +77,7 @@ Each origin has one provenance:
 - Opt-out: explicit `::Any` argument, field or element type declared `Any` (`types.md`, Explicit `Any`). Its data gives no finding and no blind spot.
 - Code: every other origin, untyped argument and untyped field included. Compiler sees same open type.
 - Provenance flows with origins through points-to and callee result aliases. No separate taint pass.
+- Provenance judges doubt from open dispatch only (step 7). Writes code performs, and resolved, joined or contract writes, keep certainty on every origin: `f(x::Any) = setfield!(x, :n, 0)` writes `x`.
 
 #### Calls
 
@@ -84,10 +88,11 @@ Resolution of each call statement, first match wins:
 3. Static call (`:invoke`, or one method matches): callee summary.
 4. Callee is parameter, type from static parameter, or field callable: summary records call with operands. Caller that knows callee substitutes its summary, captured aliases included.
 5. Run-time dispatch with at most 8 matching methods: join their summaries. All agree: their certainty. Disagree: `possible`.
-6. Base interface function with documented contract (`setindex!` writes collection; `getindex`, `iterate`, `length` read only; `view` result lies within array). Breach in package method is finding.
-7. Else open: `possible` write on operands; result may point into operands, one direction.
+6. Base interface function with documented contract (`setindex!` writes collection; `length` reads only; `view` result lies within array). Breach in package method is finding.
+7. Else open: `possible` write on operands; result may point into operands, one direction, and to `unknown`.
 
 - Steps 5 and 6 assume methods loaded now. Write they find keeps certainty. "Writes nothing" from them is at most `possible`.
+- Contract entry holds only behavior Base documents. Base type that writes where others read (`iterate` on `Iterators.Stateful`) gives `possible` write when operand type admits it.
 - Open call (step 7) whose open operands point to opaque and opt-out origins only: no finding. Opaque origin counts on coverage line: `open dispatch on opaque data`.
 - Other open call: doubt in code, `possible` finding.
 - Limit 8 is first guess; engine PR measures it. Never below compiler `max_methods`.
@@ -99,7 +104,8 @@ Resolution of each call statement, first match wins:
 - `effect_free` proves one direction. True: instance writes nothing caller sees, so its own verdict is none.
 - False proves no write: dynamic call or IO also clears it. Own analysis decides then, per argument and global.
 - Callee summary needs more than `effect_free`: result aliases. `view` writes nothing, but caller writes `A` through `view(A, 1:2)`.
-- `@assume_effects` makes compiler trust claim. Engine runs own analysis on package methods with claim; `false-effects` compares.
+- `@assume_effects` makes compiler trust claim. Shortcut holds only when no method instance reaches outside Base carries effects override; call graph tells.
+- Own analysis runs on every method with claim outside Base. `false-effects` compares claims of package methods.
 
 #### Stand-in cuts
 
@@ -122,7 +128,8 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - Package `setfieldonce!` and package caches follow memo-cache rule above: cheap proof or opt-out.
 - Write to other module's global outside audited table counts as global write; requirement propagates.
 - Writes to fresh local objects inside error paths (message building) are local writes.
-- Argument or global write before throw stays in summary: caller that catches sees it. Unknown calls on throwing paths add no `possible` writes.
+- Argument or global write before throw stays in summary: caller that catches sees it, open calls included (`foreign_mutate!(x); error()`).
+- Calls whose results feed only thrown value (message building) add no `possible` writes.
 - Throw-only exemption (F86) needs no write on any path.
 
 #### Solve and cache
@@ -140,7 +147,8 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - Per package method: summary verdict per parameter and global, cause spans, result aliases, blind spots by reason.
 - Per unit, for `lifecycle` and statement rules (F48, F50, F51): allocation sites, read and write events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.
 - Element event carries index operand: constant or SSA value. `lifecycle` decides which elements writes cover (F33, F34).
-- Per call statement: callee, effect kinds, result used or discarded (F54, F86).
+- Per call statement: callee, effect kinds, may throw, result used or discarded (F54, F86).
+- `unused-call` needs no effect of any kind, no throw and termination: discarded `parse(Int, text)` validates input.
 - Join of two allocations at branch (`y = flag ? a : b`) makes fact `possible`.
 - Callee content reads come from summaries: `sum` reads, `fill!` does not.
 - `possible` effect findings stay off until call resolution passes quality gate.
