@@ -94,6 +94,7 @@ Files, as Cargo picks targets:
 - Missing module or extension file is config error.
 
 Exit codes: `0` no `deny` finding; `1` `deny` finding; `2` config or usage error; `101` internal error (Cargo convention).
+Relaunched `fix` that edits loaded package exits `3`: loaded methods keep old code. Relaunching process then runs `check` in fresh process. User never sees `3`.
 
 ### Rule contract
 

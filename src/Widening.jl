@@ -148,9 +148,15 @@ function statement_call(statement::Any)::Union{Nothing, Expr}
     return call isa Expr && call.head === :call ? call : nothing
 end
 
-"""Weak values each variable of `code` takes from assignment, as (statement, value) pairs: `s = 0` makes `s` weak."""
-function variable_origins(code::Core.CodeInfo)::Dict{Int, Vector{Tuple{Int, Any}}}
-    found = Dict{Int, Vector{Tuple{Int, Any}}}()
+"""Whether `slot` of `code` is lowering temporary: value of `c ? 0.5 : 1.5`, or result before declared conversion."""
+temporary(code::Core.CodeInfo, slot::Core.SlotNumber)::Bool = (name = string(code.slotnames[slot.id]); isempty(name) || startswith(name, '#'))
+
+"""
+Weak values each variable of `code` takes from assignment, as (statement, value, kind) triples: `s = 0` makes `s`
+weak. Kind is `Weak.variable`; lowering temporary has no source name, so it keeps kind of its value.
+"""
+function variable_origins(code::Core.CodeInfo)::Dict{Int, Vector{Tuple{Int, Any, Weak.T}}}
+    found = Dict{Int, Vector{Tuple{Int, Any, Weak.T}}}()
     for (index, statement) in enumerate(code.code)
         statement isa Expr || continue
         statement.head === :(=) || continue
@@ -158,7 +164,8 @@ function variable_origins(code::Core.CodeInfo)::Dict{Int, Vector{Tuple{Int, Any}
         slot isa Core.SlotNumber || continue
         value = weak(code, statement.args[2])
         # Type name holds no number, so `replacement` drops it.
-        isnothing(value) || push!(get!(found, slot.id, Tuple{Int, Any}[]), (index, value[1]))
+        isnothing(value) && continue
+        push!(get!(found, slot.id, Tuple{Int, Any, Weak.T}[]), (index, value[1], temporary(code, slot) ? value[2] : Weak.variable))
     end
     return found
 end
@@ -249,7 +256,7 @@ function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int,
         callee isa Core.Builtin && continue
         types = Any[CC.widenconst(CC.argextype(argument, code, parameters)) for argument in call.args]
         values = Union{Nothing, Tuple{Any, Weak.T}}[weak(code, argument) for argument in call.args]
-        held = Union{Nothing, Vector{Tuple{Int, Any}}}[(read = resolved(code, argument); read isa Core.SlotNumber ? get(variables, read.id, nothing) : nothing) for argument in call.args]
+        held = Union{Nothing, Vector{Tuple{Int, Any, Weak.T}}}[(read = resolved(code, argument); read isa Core.SlotNumber ? get(variables, read.id, nothing) : nothing) for argument in call.args]
         any(position -> isnothing(values[position]) && isnothing(held[position]) && holds_float(types[position]), eachindex(types)) || continue
         # Origins by call position, and type each position takes once its weak value converts.
         new, swaps, named = Pair{Int, Origin}[], Dict{Int, Any}(), false
@@ -267,9 +274,9 @@ function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int,
                     swaps[position] = typeof(something(swap))
                 end
             elseif !isnothing(held[position])
-                for (assignment, value) in something(held[position])
+                for (assignment, value, kind) in something(held[position])
                     swap = replacement(value)
-                    isnothing(swap) || (push!(new, position => Origin(assignment, 0, Weak.variable, value, something(swap), index)); swaps[position] = typeof(something(swap)))
+                    isnothing(swap) || (push!(new, position => Origin(assignment, 0, kind, value, something(swap), index)); swaps[position] = typeof(something(swap)))
                 end
             end
         end
@@ -346,9 +353,14 @@ const STORES = IdDict{Any, Int}(
     Base.Broadcast.materialize! => 3,
 )
 
+"""Whether typed `code` returns local variable `slot`: container stored there leaves method."""
+returns_slot(code::Core.CodeInfo, slot::Core.SlotNumber)::Bool =
+    any(statement -> statement isa Core.ReturnNode && isdefined(statement, :val) && resolved(code, statement.val) == slot, code.code)
+
 """
-Value statement of typed `code` returns or stores in argument or global: (value, store target type, store); target
-`nothing` for return, store `callee => call` for argument and `nothing` for global. `nothing` for other statement.
+Value statement of typed `code` returns or stores in argument, global or returned local container: (value, store
+target type, store); target `nothing` for return, store `callee => call` for container and `nothing` for global.
+`nothing` for other statement.
 """
 function exit_value(code::Core.CodeInfo, statement::Any, parameters::Vector{CC.VarState}, arguments::Int)::Union{Nothing, Tuple{Any, Any, Any}}
     statement isa Core.ReturnNode && return isdefined(statement, :val) ? (statement.val, nothing, nothing) : nothing
@@ -366,7 +378,8 @@ function exit_value(code::Core.CodeInfo, statement::Any, parameters::Vector{CC.V
     (haskey(STORES, callee.val) && length(call.args) >= STORES[callee.val]) || return nothing
     target = resolved(code, call.args[2])
     target isa Core.SlotNumber || return nothing
-    2 <= target.id <= arguments || return nothing
+    # `out = Any[]; push!(out, v); out` returns what it stores.
+    (2 <= target.id <= arguments || (target.id > arguments && returns_slot(code, target))) || return nothing
     return call.args[STORES[callee.val]], argument_type(code, target, parameters), callee.val => call
 end
 
@@ -385,7 +398,8 @@ end
 
 """
 First statement of typed `left` that returns or stores value whose type differs in `baseline`, with `Exit` kind;
-`nothing` when none. Store counts when it writes into argument or global whose type does not convert value (`converts`).
+`nothing` when none. Store counts when it writes into argument, global or returned local container whose type does not
+convert value (`converts`).
 """
 function exit_statement(left::Core.CodeInfo, baseline::Core.CodeInfo, parameters::Vector{CC.VarState}, arguments::Int)::Union{Nothing, Tuple{Int, Exit.T}}
     for (index, statement) in enumerate(left.code)
@@ -393,7 +407,9 @@ function exit_statement(left::Core.CodeInfo, baseline::Core.CodeInfo, parameters
         isnothing(exit) && continue
         value, target, store = exit
         !isnothing(target) && converts(left, target, store, parameters) && continue
-        argument_type(left, value, parameters) == argument_type(baseline, value, parameters) || return index, isnothing(target) ? Exit.returned : Exit.stored
+        # Converted code that infers `Any` lost precision; it shows no type.
+        expected = argument_type(baseline, value, parameters)
+        known(expected) && argument_type(left, value, parameters) != expected && return index, isnothing(target) ? Exit.returned : Exit.stored
     end
     return nothing
 end
@@ -408,13 +424,42 @@ end
 """Whether call result `type` can carry widened number: number, array, or lazy broadcast."""
 carries_number(type::Type)::Bool = type !== Union{} && (type <: Number || type <: AbstractArray || type <: Base.Broadcast.Broadcasted)
 
-"""First number statement of typed `left` whose type differs in `baseline`; `nothing` when none."""
-function widened_statement(left::Core.CodeInfo, baseline::Core.CodeInfo)::Union{Nothing, Int}
-    for index in eachindex(left.code)
-        found = statement_type(left, index)
-        carries_number(found) && found != statement_type(baseline, index) && return index
+"""
+First call of typed `left` that computes number, with other number type in `baseline`; `nothing` when none. Slot read
+computes nothing: `x::T = 0.5` converts constant.
+"""
+function widened_statement(left::Core.CodeInfo, baseline::Core.CodeInfo, parameters::Vector{CC.VarState})::Union{Nothing, Int}
+    for (index, statement) in enumerate(left.code)
+        call = statement_call(statement)
+        isnothing(call) && continue
+        found, expected = statement_type(left, index), statement_type(baseline, index)
+        carries_number(found) && carries_number(expected) && found != expected && return index
     end
     return nothing
+end
+
+"""`statement` of typed code without `Core.Const` inference wraps around unreached statement."""
+unwrapped(statement::Any)::Any = statement isa Core.Const ? statement.val : statement
+
+"""Whether `statement` calls function `callee` (`GlobalRef`)."""
+calls(statement::Any, callee::GlobalRef)::Bool = statement isa Expr && statement.head === :call && statement.args[1] == callee
+
+"""
+Whether `isa` test `call` of `code` is conversion lowering adds for declared result or local type: `v isa T` guards
+`v = Core.typeassert(convert(T, v), T)` on same slot `v`.
+"""
+function declared_conversion(code::Core.CodeInfo, call::Expr)::Bool
+    tested = call.args[2]
+    tested isa Core.SSAValue && (tested = code.code[tested.id])
+    tested isa Core.SlotNumber || return false
+    for statement in code.code
+        statement = unwrapped(statement)
+        (statement isa Expr && statement.head === :(=) && statement.args[1] == tested) || continue
+        assertion = statement.args[2]
+        (calls(assertion, GlobalRef(Core, :typeassert)) && assertion.args[2] isa Core.SSAValue) || continue
+        calls(unwrapped(code.code[assertion.args[2].id]), GlobalRef(Base, :convert)) && return true
+    end
+    return false
 end
 
 """Whether `argument` of `code` is result of `Core.get_binding_type`: declared type of global."""
@@ -428,16 +473,18 @@ end
 const TYPE_TESTS = Base.IdSet{Any}([isa, <:, ===, ==, !=, isequal])
 
 """
-Whether typed `code` tests type: `x isa Float64`, `T <: Integer`, `T === Float32`. Test of declared global type, which
-lowering adds to `global g = v`, does not count.
+Whether typed `code` tests type: `x isa Float64`, `T <: Integer`, `T === Float32`. Tests lowering adds for declared
+types do not count: global (`global g = v`), result (`f(x)::Real`) and local (`y::Real = v`).
 """
 function type_branch(code::Core.CodeInfo, parameters::Vector{CC.VarState})::Bool
     for statement in code.code
         call = statement_call(statement)
         isnothing(call) && continue
         callee = CC.argextype(call.args[1], code, parameters)
-        (callee isa Core.Const && callee.val in TYPE_TESTS) || continue
+        callee isa Core.Const || continue
+        callee.val in TYPE_TESTS || continue
         any(argument -> binding_type(code, argument, parameters), call.args[2:end]) && continue
+        callee.val === isa && declared_conversion(code, call) && continue
         any(argument -> argument_type(code, argument, parameters) <: Type, call.args[2:end]) && return true
     end
     return false
@@ -476,7 +523,7 @@ function changes!(edges::Vector{Any}, instance::Core.MethodInstance, code::Core.
         isnothing(left) && continue
         exit = exit_statement(left, baseline, parameters, arguments)
         if isnothing(exit)
-            widened = widened_statement(left, baseline)
+            widened = widened_statement(left, baseline, parameters)
             isnothing(widened) && continue
             exit = (widened, Exit.intermediate)
         end

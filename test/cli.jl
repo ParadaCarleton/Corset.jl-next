@@ -84,6 +84,26 @@ end
     end
 end
 
+@testset "fix of loaded package asks for fresh check" begin
+    mktempdir(@__DIR__) do root
+        uuid = Base.UUID(rand(UInt128))
+        write(joinpath(root, "Project.toml"), "name = \"RecheckSample\"\nuuid = \"$uuid\"\n\n[preferences.Corset]\nkind = \"library\"\n")
+        mkpath(joinpath(root, "src"))
+        source = joinpath(root, "src", "RecheckSample.jl")
+        write(source, "module RecheckSample\n\"\"\"Half of `x`.\"\"\"\nhalf(x::AbstractFloat)::AbstractFloat = x * 0.5\nend\n")
+        push!(LOAD_PATH, root)
+        try
+            code, out, err = corset("fix", root)
+            @test code == Corset.CLI.EXIT_RECHECK && isempty(out) && startswith(err, "corset: applied ")
+            @test occursin("oftype(x, 0.5)", read(source, String))
+            # No edit leaves loaded methods current, so same process reports.
+            @test first(corset("fix", root)) in (Corset.CLI.EXIT_PASS, Corset.CLI.EXIT_FAIL)
+        finally
+            pop!(LOAD_PATH)
+        end
+    end
+end
+
 @testset "cli fix, baseline, explain" begin
     mktempdir(@__DIR__) do directory
         write(joinpath(directory, "Project.toml"), "[deps]\n")
@@ -492,8 +512,10 @@ end
                 @test launched("check", root, "-A", "annotation") == (code, out, "")
                 @test launched("baseline", root, "-A", "annotation") == (0, "", "corset: wrote 1 findings to $(Corset.Baseline.FILE)\n")
                 rm(joinpath(root, Corset.Baseline.FILE))
-                # Fix writes files, so it relaunches even when cache holds analysis.
-                @test startswith(launched("fix", root, "-A", "annotation")[3], "corset: applied 1 edits\n")
+                # Fix writes files, so it relaunches even when cache holds analysis. Report comes from fresh process:
+                # process that fixed holds `Relaunched.length` from before edit.
+                code, out, err = launched("fix", root, "-A", "annotation")
+                @test startswith(err, "corset: applied 1 edits\n") && code == 0 && !occursin("shadowed-base", out)
                 code, out, err = launched("check", root, "-A", "shadowed-base")
                 @test code == 0 && !occursin("building environment", err)
             end

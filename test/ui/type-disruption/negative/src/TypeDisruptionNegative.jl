@@ -46,6 +46,11 @@ function cache!(cache::Vector{Vector{Float64}}, xs::AbstractVector)
     cache[1] = zeros(length(xs))
     return nothing
 end
+# Computed result type: lowering keeps `-Inf32` in unnamed slot, then converts it to declared type.
+function floored(x::T)::promote_type(T, Float32) where {T <: Real}
+    x > 0 || return -Inf32
+    return x * 2
+end
 # Concrete element type converts stored value; `intermediate-widening` reports it.
 function record!(log::Vector{Float32}, x::AbstractFloat)
     log[1] = x * 2.0

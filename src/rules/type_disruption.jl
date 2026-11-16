@@ -3,8 +3,8 @@
 returns or stores.
 
 ## Description
-Reports weak value that meets generic float input and changes type of value method returns or stores in argument or
-global. Weak value: number literal, constant, call of weak values only (`sqrt(2)`, `2π`), variable assigned one, or
+Reports weak value that meets generic float input and changes type of value method returns or stores in argument,
+global or local container method returns. Weak value: number literal, constant, call of weak values only (`sqrt(2)`, `2π`), variable assigned one, or
 conversion to wider Base float type (`Float64(x)`). Weak value must keep float input type, as Python scalars do in
 NumPy 2.
 Also reports hard-coded `Array` (`zeros(n)`, `Vector{T}(undef, n)`) in method with input array, when method returns or

@@ -248,15 +248,20 @@ end
 """Write baseline at project root of `path` from every reported finding; return entry count. `cache` as in `check`."""
 baseline(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing)::Int = baseline(last(analysis(path, flags, cache, nothing)))
 
-"""Apply fixes of reported findings under `path` up to fix tier; return number of edits applied. `cache`, `journal` as in `check`."""
-function fix!(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing, journal::Union{Nothing, String} = nothing)::Int
+"""
+Apply fixes of reported findings under `path` up to fix tier. Return number of edits applied, and whether check of
+edited files needs fresh process: run loaded package, whose methods keep code from before edits. `cache`, `journal` as
+in `check`.
+"""
+function fix!(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing, journal::Union{Nothing, String} = nothing)::Tuple{Int, Bool}
+    _, settings, sources = inputs(path, flags)
     report = check(path; flags, cache, journal)
     edits = Fixes.applicable_edits([diagnostic.finding for diagnostic in report.diagnostics], report.settings.tier)
     # Fix may span files; edit in unread file throws `KeyError` before any write.
     files = unique(edit.span.file for edit in edits)
     fixed = Dict(file => Fixes.apply_edits(report.sources[file], filter(edit -> edit.span.file == file, edits)) for file in files)
     foreach(((file, text),) -> write(file, text), fixed)
-    return length(edits)
+    return length(edits), !isempty(edits) && loads(sources.project, settings)
 end
 
 end

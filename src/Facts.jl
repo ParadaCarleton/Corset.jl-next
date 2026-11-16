@@ -37,7 +37,10 @@ export takes_docstring, comment_lines_above, comments_in, discarded, literal, li
 @enumx TestDeps target project none
 """Weak value: number `literal` (tuple of them included), `constant` or call of weak values, type `name`, `variable` assigned one."""
 @enumx Weak literal constant name variable
-"""Where weak value changes type: value method `returned`, value it `stored` in argument or global, or `intermediate` only."""
+"""
+Where weak value changes type: value method `returned`, value it `stored` in argument, global or returned local
+container, or `intermediate` only.
+"""
 @enumx Exit returned stored intermediate
 
 """Byte range `first_byte:last_byte` of `file`, 1-based and inclusive."""
@@ -926,13 +929,20 @@ end
 
 """
 Fix of `disruption`: irrational constant for float literal that spells one (`manual`); conversion to input type
-(`likely`: callers see input type), `manual` where inference stage gives no `converted` text.
+(`likely`: callers see input type), `manual` where inference stage gives no `converted` text or literal leaves
+`Float32` range: `oftype(x, 1e39)` gives `Inf32`.
 """
 function weak_fix(disruption::Disruption)::Fix
     irrational = isnothing(disruption.float) ? nothing : irrational_name(something(disruption.float))
     if !isnothing(irrational)
         package = irrational in BASE_IRRATIONALS ? "" : " from IrrationalConstants.jl"
         return manual_fix("use irrational `$irrational`$package; it takes input type")
+    end
+    value = disruption.float
+    if !isnothing(value) && !iszero(value) && isfinite(value)
+        narrowed = Float32(value)
+        isinf(narrowed) && return manual_fix("`$(disruption.value)` overflows `Float32` input: rescale, or opt out to keep `Float64`")
+        iszero(narrowed) && return manual_fix("`$(disruption.value)` rounds to zero in `Float32` input: rescale, or opt out to keep `Float64`")
     end
     converted = disruption.converted
     isnothing(converted) || return Fix("convert to input type: `$converted`", [Edit(disruption.span, converted)], Tier.likely)
