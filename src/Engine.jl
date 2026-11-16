@@ -63,11 +63,11 @@ end
 """Whether `settings` enable rule `entry`: its level is not `allow`."""
 enabled(settings::Settings, entry::RuleEntry)::Bool = first(level_of(settings, entry)) != Level.allow
 
-"""Whether `settings` enable any rule that reads `stage` last."""
-wants(settings::Settings, stage::Stage.T)::Bool = any(entry -> entry.stage == stage && enabled(settings, entry), REGISTRY)
+"""Whether `settings` enable any rule whose findings read `stage` last, or whose fixes read it."""
+wants(settings::Settings, stage::Stage.T)::Bool = any(entry -> (entry.stage == stage || entry.fix_stage == stage) && enabled(settings, entry), REGISTRY)
 
-"""Whether `settings` enable any rule that reads stage after `syntax`."""
-needs_package(settings::Settings)::Bool = any(entry -> entry.stage != Stage.syntax && enabled(settings, entry), REGISTRY)
+"""Whether `settings` enable any rule whose findings or fixes read stage after `syntax`."""
+needs_package(settings::Settings)::Bool = any(entry -> entry.fix_stage != Stage.syntax && enabled(settings, entry), REGISTRY)
 
 """Whether run under `settings` loads package of `project`: package project, and enabled rule after `syntax` stage."""
 loads(project::Union{Nothing, ProjectFacts}, settings::Settings)::Bool = !isnothing(project) && needs_package(settings)

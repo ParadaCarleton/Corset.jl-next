@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, Weak, Exit
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, tuple_parameters, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -85,14 +85,25 @@ struct BlindSpot
     span::Span
 end
 
-"""Registry entry: rule metadata plus pure function `run(facts::FactSet)::Vector{Finding}`."""
+"""
+Registry entry: rule metadata plus pure function `run(facts::FactSet)::Vector{Finding}`. Findings need facts of
+`stage`; fixes improve with facts of `fix_stage`, so run computes them when rule is on. Fix stays `manual` without them.
+"""
 struct RuleEntry
     name::Symbol
     group::Group.T
     footguns::Vector{Int}
     stage::Stage.T
+    fix_stage::Stage.T
     run::Function
+    function RuleEntry(name::Symbol, group::Group.T, footguns::Vector{Int}, stage::Stage.T, fix_stage::Stage.T, run::Function)::RuleEntry
+        fix_stage >= stage || throw(ArgumentError("fix stage $fix_stage of `$name` comes before its stage $stage"))
+        return new(name, group, footguns, stage, fix_stage, run)
+    end
 end
+
+"""Entry whose fixes need no facts beyond its findings' `stage`."""
+RuleEntry(name::Symbol, group::Group.T, footguns::Vector{Int}, stage::Stage.T, run::Function)::RuleEntry = RuleEntry(name, group, footguns, stage, stage, run)
 
 """Identifier node that binding site binds, and site kind."""
 struct BindingSite
@@ -298,15 +309,30 @@ struct HardArray
 end
 
 """
+Type guess for untyped argument or missing result type (`inference` stage fact, `annotation` fix). `cause`: argument
+name, or signature call for result; `edit` writes annotation; `type`: guessed type text; `evidence`: observed types, at
+most three, stand-ins as models. `tier`: `breaking` for argument (narrower type can reject callers) and for result of
+method with untyped argument (callers outside package can pass other types); else `likely`.
+"""
+struct AnnotationGuess
+    cause::Span
+    edit::Edit
+    type::String
+    evidence::Vector{String}
+    tier::Tier.T
+end
+
+"""
 `inference` stage facts: calls that never return, one per statement, without explicit throws and calls of package
 methods (their own frame reports); weak values that change input type, one per span; hard-coded arrays, one per span;
-type tests whose narrowing guard drops, one per test. Typed code stays inside stage.
+type tests whose narrowing guard drops, one per test; annotation guesses, one per cause. Typed code stays inside stage.
 """
 struct InferenceFacts
     failing::Vector{FailingCall}
     disruptions::Vector{Disruption}
     hard_arrays::Vector{HardArray}
     narrowings::Vector{NarrowingLoss}
+    guesses::Vector{AnnotationGuess}
 end
 
 """

@@ -596,4 +596,6 @@ Decision: stand-in inference stays. Per-method disk cache joins PR order after f
 - F16 narrowed from "report hard-coded `Array` everywhere": footgun needs caller's array, so method without input array gets no finding. `breaking` fix that adds array type parameter went with it.
 - `HardArrays` reuses `Widening` conversion: callee `zeros` becomes `Templated{ArrayStandIn}(zeros)`, so no statement renumbering. Stand-in broadcast style wins over `Array`, so `xs .+ zeros(n)` keeps stand-in type; meeting test catches such mixing instead.
 - Array meeting must read array types of original code: in partly converted copy, other constructions hold stand-in arrays too, and two hard-coded arrays would meet each other.
+- Annotation guesses first read only `reached` signatures. `reached` follows stand-in calls alone, so concrete callers (`total_area(::Float64, ::Int)`) gave no evidence. Guesses now read every package call site of inferred code, with result type there.
+- `RuleEntry.fix_stage` names stage for fixes. Without it, `annotation` fix would depend on other enabled `inference` rules: hidden input.
 - `Narrowing` reads per-block variable types inference keeps (`bb_vartables`), so loss check needs no second inference. Lowering reads `x === nothing` again on its own true branch, where narrowed type is `Union{}`; scan treats that outcome as one that never happens.

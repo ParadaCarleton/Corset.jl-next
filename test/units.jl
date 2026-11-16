@@ -172,8 +172,23 @@ discovered(root::String, path::String = root)::Vector{String} = [relpath(file.pa
 
 """Flags that allow every rule after `syntax` stage, so run loads no package: discovery fixtures are not loadable."""
 const SYNTAX_ONLY = Corset.Config.Flags(;
-    levels = [string(entry.name) => Corset.Config.Level.allow for entry in Corset.Rules.REGISTRY if entry.stage != Corset.Facts.Stage.syntax],
+    levels = [string(entry.name) => Corset.Config.Level.allow for entry in Corset.Rules.REGISTRY if entry.fix_stage != Corset.Facts.Stage.syntax],
 )
+
+@testset "fix stage" begin
+    @test_throws ArgumentError Facts.RuleEntry(:early, Group.readability, Int[], Facts.Stage.inference, Facts.Stage.syntax, identity)
+    # Registry builds entries at precompile time, where coverage cannot see them.
+    @test Facts.RuleEntry(:same, Group.readability, Int[], Facts.Stage.syntax, identity).fix_stage == Facts.Stage.syntax
+    @test Facts.RuleEntry(:later, Group.readability, Int[], Facts.Stage.syntax, Facts.Stage.inference, identity).fix_stage == Facts.Stage.inference
+    # `annotation` alone needs inference facts for its fix, though its findings read syntax only.
+    alone = Dict{String, Tuple{Level.T, String}}(string(rule.name) => (Level.allow, "test") for rule in REGISTRY if rule.name != :annotation)
+    settings = Settings(Kind.library, Confidence.definite, Tier.likely, alone, false, Facts.Ban[])
+    @test Corset.Engine.wants(settings, Facts.Stage.inference)
+    @test Corset.Engine.needs_package(settings)
+    none = Settings(Kind.library, Confidence.definite, Tier.likely, merge(alone, Dict("annotation" => (Level.allow, "test"))), false, Facts.Ban[])
+    @test !Corset.Engine.wants(none, Facts.Stage.inference)
+    @test !Corset.Engine.needs_package(none)
+end
 
 @testset "defined name" begin
     # Parenthesized operator once lost exact method site: `(==)` never matched method name `==`.

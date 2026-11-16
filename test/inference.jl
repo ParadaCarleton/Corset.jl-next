@@ -196,8 +196,8 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test only(failing("oddly")).confidence == Confidence.possible
         @test all(name -> isempty(failing(name)), ("halved", "checked"))
     end
-    @testset "engine infers only for inference rule" begin
-        rules = [entry.name for entry in Corset.Rules.REGISTRY if entry.stage == Corset.Facts.Stage.inference]
+    @testset "engine infers only for rule whose findings or fixes read inference" begin
+        rules = [entry.name for entry in Corset.Rules.REGISTRY if entry.fix_stage == Corset.Facts.Stage.inference]
         causes(level::Corset.Config.Level.T)::Set{String} = Set(
             spot.cause for spot in Corset.check(CASE; flags = Corset.Config.Flags(; levels = [string(rule) => level for rule in rules])).blind_spots
         )
@@ -277,7 +277,7 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         end
         # Stderr of inference goes to crash log; normal end copies it to stderr.
         mktempdir() do directory
-            empty = (Corset.Facts.InferenceFacts(FailingCall[], Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[]), Corset.Facts.BlindSpot[], nothing)
+            empty = (Corset.Facts.InferenceFacts(FailingCall[], Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.AnnotationGuess[]), Corset.Facts.BlindSpot[], nothing)
             text = mktemp() do path, io
                 result = redirect_stderr(io) do
                     Corset.Engine.journaled(journal -> (println(stderr, "inner note"); empty), directory)

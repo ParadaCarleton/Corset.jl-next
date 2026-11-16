@@ -15,9 +15,10 @@ using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, Har
 using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span, parent_of, ancestors, base_macro
 using ..Package: Package
 using ..StandIns: StandIns
-using ..Widening: Widening, statement_call
+using ..Widening: Widening, statement_call, statement_type
 using ..Narrowing: Narrowing
 using ..HardArrays: HardArrays
+using ..Guesses: annotation_guesses
 using ..Signatures: LIMIT, method_signatures, struct_stand_ins
 
 const CC = Core.Compiler
@@ -37,13 +38,17 @@ end
 
 """
 Result of inferring one method on one signature, as method store keeps it: call signatures of package methods its calls
-reach, call statements that never return by statement index (`failures!`), whether inference gave code, weak
-values that change input type (`disruptions`), and type tests whose narrowing guard drops (`narrowings`).
+reach, call statements that never return by statement index (`failures!`), whether inference gave code and whether
+code tests type, weak values that change input type (`disruptions`), and type tests whose narrowing guard drops
+(`narrowings`).
 """
 struct Inferred
+    returned::Type
+    calls::Vector{Tuple{Type, Type}}
     reached::Vector{Type}
     failures::Vector{Pair{Int, Union{FailingCall, BlindSpot}}}
     coded::Bool
+    tests_type::Bool
     disruptions::Vector{Disruption}
     hard_arrays::Vector{HardArray}
     narrowings::Vector{NarrowingLoss}
@@ -533,6 +538,27 @@ end
 """Whether `type` is stand-in type or holds one as parameter: `ArrayStandIn{FloatStandIn, 1}`, `Circle{IntStandIn}`."""
 holds_stand_in(type::Any)::Bool = type isa DataType && (parentmodule(type) === StandIns || any(holds_stand_in, type.parameters))
 
+"""
+Calls in typed `code` of `instance` to function of package `modules` with concrete argument types that dispatch to one
+method of analyzed files (`by_path`): signature, and type inference gives call there. Annotation guesses read them.
+"""
+function package_calls(code::Core.CodeInfo, instance::Core.MethodInstance, modules::Set{Module}, by_path::Dict{String, SyntaxFile})::Vector{Tuple{Type, Type}}
+    parameters = CC.sptypes_from_meth_instance(instance)
+    found = Tuple{Type, Type}[]
+    for (index, statement) in enumerate(code.code)
+        call = statement_call(statement)
+        isnothing(call) && continue
+        callee = CC.widenconst(CC.argextype(call.args[1], code, parameters))
+        (callee isa DataType && callee <: Function && parentmodule(callee) in modules) || continue
+        call_signature = Tuple{Any[CC.widenconst(CC.argextype(argument, code, parameters)) for argument in call.args]...}
+        isconcretetype(call_signature) || continue
+        matches = Base._methods_by_ftype(call_signature, 1, Base.get_world_counter())
+        (matches isa Vector && length(matches) == 1 && haskey(by_path, string(only(matches).method.file))) || continue
+        push!(found, (call_signature, statement_type(code, index)))
+    end
+    return found
+end
+
 """Signatures of calls in `code` with concrete argument types that hold stand-in and dispatch to one method."""
 function reached(code::Core.CodeInfo, instance::Core.MethodInstance)::Vector{Type}
     parameters = CC.sptypes_from_meth_instance(instance)
@@ -865,10 +891,12 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     structs = struct_stand_ins(Type[site.type for site in package.structs])
     spots = BlindSpot[]
     pending, skipped = Tuple{MethodSite, Type}[], MethodSite[]
+    # Methods with signature inference skipped or failed, or code that tests type: results miss some argument types.
+    incomplete = Set{Method}()
     for site in package.methods
         untyped(site) && (push!(skipped, site); continue)
         found = method_signatures(site.method, structs)
-        found.over_limit && push!(spots, BlindSpot("signatures over limit", site.span))
+        found.over_limit && (push!(spots, BlindSpot("signatures over limit", site.span)); push!(incomplete, site.method))
         # Explicit `::Any` and unbounded type variable hide nothing compiler knows, so only narrower declared types count.
         any(position -> Facts.argument_type(site.method, position) != Any, found.bare) && push!(spots, BlindSpot("argument without stand-in", site.span))
         append!(pending, ((site, signature) for signature in found.signatures))
@@ -882,23 +910,23 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     codes = Dict{String, String}()
     typed, seen, counts, coded = TypedCode[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
     failing, gaps, settled, disrupting, narrowing = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[], NarrowingLoss[]
-    hard = HardArray[]
+    hard, observed = HardArray[], IdDict{Method, Vector{Tuple{Type, Type}}}()
     while !isempty(pending)
         site, call_signature = popfirst!(pending)
         (site.method, call_signature) in seen && continue
         push!(seen, (site.method, call_signature))
         # Calls can reach one method with ever new types (`f(x) = f((x,))`), so reached signatures stop at limit.
         counts[site.method] = get(counts, site.method, 0) + 1
-        counts[site.method] > LIMIT && (push!(spots, BlindSpot("signatures over limit", site.span)); continue)
+        counts[site.method] > LIMIT && (push!(spots, BlindSpot("signatures over limit", site.span)); push!(incomplete, site.method); continue)
         key = isnothing(store) ? "" : entry_key(site.method, call_signature)
-        isnothing(journal) || !(key in journal.crashed) || (push!(spots, BlindSpot("inference crashed process", site.span)); continue)
+        isnothing(journal) || !(key in journal.crashed) || (push!(spots, BlindSpot("inference crashed process", site.span)); push!(incomplete, site.method); continue)
         entry = isnothing(store) ? nothing : valid_entry(store, key, hashes, index, codes)
         if isnothing(entry)
             isnothing(journal) || record!(journal, Record(key, method_label(site.method), false, nothing))
             edges = Any[]
             result = infer(site.method, call_signature)
             inferred = if isnothing(result)
-                Inferred(Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, Disruption[], HardArray[], NarrowingLoss[])
+                Inferred(Union{}, Tuple{Type, Type}[], Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, false, Disruption[], HardArray[], NarrowingLoss[])
             else
                 instance, code, returned, frame_edges, flow = result
                 append!(edges, frame_edges)
@@ -908,7 +936,8 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
                 constructions, array_branch = HardArrays.changes!(edges, instance, code)
                 lost = narrowings(last(typed), nodes, Narrowing.losses(code, flow, CC.sptypes_from_meth_instance(instance)))
                 Inferred(
-                    reached(code, instance), failures!(edges, helpers, last(typed), by_path), true, disruptions(last(typed), instance, nodes, changes, branch),
+                    returned, package_calls(code, instance, modules, by_path), reached(code, instance), failures!(edges, helpers, last(typed), by_path), true,
+                    Widening.type_branch(code, CC.sptypes_from_meth_instance(instance)), disruptions(last(typed), instance, nodes, changes, branch),
                     hard_arrays(last(typed), instance, nodes, constructions, array_branch), lost,
                 )
             end
@@ -918,7 +947,13 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
             inferred = deserialize(IOBuffer(entry.inferred))::Inferred
         end
         isnothing(used) || isnothing(entry) || (used[key] = entry)
-        inferred.coded || (push!(spots, BlindSpot("inference gave no code", site.span)); continue)
+        inferred.coded || (push!(spots, BlindSpot("inference gave no code", site.span)); push!(incomplete, site.method); continue)
+        # Stand-ins model no `BigFloat`, so branch on type can return what no stand-in saw.
+        inferred.tests_type && push!(incomplete, site.method)
+        push!(get!(Vector{Tuple{Type, Type}}, observed, site.method), (call_signature, inferred.returned))
+        for (call_signature, result) in inferred.calls
+            push!(get!(Vector{Tuple{Type, Type}}, observed, dispatched(call_signature)), (call_signature, result))
+        end
         push!(coded, site.method)
         # Package methods are those analyzed files define; others (Base) stay outside.
         for signature in inferred.reached
@@ -939,7 +974,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     # One finding per weak value: escape before intermediate, definite before possible.
     sort!(disrupting; by = disruption -> (disruption.exit == Exit.intermediate, disruption.confidence == Confidence.possible))
     sort!(hard; by = array -> (array.exit == Exit.intermediate, array.confidence == Confidence.possible))
-    facts = InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting), unique!(array -> array.span, hard), unique!(lost -> lost.test, narrowing))
+    facts = InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting), unique!(array -> array.span, hard), unique!(lost -> lost.test, narrowing), annotation_guesses(package, observed, incomplete))
     return facts, unique!(append!(spots, gaps)), typed, used
 end
 
