@@ -1,0 +1,31 @@
+package JSON 1.13.4  julia 1.13.3  standin=false
+load_s=0.15 summary_s=99.95 ir_s=27.54
+package_methods=553 failed=2 instances=18290 ir_failures=25
+sccs=17521 max_scc=279 scc_iterations=20129
+warm_s=9.19 warm_ir_s=4.26 warm_instances=3894 warm_pkg_ir_s=3.77 warm_pkg_instances=2540 cached=14413 warm_diff=3
+warm slow sccs total_s=1.75 n=6
+  0.772s size=171 rounds=464 MethodInstance for JSON.applyarray(::StructUtils.ArrayClosure{Vector{Any}, S} where S<:StructUtils.StructStyle, ::Union{JSON.LazyArray{T}, JSON.LazyObject{T}, JSON.LazyValue{T}} where T)
+  0.618s size=71 rounds=265 MethodInstance for StructUtils.applyeach(::StructUtils.StructStyle, ::JSON.WriteClosure{JSON.WriteOptions{S}, true, <:IO} where S, ::Vector{Any})
+  0.13s size=100 rounds=184 MethodInstance for JSON.applyarray(::StructUtils.ArrayClosure{Vector{Any}, S} where S<:(JSON.JSONReadStyle{O, N, StructUtils.DefaultStyle} where {O, N}), ::Union{JSON.LazyArray{T}, JSON.LazyObject{T},
+  0.085s size=22 rounds=69 MethodInstance for (::JSON.WriteClosure{JSON.WriteOptions{JSON.JSONWriteStyle}, _A, Nothing} where _A)(::Any, ::Any)
+  0.08s size=22 rounds=45 MethodInstance for (::JSON.WriteClosure{JSON.WriteOptions{JSON.JSONWriteStyle}, true, IOStream})(::Int64, ::Any)
+  0.067s size=22 rounds=45 MethodInstance for (::JSON.WriteClosure{JSON.WriteOptions{JSON.JSONWriteStyle}, true, <:IO})(::Int64, ::Any)
+effect_free=10190 effect_free_cleared=200 effect_free_conflicts=0
+reasons=[:contract => 22792, :too_many_candidates => 743, :callee_unknown => 410, :splat => 141, :candidate_nosummary => 89, :apply_unresolved => 71, :resolved_nosummary => 52, :opaque_closure => 5, :apply_shape => 4]
+top unknown callees=["::Any" => 292, "Number" => 170, "String" => 138, "::Type" => 114, "Nothing" => 86, "_apply_iterate" => 75, "Any" => 39, "Array" => 33, "map" => 30, "read" => 23, "_specialuniontype" => 17, "_uniontype" => 17, "Missing" => 15, "LinearIndices" => 14, "open" => 12, ">>" => 12, "eof" => 12, "iseven" => 12, "invoke_in_world" => 12, "<<" => 11, "CartesianIndices" => 10, "isassigned" => 9, "unsafe_write" => 9, ">>>" => 9, "Char" => 9, "prod" => 7, "ones" => 7, "BigInt" => 6, "max_values" => 6, "typeinfo_eltype" => 6, "similar" => 6, "merge" => 6, "maketuple" => 6, "Ptr" => 5, "BroadcastStyle" => 5, "widen" => 5, "finalizer" => 5, "empty" => 5, "vcat" => 4, "isdone" => 4]
+unknown_calls=1374 resolved_dynamic=12884 foreign_unknown=118
+memo_globals=["stdout"] self_writes=22
+plain DEFINITE 14
+plain POSSIBLE 156
+plain NONE 265
+bang DEFINITE 38
+bang POSSIBLE 14
+bang NONE 0
+generated DEFINITE 0
+generated POSSIBLE 43
+generated NONE 21
+none relying on contract: Dict(:generated => 7, :plain => 130)
+foreign globals written (not counted; methods): 32 ["Base.Workqueues=163", "Base.Threads.LOCK_CONFLICT_COUNT=163", "Base.Partr.heaps=163", "Base.Partr.heaps_lock=163", "Base.get_sched_task=163", "Base.PerThreadLock=163", "Parsers._BIGWORKSLOTS=148", "Parsers._PATTERNLOCK=148", "Parsers._ENGLISH_CIVIL_NAMES_BOX=148", "Parsers._POW5BIG=148", "Parsers._PATTERNCACHE=148", "Base.PCRE.THREAD_MATCH_CONTEXTS=109"]
+top unknown foreign: [:ios_file => 7, :jl_uv_associate_julia_struct => 3, :ios_read => 2, :jl_ios_buffer_n => 2, :pointer => 2, :utf8proc_tolower => 2, :pcre2_match_8 => 2, :jl_stored_inline => 2, :jl_types_egal => 2, :jl_idset_put_idx => 2]
+possible blame kinds: ["too_many_candidates" => 114, "alias" => 47, "candidate_nosummary" => 16, "join" => 14, "typecall" => 10, "apply_unresolved" => 6, "foreign" => 4, "callback" => 2]
+possible blame leaves: ["too_many_candidates String" => 53, "alias" => 47, "too_many_candidates setup_stdio" => 19, "candidate_nosummary invoke_in_world" => 16, "too_many_candidates substrides" => 12, "too_many_candidates map" => 12, "typecall setindex!" => 8, "apply_unresolved _apply_iterate" => 6, "join lift" => 4, "too_many_candidates read" => 4, "join customlazylift" => 3, "too_many_candidates Array" => 3, "foreign jl_macroexpand" => 3, "join ::Union" => 2, "callback _withparsecontext" => 2, "too_many_candidates Symbol" => 2, "too_many_candidates Char" => 2, "join make" => 2, "typecall convert" => 2, "too_many_candidates merge" => 2, "too_many_candidates deepcopy_internal" => 1, "too_many_candidates _totuple" => 1, "join write" => 1, "too_many_candidates >>" => 1, "too_many_candidates >>>" => 1, "join applyeach" => 1, "foreign pointer" => 1, "too_many_candidates tryparse" => 1, "join lock" => 1]

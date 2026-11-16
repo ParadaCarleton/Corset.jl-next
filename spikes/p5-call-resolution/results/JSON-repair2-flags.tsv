@@ -1,30 +1,17 @@
 flag	name	location	opaque	writes
 MISSING!	Object	/home/dev/.julia/packages/JSON/45LIG/src/object.jl:41	false	arg obj=DEFINITE
-MISSING!	WriteClosure	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:817	true	arg key=POSSIBLE; arg val=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	_bigfloatstring	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:1114	true	arg x=DEFINITE
 MISSING!	_contextmake	/home/dev/.julia/packages/JSON/45LIG/src/parse.jl:237	true	arg st=DEFINITE; arg x=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
 MISSING!	_null	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:991	false	arg buf=DEFINITE; arg io=DEFINITE
-MISSING!	_number	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:1051	true	arg buf=DEFINITE; arg x=DEFINITE; arg io=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
+MISSING!	_number	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:1051	true	arg buf=DEFINITE; arg io=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
 MISSING!	_numbertext	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:1156	false	arg buf=DEFINITE; arg io=DEFINITE
 MISSING!	_string	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:1000	true	arg buf=DEFINITE; arg io=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
 MISSING!	_string	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:1001	true	arg buf=DEFINITE; arg x=POSSIBLE; arg io=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
 MISSING!	_string	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:1003	true	arg buf=DEFINITE; arg x=POSSIBLE; arg io=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	_writenested	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:817	true	arg f=DEFINITE; arg key=POSSIBLE; arg val=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	_writenested	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:817	true	arg f=DEFINITE; arg key=POSSIBLE; arg val=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	_writenested	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:817	true	arg f=DEFINITE; arg key=POSSIBLE; arg val=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
+MISSING!	_writenested	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:817	true	arg f=DEFINITE; arg key=POSSIBLE; arg val=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
+MISSING!	_writenested	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:817	true	arg f=DEFINITE; arg key=POSSIBLE; arg val=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
+MISSING!	_writenested	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:817	true	arg f=DEFINITE; arg key=POSSIBLE; arg val=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
 MISSING!	deepcopy_internal	/home/dev/.julia/packages/JSON/45LIG/src/object.jl:145	true	arg x=POSSIBLE; arg stackdict=DEFINITE
 MISSING!	indent	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:784	false	arg buf=DEFINITE; arg io=DEFINITE
-MISSING!	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:695	true	arg =POSSIBLE; arg x=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:695	true	arg x=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:715	true	arg =POSSIBLE; arg x=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:715	true	arg x=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:723	true	arg =POSSIBLE; arg x=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:723	true	arg x=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:732	true	arg =POSSIBLE; arg fname=DEFINITE; arg obj=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:732	true	arg fname=DEFINITE; arg obj=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	print	/home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:186	true	arg obj=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	print	/home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:186	true	arg obj=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
-MISSING!	print	/home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:187	true	arg a=DEFINITE; global JSON.ESCAPECHARS=POSSIBLE
 MISSING!	unsafe_unescape_to_buffer	/home/dev/.julia/packages/JSON/45LIG/src/utils.jl:176	false	arg dst=DEFINITE
 bang-possible	_parse!	/home/dev/.julia/packages/JSON/45LIG/src/parse.jl:456	true	arg x=POSSIBLE; arg obj=POSSIBLE; arg style=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
 bang-possible	_parsecontext!	/home/dev/.julia/packages/JSON/45LIG/src/parse.jl:298	true	arg x=POSSIBLE; arg obj=POSSIBLE; arg style=POSSIBLE
@@ -58,6 +45,7 @@ missing?	ObjectClosure	/home/dev/.julia/packages/JSON/45LIG/src/parse.jl:483	tru
 missing?	ObjectClosure	/home/dev/.julia/packages/JSON/45LIG/src/parse.jl:570	true	arg k=POSSIBLE; arg v=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
 missing?	ParseError	/home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:51	true	arg path=POSSIBLE; arg position=POSSIBLE; arg cause=POSSIBLE; arg backtrace=POSSIBLE
 missing?	WriteClosure	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:770	true	arg buf=POSSIBLE; arg pos=POSSIBLE; arg wroteany=POSSIBLE; arg indent=POSSIBLE; arg depth=POSSIBLE; arg opts=POSSIBLE; arg ancestor_stack=POSSIBLE; arg io=POSSIBLE; arg bufsize=POSSIBLE; arg omitnull=POSSIBLE; arg omitempty=POSSIBLE
+missing?	WriteClosure	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:817	true	arg key=POSSIBLE; arg val=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
 missing?	WriteOptions	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:657	true	arg =POSSIBLE
 missing?	WriteOptions	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:658	true	arg omit_null=POSSIBLE; arg omit_empty=POSSIBLE; arg allownan=POSSIBLE; arg jsonlines=POSSIBLE; arg pretty=POSSIBLE; arg ninf=POSSIBLE; arg inf=POSSIBLE; arg nan=POSSIBLE; arg inline_limit=POSSIBLE; arg float_precision=POSSIBLE; arg sort_keys=POSSIBLE; arg bufsize=POSSIBLE; arg style=POSSIBLE
 missing?	_ContextCallback	/home/dev/.julia/packages/JSON/45LIG/src/parse.jl:205	false	arg k=POSSIBLE; arg v=POSSIBLE
@@ -115,6 +103,14 @@ missing?	isvalidjson	/home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:165	true	a
 missing?	isvalidjson	/home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:174	true	arg x=POSSIBLE
 missing?	iterate	/home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:1181	true	arg x=POSSIBLE
 missing?	iterate	/home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:1181	true	arg x=POSSIBLE; arg st=POSSIBLE
+missing?	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:695	true	arg =POSSIBLE; arg x=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
+missing?	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:695	true	arg x=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
+missing?	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:715	true	arg =POSSIBLE; arg x=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
+missing?	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:715	true	arg x=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
+missing?	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:723	true	arg =POSSIBLE; arg x=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
+missing?	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:723	true	arg x=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
+missing?	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:732	true	arg =POSSIBLE; arg fname=POSSIBLE; arg obj=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
+missing?	json	/home/dev/.julia/packages/JSON/45LIG/src/write.jl:732	true	arg fname=POSSIBLE; arg obj=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
 missing?	lastindex	/home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:203	true	arg x=POSSIBLE
 missing?	lazy	/home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:91	true	arg =POSSIBLE; arg io=POSSIBLE
 missing?	lazy	/home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:91	true	arg io=POSSIBLE
@@ -171,6 +167,9 @@ missing?	parsefloatas	/home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:837	true	
 missing?	parselongint	/home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:760	true	arg buf=POSSIBLE
 missing?	parsenumber	/home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:1088	true	arg x=POSSIBLE
 missing?	parsenumber	/home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:1088	true	arg x=POSSIBLE
+missing?	print	/home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:186	true	arg obj=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
+missing?	print	/home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:186	true	arg obj=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
+missing?	print	/home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:187	true	arg a=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
 missing?	print	/home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:187	true	arg a=POSSIBLE; global JSON.ESCAPECHARS=POSSIBLE
 missing?	propertynames	/home/dev/.julia/packages/JSON/45LIG/src/object.jl:198	true	arg obj=POSSIBLE
 missing?	propertynames	/home/dev/.julia/packages/StructUtils/BFAGY/src/selectors.jl:222	true	arg x=POSSIBLE

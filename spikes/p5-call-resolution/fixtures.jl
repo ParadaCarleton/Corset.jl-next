@@ -175,6 +175,9 @@ module Fx
     ty_either_invoke(x::Vector{Int}) = invoke(ty_either, Tuple{Type, Vector{Int}, Bool}, Emptier, x, rand(Bool))
     ty_opaque(x::Vector{Int}) = ty_call(Base.inferencebarrier(Emptier)::Type, x)
     sym_of(v::Vector{UInt8}) = ccall(:jl_symbol_n, Ref{Symbol}, (Ptr{UInt8}, Int), v, length(v))
+    # passing BigFloat to MPFR repairs a stale self-pointer in its limbs: no visible write
+    big_print(x::BigFloat) = ccall((:mpfr_asprintf, Base.MPFR.libmpfr), Cint, (Ptr{Ptr{UInt8}}, Ptr{UInt8}, Ref{BigFloat}...), Ref{Ptr{UInt8}}(), "%Re", x)
+    big_set(x::BigFloat) = ccall((:mpfr_set_si, Base.MPFR.libmpfr), Int32, (Ref{BigFloat}, Clong, Base.MPFR.MPFRRoundingMode), x, 1, Base.MPFR.MPFRRoundNearest)
     # author asserts no side effect; analysis alone sees unknown callee on argument
     Base.@assume_effects :effect_free asserted_pure(x::Vector{Int}) = (Base.inferencebarrier(sum)(x); nothing)
     unasserted(x::Vector{Int}) = (Base.inferencebarrier(sum)(x); nothing)
@@ -253,7 +256,7 @@ const TARGETS = [
     (:use_any, (Vector{Int},)), (:global_any, (Vector{Int},)), (:call_field, (Fx.Holder, Vector{Int})), (:call_global, (Vector{Int},)),
     (:fold_tuple, (Any, NamedTuple)), (:invoke_open, (Vector{Int}, Any)), (:invoke_va, (Vector{Int}, Vararg{Any})), (:set_pair!, (Vector{<:Integer}, Tuple{Vector{<:Integer}, Integer})), (:big_sub, (BigInt,)),
     (:set_all!, (Dict{Int, Int}, Vararg{Any})),
-    (:sp_call, :declared), (:sp_relay, :declared), (:ty_call, (Type, Vector{Int})), (:ty_relay, (Type, Vector{Int})), (:ty_const, (Vector{Int},)), (:ty_invoke, (Vector{Int},)), (:ty_store, (Type, Vector{Int})), (:ty_store_invoke, (Vector{Int},)), (:ty_either, (Type, Vector{Int}, Bool)), (:ty_either_invoke, (Vector{Int},)), (:asserted_pure, (Vector{Int},)), (:unasserted, (Vector{Int},)), (:sym_of, (Vector{UInt8},)), (:ty_keep, (Type, Vector{Int}, Vector{Vector{Int}})), (:ty_keep_invoke, (Vector{Int}, Vector{Vector{Int}})), (:ty_either_relay, (Type, Vector{Int}, Bool)), (:ty_either_relay_invoke, (Vector{Int},)),
+    (:sp_call, :declared), (:sp_relay, :declared), (:ty_call, (Type, Vector{Int})), (:ty_relay, (Type, Vector{Int})), (:ty_const, (Vector{Int},)), (:ty_invoke, (Vector{Int},)), (:ty_store, (Type, Vector{Int})), (:ty_store_invoke, (Vector{Int},)), (:ty_either, (Type, Vector{Int}, Bool)), (:ty_either_invoke, (Vector{Int},)), (:asserted_pure, (Vector{Int},)), (:unasserted, (Vector{Int},)), (:sym_of, (Vector{UInt8},)), (:big_print, (BigFloat,)), (:big_set, (BigFloat,)), (:ty_keep, (Type, Vector{Int}, Vector{Vector{Int}})), (:ty_keep_invoke, (Vector{Int}, Vector{Vector{Int}})), (:ty_either_relay, (Type, Vector{Int}, Bool)), (:ty_either_relay_invoke, (Vector{Int},)),
     (:ty_opaque, (Vector{Int},)), (:u64_pure, (Any,)), (:range_copy, (AbstractVector{Vector{Int}},)), (:split_union, (Vector{Int}, Bool)), (:split_many, (AbstractVector{Int}, AbstractVector{Int}, Bool)), (:vec_push_elem, (Vector{Vector{Int}},)), (:share_ref, (Vector{Int},)), (:prop_store, (Fx.Holder3, Vector{Int})), (:range_elem, (AbstractVector{Vector{Int}},)),
     (:splat_tuple_read, (Vector{Int}, Tuple{Vararg{Vector{Int}}})), (:splat_tuple_write, (Vector{Int}, Tuple{Vararg{Vector{Int}}})), (:walk_either, (Fx.Link, Fx.Link, Int)), (:loop_push, (Vector{Vector{Int}},)), (:tuple_loop, (NTuple{3, Vector{Int}},)), (:dict_loop, (Dict{Int, Vector{Int}},)),
 ]
@@ -351,6 +354,7 @@ end
     @test argwrite(sums[:ty_either], 3) == NONE && !isempty(sums[:ty_either].type_calls)
     @test argwrite(sums[:ty_either_invoke], 2) == POSSIBLE  # operand may be fresh vector
     @test argwrite(sums[:sym_of], 2) == NONE  # `jl_symbol_n` reads bytes
+    @test argwrite(sums[:big_print], 2) == NONE && argwrite(sums[:big_set], 2) == DEFINITE  # MPFR self-pointer repair
     @test argwrite(sums[:unasserted], 2) == POSSIBLE
     @test argwrite(sums[:asserted_pure], 2) == NONE  # compiler effects: `@assume_effects :effect_free`
     # parameter operand stays exact after later store merges its class
