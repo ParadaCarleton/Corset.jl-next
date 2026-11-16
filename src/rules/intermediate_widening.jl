@@ -21,8 +21,8 @@ half32(x::AbstractFloat) = Float32(x * oftype(x, 0.5))
 ```
 
 ## Limitations
-Fix changes rounding of intermediate, so it can change result in last bit. Integer input is exempt, as in
-`type-disruption`. Finding is `possible` when method branches on type or span cannot show weak value.
+Fix converts weak value to input type as `type-disruption` fix does. It changes rounding of intermediate, so it can
+change result in last bit. Integer input is exempt, as in `type-disruption`. Finding is `possible` when method branches on type or span cannot show weak value.
 """
 module IntermediateWidening
 

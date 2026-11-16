@@ -8,6 +8,7 @@ using Corset: Corset
 using Corset.Facts: FactSet, Tier, Confidence, Role, Ban, Stage
 using Corset.Config: Settings, Kind
 using Test: @test, @testset
+using TOML: TOML
 
 const UI = joinpath(@__DIR__, "ui")
 const BLESS = get(ENV, "CORSET_BLESS", "") == "1"
@@ -76,6 +77,29 @@ function run_case(name::Symbol, case::String)::Tuple{String, String}
     return rendered, fixed_text(Corset.Fixes.applicable_edits(findings, Tier.breaking), sources, root, isdir(case))
 end
 
+"""
+Copy of package case `case` in `directory` with `edits` applied, renamed `<name>Fixed` with new uuid, so it loads
+beside original. Returns path of copy.
+"""
+function fixed_package(case::String, edits::Vector{Corset.Facts.Edit}, directory::String)::String
+    project = TOML.parsefile(joinpath(case, "Project.toml"))
+    name = project["name"]
+    copy = joinpath(directory, name * "Fixed")
+    cp(case, copy)
+    for file in unique(edit.span.file for edit in edits)
+        write(joinpath(copy, relpath(file, case)), Corset.Fixes.apply_edits(read(file, String), filter(edit -> edit.span.file == file, edits)))
+    end
+    entry = joinpath(copy, "src", name * ".jl")
+    write(joinpath(copy, "src", name * "Fixed.jl"), replace(read(entry, String), "module $name\n" => "module $(name)Fixed\n"))
+    rm(entry)
+    project["name"], project["uuid"] = name * "Fixed", string(Base.UUID(rand(UInt128)))
+    open(io -> TOML.print(io, project), joinpath(copy, "Project.toml"), "w")
+    return copy
+end
+
+"""Rules of `inference` stage; their fixes rest on inference, so fixed package must lose each fixed finding."""
+const INFERENCE_RULES = [rule for rule in sort!(readdir(UI)) if Corset.Rules.entry(Symbol(rule)).stage == Stage.inference]
+
 @testset "UI $(rule)" for rule in sort!(readdir(UI))
     directory = joinpath(UI, rule)
     cases = sort!(filter(name -> isdir(joinpath(directory, name)) || endswith(name, ".jl") && !endswith(name, ".fixed.jl"), readdir(directory)))
@@ -91,6 +115,16 @@ end
         stem == "negative" && @test isempty(rendered)
         stem == "positive" && @test !isempty(rendered)
     end
+end
+
+@testset "UI $(rule) fixes clear their findings" for rule in INFERENCE_RULES
+    entry, case = Corset.Rules.entry(Symbol(rule)), joinpath(UI, rule, "positive")
+    findings = Corset.Engine.run_rules(package_facts(case, entry.stage), [entry])
+    manual = count(finding -> isnothing(finding.fix) || finding.fix.tier == Tier.manual, findings)
+    edits = Corset.Fixes.applicable_edits(findings, Tier.breaking)
+    again = mktempdir(directory -> Corset.Engine.run_rules(package_facts(fixed_package(case, edits, directory), entry.stage), [entry]))
+    @test all(finding -> isnothing(finding.fix) || finding.fix.tier == Tier.manual, again)
+    @test length(again) == manual
 end
 
 @testset "every rule has UI tests" begin

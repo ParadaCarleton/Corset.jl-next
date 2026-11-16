@@ -42,6 +42,10 @@ small integers to `Int` on purpose (`sum(Int32[1])`, index math). Store into con
 type converts value; `intermediate-widening` reports work in wider type there. Base callees count as type-preserving.
 Finding is `possible` when method branches on type or span cannot show weak value. Rule does not report hard-coded
 `Array` construction (F16) yet.
+Fix converts float weak value to input type: `T(0.5)`, `oftype(x, 0.5)` or `eltype(xs)(0.5)`. `float` wraps type when
+declaration admits integers, since `oftype(1, 0.5)` throws. Fix tier is `likely`: callers see input type. Fix stays
+`manual` for irrational value, start value, conversion, product `2.0x`, reassigned argument, and code inside macro
+other than `@inline`, `@inbounds` and similar.
 """
 module TypeDisruption
 

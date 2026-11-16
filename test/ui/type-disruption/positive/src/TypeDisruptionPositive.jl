@@ -33,6 +33,21 @@ converted(x::AbstractFloat) = convert(Float64, x)
 paired(x::AbstractFloat) = [x, 0.5]
 # Matrix literal lowers to `hvcat` with row lengths first, so span cannot narrow to one element.
 grid(x::AbstractFloat) = [x 0.5; 1.0 2.0]
+# Fix converts with type parameter, argument or element type; `float` keeps integer input working.
+typed_half(x::T) where {T <: AbstractFloat} = x * 0.5
+# Fix skips type parameter of integer input.
+nth_half(n::N, x::T) where {N <: Integer, T <: AbstractFloat} = n * x * 0.5
+real_half(x::Real) = x * 0.5
+real_typed_half(x::T) where {T <: Real} = x * 0.5
+real_scaled_all(xs::AbstractVector{<:Real}) = xs .* 0.5
+@inline inlined_half(x::AbstractFloat) = x * 0.5
+# Fix stays manual: argument reassigned, product `2.0x`, `@.` dots every call.
+function decayed(x::AbstractFloat)
+    x = x * 0.9
+    return x
+end
+doubled(x::AbstractFloat) = 2.0x
+dotted(xs::AbstractVector{<:AbstractFloat}) = @. xs * 0.5
 # Branch on type can pick other code for other input type.
 adjusted(x::AbstractFloat) = x isa Float64 ? x : x * 0.5
 
