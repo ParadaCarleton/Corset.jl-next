@@ -655,29 +655,17 @@ Codex review of phase 5 design found seven problems:
 
 ### Phase 5 redesign
 
-Spike P5 code was throwaway; engine starts new (`effects.md`, Effects engine). Decisions and reasons:
+Engine starts new (`effects.md`, Effects engine). Decisions and reasons:
 
-- Units: `inference` stage units only. Spike at declared signatures assumed open world; stand-in units cut `possible` from 30.4%, 28.8%, 38.7% to 22.6%, 22.8%, 33.2%.
-- IR: SSA IR from unit's own typed code; no second inference. Package instances took 82–98% of spike warm IR time.
-- Points-to: inclusion-based and field-sensitive. Spike unification merged classes at unknown calls; `alias` led DataStructures causes (120).
-- Provenance: opaque, opt-out, code. Data of argument without stand-in gave most JSON `possible` (`String(x)`); doubt test sends it to coverage line.
+- Units: `inference` stage units only, as `types.md` sets signatures. Declared signatures assume open world.
+- IR: SSA IR from unit's own typed code; package code needs no second inference.
+- Points-to: inclusion-based and field-sensitive. Unification merges unrelated objects at each unknown call.
+- Provenance: opaque, opt-out, code. Doubt test needs to know where open type comes from.
 - Explicit `::Any` is opt-out (`types.md`); `findings.md` example now names untyped argument. Earlier text let `::Any` both give and hide findings.
-- Compiler effects: used for speed, unlike earlier decision. Empty summary needs `effect_free`, `inaccessiblememonly` and result without reference: `view` is `effect_free`, yet result aliases argument.
-- Stand-in cuts: `inference` stage failure facts mark unit `cut`; none with `cut` is blind spot. Spike found 4 hidden writes on `!` methods.
-- Contracts stay for open dispatch: rules assume Base contracts (`findings.md`). Join limit 8: wider joins changed no spike verdict.
-
-### Phase 5 redesign: adversarial pass
-
-Codex review of redesign found nine problems:
-
-| # | Finding | Outcome |
-|---|---|---|
-| 1 | Type test that stand-in decides prunes branch with write (`x isa BigFloat && (STATE[] += 1)`) | Accepted: cut is call or store live at declared signature, dead at stand-in; failing calls and type tests both cause it. |
-| 2 | Benign table hides `setfieldonce!` on caller object and public dependency globals | Accepted: audited Base table only; package lazy init follows memo-cache rule; other foreign global writes count. |
-| 3 | Library cache key misses source change of path dependency | Accepted: key holds content digest per loaded package and loaded extensions. |
-| 4 | Allocation site in loop makes many objects; must-alias wrong | Accepted: site in loop or recursion gives may-alias only. |
-| 5 | Default RNG read is hidden input, but engine filtered task-local state | Accepted: summary keeps effect kinds; rules apply exemptions. |
-| 6 | Collapsed element path cannot tell which elements writes cover | Accepted: element events carry index operand; `lifecycle` decides coverage. |
-| 7 | Filtered lock write makes `lock(lk)` look unused | Accepted: synchronization is effect kind; `unused-call` counts every kind. |
-| 8 | F86 needs whether callers discard result | Accepted: call statement facts record result use. |
-| 9 | Spike measured unification, so budget for new solver is unproven | Accepted: engine PR measures solver cost and accuracy before rule PRs. |
+- Compiler effects: used for speed. `effect_free` true is proof; empty summary also needs `inaccessiblememonly` and result without reference, since `view` result aliases argument.
+- Cuts: call or store live at declared signature and dead at stand-in. Failing calls and type tests both hide writes (`x isa BigFloat && (STATE[] += 1)`).
+- Effect kinds: summary keeps kinds; rules apply exemptions from audited Base table. Default RNG read is hidden input; `lock(lk)` is not unused call.
+- Library cache key holds content digest per loaded package: path dependency edit changes no Manifest entry.
+- Allocation in loop or recursion gives may-alias only. Element events carry index; call facts record result use (F86).
+- Contracts stay for open dispatch: rules assume Base contracts (`findings.md`).
+- Solver cost and accuracy are unmeasured; engine PR measures them before rule PRs.

@@ -24,7 +24,7 @@
 
 ### Effects engine
 
-Engine design comes from spike P5 (`spikes/p5-call-resolution/REPORT.md`). Spike code is throwaway; engine starts new in `src/Effects/`.
+Engine code lives in `src/Effects/`.
 
 <div class="pipeline" role="img" aria-label="Effects engine steps from inference stage units to effects facts">
       <div class="layer"><div class="id">units</div><div class="what">Method and stand-in signature, from <code>inference</code> stage<small>same signatures and reached calls · no own roots</small></div></div>
@@ -52,7 +52,7 @@ Engine design comes from spike P5 (`spikes/p5-call-resolution/REPORT.md`). Spike
 - Origin: abstract object or value. Kinds: parameter path, global path, allocation site, call result site, constant.
 - Path: field name or element, at most 2 steps. Longer path collapses to `deep`.
 - Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.
-- Spike used unification. It merged unrelated classes at unknown calls; `alias` was largest DataStructures `possible` cause.
+- Unification is rejected: it merges unrelated objects at each unknown call.
 - Write: statement that stores into origin content, or callee summary write mapped through call operands.
 - Definite write: reachable statement writes origin, and no collapsed path or merged call result lies on chain to it.
 - Collapsed path or merged call result gives `possible` with cause `alias`: blind spot, counted on coverage line.
@@ -90,7 +90,7 @@ Resolution of each call statement, first match wins:
 - Steps 5 and 6 assume methods loaded now. Write they find keeps certainty. "Writes nothing" from them is at most `possible`.
 - Open call (step 7) whose open operands point to opaque and opt-out origins only: no finding. Opaque origin counts on coverage line: `open dispatch on opaque data`.
 - Other open call: doubt in code, `possible` finding.
-- Limit 8: spike found wider joins slower with no verdict change. Never below compiler `max_methods`.
+- Limit 8 is first guess; engine PR measures it. Never below compiler `max_methods`.
 
 #### Compiler effects
 
@@ -99,7 +99,6 @@ Resolution of each call statement, first match wins:
 - `effect_free` proves one direction. True: instance writes nothing caller sees, so its own verdict is none.
 - False proves no write: dynamic call or IO also clears it. Own analysis decides then, per argument and global.
 - Callee summary needs more than `effect_free`: result aliases. `view` writes nothing, but caller writes `A` through `view(A, 1:2)`.
-- Spike: compiler `effect_free` covered 55–57% of instances, with zero conflicts against own definite writes.
 - `@assume_effects` makes compiler trust claim. Engine runs own analysis on package methods with claim; `false-effects` compares.
 
 #### Stand-in cuts
@@ -110,7 +109,6 @@ Resolution of each call statement, first match wins:
 - Package units count both causes. Library instances count failing calls only: Base type branches keep same effects (`findings.md`, Base contracts).
 - Callers inherit `cut`. Verdict none with `cut` goes to coverage line: `stand-in cuts path`.
 - Definite and `possible` writes keep certainty with `cut`.
-- Spike: before this rule, stand-ins hid writes of 4 `!` methods (`_minmax_heap_trickle_down!`, `Accumulator` `merge!`, `union!`).
 
 #### Effect kinds
 
@@ -135,7 +133,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - Key: Julia version, Corset version, loaded extensions, and content digest of each loaded package: Manifest tree hash, or source digest for path and developed packages.
 - Package summary: method store entry beside `Inferred`, same invalidation.
 - Budget: with warm library cache, effects stage takes at most `inference` stage time.
-- Solver cost and accuracy are unmeasured: spike measured unification. Engine PR measures both on corpus before rule PRs.
+- Solver cost and accuracy are unmeasured. Engine PR measures both on corpus before rule PRs.
 
 #### Facts
 

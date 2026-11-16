@@ -733,7 +733,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Requirement propagates: caller of <code>!</code> function on global state needs <code>!</code> too.</li>
 </ul>
 <div class="decision"><h3>Effects engine</h3>
-<p>Engine design comes from spike P5 (<code>spikes/p5-call-resolution/REPORT.md</code>). Spike code is throwaway; engine starts new in <code>src/Effects/</code>.</p>
+<p>Engine code lives in <code>src/Effects/</code>.</p>
 <div class="pipeline" role="img" aria-label="Effects engine steps from inference stage units to effects facts">
       <div class="layer"><div class="id">units</div><div class="what">Method and stand-in signature, from <code>inference</code> stage<small>same signatures and reached calls · no own roots</small></div></div>
       <div class="layer"><div class="id">IR</div><div class="what">SSA IR before inlining, from unit's typed code<small>passes until <code>CC: COMPACT_1</code> · no second inference</small></div></div>
@@ -759,7 +759,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Origin: abstract object or value. Kinds: parameter path, global path, allocation site, call result site, constant.</li>
 <li>Path: field name or element, at most 2 steps. Longer path collapses to <code>deep</code>.</li>
 <li>Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.</li>
-<li>Spike used unification. It merged unrelated classes at unknown calls; <code>alias</code> was largest DataStructures <code>possible</code> cause.</li>
+<li>Unification is rejected: it merges unrelated objects at each unknown call.</li>
 <li>Write: statement that stores into origin content, or callee summary write mapped through call operands.</li>
 <li>Definite write: reachable statement writes origin, and no collapsed path or merged call result lies on chain to it.</li>
 <li>Collapsed path or merged call result gives <code>possible</code> with cause <code>alias</code>: blind spot, counted on coverage line.</li>
@@ -798,7 +798,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Steps 5 and 6 assume methods loaded now. Write they find keeps certainty. &quot;Writes nothing&quot; from them is at most <code>possible</code>.</li>
 <li>Open call (step 7) whose open operands point to opaque and opt-out origins only: no finding. Opaque origin counts on coverage line: <code>open dispatch on opaque data</code>.</li>
 <li>Other open call: doubt in code, <code>possible</code> finding.</li>
-<li>Limit 8: spike found wider joins slower with no verdict change. Never below compiler <code>max_methods</code>.</li>
+<li>Limit 8 is first guess; engine PR measures it. Never below compiler <code>max_methods</code>.</li>
 </ul>
 <h4>Compiler effects</h4>
 <ul>
@@ -807,7 +807,6 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li><code>effect_free</code> proves one direction. True: instance writes nothing caller sees, so its own verdict is none.</li>
 <li>False proves no write: dynamic call or IO also clears it. Own analysis decides then, per argument and global.</li>
 <li>Callee summary needs more than <code>effect_free</code>: result aliases. <code>view</code> writes nothing, but caller writes <code>A</code> through <code>view(A, 1:2)</code>.</li>
-<li>Spike: compiler <code>effect_free</code> covered 55–57% of instances, with zero conflicts against own definite writes.</li>
 <li><code>@assume_effects</code> makes compiler trust claim. Engine runs own analysis on package methods with claim; <code>false-effects</code> compares.</li>
 </ul>
 <h4>Stand-in cuts</h4>
@@ -818,7 +817,6 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Package units count both causes. Library instances count failing calls only: Base type branches keep same effects (<code>findings.md</code>, Base contracts).</li>
 <li>Callers inherit <code>cut</code>. Verdict none with <code>cut</code> goes to coverage line: <code>stand-in cuts path</code>.</li>
 <li>Definite and <code>possible</code> writes keep certainty with <code>cut</code>.</li>
-<li>Spike: before this rule, stand-ins hid writes of 4 <code>!</code> methods (<code>_minmax_heap_trickle_down!</code>, <code>Accumulator</code> <code>merge!</code>, <code>union!</code>).</li>
 </ul>
 <h4>Effect kinds</h4>
 <p>Summary keeps every effect with its kind. Rules apply exemptions; engine filters nothing.</p>
@@ -845,7 +843,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Key: Julia version, Corset version, loaded extensions, and content digest of each loaded package: Manifest tree hash, or source digest for path and developed packages.</li>
 <li>Package summary: method store entry beside <code>Inferred</code>, same invalidation.</li>
 <li>Budget: with warm library cache, effects stage takes at most <code>inference</code> stage time.</li>
-<li>Solver cost and accuracy are unmeasured: spike measured unification. Engine PR measures both on corpus before rule PRs.</li>
+<li>Solver cost and accuracy are unmeasured. Engine PR measures both on corpus before rule PRs.</li>
 </ul>
 <h4>Facts</h4>
 <ul>
@@ -1162,7 +1160,6 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li><strong>S2 source mapping</strong> (done, works with limits): 65% of findable statements map to exact bytes; about 2% of checked spans wrong. Code macros write maps to line only.</li>
 <li><strong>S3 scope stage</strong> (done, works with limits): JuliaLowering at julia commit <code>f0188d597b</code> lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload in Corset. <code>Meta.lower</code> fallback dropped.</li>
 <li><strong>S4 syntax matcher</strong> (done, <code>spikes/s4-syntax-matcher/REPORT.md</code>): Argus.jl 0.4.2 is MIT. Use Argus behind thin wrapper so matcher stays swappable. Argus searches whole tree once per rule (about 8× slower than kind-indexed walk); own walk with root-kind index removes most of gap. Phase 2 measure: 21 rules take 15–40 ms per 10,000 lines; rule time grows linearly with rule count.</li>
-<li><strong>P5 call resolution</strong> (done; code thrown away, <code>spikes/p5-call-resolution/REPORT.md</code>): stand-in units cut <code>possible</code> to 22.6%, 22.8%, 33.2% (declared signatures: 30.4%, 28.8%, 38.7%). Stand-in cuts hid writes; unification aliasing was largest blind spot; compiler <code>effect_free</code> covers 55–57% of instances. Engine design in <code>effects.md</code>.</li>
 <li><strong>S5 effect summary</strong> (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). <code>possible</code> covers 77%, 57% and 61% of methods (Distances, DataStructures, JSON), all from unknown callees or unknown foreign calls. Base interface functions make 91–95% of calls with more than 4 candidates. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.</li>
 </ul>
 </div><div class="decision"><h3>Quality gate</h3>
@@ -1251,7 +1248,7 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 </tbody>
 </table></div>
 <p>Distances loads ChainRulesCore.jl, whose <code>promote_rule</code> invalidates JuliaSyntax.jl line lookup; stage recompiles about 1 s of Corset code.
-Remaining risk: effects time. Spike P5 at stand-in units, warm: 1.8 s, 4.9 s, 10.7 s; JSON is 3.2× <code>inference</code> stage. Shared IR, compiler-effects skip and library cache should close it; engine PR measures new solver before rule PRs.</p>
+Remaining risk: effect summary, 17–22 s uncached (S5). Shared IR, compiler-effects skip and library cache must close it; engine PR measures new solver before rule PRs.</p>
 <p>Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).</p>
 </div><div class="decision"><h3>Design reviews</h3>
 <p>Design is draft until code proves it. Revisit at each checkpoint:</p>

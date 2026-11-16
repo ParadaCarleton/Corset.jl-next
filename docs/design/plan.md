@@ -21,7 +21,6 @@ Draft. Spikes retire risks first. Each later phase ships usable rules. Phase ord
 - **S2 source mapping** (done, works with limits): 65% of findable statements map to exact bytes; about 2% of checked spans wrong. Code macros write maps to line only.
 - **S3 scope stage** (done, works with limits): JuliaLowering at julia commit `f0188d597b` lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload in Corset. `Meta.lower` fallback dropped.
 - **S4 syntax matcher** (done, `spikes/s4-syntax-matcher/REPORT.md`): Argus.jl 0.4.2 is MIT. Use Argus behind thin wrapper so matcher stays swappable. Argus searches whole tree once per rule (about 8× slower than kind-indexed walk); own walk with root-kind index removes most of gap. Phase 2 measure: 21 rules take 15–40 ms per 10,000 lines; rule time grows linearly with rule count.
-- **P5 call resolution** (done; code thrown away, `spikes/p5-call-resolution/REPORT.md`): stand-in units cut `possible` to 22.6%, 22.8%, 33.2% (declared signatures: 30.4%, 28.8%, 38.7%). Stand-in cuts hid writes; unification aliasing was largest blind spot; compiler `effect_free` covers 55–57% of instances. Engine design in `effects.md`.
 - **S5 effect summary** (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). `possible` covers 77%, 57% and 61% of methods (Distances, DataStructures, JSON), all from unknown callees or unknown foreign calls. Base interface functions make 91–95% of calls with more than 4 candidates. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.
 
 ### Quality gate
@@ -59,7 +58,7 @@ Rerun after edit of one file: `inference` stage with method store, seconds; stor
 | JSON | 3.3 | 0.28 | `lazy.jl` | 0.94 |
 
 Distances loads ChainRulesCore.jl, whose `promote_rule` invalidates JuliaSyntax.jl line lookup; stage recompiles about 1 s of Corset code.
-Remaining risk: effects time. Spike P5 at stand-in units, warm: 1.8 s, 4.9 s, 10.7 s; JSON is 3.2× `inference` stage. Shared IR, compiler-effects skip and library cache should close it; engine PR measures new solver before rule PRs.
+Remaining risk: effect summary, 17–22 s uncached (S5). Shared IR, compiler-effects skip and library cache must close it; engine PR measures new solver before rule PRs.
 
 Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).
 
