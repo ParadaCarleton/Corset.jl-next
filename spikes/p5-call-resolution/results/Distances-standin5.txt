@@ -1,0 +1,26 @@
+package Distances 0.10.12  julia 1.13.3  standin=false roots=standin
+load_s=0.01 summary_s=148.17 ir_s=44.82
+package_methods=283 failed=0 skipped=47 throwing=32 lossy=14 lossy_errors=0 roots=597 instances=17927 ir_failures=6
+sccs=17566 max_scc=86 scc_iterations=18634
+warm_s=1.83 warm_ir_s=0.9 warm_instances=1550 warm_pkg_ir_s=0.88 warm_pkg_instances=1387 cached=16383 warm_diff=0
+warm slow sccs total_s=0.11 n=1
+  0.108s size=1 rounds=1 MethodInstance for Distances.var"#pairwise!#1"(::Main.StandIns.IntStandIn, ::typeof(pairwise!), ::BhattacharyyaDist, ::Main.StandIns.ArrayStandIn{Any, 2}, ::Main.StandIns.ArrayStandIn{Any, 2}, ::Main.
+effect_free=9780 effect_free_cleared=42 effect_free_conflicts=0
+reasons=[:contract => 16412, :too_many_candidates => 897, :apply_unresolved => 251, :callee_unknown => 225, :splat => 200, :candidate_nosummary => 7, :apply_shape => 4]
+top unknown callees=["_apply_iterate" => 255, "::Any" => 138, "map" => 101, "::Type" => 74, "prod" => 65, "add_sum" => 61, "CartesianIndex" => 59, "similar" => 52, "real" => 51, "dataids" => 49, "_isdisjoint" => 43, "strides" => 27, "intersect" => 25, "CartesianIndices" => 23, "conj" => 21, "reverse" => 21, "uppercase" => 17, "substrides" => 17, "sum" => 16, "<<" => 14, "_mapreduce_dim" => 13, "::Function" => 12, "BroadcastStyle" => 11, "LinearIndices" => 11, "elsize" => 10, "permutedims" => 9, ">>" => 9, "literal_pow" => 8, "_indicesmightoverlap" => 8, "_checkcontiguous" => 8, "Integer" => 7, "reshape" => 7, "parent" => 6, "isdone" => 6, "reinterpret" => 6, "result_join" => 5, "reindex" => 5, "_setindex!" => 5, "sin_kernel" => 5, "cos_kernel" => 5]
+unknown_calls=1384 resolved_dynamic=4533 foreign_unknown=170
+memo_globals=String[] self_writes=0
+plain DEFINITE 0
+plain POSSIBLE 22
+plain NONE 127
+bang DEFINITE 20
+bang POSSIBLE 16
+bang NONE 0
+generated DEFINITE 0
+generated POSSIBLE 5
+generated NONE 0
+none relying on contract: Dict(:plain => 77)
+foreign globals written (not counted; methods): 14 ["Base.Workqueues=70", "Base.get_sched_task=70", "Base.PerThreadLock=70", "Base.Partr.heaps_lock=70", "Base.Partr.heaps=70", "Base.Threads.LOCK_CONFLICT_COUNT=70", "Base.PCRE.THREAD_MATCH_CONTEXTS=8", "Base.Filesystem.path_dir_splitter=8", "Base.PCRE.PCRE_COMPILE_LOCK=8", "Core.<anonymous Vector{Symbol}>=8", "Base.Filesystem.path_separator_re=8", "Base.CoreLogging._global_logstate=8"]
+top unknown foreign: [:pointer => 7, :zgemv_64_ => 3, :cgemv_64_ => 3, :dgemv_64_ => 3, :ios_read => 2, :zlacpy_64_ => 2, :jl_ios_buffer_n => 2, :jl_stored_inline => 2, :jl_types_egal => 2, :jl_idset_put_idx => 2]
+possible blame kinds: ["too_many_candidates" => 25, "alias" => 6, "foreign" => 6, "join" => 6]
+possible blame leaves: ["too_many_candidates add_sum" => 13, "foreign pointer" => 6, "alias" => 6, "too_many_candidates isdone" => 4, "join _pairwise!" => 4, "too_many_candidates sum" => 3, "too_many_candidates map" => 3, "join pairwise!" => 2, "too_many_candidates _mapreduce_dim" => 1, "too_many_candidates to_index" => 1]

@@ -1,0 +1,25 @@
+package DataStructures 0.19.6  julia 1.13.3  standin=false roots=standin
+load_s=0.08 summary_s=138.71 ir_s=38.36
+package_methods=1449 failed=0 skipped=82 throwing=41 lossy=26 lossy_errors=0 roots=1916 instances=18115 ir_failures=6
+sccs=17959 max_scc=8 scc_iterations=18525
+warm_s=4.93 warm_ir_s=2.9 warm_instances=5560 warm_pkg_ir_s=2.39 warm_pkg_instances=3428 cached=12475 warm_diff=0
+warm slow sccs total_s=0.0 n=0
+effect_free=10241 effect_free_cleared=59 effect_free_conflicts=0
+reasons=[:contract => 18715, :too_many_candidates => 459, :splat => 331, :callee_unknown => 153, :apply_unresolved => 145, :candidate_nosummary => 6, :apply_shape => 3]
+top unknown callees=["_sort!" => 172, "_apply_iterate" => 148, "::Any" => 75, "::Type" => 60, "map" => 54, "Array" => 21, "empty" => 18, "merge!" => 12, "::Union" => 12, "max_values" => 10, "similar" => 10, "collect" => 9, "get!" => 9, "CartesianIndices" => 8, "LinearIndices" => 7, "zeros" => 6, ">>" => 6, "BroadcastStyle" => 6, "::Function" => 6, "step" => 5, "reduce_empty" => 5, "<<" => 5, "invoke_in_world" => 5, "minimum" => 4, "isdone" => 4, "prod" => 4, "Integer" => 4, "merge" => 4, "result_join" => 3, "intersect" => 3, "widen" => 3, "unsafe_write" => 3, "elsize" => 3, "reverse" => 3, "checkbounds_indices" => 3, "CartesianIndex" => 3, "dataids" => 2, "literal_pow" => 2, "isassigned" => 2, "maximum" => 2]
+unknown_calls=766 resolved_dynamic=6731 foreign_unknown=137
+memo_globals=String[] self_writes=4
+plain DEFINITE 16
+plain POSSIBLE 246
+plain NONE 683
+bang DEFINITE 292
+bang POSSIBLE 28
+bang NONE 0
+generated DEFINITE 0
+generated POSSIBLE 22
+generated NONE 13
+none relying on contract: Dict(:generated => 6, :plain => 538)
+foreign globals written (not counted; methods): 16 ["Base.Threads.LOCK_CONFLICT_COUNT=12", "Base.get_sched_task=12", "Base.Workqueues=12", "Base.PerThreadLock=12", "Base.Partr.heaps=12", "Base.Partr.heaps_lock=12", "Base.TERM_STRINGS=6", "Base.Filesystem.path_separator_re=6", "Base.TERM_NUMBERS=6", "Base.have_color=6", "Base.undef_ref_str=6", "Base.PCRE.THREAD_MATCH_CONTEXTS=6"]
+top unknown foreign: [:jl_arrayunset => 18, :jl_new_struct_uninit => 11, :jl_set_nth_field => 11, :jl_stored_inline => 7, :pointer => 5, :ios_read => 2, :jl_ios_buffer_n => 2, :jl_types_egal => 2, :jl_get_field_offset => 2, :jl_field_index => 2]
+possible blame kinds: ["alias" => 120, "typecall" => 65, "too_many_candidates" => 57, "join" => 27, "apply_unresolved" => 18, "callee_unknown" => 5, "foreign" => 3, "callback" => 1]
+possible blame leaves: ["alias" => 120, "typecall _" => 62, "apply_unresolved _apply_iterate" => 18, "too_many_candidates map" => 18, "too_many_candidates get!" => 10, "join setindex!" => 9, "too_many_candidates similar" => 8, "too_many_candidates _totuple" => 7, "too_many_candidates collect" => 5, "join Dict" => 4, "join sizehint!" => 4, "callee_unknown ::Any" => 4, "too_many_candidates vcat" => 4, "join convert" => 4, "typecall convert" => 3, "foreign pointer" => 3, "join mergewith!" => 2, "too_many_candidates ReverseOrdering" => 2, "too_many_candidates _ord" => 2, "join find_root!" => 2, "callback _any" => 1, "join merge!" => 1, "join copy" => 1, "too_many_candidates add_sum" => 1, "callee_unknown ::Type" => 1]
