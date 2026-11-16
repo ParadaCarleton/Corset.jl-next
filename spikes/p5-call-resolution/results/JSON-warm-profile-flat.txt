@@ -1,0 +1,313 @@
+ Count  Overhead File                                     Line Function
+ =====  ======== ====                                     ==== ========
+    20         0 @Compiler/src/ssair/slot2ssa.jl          639 construct_ssa!(ci::Core.CodeInfo, ir::Compiler.IRCode, sv::Compiler.OptimizationState{Compiler.NativeInterpreter}, domtree::Compiler.GenericDomTree{false}, defuses::Vector{Compiler.SlotInfo}, 𝕃ₒ::Compiler.PartialsLattice{Compiler.ConstsLattice})
+    20         0 @Compiler/src/ssair/passes.jl              5 is_known_call(x::Any, func::Any, ir::Compiler.IncrementalCompact)
+    20         0 @Compiler/src/utilities.jl               272 find_ssavalue_uses(body::Vector{Any}, nvals::Int64)
+    20         1 @Compiler/src/ssair/ir.jl                578 getindex
+    20         0 @Compiler/src/typelattice.jl             426 ⊑
+    20         0 @Base/set.jl                             168 copymutable
+    20         0 @Base/set.jl                              46 Set
+    20         1 @Base/dict.jl                             83 Dict{Any, Nothing}(d::Dict{Any, Nothing})
+    20         0 /home/dev/s5modes/src/EffectSpike.jl     413 global_loc!
+    20         0 @Base/dict.jl                            455 get!(default::Main.EffectSpike.var"#global_loc!##0#global_loc!##1"{Main.EffectSpike.MethodState, GlobalKey}, h::Dict{Any, Int64}, key::GlobalKey)
+    20         0 @Base/set.jl                              45 Set
+    21         0 @Compiler/src/optimize.jl                496 argextype
+    21         0 @Compiler/src/optimize.jl                497 argextype
+    21         0 @Compiler/src/abstractinterpretation.jl 3171 collect_argtypes(interp::Compiler.NativeInterpreter, ea::Vector{Any}, sstate::Compiler.StatementState, sv::Compiler.InferenceState)
+    21         0 @Compiler/src/methodtable.jl             116 findall(sig::Type, table::Compiler.CachedMethodTable{Compiler.InternalMethodTable}; limit::Int64)
+    21         0 @Base/show.jl                           2526 show_tuple_as_call(out::IOStream, name::Symbol, sig::Type; demangle::Bool, kwargs::Nothing, argnames::Nothing, qualified::Bool, hasfirst::Bool)
+    21         0 @Base/show.jl                           2658 kwcall(::@NamedTuple{use_color::Bool}, ::typeof(Base.print_type_bicolor), io::IOContext{IOBuffer}, type::Type)
+    21         0 @Base/show.jl                           2659 #print_type_bicolor#505
+    21         0 @Base/strings/io.jl                      104 sprint
+    21         0 @Base/strings/io.jl                      109 sprint(f::typeof(show), args::Type; context::IOContext{IOBuffer}, sizehint::Int64)
+    21         1 @Base/array.jl                          1020 setindex!
+    21         0 @Compiler/src/abstractinterpretation.jl  341 (::Compiler.var"#infercalls2#abstract_call_gf_by_type##2"{Compiler.SafeBox{Int64}, Bool, Compiler.ArgInfo, Vector{Compiler.MethodMatchTarget}, Compiler.MethodMatches})(interp::Compiler.NativeInterpreter, sv::Compiler.InferenceState)
+    21        21 @Compiler/src/utilities.jl               161 get_compileable_sig
+    21         1 @Compiler/src/typeinfer.jl               793 compute_edges!(sv::Compiler.InferenceState)
+    21         0 @Compiler/src/ssair/domtree.jl           242 construct_domtree(blocks::Vector{Compiler.BasicBlock})
+    21        21 /home/dev/s5modes/src/EffectSpike.jl     327 tracked(t::Type)
+    22         0 @Compiler/src/ssair/ir.jl               2167 compact!(code::Compiler.IRCode, allow_cfg_transforms::Bool)
+    22        19 @Compiler/src/typeutils.jl                52 (::Compiler.var"#argtypes_to_type##0#argtypes_to_type##1")(a::Any)
+    22        10 @Base/abstractarray.jl                  1254 _iterate_abstractarray
+    22         0 @Base/essentials.jl                      974 getindex
+    22         0 @Base/essentials.jl                       11 length
+    22        22 @Base/essentials.jl                       10 size
+    22         0 /home/dev/s5modes/src/EffectSpike.jl    1699 strongconnect!(eng::Engine, v::Core.MethodInstance)
+    22         0 @Base/strings/io.jl                       77 println(::IOStream, ::String, ::Int64, ::Vararg{Any})
+    22         0 @Base/strings/io.jl                       48 print(::IOStream, ::String, ::Int64, ::Vararg{Any})
+    22         0 @Base/show.jl                            983 _show_type(io::IOContext{IOBuffer}, x::Type)
+    22         0 @Base/show.jl                            818 show_typealias(io::IOContext{IOBuffer}, x::Type)
+    22         1 @Compiler/src/typelattice.jl             384 ⊑(lattice::Compiler.InferenceLattice{Compiler.ConditionalsLattice{Compiler.PartialsLattice{Compiler.ConstsLattice}}}, a::Any, b::Any)
+    22         0 @Compiler/src/typelattice.jl             517 ⊑(lattice::Compiler.PartialsLattice{Compiler.ConstsLattice}, a::Any, b::Any)
+    22        22 @Base/runtime_internals.jl              1793 #specialize_method#8
+    22         0 @Base/set.jl                             176 iterate
+    22         3 /home/dev/s5modes/src/EffectSpike.jl     635 transfer_call!(st::Main.EffectSpike.MethodState, ctx::Ctx, res::Core.SSAValue, e::Expr)
+    23         2 @Base/essentials.jl                      389 checkbounds
+    23         0 @Compiler/src/ssair/slot2ssa.jl          603 construct_ssa!(ci::Core.CodeInfo, ir::Compiler.IRCode, sv::Compiler.OptimizationState{Compiler.NativeInterpreter}, domtree::Compiler.GenericDomTree{false}, defuses::Vector{Compiler.SlotInfo}, 𝕃ₒ::Compiler.PartialsLattice{Compiler.ConstsLattice})
+    23         0 @Compiler/src/ssair/slot2ssa.jl          494 compute_live_ins
+    23         0 @Base/show.jl                            978 show
+    23        12 @Compiler/src/inferencestate.jl         1218 doworkloop(interp::Compiler.NativeInterpreter, sv::Compiler.InferenceState)
+    23        22 /home/dev/s5modes/src/EffectSpike.jl     672 transfer_call!(st::Main.EffectSpike.MethodState, ctx::Ctx, res::Core.SSAValue, e::Expr)
+    23         0 /home/dev/s5modes/src/EffectSpike.jl    1523 analyze(ir::Compiler.IRCode, ctx::Ctx, isva::Bool, name::String, pessimistic::Set{Int64})
+    23         0 @Compiler/src/typeinfer.jl               614 finishinfer!(me::Compiler.InferenceState, interp::Compiler.NativeInterpreter, cycleid::Int64, opt_cache::IdDict{Core.MethodInstance, Core.CodeInstance})
+    23         0 /home/dev/s5modes/src/EffectSpike.jl    1039 matched(info::Compiler.MethodMatchInfo)
+    24         0 @Compiler/src/optimize.jl               1344 slot2reg
+    24         0 @Base/array.jl                           161 vect
+    24         0 @Compiler/src/optimize.jl                532 argextype(x::Any, src::Compiler.IncrementalCompact, sptypes::Vector{Compiler.VarState}, slottypes::Vector{Any})
+    24         0 /home/dev/s5modes/src/EffectSpike.jl    1168 apply_summary!(st::Main.EffectSpike.MethodState, res::Core.SSAValue, ops::Vector{Any}, m::Method, s::Summary, sparams::Core.SimpleVector)
+    24         4 @Base/abstractset.jl                     106 union!(s::Set{Any}, itr::Vector{Int64})
+    24         0 @Base/show.jl                           1380 show
+    24         0 @Base/show.jl                           1393 show_mi
+    24         0 @Base/show.jl                           1400 show_mi(io::IOStream, mi::Core.MethodInstance, from_stackframe::Bool)
+    24         0 @Base/show.jl                           2493 show_tuple_as_call
+    24         0 @Compiler/src/typeinfer.jl               632 finishinfer!(me::Compiler.InferenceState, interp::Compiler.NativeInterpreter, cycleid::Int64, opt_cache::IdDict{Core.MethodInstance, Core.CodeInstance})
+    24        15 @Compiler/src/ssair/ir.jl                644 userefs
+    25         0 @Base/bitset.jl                           19 BitSet
+    25        12 @Base/abstractset.jl                     347 issubset(a::Set{Any}, b::Set{Any})
+    25         1 @Base/dict.jl                            358 setindex!(h::Dict{Any, Nothing}, v0::Nothing, key::Int64)
+    25         0 /home/dev/s5modes/src/EffectSpike.jl     396 loc!(st::Main.EffectSpike.MethodState, x::Core.Argument)
+    25         0 @Compiler/src/abstractinterpretation.jl  928 abstract_call_method_with_const_args(interp::Compiler.NativeInterpreter, result::Compiler.MethodCallResult, f::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, match::Core.MethodMatch, sv::Compiler.InferenceState, invokecall::Nothing)
+    25         0 @Base/array.jl                           679 _collect(::Type{Tuple{GlobalKey, Vector{Int64}}}, itr::Base.Generator{Base.Iterators.Filter{Main.EffectSpike.var"#summarize##21#summarize##22", Dict{Any, Int64}}, Main.EffectSpike.var"#summarize##19#summarize##20"{Main.EffectSpike.Graph}}, isz::Base.SizeUnknown)
+    26         0 @Compiler/src/inferencestate.jl          333 Compiler.InferenceState(result::Compiler.InferenceResult, src::Core.CodeInfo, cache_mode::UInt8, interp::Compiler.NativeInterpreter)
+    26         0 @Compiler/src/abstractinterpretation.jl 3034 abstract_call_unknown(interp::Compiler.NativeInterpreter, ft::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int64)
+    26         4 /home/dev/s5modes/src/EffectSpike.jl    1134 (::Main.EffectSpike.var"#at_depth!##0#at_depth!##1"{Main.EffectSpike.Graph})(::Int64)
+    26         0 /home/dev/s5modes/src/EffectSpike.jl    1201 apply_summary!(st::Main.EffectSpike.MethodState, res::Core.SSAValue, ops::Vector{Any}, m::Method, s::Summary, sparams::Core.SimpleVector)
+    26         0 @Compiler/src/abstractinterpretation.jl 3774 abstract_eval_partition_load
+    27         0 @Base/strings/io.jl                       35 print(io::IOStream, x::Core.MethodInstance)
+    27         3 /home/dev/s5modes/src/EffectSpike.jl    1159 apply_summary!(st::Main.EffectSpike.MethodState, res::Core.SSAValue, ops::Vector{Any}, m::Method, s::Summary, sparams::Core.SimpleVector)
+    27        15 /home/dev/s5modes/src/EffectSpike.jl     628 transfer_call!(st::Main.EffectSpike.MethodState, ctx::Ctx, res::Core.SSAValue, e::Expr)
+    27         0 @Compiler/src/ssair/slot2ssa.jl           61 renumber_ssa!
+    27         0 /home/dev/s5modes/src/EffectSpike.jl    1134 at_depth!(g::Main.EffectSpike.Graph, l::Int64, d::Int64)
+    27         0 @Base/abstractset.jl                     220 setdiff
+    27        25 @Compiler/src/inferenceresult.jl         147 most_general_argtypes(method::Method, specTypes::Any)
+    27         0 @Compiler/src/ssair/inlining.jl         1393 compute_inlining_cases(info::Compiler.CallInfo, flag::UInt32, sig::Compiler.Signature, state::Compiler.InliningState{Compiler.NativeInterpreter})
+    28         0 @Compiler/src/typeutils.jl                52 argtypes_to_type(argtypes::Vector{Any})
+    28         0 @Compiler/src/utilities.jl                24 anymap
+    28         0 @Base/array.jl                           436 getindex
+    28        22 @Base/generator.jl                        48 iterate(g::Base.Generator{Vector{Any}, Main.EffectSpike.var"#stmt_candidates##2#stmt_candidates##3"{Compiler.IRCode}}, s::Int64)
+    28         1 @Base/set.jl                             137 push!
+    28         0 @Compiler/src/ssair/inlining.jl          663 batch_inline!(ir::Compiler.IRCode, todo::Vector{Pair{Int64, Any}}, propagate_inbounds::Bool, interp::Compiler.NativeInterpreter)
+    28         9 @Base/abstractarray.jl                  1255 _iterate_abstractarray
+    28        28 /home/dev/s5modes/src/EffectSpike.jl     330 tracked(t::Type)
+    28         0 @Compiler/src/ssair/inlining.jl         1321 handle_any_const_result!
+    28         0 @Compiler/src/ssair/inlining.jl         1641 assemble_inline_todo!(ir::Compiler.IRCode, state::Compiler.InliningState{Compiler.NativeInterpreter})
+    29        26 @Compiler/src/tfuncs.jl                 2846 builtin_tfunction(interp::Compiler.NativeInterpreter, f::Any, argtypes::Vector{Any}, sv::Compiler.IRInterpretationState)
+    30         0 @Compiler/src/inferencestate.jl          340 Compiler.InferenceState(result::Compiler.InferenceResult, src::Core.CodeInfo, cache_mode::UInt8, interp::Compiler.NativeInterpreter)
+    30         2 /home/dev/s5modes/src/EffectSpike.jl     341 argtype(x::GlobalRef, ir::Compiler.IRCode)
+    30         0 @Compiler/src/tfuncs.jl                 2698 builtin_effects(𝕃::Compiler.InferenceLattice{Compiler.ConditionalsLattice{Compiler.PartialsLattice{Compiler.ConstsLattice}}}, f::Core.Builtin, argtypes::Vector{Any}, rt::Any)
+    31         0 /home/dev/s5modes/src/EffectSpike.jl    1148 apply_summary!(st::Main.EffectSpike.MethodState, res::Core.SSAValue, ops::Vector{Any}, m::Method, s::Summary, sparams::Core.SimpleVector)
+    31         0 @Compiler/src/optimize.jl                532 argextype
+    31         0 @Compiler/src/abstractinterpretation.jl 3213 abstract_eval_call
+    31         1 @Compiler/src/abstractinterpretation.jl 3952 abstract_eval_basic_statement
+    31         0 @Compiler/src/abstractinterpretation.jl 3133 abstract_eval_special_value(interp::Compiler.NativeInterpreter, e::Any, sstate::Compiler.StatementState, sv::Compiler.InferenceState)
+    31         0 @Compiler/src/abstractinterpretation.jl 3838 scan_leaf_partitions
+    32        32 @Base/Base_compiler.jl                    57 getproperty
+    32         0 @Base/generator.jl                        48 iterate
+    32         1 @Compiler/src/abstractinterpretation.jl 3861 abstract_eval_globalref
+    32         0 @Compiler/src/abstractinterpretation.jl 3815 scan_specified_partitions(query::typeof(Compiler.abstract_eval_partition_load), walk_binding_partition::typeof(Compiler.walk_binding_partition), interp::Compiler.NativeInterpreter, g::GlobalRef, wwr::Compiler.WorldWithRange)
+    32         3 @Base/abstractarray.jl                  3212 foreach(f::Main.EffectSpike.var"#transfer!##4#transfer!##5"{Main.EffectSpike.MethodState, Core.SSAValue}, itr::Vector{Core.SSAValue})
+    32         0 @Compiler/src/inferenceresult.jl           5 matching_cache_argtypes
+    33         0 @Compiler/src/typeinfer.jl              1037 typeinf_edge(interp::Compiler.NativeInterpreter, method::Method, atype::Any, sparams::Core.SimpleVector, caller::Compiler.InferenceState, edgecycle::Bool, edgelimited::Bool)
+    33         0 @Compiler/src/ssair/ir.jl                653 _advance(stmt::Any, op::Int64)
+    33         0 @Compiler/src/ssair/ir.jl               1550 process_node!(compact::Compiler.IncrementalCompact, result_idx::Int64, inst::Compiler.Instruction, idx::Int64, processed_idx::Int64, active_bb::Int64, do_rename_ssa::Bool)
+    33         0 @Compiler/src/abstractinterpretation.jl 3044 abstract_call(interp::Compiler.NativeInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int64)
+    33        20 /home/dev/s5modes/src/EffectSpike.jl     703 default_property(st::Main.EffectSpike.MethodState, args::Vector{Any})
+    33         0 @Compiler/src/methodtable.jl             113 findall(sig::Type, table::Compiler.CachedMethodTable{Compiler.InternalMethodTable}; limit::Int64)
+    34         7 /home/dev/s5modes/src/EffectSpike.jl     530 transfer!(st::Main.EffectSpike.MethodState, ctx::Ctx, i::Int64, stmt::Core.PhiNode)
+    34         0 @Base/abstractdict.jl                     19 haskey
+    34         0 @Base/iddict.jl                          182 in
+    34         3 /home/dev/s5modes/src/EffectSpike.jl    1167 apply_summary!(st::Main.EffectSpike.MethodState, res::Core.SSAValue, ops::Vector{Any}, m::Method, s::Summary, sparams::Core.SimpleVector)
+    35         0 @Compiler/src/inferencestate.jl          878 Compiler.IRInterpretationState(interp::Compiler.NativeInterpreter, codeinst::Core.CodeInstance, mi::Core.MethodInstance, argtypes::Vector{Any}, world::UInt64)
+    35         0 @Compiler/src/ssair/legacy.jl             59 inflate_ir
+    35        35 @Base/iddict.jl                           92 get
+    35         0 @Compiler/src/typeinfer.jl              1624 typeinf_ext_toplevel
+    35         0 @Compiler/src/typeinfer.jl              1397 typeinf_ext(interp::Compiler.NativeInterpreter, mi::Core.MethodInstance, source_mode::UInt8)
+    36         1 @Base/abstractset.jl                     620 ==
+    37        32 @Base/essentials.jl                      385 checkbounds
+    37        25 @Base/abstractarray.jl                   896 empty
+    37         0 @Compiler/src/ssair/ir.jl                807 IncrementalCompact
+    38         0 @Base/array.jl                           704 _array_for
+    38         0 @Compiler/src/abstractinterpretation.jl 2830 abstract_call_known(interp::Compiler.NativeInterpreter, f::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.IRInterpretationState, max_methods::Int64)
+    38         1 @Compiler/src/ssair/slot2ssa.jl          887 construct_ssa!(ci::Core.CodeInfo, ir::Compiler.IRCode, sv::Compiler.OptimizationState{Compiler.NativeInterpreter}, domtree::Compiler.GenericDomTree{false}, defuses::Vector{Compiler.SlotInfo}, 𝕃ₒ::Compiler.PartialsLattice{Compiler.ConstsLattice})
+    38         1 @Compiler/src/ssair/slot2ssa.jl           62 renumber_ssa!
+    38         0 @Compiler/src/typeinfer.jl              1633 typeinf_ext_toplevel(mi::Core.MethodInstance, world::UInt64, source_mode::UInt8, trim_mode::UInt8)
+    39         0 @Compiler/src/optimize.jl                493 argextype
+    39         0 /home/dev/s5modes/src/EffectSpike.jl     103 Summary(params::Vector{ParamEffect}, stores::Set{NTuple{4, Int64}}, merges::Set{Tuple{Int64, Int64}}, globals::Dict{GlobalKey, Certainty}, direct::Set{GlobalKey}, result_globals::Dict{GlobalKey, Certainty}, opaque::Bool, fresh::Bool, assumed::Bool)
+    42        24 /home/dev/s5modes/src/EffectSpike.jl    1642 type_call_callees(eng::Engine, v::Core.MethodInstance, ir::Compiler.IRCode)
+    42         0 @Compiler/src/ssair/inlining.jl         1425 handle_call!
+    43        43 @Base/promotion.jl                       641 ==
+    43        10 @Compiler/src/abstractinterpretation.jl 4626 typeinf(interp::Compiler.NativeInterpreter, frame::Compiler.InferenceState)
+    44         0 @Base/array.jl                           701 _array_for_inner
+    44         0 /home/dev/s5modes/src/contracts.jl        75 contract_summary(contract::Main.EffectSpike.Contract, nops::Int64)
+    45         2 /home/dev/s5modes/src/EffectSpike.jl     108 bottom_summary(nparams::Int64)
+    46         0 @Compiler/src/ssair/inlining.jl           79 ssa_inlining_pass!
+    47         0 @Compiler/src/abstractinterpretation.jl  760 abstract_call_method(interp::Compiler.NativeInterpreter, method::Method, sig::Any, sparams::Core.SimpleVector, hardlimit::Bool, si::Compiler.StmtInfo, sv::Compiler.InferenceState)
+    47         0 /home/dev/s5modes/src/EffectSpike.jl    1534 analyze(ir::Compiler.IRCode, ctx::Ctx, isva::Bool, name::String, pessimistic::Set{Int64})
+    47         0 @Compiler/src/ssair/slot2ssa.jl          894 construct_ssa!(ci::Core.CodeInfo, ir::Compiler.IRCode, sv::Compiler.OptimizationState{Compiler.NativeInterpreter}, domtree::Compiler.GenericDomTree{false}, defuses::Vector{Compiler.SlotInfo}, 𝕃ₒ::Compiler.PartialsLattice{Compiler.ConstsLattice})
+    47         0 @Compiler/src/abstractinterpretation.jl  354 (::Compiler.var"#infercalls#abstract_call_gf_by_type##0"{Compiler.ArgInfo, Compiler.StmtInfo, Compiler.CallInferenceState, Compiler.Future{Compiler.CallMeta}, Vector{Compiler.MethodMatchTarget}, Compiler.MethodMatches, Vector{Any}, Compiler.var"#tmerge##0#tmerge##1"{Compiler.InferenceLattice{Compiler.Condi…
+    48         0 @Compiler/src/abstractinterpretation.jl 1431 const_prop_call(interp::Compiler.NativeInterpreter, mi::Core.MethodInstance, result::Compiler.MethodCallResult, arginfo::Compiler.ArgInfo, sv::Compiler.InferenceState, concrete_eval_result::Nothing)
+    48         0 @Compiler/src/ssair/inlining.jl         1674 assemble_inline_todo!(ir::Compiler.IRCode, state::Compiler.InliningState{Compiler.NativeInterpreter})
+    49         0 @Base/abstractarray.jl                   876 similar
+    49         0 @Base/array.jl                           409 similar
+    49         0 @Base/abstractarray.jl                   877 similar
+    49         0 @Base/boot.jl                            671 Array
+    49         0 @Compiler/src/inferencestate.jl          873 Compiler.IRInterpretationState(interp::Compiler.NativeInterpreter, codeinst::Core.CodeInstance, mi::Core.MethodInstance, argtypes::Vector{Any}, world::UInt64)
+    50         0 @Base/array.jl                           672 collect
+    50         0 /home/dev/s5modes/src/EffectSpike.jl     686 transfer_call!(st::Main.EffectSpike.MethodState, ctx::Ctx, res::Core.SSAValue, e::Expr)
+    51         0 @Compiler/src/ssair/ir.jl               1967 iterate_compact(compact::Compiler.IncrementalCompact)
+    51         0 /home/dev/s5modes/src/EffectSpike.jl     526 transfer!(st::Main.EffectSpike.MethodState, ctx::Ctx, i::Int64, stmt::Core.PhiNode)
+    51        17 @Compiler/src/tfuncs.jl                 2914 builtin_tfunction(interp::Compiler.NativeInterpreter, f::Any, argtypes::Vector{Any}, sv::Compiler.InferenceState)
+    52         1 @Base/abstractarray.jl                  1247 iterate
+    52         0 @Compiler/src/ssair/ir.jl               2166 compact!(code::Compiler.IRCode, allow_cfg_transforms::Bool)
+    54         0 @Compiler/src/abstractinterpretation.jl 3851 abstract_load_all_consistent_leaf_partitions
+    54         0 @Compiler/src/abstractinterpretation.jl 3836 scan_leaf_partitions
+    55         0 @Compiler/src/abstractinterpretation.jl 3722 abstract_eval_globalref_type
+    55         0 @Base/runtime_internals.jl              1798 specialize_method
+    55         0 @Base/runtime_internals.jl              1799 #specialize_method#9
+    55         0 @Compiler/src/abstractinterpretation.jl  190 (::Compiler.var"#infercalls#abstract_call_gf_by_type##0"{Compiler.ArgInfo, Compiler.StmtInfo, Compiler.CallInferenceState, Compiler.Future{Compiler.CallMeta}, Vector{Compiler.MethodMatchTarget}, Compiler.MethodMatches, Vector{Any}, Compiler.var"#tmerge##0#tmerge##1"{Compiler.InferenceLattice{Compiler.Condi…
+    55        55 @Compiler/src/abstractinterpretation.jl  168 abstract_call_gf_by_type(interp::Compiler.NativeInterpreter, func::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, atype::Any, sv::Compiler.InferenceState, max_methods::Int64)
+    56        19 @Base/array.jl                           903 grow_to!(dest::Vector{Any}, itr::Base.Generator{Base.Iterators.Filter{Main.EffectSpike.var"#transfer!##2#transfer!##3"{Core.PhiNode}, Base.OneTo{Int64}}, Main.EffectSpike.var"#transfer!##0#transfer!##1"{Core.PhiNode}})
+    56         8 /home/dev/s5modes/src/EffectSpike.jl     689 transfer_call!(st::Main.EffectSpike.MethodState, ctx::Ctx, res::Core.SSAValue, e::Expr)
+    57        55 /home/dev/s5modes/src/EffectSpike.jl     642 transfer_call!(st::Main.EffectSpike.MethodState, ctx::Ctx, res::Core.SSAValue, e::Expr)
+    57         0 @Base/abstractarray.jl                  3212 foreach
+    57         3 @Compiler/src/typeinfer.jl               228 finish_nocycle(::Compiler.NativeInterpreter, frame::Compiler.InferenceState, time_before::UInt64)
+    57        55 @Base/runtime_internals.jl              1622 _uncompressed_ir(codeinst::Core.CodeInstance, s::String)
+    58         1 @Compiler/src/abstractinterpretation.jl 1100 _concrete_eval_call(interp::Compiler.NativeInterpreter, f::Any, edge::Core.CodeInstance, effects::Compiler.Effects, arginfo::Compiler.ArgInfo, ::Compiler.InferenceState, invokecall::Nothing)
+    58        23 @Base/array.jl                           905 grow_to!(dest::Vector{Any}, itr::Base.Generator{Base.Iterators.Filter{Main.EffectSpike.var"#transfer!##2#transfer!##3"{Core.PhiNode}, Base.OneTo{Int64}}, Main.EffectSpike.var"#transfer!##0#transfer!##1"{Core.PhiNode}})
+    58        58 @Compiler/src/abstractinterpretation.jl  886 ConstCallResult
+    59        59 @Base/runtime_internals.jl              1795 #specialize_method#8
+    60        60 @Base/dict.jl                             80 Dict
+    61         7 @Compiler/src/ssair/ir.jl                661 iterate
+    65         0 /home/dev/s5modes/src/EffectSpike.jl    1086 dynamic_call!(st::Main.EffectSpike.MethodState, ctx::Ctx, res::Core.SSAValue, ops::Vector{Any}, f::Function, cands::Nothing)
+    65         0 /home/dev/s5modes/src/EffectSpike.jl     901 apply_contract!
+    65         0 @Compiler/src/ssair/irinterp.jl           58 abstract_call
+    66         0 /home/dev/s5modes/src/EffectSpike.jl     174 content!(g::Main.EffectSpike.Graph, l::Int64)
+    66         0 @Compiler/src/abstractinterpretation.jl 3218 abstract_eval_call(interp::Compiler.NativeInterpreter, e::Expr, sstate::Compiler.StatementState, sv::Compiler.IRInterpretationState)
+    68         0 @Compiler/src/abstractinterpretation.jl  917 abstract_call_method_with_const_args(interp::Compiler.NativeInterpreter, result::Compiler.MethodCallResult, f::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, match::Core.MethodMatch, sv::Compiler.InferenceState, invokecall::Nothing)
+    68         0 @Compiler/src/abstractinterpretation.jl 1076 concrete_eval_call
+    72        72 @Compiler/src/utilities.jl               128 retrieve_code_info(mi::Core.MethodInstance, world::UInt64)
+    72         0 @Compiler/src/inferencestate.jl          606 InferenceState
+    72         0 @Compiler/src/ssair/ir.jl               1889 iterate
+    73         0 @Compiler/src/inferencestate.jl          603 InferenceState
+    74        21 /home/dev/s5modes/src/EffectSpike.jl     395 loc!(st::Main.EffectSpike.MethodState, x::Core.SSAValue)
+    75         1 @Compiler/src/ssair/irinterp.jl          154 reprocess_instruction!(interp::Compiler.NativeInterpreter, inst::Compiler.Instruction, idx::Int64, bb::Int64, irsv::Compiler.IRInterpretationState)
+    77         0 @Compiler/src/ssair/inlining.jl           76 ssa_inlining_pass!
+    82         0 /home/dev/s5modes/src/EffectSpike.jl    1425 (::Main.EffectSpike.var"#from_operand#type_call_target##10"{Compiler.IRCode, Main.EffectSpike.var"#as_record#type_call_target##7"{Core.MethodInstance}, Main.EffectSpike.var"#opsof#type_call_target##0"{Vector{Any}, Method}})(j::Int64)
+    82         0 /home/dev/s5modes/src/EffectSpike.jl    1420 opsof
+    85         0 @Base/boot.jl                            661 Array
+    88         0 @Base/runtime_internals.jl              1782 specialize_method
+    88         0 /home/dev/s5modes/src/EffectSpike.jl    1447 type_call_target(ir::Compiler.IRCode, ops::Vector{Any}, m::Method, sparams::Core.SimpleVector, origin::Tuple{Symbol, Int64}, pos::Vector{Int64}, caller::Core.MethodInstance)
+    92         0 @Compiler/src/typeinfer.jl              1253 typeinf_frame(interp::Compiler.NativeInterpreter, mi::Core.MethodInstance, run_optimizer::Bool)
+    92         0 @Base/dict.jl                            244 ht_keyindex(h::Dict{Any, Int64}, key::GlobalKey)
+    92        11 /home/dev/s5modes/src/EffectSpike.jl     911 resolved_call!(st::Main.EffectSpike.MethodState, ctx::Ctx, res::Core.SSAValue, ops::Vector{Any}, matches::Vector{Core.MethodMatch})
+    93         1 @Compiler/src/ssair/irinterp.jl          377 (::Compiler.var"#229#230"{Nothing, Compiler.NativeInterpreter, Compiler.IRInterpretationState, Compiler.var"#check_ret!#228"{Vector{Int64}}, BitSet, Compiler.TwoPhaseDefUseMap, Compiler.IRCode})(inst::Compiler.Instruction, lstmt::Int64, bb::Int64)
+    94         0 @Compiler/src/ssair/ir.jl               2164 compact!
+    94        94 @Compiler/src/typeutils.jl                55 argtypes_to_type(argtypes::Vector{Any})
+    95        91 @Base/boot.jl                            649 Array
+    95         0 /home/dev/s5modes/src/EffectSpike.jl    1460 type_call!(st::Main.EffectSpike.MethodState, ops::Vector{Any}, m::Method, sparams::Core.SimpleVector, origin::Tuple{Symbol, Int64}, pos::Vector{Int64}, cause::String)
+    96         1 @Compiler/src/abstractinterpretation.jl 1346 semi_concrete_eval_call(interp::Compiler.NativeInterpreter, mi::Core.MethodInstance, result::Compiler.MethodCallResult, arginfo::Compiler.ArgInfo, sv::Compiler.InferenceState)
+    96         0 @Compiler/src/abstractinterpretation.jl 2128 abstract_call_builtin(interp::Compiler.NativeInterpreter, f::Core.Builtin, ::Compiler.ArgInfo, sv::Compiler.IRInterpretationState)
+    99        99 @Base/runtime_internals.jl               901 objectid
+   101         0 /home/dev/s5modes/src/EffectSpike.jl    1197 apply_summary!(st::Main.EffectSpike.MethodState, res::Core.SSAValue, ops::Vector{Any}, m::Method, s::Summary, sparams::Core.SimpleVector)
+   102         0 @Base/dict.jl                            129 hashindex
+   103       103 @Base/essentials.jl                      975 getindex
+   103         0 @Compiler/src/abstractinterpretation.jl 1997 (::Compiler.var"#infercalls#abstract_apply##0"{Compiler.StmtInfo, Compiler.Future{Compiler.CallMeta}, Compiler.UnionSplitApplyCallInfo, Vector{Compiler.ApplyCallInfo}, Bool, Vector{Any}, Core.Box})(interp::Compiler.NativeInterpreter, sv::Compiler.InferenceState)
+   104         0 @Compiler/src/abstractinterpretation.jl 2828 abstract_call_known(interp::Compiler.NativeInterpreter, f::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int64)
+   104         0 /home/dev/s5modes/src/EffectSpike.jl    1530 analyze(ir::Compiler.IRCode, ctx::Ctx, isva::Bool, name::String, pessimistic::Set{Int64})
+   104         0 /home/dev/s5modes/src/EffectSpike.jl    1490 resolve_pending!(st::Main.EffectSpike.MethodState, ctx::Ctx)
+   105         0 @Base/hashing.jl                          40 hash
+   105         0 @Base/hashing.jl                          46 hash
+   106         0 @Compiler/src/abstractinterpretation.jl 2793 abstract_call_known(interp::Compiler.NativeInterpreter, f::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int64)
+   106         0 @Compiler/src/abstractinterpretation.jl 2017 abstract_apply(interp::Compiler.NativeInterpreter, argtypes::Vector{Any}, si::Compiler.StmtInfo, sv::Compiler.InferenceState)
+   111         1 @Compiler/src/ssair/irinterp.jl          345 ir_abstract_constant_propagation(interp::Compiler.NativeInterpreter, irsv::Compiler.IRInterpretationState; externally_refined::Nothing)
+   115         0 @Compiler/src/abstractinterpretation.jl 2940 abstract_call_known(interp::Compiler.NativeInterpreter, f::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int64)
+   115         0 @Compiler/src/ssair/irinterp.jl          299 scan!(callback::Compiler.var"#229#230"{Nothing, Compiler.NativeInterpreter, Compiler.IRInterpretationState, Compiler.var"#check_ret!#228"{Vector{Int64}}, BitSet, Compiler.TwoPhaseDefUseMap, Compiler.IRCode}, scanner::Compiler.BBScanner, forwards_only::Bool)
+   116         0 @Compiler/src/abstractinterpretation.jl 1349 semi_concrete_eval_call(interp::Compiler.NativeInterpreter, mi::Core.MethodInstance, result::Compiler.MethodCallResult, arginfo::Compiler.ArgInfo, sv::Compiler.InferenceState)
+   116         0 @Compiler/src/ssair/irinterp.jl          331 ir_abstract_constant_propagation
+   118         0 @Base/boot.jl                            648 Array
+   124         4 @Base/dict.jl                            478 getindex
+   126         0 @Compiler/src/methodtable.jl             119 findall(sig::Type, table::Compiler.CachedMethodTable{Compiler.InternalMethodTable}; limit::Int64)
+   133         0 @Base/array.jl                           825 collect
+   134         0 @Base/array.jl                          1181 _growend_internal!(a::Vector{Int64}, delta::Int64, len::Int64)
+   135         0 @Base/array.jl                          1101 array_new_memory
+   138         0 /home/dev/s5modes/src/EffectSpike.jl    1281 summarize(st::Main.EffectSpike.MethodState, nparams::Int64, isva::Bool)
+   140         0 @Compiler/src/inferencestate.jl          608 InferenceState
+   143         0 @Base/dict.jl                            151 rehash!(h::Dict{Any, Nothing}, newsz::Int64)
+   156         0 @Compiler/src/methodtable.jl              70 findall
+   156         0 @Compiler/src/methodtable.jl              70 #findall#5
+   156         0 @Compiler/src/methodtable.jl             105 _findall
+   156         0 @Base/array.jl                          1348 _push!
+   160         0 @Base/array.jl                          1345 push!
+   172         2 @Base/array.jl                          1205 _growend!
+   176         0 /home/dev/s5modes/src/EffectSpike.jl    1773 solve_scc_inner!
+   176         0 /home/dev/s5modes/src/EffectSpike.jl    1814 must_pass!(eng::Engine, scc::Vector{Core.MethodInstance}, ctx::Ctx)
+   178         0 @Base/dict.jl                            201 #sizehint!#304
+   180         0 @Base/set.jl                             172 sizehint!
+   180         0 @Base/set.jl                             172 #sizehint!#305
+   181         0 @Base/abstractset.jl                     104 union!(s::Set{Any}, itr::Vector{Symbol})
+   181         0 @Base/dict.jl                            194 sizehint!
+   185         0 @Compiler/src/abstractinterpretation.jl  409 find_simple_method_matches(interp::Compiler.NativeInterpreter, atype::Any, max_methods::Int64)
+   185         1 /home/dev/s5modes/src/EffectSpike.jl     879 join_apply!(st::Main.EffectSpike.MethodState, res::Core.SSAValue, cands::Vector{Tuple{Vector{Any}, Method, Summary, Core.SimpleVector}}, cause::String)
+   188         0 @Compiler/src/methodtable.jl             110 findall
+   198         1 @Compiler/src/abstractinterpretation.jl  371 #find_method_matches#137
+   198         0 /home/dev/s5modes/src/EffectSpike.jl    1096 dynamic_call!(st::Main.EffectSpike.MethodState, ctx::Ctx, res::Core.SSAValue, ops::Vector{Any}, f::Function, cands::Vector{Tuple{Method, Core.MethodInstance}})
+   198         0 /home/dev/s5modes/src/EffectSpike.jl     885 join_apply!(st::Main.EffectSpike.MethodState, res::Core.SSAValue, cands::Vector{Tuple{Vector{Any}, Method, Summary, Core.SimpleVector}}, cause::String)
+   204         0 @Compiler/src/abstractinterpretation.jl  132 abstract_call_gf_by_type(interp::Compiler.NativeInterpreter, func::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, atype::Any, sv::Compiler.InferenceState, max_methods::Int64)
+   204         0 @Compiler/src/abstractinterpretation.jl  365 find_method_matches
+   208         1 @Base/set.jl                              47 Set
+   212         1 /home/dev/s5modes/src/EffectSpike.jl    1266 summarize(st::Main.EffectSpike.MethodState, nparams::Int64, isva::Bool)
+   216         0 @Compiler/src/abstractinterpretation.jl  936 abstract_call_method_with_const_args(interp::Compiler.NativeInterpreter, result::Compiler.MethodCallResult, f::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, match::Core.MethodMatch, sv::Compiler.InferenceState, invokecall::Nothing)
+   221         0 @Compiler/src/optimize.jl               1346 slot2reg
+   243         0 /home/dev/s5modes/src/EffectSpike.jl     913 resolved_call!(st::Main.EffectSpike.MethodState, ctx::Ctx, res::Core.SSAValue, ops::Vector{Any}, matches::Vector{Core.MethodMatch})
+   247         0 /home/dev/s5modes/src/EffectSpike.jl    1555 get_ir(mi::Core.MethodInstance, stats::Main.EffectSpike.Stats)
+   275         9 /home/dev/s5modes/src/EffectSpike.jl    1637 type_call_callees(eng::Engine, v::Core.MethodInstance, ir::Compiler.IRCode)
+   300        14 /home/dev/s5modes/src/EffectSpike.jl    1050 #stmt_candidates##0
+   302         0 /home/dev/s5modes/src/EffectSpike.jl    1603 callees(ir::Compiler.IRCode)
+   310         1 /home/dev/s5modes/src/EffectSpike.jl    1049 stmt_candidates
+   316         1 @Base/dict.jl                            460 get!(default::Main.EffectSpike.var"#stmt_candidates##0#stmt_candidates##1"{Compiler.IRCode, Vector{Any}}, h::Dict{Int64, Union{Nothing, Vector{Tuple{Method, Core.MethodInstance}}}}, key::Int64)
+   332         0 @Compiler/src/optimize.jl               1035 optimize(interp::Compiler.NativeInterpreter, opt::Compiler.OptimizationState{Compiler.NativeInterpreter}, caller::Compiler.InferenceResult)
+   332         0 @Compiler/src/optimize.jl               1062 run_passes_ipo_safe
+   348         0 @Compiler/src/typeinfer.jl               231 finish_nocycle(::Compiler.NativeInterpreter, frame::Compiler.InferenceState, time_before::UInt64)
+   354         0 /home/dev/s5modes/src/EffectSpike.jl    1708 strongconnect!(eng::Engine, v::Core.MethodInstance)
+   389         0 /home/dev/s5modes/src/EffectSpike.jl    1716 strongconnect!(eng::Engine, v::Core.MethodInstance)
+   420         4 @Compiler/src/abstractinterpretation.jl 4642 typeinf(interp::Compiler.NativeInterpreter, frame::Compiler.InferenceState)
+   438         0 /home/dev/s5modes/src/EffectSpike.jl    1535 analyze(ir::Compiler.IRCode, ctx::Ctx, isva::Bool, name::String, pessimistic::Set{Int64})
+   447       446 @Base/boot.jl                            588 GenericMemory
+   513         0 /home/dev/s5modes/src/EffectSpike.jl    1058 candidate_instances(tt::Type)
+   520         0 @Compiler/src/abstractinterpretation.jl 1437 const_prop_call(interp::Compiler.NativeInterpreter, mi::Core.MethodInstance, result::Compiler.MethodCallResult, arginfo::Compiler.ArgInfo, sv::Compiler.InferenceState, concrete_eval_result::Nothing)
+   532         0 @Base/runtime_internals.jl              1602 _methods_by_ftype
+   532         0 @Base/runtime_internals.jl              1605 _methods_by_ftype
+   561         7 /home/dev/s5modes/src/EffectSpike.jl     692 transfer_call!(st::Main.EffectSpike.MethodState, ctx::Ctx, res::Core.SSAValue, e::Expr)
+   572         0 @Compiler/src/abstractinterpretation.jl  942 abstract_call_method_with_const_args(interp::Compiler.NativeInterpreter, result::Compiler.MethodCallResult, f::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, match::Core.MethodMatch, sv::Compiler.InferenceState, invokecall::Nothing)
+   578         0 @Compiler/src/optimize.jl               1049 run_passes_ipo_safe(ci::Core.CodeInfo, sv::Compiler.OptimizationState{Compiler.NativeInterpreter}, optimize_until::String)
+   688       688 @Base/runtime_internals.jl              1608 _methods_by_ftype
+   842         0 @Compiler/src/abstractinterpretation.jl  201 (::Compiler.var"#handle1#abstract_call_gf_by_type##1"{Int64, Compiler.Future{Compiler.MethodCallResult}, Int64, Vector{Union{Nothing, Core.CodeInstance}}, Core.MethodMatch, Compiler.ArgInfo, Compiler.StmtInfo, Compiler.CallInferenceState, Vector{Any}, Compiler.var"#tmerge##0#tmerge##1"{Compiler.InferenceLa…
+   842         0 @Compiler/src/abstractinterpretation.jl  910 abstract_call_method_with_const_args
+   848         1 /home/dev/s5modes/src/EffectSpike.jl     563 transfer_expr!(st::Main.EffectSpike.MethodState, ctx::Ctx, res::Core.SSAValue, e::Expr)
+   852         0 /home/dev/s5modes/src/EffectSpike.jl     540 transfer!(st::Main.EffectSpike.MethodState, ctx::Ctx, i::Int64, stmt::Expr)
+   880         0 @Compiler/src/abstractinterpretation.jl  275 (::Compiler.var"#infercalls#abstract_call_gf_by_type##0"{Compiler.ArgInfo, Compiler.StmtInfo, Compiler.CallInferenceState, Compiler.Future{Compiler.CallMeta}, Vector{Compiler.MethodMatchTarget}, Compiler.MethodMatches, Vector{Any}, Compiler.var"#tmerge##0#tmerge##1"{Compiler.InferenceLattice{Compiler.Condi…
+   990         1 @Compiler/src/abstractinterpretation.jl  361 abstract_call_gf_by_type(interp::Compiler.NativeInterpreter, func::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, atype::Any, sv::Compiler.InferenceState, max_methods::Int64)
+  1000        19 /home/dev/s5modes/src/EffectSpike.jl    1529 analyze(ir::Compiler.IRCode, ctx::Ctx, isva::Bool, name::String, pessimistic::Set{Int64})
+  1207         0 @Compiler/src/abstractinterpretation.jl 2941 abstract_call_known(interp::Compiler.NativeInterpreter, f::Any, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int64)
+  1399         0 @Compiler/src/abstractinterpretation.jl 3047 abstract_call(interp::Compiler.NativeInterpreter, arginfo::Compiler.ArgInfo, si::Compiler.StmtInfo, sv::Compiler.InferenceState, max_methods::Int64)
+  1419         0 /home/dev/s5modes/src/EffectSpike.jl    1772 solve_scc_inner!
+  1425         0 @Compiler/src/abstractinterpretation.jl 3200 abstract_call(interp::Compiler.NativeInterpreter, arginfo::Compiler.ArgInfo, sstate::Compiler.StatementState, sv::Compiler.InferenceState)
+  1425         0 @Compiler/src/abstractinterpretation.jl 3040 abstract_call
+  1441         0 @Compiler/src/abstractinterpretation.jl 3218 abstract_eval_call
+  1469         1 @Compiler/src/abstractinterpretation.jl 3574 abstract_eval_statement_expr(interp::Compiler.NativeInterpreter, e::Expr, sstate::Compiler.StatementState, sv::Compiler.InferenceState)
+  1474         0 @Compiler/src/abstractinterpretation.jl 3968 abstract_eval_basic_statement
+  1509         0 @Compiler/src/abstractinterpretation.jl 4474 typeinf_local(interp::Compiler.NativeInterpreter, frame::Compiler.InferenceState, nextresult::Compiler.CurrentState)
+  1509         0 @Compiler/src/abstractinterpretation.jl 3925 abstract_eval_basic_statement
+  1571         0 /home/dev/s5modes/src/EffectSpike.jl    1523 analyze
+  1572         1 /home/dev/s5modes/src/EffectSpike.jl    1737 analyze_instance(eng::Engine, ctx::Ctx, mi::Core.MethodInstance)
+  1584         0 /home/dev/s5modes/src/EffectSpike.jl    1793 fixpoint!(eng::Engine, scc::Vector{Core.MethodInstance}, combine::typeof(Main.EffectSpike.lub))
+  1595         0 /home/dev/s5modes/src/EffectSpike.jl    1763 solve_scc!(eng::Engine, scc::Vector{Core.MethodInstance})
+  1598         0 /home/dev/s5modes/src/EffectSpike.jl    1730 strongconnect!(eng::Engine, v::Core.MethodInstance)
+  1606         2 @Compiler/src/abstractinterpretation.jl 4635 typeinf(interp::Compiler.NativeInterpreter, frame::Compiler.InferenceState)
+  1726         0 @Compiler/src/typeinfer.jl              1255 typeinf_frame(interp::Compiler.NativeInterpreter, mi::Core.MethodInstance, run_optimizer::Bool)
+  1827         0 /home/dev/s5modes/src/EffectSpike.jl    1550 get_ir(mi::Core.MethodInstance, stats::Main.EffectSpike.Stats)
+  2077         0 /home/dev/s5modes/src/EffectSpike.jl    1691 strongconnect!(eng::Engine, v::Core.MethodInstance)
+  4329         0 /home/dev/s5modes/src/EffectSpike.jl    1710 strongconnect!(eng::Engine, v::Core.MethodInstance)
+  4461         0 /home/dev/s5modes/corpus.jl              133 (::var"#10#11")()
+  4461         0 /home/dev/s5modes/src/EffectSpike.jl    1680 summary!(eng::Engine, root::Core.MethodInstance)
+Total snapshots: 4461. Utilization: 100% across all threads and tasks. Use the `groupby` kwarg to break down by thread and/or task.
