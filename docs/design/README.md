@@ -11,7 +11,7 @@ Never hand-edit `rules-rewrite.html`.
 | `stages.toml` | Analysis stages in pipeline order |
 | `pipeline.md` | Stage order and diagram |
 | `findings.md` | Groups, confidence, levels, opt-outs, config, project kind, fix tiers, messages, macro output, conventions |
-| `types.md` | Stand-in types, type-disruption, arguments without stand-in, annotations, union policy, Moshi, arrays |
+| `types.md` | Stand-in types, type-disruption, lost narrowing, arguments without stand-in, annotations, union policy, Moshi, arrays |
 | `effects.md` | `!` convention, effect summary |
 | `architecture.md` | Code layout, core types, process model, tests, command line, rule contract, package load, cache, reference linters |
 | `plan.md` | Phases, spikes, quality gate, speed budget |

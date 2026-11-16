@@ -11,11 +11,12 @@ module Inference
 using Serialization: serialize, deserialize
 using SHA: sha256
 using TypedSyntax: TypedSyntax
-using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence, Weak, Exit
+using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, NarrowingLoss, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence, Weak, Exit
 using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span
 using ..Package: Package
 using ..StandIns: StandIns
 using ..Widening: Widening, statement_call
+using ..Narrowing: Narrowing
 using ..Signatures: LIMIT, method_signatures, struct_stand_ins
 
 const CC = Core.Compiler
@@ -35,14 +36,15 @@ end
 
 """
 Result of inferring one method on one signature, as method store keeps it: call signatures of package methods its calls
-reach, call statements that never return by statement index (`failures!`), whether inference gave code, and weak
-values that change input type (`disruptions`).
+reach, call statements that never return by statement index (`failures!`), whether inference gave code, weak
+values that change input type (`disruptions`), and type tests whose narrowing guard drops (`narrowings`).
 """
 struct Inferred
     reached::Vector{Type}
     failures::Vector{Pair{Int, Union{FailingCall, BlindSpot}}}
     coded::Bool
     disruptions::Vector{Disruption}
+    narrowings::Vector{NarrowingLoss}
 end
 
 """
@@ -186,14 +188,15 @@ function instance(method::Method, signature::Type)::Union{Nothing, Core.MethodIn
 end
 
 """
-Unoptimized typed code of `method` on `signature`, its method instance, result type and compiler edges (callees result
-depends on); `nothing` when inference gives none.
+Unoptimized typed code of `method` on `signature`, its method instance, result type, compiler edges (callees result
+depends on) and control flow with variable types per block; `nothing` when inference gives none.
 """
-function infer(method::Method, signature::Type)::Union{Nothing, Tuple{Core.MethodInstance, Core.CodeInfo, Type, Vector{Any}}}
+function infer(method::Method, signature::Type)::Union{Nothing, Tuple{Core.MethodInstance, Core.CodeInfo, Type, Vector{Any}, Narrowing.Flow}}
     specialized = instance(method, signature)
     isnothing(specialized) && return nothing
     frame = CC.typeinf_frame(CC.NativeInterpreter(), specialized, false)
-    return isnothing(frame) ? nothing : (specialized, frame.src, CC.widenconst(CC.ignorelimited(frame.result.result)), frame.edges)
+    isnothing(frame) && return nothing
+    return specialized, frame.src, CC.widenconst(CC.ignorelimited(frame.result.result)), frame.edges, Narrowing.Flow(frame.cfg, frame.bb_vartables)
 end
 
 """Name of function `call` calls: global, or global earlier statement reads; `nothing` for computed callee."""
@@ -239,7 +242,8 @@ function statement_nodes(code::Core.CodeInfo, mapped::Vector{Vector{SyntaxNode}}
         node, call = only(found), statement_call(statement)
         if !isnothing(call)
             name = callee_name(code, call)
-            !isnothing(name) && spells(file, node, name, length(call.args) - 1) || continue
+            isnothing(name) && continue
+            spells(file, node, name, length(call.args) - 1) || continue
             # Inner call runs first and ends first, so later call of one callee ends later in source.
             stop = last(Facts.trimmed_bytes(file.text, node))
             name in LOWERED || (get(ends, name, 0) < stop || continue; ends[name] = stop)
@@ -359,6 +363,26 @@ function disruptions(typed::TypedCode, nodes::Vector{Union{Nothing, SyntaxNode}}
                 span, meeting, exit,
                 origin.kind, isnothing(node) ? repr(origin.value) : source(file, node), origin.value isa AbstractFloat ? Float64(origin.value) : nothing,
                 string(origin.kind == Weak.name ? origin.value : typeof(origin.value)), variable, type_text(StandIns.model(StandIns.FloatStandIn)), type_text(change.found), type_text(change.expected), change.exit, confidence,
+            )
+        )
+    end
+    return found
+end
+
+"""
+Lost narrowing facts of `typed` code from `losses` (`Narrowing.losses`); `nodes` are its statement nodes. Loss counts
+when test maps to term of `&&` or `||` chain (`Narrowing.guard`).
+"""
+function narrowings(typed::TypedCode, nodes::Vector{Union{Nothing, SyntaxNode}}, losses::Vector{Narrowing.Loss})::Vector{NarrowingLoss}
+    found, file = NarrowingLoss[], typed.site.file
+    for loss in losses
+        node = nodes[loss.test]
+        guarded = isnothing(node) ? nothing : Narrowing.guard(file, node)
+        isnothing(guarded) && continue
+        push!(
+            found, NarrowingLoss(
+                Facts.span(file, guarded.term), Facts.span(file, guarded.statement), typed.spans[loss.read], string(typed.code.slotnames[loss.slot]),
+                type_text(loss.narrowed), type_text(loss.found), kind_name(guarded.chain), guarded.split,
             )
         )
     end
@@ -716,7 +740,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     index, ids = isnothing(store) ? (Dict{String, Method}(), IdDict{Method, String}()) : method_index(by_path)
     codes = Dict{String, String}()
     typed, seen, counts, coded = TypedCode[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
-    failing, gaps, settled, disrupting = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[]
+    failing, gaps, settled, disrupting, narrowing = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[], NarrowingLoss[]
     while !isempty(pending)
         site, call_signature = popfirst!(pending)
         (site.method, call_signature) in seen && continue
@@ -732,14 +756,15 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
             edges = Any[]
             result = infer(site.method, call_signature)
             inferred = if isnothing(result)
-                Inferred(Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, Disruption[])
+                Inferred(Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, Disruption[], NarrowingLoss[])
             else
-                instance, code, returned, frame_edges = result
+                instance, code, returned, frame_edges, flow = result
                 append!(edges, frame_edges)
                 nodes = statement_nodes(code, mappings(code, instance, site), site.file)
                 push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes)))
                 changes, branch = Widening.changes!(edges, instance, code)
-                Inferred(reached(code, instance), failures!(edges, helpers, last(typed), by_path), true, disruptions(last(typed), nodes, changes, branch))
+                lost = narrowings(last(typed), nodes, Narrowing.losses(code, flow, CC.sptypes_from_meth_instance(instance)))
+                Inferred(reached(code, instance), failures!(edges, helpers, last(typed), by_path), true, disruptions(last(typed), nodes, changes, branch), lost)
             end
             entry = isnothing(used) ? nothing : entry!(named, ids, codes, site, call_signature, inferred, edges, by_path, hashes, modules)
             isnothing(journal) || record!(journal, Record(key, "", true, entry))
@@ -761,11 +786,13 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
             failure isa BlindSpot ? push!(gaps, failure) : (push!(settled, (site.method, index)); push!(failing, failure))
         end
         append!(disrupting, inferred.disruptions)
+        append!(narrowing, inferred.narrowings)
     end
     append!(spots, BlindSpot("untyped method no call reaches", site.span) for site in skipped if !(site.method in coded))
     # One finding per weak value: escape before intermediate, definite before possible.
     sort!(disrupting; by = disruption -> (disruption.exit == Exit.intermediate, disruption.confidence == Confidence.possible))
-    return InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting)), unique!(append!(spots, gaps)), typed, used
+    facts = InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting), unique!(lost -> lost.test, narrowing))
+    return facts, unique!(append!(spots, gaps)), typed, used
 end
 
 """

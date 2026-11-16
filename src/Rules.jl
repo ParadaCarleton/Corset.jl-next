@@ -25,6 +25,7 @@ include("rules/internal_access.jl")
 include("rules/invariant_parameter.jl")
 include("rules/iterator_traits.jl")
 include("rules/juxtaposition.jl")
+include("rules/lost_narrowing.jl")
 include("rules/method_ambiguity.jl")
 include("rules/method_overwrite.jl")
 include("rules/misplaced_import.jl")
@@ -78,6 +79,7 @@ const REGISTRY = RuleEntry[
     InvariantParameter.ENTRY,
     IteratorTraits.ENTRY,
     Juxtaposition.ENTRY,
+    LostNarrowing.ENTRY,
     MethodAmbiguity.ENTRY,
     MethodOverwrite.ENTRY,
     MisplacedImport.ENTRY,

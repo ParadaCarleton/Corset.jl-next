@@ -352,7 +352,7 @@ text = "Type test before last term of `&&` guard loses narrowing"
 example = "`(x isa Expr && x.head === :call) || return; x.args` reads `x` as `Any`"
 group = "performance"
 stage = "inference"
-note = "Lowering merges `&&` value before `||` branches, so only last term narrows. Same for `if !(a && b)` and for `!isnothing(x)` or `x !== nothing` tests. Typed code proves loss: test is not constant, and variable is read after guard. Widened read dispatches at run time, and method added later can invalidate it. Fix: one guard per term, `x isa Expr || return; x.head === :call || return`."
+note = "Lowering merges `&&` value before `||` branches, so only last term narrows. Same for `if !(a && b)`, for condition stored in variable, and for `!isnothing(x)` or `x !== nothing` tests. `||` chain and `if a && b` branch directly and keep narrowing. Typed code proves loss: test is not constant, and variable is read after guard. Widened read dispatches at run time, and method added later can invalidate it. Fix: one guard per term, `x isa Expr || return; x.head === :call || return`."
 
 [[footgun]]
 id = 31
