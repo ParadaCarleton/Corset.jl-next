@@ -1,13 +1,13 @@
 package Distances 0.10.12  julia 1.13.3  standin=false
-load_s=0.01 summary_s=72.05 ir_s=17.35
+load_s=0.01 summary_s=85.79 ir_s=20.08
 package_methods=283 failed=0 instances=17270 ir_failures=12
-sccs=16898 max_scc=86 scc_iterations=18010
-warm_s=0.58 warm_ir_s=0.19 warm_instances=662 cached=16620 warm_diff=0
+sccs=16898 max_scc=86 scc_iterations=17973
+warm_s=0.58 warm_ir_s=0.2 warm_instances=662 warm_pkg_ir_s=0.19 warm_pkg_instances=604 cached=16620 warm_diff=0
 warm slow sccs total_s=0.0 n=0
 effect_free=9269 effect_free_cleared=51 effect_free_conflicts=0
-reasons=[:contract => 16807, :too_many_candidates => 960, :callee_unknown => 283, :apply_unresolved => 253, :splat => 226, :candidate_nosummary => 13, :apply_shape => 6]
+reasons=[:contract => 16656, :too_many_candidates => 960, :callee_unknown => 283, :apply_unresolved => 253, :splat => 226, :candidate_nosummary => 13, :apply_shape => 6]
 top unknown callees=["_apply_iterate" => 259, "::Any" => 185, "similar" => 134, "map" => 104, "::Type" => 79, "prod" => 67, "CartesianIndex" => 59, "real" => 55, "dataids" => 49, "_isdisjoint" => 43, "strides" => 27, "CartesianIndices" => 25, "intersect" => 25, "reverse" => 22, "conj" => 21, "::Function" => 18, "uppercase" => 17, "substrides" => 17, "_mapreduce_dim" => 13, "permutedims" => 12, "<<" => 12, "_prechecked_iterate" => 12, "LinearIndices" => 12, "BroadcastStyle" => 11, "elsize" => 10, "reshape" => 10, ">>" => 9, "sum" => 9, "_indicesmightoverlap" => 8, "_checkcontiguous" => 8, "setindex_shape_check" => 8, "Integer" => 7, "isreal" => 7, "parent" => 6, "literal_pow" => 6, "isdone" => 6, "reinterpret" => 6, "checkbounds_indices" => 6, "result_join" => 5, "reindex" => 5]
-unknown_calls=1515 resolved_dynamic=4991 foreign_unknown=211
+unknown_calls=1515 resolved_dynamic=4932 foreign_unknown=211
 memo_globals=String[] self_writes=7
 plain DEFINITE 0
 plain POSSIBLE 83
@@ -19,7 +19,7 @@ generated DEFINITE 4
 generated POSSIBLE 3
 generated NONE 0
 none relying on contract: Dict(:plain => 99)
-foreign globals written (not counted; methods): 14 ["Base.Threads.LOCK_CONFLICT_COUNT=42", "Base.Partr.heaps_lock=42", "Base.PerThreadLock=42", "Base.Workqueues=42", "Base.get_sched_task=42", "Base.Partr.heaps=42", "Base.Filesystem.path_dir_splitter=8", "Base.CoreLogging._global_logstate=8", "Base.Filesystem.path_separator_re=8", "Core.<anonymous Vector{Symbol}>=8", "Base.PCRE.THREAD_MATCH_CONTEXTS=8", "Base.CoreLogging.CURRENT_LOGSTATE=8"]
+foreign globals written (not counted; methods): 14 ["Base.get_sched_task=42", "Base.PerThreadLock=42", "Base.Workqueues=42", "Base.Threads.LOCK_CONFLICT_COUNT=42", "Base.Partr.heaps=42", "Base.Partr.heaps_lock=42", "Base.CoreLogging.CURRENT_LOGSTATE=8", "Base.Filesystem.path_separator_re=8", "Base.PCRE.PCRE_COMPILE_LOCK=8", "Base.Filesystem.path_dir_splitter=8", "Core.<anonymous Core.Box>=8", "Base.CoreLogging._global_logstate=8"]
 top unknown foreign: [:pointer => 9, :cgemv_64_ => 3, :dgemv_64_ => 3, :zgemv_64_ => 3, :jl_ios_buffer_n => 2, :jl_type_intersection_with_env => 2, :utf8proc_toupper => 2, :zlacpy_64_ => 2, :jl_idset_put_idx => 2, :jl_stored_inline => 2]
-possible blame kinds: ["too_many_candidates" => 47, "join" => 39]
-possible blame leaves: ["too_many_candidates isdone" => 25, "join result_type" => 18, "join _evaluate" => 14, "too_many_candidates isreal" => 8, "too_many_candidates map" => 8, "join +" => 4, "too_many_candidates _mapreduce_dim" => 3, "too_many_candidates sum" => 3, "join cosd" => 2, "join haversine" => 1]
+possible blame kinds: ["too_many_candidates" => 47, "foreign" => 39]
+possible blame leaves: ["foreign pointer" => 39, "too_many_candidates isdone" => 25, "too_many_candidates isreal" => 8, "too_many_candidates map" => 8, "too_many_candidates _mapreduce_dim" => 3, "too_many_candidates sum" => 3]

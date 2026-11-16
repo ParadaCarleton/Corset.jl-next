@@ -423,8 +423,12 @@ function base_of(st::MethodState, x)::Base_
     return nothing
 end
 
+"""Base methods whose writes repair internal state no caller observes (MPFR self-pointer after copy)."""
+const REPAIRS = Set{Method}([which(Base.unsafe_convert, Tuple{Type{Ref{BigFloat}}, Base.MPFR.BigFloatData})])
+
 function record!(st::MethodState, x, loc::Int, deep::Bool, cert::Certainty)::Nothing
     (loc == 0 || cert == NONE) && return
+    st.mi.def in REPAIRS && return  # IR stops before inlining (`PASS`): repair code runs as own instance
     if x !== nothing && typeof_operand(st, x) <: Union{Task, Regex}
         return  # task-local state (RNG, task storage); lazy Regex compile cache
     end

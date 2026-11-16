@@ -9,6 +9,7 @@ showerror /home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:57	join write @ print
 @_applyvalue /home/dev/.julia/packages/JSON/45LIG/src/write.jl:175	apply_unresolved _apply_iterate @ Expr
 #parse!#75 /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:446	alias @ make!
 escaped /home/dev/.julia/packages/JSON/45LIG/src/utils.jl:98	too_many_candidates Char @ escaped
+#json#108 /home/dev/.julia/packages/JSON/45LIG/src/write.jl:715	candidate_nosummary invoke_in_world @ ansi_write_
 _parse! /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:456	alias @ make!
 == /home/dev/.julia/packages/JSON/45LIG/src/object.jl:387	typecall setindex! @ get!
 show /home/dev/.julia/packages/JSON/45LIG/src/utils.jl:38	join lock @ print
@@ -57,11 +58,19 @@ parse /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:399	too_many_candidates 
 parse /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:399	too_many_candidates substrides @ strides
 parse /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:417	too_many_candidates String @ parselongint
 parse /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:417	too_many_candidates String @ parselongint
+json /home/dev/.julia/packages/JSON/45LIG/src/write.jl:695	candidate_nosummary invoke_in_world @ ansi_write_
+json /home/dev/.julia/packages/JSON/45LIG/src/write.jl:715	candidate_nosummary invoke_in_world @ ansi_write_
+json /home/dev/.julia/packages/JSON/45LIG/src/write.jl:723	candidate_nosummary invoke_in_world @ ansi_write_
+json /home/dev/.julia/packages/JSON/45LIG/src/write.jl:732	alias @ #112
 lazy /home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:91	too_many_candidates setup_stdio @ setup_stdios
 lazy /home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:98	too_many_candidates String @ LazyOptions
 isvalidjson /home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:160	too_many_candidates setup_stdio @ setup_stdios
 isvalidjson /home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:165	too_many_candidates substrides @ strides
 WriteOptions /home/dev/.julia/packages/JSON/45LIG/src/write.jl:657	too_many_candidates String @ WriteOptions
+json /home/dev/.julia/packages/JSON/45LIG/src/write.jl:715	candidate_nosummary invoke_in_world @ ansi_write_
+json /home/dev/.julia/packages/JSON/45LIG/src/write.jl:723	candidate_nosummary invoke_in_world @ ansi_write_
+json /home/dev/.julia/packages/JSON/45LIG/src/write.jl:732	candidate_nosummary invoke_in_world @ ansi_write_
+json /home/dev/.julia/packages/JSON/45LIG/src/write.jl:695	alias @ json
 foreach /home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:223	too_many_candidates String @ parselongint
 applylines /home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:453	too_many_candidates String @ parselongint
 customlazylift /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:797	join lift @ lift
@@ -94,6 +103,7 @@ lastindex /home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:203	too_many_candidat
 #isvalidjson#122 /home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:165	too_many_candidates substrides @ strides
 objectequal /home/dev/.julia/packages/JSON/45LIG/src/object.jl:390	typecall setindex! @ get!
 _makecontainer /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:686	join make @ _makecontainer
+#json#109 /home/dev/.julia/packages/JSON/45LIG/src/write.jl:723	candidate_nosummary invoke_in_world @ ansi_write_
 parselongint /home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:760	too_many_candidates String @ parselongint
 make /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:912	too_many_candidates String @ parselongint
 make /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:703	join lift @ make
@@ -104,7 +114,7 @@ make /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:758	alias @ _makeobject
 make /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:761	alias @ #92
 applyeach /home/dev/.julia/packages/JSON/45LIG/src/write.jl:206	candidate_nosummary invoke_in_world @ ansi_write_
 applyeach /home/dev/.julia/packages/JSON/45LIG/src/write.jl:217	candidate_nosummary invoke_in_world @ ansi_write_
-applyeach /home/dev/.julia/packages/JSON/45LIG/src/write.jl:231	join iterate @ applyeach
+applyeach /home/dev/.julia/packages/JSON/45LIG/src/write.jl:231	foreign pointer @ fma
 applyeach /home/dev/.julia/packages/JSON/45LIG/src/write.jl:239	apply_unresolved _apply_iterate @ axes1
 applyeach /home/dev/.julia/packages/JSON/45LIG/src/write.jl:253	join applyeach @ applyeach
 applyeach /home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:206	too_many_candidates String @ parselongint
@@ -141,6 +151,9 @@ _parse /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:439	too_many_candidates
 parsefloat64 /home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:824	apply_unresolved _apply_iterate @ getindex
 lazyfile /home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:93	too_many_candidates map @ NamedTuple
 print /home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:187	alias @ json!
+print /home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:187	alias @ print
+print /home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:186	alias @ print
+print /home/dev/.julia/packages/JSON/45LIG/src/JSON.jl:186	alias @ print
 applyvalue /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:581	alias @ applyvalue
 applyvalue /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:641	alias @ #86
 applyvalue /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:720	alias @ _makeobject
@@ -155,6 +168,7 @@ lift /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:794	join lift @ lift
 lift /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:807	join lift @ lift
 lift /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:813	join make @ _makecontainer
 lift /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:813	join customlazylift @ lift
+#json#110 /home/dev/.julia/packages/JSON/45LIG/src/write.jl:732	alias @ #112
 _failurepath /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:252	too_many_candidates String @ parselongint
 #23 none:0	too_many_candidates Symbol @ #23
 _contextmake /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:236	too_many_candidates String @ parselongint
@@ -163,6 +177,7 @@ mergewith! /home/dev/.julia/packages/JSON/45LIG/src/object.jl:370	typecall setin
 applyarray /home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:409	too_many_candidates String @ parselongint
 lowerkey /home/dev/.julia/packages/JSON/45LIG/src/write.jl:474	candidate_nosummary invoke_in_world @ ansi_write_
 lowerkey /home/dev/.julia/packages/JSON/45LIG/src/write.jl:260	alias @ print
+#json#107 /home/dev/.julia/packages/JSON/45LIG/src/write.jl:695	candidate_nosummary invoke_in_world @ ansi_write_
 applyobject /home/dev/.julia/packages/JSON/45LIG/src/lazy.jl:294	too_many_candidates String @ parselongint
 #5 none:0	too_many_candidates Char @ escaped
 #parse!#73 /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:408	too_many_candidates substrides @ strides
@@ -175,6 +190,7 @@ NodeIndex /home/dev/.julia/packages/JSON/45LIG/src/object.jl:312	typecall conver
 NodeIndex /home/dev/.julia/packages/JSON/45LIG/src/object.jl:317	typecall setindex! @ get!
 #112 /home/dev/.julia/packages/JSON/45LIG/src/write.jl:740	too_many_candidates merge @ #112
 #94 /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:765	too_many_candidates String @ lift
+WriteClosure /home/dev/.julia/packages/JSON/45LIG/src/write.jl:817	too_many_candidates String @ parselongint
 #92 /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:765	alias @ #86
 #77 /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:574	too_many_candidates map @ NamedTuple
 #60 /home/dev/.julia/packages/JSON/45LIG/src/parse.jl:378	too_many_candidates map @ NamedTuple

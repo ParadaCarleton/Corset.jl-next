@@ -1,4 +1,4 @@
-"""Print `possible` share per corpus package. Usage: python3 score.py results stmt"""
+"""Print `possible` share per corpus package. Usage: python3 score.py results repair2"""
 
 import re
 import sys
