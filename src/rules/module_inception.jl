@@ -50,7 +50,9 @@ function findings(facts::FactSet)::Vector{Finding}
     found = Finding[]
     for file in facts.files, inner in forms(file, "module")
         outer, name = parent_module(inner), module_name(inner)
-        !isnothing(outer) && !isnothing(name) && module_name(outer) == name || continue
+        isnothing(outer) && continue
+        isnothing(name) && continue
+        module_name(outer) == name || continue
         push!(
             found, finding(
                 NAME, file, children_of(inner)[1]; kind = :same_name, confidence = Confidence.definite,

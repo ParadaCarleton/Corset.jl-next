@@ -141,7 +141,7 @@ footguns = [27]
 [[rule]]
 name = "lost-narrowing"
 footguns = [107]
-note = "Fixer splits guard, one guard per term; `safe`. Guard whose value is used (last expression of block) gets manual fix."
+note = "Fixer splits guard, one guard per term; `safe`. Fix is `manual` for guard whose value is used, exit that can return, comment inside guard, or condition stored in variable."
 
 [[rule]]
 name = "dynamic-splat"

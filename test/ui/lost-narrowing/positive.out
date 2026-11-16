@@ -1,0 +1,139 @@
+warning[lost-narrowing]: `&&` chain drops narrowing of `x` to `Expr`
+ --> src/LostNarrowingPositive.jl:5:6
+  |
+5 |     (x isa Expr && x.head === :call) || return nothing
+  |      ^^^^^^^^^^ narrows `x` inside chain only
+6 |     return x.args
+  |            ------ reads `x` as `Any`
+  |
+  = why: lowering stores chain value before guard branches, so code after guard reads `x` as `Any` and dispatches at run time
+  = fix: split guard, one guard per term   [safe]
+  = docs: corset explain lost-narrowing
+  = note: warn from performance group, library preset
+  = note: opt out with `# corset: allow lost-narrowing -- <reason>`
+
+warning[lost-narrowing]: `&&` chain drops narrowing of `x` to `Expr`
+  --> src/LostNarrowingPositive.jl:10:10
+   |
+10 |     if !(x isa Expr && x.head === :block)
+   |          ^^^^^^^^^^ narrows `x` inside chain only
+...
+13 |     return length(x.args)
+   |                   ------ reads `x` as `Any`
+   |
+   = why: lowering stores chain value before guard branches, so code after guard reads `x` as `Any` and dispatches at run time
+   = fix: split guard, one guard per term   [safe]
+   = docs: corset explain lost-narrowing
+
+warning[lost-narrowing]: `&&` chain drops narrowing of `x` to `Expr`
+  --> src/LostNarrowingPositive.jl:17:19
+   |
+17 |     (limit > 0 && x isa Expr && length(x.args) <= limit) || return nothing
+   |                   ^^^^^^^^^^ narrows `x` inside chain only
+18 |     return x.args
+   |            ------ reads `x` as `Any`
+   |
+   = why: lowering stores chain value before guard branches, so code after guard reads `x` as `Any` and dispatches at run time
+   = fix: split guard, one guard per term   [safe]
+   = docs: corset explain lost-narrowing
+
+warning[lost-narrowing]: `&&` chain drops narrowing of `entries` to `Vector{Float64}`
+  --> src/LostNarrowingPositive.jl:22:6
+   |
+22 |     (!isnothing(entries) && length(entries) > 1) || return 0.0
+   |      ^^^^^^^^^^^^^^^^^^^ narrows `entries` inside chain only
+23 |     return entries[2]
+   |            ---------- reads `entries` as `Union{Nothing, Vector{Float64}}`
+   |
+   = why: lowering stores chain value before guard branches, so code after guard reads `entries` as `Union{Nothing, Vector{Float64}}` and dispatches at run time
+   = fix: split guard, one guard per term   [safe]
+   = docs: corset explain lost-narrowing
+
+warning[lost-narrowing]: `&&` chain drops narrowing of `item` to `Expr`
+  --> src/LostNarrowingPositive.jl:29:10
+   |
+29 |         (item isa Expr && item.head === :call && !isempty(item.args)) || continue
+   |          ^^^^^^^^^^^^^ narrows `item` inside chain only
+30 |         push!(heads, item.head)
+   |                      ---- reads `item` as `Any`
+   |
+   = why: lowering stores chain value before guard branches, so code after guard reads `item` as `Any` and dispatches at run time
+   = fix: split guard, one guard per term   [safe]
+   = docs: corset explain lost-narrowing
+
+warning[lost-narrowing]: `&&` chain drops narrowing of `x` to `Expr`
+  --> src/LostNarrowingPositive.jl:36:14
+   |
+36 |     called = x isa Expr && x.head === :call
+   |              ^^^^^^^^^^ narrows `x` inside chain only
+37 |     called || return nothing
+38 |     return x.args
+   |            ------ reads `x` as `Any`
+   |
+   = why: lowering stores chain value before guard branches, so code after guard reads `x` as `Any` and dispatches at run time
+   = fix: move type test of `x` to guard of its own, before chain   [manual]
+   = docs: corset explain lost-narrowing
+
+warning[lost-narrowing]: `||` chain drops narrowing of `entries` to `Vector{Int64}`
+  --> src/LostNarrowingPositive.jl:42:23
+   |
+42 |     missing_entries = entries === nothing || isempty(entries)
+   |                       ^^^^^^^^^^^^^^^^^^^ narrows `entries` inside chain only
+43 |     missing_entries && return 0
+44 |     return first(entries)
+   |            -------------- reads `entries` as `Union{Nothing, Vector{Int64}}`
+   |
+   = why: lowering stores chain value before guard branches, so code after guard reads `entries` as `Union{Nothing, Vector{Int64}}` and dispatches at run time
+   = fix: move type test of `entries` to guard of its own, before chain   [manual]
+   = docs: corset explain lost-narrowing
+
+warning[lost-narrowing]: `&&` chain drops narrowing of `x` to `Expr`
+  --> src/LostNarrowingPositive.jl:48:15
+   |
+48 |     called = (x isa Expr && x.head === :call) || return nothing
+   |               ^^^^^^^^^^ narrows `x` inside chain only
+49 |     return called ? x.args : nothing
+   |                     ------ reads `x` as `Any`
+   |
+   = why: lowering stores chain value before guard branches, so code after guard reads `x` as `Any` and dispatches at run time
+   = fix: move type test of `x` to guard of its own, before chain   [manual]
+   = docs: corset explain lost-narrowing
+
+warning[lost-narrowing]: `&&` chain drops narrowing of `x` to `Expr`
+  --> src/LostNarrowingPositive.jl:54:14
+   |
+54 |         if !(x isa Expr && x.head === :call)
+   |              ^^^^^^^^^^ narrows `x` inside chain only
+...
+58 |     return isnothing(outcome) ? x.args : nothing
+   |                                 ------ reads `x` as `Any`
+   |
+   = why: lowering stores chain value before guard branches, so code after guard reads `x` as `Any` and dispatches at run time
+   = fix: move type test of `x` to guard of its own, before chain   [manual]
+   = docs: corset explain lost-narrowing
+
+warning[lost-narrowing]: `&&` chain drops narrowing of `x` to `Expr`
+  --> src/LostNarrowingPositive.jl:62:6
+   |
+62 |     (x isa Expr &&  # call form only
+   |      ^^^^^^^^^^ narrows `x` inside chain only
+63 |         x.head === :call) || return nothing
+64 |     return x.args
+   |            ------ reads `x` as `Any`
+   |
+   = why: lowering stores chain value before guard branches, so code after guard reads `x` as `Any` and dispatches at run time
+   = fix: move type test of `x` to guard of its own, before chain   [manual]
+   = docs: corset explain lost-narrowing
+
+warning[lost-narrowing]: `&&` chain drops narrowing of `x` to `Expr`
+  --> src/LostNarrowingPositive.jl:70:6
+   |
+70 |     (x isa Expr && x.head === :call) || reject(x)
+   |      ^^^^^^^^^^ narrows `x` inside chain only
+71 |     return x.args
+   |            ------ reads `x` as `Any`
+   |
+   = why: lowering stores chain value before guard branches, so code after guard reads `x` as `Any` and dispatches at run time
+   = fix: move type test of `x` to guard of its own, before chain   [manual]
+   = docs: corset explain lost-narrowing
+

@@ -1,6 +1,6 @@
 # Types
 
-Typed analysis: stand-in types, type-disruption, arguments, unions, sum types.
+Typed analysis: stand-in types, type-disruption, lost narrowing, arguments, unions, sum types.
 
 ### No tests
 
@@ -55,6 +55,17 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 - **Stand-in fidelity**: stand-in copies every `Float32` and `Int32` special case that changes result type: irrational rule (`irrationals.jl`); `sum`, `prod` and `factorial` widen `Int32` to `Int`. Reflection on stand-in (`fieldnames`, `propertynames`) sees wrapper; inference stage treats its result as opaque. Stand-in test suite runs `Test.detect_ambiguities` against Base and compares inferred result types with model type.
 - **No tests**: stand-in types come from annotations; see **Arguments without stand-in**.
 - Syntax rule stays for hard-coded `Array` without template. Shared fix helper finds in-scope type source (`T`, `eltype(x)`, template array).
+
+### `lost-narrowing` scan
+
+- Lowering stores value of `a && b` in variable when guard `|| exit` or `if !(…)` branches on it. Inference narrows variable on branch of type test only, so narrowing ends inside chain.
+- Lowering branches directly on `||` chain, ternary condition and `if a && b`, so narrowing stays there. Condition stored in variable (`ok = a || b`) loses it.
+- Scan (`inference` stage, `Narrowing`): follow control flow of typed code as inference does. Also carry what each variable that holds condition proves when true and when false.
+- Type tests: `x isa T` with constant `T`, `x === nothing`, `x !== nothing`, `isnothing(x)`, and their negation.
+- Loss: read where scan proves narrower type than inference gives at start of block. Inference keeps variable types per block, so check needs no second inference.
+- Exception handler proves nothing: it can run after any statement of `try` body.
+- Report loss when test maps to term of `&&` or `||` chain; other losses give no finding. One finding per test; first read is cause span.
+- Fix: one guard per term, `safe`. Guard must be own statement with unused value, exit must leave block (`return`, `continue`, `break`, `throw`, `error`, `rethrow`), and no comment may sit inside. Else `manual`.
 
 ### Annotations
 

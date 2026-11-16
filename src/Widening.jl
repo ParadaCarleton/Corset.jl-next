@@ -114,7 +114,8 @@ function weak(code::Core.CodeInfo, argument::Any)::Union{Nothing, Tuple{Any, Wea
         value isa DataType && value <: Number && isconcretetype(value) && parentmodule(value) === Core && return value, Weak.name
     elseif argument isa Core.SSAValue
         call, type = statement_call(code.code[argument.id]), code.ssavaluetypes[argument.id]
-        (!isnothing(call) && length(call.args) >= 2) || return nothing
+        isnothing(call) && return nothing
+        length(call.args) >= 2 || return nothing
         type isa Core.Const || return nothing
         weak_data(type.val) || return nothing
         parts = [weak(code, part) for part in call.args[2:end]]
@@ -355,7 +356,8 @@ function exit_value(code::Core.CodeInfo, statement::Any, parameters::Vector{CC.V
     end
     (haskey(STORES, callee.val) && length(call.args) >= STORES[callee.val]) || return nothing
     target = resolved(code, call.args[2])
-    (target isa Core.SlotNumber && 2 <= target.id <= arguments) || return nothing
+    target isa Core.SlotNumber || return nothing
+    2 <= target.id <= arguments || return nothing
     return call.args[STORES[callee.val]], argument_type(code, target, parameters), callee.val => call
 end
 
