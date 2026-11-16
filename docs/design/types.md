@@ -48,6 +48,10 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
   - Definite: `Float32` gives concrete counterexample. Promotion rules of user number types are out of scope.
   - Overspecified argument types (`x::Int32`, `v::AbstractVector{Float64}`) are rare in libraries: `overspecified-type` reports them.
   - Branch on type (`x isa Float64`, `T === Float32`): report as `possible`.
+  - Fix (`likely`): convert float weak value to input type. Source of input type, in order: static parameter bound to float stand-in (`T(0.5)`), argument of float stand-in type (`oftype(x, 0.5)`), array argument of float stand-in elements (`eltype(xs)(0.5)`).
+  - Fix wraps source in `float` when declaration admits integers (`x::Real` gives `oftype(float(x), 0.5)`); `oftype(1, 0.5)` throws. Argument name must stay unassigned in method.
+  - Fix stays `manual` for irrational value, start value of variable, Base type conversion, product `2.0x`, and code inside macro that rewrites calls (`@.`).
+  - Test: fixed copy of UI case loses every finding fix applies to.
 - **Why stand-in type**: Base has fast paths for `Float32` and `Float64`. Real float probe takes them; stand-in type takes only generic path, same as user number type.
 - **Base**: assume Base callees preserve types; analysis is sound only modulo Base. Optional concrete probes (`Int32`, `Float32`) catch Base-caused widening such as `middle(::Int32)` → `Float64`. Collect real Base widening bugs for upstream report.
 - **Scope**: version 1 covers numbers and arrays (F5, F6, F16). Strings and dicts need only new stand-in type and result rule; engine stays same. Interfaces.jl can declare each kind's contract.

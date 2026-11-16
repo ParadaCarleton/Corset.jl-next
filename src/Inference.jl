@@ -12,7 +12,7 @@ using Serialization: serialize, deserialize
 using SHA: sha256
 using TypedSyntax: TypedSyntax
 using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, NarrowingLoss, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence, Weak, Exit
-using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span
+using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span, parent_of, ancestors, base_macro
 using ..Package: Package
 using ..StandIns: StandIns
 using ..Widening: Widening, statement_call
@@ -342,11 +342,60 @@ function line_span(file::SyntaxFile, span::Span)::Span
 end
 
 """
-Disruption facts of `typed` code from weak value `changes` (`Widening.changes!`); `nodes` are its statement nodes.
-Finding is `possible` when method tests type (`branch`) or node cannot narrow to weak value.
+Prefix and suffix that convert value to input float type of `typed` code of `instance`: static parameter bound to float
+stand-in (`T(`), else argument of float stand-in type (`oftype(x, `), else array argument of float stand-in elements
+(`eltype(xs)(`). Code must never assign argument name: lowering copies reassigned argument into local of same name.
+`float` wraps name unless declared type admits floats only, since `oftype(1, 0.5)` throws. `nothing` when method has
+none.
 """
-function disruptions(typed::TypedCode, nodes::Vector{Union{Nothing, SyntaxNode}}, changes::Vector{Widening.Change}, branch::Bool)::Vector{Disruption}
-    found = Disruption[]
+function converter(typed::TypedCode, instance::Core.MethodInstance)::Union{Nothing, Pair{String, String}}
+    method, stand_in = typed.site.method, StandIns.FloatStandIn
+    signature, index = method.sig, 0
+    while signature isa UnionAll
+        index += 1
+        parameter, signature = signature.var, signature.body
+        # Type variable of `AbstractVector{<:Real}` has generated name (`#s1`) source cannot spell.
+        if instance.sparam_vals[index] === stand_in && Base.isidentifier(parameter.name)
+            return (parameter.ub <: AbstractFloat ? "$(parameter.name)(" : "float($(parameter.name))(") => ")"
+        end
+    end
+    # Typed loop: `Set(generator)` of unknown element type calls `grow_to!`, which package `iterate` methods invalidate.
+    assigned = Set{Symbol}()
+    for statement in typed.code.code
+        statement isa Expr && statement.head === :(=) && statement.args[1] isa Core.SlotNumber && push!(assigned, typed.code.slotnames[statement.args[1].id])
+    end
+    arguments, found = Facts.tuple_parameters(typed.signature), nothing
+    for slot in 2:length(arguments)
+        name, type, declared = typed.code.slotnames[slot], arguments[slot], Facts.argument_type(method, slot - 1)
+        (name in assigned || !Base.isidentifier(name) || !(type isa Type)) && continue
+        type === stand_in && return (declared <: AbstractFloat ? "oftype($name, " : "oftype(float($name), ") => ")"
+        type <: AbstractArray && eltype(type) === stand_in && isnothing(found) &&
+            (found = (declared <: AbstractArray{<:AbstractFloat} ? "eltype($name)(" : "float(eltype($name))(") => ")")
+    end
+    return found
+end
+
+"""Macros that keep literal values as written, so conversion call may replace one inside them."""
+const PLAIN_MACROS = ("@inline", "@noinline", "@inbounds", "@propagate_inbounds", "@fastmath", "@simd", "@views", "@assume_effects")
+
+"""
+Text that replaces weak value `node` of `origin` with it converted by `conversion` (`converter`); `nothing` when fix
+cannot apply: no node or converter, weak value other than float number, product `2.0x`, or macro that rewrites code
+(`@.` would dot conversion).
+"""
+function converted_text(file::SyntaxFile, node::Union{Nothing, SyntaxNode}, origin::Widening.Origin, conversion::Union{Nothing, Pair{String, String}})::Union{Nothing, String}
+    (isnothing(node) || isnothing(conversion) || !(origin.value isa AbstractFloat)) && return nothing
+    kind_name(parent_of(node)) == "juxtapose" && return nothing
+    all(ancestor -> kind_name(ancestor) != "macrocall" || base_macro(ancestor) in PLAIN_MACROS, ancestors(node)) || return nothing
+    return first(something(conversion)) * source(file, node) * last(something(conversion))
+end
+
+"""
+Disruption facts of `typed` code of `instance` from weak value `changes` (`Widening.changes!`); `nodes` are its
+statement nodes. Finding is `possible` when method tests type (`branch`) or node cannot narrow to weak value.
+"""
+function disruptions(typed::TypedCode, instance::Core.MethodInstance, nodes::Vector{Union{Nothing, SyntaxNode}}, changes::Vector{Widening.Change}, branch::Bool)::Vector{Disruption}
+    found, conversion = Disruption[], isempty(changes) ? nothing : converter(typed, instance)
     for change in changes
         origin, file = change.origin, typed.site.file
         node = weak_node(typed.code, nodes[origin.index], origin, file)
@@ -363,6 +412,7 @@ function disruptions(typed::TypedCode, nodes::Vector{Union{Nothing, SyntaxNode}}
                 span, meeting, exit,
                 origin.kind, isnothing(node) ? repr(origin.value) : source(file, node), origin.value isa AbstractFloat ? Float64(origin.value) : nothing,
                 string(origin.kind == Weak.name ? origin.value : typeof(origin.value)), variable, type_text(StandIns.model(StandIns.FloatStandIn)), type_text(change.found), type_text(change.expected), change.exit, confidence,
+                converted_text(file, node, origin, conversion),
             )
         )
     end
@@ -764,7 +814,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
                 push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes)))
                 changes, branch = Widening.changes!(edges, instance, code)
                 lost = narrowings(last(typed), nodes, Narrowing.losses(code, flow, CC.sptypes_from_meth_instance(instance)))
-                Inferred(reached(code, instance), failures!(edges, helpers, last(typed), by_path), true, disruptions(last(typed), nodes, changes, branch), lost)
+                Inferred(reached(code, instance), failures!(edges, helpers, last(typed), by_path), true, disruptions(last(typed), instance, nodes, changes, branch), lost)
             end
             entry = isnothing(used) ? nothing : entry!(named, ids, codes, site, call_signature, inferred, edges, by_path, hashes, modules)
             isnothing(journal) || record!(journal, Record(key, "", true, entry))

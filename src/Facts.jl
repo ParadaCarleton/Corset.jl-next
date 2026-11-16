@@ -243,6 +243,7 @@ mapping cannot narrow; `meeting`: call where it meets input; `exit_span`: statem
 `value`: source text of weak value; `float`: its value when it is float number; `weak_type`: its type, or type it names;
 `variable`: name variable starts with it, else empty. Types print stand-ins as models: `input` type, `found` type at
 exit, `expected` type with weak value converted. `possible` when method branches on type or span cannot narrow.
+`converted`: text that replaces weak value with it converted to input type (`oftype(x, 0.5)`), else `nothing`.
 """
 struct Disruption
     span::Span
@@ -258,6 +259,7 @@ struct Disruption
     expected::String
     exit::Exit.T
     confidence::Confidence.T
+    converted::Union{Nothing, String}
 end
 
 """
@@ -877,13 +879,18 @@ function weak_label(disruption::Disruption)::String
     return "`$(disruption.weak_type)` for every input type"
 end
 
-"""Manual fix of `disruption`: irrational constant for float literal that spells one; else conversion to input type."""
+"""
+Fix of `disruption`: irrational constant for float literal that spells one (`manual`); conversion to input type
+(`likely`: callers see input type), `manual` where inference stage gives no `converted` text.
+"""
 function weak_fix(disruption::Disruption)::Fix
     irrational = isnothing(disruption.float) ? nothing : irrational_name(something(disruption.float))
     if !isnothing(irrational)
         package = irrational in BASE_IRRATIONALS ? "" : " from IrrationalConstants.jl"
         return manual_fix("use irrational `$irrational`$package; it takes input type")
     end
+    converted = disruption.converted
+    isnothing(converted) || return Fix("convert to input type: `$converted`", [Edit(disruption.span, converted)], Tier.likely)
     disruption.kind == Weak.name && return manual_fix("drop conversion, or keep input type with `float(x)` or `oftype(x, y)`")
     disruption.kind == Weak.variable && return manual_fix("start `$(disruption.variable)` with input type, as in `zero(T)` or `zero(eltype(xs))`")
     return manual_fix("convert `$(disruption.value)` to input type, as in `oftype(x, $(disruption.value))` or `T($(disruption.value))`")
