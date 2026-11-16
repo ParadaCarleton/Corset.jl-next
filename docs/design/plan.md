@@ -21,7 +21,7 @@ Draft. Spikes retire risks first. Each later phase ships usable rules. Phase ord
 - **S2 source mapping** (done, works with limits): 65% of findable statements map to exact bytes; about 2% of checked spans wrong. Code macros write maps to line only.
 - **S3 scope stage** (done, works with limits): JuliaLowering at julia commit `f0188d597b` lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload in Corset. `Meta.lower` fallback dropped.
 - **S4 syntax matcher** (done, `spikes/s4-syntax-matcher/REPORT.md`): Argus.jl 0.4.2 is MIT. Use Argus behind thin wrapper so matcher stays swappable. Argus searches whole tree once per rule (about 8× slower than kind-indexed walk); own walk with root-kind index removes most of gap. Phase 2 measure: 21 rules take 15–40 ms per 10,000 lines; rule time grows linearly with rule count.
-- **S5 effect summary** (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). `possible` covers 75%, 55% and 52% of methods (Distances, DataStructures, JSON), all from unknown callees or unknown foreign calls. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.
+- **S5 effect summary** (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). `possible` covers 77%, 57% and 61% of methods (Distances, DataStructures, JSON), all from unknown callees or unknown foreign calls. Base interface functions make 91–95% of calls with more than 4 candidates. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.
 
 ### Quality gate
 
@@ -70,6 +70,7 @@ Design is draft until code proves it. Revisit at each checkpoint:
 - After first release: corpus findings and real use test footgun list, levels, presets and messages.
 - After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (`types.md`). Revisit integer input of `type-disruption` if corpus shows integer widening outside index math.
 - Before each later phase: reread parts that phase builds on; question decisions that no longer fit.
-- Before phase 5: decide whether `lifecycle` def-use runs on syntax tree or reuses `effects` points-to graph over IR (one producer per fact).
+- Before phase 5: `lifecycle` reuses `effects` classes over IR (one producer per fact).
+- After phase 5 dispatch resolution: `possible` share on corpus at most half of S5 (77%, 57%, 61%), and `effects` stage with warm Base cache at most `inference` stage time. Else revise call resolution before rule PRs.
 - Each review: adversarial pass by second model on changed parts; log findings and outcomes in `rules-rewrite-history.md`.
 - Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.

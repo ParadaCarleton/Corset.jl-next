@@ -729,10 +729,23 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Known memo forms: <code>@memoize</code> (Memoize.jl, Memoization.jl), <code>@cached</code> (Caching.jl), <code>get!</code> on LRUCache.jl <code>LRU</code>.</li>
 <li>Other caches need opt-out comment with reason. Do not invest in deep invisibility proofs.</li>
 <li>Same cache exemption applies to <code>hidden-input</code>: cache read is invisible to caller.</li>
-<li>Write facts come from Corset's own summary per method (S5): points-to graph over optimized IR inside method, callee summaries at calls. Compiler <code>EscapeAnalysis</code> is unsuitable: no return-alias or field-store summary.</li>
+<li>Write facts come from Corset's own summary per method instance (S5): points-to classes inside method, callee summaries at calls. Compiler <code>EscapeAnalysis</code> is unsuitable: no return-alias or field-store summary.</li>
+<li>IR: same pre-inline typed IR as <code>inference</code> stage (<code>typeinf_ircode</code>, pass <code>&quot;CC: COMPACT_1&quot;</code>). Calls stay call statements, so allocations and their consumers map to source through phase 4 source map.</li>
+<li>Summary per parameter: write and read of top object and of reachable objects, each definite, possible or none. Lifecycle reads need content reads (<code>similar</code> then <code>sum</code>).</li>
 <li>Callees are summarized through dependency code, Base included. Base summaries are cached once per Julia version.</li>
-<li>Dynamic call: join summaries of candidates within compiler limits (<code>max_methods</code> 3, union splitting 4 by default). All agree: definite. Disagree: <code>possible</code>. More candidates: call dispatches at run time; <code>possible</code>, and <code>runtime-dispatch</code> reports call.</li>
-<li><code>possible</code> effect findings stay off until dispatch resolution passes quality gate. S5: every <code>possible</code> verdict came from unknown callee or foreign call.</li>
+<li>Call resolution, first match wins:
+<ol>
+<li>Static call: callee summary.</li>
+<li>Callee is parameter, also through <code>_apply_iterate</code>: summary records call of parameter with its operands. Caller that knows callee substitutes it. Writes of callback belong to callback, so <code>map</code> and <code>foreach</code> need no <code>!</code>.</li>
+<li>Run-time dispatch with at most 4 candidates at declared signatures: join summaries. All agree: definite. Disagree: <code>possible</code>.</li>
+<li>Base interface function with documented contract: contract summary from table (<code>setindex!</code> writes collection; <code>getindex</code>, <code>iterate</code>, <code>length</code>, arithmetic read only). Package method on contract function is checked against contract; breach is finding.</li>
+<li>Generic function of package or dependency: join summaries of every loaded method that matches (closed world).</li>
+<li>Else unknown: <code>possible</code> write on each operand. Result may point into operands; operands stay apart. Coverage line counts unknown calls by reason.</li>
+</ol>
+</li>
+<li><code>!</code> in callee name is never write evidence. On S5 corpus, trusting names gave 7 false definite findings in Distances: <code>colwise!</code> writes second argument.</li>
+<li><code>possible</code> effect findings stay off until dispatch resolution passes quality gate.</li>
+<li><code>lifecycle</code> reads effects classes per fresh allocation: reads and writes in control-flow order, escapes. One producer per fact; def-use on syntax would redo aliasing (<code>y = x; y[1] = 0</code>).</li>
 <li>Not writes caller sees: lazy-init caches (<code>Regex</code>, <code>LazyString</code>, <code>setfieldonce!</code>), task-local state, locks, writes to fresh local objects inside error paths (message building). Argument or global write before throw stays in summary: caller that catches sees it. Globals of other modules (Base logging, PCRE contexts) are kept apart and never reported.</li>
 <li>Effect summary records whether method result aliases global state. Write through such result counts as global write, so caller needs <code>!</code>.</li>
 <li>Requirement propagates: caller of <code>!</code> function on global state needs <code>!</code> too.</li>
@@ -1037,7 +1050,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li><strong>S2 source mapping</strong> (done, works with limits): 65% of findable statements map to exact bytes; about 2% of checked spans wrong. Code macros write maps to line only.</li>
 <li><strong>S3 scope stage</strong> (done, works with limits): JuliaLowering at julia commit <code>f0188d597b</code> lowers every corpus form on 1.13. Exact bytes 83–99% with own Base-macro expansions. Warm 0.15 s per 10,000 lines; needs precompile workload in Corset. <code>Meta.lower</code> fallback dropped.</li>
 <li><strong>S4 syntax matcher</strong> (done, <code>spikes/s4-syntax-matcher/REPORT.md</code>): Argus.jl 0.4.2 is MIT. Use Argus behind thin wrapper so matcher stays swappable. Argus searches whole tree once per rule (about 8× slower than kind-indexed walk); own walk with root-kind index removes most of gap. Phase 2 measure: 21 rules take 15–40 ms per 10,000 lines; rule time grows linearly with rule count.</li>
-<li><strong>S5 effect summary</strong> (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). <code>possible</code> covers 75%, 55% and 52% of methods (Distances, DataStructures, JSON), all from unknown callees or unknown foreign calls. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.</li>
+<li><strong>S5 effect summary</strong> (done, works with limits): definite writes correct on corpus (splay trees, path compression, rotations). <code>possible</code> covers 77%, 57% and 61% of methods (Distances, DataStructures, JSON), all from unknown callees or unknown foreign calls. Base interface functions make 91–95% of calls with more than 4 candidates. 17–22 s per package on quiet host. Internal API; pin per Julia minor version.</li>
 </ul>
 </div><div class="decision"><h3>Quality gate</h3>
 <p>Rule is on by default only when all hold:</p>
@@ -1134,7 +1147,8 @@ Remaining risk: effect summary, 17–22 s uncached (S5). Base summary cache must
 <li>After first release: corpus findings and real use test footgun list, levels, presets and messages.</li>
 <li>After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (<code>types.md</code>). Revisit integer input of <code>type-disruption</code> if corpus shows integer widening outside index math.</li>
 <li>Before each later phase: reread parts that phase builds on; question decisions that no longer fit.</li>
-<li>Before phase 5: decide whether <code>lifecycle</code> def-use runs on syntax tree or reuses <code>effects</code> points-to graph over IR (one producer per fact).</li>
+<li>Before phase 5: <code>lifecycle</code> reuses <code>effects</code> classes over IR (one producer per fact).</li>
+<li>After phase 5 dispatch resolution: <code>possible</code> share on corpus at most half of S5 (77%, 57%, 61%), and <code>effects</code> stage with warm Base cache at most <code>inference</code> stage time. Else revise call resolution before rule PRs.</li>
 <li>Each review: adversarial pass by second model on changed parts; log findings and outcomes in <code>rules-rewrite-history.md</code>.</li>
 <li>Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.</li>
 </ul>

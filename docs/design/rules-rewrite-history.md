@@ -616,3 +616,16 @@ Codex reviewed phase 4 code (`a0a64e4` to annotation guesses) by trace only. Eac
 
 - Corpus run of fixes found false positive in computed result type (`::promote_type(T, S, Float32)`). Lowering keeps returned `-Inf32` in unnamed slot, and converted code infers `Any`. Unnamed slot now takes kind of its value. Widening needs computing call with number type on both sides. Exit needs known converted type.
 - Abstract result type (`f(x)::Real`) and typed local (`y::Real = v`) lower to `isa` test with conversion. `type_branch` counted it, so every such finding dropped to `possible`. Lowering assigns `typeassert(convert(T, v), T)` back to tested slot; source `isa` never does.
+
+### Phase 5 design
+
+Reread `effects.md`, `stages.toml`, S5 report before phase 5.
+- Legacy Corset and julia-anal Method B reached low unknown share by name trust: `!` callee writes first argument, other callee writes nothing. julia-anal Branch 3 retracted that policy. Sound Branch 3 left 74.4% of Base methods undecided.
+- S5 rerun with name trust: `possible` drops to 25%, 46%, 46%. All 7 new definite findings in Distances are false (`colwise`, `pairwise` said to write `metric`).
+- S5 counted generated methods in denominator only. Consistent shares: 77%, 57%, 61%.
+- Calls with more than 4 candidates: 91–95% are Base interface functions; 30 functions (`getindex`, `iterate`, arithmetic, `==`, `length`, `convert`, `getproperty`, `setindex!`) make 80%. Contract table closes them; breach at implementing method is finding.
+- Callback writes belong to callback: summary keeps call of parameter symbolic until caller supplies callee (julia-anal Branch 3 sees through `_apply_iterate` too).
+- Unknown call ties result to operands in one direction. S5 merged all operands into one class.
+- Compiler effect bits change no definite verdict on corpus and add 0–4 points. Not used.
+- IR: pre-inline, shared with `inference` stage, so allocation and consumer calls map through phase 4 source map. Risk: more instances than optimized IR; measure in engine PR.
+- PR order: engine with S5 fixtures; call resolution (callback parameters, contracts, closed-world join); Base summary cache; corpus measure (go/no-go, `plan.md`); `bang-convention`; `unused-call`, `hidden-input`, `impure-lambda`, `false-effects`; `iteration-mutation`, `self-alias`, `stateful-reuse`; lifecycle facts; lifecycle rules.
