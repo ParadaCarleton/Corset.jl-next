@@ -629,3 +629,19 @@ Reread `effects.md`, `stages.toml`, S5 report before phase 5.
 - Compiler effect bits change no definite verdict on corpus and add 0–4 points. Not used.
 - IR: pre-inline, shared with `inference` stage, so allocation and consumer calls map through phase 4 source map. Risk: more instances than optimized IR; measure in engine PR.
 - PR order: engine with S5 fixtures; call resolution (callback parameters, contracts, closed-world join); Base summary cache; corpus measure (go/no-go, `plan.md`); `bang-convention`; `unused-call`, `hidden-input`, `impure-lambda`, `false-effects`; `iteration-mutation`, `self-alias`, `stateful-reuse`; lifecycle facts; lifecycle rules.
+
+### Phase 5 design: adversarial pass
+
+Codex review of phase 5 design found seven problems:
+
+| # | Finding | Outcome |
+|---|---|---|
+| 1 | Base contract hides real writes (`DefaultDict` `getindex` inserts, `Stateful` `iterate`) and omits result aliases (`view`, `convert`) | Accepted: contract entries list reads, writes and result alias. Known argument types use real summaries; breach is finding in target package only. |
+| 2 | Join over loaded methods misses methods later packages add | Accepted: contract and join verdicts keep write certainty; their "writes nothing" is at most `possible`. |
+| 3 | Callback writes must reach enclosing method (`foreach(x -> push!(sink, x), xs)`, `Fix1`) | Accepted: combinator writes nothing; caller with known callee substitutes summary and captured aliases. Fixtures for closure, `Fix1`, callable struct. |
+| 4 | Flow-insensitive classes cannot order reads and writes per allocation | Accepted: lifecycle keeps allocation identity, must-alias facts and statement events; branch join is `possible`. |
+| 5 | `possible` share rewards unsound shortcuts; denominator undefined | Accepted: denominator fixed, hand audit of contract and join verdicts, threshold in phase 5 exit row. |
+| 6 | Pre-inline IR and full joins lack cost data | Accepted: engine PR measures instances, foreign calls, memory, cold and warm time; join over more than 64 methods is unknown. |
+| 7 | S5 drops writes before caught throw | Accepted: definite writes on throwing paths stay; unknown calls there add nothing; throw-only exemption needs no write on any path. |
+
+- Phase 4 history names `typeinf_ircode` at `"CC: COMPACT_1"`; `inference` stage uses unoptimized typed code from `typeinf_frame`. Effects engine builds SSA IR before inlining on same inference.

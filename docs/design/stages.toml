@@ -25,12 +25,12 @@ text = "One inference per package method; stand-in types replace generic argumen
 [[stage]]
 name = "effects"
 title = "Effect and alias summary"
-text = "Per method: writes to arguments, writes to globals, result aliases global state. Own points-to summary over optimized IR, bottom-up through callees, Base and dependencies included."
+text = "Per method: reads and writes of arguments, writes to globals, result aliases global state. Own points-to summary over typed SSA IR before inlining, bottom-up through callees, Base and dependencies included."
 
 [[stage]]
 name = "lifecycle"
 title = "Array lifecycle"
-text = "Local def-use per array: created, written, read before write, resized, escapes, read once. Callee writes come from `effects` summaries, so passing array to non-writing callee is no escape. Definite only for straight-line patterns."
+text = "Local def-use per array: created, written, read before write, resized, escapes, read once. Allocation identity and statement events come from `effects`; callee reads and writes come from its summaries, so passing array to non-writing callee is no escape. Definite only for straight-line patterns."
 
 [[stage]]
 name = "external"
