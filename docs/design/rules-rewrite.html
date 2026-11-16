@@ -615,7 +615,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Float input only. Julia promotes small integers to <code>Int</code> on purpose (<code>sum(Int32[1])</code> is <code>Int64</code>; index math runs in <code>Int</code>), so integer input takes no part.</li>
 <li>Integer and float weak values convert to float stand-in. Type name counts when it widens float input (<code>Float64(x)</code>); model (<code>Float32(x)</code>), narrower type (<code>Float16(x)</code>) and other kind (<code>Int(x)</code>) pass.</li>
 <li>Meeting: call takes weak value and argument that holds float stand-in. With weak value converted, result type changes. Input absorbs weak value: with input swapped to <code>Float64</code>, conversion changes nothing. Pair, tuple and struct with own parameter per field fail this test (<code>x =&gt; 0.5</code>), and so does default value (<code>get(table, x, 0.5)</code>). Lazy broadcast compares array it materializes to. Builtins (<code>getfield(t, 2)</code>) change no result type.</li>
-<li>Report when converting weak value to input type would change type of escaping value: returned, or written to argument or global. Intermediate that does not escape (<code>Float32(x * 0.5)</code>) goes to <code>intermediate-widening</code> (performance). Each site gets one finding.</li>
+<li>Report when converting weak value to input type would change type of escaping value: returned, or written to argument, global or local container method returns. Intermediate that does not escape (<code>Float32(x * 0.5)</code>) goes to <code>intermediate-widening</code> (performance). Each site gets one finding.</li>
 <li>Examples: <code>x::Float32 * 0.5</code> (Float64 vs Float32) and <code>Float64(x)</code> on <code>Float32</code> are reported. <code>x::Float32 * 2</code> passes; <code>x::Int32 * 2</code> and <code>x::Int32 / 2</code> pass as integer input.</li>
 <li>Generic <code>x::Real</code> runs both number stand-ins; float case reports <code>x * 0.5</code>.</li>
 <li>Escape test: differential inference. Copy lowered code, convert every meeting weak value to stand-in type, and run native inference on copy. Converted value meets more input (<code>x * 2.0 + 1.0</code>), so rounds repeat until no new meeting. Then each weak value stays unconverted alone: changed returned or stored type is escape; changed number intermediate only is widening. Escape analysis tracks heap objects only, so it cannot decide this.</li>
@@ -911,7 +911,8 @@ end
 <li>Include path: string literal, <code>@__DIR__</code> or <code>joinpath</code> of those. Computed path or missing file goes to coverage line.</li>
 <li>Missing module or extension file is config error.</li>
 </ul>
-<p>Exit codes: <code>0</code> no <code>deny</code> finding; <code>1</code> <code>deny</code> finding; <code>2</code> config or usage error; <code>101</code> internal error (Cargo convention).</p>
+<p>Exit codes: <code>0</code> no <code>deny</code> finding; <code>1</code> <code>deny</code> finding; <code>2</code> config or usage error; <code>101</code> internal error (Cargo convention).
+Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: loaded methods keep old code. Relaunching process then runs <code>check</code> in fresh process. User never sees <code>3</code>.</p>
 </div><div class="decision"><h3>Rule contract</h3>
 <p>Main goal of rewrite: clean structure. Legacy implemented each rule on its own, so analyses repeated and code grew.</p>
 <ul>

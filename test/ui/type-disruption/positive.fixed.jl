@@ -15,6 +15,13 @@ end
 const HALF = 0.5
 halved(x::AbstractFloat) = oftype(x, HALF) * x
 diagonal(x::AbstractFloat) = sqrt(2) * x
+# Ternary value lives in unnamed slot; finding names literal.
+picked_sum(x::AbstractFloat) = (x > 0 ? oftype(x, 0.5) : oftype(x, 1.5)) + x
+
+# Literal outside `Float32` range: conversion gives `Inf32` or zero, so fix stays manual.
+huge(x::AbstractFloat) = x * 1e39
+tiny(x::AbstractFloat) = x * 1e-50
+
 # Float literal spells irrational constant.
 area(radius::AbstractFloat) = 3.14159 * radius^2
 widened(x::AbstractFloat) = Float64(x) + x

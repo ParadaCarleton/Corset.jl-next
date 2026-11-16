@@ -98,14 +98,20 @@ journal_file(directory::String)::String = joinpath(directory, "journal")
 """Crash log of journal `directory`: stderr of inference, with Julia abort report of each crash."""
 log_file(directory::String)::String = joinpath(directory, "crash.log")
 
-"""Records of journal `directory`, oldest first; empty before first run writes any."""
+"""
+Records of journal `directory`, oldest first; empty before first run writes any. Kill during write can tear last
+record (length, then bytes, `record!`); records drops it, as start of inference that never began.
+"""
 function records(directory::String)::Vector{Record}
     path = journal_file(directory)
     isfile(path) || return Record[]
+    size = filesize(path)
     return open(path) do io
         found = Record[]
-        while !eof(io)
-            push!(found, deserialize(io)::Record)
+        while size - position(io) >= sizeof(Int)
+            width = read(io, Int)
+            size - position(io) >= width || break
+            push!(found, deserialize(IOBuffer(read(io, width)))::Record)
         end
         found
     end
@@ -143,7 +149,11 @@ last_crash(records::Vector{Record})::Union{Nothing, Record} = isempty(records) |
 
 """Write `record` to `journal` and flush it, so process that aborts next leaves it on disk."""
 function record!(journal::Journal, record::Record)::Nothing
-    serialize(journal.io, record)
+    buffer = IOBuffer()
+    serialize(buffer, record)
+    bytes = take!(buffer)
+    # One write of length and bytes, so torn record is short and `records` can tell.
+    write(journal.io, [reinterpret(UInt8, [length(bytes)]); bytes])
     flush(journal.io)
     return nothing
 end

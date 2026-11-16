@@ -26,6 +26,8 @@ const EXIT_PASS = 0
 const EXIT_FAIL = 1
 const EXIT_USAGE = 2
 const EXIT_INTERNAL = 101
+"""Relaunched `fix` edited files of loaded package; relaunching process checks them in fresh process. Never user-facing."""
+const EXIT_RECHECK = 3
 
 """Bad command line that ArgParse cannot catch, such as path that does not exist."""
 struct UsageError <: Exception
@@ -194,11 +196,20 @@ function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err
             env = Launch.environment(target, err)
             # Fix writes files and checks again, so it always runs in relaunched process.
             stored = command == "fix" || isnothing(cache) ? nothing : Engine.cached(path, flags, cache, Launch.load_path(env))
-            isnothing(stored) && return exit_code(Launch.supervise(env, args, cache, out, err, Launch.CRASHES))
-            return finish(command, stored..., out, err, options["format"])
+            isnothing(stored) || return finish(command, stored..., out, err, options["format"])
+            code = exit_code(Launch.supervise(env, args, cache, out, err, Launch.CRASHES))
+            code == EXIT_RECHECK || return code
+            # Command name comes before path, and no option value is `fix`.
+            checked = replace(args, "fix" => "check"; count = 1)
+            return exit_code(Launch.supervise(env, checked, cache, out, err, Launch.CRASHES))
         end
         isnothing(cache) || !Cache.cold(cache, realpath(path)) || println(err, "corset: no cached analysis of ", path, "; first run can be slow, later runs reuse it")
-        command == "fix" && println(err, "corset: applied ", Engine.fix!(path; flags, cache, journal), " edits")
+        if command == "fix"
+            count, stale = Engine.fix!(path; flags, cache, journal)
+            println(err, "corset: applied ", count, " edits")
+            # Process loaded package before edits, so its methods are stale; only relaunched child gets here.
+            stale && (launch ? error("fix loaded package without relaunch") : return EXIT_RECHECK)
+        end
         return finish(command, Engine.analysis(path, flags, cache, journal)..., out, err, options["format"])
     catch error
         if error isa ArgParseError || error isa ConfigError || error isa UsageError

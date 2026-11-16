@@ -6,34 +6,8 @@ using JSONSchema: JSONSchema
 using Scratch: Scratch
 using Test: @test, @testset, @test_throws
 
-"""Exit code, standard output and standard error of `corset args...`."""
-function corset(args::String...)::Tuple{Int, String, String}
-    out, err = IOBuffer(), IOBuffer()
-    code = Corset.CLI.execute(String[args...], out, err; launch = false, cache = nothing)
-    return code, String(take!(out)), String(take!(err))
-end
+include("helpers.jl")
 
-const LIBRARY = joinpath(@__DIR__, "config", "library")
-# Package stage loads fixture packages in place, so test environment must load them from their roots.
-LIBRARY in LOAD_PATH || push!(LOAD_PATH, LIBRARY)
-
-"""Run `body` on new package `name` written under `parent` from `files` (path => text), with package on load path."""
-function with_package(body::Function, parent::String, name::String, files::Pair{String, String}...)::Nothing
-    mktempdir(parent) do package
-        write(joinpath(package, "Project.toml"), "name = \"$name\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n\n[preferences.Corset]\nkind = \"library\"\n")
-        for (path, text) in files
-            mkpath(dirname(joinpath(package, path)))
-            write(joinpath(package, path), text)
-        end
-        push!(LOAD_PATH, package)
-        try
-            body(package)
-        finally
-            pop!(LOAD_PATH)
-        end
-    end
-    return nothing
-end
 const SARIF_SCHEMA = JSONSchema.Schema(JSON.parsefile(joinpath(@__DIR__, "fixtures", "sarif-schema-2.1.0.json")))
 
 @testset "cli check" begin
@@ -81,6 +55,26 @@ end
         sarif = JSON.parse(corset("check", package, "--format", "sarif")[2])
         @test isnothing(JSONSchema.validate(SARIF_SCHEMA, sarif))
         @test only(only(only(sarif["runs"])["invocations"])["toolExecutionNotifications"])["message"]["text"] == "skipped: include with computed path"
+    end
+end
+
+@testset "fix of loaded package asks for fresh check" begin
+    mktempdir(@__DIR__) do root
+        uuid = Base.UUID(rand(UInt128))
+        write(joinpath(root, "Project.toml"), "name = \"RecheckSample\"\nuuid = \"$uuid\"\n\n[preferences.Corset]\nkind = \"library\"\n")
+        mkpath(joinpath(root, "src"))
+        source = joinpath(root, "src", "RecheckSample.jl")
+        write(source, "module RecheckSample\n\"\"\"Half of `x`.\"\"\"\nhalf(x::AbstractFloat)::AbstractFloat = x * 0.5\nend\n")
+        push!(LOAD_PATH, root)
+        try
+            code, out, err = corset("fix", root)
+            @test code == Corset.CLI.EXIT_RECHECK && isempty(out) && startswith(err, "corset: applied ")
+            @test occursin("oftype(x, 0.5)", read(source, String))
+            # No edit leaves loaded methods current, so same process reports.
+            @test first(corset("fix", root)) in (Corset.CLI.EXIT_PASS, Corset.CLI.EXIT_FAIL)
+        finally
+            pop!(LOAD_PATH)
+        end
     end
 end
 
@@ -492,8 +486,10 @@ end
                 @test launched("check", root, "-A", "annotation") == (code, out, "")
                 @test launched("baseline", root, "-A", "annotation") == (0, "", "corset: wrote 1 findings to $(Corset.Baseline.FILE)\n")
                 rm(joinpath(root, Corset.Baseline.FILE))
-                # Fix writes files, so it relaunches even when cache holds analysis.
-                @test startswith(launched("fix", root, "-A", "annotation")[3], "corset: applied 1 edits\n")
+                # Fix writes files, so it relaunches even when cache holds analysis. Report comes from fresh process:
+                # process that fixed holds `Relaunched.length` from before edit.
+                code, out, err = launched("fix", root, "-A", "annotation")
+                @test startswith(err, "corset: applied 1 edits\n") && code == 0 && !occursin("shadowed-base", out)
                 code, out, err = launched("check", root, "-A", "shadowed-base")
                 @test code == 0 && !occursin("building environment", err)
             end

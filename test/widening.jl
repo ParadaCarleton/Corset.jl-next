@@ -102,6 +102,40 @@ module WideningCases
     end
     branched(x) = x isa Float32 ? x : x * 0.5
     compared(x) = typeof(x) == Float64 ? x : x * 0.5
+    # Lowering temporary holds ternary value: literal kind, since slot has no name.
+    picked_sum(x) = (x > 0 ? 0.5 : 1.5) + x
+    # Declared result converts constant; nothing computes in wider type.
+    (declared_result(x::T)::T) where {T} = x > 0 ? 0.5 : x
+    # Computed result type: converted code infers `Any`, which shows no type.
+    function computed_result(x::T)::promote_type(T, Float32) where {T <: Real}
+        x > 0 || return -Inf32
+        return x * 2
+    end
+    # Callee infers `Any` on stand-in: result shows no type, so change stays intermediate.
+    const UNTYPED = Dict{Any, Any}()
+    looked_up(v::Float64) = 1.0
+    looked_up(v) = UNTYPED[v]
+    fetched(x) = looked_up(x * 0.5)
+    # Local container method returns: store escapes, though returned `Vector{Any}` keeps its type.
+    function collected(x)
+        out = Any[]
+        push!(out, x * 0.5)
+        return out
+    end
+    # Local container that stays inside: sum meets input, so change is returned.
+    function summed_local(x)
+        out = Any[]
+        push!(out, x * 0.5)
+        return sum(out)
+    end
+    # Abstract result and local types lower to `isa` test with conversion; neither branches on input type.
+    annotated(x)::AbstractFloat = x * 0.5
+    function declared_local(x)
+        y::AbstractFloat = x * 0.5
+        return y
+    end
+    # Same test written in source, then assertion: test loads its type apart.
+    asserted(x) = (x isa AbstractFloat ? x * 0.5 : x)::AbstractFloat
     broke(x) = (takes_double(x * 2.0), x * 3.0)
     broke_all(x) = takes_double(x * 2.0)
     @inline static(x::T) where {T} = x * T(0.5) + 0.5
@@ -183,6 +217,18 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
     @testset "type branch" begin
         @test scan(cases.branched, F) == ([(Weak.literal, 0.5, Exit.returned, Float64, F)], true)
         @test last(scan(cases.compared, F))
+        @test scan(cases.annotated, F) == ([(Weak.literal, 0.5, Exit.returned, Float64, F)], false)
+        @test scan(cases.declared_local, F) == ([(Weak.literal, 0.5, Exit.returned, Float64, F)], false)
+        @test last(scan(cases.asserted, F))
+    end
+    @testset "lowering temporaries" begin
+        @test reported(cases.picked_sum, F) == [(Weak.literal, 0.5, Exit.returned), (Weak.literal, 1.5, Exit.returned)]
+        @test isempty(reported(cases.declared_result, F)) && isempty(reported(cases.computed_result, F))
+        @test reported(cases.fetched, F) == [(Weak.literal, 0.5, Exit.intermediate)]
+    end
+    @testset "local container" begin
+        @test scan(cases.collected, F) == ([(Weak.literal, 0.5, Exit.stored, Float64, F)], false)
+        @test only(first(scan(cases.summed_local, F)))[3] != Exit.stored
     end
     @testset "no finding" begin
         # Integer literal takes float input type; `Float32` is model of float stand-in.

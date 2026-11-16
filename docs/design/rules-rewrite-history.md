@@ -599,3 +599,20 @@ Decision: stand-in inference stays. Per-method disk cache joins PR order after f
 - Annotation guesses first read only `reached` signatures. `reached` follows stand-in calls alone, so concrete callers (`total_area(::Float64, ::Int)`) gave no evidence. Guesses now read every package call site of inferred code, with result type there.
 - `RuleEntry.fix_stage` names stage for fixes. Without it, `annotation` fix would depend on other enabled `inference` rules: hidden input.
 - `Narrowing` reads per-block variable types inference keeps (`bb_vartables`), so loss check needs no second inference. Lowering reads `x === nothing` again on its own true branch, where narrowed type is `Union{}`; scan treats that outcome as one that never happens.
+
+### Phase 4 code review: adversarial pass
+
+Codex reviewed phase 4 code (`a0a64e4` to annotation guesses) by trace only. Each fixed finding has regression test.
+
+| # | Finding | Outcome |
+|---|---|---|
+| 1 | Result guess `likely` when stand-ins miss type branch (`x isa BigFloat ? "big" : 1`) | Fixed: `likely` needs own inference over every declared type: concrete, real or real array argument, no keyword, no skipped signature, no type test. |
+| 2 | `fix` checks edited files in process that loaded package before edits | Fixed: relaunched `fix` exits `3`; relaunching process runs `check` in fresh process, with new crash journal. |
+| 3 | Store into returned local container (`out = Any[]; push!(out, v); out`) counts as intermediate | Fixed: store into local that method returns counts as exit. |
+| 4 | Analysis with crash blind spot enters analysis cache, so crash never retries | Kept: native abort repeats, and retry costs crash per run. Coverage line shows blind spot; `--no-cache` retries. |
+| 5 | `oftype(x, 1e39)` gives `Inf32`, but fix is `likely` | Fixed: literal outside `Float32` range gives `manual` fix. |
+| 6 | Crash key survives edit of method body | Fixed by 2: post-fix check runs with new journal. Journal lives for one supervised run. |
+| 7 | Torn last journal record makes relaunch throw | Fixed: record is length, then bytes, in one write; short last record drops. |
+
+- Corpus run of fixes found false positive in computed result type (`::promote_type(T, S, Float32)`). Lowering keeps returned `-Inf32` in unnamed slot, and converted code infers `Any`. Unnamed slot now takes kind of its value. Widening needs computing call with number type on both sides. Exit needs known converted type.
+- Abstract result type (`f(x)::Real`) and typed local (`y::Real = v`) lower to `isa` test with conversion. `type_branch` counted it, so every such finding dropped to `possible`. Lowering assigns `typeassert(convert(T, v), T)` back to tested slot; source `isa` never does.

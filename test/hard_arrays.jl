@@ -2,8 +2,7 @@ using Test: @test, @testset
 using Corset: Corset
 using Corset.Facts: Exit
 using Corset.StandIns: FloatStandIn, ArrayStandIn, DenseStandIn, Templated
-# Qualified: `widening.jl` imports `Widening.changes!` into same `Main`.
-using Corset.HardArrays: HardArrays, holds_array
+using Corset.HardArrays: changes!, holds_array
 
 """Methods `HardArrays` scans: hard-coded arrays that drop caller's array type, and code that keeps it."""
 module HardArrayCases
@@ -44,7 +43,7 @@ end
 """Changes `HardArrays` finds in `f` on argument types `arguments`, as (callee, template slot, exit), and type branch."""
 function scan(f::Function, arguments::Type...)::Tuple{Vector{Tuple{Any, Int, Exit.T}}, Bool}
     instance, code, _, _ = something(Corset.Inference.infer(only(methods(f)), Tuple{typeof(f), arguments...}))
-    found, branch = HardArrays.changes!(Any[], instance, code)
+    found, branch = changes!(Any[], instance, code)
     return [(change.construction.callee, change.construction.template, change.exit) for change in found], branch
 end
 

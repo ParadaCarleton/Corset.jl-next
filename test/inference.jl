@@ -10,7 +10,7 @@ using Corset.Widening: statement_call
 using Base.Broadcast: broadcasted
 using Corset.Inference:
     Store, Entry, Staged, entry_key, method_id, code_digest, staged_digest, method_index, instance, shape, constant_text, digest, names_package!, holds_gensym
-using Corset.Inference: Record, records, crashed, last_crash, finished_store, open_journal, record!, method_label, log_file
+using Corset.Inference: Record, records, crashed, last_crash, finished_store, open_journal, record!, method_label, log_file, journal_file
 
 const CASE = joinpath(@__DIR__, "inference", "InferenceCases")
 
@@ -268,6 +268,12 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
             close(journal.io)
             crash = something(last_crash(records(directory)))
             @test crash.key == key && crash.label == "InferenceCases.scale at InferenceCases.jl:$(line_of("scale"))"
+            # Kill during write leaves torn record; reading drops it and keeps earlier records.
+            whole = length(records(directory))
+            open(io -> write(io, [reinterpret(UInt8, [1000]); zeros(UInt8, 10)]), journal_file(directory), "a")
+            @test length(records(directory)) == whole && something(last_crash(records(directory))).key == key
+            open(io -> write(io, UInt8[1, 2]), journal_file(directory), "a")
+            @test length(records(directory)) == whole
             again = open_journal(directory)
             @test again.crashed == Set([key])
             facts, spots, typed, _ = infer_package(PACKAGE, FILES, Store(), again)

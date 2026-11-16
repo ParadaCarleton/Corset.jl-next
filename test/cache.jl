@@ -1,4 +1,6 @@
-# Disk cache: key inputs, entry storage, cached analysis, and command line with cache. Uses helpers of cli.jl.
+# Disk cache: key inputs, entry storage, cached analysis, and command line with cache.
+
+include("helpers.jl")
 
 using Corset: Corset
 using Corset.Cache: Cache
