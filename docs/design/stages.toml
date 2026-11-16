@@ -25,7 +25,7 @@ text = "One inference per package method; stand-in types replace generic argumen
 [[stage]]
 name = "effects"
 title = "Effect and alias summary"
-text = "Per method: reads and writes of arguments, writes to globals, result aliases global state. Own points-to summary over typed SSA IR before inlining, bottom-up through callees, Base and dependencies included."
+text = "Per unit of `inference` stage: reads and writes of arguments and globals, result aliases. Field-sensitive points-to over SSA IR from `inference` stage code; provenance separates doubt in code from blind spots. Bottom-up through callees, Base and dependencies included; library summaries cached."
 
 [[stage]]
 name = "lifecycle"

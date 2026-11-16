@@ -30,7 +30,7 @@ Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and meth
 | cannot resolve | cannot resolve | finding: `possible`, or rule of its own |
 | resolves | cannot resolve | blind spot: coverage line only |
 
-- Finding: argument typed `Any` reaches methods that disagree on writing it. Compiler dispatches at run time: `bang-convention` reports `possible`, and `runtime-dispatch` reports call.
+- Finding: untyped argument reaches methods that disagree on writing it. Compiler dispatches at run time: `bang-convention` reports `possible`, and `runtime-dispatch` reports call.
 - Finding: public function returns union from dependency. Unknown callers decide: `possible`.
 - Blind spot: syntax-only rule cannot see that `a::Vector` is 1-based, because `inference` stage did not run.
 - Blind spot: inference gave no code (generator threw); method has more signatures than limit; argument type has no stand-in.
