@@ -1,0 +1,155 @@
+warning[annotation]: `area` signature lacks types
+ --> src/AnnotationGuessed.jl:5:1
+  |
+5 | area(width, height) = width * height
+  | ^^^^ method defined here
+  | ------------------- no result type
+  |      ----- no type
+  |             ------ no type
+  |
+  = why: reader must read body to learn what function accepts and returns
+  = fix: annotate with inferred types: `width::Real` (seen: `Float64`), `height::Real` (seen: `Int64`, `Float64`), `::Real` (seen: `Float64`)   [breaking]
+  = docs: corset explain annotation
+  = note: warn from readability group, library preset
+  = note: opt out with `# corset: allow annotation -- <reason>`
+
+warning[annotation]: `halved` signature lacks types
+ --> src/AnnotationGuessed.jl:9:1
+  |
+9 | halved(x::Real) = x / 2
+  | ^^^^^^ method defined here
+  | --------------- no result type
+  |
+  = why: reader must read body to learn what function accepts and returns
+  = fix: annotate with inferred types: `::Real` (seen: `Float32`, `Float64`)   [likely]
+  = docs: corset explain annotation
+
+warning[annotation]: `summed` signature lacks types
+  --> src/AnnotationGuessed.jl:12:1
+   |
+12 | summed(values) = sum(values)
+   | ^^^^^^ method defined here
+   | -------------- no result type
+   |        ------ no type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with inferred types: `values::AbstractVector{<:Real}` (seen: `Vector{Float32}`, `Vector{Int32}`), `::Real` (seen: `Float32`, `Int64`)   [breaking]
+   = docs: corset explain annotation
+
+warning[annotation]: `radius_of` signature lacks types
+  --> src/AnnotationGuessed.jl:20:1
+   |
+20 | radius_of(shape) = shape.radius
+   | ^^^^^^^^^ method defined here
+   | ---------------- no result type
+   |           ----- no type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with inferred types: `shape::Shape` (seen: `Circle`), `::Real` (seen: `Float64`)   [breaking]
+   = docs: corset explain annotation
+
+warning[annotation]: `scaled` signature lacks types
+  --> src/AnnotationGuessed.jl:24:1
+   |
+24 | scaled(x::Real, factor = 2) = x * factor
+   | ^^^^^^ method defined here
+   | --------------------------- no result type
+   |                 ------ no type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with inferred types: `factor::Integer` (seen: `Int64`), `::Real` (seen: `Float32`, `Int64`)   [breaking]
+   = docs: corset explain annotation
+
+warning[annotation]: `scaled_by` signature lacks types
+  --> src/AnnotationGuessed.jl:27:1
+   |
+27 | scaled_by(x::Real; factor::Real = 2) = x * factor
+   | ^^^^^^^^^ method defined here
+   | ------------------------------------ no result type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with inferred types: `::Real` (seen: `Float32`, `Int64`, `Float64`)   [breaking]
+   = docs: corset explain annotation
+
+warning[annotation]: `sized` signature lacks types
+  --> src/AnnotationGuessed.jl:29:1
+   |
+29 | sized(x::Real) = x isa BigFloat ? "big" : 64
+   | ^^^^^ method defined here
+   | -------------- no result type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with inferred types: `::Integer` (seen: `Int64`)   [breaking]
+   = docs: corset explain annotation
+
+warning[annotation]: `doubled_number` signature lacks types
+  --> src/AnnotationGuessed.jl:31:1
+   |
+31 | doubled_number(x::Number) = 2x
+   | ^^^^^^^^^^^^^^ method defined here
+   | ------------------------- no result type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with inferred types: `::Real` (seen: `Float32`, `Int64`, `Float64`)   [breaking]
+   = docs: corset explain annotation
+
+warning[annotation]: `summed4` signature lacks types
+  --> src/AnnotationGuessed.jl:33:1
+   |
+33 | summed4(a::Real, b::Real, c::Real, d::Real) = a + b + c + d
+   | ^^^^^^^ method defined here
+   | ------------------------------------------- no result type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with inferred types: `::Real` (seen: `Float32`, `Float64`)   [breaking]
+   = docs: corset explain annotation
+
+warning[annotation]: `passed` signature lacks types
+  --> src/AnnotationGuessed.jl:35:1
+   |
+35 | passed(x::Any) = x
+   | ^^^^^^ method defined here
+   | -------------- no result type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with intended abstract types; `::Any` accepts anything on purpose   [manual]
+   = docs: corset explain annotation
+
+warning[annotation]: `counted` signature lacks types
+  --> src/AnnotationGuessed.jl:39:1
+   |
+39 | counted(items) = length(collect(items))
+   | ^^^^^^^ method defined here
+   | -------------- no result type
+   |         ----- no type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with inferred types: `::Integer` (seen: `Int64`); annotate rest by hand   [breaking]
+   = docs: corset explain annotation
+
+warning[annotation]: `shifted` signature lacks types
+  --> src/AnnotationGuessed.jl:43:1
+   |
+43 | shifted(x, by = 0.5) = x + by
+   | ^^^^^^^ method defined here
+   | -------------------- no result type
+   |         - no type
+   |            -- no type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with inferred types: `by::Real` (seen: `Float64`); annotate rest by hand   [breaking]
+   = docs: corset explain annotation
+
+warning[annotation]: `joined` signature lacks types
+  --> src/AnnotationGuessed.jl:46:1
+   |
+46 | joined(a, b) = string(a, b)
+   | ^^^^^^ method defined here
+   | ------------ no result type
+   |        - no type
+   |           - no type
+   |
+   = why: reader must read body to learn what function accepts and returns
+   = fix: annotate with intended abstract types; `::Any` accepts anything on purpose   [manual]
+   = docs: corset explain annotation
+

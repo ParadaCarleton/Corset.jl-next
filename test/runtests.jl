@@ -7,6 +7,7 @@ using Test: @test, @testset
     include("inference.jl")
     include("widening.jl")
     include("hard_arrays.jl")
+    include("guesses.jl")
     include("narrowing.jl")
     include("registry.jl")
     include("ui.jl")

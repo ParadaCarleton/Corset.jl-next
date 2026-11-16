@@ -68,7 +68,7 @@ Rendered findings and fixed source for `case` of rule `name`. File case is only 
 Bans come from `case_bans`.
 """
 function run_case(name::Symbol, case::String)::Tuple{String, String}
-    facts = isdir(case) ? package_facts(case, Corset.Rules.entry(name).stage) : file_facts(case)
+    facts = isdir(case) ? package_facts(case, Corset.Rules.entry(name).fix_stage) : file_facts(case)
     findings = Corset.Engine.run_rules(facts, [Corset.Rules.entry(name)])
     sources = Dict(file.path => file.text for file in facts.files)
     root = isdir(case) ? case : dirname(case)
@@ -78,27 +78,34 @@ function run_case(name::Symbol, case::String)::Tuple{String, String}
 end
 
 """
-Copy of package case `case` in `directory` with `edits` applied, renamed `<name>Fixed` with new uuid, so it loads
-beside original. Returns path of copy.
+Copy of package `case` in `directory` with `edits` applied, renamed `<name>Fixed` with new uuid, so it loads beside
+original and earlier copies. Copy keeps name of `case` when `case` is copy already. Returns path of copy.
 """
 function fixed_package(case::String, edits::Vector{Corset.Facts.Edit}, directory::String)::String
     project = TOML.parsefile(joinpath(case, "Project.toml"))
     name = project["name"]
-    copy = joinpath(directory, name * "Fixed")
+    copy = joinpath(directory, "$(name)Fixed$(length(readdir(directory)))")
     cp(case, copy)
     for file in unique(edit.span.file for edit in edits)
         write(joinpath(copy, relpath(file, case)), Corset.Fixes.apply_edits(read(file, String), filter(edit -> edit.span.file == file, edits)))
     end
+    fixed = basename(copy)
     entry = joinpath(copy, "src", name * ".jl")
-    write(joinpath(copy, "src", name * "Fixed.jl"), replace(read(entry, String), "module $name\n" => "module $(name)Fixed\n"))
+    write(joinpath(copy, "src", fixed * ".jl"), replace(read(entry, String), "module $name\n" => "module $fixed\n"))
     rm(entry)
-    project["name"], project["uuid"] = name * "Fixed", string(Base.UUID(rand(UInt128)))
+    project["name"], project["uuid"] = fixed, string(Base.UUID(rand(UInt128)))
     open(io -> TOML.print(io, project), joinpath(copy, "Project.toml"), "w")
     return copy
 end
 
-"""Rules of `inference` stage; their fixes rest on inference, so fixed package must lose each fixed finding."""
-const INFERENCE_RULES = [rule for rule in sort!(readdir(UI)) if Corset.Rules.entry(Symbol(rule)).stage == Stage.inference]
+"""Most fix rounds fixes of one case may take: annotation guess of argument lets next run guess result."""
+const FIX_ROUNDS = 3
+
+"""Package cases of rules whose fixes rest on inference (`fix_stage`); fixed package must lose each fixed finding."""
+const INFERENCE_CASES = [
+    (rule, case) for rule in sort!(readdir(UI)) if Corset.Rules.entry(Symbol(rule)).fix_stage == Stage.inference
+        for case in sort!(readdir(joinpath(UI, rule))) if isdir(joinpath(UI, rule, case))
+]
 
 @testset "UI $(rule)" for rule in sort!(readdir(UI))
     directory = joinpath(UI, rule)
@@ -117,14 +124,19 @@ const INFERENCE_RULES = [rule for rule in sort!(readdir(UI)) if Corset.Rules.ent
     end
 end
 
-@testset "UI $(rule) fixes clear their findings" for rule in INFERENCE_RULES
-    entry, case = Corset.Rules.entry(Symbol(rule)), joinpath(UI, rule, "positive")
-    findings = Corset.Engine.run_rules(package_facts(case, entry.stage), [entry])
-    manual = count(finding -> isnothing(finding.fix) || finding.fix.tier == Tier.manual, findings)
-    edits = Corset.Fixes.applicable_edits(findings, Tier.breaking)
-    again = mktempdir(directory -> Corset.Engine.run_rules(package_facts(fixed_package(case, edits, directory), entry.stage), [entry]))
-    @test all(finding -> isnothing(finding.fix) || finding.fix.tier == Tier.manual, again)
-    @test length(again) == manual
+@testset "UI $(rule) $(name) fixes converge" for (rule, name) in INFERENCE_CASES
+    entry, case = Corset.Rules.entry(Symbol(rule)), joinpath(UI, rule, name)
+    fixable(found::Vector{Corset.Facts.Finding})::Bool = any(finding -> !isnothing(finding.fix) && finding.fix.tier != Tier.manual, found)
+    mktempdir() do directory
+        findings = Corset.Engine.run_rules(package_facts(case, entry.fix_stage), [entry])
+        initial, rounds = length(findings), 0
+        while fixable(findings) && rounds < FIX_ROUNDS
+            case, rounds = fixed_package(case, Corset.Fixes.applicable_edits(findings, Tier.breaking), directory), rounds + 1
+            findings = Corset.Engine.run_rules(package_facts(case, entry.fix_stage), [entry])
+        end
+        @test !fixable(findings)
+        @test length(findings) <= initial
+    end
 end
 
 @testset "every rule has UI tests" begin

@@ -279,7 +279,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <section id="pipeline">
 <h2>Pipeline</h2>
 <p>Analysis stages Corset computes, in pipeline order. Each stage computes facts once per run; rules read them.</p>
-<p>Stages run top to bottom. Stage not built yet gives no facts; no rule reads it until it ships. Rule declares last stage it reads. Engine computes only stages that selected rules need. <code>scope</code> runs after <code>package</code>: macro expansion needs evaluated imports and package macros (S3). Scripts: <code>scope</code> evaluates imports only; unresolved macros go to coverage line.</p>
+<p>Stages run top to bottom. Stage not built yet gives no facts; no rule reads it until it ships. Rule declares two stages: <code>stage</code> for findings and <code>fix_stage</code> for fixes, never earlier. Engine computes only stages selected rules need for either. <code>scope</code> runs after <code>package</code>: macro expansion needs evaluated imports and package macros (S3). Scripts: <code>scope</code> evaluates imports only; unresolved macros go to coverage line.</p>
 <div class="pipeline" role="img" aria-label="Analysis stages from syntax tree to effect summary, then findings, confidence filter, report and fix">
       <div class="layer"><div class="id">syntax</div><div class="what">Lossless syntax tree, index by node kind<small>JuliaSyntax · per file · milliseconds</small></div></div>
       <div class="divider">package code runs below · same process, target environment</div>
@@ -684,6 +684,11 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Argument guess with call-site evidence: tier <code>breaking</code>, since narrower annotation can reject callers. Body-use evidence only: tier <code>manual</code>.</li>
 <li>After fix, Corset checks again: internal call that no longer matches shows as <code>never-succeeds</code>.</li>
 <li><code>application</code> and <code>script</code> presets apply <code>breaking</code> fixes automatically, so they transition in one run. <code>library</code> needs <code>--tier breaking</code>.</li>
+<li>Built (<code>Guesses.annotation_guesses</code>): call-site evidence comes from every inferred caller, concrete or stand-in, with result type at call. Typed method adds results of its own stand-in inference. Literal default value adds its type.</li>
+<li>Result guess is <code>likely</code> only when own inference covers every argument type. Untyped keyword, signatures over limit, crash or missing code make it <code>breaking</code>: results then miss some argument types.</li>
+<li><code>annotation</code> stays <code>syntax</code> stage with <code>fix_stage = inference</code>: run computes inference facts when rule is on, so fix never depends on other rules. Without package, fix stays <code>manual</code>.</li>
+<li>Partial guess (some causes) applies; next run guesses rest. UI test applies fixes until only <code>manual</code> fixes remain, at most three rounds.</li>
+<li>Not built: struct field flow and body-use evidence (<code>manual</code> tier). Keyword arguments get no guess.</li>
 <li>Revisit after phase 4: evidence ranking, widening and tiers are first guesses. Measure on corpus how many guesses survive review; adjust. Candidate extra sources: docstring signatures, opt-in run-time type trace, LLM handoff for <code>manual</code> guesses.</li>
 </ul>
 </div><div class="decision"><h3>Hard-coded arrays</h3>

@@ -134,7 +134,7 @@ end
         @test code == 1 && occursin("error[load-error]: package does not load\n --> src/inner.jl:1:1", out)
         @test occursin("boom at load", out) && occursin("load check, always on", out) && occursin("skipped 1 (package did not load: 1)", out)
         # Run that allows every rule after `syntax` stage loads nothing.
-        allow_package = reduce(vcat, (["-A", string(entry.name)] for entry in Corset.Rules.REGISTRY if entry.stage != Corset.Facts.Stage.syntax))
+        allow_package = reduce(vcat, (["-A", string(entry.name)] for entry in Corset.Rules.REGISTRY if entry.fix_stage != Corset.Facts.Stage.syntax))
         @test !occursin("load-error", corset("check", package, allow_package...)[2])
         # Checked file leaves out entry and frames: span falls back to entry file, read from disk.
         @test occursin("--> src/Throws.jl:1:1", corset("check", joinpath(package, "src", "notes.jl"))[2])

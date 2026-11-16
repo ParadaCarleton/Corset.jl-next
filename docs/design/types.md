@@ -109,6 +109,11 @@ Helps unannotated package reach full annotations. `annotation` fixer guesses typ
 - Argument guess with call-site evidence: tier `breaking`, since narrower annotation can reject callers. Body-use evidence only: tier `manual`.
 - After fix, Corset checks again: internal call that no longer matches shows as `never-succeeds`.
 - `application` and `script` presets apply `breaking` fixes automatically, so they transition in one run. `library` needs `--tier breaking`.
+- Built (`Guesses.annotation_guesses`): call-site evidence comes from every inferred caller, concrete or stand-in, with result type at call. Typed method adds results of its own stand-in inference. Literal default value adds its type.
+- Result guess is `likely` only when own inference covers every argument type. Untyped keyword, signatures over limit, crash or missing code make it `breaking`: results then miss some argument types.
+- `annotation` stays `syntax` stage with `fix_stage = inference`: run computes inference facts when rule is on, so fix never depends on other rules. Without package, fix stays `manual`.
+- Partial guess (some causes) applies; next run guesses rest. UI test applies fixes until only `manual` fixes remain, at most three rounds.
+- Not built: struct field flow and body-use evidence (`manual` tier). Keyword arguments get no guess.
 - Revisit after phase 4: evidence ranking, widening and tiers are first guesses. Measure on corpus how many guesses survive review; adjust. Candidate extra sources: docstring signatures, opt-in run-time type trace, LLM handoff for `manual` guesses.
 
 ### Hard-coded arrays
