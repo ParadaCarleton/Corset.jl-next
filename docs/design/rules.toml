@@ -90,7 +90,7 @@ note = "Fixer adds element type."
 [[rule]]
 name = "operator-consistency"
 footguns = [22, 104]
-note = "Kinds: `==` without `hash`, method on derived operator."
+note = "Kinds: `==` without `hash`, `hash` reads field equality ignores, float fields without `isequal`, `hash` without `==`, 1-argument `hash`, `isless` against equality, method on derived operator."
 
 [[rule]]
 name = "shadowed-base"
