@@ -177,6 +177,15 @@ module Fx
     sym_of(v::Vector{UInt8}) = ccall(:jl_symbol_n, Ref{Symbol}, (Ptr{UInt8}, Int), v, length(v))
     # passing BigFloat to MPFR repairs a stale self-pointer in its limbs: no visible write
     big_print(x::BigFloat) = ccall((:mpfr_asprintf, Base.MPFR.libmpfr), Cint, (Ptr{Ptr{UInt8}}, Ptr{UInt8}, Ref{BigFloat}...), Ref{Ptr{UInt8}}(), "%Re", x)
+    # `zero(Any)` throws: instance at `Vector{Any}` returns `Union{}`, so its summary decides no verdict
+    zero_first!(x::AbstractVector) = (x[1] = zero(eltype(x)); x)
+    # `need_same` rejects `Int` with `FakeStandIn`: write path dies at stand-in signature only
+    struct FakeStandIn <: Integer end
+    need_same(a::T, b::T) where {T <: Integer} = b
+    lossy_set!(A::AbstractVector, i::Integer) = (A[need_same(length(A), i)] = 0; A)
+    lossy_branch!(A::AbstractVector, i::Integer) = (length(A) > 2 && (A[need_same(length(A), i)] = 0); nothing)
+    lossy_caller!(A::Vector{Int}, i::FakeStandIn) = (lossy_branch!(A, i); A)
+    real_fail!(A::Vector{Int}, i::FakeStandIn) = (length(A) > 2 && (A[need_same(length(A), i)] = 0); A)
     big_set(x::BigFloat) = ccall((:mpfr_set_si, Base.MPFR.libmpfr), Int32, (Ref{BigFloat}, Clong, Base.MPFR.MPFRRoundingMode), x, 1, Base.MPFR.MPFRRoundNearest)
     # author asserts no side effect; analysis alone sees unknown callee on argument
     Base.@assume_effects :effect_free asserted_pure(x::Vector{Int}) = (Base.inferencebarrier(sum)(x); nothing)
@@ -268,6 +277,7 @@ gwrite(s::Summary, name::Symbol)::Certainty = maximum((c for (k, c) in s.globals
 index_constants!()
 # fixture module lives in Main: its methods count as package methods
 get(ENV, "S5_PKGJOIN", "1") == "1" && push!(PACKAGE_ROOTS, Main)
+EffectSpike.IS_STANDIN[] = ==(Fx.FakeStandIn)
 eng = Engine()
 sums = Dict{Symbol, Summary}()
 for (name, types) in TARGETS
@@ -354,6 +364,13 @@ end
     @test argwrite(sums[:ty_either], 3) == NONE && !isempty(sums[:ty_either].type_calls)
     @test argwrite(sums[:ty_either_invoke], 2) == POSSIBLE  # operand may be fresh vector
     @test argwrite(sums[:sym_of], 2) == NONE  # `jl_symbol_n` reads bytes
+    @test EffectSpike.always_throws(Base.method_instance(Fx.zero_first!, (Vector{Any},))) && !EffectSpike.always_throws(Base.method_instance(Fx.zero_first!, (Vector{Float64},)))
+    at(f, types) = on_big_stack(() -> summary!(eng, Base.method_instance(f, types)))
+    @test at(Fx.lossy_set!, (Vector{Int}, Fx.FakeStandIn)).lossy
+    @test !at(Fx.lossy_set!, (Vector{Int}, Int)).lossy && argwrite(at(Fx.lossy_set!, (Vector{Int}, Int)), 2) == DEFINITE
+    @test at(Fx.lossy_branch!, (Vector{Int}, Fx.FakeStandIn)).lossy && argwrite(at(Fx.lossy_branch!, (Vector{Int}, Fx.FakeStandIn)), 2) == NONE
+    @test at(Fx.lossy_caller!, (Vector{Int}, Fx.FakeStandIn)).lossy
+    @test !at(Fx.real_fail!, (Vector{Int}, Fx.FakeStandIn)).lossy
     @test argwrite(sums[:big_print], 2) == NONE && argwrite(sums[:big_set], 2) == DEFINITE  # MPFR self-pointer repair
     @test argwrite(sums[:unasserted], 2) == POSSIBLE
     @test argwrite(sums[:asserted_pure], 2) == NONE  # compiler effects: `@assume_effects :effect_free`

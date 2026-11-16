@@ -1,0 +1,39 @@
+flag	name	location	opaque	writes
+bang-possible	_pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:192	true	arg r=POSSIBLE; arg a=POSSIBLE
+bang-possible	_pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:192	true	arg r=POSSIBLE; arg a=POSSIBLE; arg b=POSSIBLE
+bang-possible	_pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:203	true	arg r=POSSIBLE
+bang-possible	_pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:203	true	arg r=POSSIBLE
+bang-possible	_pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:218	true	arg r=POSSIBLE; arg a=POSSIBLE
+bang-possible	_pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:234	false	arg r=POSSIBLE
+bang-possible	_pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:818	true	arg r=POSSIBLE; arg a=POSSIBLE; arg b=POSSIBLE
+bang-possible	_pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:820	true	arg r=POSSIBLE; arg a=POSSIBLE
+bang-possible	pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/deprecated.jl:1	true	arg r=POSSIBLE; arg a=POSSIBLE
+bang-possible	pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/deprecated.jl:2	true	arg r=POSSIBLE; arg a=POSSIBLE; arg b=POSSIBLE
+bang-possible	pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/deprecated.jl:4	true	arg r=POSSIBLE; arg a=POSSIBLE
+bang-possible	pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/deprecated.jl:8	true	arg r=POSSIBLE; arg a=POSSIBLE; arg b=POSSIBLE
+bang-possible	pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:273	true	arg r=POSSIBLE; arg a=POSSIBLE; arg b=POSSIBLE
+bang-possible	pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:298	true	arg r=POSSIBLE; arg a=POSSIBLE
+bang-possible	pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:325	true	arg r=POSSIBLE; arg a=POSSIBLE; arg b=POSSIBLE
+bang-possible	pairwise!	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:326	true	arg r=POSSIBLE; arg a=POSSIBLE
+missing?	CorrDist	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:419	true	arg a=POSSIBLE; arg b=POSSIBLE
+missing?	_centralize	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:418	true	arg x=POSSIBLE
+missing?	_centralize_colwise	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:817	true	arg x=POSSIBLE
+missing?	_evaluate	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:226	true	arg a=POSSIBLE; arg b=POSSIBLE
+missing?	_evaluate	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:232	true	arg a=POSSIBLE; arg b=POSSIBLE
+missing?	_evaluate	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:269	true	arg a=POSSIBLE; arg b=POSSIBLE; arg p=POSSIBLE
+missing?	bregman	/home/dev/.julia/packages/Distances/mlz7p/src/bregman.jl:48	true	arg =POSSIBLE; arg F=POSSIBLE; arg ∇=POSSIBLE; arg x=POSSIBLE; arg y=POSSIBLE
+missing?	colwise	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:149	true	arg a=POSSIBLE; arg b=POSSIBLE
+missing?	dot_percol	/home/dev/.julia/packages/Distances/mlz7p/src/common.jl:126	true	arg a=POSSIBLE; arg b=POSSIBLE
+missing?	eval_end	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:584	true	arg a=POSSIBLE
+missing?	eval_start	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:438	true	arg a=POSSIBLE; arg b=POSSIBLE
+missing?	evaluate	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:47	true	arg a=POSSIBLE; arg b=POSSIBLE
+missing?	haversine	/home/dev/.julia/packages/Distances/mlz7p/src/haversine.jl:33	true	arg x=POSSIBLE; arg y=POSSIBLE
+missing?	minkowski	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:385	true	arg a=POSSIBLE; arg b=POSSIBLE
+missing?	norm_percol	/home/dev/.julia/packages/Distances/mlz7p/src/common.jl:87	true	arg a=POSSIBLE
+missing?	pairwise	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:363	true	arg a=POSSIBLE; arg b=POSSIBLE
+missing?	pairwise	/home/dev/.julia/packages/Distances/mlz7p/src/generic.jl:370	true	arg a=POSSIBLE
+missing?	renyi_divergence	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:483	true	arg a=POSSIBLE; arg b=POSSIBLE
+missing?	result_type	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:219	true	arg dist=POSSIBLE
+missing?	result_type	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:221	true	arg dist=POSSIBLE
+missing?	result_type	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:223	true	arg dist=POSSIBLE
+missing?	wminkowski	/home/dev/.julia/packages/Distances/mlz7p/src/metrics.jl:390	true	arg a=POSSIBLE; arg b=POSSIBLE; arg w=POSSIBLE

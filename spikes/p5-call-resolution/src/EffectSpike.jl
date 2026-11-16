@@ -98,11 +98,12 @@ struct Summary
     joined::Vector{NTuple{3, Bool}}     # per parameter and depth bucket: possible only from candidate disagreement
     blames::Vector{String}              # per parameter: leaf cause of first possible write (diagnostic)
     gblames::Dict{GlobalKey, String}    # per global: same
+    lossy::Bool                         # stand-in cuts some path here or in callee, so "writes nothing" is unproven
 end
 
 Summary(params, stores, merges, globals, direct, result_globals, opaque, fresh, assumed) = Summary(
     params, stores, merges, globals, direct, result_globals, opaque, fresh, assumed, Calls(), TypeCalls(),
-    fill((false, false, false), length(params)), fill("", length(params)), Dict{GlobalKey, String}()
+    fill((false, false, false), length(params)), fill("", length(params)), Dict{GlobalKey, String}(), false
 )
 
 bottom_summary(nparams::Int)::Summary = Summary(
@@ -127,7 +128,8 @@ function lub(a::Summary, b::Summary)::Summary
     return Summary(
         lub.(a.params, b.params), a.stores ∪ b.stores, a.merges ∪ b.merges, lub(a.globals, b.globals),
         a.direct ∪ b.direct, lub(a.result_globals, b.result_globals), a.opaque || b.opaque, a.fresh_result && b.fresh_result,
-        a.assumed || b.assumed, merge_calls(a.calls, b.calls), a.type_calls ∪ b.type_calls, lub_joined.(a.params, b.params, a.joined, b.joined), [isempty(x) ? y : x for (x, y) in zip(a.blames, b.blames)], merge(b.gblames, a.gblames)
+        a.assumed || b.assumed, merge_calls(a.calls, b.calls), a.type_calls ∪ b.type_calls, lub_joined.(a.params, b.params, a.joined, b.joined), [isempty(x) ? y : x for (x, y) in zip(a.blames, b.blames)], merge(b.gblames, a.gblames),
+        a.lossy || b.lossy
     )
 end
 
@@ -300,6 +302,7 @@ mutable struct MethodState
     opaque::Bool
     returns::Vector{Any}
     assumed::Bool
+    lossy::Bool
     name::String
     optimistic::Vector{Pair{Core.SSAValue, Vector{Any}}}  # phi base assumed from forward operands; back-edge operands to check
     pessimistic::Set{Int}                                # phis whose back-edge operands disagreed
@@ -1211,6 +1214,7 @@ function apply_summary!(st::MethodState, res::Union{Nothing, Core.SSAValue}, ops
     end
     st.opaque |= s.opaque
     st.assumed |= s.assumed
+    st.lossy |= s.lossy
     s.fresh_result && rl != 0 && isempty(within) && tag!(st.g, rl, :fresh)
     return
 end
@@ -1339,7 +1343,7 @@ function summarize(st::MethodState, nparams::Int, isva::Bool)::Summary
         a === nothing || push!(stores, (j, k, findfirst(==(preach[k][a]), preach[j]) - 1, a - 1))
     end
     joined = [(p.top == POSSIBLE && !l[1], p.inner == POSSIBLE && !l[2], p.deep == POSSIBLE && !l[3]) for (p, l) in zip(params, leaf)]
-    return Summary(params, stores, merges, globals, st.direct, result_globals, st.opaque, fresh_result, st.assumed, calls, type_calls, joined, blames, gblames)
+    return Summary(params, stores, merges, globals, st.direct, result_globals, st.opaque, fresh_result, st.assumed, calls, type_calls, joined, blames, gblames, st.lossy || own_lossy(st.mi))
 end
 
 """
@@ -1524,7 +1528,7 @@ end
 
 """Summary of one IR body given callee summaries."""
 function analyze(ir::CC.IRCode, ctx::Ctx, isva::Bool = false, name::String = "?", pessimistic::Set{Int} = Set{Int}())::Summary
-    st = MethodState(ir, Graph(), Dict{Any, Int}(), Dict{Any, Base_}(), WriteSite[], Set{GlobalKey}(), false, Any[], false, name, Pair{Core.SSAValue, Vector{Any}}[], pessimistic, Callback[], used_values(ir), TypeCallback[], TypeCallSite[], ir.debuginfo.def)
+    st = MethodState(ir, Graph(), Dict{Any, Int}(), Dict{Any, Base_}(), WriteSite[], Set{GlobalKey}(), false, Any[], false, false, name, Pair{Core.SSAValue, Vector{Any}}[], pessimistic, Callback[], used_values(ir), TypeCallback[], TypeCallSite[], ir.debuginfo.def)
     throws = throw_blocks(ir)
     for (b, block) in enumerate(ir.cfg.blocks)
         b in throws && continue
@@ -1568,6 +1572,56 @@ function get_ir(mi::Core.MethodInstance, stats::Stats)::Union{Nothing, Tuple{CC.
     out isa Tuple{CC.IRCode, Bool} || (stats.ir_failures += 1; return nothing)
     return out
 end
+
+"""Predicate on types: stand-in type of signature generator. Driver sets it; default matches no type."""
+const IS_STANDIN = Ref{Function}(Returns(false))
+const LOSSY = IdDict{Core.MethodInstance, Bool}()
+const LOSSY_ERRORS = Ref(0)  # inference errors in `failing_calls`; counted lossy
+
+"""Whether `predicate` holds for `type` or type inside it: parameter, union member, `Vararg` element, `UnionAll` body."""
+function mentions(predicate::Function, type::Any)::Bool
+    type isa Core.TypeofVararg && return isdefined(type, :T) && mentions(predicate, type.T)
+    type isa Union && return mentions(predicate, type.a) || mentions(predicate, type.b)
+    type isa UnionAll && return mentions(predicate, type.body)
+    type isa DataType || return false
+    return predicate(type) || any(p -> mentions(predicate, p), type.parameters)
+end
+
+"""Indices of reachable call statements of `mi` that never return; `nothing` when inference gives no code."""
+function failing_calls(mi::Core.MethodInstance)::Union{Nothing, Set{Int}}
+    code = try
+        CC.typeinf_code(CC.NativeInterpreter(), mi, false)
+    catch
+        LOSSY_ERRORS[] += 1
+        nothing
+    end
+    code isa Core.CodeInfo || return nothing
+    found = Set{Int}()
+    # inference wraps unreachable statement in `Const`, so `Expr` statement is reachable
+    for (k, stmt) in enumerate(code.code)
+        stmt isa Expr && stmt.head === :(=) && (stmt = stmt.args[2])
+        stmt isa Expr && stmt.head in (:call, :invoke, :new, :foreigncall) && code.ssavaluetypes[k] === Union{} && push!(found, k)
+    end
+    return found
+end
+
+"""
+Whether stand-in in signature of `mi` cuts path: reachable call fails at `mi` and not at declared signature. Analysis
+skips cut path as error path, so writes behind it are unseen.
+"""
+function own_lossy(mi::Any)::Bool
+    (mi isa Core.MethodInstance && mi.def isa Method && mentions(IS_STANDIN[], mi.specTypes)) || return false
+    return get!(LOSSY, mi) do
+        here = failing_calls(mi)
+        here === nothing && return true
+        isempty(here) && return false
+        declared = failing_calls(declared_instance(mi.def))
+        return declared === nothing || !issubset(here, declared)
+    end
+end
+
+"""Whether `mi` infers `Union{}` result: every call throws, so its summary says nothing about writes."""
+always_throws(mi::Core.MethodInstance)::Bool = CC.typeinf_type(CC.NativeInterpreter(), mi) === Union{}
 
 """Method instance for `m` at its declared signature; type variables stay free."""
 function declared_instance(m::Method)::Core.MethodInstance
@@ -1758,7 +1812,7 @@ function without_writes(s::Summary, stats::Stats, mi::Core.MethodInstance)::Summ
     return Summary(
         params, Set{NTuple{4, Int}}(), s.merges, Dict{GlobalKey, Certainty}(), Set{GlobalKey}(), s.result_globals,
         s.opaque, s.fresh_result, s.assumed, s.calls, s.type_calls, fill((false, false, false), length(params)),
-        fill("", length(params)), Dict{GlobalKey, String}()
+        fill("", length(params)), Dict{GlobalKey, String}(), s.lossy
     )
 end
 
@@ -1844,6 +1898,6 @@ function on_big_stack(f::Function)
     return fetch(t)
 end
 
-export written, PACKAGE_ROOTS, analyze, Ctx, lookup, get_ir, TRACE, declared_instance, Certainty, NONE, POSSIBLE, DEFINITE, GlobalKey, ParamEffect, Summary, Engine, summary!, index_constants!, on_big_stack
+export written, always_throws, own_lossy, PACKAGE_ROOTS, analyze, Ctx, lookup, get_ir, TRACE, declared_instance, Certainty, NONE, POSSIBLE, DEFINITE, GlobalKey, ParamEffect, Summary, Engine, summary!, index_constants!, on_big_stack
 
 end
