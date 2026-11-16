@@ -26,7 +26,7 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 | Kind | Inputs combine as | Literal or constant | Example finding |
 |---|---|---|---|
 | Numbers | normal promotion; `Float32` with `Float64` gives `Float64` (pass) | weak: must not widen float input | `x::Float32 * 0.5` gives `Float64` |
-| Arrays | keep container kind; element types promote | fresh `Array` must not take over container | `x::JLArray .+ zeros(n)` gives `Array` |
+| Arrays | keep container kind; element types promote | fresh `Array` must not take over container | `zeros(n)` returned for `JLArray` input |
 | Strings (later) | `String` is correct common type | literal is `String` already | rare; Julia already does this |
 | Dicts, sets (later) | keep container kind; key and value types promote | as for arrays | rare |
 
@@ -58,7 +58,6 @@ Corset never reads or runs package tests. Signatures come from annotations: stan
 - **Cost** (S1 spike): number stand-ins about 200 lines; mixing check (differential, escape, filters, classifier) about 360; signature mapping about 190. Source mapping: TypedSyntax.jl as dependency; its CodeTracking dependency loads REPL, about 0.25 s per run. Vendor algorithm (about 500 lines) if cold-run budget needs it.
 - **Stand-in fidelity**: stand-in copies every `Float32` and `Int32` special case that changes result type: irrational rule (`irrationals.jl`); `sum`, `prod` and `factorial` widen `Int32` to `Int`. Reflection on stand-in (`fieldnames`, `propertynames`) sees wrapper; inference stage treats its result as opaque. Stand-in test suite runs `Test.detect_ambiguities` against Base and compares inferred result types with model type.
 - **No tests**: stand-in types come from annotations; see **Arguments without stand-in**.
-- Syntax rule stays for hard-coded `Array` without template. Shared fix helper finds in-scope type source (`T`, `eltype(x)`, template array).
 
 ### `lost-narrowing` scan
 
@@ -114,7 +113,18 @@ Helps unannotated package reach full annotations. `annotation` fixer guesses typ
 
 ### Hard-coded arrays
 
-`type-disruption` reports hard-coded `Vector`/`Matrix`/`Array` construction everywhere, `zeros`, `ones`, `fill` included. With template array: autofix to `similar(template, T, dims)`. Without template: message teaches caller-supplied template or array type; autofix adds parameter in `breaking` tier. One shared initializer fixer serves `type-disruption`, `constant-array` and `unwritten-element`.
+`type-disruption` reports hard-coded `Array` construction in method with input array (`HardArrays` scan, `inference` stage).
+
+- Construction: `zeros`, `ones`, `fill`, `similar(Vector{T}, dims)`, and `Array` type called with `undef` (`Vector{T}(undef, n)`).
+- Template: argument of stand-in array type. Prefer argument that dimensions read (`zeros(length(ys))` takes `ys`); else first.
+- Scan: put `StandIns.Templated` callee in place of constructor in copy of lowered code, so result takes template's stand-in array type. Then leave each construction unconverted alone, as `Widening` does.
+- Escape (returned, or stored where store does not convert): `definite`. Meeting (call takes construction and array from input, `buffer .= xs`): `possible`, since mixing fails only for some array types (GPU).
+- Callee that takes `Array` only drops construction, as weak number that makes call throw.
+- No input array: no finding. Method has no caller's array type to keep, and adding array type parameter changes its API.
+- Fix (`likely`): `zeros(n)` gives `fill!(similar(xs, Float64, n), 0.0)`; `zeros(T, n)` gives `fill!(similar(xs, T, n), zero(T))`; `Vector{T}(undef, n)` and `similar(Vector{T}, n)` give `similar(xs, T, n)`.
+- Fix stays `manual` for `fill` value other than literal or name (it would run twice), type without parameter, no dimensions, and reassigned template.
+- Messages name container only (`Vector`): element type of stand-in would print as its model.
+- Later: `constant-array` (FillArrays.jl) and `unwritten-element` may share fix text builder.
 
 ### Specialization count
 

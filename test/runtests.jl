@@ -6,6 +6,7 @@ using Test: @test, @testset
     include("signatures.jl")
     include("inference.jl")
     include("widening.jl")
+    include("hard_arrays.jl")
     include("narrowing.jl")
     include("registry.jl")
     include("ui.jl")

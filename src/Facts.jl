@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, Weak, Exit
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, NarrowingLoss, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, tuple_parameters, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -280,13 +280,32 @@ struct NarrowingLoss
 end
 
 """
+Hard-coded `Array` construction that drops caller's array type (`inference` stage fact). `span`: construction call, or
+statement that holds it when mapping cannot narrow; `exit_span`: statement where array returns, is stored or meets
+input array, and `exit` how. `value`: source text of call, empty without node; `array`: container it builds (`Vector`,
+`Matrix`, `Array`); `template`: input array argument fix builds from; `rebuilt`: text that builds same array with
+`similar(template, …)`, else `nothing`. `possible` for meeting, and when method branches on type or span cannot narrow.
+"""
+struct HardArray
+    span::Span
+    exit_span::Span
+    exit::Exit.T
+    value::String
+    array::String
+    template::String
+    rebuilt::Union{Nothing, String}
+    confidence::Confidence.T
+end
+
+"""
 `inference` stage facts: calls that never return, one per statement, without explicit throws and calls of package
-methods (their own frame reports); weak values that change input type, one per span; type tests whose narrowing guard
-drops, one per test. Typed code stays inside stage.
+methods (their own frame reports); weak values that change input type, one per span; hard-coded arrays, one per span;
+type tests whose narrowing guard drops, one per test. Typed code stays inside stage.
 """
 struct InferenceFacts
     failing::Vector{FailingCall}
     disruptions::Vector{Disruption}
+    hard_arrays::Vector{HardArray}
     narrowings::Vector{NarrowingLoss}
 end
 

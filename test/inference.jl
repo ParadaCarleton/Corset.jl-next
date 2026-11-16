@@ -277,7 +277,7 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         end
         # Stderr of inference goes to crash log; normal end copies it to stderr.
         mktempdir() do directory
-            empty = (Corset.Facts.InferenceFacts(FailingCall[], Corset.Facts.Disruption[], Corset.Facts.NarrowingLoss[]), Corset.Facts.BlindSpot[], nothing)
+            empty = (Corset.Facts.InferenceFacts(FailingCall[], Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[]), Corset.Facts.BlindSpot[], nothing)
             text = mktemp() do path, io
                 result = redirect_stderr(io) do
                     Corset.Engine.journaled(journal -> (println(stderr, "inner note"); empty), directory)
@@ -344,7 +344,10 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test callable(Core.Const(sin)) === sin && callable(Type{Int}) === Int
         @test callable(Type{MODULE.Wrap{T}} where {T}) === MODULE.Wrap
         @test isnothing(callable(Type{<:MODULE.Wrap})) && isnothing(callable(Function))
-        @test callee_text(MODULE.Wrap) == "Wrap" && callee_text(Union{Int, String}) == "Union{Int64, String}"
+        @test callee_text(MODULE.Wrap, MODULE) == "Wrap" && callee_text(Union{Int, String}, MODULE) == "Union{Int64, String}"
+        # Parametric type callee once printed as bare `Array`; source spells `Vector{Float64}`.
+        @test callee_text(Vector{Float64}, MODULE) == "Vector{Float64}" && callee_text(sin, MODULE) == "sin"
+        @test callee_text(MODULE.Wrap{Int}, Main) == "$(nameof(MODULE)).Wrap{Int64}"
         @test model_type(Tuple{typeof(sin), FloatStandIn, ArrayStandIn{IntStandIn, 2}, MODULE.Circle{FloatStandIn}}) ==
             Tuple{typeof(sin), Float32, Matrix{Int32}, MODULE.Circle{Float32}}
         @test model_type(DenseStandIn{FloatStandIn, 1}) == Vector{Float32} && model_type(FunctionStandIn) == FunctionStandIn

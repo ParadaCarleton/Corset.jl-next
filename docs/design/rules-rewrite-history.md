@@ -549,6 +549,7 @@ Codex review of phase 4 design found eight problems:
 - Lowering gives method for omitted defaults first body line. Stage puts its statements on definition line, which holds defaults.
 - Unbounded array argument gets `ArrayStandIn{Any}`, so calls on its elements (`zero(Any)`) give `possible` findings.
 - Undefined global infers `Any` on Julia 1.13, so `never-succeeds` does not report it.
+- Curly callee (`Vector{Float64}(n)`) once went unmatched: lowering builds callee with `Core.apply_type`, so no span spelled it. Finding names callee as source spells it, not bare `Array`.
 - Corpus: DataStructures 1 `definite` (`empty` of `DefaultDictBase`) and 1 `possible` (`SortedSet{K,Ord}()` default ordering fails `Ord`); both reproduce. Distances 12 `possible`, from `Any` elements. JSON none.
 - Coverage line listed 930 DataStructures blind spots. Text report now lists three per cause; JSON and SARIF list each one.
 - Method store keeps stage facts per method and signature; rules run each time. Design planned file hashes of reached methods as dependencies.
@@ -592,4 +593,7 @@ Decision: stand-in inference stays. Per-method disk cache joins PR order after f
 - Corpus cost, uncached, branch against main: DataStructures 85 s against 82 s, Distances 20 s against 21 s, JSON 87 s against 86 s. Distances writes no float literal in generic code and gave no finding.
 - Float corpus evidence stays thin. irv-extremism crashed on main before inference (DynamicPPL `@model` evaluator; struct bound rejecting array stand-in; fixed in #217). After that fix, inference with stand-ins runs Enzyme `@generated` thunk generator, which aborts process in LLVM. Inference now runs in supervised child process; crash journal skips method whose inference aborts (#220).
 - `lost-narrowing` (F107) came from Corset code: `(x isa T && …) || return` left `x` untyped in Julia 1.13. Lowering branches directly on `||` chain, ternary and `if a && b`; only value of `&&` chain, or condition stored in variable, drops narrowing. Self-lint found 8 more sites in Corset; fixer split 6.
+- F16 narrowed from "report hard-coded `Array` everywhere": footgun needs caller's array, so method without input array gets no finding. `breaking` fix that adds array type parameter went with it.
+- `HardArrays` reuses `Widening` conversion: callee `zeros` becomes `Templated{ArrayStandIn}(zeros)`, so no statement renumbering. Stand-in broadcast style wins over `Array`, so `xs .+ zeros(n)` keeps stand-in type; meeting test catches such mixing instead.
+- Array meeting must read array types of original code: in partly converted copy, other constructions hold stand-in arrays too, and two hard-coded arrays would meet each other.
 - `Narrowing` reads per-block variable types inference keeps (`bb_vartables`), so loss check needs no second inference. Lowering reads `x === nothing` again on its own true branch, where narrowed type is `Union{}`; scan treats that outcome as one that never happens.

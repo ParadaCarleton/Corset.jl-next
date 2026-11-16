@@ -38,6 +38,15 @@ struct Origin
     site::Int
 end
 
+"""Replacement in lowered code: `value` takes argument `position` of statement `index`; 0 is right side of assignment."""
+const Swap = @NamedTuple{index::Int, position::Int, value::Any}
+
+"""Replacement of `origin`: its converted value at its position."""
+swap(origin::Origin)::Swap = (index = origin.index, position = origin.position, value = origin.replacement)
+
+"""Replacements of `origins`."""
+swaps(origins::Vector{Origin})::Vector{Swap} = Swap[swap(origin) for origin in origins]
+
 """
 Effect of leaving `origin` unconverted while other weak values convert: type changes at statement `at`, as `exit` says.
 `found` is type there with `origin` unconverted; `expected` is type with every weak value converted.
@@ -293,19 +302,19 @@ function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int,
 end
 
 """
-Typed code of `instance` with each of `origins` replaced in copy of lowered code; `nothing` when inference gives none.
+Typed code of `instance` with each of `swaps` applied to copy of lowered code; `nothing` when inference gives none.
 Adds compiler edges of inference to `edges`.
 """
-function converted!(edges::Vector{Any}, instance::Core.MethodInstance, origins::Vector{Origin})::Union{Nothing, Core.CodeInfo}
+function converted!(edges::Vector{Any}, instance::Core.MethodInstance, swaps::Vector{Swap})::Union{Nothing, Core.CodeInfo}
     interpreter = CC.NativeInterpreter()
     source = CC.retrieve_code_info(instance, CC.get_inference_world(interpreter))
     isnothing(source) && return nothing
     # Copy copies statement expressions too, so edits below leave method's code alone.
     source = copy(source)
-    for origin in origins
-        statement = source.code[origin.index]::Expr
+    for swap in swaps
+        statement = source.code[swap.index]::Expr
         # Assignment `s = 0` holds value at argument 2.
-        origin.position == 0 ? (statement.args[2] = origin.replacement) : ((assigned(statement)::Expr).args[origin.position] = origin.replacement)
+        swap.position == 0 ? (statement.args[2] = swap.value) : ((assigned(statement)::Expr).args[swap.position] = swap.value)
     end
     frame = CC.InferenceState(CC.InferenceResult(instance, CC.typeinf_lattice(interpreter)), source, #=cache_mode=# :no, interpreter)
     isnothing(frame) && return nothing
@@ -446,15 +455,15 @@ function changes!(edges::Vector{Any}, instance::Core.MethodInstance, code::Core.
     origins() = sort!(collect(values(found)); by = origin -> (origin.index, origin.position))
     baseline, rounds = code, 0
     while true
-        baseline = converted!(edges, instance, origins())
+        baseline = converted!(edges, instance, swaps(origins()))
         if isnothing(baseline) || breaks(baseline, code)
             for (key, origin) in collect(found)
-                alone = converted!(edges, instance, [origin])
+                alone = converted!(edges, instance, [swap(origin)])
                 isnothing(alone) || breaks(alone, code) || continue
                 push!(dropped, key)
                 delete!(found, key)
             end
-            baseline = isempty(found) ? nothing : converted!(edges, instance, origins())
+            baseline = isempty(found) ? nothing : converted!(edges, instance, swaps(origins()))
             (isnothing(baseline) || breaks(baseline, code)) && return Change[], false
         end
         (rounds += 1) < ROUNDS && meetings!(found, dropped, edges, baseline, parameters) || break
@@ -463,7 +472,7 @@ function changes!(edges::Vector{Any}, instance::Core.MethodInstance, code::Core.
     changed = Change[]
     for origin in origins()
         rest = filter(other -> other !== origin, origins())
-        left = isempty(rest) ? code : converted!(edges, instance, rest)
+        left = isempty(rest) ? code : converted!(edges, instance, swaps(rest))
         isnothing(left) && continue
         exit = exit_statement(left, baseline, parameters, arguments)
         if isnothing(exit)
