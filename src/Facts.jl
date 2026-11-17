@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, Weak, Exit
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, InferenceFacts, Step, Root, Place, Access, BlindAccess, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, tuple_parameters, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -338,6 +338,8 @@ struct InferenceFacts
     guesses::Vector{AnnotationGuess}
 end
 
+include("Facts/effects.jl")
+
 """
 Use of name other module neither exports nor declares `public` (`external` stage fact): module code reaches into, name
 or name chain (`Precompilation.PkgPrecompileError`), its span, and whether import statement names it.
@@ -386,8 +388,8 @@ end
 """
 Facts of one run: parsed files, entry files Julia loads directly (empty for directory walk, where any file may be included),
 project bans from config, enclosing package project (`nothing` outside project with `name`), loaded package
-(`nothing` for scripts, nameless projects, failed load, or run without package rules), inference facts and external
-tool output (each `nothing` without loaded package, or run without rules of its stage).
+(`nothing` for scripts, nameless projects, failed load, or run without package rules), inference facts, effects facts
+and external tool output (each `nothing` without loaded package, or run without rules of its stage).
 """
 struct FactSet
     files::Vector{SyntaxFile}
@@ -396,6 +398,7 @@ struct FactSet
     project::Union{Nothing, ProjectFacts}
     package::Union{Nothing, PackageFacts}
     inference::Union{Nothing, InferenceFacts}
+    effects::Union{Nothing, EffectsFacts}
     external::Union{Nothing, ExternalFacts}
 end
 
@@ -470,7 +473,7 @@ function dead_branch(node::SyntaxNode)::Bool
     for owner in ancestors(node)
         if kind_name(owner) in ("if", "elseif")
             value = settled(children_of(owner)[1])
-            index = findfirst(sibling -> sibling === child, children_of(owner))
+            index = findfirst(Base.Fix2(===, child), children_of(owner))
             (value === false && index == 2 || (value === true && index == 3)) && return true
         end
         child = owner

@@ -27,7 +27,7 @@ end
 """Facts of file `case`, as in `corset check case.jl`: `script*.jl` parses as script, other files as package code."""
 function file_facts(case::String)::FactSet
     file = Corset.Syntax.parse_file(case, read(case, String), startswith(basename(case), "script") ? Role.script : Role.package)
-    return FactSet([file], [file.path], case_bans(dirname(case)), nothing, nothing, nothing, nothing)
+    return FactSet([file], [file.path], case_bans(dirname(case)), nothing, nothing, nothing, nothing, nothing)
 end
 
 """
@@ -36,7 +36,7 @@ stage after `syntax`; fixture must load. Inference and external facts exist for 
 """
 function package_facts(case::String, stage::Stage.T)::FactSet
     sources = Corset.Discovery.discover(case; environment = nothing)
-    stage == Stage.syntax && return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, nothing, nothing, nothing)
+    stage == Stage.syntax && return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, nothing, nothing, nothing, nothing)
     push!(LOAD_PATH, case)
     loaded = try
         Corset.Package.load(sources.project, sources.files)
@@ -46,7 +46,7 @@ function package_facts(case::String, stage::Stage.T)::FactSet
     isempty(loaded.errors) || error("fixture $case does not load: $(first(loaded.errors).primary.text)")
     inference = stage == Stage.inference ? first(Corset.Inference.inference_facts(loaded.facts, sources.files, nothing, nothing)) : nothing
     external = stage == Stage.external ? Corset.External.external_facts(loaded.facts, sources.project.entry, sources.files) : nothing
-    return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, loaded.facts, inference, external)
+    return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, loaded.facts, inference, nothing, external)
 end
 
 """Source file of `case` that must start with `# runic: off`: case file, or module file of package case."""

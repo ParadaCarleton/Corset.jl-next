@@ -271,7 +271,9 @@ function guard(file::SyntaxFile, node::SyntaxNode)::Union{Nothing, Guard}
         isempty(comments_in(file, whole.first_byte:whole.last_byte))
     splits || return Guard(term, chain, statement, nothing)
     indent = file.text[line_start(file, whole.first_byte):prevind(file.text, whole.first_byte)]
-    return Guard(term, chain, statement, join((guard_text(file, part, source(file, exit)) for part in terms(chain)), "\n" * indent))
+    exit_text = source(file, exit)
+    lines = [guard_text(file, part, exit_text) for part in terms(chain)]
+    return Guard(term, chain, statement, join(lines, "\n" * indent))
 end
 
 end
