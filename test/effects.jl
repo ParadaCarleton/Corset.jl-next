@@ -120,6 +120,13 @@ function summary_of(f::Any, types::Type...)::Summary
     return run.summaries[root]
 end
 
+"""Unknown-slot contents of only exported node of `summary`, which must be fresh; coverage shifts its statement index."""
+function fresh_spread(summary::Summary)::Nodes
+    holder, nodes = only(summary.spread)
+    @test isa_variant(holder, Node.Fresh)
+    return nodes
+end
+
 """Doubt of each access of summary `table`."""
 doubts(table::Dict{Tuple{Place.Type, Bool}, Effect})::Dict{Tuple{Place.Type, Bool}, Doubt.T} = Dict(key => effect.doubt for (key, effect) in table)
 
@@ -294,10 +301,10 @@ end
 
 @testset "statements and calls" begin
     none, code, blind = Doubt.none, Doubt.code, Doubt.blind
-    @test summary_of(quoted, Vector{Int}).spread == Dict(Node.Fresh(1) => Nodes(Node.Placed(parameter(2)) => none))
+    @test fresh_spread(summary_of(quoted, Vector{Int})) == Nodes(Node.Placed(parameter(2)) => none)
     @test any(nodes -> haskey(nodes, Node.Placed(parameter(2))), values(summary_of(opaque, Vector{Int}).spread))
     @test Node.Placed(parameter(2)) in keys(only(values(summary_of(splat, Vector{Int}).edges)))
-    @test summary_of(splat_vararg, Tuple{Vararg{Vector{Int}}}).spread == Dict(Node.Fresh(1) => Nodes(Node.Placed(Place.Deep(Root.Parameter(2))) => blind))
+    @test fresh_spread(summary_of(splat_vararg, Tuple{Vararg{Vector{Int}}})) == Nodes(Node.Placed(Place.Deep(Root.Parameter(2))) => blind)
     caught_summary = summary_of(caught, Vector{Int})
     @test any(nodes -> haskey(nodes, Node.Outside()), values(caught_summary.edges))
     for (pusher, types) in ((latest!, (Vector{Int},)), (world!, (Vector{Int},)), (invoked!, (Vector{Int},)), (spread!, (Vector{Int}, Tuple{Int, Int})), (nested_spread!, (Vector{Int}, Tuple{Tuple{Int}})))
