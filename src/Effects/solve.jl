@@ -1,5 +1,3 @@
-using Graphs: SimpleDiGraph, add_edge!, condensation, inneighbors, strongly_connected_components, topological_sort_by_dfs
-
 """IR of instance before specialization, source statement index of each IR statement, and call outcome of each statement."""
 struct Body
     ir::CC.IRCode
@@ -193,22 +191,69 @@ function solve_cycle!(run::Run, members::Vector{Variant}, readers::Dict{Variant,
     return nothing
 end
 
-"""Summaries of `roots` and every variant they reach: call graph cycles from Graphs.jl, solved callees first."""
+"""
+Strongly connected components of graph with `successors` of each vertex, each component after every component it
+reaches: callees before callers. Tarjan's algorithm with explicit stack, so deep call chains need no deep recursion.
+"""
+function components(successors::Vector{Vector{Int}})::Vector{Vector{Int}}
+    index, low, open = zeros(Int, length(successors)), zeros(Int, length(successors)), falses(length(successors))
+    stack, found, count = Int[], Vector{Int}[], 0
+    for root in eachindex(successors)
+        index[root] == 0 || continue
+        # Each entry: vertex and how many of its successors walk has visited.
+        work = [(root, 0)]
+        while !isempty(work)
+            vertex, visited = work[end]
+            if visited == 0
+                count += 1
+                index[vertex] = low[vertex] = count
+                push!(stack, vertex)
+                open[vertex] = true
+            end
+            if visited < length(successors[vertex])
+                work[end] = (vertex, visited + 1)
+                child = successors[vertex][visited + 1]
+                if index[child] == 0
+                    push!(work, (child, 0))
+                elseif open[child]
+                    low[vertex] = min(low[vertex], index[child])
+                end
+                continue
+            end
+            pop!(work)
+            isempty(work) || (low[first(work[end])] = min(low[first(work[end])], low[vertex]))
+            low[vertex] == index[vertex] || continue
+            component = Int[]
+            while isempty(component) || last(component) != vertex
+                member = pop!(stack)
+                open[member] = false
+                push!(component, member)
+            end
+            push!(found, component)
+        end
+    end
+    return found
+end
+
+"""Summaries of `roots` and every variant they reach: call graph components solved callees first."""
 function solve!(run::Run, roots::Vector{Variant})::Nothing
     order = reach!(run, roots)
     vertex = Dict(variant => position for (position, variant) in enumerate(order))
-    graph = SimpleDiGraph(length(order))
+    successors = [Int[] for _ in order]
     for (position, variant) in enumerate(order)
         haskey(run.codes, variant) || continue
-        foreach(callee -> add_edge!(graph, position, vertex[callee]), filter(!isnothing, run.codes[variant].callees))
+        for callee in run.codes[variant].callees
+            isnothing(callee) || push!(successors[position], vertex[callee])
+        end
+        unique!(successors[position])
     end
-    cycles = strongly_connected_components(graph)
-    # Topological order puts callers first; solve runs callees first.
-    for cycle in reverse(topological_sort_by_dfs(condensation(graph, cycles)))
-        members = order[cycles[cycle]]
-        inside = Set(members)
-        readers = Dict(member => Variant[order[caller] for caller in inneighbors(graph, vertex[member]) if order[caller] in inside] for member in members)
-        solve_cycle!(run, members, readers)
+    for component in components(successors)
+        inside = Set(component)
+        readers = Dict(order[member] => Variant[] for member in component)
+        for caller in component, callee in successors[caller]
+            callee in inside && push!(readers[order[callee]], order[caller])
+        end
+        solve_cycle!(run, order[component], readers)
     end
     return nothing
 end
