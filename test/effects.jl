@@ -5,7 +5,8 @@ using Corset.Inference: infer_package, open_journal, records
 using Corset.Effects:
     Effects, Doubt, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
-    element_type, constant, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst
+    element_type, constant, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
+    components
 using Supposition: Supposition, Data, @check
 using Moshi.Data: isa_variant
 
@@ -443,6 +444,44 @@ const CALLS = [
     (CASES.poke!, map(tuple, LOOSES)), (CASES.store_pointer!, map(tuple, VECTORS)), (CASES.load_pointer, map(tuple, VECTORS)),
     (CASES.copy_box, map(tuple, BOXES)), (CASES.boxes_of, map(tuple, BOXES)), (CASES.bump_nest!, Data.Just(())), (CASES.call_nest!, Data.Just(())),
 ]
+
+"""Whether `to` is reachable from `from` along `successors`, in zero or more steps."""
+function reaches(successors::Vector{Vector{Int}}, from::Int, to::Int)::Bool
+    seen, pending = Set{Int}(), [from]
+    while !isempty(pending)
+        vertex = pop!(pending)
+        vertex == to && return true
+        vertex in seen && continue
+        push!(seen, vertex)
+        append!(pending, successors[vertex])
+    end
+    return false
+end
+
+"""Graph of `size` vertices with edge from `from` to `to` where mark is 0: one edge in four."""
+graph((size, marks)::Pair{Int, Vector{Int}})::Vector{Vector{Int}} = [[to for to in 1:size if marks[8 * (from - 1) + to] == 0] for from in 1:size]
+
+"""Graphs of 1 to 8 vertices."""
+const GRAPHS = map(graph, Data.Pairs(Data.Integers(1, 8), Data.Vectors(Data.Integers(0, 3); min_size = 64, max_size = 64)))
+
+@testset "call graph components" begin
+    @test components(Vector{Int}[]) == Vector{Int}[]
+    @test components([[1]]) == [[1]]
+    @test components([[2], [3], Int[]]) == [[3], [2], [1]]
+    @test sort.(components([[2], [1, 3], Int[]])) == [[3], [1, 2]]
+    # Path of 10^5 vertices: explicit stack keeps deep call chains off native stack.
+    @test length(components([[[vertex + 1] for vertex in 1:99_999]; [Int[]]])) == 100_000
+    @check max_examples = 300 db = false function components_condense(successors = GRAPHS)
+        found = components(successors)
+        place = Dict(vertex => position for (position, component) in enumerate(found) for vertex in component)
+        vertices = eachindex(successors)
+        partition = sort!(reduce(vcat, found; init = Int[])) == collect(vertices)
+        mutual = all(place[from] == place[to] || !(reaches(successors, from, to) && reaches(successors, to, from)) for from in vertices, to in vertices)
+        apart = all(place[from] != place[to] || (reaches(successors, from, to) && reaches(successors, to, from)) for from in vertices, to in vertices)
+        ordered = all(place[callee] <= place[caller] for caller in vertices for callee in successors[caller])
+        partition && mutual && apart && ordered
+    end
+end
 
 @testset "soundness" begin
     for (method, arguments) in CALLS
