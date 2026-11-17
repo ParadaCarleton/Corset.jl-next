@@ -31,13 +31,16 @@ function result_aliases(summary::Summary)::Vector{Place.Type}
         @match node begin
             Node.Placed(place) => push!(found, place)
             Node.Outside() => push!(found, Place.At(Root.Elsewhere(), Step.Type[]))
-            Node.Fresh(_) => begin
-                foreach(((key, nodes),) -> first(key) == node && append!(pending, keys(nodes)), summary.edges)
-                append!(pending, keys(get(summary.backing, node, Nodes())))
-                append!(pending, keys(get(summary.spread, node, Nodes())))
-            end
+            Node.Fresh(_) => append!(pending, node_contents(summary, node))
         end
     end
+    return found
+end
+
+"""Nodes in every slot of `node` in exported graph of `summary`: fields, memory backing and unknown slot."""
+function node_contents(summary::Summary, node::Node.Type)::Vector{Node.Type}
+    found = Node.Type[node for ((holder, _), nodes) in summary.edges if holder == node for node in keys(nodes)]
+    append!(found, keys(get(summary.backing, node, Nodes())), keys(get(summary.spread, node, Nodes())))
     return found
 end
 

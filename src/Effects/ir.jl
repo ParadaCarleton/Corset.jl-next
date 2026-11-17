@@ -41,10 +41,10 @@ function referent!(cache::IdDict{Any, Bool}, type::Any)::Bool
         referent!(cache, type.a) || referent!(cache, type.b)
     elseif type isa UnionAll || !(type isa DataType) || !isconcretetype(type)
         !(type <: PLAIN)
-    elseif type <: Ptr || ismutabletype(type)
-        true
     elseif type <: PLAIN
         false
+    elseif type <: Ptr || ismutabletype(type)
+        true
     else
         any(field -> referent!(cache, field), fieldtypes(type))
     end

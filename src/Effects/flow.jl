@@ -8,7 +8,7 @@ mutable struct Flow
     const outcomes::Vector{Union{Nothing, Outcome.Type}}
     const values::Vector{Targets}
     const arguments::Vector{Targets}
-    const heap::Dict{Tuple{Origin.Type, Step.Type}, Targets}
+    const heap::Dict{Origin.Type, Dict{Step.Type, Targets}}
     const backing::Dict{Origin.Type, Targets}
     const spread::Dict{Origin.Type, Targets}
     const bound::Dict{GlobalRef, Targets}
@@ -68,6 +68,35 @@ end
 """Targets stored under `key` of `table`, created empty on first use."""
 slot!(table::Dict{K, Targets}, key::K) where {K} = get!(Targets, table, key)
 
+"""Targets stored in `step` slot of `origin`."""
+function slot(flow::Flow, origin::Origin.Type, step::Step.Type)::Targets
+    slots = get(flow.heap, origin, nothing)
+    return isnothing(slots) ? Targets() : get(slots, step, Targets())
+end
+
+"""Targets in every slot of `origin`: fields, memory backing and unknown slot."""
+function contents(flow::Flow, origin::Origin.Type)::Vector{Targets}
+    slots = get(flow.heap, origin, nothing)
+    return [isnothing(slots) ? Targets[] : collect(values(slots)); get(flow.backing, origin, Targets()); get(flow.spread, origin, Targets())]
+end
+
+"""
+Origins `objects` hold, through slots of fresh objects: access below fresh object (open call operand, vararg tuple)
+reaches caller objects inside it.
+"""
+function beneath(flow::Flow, objects::Targets)::Targets
+    found, pending = copy(objects), filter(fresh_origin, collect(keys(objects)))
+    seen = Set(pending)
+    while !isempty(pending)
+        origin = pop!(pending)
+        for targets in contents(flow, origin), (target, doubt) in targets
+            add!(found, target, most(doubt, found[origin]))
+            fresh_origin(target) && !(target in seen) && (push!(seen, target); push!(pending, target))
+        end
+    end
+    return found
+end
+
 """Whether `flow` value of `type` can point to object."""
 points(flow::Flow, type::Any)::Bool = referent!(flow.referent, CC.widenconst(type))
 
@@ -108,7 +137,7 @@ function follow(flow::Flow, origin::Origin.Type, step::Step.Type, seen::Set{Orig
         Origin.Unknown() => add!(found, origin, Doubt.code)
         Origin.Allocation(_) => nothing
     end
-    for source in (get(flow.heap, (origin, step), Targets()), get(flow.spread, origin, Targets()))
+    for source in (slot(flow, origin, step), get(flow.spread, origin, Targets()))
         foreach(((target, doubt),) -> add!(found, target, doubt), source)
     end
     if step == Step.Element()
@@ -130,24 +159,25 @@ function load(flow::Flow, objects::Targets, step::Step.Type)::Targets
 end
 
 """
-Targets of any slot of `objects`: caller objects collapse to `Deep`; allocations give every stored slot. Serves loads
-whose slot is not constant.
+Targets of any slot of `objects`: caller objects collapse to `Deep`; allocations give every stored slot, through memory
+backing too. Serves loads whose slot is not constant. Merged callee objects can back themselves, so walk keeps `seen`.
 """
 function load_any(flow::Flow, objects::Targets)::Targets
-    found = Targets()
-    for (origin, doubt) in objects
+    found, pending, seen = Targets(), collect(objects), Set{Origin.Type}()
+    while !isempty(pending)
+        origin, doubt = pop!(pending)
+        origin in seen && continue
+        push!(seen, origin)
         @match origin begin
             Origin.Caller(place) => add!(found, Origin.Caller(Place.Deep(root_of(place))), Doubt.blind)
             Origin.Unknown() => add!(found, origin, Doubt.code)
             Origin.Allocation(_) => nothing
         end
-        for ((holder, _), targets) in flow.heap
-            holder == origin && foreach(((target, flag),) -> add!(found, target, most(flag, doubt)), targets)
+        slots = get(flow.heap, origin, Dict{Step.Type, Targets}())
+        for targets in [collect(values(slots)); get(flow.spread, origin, Targets())], (target, flag) in targets
+            add!(found, target, most(flag, doubt))
         end
-        foreach(((target, flag),) -> add!(found, target, most(flag, doubt)), get(flow.spread, origin, Targets()))
-        for (memory, flag) in get(flow.backing, origin, Targets())
-            foreach(((target, inner),) -> add!(found, target, most(inner, flag, doubt)), load_any(flow, Targets(memory => Doubt.none)))
-        end
+        append!(pending, (memory => most(flag, doubt) for (memory, flag) in get(flow.backing, origin, Targets())))
     end
     return found
 end
@@ -169,7 +199,7 @@ end
 """Store `values` into `step` slot of every origin of `objects`; `nothing` step stores into unknown slot."""
 function store!(flow::Flow, objects::Targets, step::Union{Nothing, Step.Type}, values::Targets)::Nothing
     for (origin, doubt) in objects
-        join!(flow, isnothing(step) ? slot!(flow.spread, origin) : slot!(flow.heap, (origin, step)), values, doubt)
+        join!(flow, isnothing(step) ? slot!(flow.spread, origin) : slot!(get!(Dict{Step.Type, Targets}, flow.heap, origin), step), values, doubt)
     end
     return nothing
 end
@@ -208,7 +238,7 @@ const INERT = (
 function statement!(flow::Flow, index::Int, statement::Any, summary_of::Function)::Nothing
     if statement isa Expr
         head = statement.head
-        if head in (:call, :invoke, :foreigncall)
+        if head in (:call, :foreigncall)
             call!(flow, index, something(flow.outcomes[index]), summary_of)
         elseif head === :new
             new!(flow, index, statement.args[1], Operand.Type[Operand.Value(value) for value in statement.args[2:end]])
@@ -241,7 +271,7 @@ function statement!(flow::Flow, index::Int, statement::Any, summary_of::Function
         isconst(statement) || access!(flow.reads, global_targets(flow, statement), false, definite(index))
         assign!(flow, index, value_targets(flow, statement))
     elseif !(statement isa Union{Nothing, Core.GotoNode, Core.GotoIfNot, Core.EnterNode, Core.UpsilonNode})
-        assign!(flow, index, value_targets(flow, statement))
+        throw(ArgumentError("effects engine has no transfer for IR statement of type `$(typeof(statement))`"))
     end
     return nothing
 end

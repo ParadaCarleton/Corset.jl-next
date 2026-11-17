@@ -54,10 +54,9 @@ Body of instance outside units: native inference, then passes. Blind spot cause 
 or crashed earlier run; crash journal records each inference, so relaunch skips instance that aborts process.
 """
 function library_body(run::Run, instance::Core.MethodInstance)::Union{Body, String}
-    instance.def isa Method || return "inference gave no code"
     key, journal = journal_key(instance), run.journal
     isnothing(journal) || !(key in journal.crashed) || return "inference crashed process"
-    isnothing(journal) || record!(journal, Record(key, method_label(instance.def), false, nothing))
+    isnothing(journal) || record!(journal, Record(key, method_label(instance.def::Method), false, nothing))
     frame = CC.typeinf_frame(run.interpreter, instance, false)
     isnothing(journal) || record!(journal, Record(key, "", true, nothing))
     return isnothing(frame) ? "inference gave no code" : frame_body(run, frame)
@@ -161,7 +160,7 @@ callee in cycle that it reads changes. `readers` lists callers of each member in
 function solve_cycle!(run::Run, members::Vector{Variant}, readers::Dict{Variant, Vector{Variant}})::Nothing
     for member in members
         body = run.bodies[first(member)]
-        run.summaries[member] = body isa String ? open_summary((first(member).def::Method).nargs, body) : empty_summary()
+        run.summaries[member] = body isa String ? open_summary(Int((first(member).def::Method).nargs), body) : empty_summary()
     end
     queue = filter(member -> haskey(run.codes, member), members)
     queued = Set(queue)

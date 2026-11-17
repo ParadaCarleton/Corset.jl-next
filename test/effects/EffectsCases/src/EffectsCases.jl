@@ -102,4 +102,14 @@ copy_box(box::Box)::Box = Box(box.value)
 
 boxes_of(box::Box)::Vector{Box} = [box]
 
+const NEST = Ref(Ref(Ref([1])))
+
+bump_nest!()::Nothing = (NEST[][][][1] = 2; nothing)
+
+call_nest!()::Nothing = bump_nest!()
+
+call_deeper!(wrapper::Wrapper)::Nothing = set_deeper!(wrapper, 1)
+
+read_module()::Int = getproperty(EffectsCases, :total)
+
 end

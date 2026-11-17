@@ -6,7 +6,7 @@ end
 
 """
 Call statement resolution (`effects.md`, Calls): `Builtin` or `Intrinsic` with operands after callee; `Static` instance
-with operands, callee first; `Open` call with operands; `Dead` when argument type is `Union{}`.
+with operands, callee first; `Open` call with operands; `Dead` when `invoke` selects no method of argument types.
 """
 @data Outcome begin
     Builtin(Any, Vector{Operand.Type})
@@ -37,7 +37,6 @@ that call operand (`invokelatest`, `_apply_iterate`, `finalizer`) resolve to cal
 """
 function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt)::Outcome.Type
     types = Any[operand_type(ir, operand) for operand in operands]
-    any(==(Union{}), types) && return Outcome.Dead()
     callee = @match first(operands) begin
         Operand.Value(value) => constant(ir, value)
         Operand.Part(_, _) => nothing
@@ -85,15 +84,13 @@ function invoke_call(ir::CC.IRCode, operands::Vector{Operand.Type}, types::Vecto
     return Outcome.Static(CC.specialize_method(match.method, signature, match.sparams), called)
 end
 
-"""Resolution of statement `statement` of `ir`: call or foreign call outcome; `nothing` for other statements."""
+"""
+Resolution of statement `statement` of `ir`: call or foreign call outcome; `nothing` for other statements. IR before
+inlining holds no `:invoke` statement.
+"""
 function statement_outcome(ir::CC.IRCode, statement::Any, world::UInt)::Union{Nothing, Outcome.Type}
     statement isa Expr || return nothing
     statement.head === :call && return resolve(ir, Operand.Type[Operand.Value(value) for value in statement.args], world)
-    if statement.head === :invoke
-        instance = statement.args[1]
-        instance = instance isa Core.CodeInstance ? instance.def : instance
-        return Outcome.Static(instance::Core.MethodInstance, Operand.Type[Operand.Value(value) for value in statement.args[2:end]])
-    end
     # Foreign call table comes with call resolution (`phase5.md`, PR 2); until then every foreign call stays open.
     statement.head === :foreigncall && return Outcome.Open(Operand.Type[Operand.Value(value) for value in statement.args[6:end]])
     return nothing

@@ -256,9 +256,9 @@ end
 
 """Possible write and read below every origin of `objects` that open call at statement `index` reaches."""
 function open_effects!(flow::Flow, index::Int, objects::Targets)::Nothing
-    effect = Effect(Doubt.code, index, "")
-    access!(flow.writes, objects, true, effect)
-    access!(flow.reads, objects, true, effect)
+    effect, reached = Effect(Doubt.code, index, ""), beneath(flow, objects)
+    access!(flow.writes, reached, true, effect)
+    access!(flow.reads, reached, true, effect)
     return nothing
 end
 
@@ -281,10 +281,10 @@ function map_place(flow::Flow, place::Place.Type, arguments::Vector{Targets})::T
     return @match place begin
         Place.At(Root.Parameter(position), steps) => foldl((objects, step) -> load(flow, objects, step), steps; init = arguments[position])
         Place.At(Root.Global(binding), steps) => foldl((objects, step) -> load(flow, objects, step), steps; init = global_targets(flow, binding))
-        Place.At(Root.Elsewhere(), _) => unknown()
         Place.Deep(Root.Parameter(position)) => deep(flow, arguments[position])
         Place.Deep(Root.Global(binding)) => deep(flow, global_targets(flow, binding))
-        Place.Deep(Root.Elsewhere()) => unknown()
+        # Unknown object has no place below it.
+        _ => unknown()
     end
 end
 
@@ -298,11 +298,7 @@ function deep(flow::Flow, objects::Targets)::Targets
             _ => origin
         end
         add!(found, reached, Doubt.blind) || continue
-        for ((holder, _), targets) in flow.heap
-            holder == origin && append!(pending, keys(targets))
-        end
-        append!(pending, keys(get(flow.backing, origin, Targets())))
-        append!(pending, keys(get(flow.spread, origin, Targets())))
+        foreach(targets -> append!(pending, keys(targets)), contents(flow, origin))
     end
     return found
 end
@@ -331,7 +327,8 @@ function apply!(flow::Flow, index::Int, summary::Summary, instance::Core.MethodI
     mapped(node::Node.Type)::Targets = map_node(flow, node, arguments, index, summary.fresh)
     mapped(nodes::Nodes)::Targets = union_targets(raised(mapped(node), doubt) for (node, doubt) in nodes)
     for (table, effects) in ((flow.writes, summary.writes), (flow.reads, summary.reads)), ((place, below), effect) in effects
-        access!(table, map_place(flow, place, arguments), below, Effect(effect.doubt, index, effect.reason))
+        objects = map_place(flow, place, arguments)
+        access!(table, below ? beneath(flow, objects) : objects, below, Effect(effect.doubt, index, effect.reason))
     end
     foreach((((node, step), nodes),) -> store!(flow, mapped(node), step, mapped(nodes)), summary.edges)
     foreach(((node, nodes),) -> store_backing!(flow, mapped(node), mapped(nodes)), summary.backing)

@@ -35,9 +35,8 @@ fresh objects so reached.
 """
 function escaping(flow::Flow)::Set{Origin.Type}
     pending = collect(keys(flow.result))
-    for table in (flow.heap, flow.backing, flow.spread), (key, targets) in table
-        holder = key isa Tuple ? first(key) : key
-        fresh_origin(holder) || append!(pending, keys(targets))
+    for holder in union(keys(flow.heap), keys(flow.backing), keys(flow.spread))
+        fresh_origin(holder) || foreach(targets -> append!(pending, keys(targets)), contents(flow, holder))
     end
     foreach(targets -> append!(pending, keys(targets)), values(flow.bound))
     found = Set{Origin.Type}()
@@ -45,11 +44,7 @@ function escaping(flow::Flow)::Set{Origin.Type}
         origin = pop!(pending)
         fresh_origin(origin) && !(origin in found) || continue
         push!(found, origin)
-        for ((holder, _), targets) in flow.heap
-            holder == origin && append!(pending, keys(targets))
-        end
-        append!(pending, keys(get(flow.backing, origin, Targets())))
-        append!(pending, keys(get(flow.spread, origin, Targets())))
+        foreach(targets -> append!(pending, keys(targets)), contents(flow, origin))
     end
     return found
 end
@@ -58,7 +53,7 @@ end
 function summarize(flow::Flow)::Summary
     exported = escaping(flow)
     shown(origin::Origin.Type)::Bool = !fresh_origin(origin) || origin in exported
-    edges = Dict((node_of(holder), step) => nodes_of(targets) for ((holder, step), targets) in flow.heap if shown(holder) && !isempty(targets))
+    edges = Dict((node_of(holder), step) => nodes_of(targets) for (holder, slots) in flow.heap if shown(holder) for (step, targets) in slots if !isempty(targets))
     backing = Dict(node_of(holder) => nodes_of(targets) for (holder, targets) in flow.backing if shown(holder) && !isempty(targets))
     spread = Dict(node_of(holder) => nodes_of(targets) for (holder, targets) in flow.spread if shown(holder) && !isempty(targets))
     bound = Dict(binding => nodes_of(targets) for (binding, targets) in flow.bound if !isempty(targets))
