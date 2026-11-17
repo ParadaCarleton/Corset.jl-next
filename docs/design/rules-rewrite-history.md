@@ -732,4 +732,4 @@ Ablation on corpus: one kind stays open; every other open call writes nothing. C
 - F110 `unstable-formula`: naive formula where stable function exists. Clippy counterpart `imprecise_flops` is allow-by-default nursery lint.
 - Group correctness: `log(sum(exp.([1000.0, 1000.0])))` gives `Inf`; `log(1 + 1e-20)` gives `0.0`, `log1p` gives `1e-20`.
 - Inference stage: operands must be `Number`. Matrix forms (`sin(π * A)`) have no stable scalar counterpart.
-- Fix tier `likely`: replacement changes rounding. Replacement from LogExpFunctions.jl is `manual` unless project depends on it.
+- Fix tier `likely`: replacement changes rounding. Fix adds LogExpFunctions.jl dependency when needed: small, widely used package.
