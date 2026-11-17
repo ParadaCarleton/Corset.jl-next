@@ -15,6 +15,7 @@ end
     isolated("hard_arrays.jl")
     isolated("guesses.jl")
     isolated("narrowing.jl")
+    isolated("boxes.jl")
     isolated("effects.jl")
     isolated("registry.jl")
     isolated("ui.jl")

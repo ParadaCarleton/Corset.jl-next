@@ -473,7 +473,7 @@ function dead_branch(node::SyntaxNode)::Bool
     for owner in ancestors(node)
         if kind_name(owner) in ("if", "elseif")
             value = settled(children_of(owner)[1])
-            index = findfirst(sibling -> sibling === child, children_of(owner))
+            index = findfirst(Base.Fix2(===, child), children_of(owner))
             (value === false && index == 2 || (value === true && index == 3)) && return true
         end
         child = owner
