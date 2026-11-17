@@ -64,8 +64,7 @@ function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt
             Operand.Part(_, _) => return Outcome.Open(arguments)
         end
         type = value_type(ir, value)
-        type isa DataType || return Outcome.Open(arguments)
-        type <: Tuple && (isempty(type.parameters) || !Base.isvarargtype(type.parameters[end])) || return Outcome.Open(arguments)
+        definite_tuple(type) || return Outcome.Open(arguments)
         append!(operands, (Operand.Part(value, position) for position in 1:fieldcount(type)))
     end
     return resolve(ir, operands, world)

@@ -181,6 +181,7 @@ quoted(values::Vector{Int}) = quote
 end
 opaque(values::Vector{Int}) = Base.Experimental.@opaque () -> values
 splat(values::Vector{Int}) = NamedTuple{(:a,), Tuple{Vector{Int}}}((values,))
+@eval splat_vararg(values::Tuple{Vararg{Vector{Int}}}) = $(Expr(:splatnew, NamedTuple{(:a,), Tuple{Vector{Int}}}, :values))
 function caught(values::Vector{Int})
     held = values
     try
@@ -296,6 +297,7 @@ end
     @test summary_of(quoted, Vector{Int}).spread == Dict(Node.Fresh(1) => Nodes(Node.Placed(parameter(2)) => none))
     @test any(nodes -> haskey(nodes, Node.Placed(parameter(2))), values(summary_of(opaque, Vector{Int}).spread))
     @test Node.Placed(parameter(2)) in keys(only(values(summary_of(splat, Vector{Int}).edges)))
+    @test summary_of(splat_vararg, Tuple{Vararg{Vector{Int}}}).spread == Dict(Node.Fresh(1) => Nodes(Node.Placed(Place.Deep(Root.Parameter(2))) => blind))
     caught_summary = summary_of(caught, Vector{Int})
     @test any(nodes -> haskey(nodes, Node.Outside()), values(caught_summary.edges))
     for (pusher, types) in ((latest!, (Vector{Int},)), (world!, (Vector{Int},)), (invoked!, (Vector{Int},)), (spread!, (Vector{Int}, Tuple{Int, Int})), (nested_spread!, (Vector{Int}, Tuple{Tuple{Int}})))

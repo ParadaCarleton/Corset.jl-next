@@ -253,8 +253,13 @@ function statement!(flow::Flow, index::Int, statement::Any, summary_of::Function
             new!(flow, index, statement.args[1], Operand.Type[Operand.Value(value) for value in statement.args[2:end]])
         elseif head === :splatnew
             type = value_type(flow.ir, statement.args[2])
-            count = type isa DataType && type <: Tuple ? fieldcount(type) : 0
-            new!(flow, index, statement.args[1], Operand.Type[Operand.Part(statement.args[2], position) for position in 1:count])
+            if definite_tuple(type)
+                new!(flow, index, statement.args[1], Operand.Type[Operand.Part(statement.args[2], position) for position in 1:fieldcount(type)])
+            else
+                # Field count unknown: any field may hold any slot of tuple.
+                allocate!(flow, index)
+                store!(flow, flow.values[index], nothing, load_any(flow, value_targets(flow, statement.args[2])))
+            end
         elseif head === :new_opaque_closure || head === :copyast
             allocate!(flow, index)
             store!(flow, flow.values[index], nothing, union_targets(value_targets(flow, value) for value in statement.args))

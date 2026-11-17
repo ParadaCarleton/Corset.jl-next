@@ -63,3 +63,6 @@ function constant(ir::CC.IRCode, value::Any)::Union{Nothing, Some{Any}}
     widened isa DataType && isdefined(widened, :instance) && return Some(widened.instance)
     return nothing
 end
+
+"""Whether `type` is tuple type with definite field count: no `Vararg` parameter."""
+definite_tuple(type::Any)::Bool = type isa DataType && type <: Tuple && (isempty(type.parameters) || !Base.isvarargtype(type.parameters[end]))
