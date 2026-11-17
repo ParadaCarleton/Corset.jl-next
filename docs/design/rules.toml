@@ -249,6 +249,10 @@ name = "stateful-reuse"
 footguns = [51]
 
 [[rule]]
+name = "stateful-iterate"
+footguns = [109]
+
+[[rule]]
 name = "missing-condition"
 footguns = [52]
 

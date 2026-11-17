@@ -13,7 +13,7 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 | 5 | Corpus go/no-go | Gate below; no rule PR before it passes | 4 | — |
 | 6 | `bang-convention` | F53, F86 | 5 | — |
 | 7 | Effect rules | F54, F55, F56, F58 | 5 | — |
-| 8 | Alias rules | F48, F50, F51 | 5 | — |
+| 8 | Alias rules | F48, F50, F51, F109 | 5 | — |
 | 9 | Lifecycle facts | `lifecycle` stage | 5 | — |
 | 10 | Lifecycle rules | F32, F33, F34, F39, F40, F41 | 9 | — |
 
@@ -136,7 +136,8 @@ Rules read per-unit statement events and must-alias pairs.
 
 - `iteration-mutation` (F48): container written inside loop that iterates it.
 - `self-alias` (F50): same container passed twice to writing call.
-- `stateful-reuse` (F51): `Iterators.Stateful` consumed twice.
+- `stateful-reuse` (F51): restart of iterator whose `iterate` summary does not prove it stateless. Unknown type gives `possible`.
+- `stateful-iterate` (F109): `iterate` on `Iterators.Stateful`; suggest `popfirst!`. Reads inference facts only.
 
 ### 9 Lifecycle facts
 

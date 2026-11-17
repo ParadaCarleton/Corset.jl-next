@@ -527,10 +527,11 @@ stage = "effects"
 [[footgun]]
 id = 51
 area = "containers"
-text = "`Iterators.Stateful` consumed twice"
-example = "`isempty(s)` then `for x in s`"
+text = "Iterator that may be stateful restarted"
+example = "`first(itr)` then `for x in itr`"
 group = "correctness"
 stage = "effects"
+note = "Stateful unless summary of its `iterate` proves no write to it; unknown type gives `possible`. Restart: `first`, `isempty` or `iterate` without state, then second pass. Single pass is safe. Fix `manual`: `Iterators.peel`, or `Iterators.Stateful` with `popfirst!`."
 
 [[footgun]]
 id = 52
@@ -873,3 +874,11 @@ group = "safety"
 stage = "syntax"
 note = "Later: needs Moshi release with order chains and `@match` exhaustiveness check. Cases others extend use dispatch on subtypes (F84); fixed cases use Moshi `@data`. Covers `@enum` and EnumX `@enumx`. Exempt: explicit values or base type (`@enum Flag::UInt32 A = 1`) for C interop, bit flags and wire formats. Primary span: definition; cause spans: comparisons with its values. Fix `manual`."
 
+[[footgun]]
+id = 109
+area = "containers"
+text = "`iterate` on `Iterators.Stateful` hides write; `popfirst!` names it"
+example = "`x, _ = iterate(s)` → `x = popfirst!(s)`"
+group = "readability"
+stage = "inference"
+note = "Fix `manual`: `popfirst!` throws `EOFError` where `iterate` returns `nothing`; guard with `isempty(s)`."

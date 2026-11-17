@@ -714,3 +714,13 @@ Ablation on corpus: one kind stays open; every other open call writes nothing. C
 - PR 2 lands as stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback records, provenance.
 - Path depth sweep: depth 3 and 4 kept `possible` share. JSON `effects` took 19 s at depth 2, 615 s at 3, over 3 h at 4. Depth stays 2.
 - `foreach(f, xs)` reaches closure through `foldl` wrappers, so its write path has depth 3. Callback records keep path short.
+
+### Stateful iterators
+
+- Trigger "every `iterate` on iterator not proven stateless" rejected: single pass is safe for both kinds, so it flags nearly all generic code.
+- `Iterators.Stateful` as fix costs allocation and reads one element ahead: one `popfirst!` on `Channel` of three items leaves one.
+- Bug is restart: `first`, `isempty` or `iterate` without state, then second pass. F51 widens from `Stateful` to iterator not proven stateless.
+- `Iterators.peel` splits first element from rest without lookahead.
+- F109: direct `iterate` on known `Stateful` gets `popfirst!` suggestion, so `!` names write.
+- `for` lowered to `popfirst!` would break Julia: collections define `popfirst!` as remove, most iterators lack it, `Stateful` fallback reads ahead.
+- Non-breaking variant is Rust-style cursor protocol with fallback cursor; Julia 2.0 scope (JuliaLang/julia#43388 asks for statefulness trait).
