@@ -151,6 +151,9 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - Join of methods (Calls, step 5) is not monotone, so summaries in cycle can oscillate.
 - After 8 reruns, member summary widens: union with previous summary. Access that still changes becomes blind (`unsettled call cycle`).
 - Widened summaries only grow through finite values, so fixpoint ends.
+- Callee signature can grow along call chain without end: `_any(f ∘ transpose, parent(A), :)` adds `ComposedFunction` layer per step.
+- Engine limits callee like native inference (`abstract_call_method`): method that recurs on call chain gets `limit_type_size` signature.
+- Call chain: caller that first reached each instance. Join limits hard, against method signature.
 - Library summary: instance whose signature names no package type and whose edges reach no package method. Targets share its disk cache.
 - Key: Julia version, Corset version, loaded extensions, and content digest of each loaded package: Manifest tree hash, or source digest for path and developed packages.
 - Package summary: method store entry beside `Inferred`, same invalidation.
