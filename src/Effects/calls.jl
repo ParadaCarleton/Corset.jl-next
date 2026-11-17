@@ -34,10 +34,10 @@ end
 
 """
 Resolution of call with `operands` (callee first) in `ir`: builtin, intrinsic, one matching method, else open. Builtins
-that call operand (`invokelatest`, `_apply_iterate`, `finalizer`) resolve to call they make.
+that call operand (`invokelatest`, `_apply_iterate`, `finalizer`) resolve to call they make. Intrinsic operand can be
+nested constant expression (`cglobal((:name, library))`), so operand types wait until dispatch.
 """
 function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt)::Outcome.Type
-    types = Any[operand_type(ir, operand) for operand in operands]
     callee = @match first(operands) begin
         Operand.Value(value) => constant(ir, value)
         Operand.Part(_, _) => nothing
@@ -48,10 +48,10 @@ function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt)::Ou
         builtin === Core._apply_iterate && return spread_call(ir, operands[3:end], world)
         builtin in (Core.invokelatest, Core._call_latest, Core.finalizer) && return resolve(ir, operands[2:end], world)
         builtin in (Core.invoke_in_world, Core._call_in_world, Core._call_in_world_total) && return resolve(ir, operands[3:end], world)
-        builtin === Core.invoke && return invoke_call(ir, operands, types, world)
+        builtin === Core.invoke && return invoke_call(ir, operands, world)
         return Outcome.Builtin(builtin, operands[2:end])
     end
-    instance = dispatch(types, world)
+    instance = dispatch(Any[operand_type(ir, operand) for operand in operands], world)
     return isnothing(instance) ? Outcome.Open(operands) : Outcome.Static(instance, operands)
 end
 
@@ -71,17 +71,18 @@ function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt
     return resolve(ir, operands, world)
 end
 
-"""Resolution of `Core.invoke(f, T, args...)`: method `T` selects, specialized to argument `types`; open without it."""
-function invoke_call(ir::CC.IRCode, operands::Vector{Operand.Type}, types::Vector{Any}, world::UInt)::Outcome.Type
+"""Resolution of `Core.invoke(f, T, args...)`: method `T` selects, specialized to argument types; open without it."""
+function invoke_call(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt)::Outcome.Type
     called = Operand.Type[operands[2]; operands[4:end]]
+    types = Any[operand_type(ir, operand) for operand in called]
     selector = @match operands[3] begin
         Operand.Value(value) => constant(ir, value)
         Operand.Part(_, _) => nothing
     end
     isnothing(selector) && return Outcome.Open(called)
-    match = Base._which(Tuple{types[2], something(selector).parameters...}; world, raise = false)
+    match = Base._which(Tuple{types[1], something(selector).parameters...}; world, raise = false)
     isnothing(match) && return Outcome.Open(called)
-    signature = typeintersect(Tuple{types[2], types[4:end]...}, match.method.sig)
+    signature = typeintersect(Tuple{types...}, match.method.sig)
     signature === Union{} && return Outcome.Dead()
     return Outcome.Static(CC.specialize_method(match.method, signature, match.sparams), called)
 end

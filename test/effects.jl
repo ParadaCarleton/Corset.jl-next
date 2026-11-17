@@ -172,6 +172,8 @@ pointer_replace!(pointer::Ptr{Int}) = Core.Intrinsics.atomic_pointerreplace(poin
 pointer_get(pointer::Ptr{Int}) = Core.Intrinsics.atomic_pointerref(pointer, :sequentially_consistent)
 llvm(pointer::Ptr{Int}) = Base.llvmcall("ret ptr %0", Ptr{Int}, Tuple{Ptr{Int}}, pointer)
 global_pointer() = cglobal(:jl_n_threads, Cint)
+# Library tuple stays nested constant expression in IR.
+library_pointer() = cglobal((:jl_n_threads, "libjulia-internal"), Cint)
 length_of(text::String) = ccall(:strlen, Csize_t, (Cstring,), text)
 
 quoted(values::Vector{Int}) = quote
@@ -284,6 +286,7 @@ end
     @test summary_of(llvm, Ptr{Int}).result == Nodes(Node.Placed(parameter(2)) => code, Node.Outside() => code)
     @test summary_of(llvm, Ptr{Int}).writes[(parameter(2), true)].doubt == code
     @test summary_of(global_pointer).result == Nodes(Node.Outside() => code)
+    @test summary_of(library_pointer).result == Nodes(Node.Outside() => code)
     # Foreign calls stay open until foreign call table: pointer into string is unknown object.
     @test Set(keys(doubts(summary_of(length_of, String).writes))) == Set([(Place.At(Root.Elsewhere(), Step.Type[]), false), (Place.At(Root.Elsewhere(), Step.Type[]), true)])
 end
