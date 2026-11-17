@@ -739,6 +739,8 @@ Ablation on corpus: one kind stays open; every other open call writes nothing. C
 - F111 `generic-resize`: `push!` and other resizing calls on argument annotated `AbstractVector`. Ranges, views, `SVector` and `Memory` cannot grow.
 - Julia has no resizable-array type, so annotation cannot state requirement. Rust rejects `push` on `&mut [T]` at compile time.
 - ArrayInterface.jl trait `can_change_size` answers question at run time; Base has no counterpart.
+- Trait is no fix: default is `false`, and only `Vector`, `AbstractDict` and forwarding wrappers say `true` (7.30). `BitVector` resizes but says `false`.
+- Guard on trait rejects resizable types that never opted in, so method gets less generic than bare `push!`. Guard still counts as narrowing.
 - Group composability: package-internal callers often pass only `Vector`. Library preset warns; outside callers hit `MethodError` deep inside method.
 - F15 is mirror rule: it widens `::Vector`. Resized argument keeps `Vector`, so fixes of F15 and F111 never loop.
 - Fix `manual`: caller-allocated output written by index works for every mutable array and avoids growth cost.
