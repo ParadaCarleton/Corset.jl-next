@@ -11,12 +11,12 @@ Instance with constant arguments its callee uses as field name, by position (`ef
 """
 const Variant = Tuple{Core.MethodInstance, Vector{Pair{Int, Any}}}
 
-"""Code of variant for solve: specialized IR, statement lines and outcomes of its body, and variant each call reaches."""
+"""Code of variant for solve: specialized IR, statement lines and outcomes of its body, and variants each call reaches."""
 struct Code
     ir::CC.IRCode
     lines::Vector{Int}
     outcomes::Vector{Union{Nothing, Outcome.Type}}
-    callees::Vector{Union{Nothing, Variant}}
+    callees::Vector{Vector{Variant}}
 end
 
 """
@@ -103,7 +103,7 @@ function field_parameters!(run::Run, instance::Core.MethodInstance)::Set{Int}
         isnothing(outcome) && continue
         @match something(outcome) begin
             Outcome.Builtin(builtin, operands) => naming(builtin) && add_parameters!(found, operands, 1:min(2, length(operands)))
-            Outcome.Static(callee, operands) => add_parameters!(found, operands, field_parameters!(run, callee))
+            Outcome.Dispatch(callees, operands) => foreach(callee -> add_parameters!(found, operands, field_parameters!(run, callee)), callees)
             _ => nothing
         end
     end
@@ -125,21 +125,21 @@ function callee_variant(run::Run, ir::CC.IRCode, callee::Core.MethodInstance, op
     return (callee, constants)
 end
 
-"""Code of `variant` with body `body`: IR specialized to its constants, and variant each static call reaches."""
+"""Code of `variant` with body `body`: IR specialized to its constants, and variants each call reaches."""
 function variant_code(run::Run, variant::Variant, body::Body)::Code
     ir = specialize(body.ir, last(variant))
-    callees = Union{Nothing, Variant}[nothing for _ in body.outcomes]
+    callees = [Variant[] for _ in body.outcomes]
     for (index, outcome) in enumerate(body.outcomes)
         isnothing(outcome) && continue
         @match something(outcome) begin
-            Outcome.Static(callee, operands) => (callees[index] = callee_variant(run, ir, callee, operands))
+            Outcome.Dispatch(instances, operands) => (callees[index] = [callee_variant(run, ir, instance, operands) for instance in instances])
             _ => nothing
         end
     end
     return Code(ir, body.lines, body.outcomes, callees)
 end
 
-"""Variants `roots` reach through static calls, roots first; gives code to each variant with body."""
+"""Variants `roots` reach through calls, roots first; gives code to each variant with body."""
 function reach!(run::Run, roots::Vector{Variant})::Vector{Variant}
     order, seen, pending = Variant[], Set{Variant}(), reverse(roots)
     while !isempty(pending)
@@ -150,7 +150,7 @@ function reach!(run::Run, roots::Vector{Variant})::Vector{Variant}
         body = body!(run, first(variant))
         body isa Body || continue
         code = run.codes[variant] = variant_code(run, variant, body)
-        append!(pending, reverse(filter(!isnothing, code.callees)))
+        foreach(callees -> append!(pending, Iterators.reverse(callees)), Iterators.reverse(code.callees))
     end
     return order
 end
@@ -161,15 +161,18 @@ function variant_summary(run::Run, variant::Variant)::Summary
     flow = start_flow(code.ir, code.outcomes, run.referent)
     while true
         flow.changed = false
-        round!(flow, index -> run.summaries[something(code.callees[index])])
+        round!(flow, (index, member) -> run.summaries[code.callees[index][member]])
         flow.changed || break
     end
     return summarize(flow)
 end
 
+"""Reruns of call cycle member before each new summary widens by its previous one (`widen`)."""
+const WIDEN_AFTER = 8
+
 """
 Solve call cycle `members` (`effects.md`, Solve and cache): summaries start empty; member reruns only when summary of
-callee in cycle that it reads changes. `readers` lists callers of each member inside cycle.
+callee in cycle that it reads changes, and widens after `WIDEN_AFTER` reruns. `readers` lists callers inside cycle.
 """
 function solve_cycle!(run::Run, members::Vector{Variant}, readers::Dict{Variant, Vector{Variant}})::Nothing
     for member in members
@@ -177,11 +180,13 @@ function solve_cycle!(run::Run, members::Vector{Variant}, readers::Dict{Variant,
         run.summaries[member] = body isa String ? open_summary(Int((first(member).def::Method).nargs), body) : empty_summary()
     end
     queue = filter(member -> haskey(run.codes, member), members)
-    queued = Set(queue)
+    queued, reruns = Set(queue), Dict{Variant, Int}()
     while !isempty(queue)
         member = popfirst!(queue)
         delete!(queued, member)
         summary = variant_summary(run, member)
+        reruns[member] = get(reruns, member, 0) + 1
+        reruns[member] > WIDEN_AFTER && (summary = widen(run.summaries[member], summary))
         same(summary, run.summaries[member]) && continue
         run.summaries[member] = summary
         for reader in readers[member]
@@ -242,8 +247,8 @@ function solve!(run::Run, roots::Vector{Variant})::Nothing
     successors = [Int[] for _ in order]
     for (position, variant) in enumerate(order)
         haskey(run.codes, variant) || continue
-        for callee in run.codes[variant].callees
-            isnothing(callee) || push!(successors[position], vertex[callee])
+        for callees in run.codes[variant].callees, callee in callees
+            push!(successors[position], vertex[callee])
         end
         unique!(successors[position])
     end

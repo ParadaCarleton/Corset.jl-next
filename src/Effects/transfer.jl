@@ -42,14 +42,62 @@ const ELEMENT_WRITES = IdDict{Any, Shape}(
     Core.Intrinsics.atomic_pointerreplace => Shape(3, 0, Returns.replaced),
 )
 
-"""Transfer call statement `index` by its `outcome`; `summary_of` gives summary of variant static call at index reaches."""
+"""
+Transfer call statement `index` by its `outcome`; `summary_of(index, member)` gives summary of variant that call at
+`index` reaches through its `member`-th matching method.
+"""
 function call!(flow::Flow, index::Int, outcome::Outcome.Type, summary_of::Function)::Nothing
     @match outcome begin
         Outcome.Builtin(builtin, operands) => builtin!(flow, index, builtin, operands)
         Outcome.Intrinsic(intrinsic, operands) => intrinsic!(flow, index, intrinsic, operands)
-        Outcome.Static(instance, operands) => apply!(flow, index, summary_of(index), instance, operands)
+        Outcome.Foreign(effects, operands) => foreign!(flow, index, effects, operands)
+        Outcome.Dispatch(instances, operands) => dispatch!(flow, index, instances, operands, summary_of)
         Outcome.Open(operands) => open!(flow, index, operands)
         Outcome.Dead() => nothing
+    end
+    return nothing
+end
+
+"""Transfer foreign call of C function with `effects` on C `arguments` (`effects.md`, Calls, step 2)."""
+function foreign!(flow::Flow, index::Int, effects::ForeignEffects, arguments::Vector{Operand.Type})::Nothing
+    targets(position::Int)::Targets = operand_targets(flow, arguments[position])
+    foreach(position -> access!(flow.writes, targets(position), false, definite(index)), effects.writes)
+    foreach(position -> access!(flow.reads, targets(position), false, definite(index)), effects.reads)
+    for (destination, source) in effects.copies
+        store!(flow, targets(destination), Step.Element(), load(flow, targets(source), Step.Element()))
+    end
+    foreach(((destination, source),) -> store!(flow, targets(destination), Step.Element(), targets(source)), effects.stores)
+    foreach(position -> assign!(flow, index, targets(position)), effects.result)
+    foreach(position -> assign!(flow, index, load(flow, targets(position), Step.Element())), effects.elements)
+    return nothing
+end
+
+"""
+Transfer call that reaches `instances` (`effects.md`, Calls, steps 3 and 5): one applies its summary; more join their
+summaries. Access every member makes keeps most doubt among them; access only some make is at least `possible`.
+"""
+function dispatch!(flow::Flow, index::Int, instances::Vector{Core.MethodInstance}, operands::Vector{Operand.Type}, summary_of::Function)::Nothing
+    if length(instances) == 1
+        apply!(flow, flow.writes, flow.reads, index, summary_of(index, 1), only(instances), operands)
+        return nothing
+    end
+    flow.closed_world = true
+    writes, reads = [OriginAccesses() for _ in instances], [OriginAccesses() for _ in instances]
+    for (member, instance) in enumerate(instances)
+        apply!(flow, writes[member], reads[member], index, summary_of(index, member), instance, operands)
+    end
+    join_accesses!(flow.writes, writes)
+    join_accesses!(flow.reads, reads)
+    return nothing
+end
+
+"""Record in `table` join of accesses of each member in `members`: access absent from some member is at least `code`."""
+function join_accesses!(table::OriginAccesses, members::Vector{OriginAccesses})::Nothing
+    for key in union(keys.(members)...)
+        found = [member[key] for member in members if haskey(member, key)]
+        effect = reduce((first, second) -> second.doubt > first.doubt ? second : first, found)
+        length(found) == length(members) || (effect = Effect(most(effect.doubt, Doubt.code), effect.cause, effect.reason))
+        table[key] = haskey(table, key) ? stronger(table[key], effect) : effect
     end
     return nothing
 end
@@ -358,12 +406,14 @@ end
 
 """
 Apply callee `summary` of `instance` at call statement `index` with `operands` (`effects.md`, Calls, step 3): effects
-on mapped places, callee stores between caller objects, and result. Vararg tuple becomes allocation at `index`.
+on mapped places into `writes` and `reads`, callee stores between caller objects, and result. Vararg tuple becomes
+allocation at `index`.
 """
-function apply!(flow::Flow, index::Int, summary::Summary, instance::Core.MethodInstance, operands::Vector{Operand.Type})::Nothing
+function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, summary::Summary, instance::Core.MethodInstance, operands::Vector{Operand.Type})::Nothing
     arguments = parameter_targets(flow, index, instance.def::Method, [operand_targets(flow, operand) for operand in operands])
     site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}())
-    for (table, effects) in ((flow.writes, summary.writes), (flow.reads, summary.reads)), ((place, below), effect) in effects
+    summary.closed_world && (flow.closed_world = true)
+    for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below), effect) in effects
         objects = site_place(flow, site, place)
         access!(table, below ? beneath(flow, objects) : objects, below, Effect(effect.doubt, index, effect.reason))
     end

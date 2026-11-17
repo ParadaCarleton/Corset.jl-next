@@ -7,7 +7,8 @@ const OriginHolds = Dict{Origin.Type, Targets}
 """
 Points-to state of one instance during its fixpoint (`effects.md`, Origins and points-to): targets per IR value and
 argument; flow-insensitive heap by origin and slot, memory backing, unknown-slot stores and global bindings; result
-targets; accesses by origin and whether they cover places below. `changed` records growth of targets in current round.
+targets; accesses by origin and whether they cover places below. `changed` records growth of targets in current round;
+`closed_world` records join over methods loaded now (`Summary`).
 """
 mutable struct Flow
     const ir::CC.IRCode
@@ -23,6 +24,7 @@ mutable struct Flow
     const reads::OriginAccesses
     const referent::IdDict{Any, Bool}
     changed::Bool
+    closed_world::Bool
 end
 
 """Flow of `ir` with call `outcomes` before first round: each referent argument points to its parameter."""
@@ -32,7 +34,7 @@ function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}
             for (position, type) in enumerate(ir.argtypes)
     ]
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
-    return Flow(ir, outcomes, [Targets() for _ in 1:length(ir.stmts)], arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), referent, false)
+    return Flow(ir, outcomes, [Targets() for _ in 1:length(ir.stmts)], arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), referent, false, false)
 end
 
 """Add `origin` with `doubt` to `targets`; chain with less doubt wins. Return whether `targets` changed."""
@@ -109,8 +111,14 @@ end
 """Whether `flow` value of `type` can point to object."""
 points(flow::Flow, type::Any)::Bool = referent!(flow.referent, CC.widenconst(type))
 
-"""Targets of global `binding`: object caller sees there, and objects instance binds to it."""
-global_targets(flow::Flow, binding::GlobalRef)::Targets = union_targets((Targets(Origin.Caller(Place.At(Root.Global(binding), Step.Type[])) => Doubt.none), get(flow.bound, binding, Targets())))
+"""Whether global `binding` is constant null pointer (`C_NULL`): pointer into no object."""
+null_pointer(binding::GlobalRef)::Bool = isconst(binding) && (pointer = getglobal(binding.mod, binding.name); pointer isa Ptr && pointer == C_NULL)
+
+"""Targets of global `binding`: object caller sees there, and objects instance binds to it. Null pointer has none."""
+function global_targets(flow::Flow, binding::GlobalRef)::Targets
+    null_pointer(binding) && return Targets()
+    return union_targets((Targets(Origin.Caller(Place.At(Root.Global(binding), Step.Type[])) => Doubt.none), get(flow.bound, binding, Targets())))
+end
 
 """Targets of IR `value`: SSA value, argument, global binding, or constant object (unknown)."""
 function value_targets(flow::Flow, value::Any)::Targets

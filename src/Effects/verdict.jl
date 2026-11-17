@@ -80,7 +80,7 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
     roots = Variant[(typed.frame.linfo, Pair{Int, Any}[]) for typed in units.typed if typed_of[typed.frame.linfo] === typed]
     solve!(run, roots)
     spots = BlindSpot[]
-    found = IdDict{Method, Collected}()
+    found, closed = IdDict{Method, Collected}(), IdDict{Method, Bool}()
     for root in roots
         typed = typed_of[first(root)]
         # Unit that always throws on stand-ins shows no behavior of declared signature.
@@ -95,12 +95,13 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
         append!(blind_writes, unit_blind_writes)
         append!(blind_reads, unit_blind_reads)
         append!(aliases, result_aliases(summary))
+        closed[typed.site.method] = get(closed, typed.site.method, false) || summary.closed_world
     end
     methods = MethodEffects[]
     for site in package.methods
         haskey(found, site.method) || continue
         writes, reads, blind_writes, blind_reads, aliases = found[site.method]
-        effects = MethodEffects(site, worst(writes), worst(reads), blind_order(blind_writes), blind_order(blind_reads), sort!(unique!(aliases); by = repr), !(site.method in units.incomplete))
+        effects = MethodEffects(site, worst(writes), worst(reads), blind_order(blind_writes), blind_order(blind_reads), sort!(unique!(aliases); by = repr), !(site.method in units.incomplete), closed[site.method])
         push!(methods, effects)
         append!(spots, (access.spot for access in [effects.blind_writes; effects.blind_reads]))
     end

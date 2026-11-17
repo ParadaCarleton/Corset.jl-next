@@ -53,8 +53,9 @@ end
 
 """
 Effect summary of package method (`effects` stage fact): writes and reads over its units, blind writes and reads,
-places its result aliases, and `complete`. Method with blind access, or incomplete method (inference skipped some
-argument types), has no definite none.
+places its result aliases, `complete`, and `closed_world`. Method with blind access, or incomplete method (inference
+skipped some argument types), has no definite none. Closed-world method joins methods loaded now: its none is at most
+`possible`.
 """
 struct MethodEffects
     site::MethodSite
@@ -64,6 +65,7 @@ struct MethodEffects
     blind_reads::Vector{BlindAccess}
     aliases::Vector{Place.Type}
     complete::Bool
+    closed_world::Bool
 end
 
 """`effects` stage facts: summary per package method with verdict (`effects.md`, Effects engine)."""
