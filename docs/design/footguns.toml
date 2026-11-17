@@ -413,7 +413,7 @@ id = 37
 area = "arrays"
 text = "Index safety removed without proof"
 example = "`@inbounds` on unchecked index"
-group = "safety"
+group = "correctness"
 stage = "inference"
 
 [[footgun]]
