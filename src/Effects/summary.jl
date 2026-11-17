@@ -8,8 +8,8 @@ function access_place(origin::Origin.Type)::Union{Nothing, Place.Type}
 end
 
 """Accesses of `table` on places caller can see, strongest effect per place."""
-function exported_effects(table::Dict{Tuple{Origin.Type, Bool}, Effect})::Dict{Tuple{Place.Type, Bool}, Effect}
-    found = Dict{Tuple{Place.Type, Bool}, Effect}()
+function exported_effects(table::OriginAccesses)::Accesses
+    found = Accesses()
     for ((origin, below), effect) in table
         place = access_place(origin)
         isnothing(place) && continue

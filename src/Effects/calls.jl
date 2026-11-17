@@ -27,7 +27,8 @@ end
 """Instance call with argument `types` reaches when one method matches in `world`; `nothing` otherwise."""
 function dispatch(types::Vector{Any}, world::UInt)::Union{Nothing, Core.MethodInstance}
     matches = Base._methods_by_ftype(Tuple{types...}, 1, world)
-    matches isa Vector && length(matches) == 1 || return nothing
+    matches isa Vector || return nothing
+    length(matches) == 1 || return nothing
     return CC.specialize_method(only(matches)::Core.MethodMatch)
 end
 
@@ -63,7 +64,8 @@ function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt
             Operand.Part(_, _) => return Outcome.Open(arguments)
         end
         type = value_type(ir, value)
-        type isa DataType && type <: Tuple && (isempty(type.parameters) || !Base.isvarargtype(type.parameters[end])) || return Outcome.Open(arguments)
+        type isa DataType || return Outcome.Open(arguments)
+        type <: Tuple && (isempty(type.parameters) || !Base.isvarargtype(type.parameters[end])) || return Outcome.Open(arguments)
         append!(operands, (Operand.Part(value, position) for position in 1:fieldcount(type)))
     end
     return resolve(ir, operands, world)

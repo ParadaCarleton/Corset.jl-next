@@ -1,3 +1,5 @@
+using Graphs: SimpleDiGraph, add_edge!, condensation, inneighbors, strongly_connected_components, topological_sort_by_dfs
+
 """IR of instance before specialization, source statement index of each IR statement, and call outcome of each statement."""
 struct Body
     ir::CC.IRCode
@@ -37,7 +39,8 @@ end
 """Run in current world with crash `journal`, before any code."""
 function start_run(journal::Union{Nothing, Journal})::Run
     world = Base.get_world_counter()
-    return Run(world, CC.NativeInterpreter(world), journal, IdDict(), IdDict(), IdDict(), Dict(), Dict())
+    bodies, fields = IdDict{Core.MethodInstance, Union{Body, String}}(), IdDict{Core.MethodInstance, Set{Int}}()
+    return Run(world, CC.NativeInterpreter(world), journal, IdDict{Any, Bool}(), bodies, fields, Dict{Variant, Code}(), Dict{Variant, Summary}())
 end
 
 """Body of inference `frame` in `run`."""

@@ -5,7 +5,7 @@ function cause_span(typed::TypedCode, code::Code, cause::Int)::Span
 end
 
 """Accesses of unit `effects` with doubt below blind, and blind accesses, with cause spans from `span_of`."""
-function unit_accesses(effects::Dict{Tuple{Place.Type, Bool}, Effect}, span_of::Function)::Tuple{Vector{Access}, Vector{BlindAccess}}
+function unit_accesses(effects::Accesses, span_of::Function)::Tuple{Vector{Access}, Vector{BlindAccess}}
     accesses, blind = Access[], BlindAccess[]
     for ((place, below), effect) in effects
         span = span_of(effect.cause)

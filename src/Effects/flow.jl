@@ -1,3 +1,9 @@
+"""Effects by origin and whether they cover objects below."""
+const OriginAccesses = Dict{Tuple{Origin.Type, Bool}, Effect}
+
+"""Targets by holder origin, for one slot kind: memory backing or unknown slot."""
+const OriginHolds = Dict{Origin.Type, Targets}
+
 """
 Points-to state of one instance during its fixpoint (`effects.md`, Origins and points-to): targets per IR value and
 argument; flow-insensitive heap by origin and slot, memory backing, unknown-slot stores and global bindings; result
@@ -9,12 +15,12 @@ mutable struct Flow
     const values::Vector{Targets}
     const arguments::Vector{Targets}
     const heap::Dict{Origin.Type, Dict{Step.Type, Targets}}
-    const backing::Dict{Origin.Type, Targets}
-    const spread::Dict{Origin.Type, Targets}
+    const backing::OriginHolds
+    const spread::OriginHolds
     const bound::Dict{GlobalRef, Targets}
     const result::Targets
-    const writes::Dict{Tuple{Origin.Type, Bool}, Effect}
-    const reads::Dict{Tuple{Origin.Type, Bool}, Effect}
+    const writes::OriginAccesses
+    const reads::OriginAccesses
     const referent::IdDict{Any, Bool}
     changed::Bool
 end
@@ -25,7 +31,8 @@ function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}
         referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), Step.Type[])) => Doubt.none) : Targets()
             for (position, type) in enumerate(ir.argtypes)
     ]
-    return Flow(ir, outcomes, [Targets() for _ in 1:length(ir.stmts)], arguments, Dict(), Dict(), Dict(), Dict(), Targets(), Dict(), Dict(), referent, false)
+    heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
+    return Flow(ir, outcomes, [Targets() for _ in 1:length(ir.stmts)], arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), referent, false)
 end
 
 """Add `origin` with `doubt` to `targets`; chain with less doubt wins. Return whether `targets` changed."""
@@ -37,7 +44,7 @@ function add!(targets::Targets, origin::Origin.Type, doubt::Doubt.T)::Bool
 end
 
 """Union of `parts`, least doubt per origin."""
-function union_targets(parts)::Targets
+function union_targets(parts::Any)::Targets
     found = Targets()
     for part in parts, (origin, doubt) in part
         add!(found, origin, doubt)
@@ -66,7 +73,9 @@ function join!(flow::Flow, target::Targets, source::Targets, doubt::Doubt.T = Do
 end
 
 """Targets stored under `key` of `table`, created empty on first use."""
-slot!(table::Dict{K, Targets}, key::K) where {K} = get!(Targets, table, key)
+function slot!(table::Dict{K, Targets}, key::K)::Targets where {K}
+    return get!(Targets, table, key)
+end
 
 """Targets stored in `step` slot of `origin`."""
 function slot(flow::Flow, origin::Origin.Type, step::Step.Type)::Targets
@@ -186,7 +195,7 @@ end
 Record access in `table` (writes or reads) on each origin of `objects`. Chain doubt raises effect doubt; blind chain
 gives cause `alias` unless effect is blind already.
 """
-function access!(table::Dict{Tuple{Origin.Type, Bool}, Effect}, objects::Targets, below::Bool, effect::Effect)::Nothing
+function access!(table::OriginAccesses, objects::Targets, below::Bool, effect::Effect)::Nothing
     for (origin, doubt) in objects
         reason = effect.doubt == Doubt.blind ? effect.reason : doubt == Doubt.blind ? "alias" : ""
         found = Effect(most(effect.doubt, doubt), effect.cause, reason)
@@ -301,7 +310,8 @@ end
 
 """Whether field `field` of `type` holds memory backing (`GenericMemory` or `GenericMemoryRef`): it adds no path step."""
 function backing_field(type::Any, field::Union{Symbol, Int})::Bool
-    type isa DataType && isconcretetype(type) && !(type <: Tuple) || return false
+    type isa DataType || return false
+    isconcretetype(type) && !(type <: Tuple) || return false
     field isa Symbol && !hasfield(type, field) && return false
     field isa Int && !(1 <= field <= fieldcount(type)) && return false
     return fieldtype(type, field) <: Union{GenericMemory, GenericMemoryRef}
@@ -317,7 +327,8 @@ function field_step(type::Any, field::Any)::Union{Nothing, Step.Type}
     end
     field isa Symbol && return Step.Field(field)
     field isa Int || return nothing
-    named = type isa DataType && isconcretetype(type) && 1 <= field <= fieldcount(type)
+    type isa DataType || return Step.Position(field)
+    named = isconcretetype(type) && 1 <= field <= fieldcount(type)
     return named ? Step.Field(fieldname(type, field)) : Step.Position(field)
 end
 

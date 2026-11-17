@@ -189,7 +189,8 @@ end
 function slot_type(type::Any, field::Union{Nothing, Some{Any}})::Any
     isnothing(field) && return Any
     name = something(field)
-    type isa DataType && isconcretetype(type) || return Any
+    type isa DataType || return Any
+    isconcretetype(type) || return Any
     known = name isa Symbol ? hasfield(type, name) : name isa Int && 1 <= name <= fieldcount(type)
     return known ? fieldtype(type, name) : Any
 end

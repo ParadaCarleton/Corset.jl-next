@@ -1,3 +1,5 @@
+using Moshi.Derive: @derive
+
 """
 Abstract object (`effects.md`, Origins and points-to): `Caller` object at place caller can see, object `Allocation` at
 IR statement makes (call statement for all fresh objects of callee), or `Unknown` object open call returns.
@@ -57,24 +59,33 @@ end
 """Nodes value may point to, each with doubt as in `Targets`."""
 const Nodes = Dict{Node.Type, Doubt.T}
 
+"""Effects by place and whether they cover places below."""
+const Accesses = Dict{Tuple{Place.Type, Bool}, Effect}
+
+"""Stores of exported graph by holder node and slot."""
+const Edges = Dict{Tuple{Node.Type, Step.Type}, Nodes}
+
+"""Stores of exported graph by holder node, for one slot kind: memory backing or unknown slot."""
+const Holds = Dict{Node.Type, Nodes}
+
 """
 Effect summary of method instance: writes and reads by place and whether they cover places below; stores between
 objects caller can see and fresh objects (`edges` by slot, `backing` for memory, `spread` for unknown slot, `bound`
 for global binding); result nodes; and count of fresh nodes. Places need parameters and globals only.
 """
 struct Summary
-    writes::Dict{Tuple{Place.Type, Bool}, Effect}
-    reads::Dict{Tuple{Place.Type, Bool}, Effect}
-    edges::Dict{Tuple{Node.Type, Step.Type}, Nodes}
-    backing::Dict{Node.Type, Nodes}
-    spread::Dict{Node.Type, Nodes}
+    writes::Accesses
+    reads::Accesses
+    edges::Edges
+    backing::Holds
+    spread::Holds
     bound::Dict{GlobalRef, Nodes}
     result::Nodes
     fresh::Int
 end
 
 """Summary of instance that writes, reads and returns nothing: start of fixpoint inside call cycle."""
-empty_summary()::Summary = Summary(Dict(), Dict(), Dict(), Dict(), Dict(), Dict(), Nodes(), 0)
+empty_summary()::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Nodes(), 0)
 
 """Whether summaries `first` and `second` hold same effects, stores, result and causes."""
 same(first::Summary, second::Summary)::Bool = all(name -> getfield(first, name) == getfield(second, name), fieldnames(Summary))
@@ -85,8 +96,8 @@ every parameter, result anywhere.
 """
 function open_summary(count::Int, cause::String)::Summary
     places = [Place.At(Root.Parameter(position), Step.Type[]) for position in 1:count]
-    effects = Dict((place, true) => Effect(Doubt.blind, 0, cause) for place in places)
+    effects = Accesses((place, true) => Effect(Doubt.blind, 0, cause) for place in places)
     result = Nodes(Node.Placed(place) => Doubt.blind for place in places)
     result[Node.Outside()] = Doubt.blind
-    return Summary(effects, copy(effects), Dict(), Dict(), Dict(), Dict(), result, 0)
+    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), result, 0)
 end

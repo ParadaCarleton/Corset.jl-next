@@ -7,11 +7,9 @@ Summary holds writes, reads and result aliases by caller place, with doubt: defi
 module Effects
 
 using EnumX: @enumx
-using Graphs: SimpleDiGraph, add_edge!, condensation, inneighbors, strongly_connected_components, topological_sort_by_dfs
 using Moshi.Data: @data
-using Moshi.Derive: @derive
 using Moshi.Match: @match
-using ..Facts: Facts, PackageFacts, EffectsFacts, MethodEffects, Access, BlindAccess, Step, Root, Place, PATH_DEPTH, BlindSpot, Confidence, Span
+using ..Facts: PackageFacts, EffectsFacts, MethodEffects, Access, BlindAccess, Step, Root, Place, PATH_DEPTH, BlindSpot, Confidence, Span
 using ..Inference: TypedCode, Units, Journal, Record, record!, method_label
 
 const CC = Core.Compiler
