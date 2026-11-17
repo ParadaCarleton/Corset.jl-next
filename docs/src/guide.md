@@ -6,11 +6,13 @@ The project kind tells who uses the code. The kind picks the groups Corset repor
 
 | Kind | Groups | Fix tier |
 | --- | --- | --- |
-| `library` | `correctness`, `performance`, `composability`, `readability` | `likely` |
-| `application` | `correctness`, `performance`, `readability` | `breaking` |
-| `script` | `correctness`, `readability` | `breaking` |
+| `library` | `correctness`, `safety`, `performance`, `composability`, `readability` | `likely` |
+| `application` | `correctness`, `safety`, `performance`, `readability` | `breaking` |
+| `script` | `correctness`, `safety`, `readability` | `breaking` |
 
 Findings in the `correctness` group have level `deny`. Findings in the other groups of the kind have level `warn`.
+The `correctness` group holds code that misbehaves now.
+The `safety` group holds code that works now but lets a later mistake pass silently.
 Groups outside the kind have level `allow`.
 
 Corset finds the kind as follows:

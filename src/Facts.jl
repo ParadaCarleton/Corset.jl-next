@@ -26,7 +26,7 @@ export takes_docstring, comment_lines_above, comments_in, discarded, literal, li
 """`definite`: problem exists. `possible`: compiler cannot resolve doubt either."""
 @enumx Confidence definite possible
 """User-facing rule group."""
-@enumx Group correctness performance composability readability
+@enumx Group correctness safety performance composability readability
 """Analysis stage that computes facts rule reads, in pipeline order."""
 @enumx Stage syntax package scope inference effects lifecycle external
 """File role: `package` module code precompiles; `script` code (tests, docs, scripts) runs each time it loads."""
