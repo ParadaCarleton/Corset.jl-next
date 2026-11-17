@@ -187,6 +187,7 @@ quoted(values::Vector{Int}) = quote
     $values
 end
 opaque(values::Vector{Int}) = Base.Experimental.@opaque () -> values
+call_quoted(values::Vector{Int}) = quoted(values)
 splat(values::Vector{Int}) = NamedTuple{(:a,), Tuple{Vector{Int}}}((values,))
 @eval splat_vararg(values::Tuple{Vararg{Vector{Int}}}) = $(Expr(:splatnew, NamedTuple{(:a,), Tuple{Vector{Int}}}, :values))
 function caught(values::Vector{Int})
@@ -302,6 +303,7 @@ end
 @testset "statements and calls" begin
     none, code, blind = Doubt.none, Doubt.code, Doubt.blind
     @test fresh_spread(summary_of(quoted, Vector{Int})) == Nodes(Node.Placed(parameter(2)) => none)
+    @test fresh_spread(summary_of(call_quoted, Vector{Int})) == Nodes(Node.Placed(parameter(2)) => none)
     @test any(nodes -> haskey(nodes, Node.Placed(parameter(2))), values(summary_of(opaque, Vector{Int}).spread))
     @test Node.Placed(parameter(2)) in keys(only(values(summary_of(splat, Vector{Int}).edges)))
     @test fresh_spread(summary_of(splat_vararg, Tuple{Vararg{Vector{Int}}})) == Nodes(Node.Placed(Place.Deep(Root.Parameter(2))) => blind)
