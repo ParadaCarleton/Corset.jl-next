@@ -314,11 +314,25 @@ function deep(flow::Flow, objects::Targets)::Targets
     return found
 end
 
-"""Targets of callee `node` at call statement `index`; every fresh node of callee merges into `Allocation(index)`."""
-function map_node(flow::Flow, node::Node.Type, arguments::Vector{Targets}, index::Int, fresh::Int)::Targets
+"""
+Call statement `index` that applies callee summary: targets of each callee parameter, callee fresh node count, and
+callee places mapped so far. Stores of later edges miss cached places until next round, so fixpoint stays same.
+"""
+struct CallSite
+    arguments::Vector{Targets}
+    index::Int
+    fresh::Int
+    places::Dict{Place.Type, Targets}
+end
+
+"""Targets of callee `place` at `site`, mapped once per call statement and round."""
+site_place(flow::Flow, site::CallSite, place::Place.Type)::Targets = get!(() -> map_place(flow, place, site.arguments), site.places, place)
+
+"""Targets of callee `node` at `site`; every fresh node of callee merges into allocation at call statement."""
+function map_node(flow::Flow, node::Node.Type, site::CallSite)::Targets
     return @match node begin
-        Node.Placed(place) => map_place(flow, place, arguments)
-        Node.Fresh(_) => Targets(Origin.Allocation(index) => fresh == 1 ? Doubt.none : Doubt.blind)
+        Node.Placed(place) => site_place(flow, site, place)
+        Node.Fresh(_) => Targets(Origin.Allocation(site.index) => site.fresh == 1 ? Doubt.none : Doubt.blind)
         Node.Outside() => unknown()
     end
 end
@@ -333,10 +347,10 @@ function parameter_targets(flow::Flow, index::Int, method::Method, given::Vector
     return [given[1:(method.nargs - 1)]; vararg]
 end
 
-"""Union of targets of callee `nodes` at call `index`, each raised to its node doubt."""
-function map_nodes(flow::Flow, nodes::Nodes, arguments::Vector{Targets}, index::Int, fresh::Int)::Targets
+"""Union of targets of callee `nodes` at `site`, each raised to its node doubt."""
+function map_nodes(flow::Flow, nodes::Nodes, site::CallSite)::Targets
     found = Targets()
-    for (node, doubt) in nodes, (origin, flag) in map_node(flow, node, arguments, index, fresh)
+    for (node, doubt) in nodes, (origin, flag) in map_node(flow, node, site)
         add!(found, origin, most(flag, doubt))
     end
     return found
@@ -348,23 +362,23 @@ on mapped places, callee stores between caller objects, and result. Vararg tuple
 """
 function apply!(flow::Flow, index::Int, summary::Summary, instance::Core.MethodInstance, operands::Vector{Operand.Type})::Nothing
     arguments = parameter_targets(flow, index, instance.def::Method, [operand_targets(flow, operand) for operand in operands])
-    fresh = summary.fresh
+    site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}())
     for (table, effects) in ((flow.writes, summary.writes), (flow.reads, summary.reads)), ((place, below), effect) in effects
-        objects = map_place(flow, place, arguments)
+        objects = site_place(flow, site, place)
         access!(table, below ? beneath(flow, objects) : objects, below, Effect(effect.doubt, index, effect.reason))
     end
     for ((node, step), nodes) in summary.edges
-        store!(flow, map_node(flow, node, arguments, index, fresh), step, map_nodes(flow, nodes, arguments, index, fresh))
+        store!(flow, map_node(flow, node, site), step, map_nodes(flow, nodes, site))
     end
     for (node, nodes) in summary.backing
-        store_backing!(flow, map_node(flow, node, arguments, index, fresh), map_nodes(flow, nodes, arguments, index, fresh))
+        store_backing!(flow, map_node(flow, node, site), map_nodes(flow, nodes, site))
     end
     for (node, nodes) in summary.spread
-        store!(flow, map_node(flow, node, arguments, index, fresh), nothing, map_nodes(flow, nodes, arguments, index, fresh))
+        store!(flow, map_node(flow, node, site), nothing, map_nodes(flow, nodes, site))
     end
     for (binding, nodes) in summary.bound
-        bind!(flow, binding, map_nodes(flow, nodes, arguments, index, fresh))
+        bind!(flow, binding, map_nodes(flow, nodes, site))
     end
-    assign!(flow, index, map_nodes(flow, summary.result, arguments, index, fresh))
+    assign!(flow, index, map_nodes(flow, summary.result, site))
     return nothing
 end

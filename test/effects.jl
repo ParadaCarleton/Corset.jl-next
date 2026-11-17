@@ -5,7 +5,7 @@ using Corset.Inference: infer_package, open_journal, records
 using Corset.Effects:
     Effects, Doubt, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
-    element_type, constant, start_flow, statement!, map_node, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst
+    element_type, constant, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst
 using Supposition: Supposition, Data, @check
 using Moshi.Data: isa_variant
 
@@ -392,7 +392,7 @@ end
     flow = start_flow(code.ir, code.outcomes, run.referent)
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), _ -> empty_summary())
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), _ -> empty_summary())
-    @test map_node(flow, Node.Fresh(4), Targets[], 7, 2) == Targets(Origin.Allocation(7) => Doubt.blind)
+    @test map_node(flow, Node.Fresh(4), CallSite(Targets[], 7, 2, Dict{Place.Type, Targets}())) == Targets(Origin.Allocation(7) => Doubt.blind)
     @test deep(flow, Targets(Origin.Caller(parameter(2)) => Doubt.none)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => Doubt.blind)
     @test isa_variant(resolve(code.ir, Operand.Type[Operand.Part(Core.Argument(2), 1)], run.world), Outcome.Open)
     typed = only(unit for unit in UNITS.typed if unit.site.method.name == :add)
