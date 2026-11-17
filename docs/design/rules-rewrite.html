@@ -1372,6 +1372,7 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <li><code>Engine</code> runs <code>effects</code> after <code>inference</code> when enabled rule reads <code>effects</code>. <code>FactSet</code> gains <code>effects</code> field.</li>
 <li><code>src/Effects/</code>: units, IR, origins, points-to, builtins (call step 1), static calls (call step 3), solve.</li>
 <li>IR: copy unit code, then run passes until <code>CC: COMPACT_1</code>. Instance outside package: native inference first.</li>
+<li>Native inference abort on instance outside package: crash journal and relaunch skip instance; it gets open summary and blind spot.</li>
 <li>Solve: call graph over instances; SCCs from Graphs.jl (new dependency); worklist inside component.</li>
 <li>Sum types with data (origin kinds, call outcomes) use Moshi <code>@data</code> (new dependency). Ordered enums stay EnumX (<code>types.md</code>, Sum types).</li>
 <li>Facts: verdict per method, parameter and global; cause spans; result aliases; blind spots by reason.</li>
@@ -1478,7 +1479,6 @@ Measure: cold run with empty cache; cold run with cache from other corpus packag
 </div><div class="decision"><h3>Open decisions</h3>
 <p>Owner decides before PR that names decision:</p>
 <ul>
-<li>PR 1: native inference of instance outside package can abort process. Proposal: crash journal covers it; aborted instance gets open summary and blind spot.</li>
 <li>PR 3: lock writes. <code>lock(q.lk)</code> on argument writes lock state, so <code>bang-convention</code> would demand <code>!</code>. Proposal: exempt synchronization.</li>
 <li>PR 6: fix tier of rename. Proposal: <code>breaking</code> for public or exported name; <code>likely</code> for other names.</li>
 </ul>
