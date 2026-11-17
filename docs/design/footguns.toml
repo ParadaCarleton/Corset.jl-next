@@ -127,7 +127,7 @@ id = 13
 area = "numbers"
 text = "Result annotation converts instead of checking"
 example = "`f(x)::Float64 = x` turns `Float32` into `Float64`"
-group = "correctness"
+group = "safety"
 stage = "inference"
 note = "Report when inferred result needs conversion; annotation then acts as type check."
 
@@ -195,7 +195,7 @@ id = 20
 area = "types"
 text = "Ad-hoc union of unrelated types where sum type belongs"
 example = "`Union{Circle, Square, Error}`"
-group = "readability"
+group = "safety"
 stage = "inference"
 note = "Small unions compile fast; problem is design. Message suggests Moshi.jl ADT."
 
@@ -413,7 +413,7 @@ id = 37
 area = "arrays"
 text = "Index safety removed without proof"
 example = "`@inbounds` on unchecked index"
-group = "correctness"
+group = "safety"
 stage = "inference"
 
 [[footgun]]
@@ -603,7 +603,7 @@ id = 59
 area = "effects"
 text = "Catch handles every error"
 example = "`catch; end`"
-group = "correctness"
+group = "safety"
 stage = "syntax"
 
 [[footgun]]
@@ -694,7 +694,7 @@ id = 88
 area = "modules"
 text = "Extension trigger package missing from test dependencies"
 example = "`[weakdeps]` names `CUDA`; tests never load it"
-group = "correctness"
+group = "safety"
 stage = "syntax"
 note = "Reads Project.toml before load, so load error does not hide it. Untested extension also cannot be analyzed."
 
@@ -728,7 +728,7 @@ id = 70
 area = "concurrency"
 text = "Task result never waited; errors vanish"
 example = "`@spawn work()`"
-group = "correctness"
+group = "safety"
 stage = "syntax"
 
 [[footgun]]
@@ -868,7 +868,7 @@ id = 108
 area = "types"
 text = "`@enum` holds fixed case set, so no check finds unhandled case"
 example = "`@enum Tier safe likely` → `@data Tier begin Safe() < Likely() end`"
-group = "readability"
+group = "safety"
 stage = "syntax"
 note = "Later: needs Moshi release with order chains and `@match` exhaustiveness check. Cases others extend use dispatch on subtypes (F84); fixed cases use Moshi `@data`. Covers `@enum` and EnumX `@enumx`. Exempt: explicit values or base type (`@enum Flag::UInt32 A = 1`) for C interop, bit flags and wire formats. Primary span: definition; cause spans: comparisons with its values. Fix `manual`."
 

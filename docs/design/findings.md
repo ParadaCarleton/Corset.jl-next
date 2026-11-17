@@ -2,7 +2,7 @@
 
 How findings are graded, filtered, configured, shown and fixed.
 
-Four groups: `correctness`, `performance`, `composability`, `readability`. Readability holds house style: anything that makes code hard to read. Composability holds code that must work with other types and future Julia versions.
+Five groups: `correctness`, `safety`, `performance`, `composability`, `readability`. Correctness holds code that misbehaves now: input, path or broken contract. Safety holds code that works now but lets later mistake pass silently; its fix makes Julia catch mistake. Readability holds house style: anything that makes code hard to read. Composability holds code that must work with other types and future Julia versions.
 
 Noise is no longer reason for group. Each finding says how sure analysis is. One setting picks what to report:
 
@@ -16,7 +16,9 @@ Note: Rules with both kinds: `bang-convention` (dispatch candidates disagree on 
 
 ### Groups
 
-`correctness`, `performance`, `composability`, `readability`. One group per rule, `banned` included.
+`correctness`, `safety`, `performance`, `composability`, `readability`. One group per rule, `banned` included.
+
+Safety test: does fix turn silent mistake into error, failed check or failed test? `broad-catch` fix rethrows unexpected errors; `unchecked-enum` fix gets exhaustiveness check.
 
 ### Confidence and blind spots
 
@@ -71,9 +73,9 @@ Preset over groups and fix tier. Answers "who uses this code?"
 
 | Kind | Groups | Fix tier |
 |---|---|---|
-| `library` | all four | `likely` |
-| `application` | correctness, performance, readability | `breaking` |
-| `script` | correctness, readability | `breaking` |
+| `library` | all five | `likely` |
+| `application` | correctness, safety, performance, readability | `breaking` |
+| `script` | correctness, safety, readability | `breaking` |
 
 - Infer `script` for file with no Project.toml; `application` for Project.toml with no `name`. Otherwise setting is required.
 - Preset sets levels: correctness `deny`, other listed groups `warn`, unlisted groups `allow`. Levels and tier stay overridable per project.

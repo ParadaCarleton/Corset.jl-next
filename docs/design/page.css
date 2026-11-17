@@ -1,8 +1,8 @@
 /* Layout: single reading column; diagrams and tables break wider inside their own scroll boxes. */
 :root {
   --bg: #f6f7f9; --surface: #ffffff; --fg: #1d2330; --muted: #5b6475; --line: #d9dde5; --accent: #2f5d8a;
-  --g-correct: #b4413b; --g-perf: #a86a12; --g-compose: #1f7a6d; --g-read: #6a4fa3; --g-ext: #6b7280;
-  --tint-correct: #f8e9e8; --tint-perf: #f7eedd; --tint-compose: #e1f1ee; --tint-read: #ece7f6; --tint-ext: #eceef1;
+  --g-correct: #b4413b; --g-safe: #2f5f9e; --g-perf: #a86a12; --g-compose: #1f7a6d; --g-read: #6a4fa3; --g-ext: #6b7280;
+  --tint-correct: #f8e9e8; --tint-safe: #e3ebf6; --tint-perf: #f7eedd; --tint-compose: #e1f1ee; --tint-read: #ece7f6; --tint-ext: #eceef1;
   --code-bg: #eef1f5;
   --display: "Literata", Georgia, "Times New Roman", serif;
   --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
@@ -10,13 +10,13 @@
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #13161c; --surface: #1b1f27; --fg: #e3e6ec; --muted: #9aa3b2; --line: #2e3440; --accent: #7fb0e0;
-  --g-correct: #ec8a84; --g-perf: #e3ae5c; --g-compose: #5fc4b3; --g-read: #b49ae8; --g-ext: #a3aab5;
-  --tint-correct: #3a2221; --tint-perf: #3a2f1c; --tint-compose: #183530; --tint-read: #2c2440; --tint-ext: #262a31;
+  --g-correct: #ec8a84; --g-safe: #86aee6; --g-perf: #e3ae5c; --g-compose: #5fc4b3; --g-read: #b49ae8; --g-ext: #a3aab5;
+  --tint-correct: #3a2221; --tint-safe: #1e2a3d; --tint-perf: #3a2f1c; --tint-compose: #183530; --tint-read: #2c2440; --tint-ext: #262a31;
   --code-bg: #232833; color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #13161c; --surface: #1b1f27; --fg: #e3e6ec; --muted: #9aa3b2; --line: #2e3440; --accent: #7fb0e0;
-  --g-correct: #ec8a84; --g-perf: #e3ae5c; --g-compose: #5fc4b3; --g-read: #b49ae8; --g-ext: #a3aab5;
-  --tint-correct: #3a2221; --tint-perf: #3a2f1c; --tint-compose: #183530; --tint-read: #2c2440; --tint-ext: #262a31;
+  --g-correct: #ec8a84; --g-safe: #86aee6; --g-perf: #e3ae5c; --g-compose: #5fc4b3; --g-read: #b49ae8; --g-ext: #a3aab5;
+  --tint-correct: #3a2221; --tint-safe: #1e2a3d; --tint-perf: #3a2f1c; --tint-compose: #183530; --tint-read: #2c2440; --tint-ext: #262a31;
   --code-bg: #232833; color-scheme: dark }
 
 body { background: var(--bg); color: var(--fg); font: 16px/1.55 var(--body); }
@@ -42,6 +42,7 @@ header { display: grid; gap: 12px; }
 /* group chips */
 .chip { display: inline-block; font-family: var(--mono); font-size: 0.78rem; padding: 1px 7px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; }
 .g-correctness { color: var(--g-correct); background: var(--tint-correct); }
+.g-safety { color: var(--g-safe); background: var(--tint-safe); }
 .g-performance { color: var(--g-perf); background: var(--tint-perf); }
 .g-composability { color: var(--g-compose); background: var(--tint-compose); }
 .g-readability { color: var(--g-read); background: var(--tint-read); }

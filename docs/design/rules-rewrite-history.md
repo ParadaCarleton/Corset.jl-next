@@ -666,3 +666,13 @@ Codex review of redesign saw design parts and `src/` only. Eight problems:
 - Chain names every variant: `sort` assumes total order. Singletons only in first version. Mixed `<` and `>` is error. Ordered type is immutable, so `===` agrees with `isless`.
 - Enum with explicit values or base type is exempt: C interop, bit flags and wire formats need stable integers.
 - Corset enums move from EnumX to Moshi in `unchecked-enum` PR. Ordering serves fix tiers (`fix.tier > allowed`) and stages (`fix_stage >= stage`).
+
+### Safety group
+
+- `correctness` split in two. `correctness` keeps code that misbehaves now and stays `deny`. `safety` is `warn`, as Clippy `suspicious` is beside `correctness`.
+- `safety`: code works now, but later mistake passes silently. Fix makes Julia catch it: error, exhaustiveness check or failed test.
+- Moved from `correctness`: `broad-catch` (F59), `orphan-task` (F70), `result-conversion` (F13), `untested-extension` (F88), `unverified-inbounds` (F37).
+- Moved from `readability`: `ad-hoc-union` (F20), `unchecked-enum` (F108). Readability holds house style; missed case is no style problem.
+- `unverified-inbounds` reports index that Corset cannot prove in bounds. Unchecked `@inbounds` is common, so `deny` would fail most packages; Clippy checks `unsafe` blocks only in `restriction` (`undocumented_unsafe_blocks`).
+- Every project kind enables `safety`: scripts had these rules at `deny` before.
+- Stays in `correctness`: `hidden-input` and `impure-lambda` (fix adds no check), `unguarded-release` (throw path misbehaves now).
