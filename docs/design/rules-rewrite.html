@@ -809,7 +809,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <ol>
 <li>Builtin or intrinsic: transfer function (<code>setfield!</code>, <code>memoryrefset!</code>, <code>setglobal!</code>, <code>swapfield!</code>, <code>modifyfield!</code>, <code>replacefield!</code>; <code>_apply_iterate</code> unpacked).</li>
 <li>Foreign call: table of known C functions (<code>memmove</code> writes destination; runtime type queries read only). Unknown: <code>possible</code> write on pointer and object operands, doubt in code.</li>
-<li>Static call (one method matches, or <code>Core.invoke</code> with constant selector): callee summary.
+<li>Static call (one method matches, or <code>Core.invoke</code> with constant selector): callee summary. No method matches: call throws, so code after it is dead.
 Summary per variant: instance plus constant arguments callee uses as field name. <code>getproperty(x, :a)</code> keeps field <code>a</code>.</li>
 <li>Callee is parameter, type from static parameter, or field callable: summary records call with operands. Caller that knows callee substitutes its summary, captured aliases included.</li>
 <li>Run-time dispatch with at most 8 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.</li>
@@ -1400,8 +1400,10 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <p>Done: every fixture gives expected verdict; property passes; every-PR bar met.
 Measure on corpus: instances, time, memory, share of methods with <code>possible</code> write. Log numbers in history.</p>
 </div><div class="decision"><h3>2 Call resolution</h3>
-<p>Resolve calls that PR 1 leaves open: steps 2, 4, 5, 6 and 7 of <code>effects.md</code>, Calls.</p>
+<p>Resolve calls that PR 1 leaves open: steps 2, 4, 5, 6 and 7 of <code>effects.md</code>, Calls.
+Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback records, provenance. Ablation: history, &quot;Phase 5 call resolution&quot;.</p>
 <ul>
+<li>Zero-match call throws <code>MethodError</code>: dead code.</li>
 <li>Foreign call table: <code>memmove</code>, runtime type queries. Unknown foreign call gives <code>possible</code> write.</li>
 <li>Callback record: call of parameter, static-parameter type or field callable. Caller substitutes callee summary and captured aliases.</li>
 <li>Join over at most 8 matching methods. Disagreement gives <code>possible</code>.</li>

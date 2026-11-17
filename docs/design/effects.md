@@ -94,7 +94,7 @@ Resolution of each call statement, first match wins:
 
 1. Builtin or intrinsic: transfer function (`setfield!`, `memoryrefset!`, `setglobal!`, `swapfield!`, `modifyfield!`, `replacefield!`; `_apply_iterate` unpacked).
 2. Foreign call: table of known C functions (`memmove` writes destination; runtime type queries read only). Unknown: `possible` write on pointer and object operands, doubt in code.
-3. Static call (one method matches, or `Core.invoke` with constant selector): callee summary.
+3. Static call (one method matches, or `Core.invoke` with constant selector): callee summary. No method matches: call throws, so code after it is dead.
    Summary per variant: instance plus constant arguments callee uses as field name. `getproperty(x, :a)` keeps field `a`.
 4. Callee is parameter, type from static parameter, or field callable: summary records call with operands. Caller that knows callee substitutes its summary, captured aliases included.
 5. Run-time dispatch with at most 8 matching methods: join their summaries. All agree: their certainty. Disagree: `possible`.

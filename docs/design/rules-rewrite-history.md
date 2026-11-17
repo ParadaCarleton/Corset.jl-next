@@ -693,3 +693,24 @@ PR 1 measurements on corpus, cold library inference, no summary cache (`phase5.m
 - Corpus found two IR shapes engine rejected: `cglobal((:name, library))` keeps tuple as nested expression; `splatnew` on tuple without definite field count.
 - `@match` expands to `@goto`, so closures in same function box captures. Boxed `Any` result let target `AbstractSet` method invalidate engine code. `test/boxes.jl` now rejects `Core.Box` in every Corset method.
 - Graphs.jl added 0.35 s to Corset load and 12 packages. Own iterative Tarjan replaced it (#233): `using Corset` 1.4 s to 1.1 s.
+
+### Phase 5 call resolution
+
+Open calls after PR 1, by kind: foreign call, join of 2 to 8 methods, dispatch over 8 methods, zero match, callee value.
+Ablation on corpus: one kind stays open; every other open call writes nothing. Cell: methods with `possible` write.
+
+| Kind left open | Distances | DataStructures | JSON |
+|---|---|---|---|
+| Foreign call | 25% | 15% | 34% |
+| Join of 2 to 8 | 35% | 33% | 39% |
+| Dispatch over 8 | 34% | 23% | 31% |
+| Zero match | 4% | 8% | 13% |
+| Callee value | 9% | 7% | 15% |
+| None | 3% | 0% | 13% |
+
+- Foreign table, join and contracts are each necessary for 30% gate.
+- Dispatch over 8 is mostly Base interface functions: `==` (11 methods) in 1971 JSON calls, `convert` in 269 DataStructures calls. Contracts cover these.
+- Zero-match call throws `MethodError`, so it becomes dead code, as in inference.
+- PR 2 lands as stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback records, provenance.
+- Path depth sweep: depth 3 and 4 kept `possible` share. JSON `effects` took 19 s at depth 2, 615 s at 3, over 3 h at 4. Depth stays 2.
+- `foreach(f, xs)` reaches closure through `foldl` wrappers, so its write path has depth 3. Callback records keep path short.

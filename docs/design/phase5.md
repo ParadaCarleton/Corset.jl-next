@@ -56,7 +56,9 @@ Measure on corpus: instances, time, memory, share of methods with `possible` wri
 ### 2 Call resolution
 
 Resolve calls that PR 1 leaves open: steps 2, 4, 5, 6 and 7 of `effects.md`, Calls.
+Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback records, provenance. Ablation: history, "Phase 5 call resolution".
 
+- Zero-match call throws `MethodError`: dead code.
 - Foreign call table: `memmove`, runtime type queries. Unknown foreign call gives `possible` write.
 - Callback record: call of parameter, static-parameter type or field callable. Caller substitutes callee summary and captured aliases.
 - Join over at most 8 matching methods. Disagreement gives `possible`.
