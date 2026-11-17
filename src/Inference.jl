@@ -25,8 +25,9 @@ const CC = Core.Compiler
 
 """
 Typed code of package method on one signature: method site, signature, unoptimized typed statements, inferred result
-type, and span of each statement. Span is exact where syntax node spells statement (`statement_nodes`); line precision
-elsewhere. Code stays inside stage; method store keeps `Inferred` record of it.
+type, span of each statement, and inference frame (`effects` stage builds IR from it). Span is exact where syntax node
+spells statement (`statement_nodes`); line precision elsewhere. Code stays inside stage and `effects`; method store
+keeps `Inferred` record of it.
 """
 struct TypedCode
     site::MethodSite
@@ -34,6 +35,16 @@ struct TypedCode
     code::Core.CodeInfo
     result::Type
     spans::Vector{Span}
+    frame::CC.InferenceState
+end
+
+"""
+Units `inference` stage inferred this run, for `effects` stage: typed code of each, and methods whose results miss some
+argument types (`incomplete`): signatures over limit, crash, no code, or type test.
+"""
+struct Units
+    typed::Vector{TypedCode}
+    incomplete::Set{Method}
 end
 
 """
@@ -206,14 +217,14 @@ end
 
 """
 Unoptimized typed code of `method` on `signature`, its method instance, result type, compiler edges (callees result
-depends on) and control flow with variable types per block; `nothing` when inference gives none.
+depends on), control flow with variable types per block, and inference frame; `nothing` when inference gives none.
 """
-function infer(method::Method, signature::Type)::Union{Nothing, Tuple{Core.MethodInstance, Core.CodeInfo, Type, Vector{Any}, Narrowing.Flow}}
+function infer(method::Method, signature::Type)::Union{Nothing, Tuple{Core.MethodInstance, Core.CodeInfo, Type, Vector{Any}, Narrowing.Flow, CC.InferenceState}}
     specialized = instance(method, signature)
     isnothing(specialized) && return nothing
     frame = CC.typeinf_frame(CC.NativeInterpreter(), specialized, false)
     isnothing(frame) && return nothing
-    return specialized, frame.src, CC.widenconst(CC.ignorelimited(frame.result.result)), frame.edges, Narrowing.Flow(frame.cfg, frame.bb_vartables)
+    return specialized, frame.src, CC.widenconst(CC.ignorelimited(frame.result.result)), frame.edges, Narrowing.Flow(frame.cfg, frame.bb_vartables), frame
 end
 
 """
@@ -896,7 +907,7 @@ Signatures: stand-in signatures of package methods in `files`, then those their 
 stand-in only. `store` serves entries whose files are unchanged; `nothing` turns store off and gives no store.
 `journal` records each inference; key that crashed earlier run gets blind spot and no inference. Journal needs store.
 """
-function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::Union{Nothing, Store}, journal::Union{Nothing, Journal})::Tuple{InferenceFacts, Vector{BlindSpot}, Vector{TypedCode}, Union{Nothing, Store}}
+function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::Union{Nothing, Store}, journal::Union{Nothing, Journal})::Tuple{InferenceFacts, Vector{BlindSpot}, Units, Union{Nothing, Store}}
     isnothing(journal) || !isnothing(store) || throw(ArgumentError("crash journal records store keys, so it needs method store"))
     structs = struct_stand_ins(Type[site.type for site in package.structs])
     spots = BlindSpot[]
@@ -938,10 +949,10 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
             inferred = if isnothing(result)
                 Inferred(Union{}, Tuple{Type, Type}[], Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, false, Disruption[], HardArray[], NarrowingLoss[])
             else
-                instance, code, returned, frame_edges, flow = result
+                instance, code, returned, frame_edges, flow, frame = result
                 append!(edges, frame_edges)
                 nodes = statement_nodes(code, mappings(code, instance, site), site.file)
-                push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes)))
+                push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes), frame))
                 changes, branch = Widening.changes!(edges, instance, code)
                 constructions, array_branch = HardArrays.changes!(edges, instance, code)
                 lost = narrowings(last(typed), nodes, Narrowing.losses(code, flow, CC.sptypes_from_meth_instance(instance)))
@@ -985,7 +996,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     sort!(disrupting; by = disruption -> (disruption.exit == Exit.intermediate, disruption.confidence == Confidence.possible))
     sort!(hard; by = array -> (array.exit == Exit.intermediate, array.confidence == Confidence.possible))
     facts = InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting), unique!(array -> array.span, hard), unique!(lost -> lost.test, narrowing), annotation_guesses(package, observed, incomplete))
-    return facts, unique!(append!(spots, gaps)), typed, used
+    return facts, unique!(append!(spots, gaps)), Units(typed, incomplete), used
 end
 
 """

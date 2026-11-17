@@ -18,6 +18,7 @@ include("HardArrays.jl")
 include("Guesses.jl")
 include("Narrowing.jl")
 include("Inference.jl")
+include("Effects/Effects.jl")
 include("External.jl")
 include("Launch.jl")
 include("Cache.jl")
@@ -69,7 +70,7 @@ end
 
 """Run `external` stage and every rule on `package` and `inference` facts of analyzed `files`, their `entries`, module file `entry` and `project`."""
 function package_rules(package::Facts.PackageFacts, inference::Union{Nothing, Facts.InferenceFacts}, files::Vector{Facts.SyntaxFile}, entries::Vector{String}, entry::String, project::Union{Nothing, Facts.ProjectFacts})::Nothing
-    Engine.run_rules(Facts.FactSet(files, entries, Facts.Ban[], project, package, inference, External.external_facts(package, entry, files)))
+    Engine.run_rules(Facts.FactSet(files, entries, Facts.Ban[], project, package, inference, nothing, External.external_facts(package, entry, files)))
     return nothing
 end
 

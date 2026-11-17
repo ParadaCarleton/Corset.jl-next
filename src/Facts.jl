@@ -9,11 +9,13 @@ module Facts
 using Argus: Argus, @pattern, Pattern, BindingSet, syntax_match
 using EnumX: @enumx
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
+using Moshi.Data: @data
+using Moshi.Derive: @derive
 using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, Weak, Exit
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, InferenceFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, InferenceFacts, Step, Root, Place, Access, BlindAccess, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, tuple_parameters, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -338,6 +340,76 @@ struct InferenceFacts
     guesses::Vector{AnnotationGuess}
 end
 
+"""Step of access path: named `Field`, tuple `Position`, or `Element` of array memory."""
+@data Step begin
+    Field(Symbol)
+    Position(Int)
+    Element()
+end
+@derive Step[Hash, Eq, Show]
+
+"""
+Object access starts from: `Parameter` by argument position (1 is called function), `Global` binding, or `Elsewhere`:
+object open call returns, global included.
+"""
+@data Root begin
+    Parameter(Int)
+    Global(GlobalRef)
+    Elsewhere()
+end
+@derive Root[Hash, Eq, Show]
+
+"""Object reached from root: `At` path of at most `PATH_DEPTH` steps, or `Deep` past them."""
+@data Place begin
+    At(Root.Type, Vector{Step.Type})
+    Deep(Root.Type)
+end
+@derive Place[Hash, Eq, Show]
+
+"""Steps of longest exact path; longer paths collapse to `Place.Deep`."""
+const PATH_DEPTH = 2
+
+"""
+Access to caller-visible object (`effects` stage fact): place, whether it covers every place below it too, confidence,
+and cause span in package code. `possible` access from open call is doubt in code; collapsed path gives blind spot.
+"""
+struct Access
+    place::Place.Type
+    below::Bool
+    confidence::Confidence.T
+    cause::Span
+end
+
+"""
+Access Corset cannot judge (`effects` stage fact): place, whether it covers places below, and blind spot with cause
+(`alias` for collapsed path or merged call result). It counts on coverage line only.
+"""
+struct BlindAccess
+    place::Place.Type
+    below::Bool
+    spot::BlindSpot
+end
+
+"""
+Effect summary of package method (`effects` stage fact): writes and reads over its units, blind writes and reads,
+places its result aliases, and `complete`. Method with blind access, or incomplete method (inference skipped some
+argument types), has no definite none.
+"""
+struct MethodEffects
+    site::MethodSite
+    writes::Vector{Access}
+    reads::Vector{Access}
+    blind_writes::Vector{BlindAccess}
+    blind_reads::Vector{BlindAccess}
+    aliases::Vector{Place.Type}
+    complete::Bool
+end
+
+"""`effects` stage facts: summary per package method with verdict (`effects.md`, Effects engine)."""
+struct EffectsFacts
+    methods::Vector{MethodEffects}
+end
+
 """
 Use of name other module neither exports nor declares `public` (`external` stage fact): module code reaches into, name
 or name chain (`Precompilation.PkgPrecompileError`), its span, and whether import statement names it.
@@ -386,8 +458,8 @@ end
 """
 Facts of one run: parsed files, entry files Julia loads directly (empty for directory walk, where any file may be included),
 project bans from config, enclosing package project (`nothing` outside project with `name`), loaded package
-(`nothing` for scripts, nameless projects, failed load, or run without package rules), inference facts and external
-tool output (each `nothing` without loaded package, or run without rules of its stage).
+(`nothing` for scripts, nameless projects, failed load, or run without package rules), inference facts, effects facts
+and external tool output (each `nothing` without loaded package, or run without rules of its stage).
 """
 struct FactSet
     files::Vector{SyntaxFile}
@@ -396,6 +468,7 @@ struct FactSet
     project::Union{Nothing, ProjectFacts}
     package::Union{Nothing, PackageFacts}
     inference::Union{Nothing, InferenceFacts}
+    effects::Union{Nothing, EffectsFacts}
     external::Union{Nothing, ExternalFacts}
 end
 

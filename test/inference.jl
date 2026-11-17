@@ -23,8 +23,8 @@ function case_facts()::Tuple{Module, Vector{SyntaxFile}, PackageFacts, Inference
     finally
         pop!(LOAD_PATH)
     end
-    facts, spots, typed, _ = infer_package(loaded.facts, sources.files, nothing, nothing)
-    return first(loaded.facts.modules), sources.files, loaded.facts, facts, spots, typed
+    facts, spots, units, _ = infer_package(loaded.facts, sources.files, nothing, nothing)
+    return first(loaded.facts.modules), sources.files, loaded.facts, facts, spots, units.typed
 end
 
 const MODULE, FILES, PACKAGE, FACTS, SPOTS, TYPED = case_facts()
@@ -210,15 +210,16 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         end
     end
     @testset "method store" begin
-        facts, spots, fresh, used = infer_package(PACKAGE, FILES, Store(), nothing)
+        facts, spots, units, used = infer_package(PACKAGE, FILES, Store(), nothing)
+        fresh = units.typed
         stored(code::TypedCode)::Bool = haskey(used, entry_key(code.site.method, code.signature))
         named(codes)::Vector{String} = sort!(unique([source_name(code.site.method) for code in codes]))
         @test facts.failing == FACTS.failing && facts.disruptions == FACTS.disruptions && spots == SPOTS && isnothing(last(infer_package(PACKAGE, FILES, nothing, nothing)))
         # Store keeps closures, keyword bodies and generated code, but no generated instance on closure type.
         @test named(code for code in fresh if !stored(code)) == ["generated_apply", "regenerated"]
         again = infer_package(PACKAGE, FILES, used, nothing)
-        @test again[1].failing == facts.failing && again[1].disruptions == facts.disruptions && again[2] == spots && keys(again[4]) == keys(used) && !any(stored, again[3])
-        refreshed(files::Vector{SyntaxFile}, store::Store)::Vector{String} = named(code for code in infer_package(PACKAGE, files, store, nothing)[3] if stored(code))
+        @test again[1].failing == facts.failing && again[1].disruptions == facts.disruptions && again[2] == spots && keys(again[4]) == keys(used) && !any(stored, again[3].typed)
+        refreshed(files::Vector{SyntaxFile}, store::Store)::Vector{String} = named(code for code in infer_package(PACKAGE, files, store, nothing)[3].typed if stored(code))
         # Edit of file invalidates its methods: their spans hold byte offsets.
         edited = [basename(file.path) == "callees.jl" ? Corset.Syntax.parse_file(file.path, file.text * "\n", file.role) : file for file in FILES]
         @test refreshed(edited, used) == ["increment", "isless", "step_of"]
@@ -235,7 +236,7 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         gone = Store(key => Entry(entry.file, [entry.methods; "gone" => "code"], entry.staged, entry.inferred) for (key, entry) in used)
         signature = Corset.Inference.serialized(Tuple{Int})
         gone_staged = Store(key => Entry(entry.file, entry.methods, [entry.staged; Staged("gone", signature, "gone", "code")], entry.inferred) for (key, entry) in used)
-        @test length(infer_package(PACKAGE, FILES, gone, nothing)[3]) == length(infer_package(PACKAGE, FILES, gone_staged, nothing)[3]) == length(fresh)
+        @test length(infer_package(PACKAGE, FILES, gone, nothing)[3].typed) == length(infer_package(PACKAGE, FILES, gone_staged, nothing)[3].typed) == length(fresh)
         # Redefined method keeps its id, so stored entry finds it; its code digest changes.
         before = only(methods(Redefined.f))
         Core.eval(Redefined, :(f(x::Int) = 2))
@@ -276,14 +277,14 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
             @test length(records(directory)) == whole
             again = open_journal(directory)
             @test again.crashed == Set([key])
-            facts, spots, typed, _ = infer_package(PACKAGE, FILES, Store(), again)
+            facts, spots, units, _ = infer_package(PACKAGE, FILES, Store(), again)
             close(again.io)
             @test only(spot.span for spot in spots if spot.cause == "inference crashed process") == site.span
-            @test !any(code -> entry_key(code.site.method, code.signature) == key, typed)
+            @test !any(code -> entry_key(code.site.method, code.signature) == key, units.typed)
         end
         # Stderr of inference goes to crash log; normal end copies it to stderr.
         mktempdir() do directory
-            empty = (Corset.Facts.InferenceFacts(FailingCall[], Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.AnnotationGuess[]), Corset.Facts.BlindSpot[], nothing)
+            empty = (Corset.Facts.InferenceFacts(FailingCall[], Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.AnnotationGuess[]), Corset.Facts.BlindSpot[], Corset.Inference.Units(TypedCode[], Set{Method}()), nothing)
             text = mktemp() do path, io
                 result = redirect_stderr(io) do
                     Corset.Engine.journaled(journal -> (println(stderr, "inner note"); empty), directory)

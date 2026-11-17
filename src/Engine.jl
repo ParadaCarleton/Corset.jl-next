@@ -1,7 +1,7 @@
 """Discover files, build facts, run registered rules; apply opt-outs, levels, confidence setting and baseline."""
 module Engine
 
-using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, ProjectFacts, PackageFacts, InferenceFacts, ExternalFacts
+using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, ProjectFacts, PackageFacts, InferenceFacts, EffectsFacts, ExternalFacts
 using ..Rules: REGISTRY, entry
 using ..Config: Config, Flags, Settings, Level, level_of, project_root
 using ..OptOuts: OptOuts
@@ -11,6 +11,7 @@ using ..Discovery: Discovery
 using ..Syntax: Syntax
 using ..Package: Package
 using ..Inference: Inference
+using ..Effects: Effects
 using ..External: External
 using ..Cache: Cache
 using Serialization: serialize
@@ -66,6 +67,12 @@ enabled(settings::Settings, entry::RuleEntry)::Bool = first(level_of(settings, e
 """Whether `settings` enable any rule whose findings read `stage` last, or whose fixes read it."""
 wants(settings::Settings, stage::Stage.T)::Bool = any(entry -> (entry.stage == stage || entry.fix_stage == stage) && enabled(settings, entry), REGISTRY)
 
+"""Whether `settings` enable rule that reads `inference` stage, or stage built on its units: `effects`, `lifecycle`."""
+needs_inference(settings::Settings)::Bool = any(stage -> wants(settings, stage), (Stage.inference, Stage.effects, Stage.lifecycle))
+
+"""Whether `settings` enable rule that reads `effects` stage, or `lifecycle` stage built on it."""
+needs_effects(settings::Settings)::Bool = wants(settings, Stage.effects) || wants(settings, Stage.lifecycle)
+
 """Whether `settings` enable any rule whose findings or fixes read stage after `syntax`."""
 needs_package(settings::Settings)::Bool = any(entry -> entry.fix_stage != Stage.syntax && enabled(settings, entry), REGISTRY)
 
@@ -84,30 +91,44 @@ end
 method_entry(path::String)::String = "$path\nmethod store"
 
 """
-Inference facts of `package` in analyzed `files`, and their blind spots, when `settings` enable `inference` rule; else
-none. Cache directory `cache` keeps method store of checked `path` (`architecture.md`); `nothing` turns store off.
+Inference facts of `package` in analyzed `files`, their blind spots, and units for `effects` stage, when `settings` enable
+rule that needs them (`needs_inference`); else none. Cache directory `cache` keeps method store of checked `path`
+(`architecture.md`); `nothing` turns store off. Store keeps no effect summaries yet, so `effects` run skips it.
 Crash journal `directory` of relaunched process records each inference (`journaled`); `nothing` records none.
 """
-function inference_facts(path::String, package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, settings::Settings, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}}
-    (isnothing(package) || !wants(settings, Stage.inference)) && return nothing, BlindSpot[]
+function inference_facts(path::String, package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, settings::Settings, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}, Union{Nothing, Inference.Units}}
+    (isnothing(package) || !needs_inference(settings)) && return nothing, BlindSpot[], nothing
+    # Stored unit gives no typed code, so `effects` run infers every unit.
+    effects = needs_effects(settings)
+    cache = effects ? nothing : cache
     key = isnothing(cache) ? "" : Cache.method_key(path, something(project_root(path)), [file.path for file in files], Inference.shape(package), Base.load_path(), cache)
     cached = isnothing(cache) ? nothing : something(Cache.lookup(Inference.Store, cache, method_entry(path), key), Inference.Store())
-    facts, spots, used = if isnothing(directory)
-        Inference.inference_facts(package, files, cached, nothing)
+    facts, spots, units, used = if isnothing(directory)
+        Inference.infer_package(package, files, cached, nothing)
     else
         # Entries of runs that crashed serve as store, so finished work stays done.
-        store = merge(something(cached, Inference.Store()), Inference.finished_store(Inference.records(directory)))
-        journaled(journal -> Inference.inference_facts(package, files, store, journal), directory)
+        store = effects ? Inference.Store() : merge(something(cached, Inference.Store()), Inference.finished_store(Inference.records(directory)))
+        journaled(journal -> Inference.infer_package(package, files, store, journal), directory)
     end
     isnothing(cache) || Cache.store!(cache, method_entry(path), key, something(used))
-    return facts, spots
+    return facts, spots, units
 end
 
 """
-Inference facts that `infer` gives with journal of crash journal `directory`. Stderr goes to crash log meanwhile, so
-Julia abort report of crash stays there; return or Julia exception copies log text of this run to stderr.
+Effects facts of `package` from inference `units` and their blind spots, when enabled rule `needs` them
+(`needs_effects`); else none. Crash journal `directory` records native inference of library instances.
 """
-function journaled(infer::Function, directory::String)::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Inference.Store}}
+function effects_facts(package::Union{Nothing, PackageFacts}, units::Union{Nothing, Inference.Units}, needs::Bool, directory::Union{Nothing, String})::Tuple{Union{Nothing, EffectsFacts}, Vector{BlindSpot}}
+    (isnothing(package) || isnothing(units) || !needs) && return nothing, BlindSpot[]
+    isnothing(directory) && return Effects.effects_facts(package, units, nothing)
+    return journaled(journal -> Effects.effects_facts(package, units, journal), directory)
+end
+
+"""
+Facts that `infer` gives with journal of crash journal `directory`. Stderr goes to crash log meanwhile, so Julia abort
+report of crash stays there; return or Julia exception copies log text of this run to stderr.
+"""
+function journaled(infer::Function, directory::String)::Tuple
     log = Inference.log_file(directory)
     start = isfile(log) ? filesize(log) : 0
     journal = Inference.open_journal(directory)
@@ -159,8 +180,9 @@ end
 
 """Facts and analysis of `analyze` once package of `sources` is `loaded`; runs in world that sees package methods."""
 function analyze_loaded(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, journal::Union{Nothing, String}, loaded::Package.Loaded)::Tuple{FactSet, Analysis}
-    inference, inference_spots = inference_facts(path, loaded.facts, sources.files, settings, cache, journal)
-    facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, inference, external_facts(sources.project, loaded.facts, sources.files, settings))
+    inference, inference_spots, units = inference_facts(path, loaded.facts, sources.files, settings, cache, journal)
+    effects, effects_spots = effects_facts(loaded.facts, units, needs_effects(settings), journal)
+    facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, inference, effects, external_facts(sources.project, loaded.facts, sources.files, settings))
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
     root = something(project_root(path), isdir(path) ? path : dirname(path))
@@ -170,7 +192,7 @@ function analyze_loaded(path::String, settings::Settings, sources::Discovery.Sou
         [Diagnostic(problem, Level.deny, Package.LOAD_SOURCE) for problem in loaded.errors];
         [Diagnostic(problem, Level.deny, OptOuts.SOURCE) for problem in problems]
     ]
-    blind_spots = [sources.blind_spots; loaded.blind_spots; inference_spots]
+    blind_spots = [sources.blind_spots; loaded.blind_spots; inference_spots; effects_spots]
     return facts, Analysis(root, [file.path for file in sources.files], leveled, keys, checks, blind_spots)
 end
 
