@@ -726,3 +726,10 @@ Ablation on corpus: one kind stays open; every other open call writes nothing. C
 - Non-breaking variant is Rust-style cursor protocol with fallback cursor; Julia 2.0 scope (JuliaLang/julia#43388 asks for statefulness trait).
 - F51 is definite and on by default: method that accepts stateful iterator and restarts it has bug in its own code.
 - Escape counts: started iterator returned or stored hands on partly consumed iterator; stateless and stateful callers see different elements.
+
+### Numerically unstable formulas
+
+- F110 `unstable-formula`: naive formula where stable function exists. Clippy counterpart `imprecise_flops` is allow-by-default nursery lint.
+- Group correctness: `log(sum(exp.([1000.0, 1000.0])))` gives `Inf`; `log(1 + 1e-20)` gives `0.0`, `log1p` gives `1e-20`.
+- Inference stage: operands must be `Number`. Matrix forms (`sin(π * A)`) have no stable scalar counterpart.
+- Fix tier `likely`: replacement changes rounding. Replacement from LogExpFunctions.jl is `manual` unless project depends on it.
