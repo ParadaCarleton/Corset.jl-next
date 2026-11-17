@@ -862,7 +862,7 @@ Summary per variant: instance plus constant arguments callee uses as field name.
 </ul>
 <h4>Solve and cache</h4>
 <ul>
-<li>Call graph over variants; strongly connected components from Graphs.jl; solve bottom-up.</li>
+<li>Call graph over variants; strongly connected components from iterative Tarjan; solve bottom-up.</li>
 <li>Inside component: worklist. Member reruns only when summary it read changed. Lattice is finite, so fixpoint ends.</li>
 <li>Library summary: instance whose signature names no package type and whose edges reach no package method. Targets share its disk cache.</li>
 <li>Key: Julia version, Corset version, loaded extensions, and content digest of each loaded package: Manifest tree hash, or source digest for path and developed packages.</li>
@@ -1385,7 +1385,7 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <li><code>src/Effects/</code>: units, IR, origins, points-to, builtins (call step 1), static calls (call step 3), solve.</li>
 <li>IR: copy unit code, then run passes until <code>CC: COMPACT_1</code>. Instance outside package: native inference first.</li>
 <li>Native inference abort on instance outside package: crash journal and relaunch skip instance; it gets open summary and blind spot.</li>
-<li>Solve: call graph over instances; SCCs from Graphs.jl (new dependency); worklist inside component.</li>
+<li>Solve: call graph over variants; SCCs from own iterative Tarjan; worklist inside component.</li>
 <li>Sum types with data (origin kinds, call outcomes) use Moshi <code>@data</code> (new dependency). Ordered enums stay EnumX (<code>types.md</code>, Sum types).</li>
 <li>Facts: verdict per method, parameter and global; cause spans; result aliases; blind spots by reason.</li>
 <li>Coverage reasons: <code>always throws on stand-ins</code>, incomplete method causes, <code>alias</code>.</li>

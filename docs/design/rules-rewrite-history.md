@@ -692,4 +692,4 @@ PR 1 measurements on corpus, cold library inference, no summary cache (`phase5.m
 - JSON time comes from Serialization in cycle with `deserialize`: callee summaries with hundreds of stores. Mapping each callee place once per call statement and round cut it from 148 s to 24 s.
 - Corpus found two IR shapes engine rejected: `cglobal((:name, library))` keeps tuple as nested expression; `splatnew` on tuple without definite field count.
 - `@match` expands to `@goto`, so closures in same function box captures. Boxed `Any` result let target `AbstractSet` method invalidate engine code. `test/boxes.jl` now rejects `Core.Box` in every Corset method.
-- Graphs.jl adds 0.35 s to Corset load (0.84 s to 1.31 s with engine). Compat `1.9` keeps DataStructures 0.18 targets resolvable.
+- Graphs.jl added 0.35 s to Corset load and 12 packages. Own iterative Tarjan replaced it (#233): `using Corset` 1.4 s to 1.1 s.

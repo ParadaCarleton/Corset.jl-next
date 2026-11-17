@@ -144,7 +144,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 
 #### Solve and cache
 
-- Call graph over variants; strongly connected components from Graphs.jl; solve bottom-up.
+- Call graph over variants; strongly connected components from iterative Tarjan; solve bottom-up.
 - Inside component: worklist. Member reruns only when summary it read changed. Lattice is finite, so fixpoint ends.
 - Library summary: instance whose signature names no package type and whose edges reach no package method. Targets share its disk cache.
 - Key: Julia version, Corset version, loaded extensions, and content digest of each loaded package: Manifest tree hash, or source digest for path and developed packages.
