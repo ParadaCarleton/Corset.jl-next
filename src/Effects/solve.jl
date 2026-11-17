@@ -90,24 +90,54 @@ function parameter_of(operand::Operand.Type)::Union{Nothing, Int}
     end
 end
 
-"""
-Parameters `instance` uses as slot name: first two operands of naming builtin, or parameter it passes to such
-parameter of callee. Cycle member in progress counts as none.
-"""
-function field_parameters!(run::Run, instance::Core.MethodInstance)::Set{Int}
-    haskey(run.fields, instance) && return run.fields[instance]
+"""Slot-name parameters of instance in progress, its calls as operands and callee, and position of next call."""
+mutable struct FieldsFrame
+    const found::Set{Int}
+    const calls::Vector{Pair{Vector{Operand.Type}, Core.MethodInstance}}
+    next::Int
+end
+
+"""Add call with `operands` to each of `callees` to `calls`."""
+function append_calls!(calls::Vector{Pair{Vector{Operand.Type}, Core.MethodInstance}}, operands::Vector{Operand.Type}, callees::Vector{Core.MethodInstance})::Nothing
+    foreach(callee -> push!(calls, operands => callee), callees)
+    return nothing
+end
+
+"""Frame of `instance`, recorded in progress: operands of naming builtins added now, calls wait for callee."""
+function fields_frame!(run::Run, instance::Core.MethodInstance)::FieldsFrame
     found = run.fields[instance] = Set{Int}()
+    frame = FieldsFrame(found, Pair{Vector{Operand.Type}, Core.MethodInstance}[], 1)
     body = body!(run, instance)
-    body isa Body || return found
+    body isa Body || return frame
     for outcome in body.outcomes
         isnothing(outcome) && continue
         @match something(outcome) begin
-            Outcome.Builtin(builtin, operands) => naming(builtin) && add_parameters!(found, operands, 1:min(2, length(operands)))
-            Outcome.Dispatch(callees, operands) => foreach(callee -> add_parameters!(found, operands, field_parameters!(run, callee)), callees)
+            Outcome.Builtin(builtin, operands) => naming(builtin) && add_parameters!(frame.found, operands, 1:min(2, length(operands)))
+            # Closure inside `@match` arm boxes its captures: helper keeps loop out of arm.
+            Outcome.Dispatch(callees, operands) => append_calls!(frame.calls, operands, callees)
             _ => nothing
         end
     end
-    return found
+    return frame
+end
+
+"""
+Parameters `instance` uses as slot name: first two operands of naming builtin, or parameter it passes to such
+parameter of callee. Cycle member in progress counts as found so far. Explicit stack: deep call chains need no deep
+recursion.
+"""
+function field_parameters!(run::Run, instance::Core.MethodInstance)::Set{Int}
+    haskey(run.fields, instance) && return run.fields[instance]
+    stack = [fields_frame!(run, instance)]
+    while !isempty(stack)
+        frame = stack[end]
+        frame.next > length(frame.calls) && (pop!(stack); continue)
+        operands, callee = frame.calls[frame.next]
+        haskey(run.fields, callee) || (push!(stack, fields_frame!(run, callee)); continue)
+        add_parameters!(frame.found, operands, run.fields[callee])
+        frame.next += 1
+    end
+    return run.fields[instance]
 end
 
 """Variant that static call of `callee` with `operands` in `ir` reaches: constant slot names it passes."""
@@ -125,6 +155,9 @@ function callee_variant(run::Run, ir::CC.IRCode, callee::Core.MethodInstance, op
     return (callee, constants)
 end
 
+"""Variants that call with `operands` in `ir` reaches through each of `instances`."""
+callee_variants(run::Run, ir::CC.IRCode, instances::Vector{Core.MethodInstance}, operands::Vector{Operand.Type})::Vector{Variant} = [callee_variant(run, ir, instance, operands) for instance in instances]
+
 """Code of `variant` with body `body`: IR specialized to its constants, and variants each call reaches."""
 function variant_code(run::Run, variant::Variant, body::Body)::Code
     ir = specialize(body.ir, last(variant))
@@ -132,7 +165,7 @@ function variant_code(run::Run, variant::Variant, body::Body)::Code
     for (index, outcome) in enumerate(body.outcomes)
         isnothing(outcome) && continue
         @match something(outcome) begin
-            Outcome.Dispatch(instances, operands) => (callees[index] = [callee_variant(run, ir, instance, operands) for instance in instances])
+            Outcome.Dispatch(instances, operands) => (callees[index] = callee_variants(run, ir, instances, operands))
             _ => nothing
         end
     end

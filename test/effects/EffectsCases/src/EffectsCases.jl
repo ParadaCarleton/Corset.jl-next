@@ -128,4 +128,6 @@ copy_boxes!(target::Vector{Box}, source::Vector{Box})::Nothing = (copyto!(target
 
 remember!(table::IdDict{Int, Box}, box::Box)::Nothing = (table[1] = box; table[1].value = 0; nothing)
 
+call_on(f::Any, box::Box) = f(box)
+
 end

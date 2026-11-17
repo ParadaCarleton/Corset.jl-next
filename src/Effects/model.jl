@@ -99,7 +99,7 @@ const UNSETTLED = "unsettled call cycle"
 union_nodes(old::Nodes, new::Nodes)::Nodes = mergewith(min, old, new)
 
 """Union of `old` and `new` stores by holder."""
-union_stores(old::Dict{K, Nodes}, new::Dict{K, Nodes}) where {K} = mergewith(union_nodes, old, new)
+(union_stores(old::Dict{K, Nodes}, new::Dict{K, Nodes})::Dict{K, Nodes}) where {K} = mergewith(union_nodes, old, new)
 
 """Union of `old` and `new` accesses: access that differs between them becomes blind (`UNSETTLED`)."""
 widen_accesses(old::Accesses, new::Accesses)::Accesses = mergewith((first, second) -> first == second ? first : Effect(Doubt.blind, first.cause, UNSETTLED), old, new)

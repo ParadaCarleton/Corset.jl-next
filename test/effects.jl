@@ -6,7 +6,7 @@ using Corset.Effects:
     Effects, Doubt, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
-    components, foreign_name, join_accesses!, JOIN_LIMIT, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer
+    components, foreign_name, join_accesses!, JOIN_LIMIT, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 
@@ -84,6 +84,8 @@ end
     @test effects(:counter_ref).aliases == [global_place(CASES, :COUNTER)]
     @test shape(effects(:reset_counter!).writes) == [(global_place(CASES, :COUNTER), false, definite)]
     @test effects(:boxes_of, CASES.Box).aliases == [parameter(2)] && isempty(effects(:boxes_of, CASES.Box).writes)
+    # Open call result may be unknown object.
+    @test Place.At(Root.Elsewhere(), Step.Type[]) in effects(:call_on, Any, CASES.Box).aliases
     for name in (:countdown!, :ping!, :pong!)
         @test shape(effects(name, CASES.Box, Int).writes) == [(parameter(2), false, definite)]
     end
@@ -521,6 +523,24 @@ const GRAPHS = map(graph, Data.Pairs(Data.Integers(1, 8), Data.Vectors(Data.Inte
         ordered = all(place[callee] <= place[caller] for caller in vertices for callee in successors[caller])
         partition && mutual && apart && ordered
     end
+end
+
+"""Link of synthetic call chain: each specialization stands for one instance."""
+chain_link(x::Any) = x
+
+@testset "slot-name parameters" begin
+    run = start_run(nothing)
+    instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world)))
+    solve!(run, [(instance, Pair{Int, Any}[])])
+    ir = run.codes[(instance, Pair{Int, Any}[])].ir
+    # Chain of 10^5 calls: explicit stack keeps deep call chains off native stack.
+    links = [Effects.CC.specialize_method(only(methods(chain_link)), Tuple{typeof(chain_link), Val{position}}, Core.svec()) for position in 1:100_000]
+    argument = Operand.Value(Core.Argument(2))
+    for (position, link) in enumerate(links)
+        outcome = position == length(links) ? Outcome.Builtin(Core.getfield, [argument, Operand.Value(QuoteNode(:a))]) : Outcome.Dispatch([links[position + 1]], [Operand.Value(chain_link), argument])
+        run.bodies[link] = Body(ir, Int[], Union{Nothing, Outcome.Type}[outcome])
+    end
+    @test field_parameters!(run, first(links)) == Set([2])
 end
 
 const DOUBTS = Data.SampledFrom([Doubt.none, Doubt.code, Doubt.blind])
