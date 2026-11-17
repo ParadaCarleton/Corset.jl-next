@@ -58,6 +58,7 @@ Engine code lives in `src/Effects/`.
 - Path: field name or element, at most 2 steps. Longer path collapses to `deep`.
 - Memory backing belongs to its owner: field of type `GenericMemory` or `GenericMemoryRef` adds no step. Write to `Vector` elements writes `Vector`.
 - `Ptr` value holds origins of object it points into, so foreign call through pointer writes that object.
+- Constant null pointer global (`C_NULL`) points into no object.
 - Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.
 - Unification is rejected: it merges unrelated objects at each unknown call.
 - Write: statement that stores into origin content, or callee summary write mapped through call operands.
@@ -145,7 +146,10 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 #### Solve and cache
 
 - Call graph over variants; strongly connected components from iterative Tarjan; solve bottom-up.
-- Inside component: worklist. Member reruns only when summary it read changed. Lattice is finite, so fixpoint ends.
+- Inside component: worklist. Member reruns only when summary it read changed.
+- Join of methods (Calls, step 5) is not monotone, so summaries in cycle can oscillate.
+- After 8 reruns, member summary widens: union with previous summary. Access that still changes becomes blind (`unsettled call cycle`).
+- Widened summaries only grow through finite values, so fixpoint ends.
 - Library summary: instance whose signature names no package type and whose edges reach no package method. Targets share its disk cache.
 - Key: Julia version, Corset version, loaded extensions, and content digest of each loaded package: Manifest tree hash, or source digest for path and developed packages.
 - Package summary: method store entry beside `Inferred`, same invalidation.

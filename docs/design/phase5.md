@@ -118,7 +118,8 @@ Fail: revise call resolution, then run gate again. Log result in history; put ti
 
 - F53 `missing`: method writes argument or global; name has no `!`. Decision flow: `effects.md`.
 - F86 `spurious`: `!` method writes nothing on any path; callers drop its result.
-- Methods added to other module's `!` function are exempt.
+- Method added to other module's `!` function: no rename fix. Writes nothing on any path: F86 finding, fix `manual`.
+- F86 exempts `sizehint!` (hint) and `!!` functions (mutate when possible, else return new value).
 - Definite write gives `definite` finding. `possible` findings stay off until quality gate passes.
 - Fix: rename definition and package call sites.
 

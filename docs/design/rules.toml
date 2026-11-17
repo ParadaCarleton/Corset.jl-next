@@ -255,7 +255,7 @@ footguns = [52]
 [[rule]]
 name = "bang-convention"
 footguns = [53, 86]
-note = "Kinds: missing, spurious. Methods added to other module's `!` function exempt. See `!` convention."
+note = "Kinds: missing, spurious. Method of other module's `!` function: spurious gets `manual` fix, no rename; `sizehint!` and `!!` functions exempt. See `!` convention."
 
 [[rule]]
 name = "unused-call"

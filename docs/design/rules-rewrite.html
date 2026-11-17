@@ -364,7 +364,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tr data-group="correctness"><td><code>self-alias</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F50 Same container passed twice to mutating call</td><td></td></tr>
 <tr data-group="correctness"><td><code>stateful-reuse</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F51 <code>Iterators.Stateful</code> consumed twice</td><td></td></tr>
 <tr data-group="correctness"><td><code>missing-condition</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td>F52 <code>missing</code> reaches condition</td><td></td></tr>
-<tr data-group="correctness"><td><code>bang-convention</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F53 Function writes argument or global without <code>!</code><br>F86 <code>!</code> function writes nothing; callers drop its result</td><td>Kinds: missing, spurious. Methods added to other module's <code>!</code> function exempt. See <code>!</code> convention.</td></tr>
+<tr data-group="correctness"><td><code>bang-convention</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F53 Function writes argument or global without <code>!</code><br>F86 <code>!</code> function writes nothing; callers drop its result</td><td>Kinds: missing, spurious. Method of other module's <code>!</code> function: spurious gets <code>manual</code> fix, no rename; <code>sizehint!</code> and <code>!!</code> functions exempt. See <code>!</code> convention.</td></tr>
 <tr data-group="correctness"><td><code>unused-call</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F54 Call has no effect and result is unused</td><td></td></tr>
 <tr data-group="correctness"><td><code>hidden-input</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F55 Hidden input: mutable global, <code>ScopedValue</code>, global RNG</td><td></td></tr>
 <tr data-group="correctness"><td><code>impure-lambda</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>F56 Anonymous function impure: captures mutable state</td><td></td></tr>
@@ -773,6 +773,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Path: field name or element, at most 2 steps. Longer path collapses to <code>deep</code>.</li>
 <li>Memory backing belongs to its owner: field of type <code>GenericMemory</code> or <code>GenericMemoryRef</code> adds no step. Write to <code>Vector</code> elements writes <code>Vector</code>.</li>
 <li><code>Ptr</code> value holds origins of object it points into, so foreign call through pointer writes that object.</li>
+<li>Constant null pointer global (<code>C_NULL</code>) points into no object.</li>
 <li>Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.</li>
 <li>Unification is rejected: it merges unrelated objects at each unknown call.</li>
 <li>Write: statement that stores into origin content, or callee summary write mapped through call operands.</li>
@@ -863,7 +864,10 @@ Summary per variant: instance plus constant arguments callee uses as field name.
 <h4>Solve and cache</h4>
 <ul>
 <li>Call graph over variants; strongly connected components from iterative Tarjan; solve bottom-up.</li>
-<li>Inside component: worklist. Member reruns only when summary it read changed. Lattice is finite, so fixpoint ends.</li>
+<li>Inside component: worklist. Member reruns only when summary it read changed.</li>
+<li>Join of methods (Calls, step 5) is not monotone, so summaries in cycle can oscillate.</li>
+<li>After 8 reruns, member summary widens: union with previous summary. Access that still changes becomes blind (<code>unsettled call cycle</code>).</li>
+<li>Widened summaries only grow through finite values, so fixpoint ends.</li>
 <li>Library summary: instance whose signature names no package type and whose edges reach no package method. Targets share its disk cache.</li>
 <li>Key: Julia version, Corset version, loaded extensions, and content digest of each loaded package: Manifest tree hash, or source digest for path and developed packages.</li>
 <li>Package summary: method store entry beside <code>Inferred</code>, same invalidation.</li>
@@ -1457,7 +1461,8 @@ Measure: cold run with empty cache; cold run with cache from other corpus packag
 <ul>
 <li>F53 <code>missing</code>: method writes argument or global; name has no <code>!</code>. Decision flow: <code>effects.md</code>.</li>
 <li>F86 <code>spurious</code>: <code>!</code> method writes nothing on any path; callers drop its result.</li>
-<li>Methods added to other module's <code>!</code> function are exempt.</li>
+<li>Method added to other module's <code>!</code> function: no rename fix. Writes nothing on any path: F86 finding, fix <code>manual</code>.</li>
+<li>F86 exempts <code>sizehint!</code> (hint) and <code>!!</code> functions (mutate when possible, else return new value).</li>
 <li>Definite write gives <code>definite</code> finding. <code>possible</code> findings stay off until quality gate passes.</li>
 <li>Fix: rename definition and package call sites.</li>
 </ul>
