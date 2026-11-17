@@ -762,6 +762,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li><code>inference</code> stage hands typed code of units it inferred this run to effects. Method store keeps facts only; stored unit keeps its stored summary.</li>
 <li>Typed SSA IR before inlining: copy unit's unoptimized code; run compiler passes until <code>CC: COMPACT_1</code>. Package units need no second inference.</li>
 <li>Calls stay call statements, so allocations and consumers map to source through <code>inference</code> stage spans.</li>
+<li>Passes renumber statements. Before passes, line of each statement gets its source index; passes carry line to IR.</li>
 <li>Instance outside package: native inference, then same passes. Library cache skips both (see <strong>Solve and cache</strong>).</li>
 </ul>
 <h4>Origins and points-to</h4>
@@ -769,13 +770,16 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Origin: abstract object or value. Kinds: parameter path, global path, allocation site, call result site, constant, <code>unknown</code>.</li>
 <li><code>unknown</code>: object open call can return that no operand names, global included. Write to it is <code>possible</code> global write.</li>
 <li>Path: field name or element, at most 2 steps. Longer path collapses to <code>deep</code>.</li>
+<li>Memory backing belongs to its owner: field of type <code>GenericMemory</code> or <code>GenericMemoryRef</code> adds no step. Write to <code>Vector</code> elements writes <code>Vector</code>.</li>
+<li><code>Ptr</code> value holds origins of object it points into, so foreign call through pointer writes that object.</li>
 <li>Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.</li>
 <li>Unification is rejected: it merges unrelated objects at each unknown call.</li>
 <li>Write: statement that stores into origin content, or callee summary write mapped through call operands.</li>
 <li>Definite write: reachable statement writes origin, and no collapsed path or merged call result lies on chain to it.</li>
 <li>Collapsed path or merged call result gives <code>possible</code> with cause <code>alias</code>: blind spot, counted on coverage line.</li>
 <li>Summary per parameter and global: read and write of top object, each path of depth 1 and 2, and <code>deep</code>. Each has certainty and cause span.</li>
-<li>Summary also gives result origins as parameter and global paths: result aliases.</li>
+<li>Summary also gives result origins as parameter and global paths: result aliases. Fresh result keeps its fields: <code>view(A, 1:2)</code> result holds <code>A</code>.</li>
+<li>Summary gives stores callee makes between caller objects: <code>push!(v, x)</code> puts <code>x</code> into <code>v</code>, so caller write through <code>v[1]</code> writes <code>x</code>.</li>
 <li>Caller maps writes through result onto those paths, so write through result that aliases global is global write.</li>
 <li>Must-alias: two values whose points-to sets hold same single exact origin, and that origin is one object per call.</li>
 <li>Allocation site inside loop or recursion makes many objects: its origin gives may-alias only.</li>

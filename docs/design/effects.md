@@ -47,6 +47,7 @@ Engine code lives in `src/Effects/`.
 - `inference` stage hands typed code of units it inferred this run to effects. Method store keeps facts only; stored unit keeps its stored summary.
 - Typed SSA IR before inlining: copy unit's unoptimized code; run compiler passes until `CC: COMPACT_1`. Package units need no second inference.
 - Calls stay call statements, so allocations and consumers map to source through `inference` stage spans.
+- Passes renumber statements. Before passes, line of each statement gets its source index; passes carry line to IR.
 - Instance outside package: native inference, then same passes. Library cache skips both (see **Solve and cache**).
 
 #### Origins and points-to
@@ -54,13 +55,16 @@ Engine code lives in `src/Effects/`.
 - Origin: abstract object or value. Kinds: parameter path, global path, allocation site, call result site, constant, `unknown`.
 - `unknown`: object open call can return that no operand names, global included. Write to it is `possible` global write.
 - Path: field name or element, at most 2 steps. Longer path collapses to `deep`.
+- Memory backing belongs to its owner: field of type `GenericMemory` or `GenericMemoryRef` adds no step. Write to `Vector` elements writes `Vector`.
+- `Ptr` value holds origins of object it points into, so foreign call through pointer writes that object.
 - Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.
 - Unification is rejected: it merges unrelated objects at each unknown call.
 - Write: statement that stores into origin content, or callee summary write mapped through call operands.
 - Definite write: reachable statement writes origin, and no collapsed path or merged call result lies on chain to it.
 - Collapsed path or merged call result gives `possible` with cause `alias`: blind spot, counted on coverage line.
 - Summary per parameter and global: read and write of top object, each path of depth 1 and 2, and `deep`. Each has certainty and cause span.
-- Summary also gives result origins as parameter and global paths: result aliases.
+- Summary also gives result origins as parameter and global paths: result aliases. Fresh result keeps its fields: `view(A, 1:2)` result holds `A`.
+- Summary gives stores callee makes between caller objects: `push!(v, x)` puts `x` into `v`, so caller write through `v[1]` writes `x`.
 - Caller maps writes through result onto those paths, so write through result that aliases global is global write.
 - Must-alias: two values whose points-to sets hold same single exact origin, and that origin is one object per call.
 - Allocation site inside loop or recursion makes many objects: its origin gives may-alias only.
