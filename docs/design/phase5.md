@@ -6,8 +6,8 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 
 | # | PR | Holds | Needs | Status |
 |---|---|---|---|---|
-| 1 | Engine core | Units, IR, origins, points-to, builtins, static calls, solve, soundness property | — | next |
-| 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | — |
+| 1 | Engine core | Units, IR, origins, points-to, builtins, static calls, solve, soundness property | — | #232 |
+| 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | next |
 | 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, throw paths, call facts | 2 | — |
 | 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | — |
 | 5 | Corpus go/no-go | Gate below; no rule PR before it passes | 4 | — |
@@ -33,6 +33,7 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 Sound summaries for package units through builtins and static calls. Other calls stay open (step 7) until PR 2.
 
 - `inference` stage keeps `TypedCode` of units it infers this run; `inference_facts` returns them to `Engine`.
+- Until PR 4, `effects` run bypasses method store: stored unit has no typed code.
 - `Engine` runs `effects` after `inference` when enabled rule reads `effects`. `FactSet` gains `effects` field.
 - `src/Effects/`: units, IR, origins, points-to, builtins (call step 1), static calls (call step 3), solve.
 - IR: copy unit code, then run passes until `CC: COMPACT_1`. Instance outside package: native inference first.

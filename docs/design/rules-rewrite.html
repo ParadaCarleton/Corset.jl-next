@@ -240,7 +240,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tr data-group="correctness"><td>F86</td><td>effects</td><td><code>!</code> function writes nothing; callers drop its result</td><td><code>normalize!(v)</code> returns new vector</td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>Method whose body only throws (<code>pop!(::SortedSet) = error(...)</code>) is exempt.</td></tr>
 <tr data-group="correctness"><td>F55</td><td>effects</td><td>Hidden input: mutable global, <code>ScopedValue</code>, global RNG</td><td><code>rand()</code> in package code</td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td></td></tr>
 <tr data-group="correctness"><td>F56</td><td>effects</td><td>Anonymous function impure: captures mutable state</td><td><code>filter(x -&gt; x in seen, xs)</code>, <code>seen::Set</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>Named functions follow <code>!</code> convention; anonymous ones stay pure. Read-only capture counts.</td></tr>
-<tr data-group="performance"><td>F57</td><td>effects</td><td>Closure rebinds captured variable; <code>Core.Box</code></td><td><code>n = 0; f = () -&gt; (n += 1)</code></td><td><span class="chip g-performance">performance</span></td><td>scope</td><td></td></tr>
+<tr data-group="performance"><td>F57</td><td>effects</td><td>Closure rebinds captured variable; <code>Core.Box</code></td><td><code>n = 0; f = () -&gt; (n += 1)</code></td><td><span class="chip g-performance">performance</span></td><td>scope</td><td>Label or <code>@goto</code> in function boxes every capture too; Moshi <code>@match</code> expands to both. Detect <code>Core.Box</code> in lowered code.</td></tr>
 <tr data-group="correctness"><td>F58</td><td>effects</td><td><code>@assume_effects</code> claim false</td><td><code>:consistent</code> on body that reads global</td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td></td></tr>
 <tr data-group="safety"><td>F59</td><td>effects</td><td>Catch handles every error</td><td><code>catch; end</code></td><td><span class="chip g-safety">safety</span></td><td>syntax</td><td></td></tr>
 <tr data-group="correctness"><td>F60</td><td>effects</td><td>Same statement twice in block</td><td>copy-paste duplicate</td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td></td></tr>
@@ -767,7 +767,8 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 </ul>
 <h4>Origins and points-to</h4>
 <ul>
-<li>Origin: abstract object or value. Kinds: parameter path, global path, allocation site, call result site, constant, <code>unknown</code>.</li>
+<li>Origin: abstract object. Kinds: caller place (parameter or global path), allocation statement, <code>unknown</code>.</li>
+<li>Constant object in code counts as <code>unknown</code>. Fresh objects of callee merge into one allocation at call statement.</li>
 <li><code>unknown</code>: object open call can return that no operand names, global included. Write to it is <code>possible</code> global write.</li>
 <li>Path: field name or element, at most 2 steps. Longer path collapses to <code>deep</code>.</li>
 <li>Memory backing belongs to its owner: field of type <code>GenericMemory</code> or <code>GenericMemoryRef</code> adds no step. Write to <code>Vector</code> elements writes <code>Vector</code>.</li>
@@ -775,9 +776,13 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.</li>
 <li>Unification is rejected: it merges unrelated objects at each unknown call.</li>
 <li>Write: statement that stores into origin content, or callee summary write mapped through call operands.</li>
-<li>Definite write: reachable statement writes origin, and no collapsed path or merged call result lies on chain to it.</li>
-<li>Collapsed path or merged call result gives <code>possible</code> with cause <code>alias</code>: blind spot, counted on coverage line.</li>
+<li>Each origin in points-to set carries doubt: none, <code>code</code> or <code>blind</code>. Join keeps least doubt per origin.</li>
+<li>Open call on chain gives <code>code</code>. Collapsed path, or call result merged from several fresh objects, gives <code>blind</code>.</li>
+<li>Access takes most doubt of effect and chain. None gives definite; <code>code</code> gives <code>possible</code>.</li>
+<li><code>blind</code> gives blind access with cause <code>alias</code>: blind spot, counted on coverage line only.</li>
 <li>Summary per parameter and global: read and write of top object, each path of depth 1 and 2, and <code>deep</code>. Each has certainty and cause span.</li>
+<li>Access says whether it covers every place below too. Open call covers whole object graph below each operand.</li>
+<li>Access below fresh object covers caller objects in its slots: open call on <code>(x,)</code> writes below <code>x</code>.</li>
 <li>Summary also gives result origins as parameter and global paths: result aliases. Fresh result keeps its fields: <code>view(A, 1:2)</code> result holds <code>A</code>.</li>
 <li>Summary gives stores callee makes between caller objects: <code>push!(v, x)</code> puts <code>x</code> into <code>v</code>, so caller write through <code>v[1]</code> writes <code>x</code>.</li>
 <li>Caller maps writes through result onto those paths, so write through result that aliases global is global write.</li>
@@ -804,7 +809,8 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <ol>
 <li>Builtin or intrinsic: transfer function (<code>setfield!</code>, <code>memoryrefset!</code>, <code>setglobal!</code>, <code>swapfield!</code>, <code>modifyfield!</code>, <code>replacefield!</code>; <code>_apply_iterate</code> unpacked).</li>
 <li>Foreign call: table of known C functions (<code>memmove</code> writes destination; runtime type queries read only). Unknown: <code>possible</code> write on pointer and object operands, doubt in code.</li>
-<li>Static call (<code>:invoke</code>, or one method matches): callee summary.</li>
+<li>Static call (one method matches, or <code>Core.invoke</code> with constant selector): callee summary.
+Summary per variant: instance plus constant arguments callee uses as field name. <code>getproperty(x, :a)</code> keeps field <code>a</code>.</li>
 <li>Callee is parameter, type from static parameter, or field callable: summary records call with operands. Caller that knows callee substitutes its summary, captured aliases included.</li>
 <li>Run-time dispatch with at most 8 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.</li>
 <li>Base interface function with documented contract (<code>setindex!</code> writes collection; <code>length</code> reads only; <code>view</code> result lies within array). Breach in package method is finding.</li>
@@ -856,7 +862,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 </ul>
 <h4>Solve and cache</h4>
 <ul>
-<li>Call graph over instances; strongly connected components from Graphs.jl; solve bottom-up.</li>
+<li>Call graph over variants; strongly connected components from Graphs.jl; solve bottom-up.</li>
 <li>Inside component: worklist. Member reruns only when summary it read changed. Lattice is finite, so fixpoint ends.</li>
 <li>Library summary: instance whose signature names no package type and whose edges reach no package method. Targets share its disk cache.</li>
 <li>Key: Julia version, Corset version, loaded extensions, and content digest of each loaded package: Manifest tree hash, or source digest for path and developed packages.</li>
@@ -866,7 +872,8 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 </ul>
 <h4>Facts</h4>
 <ul>
-<li>Per package method: summary verdict per parameter and global, cause spans, result aliases, blind spots by reason.</li>
+<li>Per package method: writes and reads by place with certainty and cause span; blind writes and reads with blind spot; result aliases.</li>
+<li>Fact of incomplete method has <code>complete</code> false: it gets no definite none.</li>
 <li>Per unit, for <code>lifecycle</code> and statement rules (F48, F50, F51): allocation sites, read and write events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.</li>
 <li>Element event carries index operand: constant or SSA value. <code>lifecycle</code> decides which elements writes cover (F33, F34).</li>
 <li>Per call statement: callee, effect kinds, may throw, result used or discarded (F54, F86).</li>
@@ -1290,14 +1297,14 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <td>Engine core</td>
 <td>Units, IR, origins, points-to, builtins, static calls, solve, soundness property</td>
 <td>—</td>
-<td>next</td>
+<td>#232</td>
 </tr>
 <tr>
 <td>2</td>
 <td>Call resolution</td>
 <td>Foreign calls, callback records, join, Base contracts, open calls</td>
 <td>1</td>
-<td>—</td>
+<td>next</td>
 </tr>
 <tr>
 <td>3</td>
@@ -1373,6 +1380,7 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <p>Sound summaries for package units through builtins and static calls. Other calls stay open (step 7) until PR 2.</p>
 <ul>
 <li><code>inference</code> stage keeps <code>TypedCode</code> of units it infers this run; <code>inference_facts</code> returns them to <code>Engine</code>.</li>
+<li>Until PR 4, <code>effects</code> run bypasses method store: stored unit has no typed code.</li>
 <li><code>Engine</code> runs <code>effects</code> after <code>inference</code> when enabled rule reads <code>effects</code>. <code>FactSet</code> gains <code>effects</code> field.</li>
 <li><code>src/Effects/</code>: units, IR, origins, points-to, builtins (call step 1), static calls (call step 3), solve.</li>
 <li>IR: copy unit code, then run passes until <code>CC: COMPACT_1</code>. Instance outside package: native inference first.</li>

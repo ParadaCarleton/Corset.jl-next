@@ -676,3 +676,20 @@ Codex review of redesign saw design parts and `src/` only. Eight problems:
 - Every project kind enables `safety`: scripts had these rules at `deny` before.
 - Stays in `correctness`: `hidden-input` and `impure-lambda` (fix adds no check), `unguarded-release` (throw path misbehaves now).
 - `unverified-inbounds` (F37) stays in `correctness`: out-of-bounds access under `@inbounds` is undefined behavior, so `deny` fits.
+
+### Phase 5 engine core
+
+PR 1 measurements on corpus, cold library inference, no summary cache (`phase5.md`, PR 1):
+
+| Package | Units | Instances | `inference` s | `effects` s | Allocated GB | Peak RSS GB | Methods | `possible` write | Definite write | Blind write |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Distances 0.10.12 | 549 | 4691 | 3.2 | 5.8 | 1.2 | 0.9 | 175 | 54% | 27 | 35 |
+| DataStructures 0.18.22 | 1593 | 7065 | 4.1 | 7.9 | 1.8 | 1.2 | 943 | 56% | 168 | 249 |
+| JSON 1.13.4 | 385 | 7333 | 5.8 | 24.2 | 7.2 | 1.1 | 291 | 58% | 61 | 78 |
+
+- `possible` share sits near 55%: every call outside builtins and one-method dispatch stays open until PR 2. Gate threshold is 30%.
+- `effects` takes 1.8 to 4.1 times `inference` time. Library summary cache (PR 4) carries budget.
+- JSON time comes from Serialization in cycle with `deserialize`: callee summaries with hundreds of stores. Mapping each callee place once per call statement and round cut it from 148 s to 24 s.
+- Corpus found two IR shapes engine rejected: `cglobal((:name, library))` keeps tuple as nested expression; `splatnew` on tuple without definite field count.
+- `@match` expands to `@goto`, so closures in same function box captures. Boxed `Any` result let target `AbstractSet` method invalidate engine code. `test/boxes.jl` now rejects `Core.Box` in every Corset method.
+- Graphs.jl adds 0.35 s to Corset load (0.84 s to 1.31 s with engine). Compat `1.9` keeps DataStructures 0.18 targets resolvable.

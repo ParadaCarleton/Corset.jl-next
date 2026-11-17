@@ -52,7 +52,8 @@ Engine code lives in `src/Effects/`.
 
 #### Origins and points-to
 
-- Origin: abstract object or value. Kinds: parameter path, global path, allocation site, call result site, constant, `unknown`.
+- Origin: abstract object. Kinds: caller place (parameter or global path), allocation statement, `unknown`.
+- Constant object in code counts as `unknown`. Fresh objects of callee merge into one allocation at call statement.
 - `unknown`: object open call can return that no operand names, global included. Write to it is `possible` global write.
 - Path: field name or element, at most 2 steps. Longer path collapses to `deep`.
 - Memory backing belongs to its owner: field of type `GenericMemory` or `GenericMemoryRef` adds no step. Write to `Vector` elements writes `Vector`.
@@ -60,9 +61,13 @@ Engine code lives in `src/Effects/`.
 - Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.
 - Unification is rejected: it merges unrelated objects at each unknown call.
 - Write: statement that stores into origin content, or callee summary write mapped through call operands.
-- Definite write: reachable statement writes origin, and no collapsed path or merged call result lies on chain to it.
-- Collapsed path or merged call result gives `possible` with cause `alias`: blind spot, counted on coverage line.
+- Each origin in points-to set carries doubt: none, `code` or `blind`. Join keeps least doubt per origin.
+- Open call on chain gives `code`. Collapsed path, or call result merged from several fresh objects, gives `blind`.
+- Access takes most doubt of effect and chain. None gives definite; `code` gives `possible`.
+- `blind` gives blind access with cause `alias`: blind spot, counted on coverage line only.
 - Summary per parameter and global: read and write of top object, each path of depth 1 and 2, and `deep`. Each has certainty and cause span.
+- Access says whether it covers every place below too. Open call covers whole object graph below each operand.
+- Access below fresh object covers caller objects in its slots: open call on `(x,)` writes below `x`.
 - Summary also gives result origins as parameter and global paths: result aliases. Fresh result keeps its fields: `view(A, 1:2)` result holds `A`.
 - Summary gives stores callee makes between caller objects: `push!(v, x)` puts `x` into `v`, so caller write through `v[1]` writes `x`.
 - Caller maps writes through result onto those paths, so write through result that aliases global is global write.
@@ -89,7 +94,8 @@ Resolution of each call statement, first match wins:
 
 1. Builtin or intrinsic: transfer function (`setfield!`, `memoryrefset!`, `setglobal!`, `swapfield!`, `modifyfield!`, `replacefield!`; `_apply_iterate` unpacked).
 2. Foreign call: table of known C functions (`memmove` writes destination; runtime type queries read only). Unknown: `possible` write on pointer and object operands, doubt in code.
-3. Static call (`:invoke`, or one method matches): callee summary.
+3. Static call (one method matches, or `Core.invoke` with constant selector): callee summary.
+   Summary per variant: instance plus constant arguments callee uses as field name. `getproperty(x, :a)` keeps field `a`.
 4. Callee is parameter, type from static parameter, or field callable: summary records call with operands. Caller that knows callee substitutes its summary, captured aliases included.
 5. Run-time dispatch with at most 8 matching methods: join their summaries. All agree: their certainty. Disagree: `possible`.
 6. Base interface function with documented contract (`setindex!` writes collection; `length` reads only; `view` result lies within array). Breach in package method is finding.
@@ -138,7 +144,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 
 #### Solve and cache
 
-- Call graph over instances; strongly connected components from Graphs.jl; solve bottom-up.
+- Call graph over variants; strongly connected components from Graphs.jl; solve bottom-up.
 - Inside component: worklist. Member reruns only when summary it read changed. Lattice is finite, so fixpoint ends.
 - Library summary: instance whose signature names no package type and whose edges reach no package method. Targets share its disk cache.
 - Key: Julia version, Corset version, loaded extensions, and content digest of each loaded package: Manifest tree hash, or source digest for path and developed packages.
@@ -148,7 +154,8 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 
 #### Facts
 
-- Per package method: summary verdict per parameter and global, cause spans, result aliases, blind spots by reason.
+- Per package method: writes and reads by place with certainty and cause span; blind writes and reads with blind spot; result aliases.
+- Fact of incomplete method has `complete` false: it gets no definite none.
 - Per unit, for `lifecycle` and statement rules (F48, F50, F51): allocation sites, read and write events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.
 - Element event carries index operand: constant or SSA value. `lifecycle` decides which elements writes cover (F33, F34).
 - Per call statement: callee, effect kinds, may throw, result used or discarded (F54, F86).

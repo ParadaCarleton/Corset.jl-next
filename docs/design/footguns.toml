@@ -587,6 +587,7 @@ id = 57
 area = "effects"
 text = "Closure rebinds captured variable; `Core.Box`"
 example = "`n = 0; f = () -> (n += 1)`"
+note = "Label or `@goto` in function boxes every capture too; Moshi `@match` expands to both. Detect `Core.Box` in lowered code."
 group = "performance"
 stage = "scope"
 
