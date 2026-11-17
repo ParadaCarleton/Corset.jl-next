@@ -81,14 +81,7 @@ function builtin!(flow::Flow, index::Int, builtin::Any, operands::Vector{Operand
         binding = module_global(flow, operands)
         isnothing(binding) ? assign!(flow, index, unknown()) : read_global!(flow, index, something(binding))
     elseif haskey(GLOBAL_WRITES, builtin)
-        binding = module_global(flow, operands)
-        if isnothing(binding)
-            write!(flow, index, GLOBAL_WRITES[builtin], operands, unknown(), unknown(), values -> store!(flow, unknown(), nothing, values), Any)
-        else
-            binding = something(binding)
-            slot = Core.get_binding_type(binding.mod, binding.name)
-            write!(flow, index, GLOBAL_WRITES[builtin], operands, global_place(binding), global_targets(flow, binding), values -> bind!(flow, binding, values), slot)
-        end
+        global_write!(flow, index, GLOBAL_WRITES[builtin], operands)
     elseif haskey(ELEMENT_WRITES, builtin)
         element_write!(flow, index, ELEMENT_WRITES[builtin], operands)
     elseif builtin === Core.memoryrefget
@@ -100,7 +93,9 @@ function builtin!(flow::Flow, index::Int, builtin::Any, operands::Vector{Operand
         allocate!(flow, index)
     elseif builtin === Core.tuple || builtin === Core.svec
         allocate!(flow, index)
-        foreach(position -> store!(flow, flow.values[index], Step.Position(position), targets(position)), eachindex(operands))
+        for position in eachindex(operands)
+            store!(flow, flow.values[index], Step.Position(position), targets(position))
+        end
     elseif builtin === Core._expr
         allocate!(flow, index)
         store!(flow, flow.values[index], nothing, union_targets(targets(position) for position in eachindex(operands)))
@@ -167,6 +162,19 @@ function write!(flow::Flow, index::Int, shape::Shape, operands::Vector{Operand.T
         Returns.replaced => pack!(flow, index, Step.Field(:old) => old)
         Returns.flag => nothing
     end
+    return nothing
+end
+
+"""Transfer write of global binding `operands` name; binding that is not constant writes unknown object."""
+function global_write!(flow::Flow, index::Int, shape::Shape, operands::Vector{Operand.Type})::Nothing
+    found = module_global(flow, operands)
+    if isnothing(found)
+        write!(flow, index, shape, operands, unknown(), unknown(), values -> store!(flow, unknown(), nothing, values), Any)
+        return nothing
+    end
+    binding = something(found)
+    slot = Core.get_binding_type(binding.mod, binding.name)
+    write!(flow, index, shape, operands, global_place(binding), global_targets(flow, binding), values -> bind!(flow, binding, values), slot)
     return nothing
 end
 
@@ -299,7 +307,9 @@ function deep(flow::Flow, objects::Targets)::Targets
             _ => origin
         end
         add!(found, reached, Doubt.blind) || continue
-        foreach(targets -> append!(pending, keys(targets)), contents(flow, origin))
+        for targets in contents(flow, origin)
+            append!(pending, keys(targets))
+        end
     end
     return found
 end
@@ -313,28 +323,48 @@ function map_node(flow::Flow, node::Node.Type, arguments::Vector{Targets}, index
     end
 end
 
+"""Targets of each callee parameter at call `index` of `method`: vararg method packs trailing `given` into allocation."""
+function parameter_targets(flow::Flow, index::Int, method::Method, given::Vector{Targets})::Vector{Targets}
+    method.isva || return given
+    vararg = Targets(Origin.Allocation(index) => Doubt.none)
+    for (position, targets) in enumerate(given[method.nargs:end])
+        store!(flow, vararg, Step.Position(position), targets)
+    end
+    return [given[1:(method.nargs - 1)]; vararg]
+end
+
+"""Union of targets of callee `nodes` at call `index`, each raised to its node doubt."""
+function map_nodes(flow::Flow, nodes::Nodes, arguments::Vector{Targets}, index::Int, fresh::Int)::Targets
+    found = Targets()
+    for (node, doubt) in nodes, (origin, flag) in map_node(flow, node, arguments, index, fresh)
+        add!(found, origin, most(flag, doubt))
+    end
+    return found
+end
+
 """
 Apply callee `summary` of `instance` at call statement `index` with `operands` (`effects.md`, Calls, step 3): effects
 on mapped places, callee stores between caller objects, and result. Vararg tuple becomes allocation at `index`.
 """
 function apply!(flow::Flow, index::Int, summary::Summary, instance::Core.MethodInstance, operands::Vector{Operand.Type})::Nothing
-    arguments = [operand_targets(flow, operand) for operand in operands]
-    method = instance.def::Method
-    if method.isva
-        vararg = Targets(Origin.Allocation(index) => Doubt.none)
-        foreach(((position, targets),) -> store!(flow, vararg, Step.Position(position), targets), enumerate(arguments[method.nargs:end]))
-        arguments = [arguments[1:(method.nargs - 1)]; vararg]
-    end
-    mapped(node::Node.Type)::Targets = map_node(flow, node, arguments, index, summary.fresh)
-    mapped(nodes::Nodes)::Targets = union_targets(raised(mapped(node), doubt) for (node, doubt) in nodes)
+    arguments = parameter_targets(flow, index, instance.def::Method, [operand_targets(flow, operand) for operand in operands])
+    fresh = summary.fresh
     for (table, effects) in ((flow.writes, summary.writes), (flow.reads, summary.reads)), ((place, below), effect) in effects
         objects = map_place(flow, place, arguments)
         access!(table, below ? beneath(flow, objects) : objects, below, Effect(effect.doubt, index, effect.reason))
     end
-    foreach((((node, step), nodes),) -> store!(flow, mapped(node), step, mapped(nodes)), summary.edges)
-    foreach(((node, nodes),) -> store_backing!(flow, mapped(node), mapped(nodes)), summary.backing)
-    foreach(((node, nodes),) -> store!(flow, mapped(node), nothing, mapped(nodes)), summary.spread)
-    foreach(((binding, nodes),) -> bind!(flow, binding, mapped(nodes)), summary.bound)
-    assign!(flow, index, mapped(summary.result))
+    for ((node, step), nodes) in summary.edges
+        store!(flow, map_node(flow, node, arguments, index, fresh), step, map_nodes(flow, nodes, arguments, index, fresh))
+    end
+    for (node, nodes) in summary.backing
+        store_backing!(flow, map_node(flow, node, arguments, index, fresh), map_nodes(flow, nodes, arguments, index, fresh))
+    end
+    for (node, nodes) in summary.spread
+        store!(flow, map_node(flow, node, arguments, index, fresh), nothing, map_nodes(flow, nodes, arguments, index, fresh))
+    end
+    for (binding, nodes) in summary.bound
+        bind!(flow, binding, map_nodes(flow, nodes, arguments, index, fresh))
+    end
+    assign!(flow, index, map_nodes(flow, summary.result, arguments, index, fresh))
     return nothing
 end

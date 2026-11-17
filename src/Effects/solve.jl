@@ -71,6 +71,19 @@ body!(run::Run, instance::Core.MethodInstance)::Union{Body, String} = get!(() ->
 """Builtins whose first two operands name slot: module and global name, or object and field."""
 const NAMING_BUILTINS = (Core.getfield, Core.getglobal, keys(FIELD_WRITES)..., keys(GLOBAL_WRITES)...)
 
+"""Whether `builtin` names slot with its first two operands (`NAMING_BUILTINS`)."""
+naming(builtin::Any)::Bool = any(candidate -> candidate === builtin, NAMING_BUILTINS)
+
+"""Add parameter position of each of `operands` at `positions` that is argument of instance."""
+function add_parameters!(found::Set{Int}, operands::Vector{Operand.Type}, positions::Any)::Nothing
+    for position in positions
+        position <= length(operands) || continue
+        parameter = parameter_of(operands[position])
+        isnothing(parameter) || push!(found, parameter)
+    end
+    return nothing
+end
+
 """Parameter position of `operand` when it is argument of instance; `nothing` otherwise."""
 function parameter_of(operand::Operand.Type)::Union{Nothing, Int}
     return @match operand begin
@@ -91,8 +104,8 @@ function field_parameters!(run::Run, instance::Core.MethodInstance)::Set{Int}
     for outcome in body.outcomes
         isnothing(outcome) && continue
         @match something(outcome) begin
-            Outcome.Builtin(builtin, operands) => any(candidate -> candidate === builtin, NAMING_BUILTINS) && union!(found, filter(!isnothing, parameter_of.(operands[1:min(2, end)])))
-            Outcome.Static(callee, operands) => foreach(position -> union!(found, filter(!isnothing, [parameter_of(operands[position])])), filter(<=(length(operands)), collect(field_parameters!(run, callee))))
+            Outcome.Builtin(builtin, operands) => naming(builtin) && add_parameters!(found, operands, 1:min(2, length(operands)))
+            Outcome.Static(callee, operands) => add_parameters!(found, operands, field_parameters!(run, callee))
             _ => nothing
         end
     end

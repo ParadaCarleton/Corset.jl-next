@@ -146,13 +146,14 @@ function follow(flow::Flow, origin::Origin.Type, step::Step.Type, seen::Set{Orig
         Origin.Unknown() => add!(found, origin, Doubt.code)
         Origin.Allocation(_) => nothing
     end
-    for source in (slot(flow, origin, step), get(flow.spread, origin, Targets()))
-        foreach(((target, doubt),) -> add!(found, target, doubt), source)
+    for source in (slot(flow, origin, step), get(flow.spread, origin, Targets())), (target, doubt) in source
+        add!(found, target, doubt)
     end
-    if step == Step.Element()
-        for (memory, doubt) in get(flow.backing, origin, Targets())
-            memory in seen && continue
-            foreach(((target, flag),) -> add!(found, target, most(flag, doubt)), follow(flow, memory, step, seen))
+    step == Step.Element() || return found
+    for (memory, doubt) in get(flow.backing, origin, Targets())
+        memory in seen && continue
+        for (target, flag) in follow(flow, memory, step, seen)
+            add!(found, target, most(flag, doubt))
         end
     end
     return found
@@ -186,7 +187,9 @@ function load_any(flow::Flow, objects::Targets)::Targets
         for targets in [collect(values(slots)); get(flow.spread, origin, Targets())], (target, flag) in targets
             add!(found, target, most(flag, doubt))
         end
-        append!(pending, (memory => most(flag, doubt) for (memory, flag) in get(flow.backing, origin, Targets())))
+        for (memory, flag) in get(flow.backing, origin, Targets())
+            push!(pending, memory => most(flag, doubt))
+        end
     end
     return found
 end
