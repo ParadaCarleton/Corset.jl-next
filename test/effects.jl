@@ -5,7 +5,7 @@ using Corset.Inference: infer_package, open_journal, records
 using Corset.Effects:
     Effects, Doubt, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
-    element_type, constant, start_flow, statement!, map_node, cause_span, root_of, resolve, operand_type, access!, add!
+    element_type, constant, start_flow, statement!, map_node, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst
 using Supposition: Supposition, Data, @check
 using Moshi.Data: isa_variant
 
@@ -108,7 +108,7 @@ end
     mktempdir(@__DIR__) do directory
         journaled, _ = Corset.Engine.effects_facts(PACKAGE, UNITS, true, directory)
         @test length(journaled.methods) == length(FACTS.methods)
-        @test any(record -> startswith(record.key, "effects\n"), records(directory))
+        @test any(record -> startswith(record.key, "effects\n") && !record.finished, records(directory))
     end
 end
 
@@ -217,6 +217,17 @@ function make_backed(values::Vector{Int})
 end
 @generated broken(x) = x <: Int ? error("no code") : :(x)
 calls_broken(values::Vector{Int}) = broken(values)
+pick!(first::Vector{Int}, second::Vector{Int}, flag::Bool) = ((flag ? first : second)[1] = 0; nothing)
+global held::Base.RefValue{Vector{Int}} = Ref([1])
+hold!(values::Vector{Int}) = (global held = Ref(values); nothing)
+held_write!(values::Vector{Int}) = (hold!(values); held[][1] = 0; nothing)
+nest!(cell::Base.RefValue{Base.RefValue{Vector{Int}}}, values::Vector{Int}) = (cell[] = Ref(values); nothing)
+nest_write!(cell::Base.RefValue{Base.RefValue{Vector{Int}}}, values::Vector{Int}) = (nest!(cell, values); cell[][][1] = 0; nothing)
+open_on!(f::Any, x::Any) = (f(x); nothing)
+open_wrapped!(f::Any, values::Vector{Int}) = open_on!(f, Ref(values))
+open_result(f::Any, values::Vector{Int}) = f(values)
+open_result_write!(f::Any, values::Vector{Int}) = ((open_result(f, values)::Vector{Int})[1] = 0; nothing)
+open_element!(f::Any, values::Vector{Int}) = (f(values[1]); nothing)
 
 @testset "builtin transfer" begin
     none, code, blind = Doubt.none, Doubt.code, Doubt.blind
@@ -306,6 +317,14 @@ end
     @test summary_of(calls_broken, Vector{Int}).writes == Dict()
     broken_int = summary_of(x -> broken(x), Int)
     @test isempty(broken_int.writes)
+    # Phi joins both branches; fresh objects escape through globals and caller objects.
+    @test doubts(summary_of(pick!, Vector{Int}, Vector{Int}, Bool).writes) == Dict(top(2) => none, top(3) => none)
+    @test summary_of(held_write!, Vector{Int}).writes[top(2)].doubt == none
+    @test summary_of(nest_write!, Base.RefValue{Base.RefValue{Vector{Int}}}, Vector{Int}).writes[top(3)].doubt == none
+    # Callee access below fresh wrapper reaches caller object inside; open result stays possible.
+    @test summary_of(open_wrapped!, Any, Vector{Int}).writes[(parameter(3), true)].doubt == code
+    @test summary_of(open_result_write!, Any, Vector{Int}).writes[top(3)].doubt == code
+    @test all(((place, _),) -> root_of(place) != Root.Parameter(3), keys(summary_of(open_element!, Any, Vector{Int}).writes))
     mktempdir(@__DIR__) do directory
         journal = open_journal(directory)
         try
@@ -362,9 +381,12 @@ end
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), _ -> empty_summary())
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), _ -> empty_summary())
     @test map_node(flow, Node.Fresh(4), Targets[], 7, 2) == Targets(Origin.Allocation(7) => Doubt.blind)
+    @test deep(flow, Targets(Origin.Caller(parameter(2)) => Doubt.none)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => Doubt.blind)
     @test isa_variant(resolve(code.ir, Operand.Type[Operand.Part(Core.Argument(2), 1)], run.world), Outcome.Open)
     typed = only(unit for unit in UNITS.typed if unit.site.method.name == :add)
     @test cause_span(typed, code, 0) == typed.site.span
+    possible_first = Access(parameter(2), false, Confidence.possible, typed.site.span)
+    @test worst([possible_first, Access(parameter(2), false, Confidence.definite, typed.site.span)])[1].confidence == Confidence.definite
 end
 
 """Whether `first` and `second` hold same state: same type, and same fields and elements, deep."""
