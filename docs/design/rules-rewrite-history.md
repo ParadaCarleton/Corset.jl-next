@@ -733,3 +733,12 @@ Ablation on corpus: one kind stays open; every other open call writes nothing. C
 - Group correctness: `log(sum(exp.([1000.0, 1000.0])))` gives `Inf`; `log(1 + 1e-20)` gives `0.0`, `log1p` gives `1e-20`.
 - Inference stage: operands must be `Number`. Matrix forms (`sin(π * A)`) have no stable scalar counterpart.
 - Fix tier `likely`: replacement changes rounding. Fix adds LogExpFunctions.jl dependency when needed: small, widely used package.
+
+### Resizing generic arrays
+
+- F111 `generic-resize`: `push!` and other resizing calls on argument annotated `AbstractVector`. Ranges, views, `SVector` and `Memory` cannot grow.
+- Julia has no resizable-array type, so annotation cannot state requirement. Rust rejects `push` on `&mut [T]` at compile time.
+- ArrayInterface.jl trait `can_change_size` answers question at run time; Base has no counterpart.
+- Group composability: package-internal callers often pass only `Vector`. Library preset warns; outside callers hit `MethodError` deep inside method.
+- F15 is mirror rule: it widens `::Vector`. Resized argument keeps `Vector`, so fixes of F15 and F111 never loop.
+- Fix `manual`: caller-allocated output written by index works for every mutable array and avoids growth cost.
