@@ -21,7 +21,8 @@ end
 
 """
 State of one effects run: world of dispatch and native inference, crash journal, referent cache; per instance its body
-or blind spot cause, and parameters it uses as field names; per variant its code and summary.
+or blind spot cause, caller that first reached it, and parameters it uses as field names; per variant its code and
+summary.
 """
 struct Run
     world::UInt
@@ -29,6 +30,7 @@ struct Run
     journal::Union{Nothing, Journal}
     referent::IdDict{Any, Bool}
     bodies::IdDict{Core.MethodInstance, Union{Body, String}}
+    callers::IdDict{Core.MethodInstance, Core.MethodInstance}
     fields::IdDict{Core.MethodInstance, Set{Int}}
     codes::Dict{Variant, Code}
     summaries::Dict{Variant, Summary}
@@ -37,25 +39,83 @@ end
 """Run in current world with crash `journal`, before any code."""
 function start_run(journal::Union{Nothing, Journal})::Run
     world = Base.get_world_counter()
-    bodies, fields = IdDict{Core.MethodInstance, Union{Body, String}}(), IdDict{Core.MethodInstance, Set{Int}}()
-    return Run(world, CC.NativeInterpreter(world), journal, IdDict{Any, Bool}(), bodies, fields, Dict{Variant, Code}(), Dict{Variant, Summary}())
+    bodies, callers = IdDict{Core.MethodInstance, Union{Body, String}}(), IdDict{Core.MethodInstance, Core.MethodInstance}()
+    fields = IdDict{Core.MethodInstance, Set{Int}}()
+    return Run(world, CC.NativeInterpreter(world), journal, IdDict{Any, Bool}(), bodies, callers, fields, Dict{Variant, Code}(), Dict{Variant, Summary}())
 end
 
-"""Body of inference `frame` in `run`."""
+"""Instances from `instance` back to root, each followed by caller that first reached it."""
+function call_chain(run::Run, instance::Core.MethodInstance)::Vector{Core.MethodInstance}
+    chain = [instance]
+    while haskey(run.callers, chain[end])
+        push!(chain, run.callers[chain[end]])
+    end
+    return chain
+end
+
+"""
+Callee `callee` of call in first of `chain`, limited like native inference (`abstract_call_method`): method that
+recurs on `chain` with other signature cannot grow past `limit_type_size`. Call that `joins` methods limits hard.
+"""
+function limit_callee(run::Run, chain::Vector{Core.MethodInstance}, callee::Core.MethodInstance, joins::Bool)::Core.MethodInstance
+    method, signature, caller, topmost = callee.def::Method, callee.specTypes, first(chain), 0
+    for (position, link) in enumerate(chain)
+        link.def === method || continue
+        # Same signature: call cycle, solve settles it.
+        link.specTypes == signature && return callee
+        topmost == 0 || continue
+        # Soft limit needs repeated edge: link reached from method of caller.
+        repeated = position < length(chain) && chain[position + 1].def === caller.def
+        (joins || repeated) && (topmost = position)
+    end
+    topmost == 0 && return callee
+    self = method === caller.def
+    width = max(length((Base.unwrap_unionall(method.sig)::DataType).parameters) + 1, self ? length((Base.unwrap_unionall(caller.specTypes)::DataType).parameters) : 0)
+    comparison = self ? caller.specTypes : joins ? method.sig : chain[topmost].specTypes
+    limited = CC.limit_type_size(signature, comparison, joins ? comparison : caller.specTypes, CC.InferenceParams(run.interpreter).tuple_complexity_limit_depth, width)
+    limited === signature && return callee
+    environment = (ccall(:jl_type_intersection_with_env, Any, (Any, Any), limited, method.sig)::Core.SimpleVector)[2]
+    return CC.specialize_method(method, limited, environment::Core.SimpleVector)
+end
+
+"""Callees `instances` of call in first of `chain`, limited (`limit_callee`); records first caller of each new callee."""
+function limit_callees!(run::Run, chain::Vector{Core.MethodInstance}, instances::Vector{Core.MethodInstance})::Vector{Core.MethodInstance}
+    limited = Core.MethodInstance[limit_callee(run, chain, instance, length(instances) > 1) for instance in instances]
+    for callee in limited
+        callee === first(chain) || haskey(run.bodies, callee) || haskey(run.callers, callee) || (run.callers[callee] = first(chain))
+    end
+    return limited
+end
+
+"""Outcome `outcome` of statement in first of `chain`, with callees of dispatch limited (`limit_callees!`)."""
+function limited_outcome(run::Run, chain::Vector{Core.MethodInstance}, outcome::Union{Nothing, Outcome.Type})::Union{Nothing, Outcome.Type}
+    isnothing(outcome) && return nothing
+    return @match something(outcome) begin
+        Outcome.Dispatch(instances, operands) => Outcome.Dispatch(limit_callees!(run, chain, instances), operands)
+        _ => outcome
+    end
+end
+
+"""Body of inference `frame` in `run`; callees that grow along call chain are limited."""
 function frame_body(run::Run, frame::CC.InferenceState)::Body
     ir, lines = frame_ir(frame, run.interpreter)
-    return Body(ir, lines, [statement_outcome(ir, ir.stmts[index][:stmt], run.world) for index in 1:length(ir.stmts)])
+    chain = call_chain(run, frame.linfo)
+    return Body(ir, lines, [limited_outcome(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world)) for index in 1:length(ir.stmts)])
 end
 
-"""Crash journal key of native inference of `instance`; prefix keeps it apart from method store keys."""
-journal_key(instance::Core.MethodInstance)::String = "effects\n$(instance.specTypes)"
+"""
+Crash journal key of native inference of `instance`; prefix keeps it apart from method store keys. Non-compact `show`
+skips type alias search, which takes seconds on deep types.
+"""
+journal_key(instance::Core.MethodInstance)::String = "effects\n" * sprint(show, instance.specTypes; context = :compact => false)
 
 """
 Body of instance outside units: native inference, then passes. Blind spot cause instead when inference gives no code
 or crashed earlier run; crash journal records each inference, so relaunch skips instance that aborts process.
 """
 function library_body(run::Run, instance::Core.MethodInstance)::Union{Body, String}
-    key, journal = journal_key(instance), run.journal
+    journal = run.journal
+    key = isnothing(journal) ? "" : journal_key(instance)
     isnothing(journal) || !(key in journal.crashed) || return "inference crashed process"
     isnothing(journal) || record!(journal, Record(key, method_label(instance.def::Method), false, nothing))
     frame = CC.typeinf_frame(run.interpreter, instance, false)
