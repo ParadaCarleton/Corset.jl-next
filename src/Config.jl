@@ -61,8 +61,8 @@ end
 """Groups each kind enables, and highest fix tier it applies."""
 const PRESETS = Dict(
     Kind.library => (Set(instances(Group.T)), Tier.likely),
-    Kind.application => (Set([Group.correctness, Group.performance, Group.readability]), Tier.breaking),
-    Kind.script => (Set([Group.correctness, Group.readability]), Tier.breaking),
+    Kind.application => (Set([Group.correctness, Group.safety, Group.performance, Group.readability]), Tier.breaking),
+    Kind.script => (Set([Group.correctness, Group.safety, Group.readability]), Tier.breaking),
 )
 
 """Level `kind` preset gives `group`: correctness `deny`, other enabled groups `warn`, rest `allow`."""

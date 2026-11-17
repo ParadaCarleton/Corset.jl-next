@@ -309,6 +309,9 @@ level(settings::Settings, name::String)::Level.T = first(Config.level_of(setting
     @test level(Config.settings(nothing, Flags(), REGISTRY), "untyped-empty") == Level.allow
     @test_throws ConfigError Config.settings(nothing, Flags(; levels = ["no-such-rule" => Level.deny]), REGISTRY)
     @test Config.preset_level(Kind.application, Group.composability) == Level.allow
+    # Safety is `warn` in every kind; only correctness denies.
+    @test all(Config.preset_level(kind, Group.safety) == Level.warn for kind in instances(Kind.T))
+    @test level(library, "broad-catch") == Level.warn
     @test Config.project_root(joinpath(CONFIG, "library", "a.jl")) == joinpath(CONFIG, "library")
     @test Config.project_root("/") === nothing
     @test isempty(intersect(string.(instances(Group.T)), [string(rule.name) for rule in REGISTRY]))

@@ -1,4 +1,4 @@
-error[orphan-task]: task from `Threads.@spawn` is never waited
+warning[orphan-task]: task from `Threads.@spawn` is never waited
  --> positive.jl:4:9
   |
 4 |         Threads.@spawn run(job)
@@ -7,10 +7,10 @@ error[orphan-task]: task from `Threads.@spawn` is never waited
   = why: exception inside task is stored in task; nobody reads it, so failure stays silent
   = fix: keep task and `wait` or `fetch` it, or wrap starts in `@sync`   [manual]
   = docs: corset explain orphan-task
-  = note: deny from correctness group, library preset
+  = note: warn from safety group, library preset
   = note: opt out with `# corset: allow orphan-task -- <reason>`
 
-error[orphan-task]: task from `@async` is never waited
+warning[orphan-task]: task from `@async` is never waited
  --> positive.jl:9:1
   |
 9 | @async serve()
@@ -20,7 +20,7 @@ error[orphan-task]: task from `@async` is never waited
   = fix: keep task and `wait` or `fetch` it, or wrap starts in `@sync`   [manual]
   = docs: corset explain orphan-task
 
-error[orphan-task]: task from `@async` is never waited
+warning[orphan-task]: task from `@async` is never waited
   --> positive.jl:12:5
    |
 12 |     @async log_forever()

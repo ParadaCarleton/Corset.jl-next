@@ -1,4 +1,4 @@
-error[untested-extension]: test dependencies lack `Absent`, trigger of extension `BareExt`
+warning[untested-extension]: test dependencies lack `Absent`, trigger of extension `BareExt`
  --> ext/BareExt.jl:1:1
   |
 1 | # runic: off
@@ -7,6 +7,6 @@ error[untested-extension]: test dependencies lack `Absent`, trigger of extension
   = why: extension loads only after every trigger loads, so tests skip its code
   = fix: add test/Project.toml with `Absent` in `[deps]`   [manual]
   = docs: corset explain untested-extension
-  = note: deny from correctness group, library preset
+  = note: warn from safety group, library preset
   = note: opt out with `# corset: allow untested-extension -- <reason>`
 
