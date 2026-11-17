@@ -724,3 +724,5 @@ Ablation on corpus: one kind stays open; every other open call writes nothing. C
 - F109: direct `iterate` on known `Stateful` gets `popfirst!` suggestion, so `!` names write.
 - `for` lowered to `popfirst!` would break Julia: collections define `popfirst!` as remove, most iterators lack it, `Stateful` fallback reads ahead.
 - Non-breaking variant is Rust-style cursor protocol with fallback cursor; Julia 2.0 scope (JuliaLang/julia#43388 asks for statefulness trait).
+- F51 is definite and on by default: method that accepts stateful iterator and restarts it has bug in its own code.
+- Escape counts: started iterator returned or stored hands on partly consumed iterator; stateless and stateful callers see different elements.

@@ -103,6 +103,7 @@ Resolution of each call statement, first match wins:
 7. Else open: `possible` write on operands; result may point into operands, one direction, and to `unknown`.
 
 - Steps 5 and 6 assume methods loaded now. Write they find keeps certainty. "Writes nothing" from them is at most `possible`.
+- Contract: `first` and generic `isempty` start iteration of argument (`isempty` docstring warns). Type with own `isempty` or `isdone` method uses its summary.
 - Contract entry holds only behavior Base documents. Base type that writes where others read (`iterate` on `Iterators.Stateful`) gives `possible` write when operand type admits it.
 - Open call (step 7) whose open operands point to opaque and opt-out origins only: no finding. Opaque origin counts on coverage line: `open dispatch on opaque data`.
 - Other open call: doubt in code, `possible` finding.
@@ -159,8 +160,9 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 #### Facts
 
 - Per package method: writes and reads by place with certainty and cause span; blind writes and reads with blind spot; result aliases.
+- Iteration starts by place: `iterate` without state, directly or through callee. Summary joins and widens them like reads.
 - Fact of incomplete method has `complete` false: it gets no definite none.
-- Per unit, for `lifecycle` and statement rules (F48, F50, F51): allocation sites, read and write events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.
+- Per unit, for `lifecycle` and statement rules (F48, F50, F51): allocation sites, read, write and iteration-start events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.
 - Element event carries index operand: constant or SSA value. `lifecycle` decides which elements writes cover (F33, F34).
 - Per call statement: callee, effect kinds, may throw, result used or discarded (F54, F86).
 - `unused-call` needs no effect of any kind, no throw and termination: discarded `parse(Int, text)` validates input.

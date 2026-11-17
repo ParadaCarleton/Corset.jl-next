@@ -8,7 +8,7 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 |---|---|---|---|---|
 | 1 | Engine core | Units, IR, origins, points-to, builtins, static calls, solve, soundness property | — | #232 |
 | 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | next |
-| 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, throw paths, call facts | 2 | — |
+| 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts | 2 | — |
 | 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | — |
 | 5 | Corpus go/no-go | Gate below; no rule PR before it passes | 4 | — |
 | 6 | `bang-convention` | F53, F86 | 5 | — |
@@ -136,7 +136,15 @@ Rules read per-unit statement events and must-alias pairs.
 
 - `iteration-mutation` (F48): container written inside loop that iterates it.
 - `self-alias` (F50): same container passed twice to writing call.
-- `stateful-reuse` (F51): restart of iterator whose `iterate` summary does not prove it stateless. Unknown type gives `possible`.
+- `stateful-reuse` (F51): method restarts iterator whose type admits stateful iterator, or lets it escape after start.
+  - Start: `iterate` without state, directly, through contract (`first`, generic `isempty`) or through callee summary.
+  - Restart: second start of same object on one path. Loop re-entry counts; `zip(itr, itr)` counts.
+  - Escape after start, or start after escape: return, store into object or global, operand of open call.
+  - Parameter started once without escape: no finding. Summary records start, so caller sees its own restart.
+  - Multi-pass types: `AbstractArray`, `AbstractDict`, `AbstractSet`, `AbstractString`, `Tuple`, `NamedTuple`, `Number`, `AbstractChar`.
+  - Other abstract type admits stateful iterator. Concrete type is stateful when its `iterate` summary writes iterator or below it.
+  - Definite when starts and escape are in method code and objects must-alias; on in default preset. Open call or may-alias gives `possible`.
+  - Fix `manual`: `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type.
 - `stateful-iterate` (F109): `iterate` on `Iterators.Stateful`; suggest `popfirst!`. Reads inference facts only.
 
 ### 9 Lifecycle facts

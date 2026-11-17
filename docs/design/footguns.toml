@@ -527,11 +527,11 @@ stage = "effects"
 [[footgun]]
 id = 51
 area = "containers"
-text = "Iterator that may be stateful restarted"
-example = "`first(itr)` then `for x in itr`"
+text = "Iterator whose type admits stateful iterator restarted or escapes after start"
+example = "`isempty(itr)` then `for x in itr`"
 group = "correctness"
 stage = "effects"
-note = "Stateful unless summary of its `iterate` proves no write to it; unknown type gives `possible`. Restart: `first`, `isempty` or `iterate` without state, then second pass. Single pass is safe. Fix `manual`: `Iterators.peel`, or `Iterators.Stateful` with `popfirst!`."
+note = "Restart: second iteration start of same object on one path. Escape: started object returned, stored or passed to open call. Single pass is safe. Fix `manual`: `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type."
 
 [[footgun]]
 id = 52
