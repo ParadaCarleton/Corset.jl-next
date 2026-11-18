@@ -155,9 +155,9 @@ const Callback = @NamedTuple{variant::Variant, parameters::Vector{Nodes}}
 """
 Effect summary of method instance: writes and reads by place and whether they cover places below; stores between
 objects caller can see and fresh objects (`edges` by slot, `backing` for memory, `spread` for unknown slot, `bound`
-for global binding); callback records whose accesses caller applies; result nodes; count of fresh nodes; and
-`closed_world`: summary joins methods loaded now, so its "writes nothing" is at most `possible`. Places need
-parameters and globals only.
+for global binding); callback records whose accesses caller applies; result nodes; count of fresh nodes;
+`closed_world`: summary joins methods loaded now, so its "writes nothing" is at most `possible`; and `cut`: path
+stand-ins cut reaches it, so its "writes nothing" holds for stand-ins only. Places need parameters and globals only.
 """
 struct Summary
     writes::Accesses
@@ -170,10 +170,11 @@ struct Summary
     result::Nodes
     fresh::Int
     closed_world::Bool
+    cut::Bool
 end
 
 """Summary of instance that writes, reads and returns nothing: start of fixpoint inside call cycle."""
-empty_summary()::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, false)
+empty_summary()::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, false, false)
 
 """Whether summaries `first` and `second` hold same effects, stores, result and causes."""
 same(first::Summary, second::Summary)::Bool = all(name -> getfield(first, name) == getfield(second, name), fieldnames(Summary))
@@ -198,7 +199,7 @@ function widen(old::Summary, new::Summary)::Summary
     writes, reads = widen_accesses(old.writes, new.writes), widen_accesses(old.reads, new.reads)
     edges, backing, spread = union_stores(old.edges, new.edges), union_stores(old.backing, new.backing), union_stores(old.spread, new.spread)
     bound, callbacks, result = union_stores(old.bound, new.bound), union(old.callbacks, new.callbacks), union_nodes(old.result, new.result)
-    return Summary(writes, reads, edges, backing, spread, bound, callbacks, result, max(old.fresh, new.fresh), old.closed_world || new.closed_world)
+    return Summary(writes, reads, edges, backing, spread, bound, callbacks, result, max(old.fresh, new.fresh), old.closed_world || new.closed_world, old.cut || new.cut)
 end
 
 """
@@ -210,5 +211,5 @@ function open_summary(count::Int, cause::String)::Summary
     effects = Accesses((place, true) => Effect(BLIND_DOUBT, 0, cause) for place in places)
     result = Nodes(Node.Placed(place) => BLIND_DOUBT for place in places)
     result[Node.Outside()] = BLIND_DOUBT
-    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), result, 0, false)
+    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), result, 0, false, false)
 end

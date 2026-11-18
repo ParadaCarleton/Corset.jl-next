@@ -88,26 +88,42 @@ end
 """Blind accesses of all units, each once, by place."""
 blind_order(accesses::Vector{BlindAccess})::Vector{BlindAccess} = sort!(unique!(accesses); by = access -> place_key(access.place, access.below))
 
+"""Blind spot cause of method whose verdict writes nothing on path stand-ins cut (`effects.md`, Stand-in cuts)."""
+const CUT = "stand-in cuts path"
+
+"""Span of cut that reaches root unit `typed`: first own cut statement, else first call whose callee summary carries cut."""
+function cut_span(run::Run, typed::TypedCode, root::Variant)::Span
+    isempty(typed.cuts) || return typed.spans[first(typed.cuts)]
+    code = run.codes[root]
+    index = findfirst(callees -> any(callee -> run.summaries[callee].cut, callees), code.callees)
+    # Record that root resolves can carry cut that no direct callee shows.
+    return isnothing(index) ? typed.site.span : cause_span(typed, code, index)
+end
+
 """Accesses of all units of one method: writes, reads, blind writes, blind reads, result aliases."""
 const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{BlindAccess}, Vector{BlindAccess}, Vector{Place.Type}}
 
 """
 `effects` stage facts of `package` from inference `units`, and blind spots: summary per package method over its units
-(`effects.md`, Units and Facts). Crash `journal` records native inference of instances outside units.
+(`effects.md`, Units and Facts). Method that stand-ins cut is incomplete; verdict none with cut gives blind spot `CUT`.
+Crash `journal` records native inference of instances outside units.
 """
 function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Journal})::Tuple{EffectsFacts, Vector{BlindSpot}}
     run = start_run(journal, package.modules)
     typed_of = IdDict{Core.MethodInstance, TypedCode}()
     for typed in units.typed
-        instance = typed.frame.linfo
-        haskey(typed_of, instance) && continue
-        typed_of[instance] = typed
-        run.bodies[instance] = instance_body(run, typed.frame)
+        haskey(typed_of, typed.frame.linfo) && continue
+        typed_of[typed.frame.linfo] = typed
+        run.cuts[typed.frame.linfo] = !isempty(typed.cuts)
     end
     roots = Variant[(typed.frame.linfo, Pair{Int, Any}[]) for typed in units.typed if typed_of[typed.frame.linfo] === typed]
+    # Every unit cut is known before first shortcut check walks callees; unit order keeps first callers fixed.
+    for (instance, _) in roots
+        run.bodies[instance] = instance_body(run, typed_of[instance].frame, run.cuts[instance])
+    end
     solve!(run, roots)
     spots = BlindSpot[]
-    found, closed = IdDict{Method, Collected}(), IdDict{Method, Bool}()
+    found, closed, cuts = IdDict{Method, Collected}(), IdDict{Method, Bool}(), IdDict{Method, Span}()
     for root in roots
         typed = typed_of[first(root)]
         # Unit that always throws on stand-ins shows no behavior of declared signature.
@@ -124,14 +140,18 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
         append!(blind_reads, unit_blind_reads)
         append!(aliases, result_aliases(summary))
         closed[typed.site.method] = get(closed, typed.site.method, false) || summary.closed_world
+        summary.cut && !haskey(cuts, typed.site.method) && (cuts[typed.site.method] = cut_span(run, typed, root))
     end
     methods = MethodEffects[]
     for site in package.methods
         haskey(found, site.method) || continue
         writes, reads, blind_writes, blind_reads, aliases = found[site.method]
-        effects = MethodEffects(site, worst(writes), worst(reads), blind_order(blind_writes), blind_order(blind_reads), sort!(unique!(aliases); by = repr), !(site.method in units.incomplete), closed[site.method])
+        complete = !(site.method in units.incomplete) && !haskey(cuts, site.method)
+        effects = MethodEffects(site, worst(writes), worst(reads), blind_order(blind_writes), blind_order(blind_reads), sort!(unique!(aliases); by = repr), complete, closed[site.method])
         push!(methods, effects)
         append!(spots, (access.spot for access in [effects.blind_writes; effects.blind_reads]))
+        # Write keeps its certainty with cut; only verdict none goes to coverage line.
+        haskey(cuts, site.method) && isempty(effects.writes) && isempty(effects.blind_writes) && push!(spots, BlindSpot(CUT, cuts[site.method]))
     end
     return EffectsFacts(methods), unique!(spots)
 end

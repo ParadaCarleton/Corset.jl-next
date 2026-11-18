@@ -11,8 +11,8 @@ const Deferred = Tuple{Variant, Vector{Targets}}
 Points-to state of one instance during its fixpoint (`effects.md`, Origins and points-to): targets per IR value and
 argument; flow-insensitive heap by origin and slot, memory backing, unknown-slot stores and global bindings; result
 targets; accesses by origin and whether they cover places below; callback records by call statement. `changed` records
-growth of targets in current round; `closed_world` records join over methods loaded now (`Summary`). `flush` resolves
-every callback record here: root unit has no caller to resolve them.
+growth of targets in current round; `closed_world` records join over methods loaded now, and `cut` path stand-ins cut
+(`Summary`). `flush` resolves every callback record here: root unit has no caller to resolve them.
 """
 mutable struct Flow
     const ir::CC.IRCode
@@ -31,20 +31,21 @@ mutable struct Flow
     const flush::Bool
     changed::Bool
     closed_world::Bool
+    cut::Bool
 end
 
 """
 Flow of `ir` with call `outcomes` before first round: each referent argument points to its parameter. `flush` resolves
-callback records in this instance (`Flow`).
+callback records in this instance; `cut` marks instance whose own code stand-ins cut (`Flow`).
 """
-function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, referent::IdDict{Any, Bool}, flush::Bool)::Flow
+function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool)::Flow
     arguments = [
         referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), Step.Type[])) => NO_DOUBT) : Targets()
             for (position, type) in enumerate(ir.argtypes)
     ]
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     callbacks = Dict{Int, Vector{Deferred}}()
-    return Flow(ir, outcomes, [Targets() for _ in 1:length(ir.stmts)], arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, false, false)
+    return Flow(ir, outcomes, [Targets() for _ in 1:length(ir.stmts)], arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, false, false, cut)
 end
 
 """
