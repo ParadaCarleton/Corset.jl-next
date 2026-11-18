@@ -845,6 +845,23 @@ PR 3a (compiler-effects shortcut, #240) on corpus, winwsl, cold library inferenc
 - Coverage instrumentation (`--code-coverage=user`) gives every fixture statement an effect. Shortcut tests use Base instances.
 - Mutation check: 16 mutants over shortcut conditions, claims, reach and compaction keep; all killed.
 
+PR 3b (stand-in cuts, #241) on corpus, winwsl, main and PR 3b back to back:
+
+| Arm | Distances | DataStructures | JSON |
+|---|---|---|---|
+| Incomplete methods, main to PR 3b | 32 to 37 | 113 to 130 | 39 to 47 |
+| Cut units / units | 144 / 509 | 28 / 1593 | 22 / 385 |
+| Library cut instances | 0 | 0 | 0 |
+| `stand-in cuts path` spots | 3 | 3 | 0 |
+| Warm solve allocation MB, main to PR 3b | 330 to 367 | 1162 to 1200 | 111765 to 112647 |
+
+- First cut kept shortcut on callers: compiler proves caller of cut unit empty. Compaction also deleted effect-free calls to cut units. Both now treat cut instance like claim.
+- Caught failure leaves instance `nothrow`, so method with `try` still gets library cut check.
+- Codex review found three hidden writes: package call that dispatches to other method on stand-in, type branch outside Base, generated code whose statements differ per signature.
+- Distances cuts are mostly dead loop bodies. Untyped `AbstractVector` stand-in is `ArrayStandIn{Any, 1}`; `oneunit(eltype(a))` fails on `Any`, so `colwise!` loop body `r[rj] = metric(...)` is dead.
+- Return conversions cause no cuts: 0, 7 and 0 units whose cuts are only `convert` or `typeassert`.
+- `possible` share and blind writes do not change: cut methods carry other writes, so spot condition (no write) holds rarely.
+
 ### Stateful iterators
 
 - Trigger "every `iterate` on iterator not proven stateless" rejected: single pass is safe for both kinds, so it flags nearly all generic code.

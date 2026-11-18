@@ -39,7 +39,7 @@ Engine code lives in `src/Effects/`.
 - Effects reads units of `inference` stage: method and stand-in signature, plus signatures package calls reach. Effects adds no roots.
 - Method gets verdict from its units only. Unannotated method no call reaches has none; `inference` stage counts it.
 - Verdict of method: worst over its units.
-- Incomplete method gets no definite none: signatures over limit, crash, inference without code, or type test (`inference` stage `incomplete`). Coverage reason names cause.
+- Incomplete method gets no definite none: signatures over limit, crash, inference without code, or type test (`inference` stage `incomplete`), or stand-in cut. Coverage reason names cause.
 - Unit that always throws on its signature gives no verdict. Coverage reason: `always throws on stand-ins`.
 
 #### IR
@@ -145,20 +145,27 @@ Resolution of each call statement, first match wins:
 - `effect_free` proves one direction. True: instance writes nothing caller sees, so its own verdict is none.
 - False proves no write: dynamic call or IO also clears it. Own analysis decides then, per argument and global.
 - Callee summary needs more than `effect_free`: result aliases. `view` writes nothing, but caller writes `A` through `view(A, 1:2)`.
-- `@assume_effects` makes compiler trust claim. Shortcut holds only when no instance it reaches carries claim outside Base.
+- `@assume_effects` makes compiler trust claim. Shortcut holds only when no instance it reaches carries claim outside Base or stand-in cut.
 - Claim: `@assume_effects` on method or on block in it. Generated method and method without source count as claim.
 - Native inference edges tell reach. Callee without cached code counts as claim. Corset, Moshi and Compiler carry claims, so each run checks reach of claims.
-- Compaction deletes unused call when compiler effects allow. Call that reaches claim stays, and so does statement under block claim of claiming method.
+- Compaction deletes unused call when compiler effects allow. Call that reaches claim or cut stays, and so does statement under block claim of claiming method.
 - Own analysis runs on every method with claim outside Base. `false-effects` compares claims of package methods.
 
 #### Stand-in cuts
 
 - Cut: call or store statement live at declared signature and dead at stand-in signature. Engine never sees it, so unit summary carries `cut`.
-- Causes: call that fails on stand-in only; type test that stand-in decides (`x isa BigFloat && (STATE[] += 1)`).
+- Causes: call that fails on stand-in only, whose callee engine never sees; type test that stand-in decides (`x isa BigFloat && (STATE[] += 1)`).
 - `inference` stage finds cuts: units with dead call or store statements first, then declared-signature inference of those units only.
-- Package units count both causes. Library instances count failing calls only: Base type branches keep same effects (`findings.md`, Confidence and blind spots).
-- Callers inherit `cut`. Verdict none with `cut` goes to coverage line: `stand-in cuts path`.
+- Failure check of units gives failing calls: model-type inference decides them. Throw helpers fail on every signature, so they are never cut.
+- Package call that fails on stand-in only gets no failure-check spot, but stays cut: stand-in can dispatch to other method.
+- Package units and library instances count both causes, with model-type check for library instances.
+- Base, Core and stand-in methods count failing calls only: Base keeps documented contracts, so its type branches keep same effects (`findings.md`, Confidence and blind spots).
+- Generated code differs per signature. Its statements match no statement of other signature, so generated method clears no cut.
+- Callers inherit `cut`. Method with `cut` is incomplete. Verdict none with `cut` goes to coverage line: `stand-in cuts path`.
+- Blind spot points at first cut statement, else at first call whose callee carries `cut`.
 - Definite and `possible` writes keep certainty with `cut`.
+- Compiler effects of stand-in instance skip code past cut. Shortcut and compaction treat instance with cut like claim (Compiler effects).
+- Library cut check runs only on instance that holds stand-in: method outside Base, or call that can fail (not `nothrow`, or method with `try`). Caught failure keeps `nothrow`.
 
 #### Effect kinds
 

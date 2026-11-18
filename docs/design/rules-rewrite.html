@@ -760,7 +760,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Effects reads units of <code>inference</code> stage: method and stand-in signature, plus signatures package calls reach. Effects adds no roots.</li>
 <li>Method gets verdict from its units only. Unannotated method no call reaches has none; <code>inference</code> stage counts it.</li>
 <li>Verdict of method: worst over its units.</li>
-<li>Incomplete method gets no definite none: signatures over limit, crash, inference without code, or type test (<code>inference</code> stage <code>incomplete</code>). Coverage reason names cause.</li>
+<li>Incomplete method gets no definite none: signatures over limit, crash, inference without code, or type test (<code>inference</code> stage <code>incomplete</code>), or stand-in cut. Coverage reason names cause.</li>
 <li>Unit that always throws on its signature gives no verdict. Coverage reason: <code>always throws on stand-ins</code>.</li>
 </ul>
 <h4>IR</h4>
@@ -867,20 +867,27 @@ Summary per variant: instance plus constant arguments callee uses as field name.
 <li><code>effect_free</code> proves one direction. True: instance writes nothing caller sees, so its own verdict is none.</li>
 <li>False proves no write: dynamic call or IO also clears it. Own analysis decides then, per argument and global.</li>
 <li>Callee summary needs more than <code>effect_free</code>: result aliases. <code>view</code> writes nothing, but caller writes <code>A</code> through <code>view(A, 1:2)</code>.</li>
-<li><code>@assume_effects</code> makes compiler trust claim. Shortcut holds only when no instance it reaches carries claim outside Base.</li>
+<li><code>@assume_effects</code> makes compiler trust claim. Shortcut holds only when no instance it reaches carries claim outside Base or stand-in cut.</li>
 <li>Claim: <code>@assume_effects</code> on method or on block in it. Generated method and method without source count as claim.</li>
 <li>Native inference edges tell reach. Callee without cached code counts as claim. Corset, Moshi and Compiler carry claims, so each run checks reach of claims.</li>
-<li>Compaction deletes unused call when compiler effects allow. Call that reaches claim stays, and so does statement under block claim of claiming method.</li>
+<li>Compaction deletes unused call when compiler effects allow. Call that reaches claim or cut stays, and so does statement under block claim of claiming method.</li>
 <li>Own analysis runs on every method with claim outside Base. <code>false-effects</code> compares claims of package methods.</li>
 </ul>
 <h4>Stand-in cuts</h4>
 <ul>
 <li>Cut: call or store statement live at declared signature and dead at stand-in signature. Engine never sees it, so unit summary carries <code>cut</code>.</li>
-<li>Causes: call that fails on stand-in only; type test that stand-in decides (<code>x isa BigFloat &amp;&amp; (STATE[] += 1)</code>).</li>
+<li>Causes: call that fails on stand-in only, whose callee engine never sees; type test that stand-in decides (<code>x isa BigFloat &amp;&amp; (STATE[] += 1)</code>).</li>
 <li><code>inference</code> stage finds cuts: units with dead call or store statements first, then declared-signature inference of those units only.</li>
-<li>Package units count both causes. Library instances count failing calls only: Base type branches keep same effects (<code>findings.md</code>, Confidence and blind spots).</li>
-<li>Callers inherit <code>cut</code>. Verdict none with <code>cut</code> goes to coverage line: <code>stand-in cuts path</code>.</li>
+<li>Failure check of units gives failing calls: model-type inference decides them. Throw helpers fail on every signature, so they are never cut.</li>
+<li>Package call that fails on stand-in only gets no failure-check spot, but stays cut: stand-in can dispatch to other method.</li>
+<li>Package units and library instances count both causes, with model-type check for library instances.</li>
+<li>Base, Core and stand-in methods count failing calls only: Base keeps documented contracts, so its type branches keep same effects (<code>findings.md</code>, Confidence and blind spots).</li>
+<li>Generated code differs per signature. Its statements match no statement of other signature, so generated method clears no cut.</li>
+<li>Callers inherit <code>cut</code>. Method with <code>cut</code> is incomplete. Verdict none with <code>cut</code> goes to coverage line: <code>stand-in cuts path</code>.</li>
+<li>Blind spot points at first cut statement, else at first call whose callee carries <code>cut</code>.</li>
 <li>Definite and <code>possible</code> writes keep certainty with <code>cut</code>.</li>
+<li>Compiler effects of stand-in instance skip code past cut. Shortcut and compaction treat instance with cut like claim (Compiler effects).</li>
+<li>Library cut check runs only on instance that holds stand-in: method outside Base, or call that can fail (not <code>nothrow</code>, or method with <code>try</code>). Caught failure keeps <code>nothrow</code>.</li>
 </ul>
 <h4>Effect kinds</h4>
 <p>Summary keeps every effect with its kind. Rules apply exemptions; engine filters nothing.</p>
@@ -1358,7 +1365,7 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <td>Engine limits</td>
 <td>Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts</td>
 <td>2</td>
-<td>3a #240</td>
+<td>3a #240, 3b #241</td>
 </tr>
 <tr>
 <td>4</td>
