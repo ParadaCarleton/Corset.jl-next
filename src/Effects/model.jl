@@ -141,10 +141,23 @@ const Edges = Dict{Tuple{Node.Type, Step.Type}, Nodes}
 const Holds = Dict{Node.Type, Nodes}
 
 """
+Instance with constant arguments its callee uses as field name, by position (`effects.md`, Calls): `getproperty(x,
+:a)` summary loads field `a`. Pre-inlining IR keeps such wrapper calls, so summary without constant loses field.
+"""
+const Variant = Tuple{Core.MethodInstance, Vector{Pair{Int, Any}}}
+
+"""
+Callback record (`effects.md`, Calls, step 4): static call of callable that holds caller object. Caller applies accesses
+of `variant` where callable is fresh. `parameters` holds nodes of each callee parameter, callable first.
+"""
+const Callback = @NamedTuple{variant::Variant, parameters::Vector{Nodes}}
+
+"""
 Effect summary of method instance: writes and reads by place and whether they cover places below; stores between
 objects caller can see and fresh objects (`edges` by slot, `backing` for memory, `spread` for unknown slot, `bound`
-for global binding); result nodes; count of fresh nodes; and `closed_world`: summary joins methods loaded now, so its
-"writes nothing" is at most `possible`. Places need parameters and globals only.
+for global binding); callback records whose accesses caller applies; result nodes; count of fresh nodes; and
+`closed_world`: summary joins methods loaded now, so its "writes nothing" is at most `possible`. Places need
+parameters and globals only.
 """
 struct Summary
     writes::Accesses
@@ -153,13 +166,14 @@ struct Summary
     backing::Holds
     spread::Holds
     bound::Dict{GlobalRef, Nodes}
+    callbacks::Set{Callback}
     result::Nodes
     fresh::Int
     closed_world::Bool
 end
 
 """Summary of instance that writes, reads and returns nothing: start of fixpoint inside call cycle."""
-empty_summary()::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Nodes(), 0, false)
+empty_summary()::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, false)
 
 """Whether summaries `first` and `second` hold same effects, stores, result and causes."""
 same(first::Summary, second::Summary)::Bool = all(name -> getfield(first, name) == getfield(second, name), fieldnames(Summary))
@@ -183,8 +197,8 @@ call cycle can loop; widened summaries only grow through finite values, so cycle
 function widen(old::Summary, new::Summary)::Summary
     writes, reads = widen_accesses(old.writes, new.writes), widen_accesses(old.reads, new.reads)
     edges, backing, spread = union_stores(old.edges, new.edges), union_stores(old.backing, new.backing), union_stores(old.spread, new.spread)
-    bound, result = union_stores(old.bound, new.bound), union_nodes(old.result, new.result)
-    return Summary(writes, reads, edges, backing, spread, bound, result, max(old.fresh, new.fresh), old.closed_world || new.closed_world)
+    bound, callbacks, result = union_stores(old.bound, new.bound), union(old.callbacks, new.callbacks), union_nodes(old.result, new.result)
+    return Summary(writes, reads, edges, backing, spread, bound, callbacks, result, max(old.fresh, new.fresh), old.closed_world || new.closed_world)
 end
 
 """
@@ -196,5 +210,5 @@ function open_summary(count::Int, cause::String)::Summary
     effects = Accesses((place, true) => Effect(BLIND_DOUBT, 0, cause) for place in places)
     result = Nodes(Node.Placed(place) => BLIND_DOUBT for place in places)
     result[Node.Outside()] = BLIND_DOUBT
-    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), result, 0, false)
+    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), result, 0, false)
 end

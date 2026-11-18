@@ -112,7 +112,7 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
         typed = typed_of[first(root)]
         # Unit that always throws on stand-ins shows no behavior of declared signature.
         typed.result === Union{} && (push!(spots, BlindSpot("always throws on stand-ins", typed.site.span)); continue)
-        summary, code = run.summaries[root], run.codes[root]
+        summary, code = root_summary(run, root), run.codes[root]
         span_of(cause::Int)::Span = cause_span(typed, code, cause)
         writes, reads, blind_writes, blind_reads, aliases = get!(() -> (Access[], Access[], BlindAccess[], BlindAccess[], Place.Type[]), found, typed.site.method)
         unit_writes, unit_blind_writes = unit_accesses(summary.writes, span_of, typed.provenance)

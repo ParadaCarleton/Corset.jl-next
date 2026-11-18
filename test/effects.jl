@@ -8,7 +8,8 @@ using Corset.Effects:
     Effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
-    components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, caller_doubt, source_provenance
+    components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, caller_doubt, source_provenance,
+    Callback, Callees, Variant, root_summary, deferred, parameter_origin
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 
@@ -144,6 +145,53 @@ named(name::Symbol)::MethodEffects = only(found for found in FACTS.methods if fo
     @test any(spot -> spot.cause == opaque, SPOTS)
 end
 
+"""Doubt of each access of summary `table`."""
+doubts(table::Dict{Tuple{Place.Type, Bool}, Effect})::Dict{Tuple{Place.Type, Bool}, Doubt} = Dict(key => effect.doubt for (key, effect) in table)
+
+"""Summary of fixture method `f` on argument `types`, solved as package code, before root resolves its callback records."""
+function raw_summary(f::Any, types::Type...)::Summary
+    run = start_run(nothing, Module[CASES])
+    root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
+    solve!(run, [root])
+    return run.summaries[root]
+end
+
+@testset "callback records" begin
+    definite, box = Confidence.definite, Step.Field(:box)
+    # Callable from caller writes where caller made it: no path through reducers, so no blind spot.
+    for name in (:fill_pair!, :push_pair!, :set_pair!, :count_down!)
+        @test shape(named(name).writes) == [(parameter(2), false, definite)] && isempty(named(name).blind_writes)
+    end
+    # Root unit keeps record for caller in its summary, then resolves it for its own verdict.
+    raw = raw_summary(CASES.call_setter!, CASES.Setter, Int)
+    @test only(raw.callbacks).parameters[1] == Nodes(Node.Placed(parameter(2)) => NO_DOUBT) && !haskey(raw.writes, (parameter(2, box), false))
+    @test shape(named(:call_setter!).writes) == [(parameter(2, box), false, definite)]
+    @test isempty(raw_summary(CASES.set_pair!, CASES.Box).callbacks)
+    # Units split `Union` stand-ins: `Relay` unit resolves record of `Relay` call, then record of `Setter` call inside it.
+    setter = Step.Field(:setter)
+    @test shape(named(:act_either!).writes) == [(parameter(2, box), false, definite), (parameter(2, setter, box), false, definite)]
+    # Join resolves records of its members: each member writes its own place, so each write is `possible`.
+    either = raw_summary(CASES.act_either!, Union{CASES.Setter, CASES.Relay}, Int)
+    @test doubts(either.writes) == Dict((parameter(2, box), false) => CODE_DOUBT, (parameter(2, setter, box), false) => CODE_DOUBT)
+    @test isempty(either.callbacks)
+    # Cycle member that resolves record of other member reads its summary, so it reruns when that summary changes.
+    @test shape(named(:restart!).writes) == [(parameter(2), false, definite), (parameter(3), false, definite)]
+    # Record of earlier round goes when callable grows to fresh object: call resolves here.
+    @test isempty(raw_summary(CASES.pick_setter!, CASES.Setter, Int).callbacks)
+    @test shape(named(:pick_setter!).writes) == [(parameter(2, box), false, definite)]
+    # Record waits for caller only when callable holds object below caller parameter, beside no fresh object.
+    held, fresh = Targets(Origin.Caller(parameter(2)) => NO_DOUBT), Targets(Origin.Allocation(1) => NO_DOUBT)
+    @test deferred([held, Targets()]) && !deferred([held, fresh]) && !deferred([fresh])
+    @test !deferred([Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => BLIND_DOUBT)])
+    @test !deferred([Targets(Origin.Caller(global_place(CASES, :COUNTER)) => NO_DOUBT)]) && !deferred([Targets(Origin.Unknown() => CODE_DOUBT)])
+    @test parameter_origin(Origin.Caller(parameter(3, box))) && !parameter_origin(Origin.Unknown())
+    # Root without records keeps summary of solve.
+    run = start_run(nothing, Module[])
+    root = (only(something(dispatch(Any[typeof(CASES.set_value!), CASES.Box, Int], run.world, 1))), Pair{Int, Any}[])
+    solve!(run, [root])
+    @test root_summary(run, root) === run.summaries[root]
+end
+
 @testset "engine stage" begin
     @test Corset.Engine.effects_facts(PACKAGE, UNITS, false, nothing) == (nothing, BlindSpot[])
     @test Corset.Engine.effects_facts(nothing, UNITS, true, nothing) == (nothing, BlindSpot[])
@@ -161,7 +209,7 @@ function summary_of(f::Any, types::Type...)::Summary
     run = start_run(nothing, Module[])
     root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
     solve!(run, [root])
-    return run.summaries[root]
+    return root_summary(run, root)
 end
 
 """Unknown-slot contents of only exported node of `summary`, which must be fresh; coverage shifts its statement index."""
@@ -170,9 +218,6 @@ function fresh_spread(summary::Summary)::Nodes
     @test isa_variant(holder, Node.Fresh)
     return nodes
 end
-
-"""Doubt of each access of summary `table`."""
-doubts(table::Dict{Tuple{Place.Type, Bool}, Effect})::Dict{Tuple{Place.Type, Bool}, Doubt} = Dict(key => effect.doubt for (key, effect) in table)
 
 """`code` doubt from open types of parameters at `positions`."""
 sourced(positions::Int...)::Doubt = Doubt(Level.code, reduce(|, map(parameter_source, positions)))
@@ -591,9 +636,9 @@ four_way(x::Symbol) = x
     code = run.codes[(instance, Pair{Int, Any}[])]
     @test constant(code.ir, GlobalRef(Base, :nothing)) == Some(nothing)
     @test operand_type(code.ir, Operand.Part(Core.Argument(2), 1)) == MemoryRef{Int}
-    flow = start_flow(code.ir, code.outcomes, run.referent)
-    @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), _ -> empty_summary())
-    @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), _ -> empty_summary())
+    flow = start_flow(code.ir, code.outcomes, run.referent, false)
+    @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
+    @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test map_node(flow, Node.Fresh(4), CallSite(Targets[], 7, 2, Dict{Place.Type, Targets}(), Dict{Int, Sources}())) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
     @test deep(flow, Targets(Origin.Caller(parameter(2)) => NO_DOUBT)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => BLIND_DOUBT)
     # Type sources: parameter of caller place, sources of chain; global and merge of fresh objects are doubt in code.
@@ -684,6 +729,11 @@ const CALLS = [
     (CASES.stamp_either!, map(tuple, CELLS)), (CASES.measure_either, map(tuple, CELLS)), (CASES.copy_into!, map(values -> (zero(values), values), VECTORS)),
     (CASES.copy_boxes!, map(boxes -> ([CASES.Box(1) for _ in boxes], boxes), Data.Vectors(BOXES; min_size = 1, max_size = 3))),
     (CASES.remember!, map(box -> (IdDict{Int, CASES.Box}(), box), BOXES)),
+    (CASES.fill_pair!, map(tuple, BOXES)), (CASES.push_pair!, map(tuple, VECTORS)), (CASES.set_pair!, map(tuple, BOXES)),
+    (CASES.call_setter!, both(map(CASES.Setter, BOXES), INTS)), (CASES.count_down!, map(tuple, BOXES)),
+    (CASES.act_either!, both(Data.OneOf(map(CASES.Setter, BOXES), map(box -> CASES.Relay(CASES.Setter(box)), BOXES)), INTS)),
+    (CASES.restart!, map(drawn -> (drawn.first, drawn.second.first, drawn.second.second), Data.Pairs(BOXES, Data.Pairs(BOXES, Data.Integers(0, 3))))),
+    (CASES.pick_setter!, both(map(CASES.Setter, BOXES), INTS)),
 ]
 
 """Whether `to` is reachable from `from` along `successors`, in zero or more steps."""
@@ -796,15 +846,20 @@ at_most(first::Doubt, second::Doubt)::Bool = level_of(first) < level_of(second) 
 const SUMMARIES = @composed function summaries(writes = ACCESSES, reads = ACCESSES, held = NODES, result = NODES, fresh = Data.Integers(0, 2), closed = Data.Booleans())
     edges = isempty(held) ? Edges() : Edges((Node.Placed(parameter(2)), Step.Element()) => held)
     bound = isempty(held) ? Dict{GlobalRef, Nodes}() : Dict(GlobalRef(Main, :slot) => held)
-    return Summary(writes, reads, edges, Holds(Node.Fresh(1) => held), Holds(), bound, result, fresh, closed)
+    return Summary(writes, reads, edges, Holds(Node.Fresh(1) => held), Holds(), bound, Set{Callback}(), result, fresh, closed)
 end
 
 @testset "call cycle widening" begin
-    old = Summary(Accesses((parameter(2), false) => Effect(NO_DOUBT, 3, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Nodes(), 1, false)
-    new = Summary(Accesses((parameter(2), false) => Effect(CODE_DOUBT, 2, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Nodes(), 0, true)
+    old = Summary(Accesses((parameter(2), false) => Effect(NO_DOUBT, 3, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 1, false)
+    new = Summary(Accesses((parameter(2), false) => Effect(CODE_DOUBT, 2, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, true)
     widened = widen(old, new)
     @test widened.writes == Accesses((parameter(2), false) => Effect(BLIND_DOUBT, 3, UNSETTLED))
     @test widened.fresh == 1 && widened.closed_world
+    # Callback records of both summaries stay.
+    instance = only(something(dispatch(Any[typeof(CASES.set_value!), CASES.Box, Int], Base.get_world_counter(), 1)))
+    record = Callback((variant = (instance, Pair{Int, Any}[]), parameters = [Nodes(Node.Placed(parameter(2)) => NO_DOUBT)]))
+    recorded = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set([record]), Nodes(), 0, false)
+    @test widen(recorded, new).callbacks == Set([record]) && widen(new, recorded).callbacks == Set([record])
     @check max_examples = 300 db = false function widen_grows(old = SUMMARIES, new = SUMMARIES)
         widened = widen(old, new)
         kept = all(issubset(keys(getfield(summary, name)), keys(getfield(widened, name))) for summary in (old, new), name in (:writes, :reads, :result))

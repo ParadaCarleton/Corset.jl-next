@@ -179,4 +179,59 @@ emit_peer!(io::IO, box::Box)::Nothing = (send!(peer(io), box); nothing)
 
 apply_to!(f::Function, box::Box)::Nothing = (f(box); nothing)
 
+# Callback records: callable that holds caller object writes where caller made it.
+struct Setter
+    box::Box
+end
+
+(setter::Setter)(value::Int)::Nothing = (setter.box.value = value; nothing)
+
+# Tuple `foreach` wraps closure in `foldl` reducers: path from reducer to box has 3 steps.
+fill_pair!(box::Box)::Nothing = foreach(value -> (box.value = value), (1, 2))
+
+push_pair!(sink::Vector{Int})::Nothing = foreach(Base.Fix1(push!, sink), (1, 2))
+
+set_pair!(box::Box)::Nothing = foreach(Setter(box), (1, 2))
+
+# Root unit with callable from caller: no caller resolves record, so root does.
+call_setter!(setter::Setter, value::Int)::Nothing = foreach(setter, (value, value))
+
+struct Countdown
+    box::Box
+end
+
+(countdown::Countdown)(count::Int)::Nothing = count <= 0 ? nothing : (countdown.box.value = count; countdown(count - 1))
+
+count_down!(box::Box)::Nothing = Countdown(box)(3)
+
+struct Relay
+    setter::Setter
+end
+
+(relay::Relay)(value::Int)::Nothing = (relay.setter(value); nothing)
+
+act_either!(action::Union{Setter, Relay}, value::Int)::Nothing = (action(value); nothing)
+
+# Call cycle: `restart!` resolves record of `Ticker` call, member of same cycle. `Ticker` call writes `second` only after
+# its summary takes write of `first` from `restart!`, which callees-first order solves after it.
+struct Ticker
+    box::Box
+end
+
+(ticker::Ticker)(count::Int)::Nothing = count <= 0 ? nothing : restart!(ticker.box, Box(0), count - 1)
+
+restart!(first::Box, second::Box, count::Int)::Nothing = (first.value = count; run_ticker(Ticker(second), count))
+
+run_ticker(ticker::Ticker, count::Int)::Nothing = ticker(count)
+
+# Callable grows in round 2: loop phi takes fresh `Setter`, so call resolves here and record of round 1 goes.
+function pick_setter!(setter::Setter, value::Int)::Nothing
+    current = setter
+    for _ in 1:2
+        current(value)
+        current = Setter(Box(0))
+    end
+    return nothing
+end
+
 end
