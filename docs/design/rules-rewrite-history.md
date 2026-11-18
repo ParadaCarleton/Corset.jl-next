@@ -788,6 +788,21 @@ PR 2c (splat dispatch, #237) on corpus, winwsl, cold library inference, no cache
 - DataStructures blind writes rose from 193 to 243: splat of tuple with unknown length collapses caller tuple to `deep`.
 - `effects` time on DataStructures and JSON rose with instances that splat dispatch reaches.
 
+PR 2d (provenance, #238) on corpus, winwsl, cold library inference, no cache; 2c and PR 2d in separate box jobs:
+
+| Arm | Distances | DataStructures | JSON |
+|---|---|---|---|
+| 2c: `possible` share, blind writes | 34.9%, 20 | 28.8%, 243 | 36.1%, 89 |
+| PR 2d: `possible` share, blind writes | 34.9%, 20 | 26.7%, 251 | 33.3%, 94 |
+| Open calls, 2c to PR 2d (`Open` + `Unresolved`) | 295 to 248 + 47 | 499 to 459 + 45 | 1257 to 1097 + 161 |
+| `open dispatch on opaque data` spots | 5 | 51 | 11 |
+| `effects` allocation MB, 2c to PR 2d | 800 to 821 | 1736 to 1762 | 94074 to 102645 |
+
+- Provenance cut DataStructures `possible` share by 2.1 points and JSON by 2.8. Definite writes stay the same.
+- First 2d commit kept `Doubt` as 16-byte struct: JSON allocation rose 80%. Solve reruns and rounds stayed the same (11376 to 11388 summaries); every engine frame grew by about a quarter.
+- Each `Targets` entry holds one `Doubt`. Packed 4-byte `Doubt` brings JSON allocation to 9% over 2c; 8-byte layout gave 34%.
+- Mutation check found caller remap untested: every fixture passed callee arguments in same positions. Tests now swap positions.
+
 ### Stateful iterators
 
 - Trigger "every `iterate` on iterator not proven stateless" rejected: single pass is safe for both kinds, so it flags nearly all generic code.
