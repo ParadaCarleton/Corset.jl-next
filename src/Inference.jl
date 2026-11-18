@@ -25,9 +25,9 @@ const CC = Core.Compiler
 
 """
 Typed code of package method on one signature: method site, signature, unoptimized typed statements, inferred result
-type, span of each statement, inference frame (`effects` stage builds IR from it), and provenance of each argument,
-callee first (`argument_provenance`). Span is exact where syntax node spells statement (`statement_nodes`); line
-precision elsewhere. Code stays inside stage and `effects`; method store keeps `Inferred` record of it.
+type, span of each statement, inference frame (`effects` stage builds IR from it), provenance of each argument, callee
+first (`argument_provenance`), and stand-in cuts (`cuts!`). Span is exact where syntax node spells statement
+(`statement_nodes`); line precision elsewhere. Code stays inside stage and `effects`; method store keeps `Inferred`.
 """
 struct TypedCode
     site::MethodSite
@@ -37,6 +37,7 @@ struct TypedCode
     spans::Vector{Span}
     frame::CC.InferenceState
     provenance::Vector{Provenance.T}
+    cuts::Vector{Int}
 end
 
 """
@@ -607,6 +608,22 @@ end
 callee_text(callee::Any, scope::Module)::String = callee isa Function ? string(nameof(callee)) : callee isa Type ? sprint(show, callee; context = :module => scope) : repr(callee)
 
 """
+Reached call statements of typed `code` that never return, with callee that inference knows (`called`): statement
+index, call and callee. `parameters` are static parameters of instance of `code`.
+"""
+function never_returning(code::Core.CodeInfo, parameters::Vector{CC.VarState})::Vector{Tuple{Int, Expr, Any}}
+    found = Tuple{Int, Expr, Any}[]
+    for (index, statement) in enumerate(code.code)
+        # Unreached statement is wrapped in `Core.Const`, so it is no call.
+        call = statement_call(statement)
+        (isnothing(call) || code.ssavaluetypes[index] !== Union{}) && continue
+        callee = called(code, call, parameters)
+        isnothing(callee) || push!(found, (index, call, callee))
+    end
+    return found
+end
+
+"""
 Call statements of `typed` that never return, by statement index: fact, or blind spot where call returns once stand-ins
 become their models. Skips unknown callees, calls of package methods in `files` and throw helpers. Adds compiler edges of
 inferences it runs to `edges`; `helpers` caches throw-helper verdicts with their edges.
@@ -614,13 +631,9 @@ inferences it runs to `edges`; `helpers` caches throw-helper verdicts with their
 function failures!(edges::Vector{Any}, helpers::IdDict{Any, Tuple{Bool, Vector{Any}}}, typed::TypedCode, files::Dict{String, SyntaxFile})::Vector{Pair{Int, Union{FailingCall, BlindSpot}}}
     found = Pair{Int, Union{FailingCall, BlindSpot}}[]
     method, code = typed.site.method, typed.code
-    for (index, statement) in enumerate(code.code)
-        # Unreached statement is wrapped in `Core.Const`, so it is no call.
-        call = statement_call(statement)
-        (isnothing(call) || code.ssavaluetypes[index] !== Union{}) && continue
-        parameters = CC.sptypes_from_meth_instance(something(instance(method, typed.signature)))
-        callee = called(code, call, parameters)
-        (isnothing(callee) || package_call(code, call, parameters, files)) && continue
+    parameters = CC.sptypes_from_meth_instance(something(instance(method, typed.signature)))
+    for (index, call, callee) in never_returning(code, parameters)
+        package_call(code, call, parameters, files) && continue
         helper, helper_edges = get!(() -> throw_helper(callee), helpers, callee)
         append!(edges, helper_edges)
         helper && continue
@@ -631,6 +644,27 @@ function failures!(edges::Vector{Any}, helpers::IdDict{Any, Tuple{Bool, Vector{A
         push!(found, index => FailingCall(typed.spans[index], name_span(typed.site), callee_text(callee, method.module), confidence))
     end
     return found
+end
+
+"""Whether typed `statement` calls function or C code, assigned or not; stores are calls (`setfield!`, `setglobal!`)."""
+effect_statement(statement::Any)::Bool = (value = Widening.assigned(statement); value isa Expr && value.head in (:call, :foreigncall, :invoke))
+
+"""Indexes of call statements typed `code` never reaches: inference wraps unreached statement in `Core.Const`."""
+dead_calls(code::Core.CodeInfo)::Vector{Int} = [index for (index, statement) in enumerate(code.code) if statement isa Core.Const && effect_statement(statement.val)]
+
+"""
+Stand-in cuts of `typed` code of `method` on `signature` (`effects.md`, Stand-in cuts): dead call statements that
+declared signature reaches, and calls that fail on stand-in only (blind spots of `failures`). Infers declared signature
+once per method (`declared`), only for code with dead calls. Declared signature without code cannot clear dead call, so
+each counts as cut.
+"""
+function cuts!(declared::IdDict{Method, Union{Nothing, Core.CodeInfo}}, method::Method, signature::Type, code::Core.CodeInfo, failures::Vector{Pair{Int, Union{FailingCall, BlindSpot}}})::Vector{Int}
+    failing, dead = Int[index for (index, failure) in failures if failure isa BlindSpot], dead_calls(code)
+    (isempty(dead) || signature == method.sig) && return failing
+    reference = get!(() -> (result = infer(method, method.sig); isnothing(result) ? nothing : result[2]), declared, method)
+    isnothing(reference) && return sort!([dead; failing])
+    length(reference.code) == length(code.code) || error("declared and stand-in code of $method differ in length")
+    return sort!([filter(index -> !(reference.code[index] isa Core.Const), dead); failing])
 end
 
 """Method instance compiler edge `edge` stands for; `nothing` for other edge (binding, method-table lookup)."""
@@ -876,7 +910,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     codes = Dict{String, String}()
     typed, seen, counts, coded = TypedCode[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
     failing, gaps, settled, disrupting, narrowing = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[], NarrowingLoss[]
-    hard, observed = HardArray[], IdDict{Method, Vector{Tuple{Type, Type}}}()
+    hard, observed, declared = HardArray[], IdDict{Method, Vector{Tuple{Type, Type}}}(), IdDict{Method, Union{Nothing, Core.CodeInfo}}()
     while !isempty(pending)
         site, call_signature, stand_in = popfirst!(pending)
         (site.method, call_signature) in seen && continue
@@ -899,12 +933,15 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
                 nodes = statement_nodes(code, mappings(code, instance, site), site.file)
                 opted = [position for position in 1:(site.method.nargs - 1) if explicit_any(site, code.slotnames[position + 1])]
                 provenance = argument_provenance(site.method, call_signature, stand_in, opted)
-                push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes), frame, provenance))
+                push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes), frame, provenance, Int[]))
+                # Failures need unit spans; cuts need failures.
+                failures = failures!(edges, helpers, last(typed), by_path)
+                append!(last(typed).cuts, cuts!(declared, site.method, call_signature, code, failures))
                 changes, branch = Widening.changes!(edges, instance, code)
                 constructions, array_branch = HardArrays.changes!(edges, instance, code)
                 lost = narrowings(last(typed), nodes, Narrowing.losses(code, flow, CC.sptypes_from_meth_instance(instance)))
                 Inferred(
-                    returned, package_calls(code, instance, modules, by_path), reached(code, instance), failures!(edges, helpers, last(typed), by_path), true,
+                    returned, package_calls(code, instance, modules, by_path), reached(code, instance), failures, true,
                     Widening.type_branch(code, CC.sptypes_from_meth_instance(instance)), disruptions(last(typed), instance, nodes, changes, branch),
                     hard_arrays(last(typed), instance, nodes, constructions, array_branch), lost,
                 )
