@@ -219,7 +219,7 @@ invoke_dead(text::String) = invoke(fill_one!, Tuple{Vector{Int}}, text)
 invoke_open(values::Vector{Int}, selector::Type) = invoke(push!, selector, values, 1)
 invoke_missing(values::Vector{Int}) = invoke(push!, Tuple{Int}, values)
 spread!(values::Vector{Int}, more::Tuple{Int, Int}) = push!(values, more...)
-spread_open!(values::Vector{Int}, more::Tuple{Vararg{Int}}) = push!(values, more...)
+spread_rest!(values::Vector{Int}, more::Tuple{Vararg{Int}}) = push!(values, more...)
 nested_spread!(values::Vector{Int}, more::Tuple{Tuple{Int}}) = push!(values, more[1]...)
 dynamic!(container::Any) = sort!(container)
 nested_apply(values::Vector{Int}, more::Tuple{Tuple{Int}}) = Core._apply_iterate(iterate, Core._apply_iterate, (iterate, push!, values), more)
@@ -362,7 +362,8 @@ end
     @test isempty(summary_of(invoke_dead, String).writes)
     @test summary_of(invoke_open, Vector{Int}, Type).writes[(parameter(2), true)].doubt == code
     @test summary_of(invoke_missing, Vector{Int}).writes[(parameter(2), true)].doubt == code
-    @test summary_of(spread_open!, Vector{Int}, Tuple{Vararg{Int}}).writes[(parameter(2), true)].doubt == code
+    # Tuple of unknown length dispatches on `Vararg`: `push!` contract writes `values` only.
+    @test doubts(summary_of(spread_rest!, Vector{Int}, Tuple{Vararg{Int}}).writes) == Dict(top(2) => none)
     @test summary_of(dynamic!, Any).writes[(parameter(2), true)].doubt == code
     # No method matches: call throws, so it writes and reads nothing.
     @test isempty(summary_of(no_method, Vector{Int}).writes) && isempty(summary_of(no_method, Vector{Int}).reads)
@@ -440,6 +441,45 @@ end
     # First argument that may be callable selects callback form: call stays open.
     @test doubts(summary_of(merged_any!, Any, Any).writes) == Dict((parameter(2), true) => code, (parameter(3), true) => code)
     @test doubts(summary_of(got, Any, Int).writes) == Dict((parameter(2), true) => code)
+end
+
+first_of!(x::Vector{Int}, rest::Vector{Int}...) = (x[1] = 0; nothing)
+first_rest!(n::Int, rest::Vector{Int}...) = (rest[1][1] = n; nothing)
+spread_first!(xs::Vector{Vector{Int}}) = first_of!(xs...)
+spread_rest_first!(a::Vector{Int}, xs::Vector{Vector{Int}}) = first_rest!(1, a, xs...)
+spread_tuple!(xs::Tuple{Vararg{Vector{Int}}}) = first_of!(xs...)
+spread_then!(xs::Vector{Vector{Int}}, a::Vector{Int}) = first_of!(xs..., a)
+spread_packed(xs::Vector{Vector{Int}}) = tuple(xs...)
+spread_pushed!(v::Vector{Vector{Int}}, xs::Vector{Vector{Int}}) = push!(v, xs...)
+spread_builtin_callee(fs::Vector{typeof(setfield!)}) = Base.invokelatest(fs...)
+spread_set!(A::Vector{Int}, xs::Vector{Int}) = setindex!(A, xs...)
+spread_field(xs::Vector{Any}) = getfield(xs...)
+spread_latest(xs::Vector{Any}) = Base.invokelatest(xs...)
+spread_set_max(s::Set{Vector{Int}}) = max(s...)
+
+@testset "Spread calls" begin
+    none, code, blind = Doubt.none, Doubt.code, Doubt.blind
+    # Array of unknown length: parameters past fixed operands take any element.
+    @test doubts(summary_of(spread_first!, Vector{Vector{Int}}).writes) == Dict((parameter(2, Step.Element()), false) => none)
+    # Vararg tuple holds fixed operand at its position and spread elements in unknown slot, which every position reads.
+    @test doubts(summary_of(spread_rest_first!, Vector{Int}, Vector{Vector{Int}}).writes) == Dict(top(2) => none, (parameter(3, Step.Element()), false) => none)
+    # Operand after spread of unknown length has unknown position too.
+    @test doubts(summary_of(spread_then!, Vector{Vector{Int}}, Vector{Int}).writes) == Dict((parameter(2, Step.Element()), false) => none, top(3) => none)
+    # Caller tuple slot of unknown position collapses: blind.
+    @test doubts(summary_of(spread_tuple!, Tuple{Vararg{Vector{Int}}}).writes) == Dict((Place.Deep(Root.Parameter(2)), false) => blind)
+    # Spread callee stays open: method table matches builtin method `setfield!(...)` for `Vararg` callee.
+    @test doubts(summary_of(spread_builtin_callee, Vector{typeof(setfield!)}).writes) == Dict((parameter(2, Step.Element()), true) => code)
+    @test fresh_spread(summary_of(spread_packed, Vector{Vector{Int}})) == Nodes(Node.Placed(parameter(2, Step.Element())) => none)
+    # Contract holds when spread falls on its vararg role.
+    pushed = summary_of(spread_pushed!, Vector{Vector{Int}}, Vector{Vector{Int}})
+    @test doubts(pushed.writes) == Dict(top(2) => none) && pushed.edges[(Node.Placed(parameter(2)), Step.Element())] == Nodes(Node.Placed(parameter(3, Step.Element())) => none)
+    # Spread before contract role, into builtin, as callee, or of collection with own `iterate`: open.
+    # Open call takes spread elements, not array itself.
+    @test doubts(summary_of(spread_set!, Vector{Int}, Vector{Int}).writes) == Dict((parameter(2), true) => code, (parameter(3, Step.Element()), true) => code)
+    for spreading in (spread_field, spread_latest)
+        @test doubts(summary_of(spreading, Vector{Any}).writes) == Dict((parameter(2, Step.Element()), true) => code)
+    end
+    @test doubts(summary_of(spread_set_max, Set{Vector{Int}}).writes) == Dict((parameter(2), true) => code)
 end
 
 """Function with `JOIN_LIMIT` methods: call on `Any` joins them."""

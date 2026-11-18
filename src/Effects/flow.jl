@@ -129,12 +129,19 @@ function value_targets(flow::Flow, value::Any)::Targets
     return unknown()
 end
 
-"""Targets of call `operand`: value, or slot at position of spread tuple."""
+"""Targets of call `operand`: value, slot at position of spread tuple, or every element of `Rest`."""
 function operand_targets(flow::Flow, operand::Operand.Type)::Targets
     return @match operand begin
         Operand.Value(value) => value_targets(flow, value)
         Operand.Part(value, position) => load(flow, value_targets(flow, value), Step.Position(position))
+        Operand.Rest(value) => spread_elements(flow, value)
     end
+end
+
+"""Targets of every element of spread tuple or array `value`: tuple position is unknown, so any slot (`load_any`)."""
+function spread_elements(flow::Flow, value::Any)::Targets
+    objects = value_targets(flow, value)
+    return value_type(flow.ir, value) <: Tuple ? load_any(flow, objects) : load(flow, objects, Step.Element())
 end
 
 """Place one `step` below `place`, and doubt step adds: past `PATH_DEPTH` steps path collapses to `Deep` (blind)."""

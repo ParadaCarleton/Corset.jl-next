@@ -153,7 +153,7 @@ end
 function parameter_of(operand::Operand.Type)::Union{Nothing, Int}
     return @match operand begin
         Operand.Value(value) => value isa Core.Argument ? value.n : nothing
-        Operand.Part(_, _) => nothing
+        _ => nothing
     end
 end
 
@@ -215,7 +215,7 @@ function callee_variant(run::Run, ir::CC.IRCode, callee::Core.MethodInstance, op
         position <= length(operands) && (position < method.nargs || !method.isva) || continue
         value = @match operands[position] begin
             Operand.Value(value) => constant(ir, value)
-            Operand.Part(_, _) => nothing
+            _ => nothing
         end
         !isnothing(value) && something(value) isa Union{Symbol, Int, Module} && push!(constants, position => something(value))
     end

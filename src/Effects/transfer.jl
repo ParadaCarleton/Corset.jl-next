@@ -127,7 +127,7 @@ end
 function operand_constant(flow::Flow, operand::Operand.Type)::Union{Nothing, Some{Any}}
     return @match operand begin
         Operand.Value(value) => constant(flow.ir, value)
-        Operand.Part(_, _) => nothing
+        _ => nothing
     end
 end
 
@@ -162,8 +162,9 @@ function builtin!(flow::Flow, index::Int, builtin::Any, operands::Vector{Operand
         allocate!(flow, index)
     elseif builtin === Core.tuple || builtin === Core.svec
         allocate!(flow, index)
+        # `Rest` elements have unknown positions: unknown slot.
         for position in eachindex(operands)
-            store!(flow, flow.values[index], Step.Position(position), targets(position))
+            store!(flow, flow.values[index], is_rest(operands[position]) ? nothing : Step.Position(position), targets(position))
         end
     elseif builtin === Core._expr
         allocate!(flow, index)
@@ -406,14 +407,22 @@ function map_node(flow::Flow, node::Node.Type, site::CallSite)::Targets
     end
 end
 
-"""Targets of each callee parameter at call `index` of `method`: vararg method packs trailing `given` into allocation."""
-function parameter_targets(flow::Flow, index::Int, method::Method, given::Vector{Targets})::Vector{Targets}
-    method.isva || return given
+"""
+Targets of each callee parameter at call `index` of `method` with `operands`. Parameters past last fixed operand take
+any `Rest` element. Vararg method packs trailing operands into allocation; `Rest` elements go to its unknown slot.
+"""
+function parameter_targets(flow::Flow, index::Int, method::Method, operands::Vector{Operand.Type})::Vector{Targets}
+    given = Targets[operand_targets(flow, operand) for operand in operands if !is_rest(operand)]
+    rest = union_targets(operand_targets(flow, operand) for operand in operands if is_rest(operand))
+    fixed = method.isva ? method.nargs - 1 : method.nargs
+    arguments = [given[1:min(fixed, length(given))]; [rest for _ in (length(given) + 1):fixed]]
+    method.isva || return arguments
     vararg = Targets(Origin.Allocation(index) => Doubt.none)
-    for (position, targets) in enumerate(given[method.nargs:end])
+    for (position, targets) in enumerate(given[(fixed + 1):end])
         store!(flow, vararg, Step.Position(position), targets)
     end
-    return [given[1:(method.nargs - 1)]; vararg]
+    isempty(rest) || store!(flow, vararg, nothing, rest)
+    return [arguments; vararg]
 end
 
 """Union of targets of callee `nodes` at `site`, each raised to its node doubt."""
@@ -431,7 +440,7 @@ on mapped places into `writes` and `reads`, callee stores between caller objects
 allocation at `index`.
 """
 function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, summary::Summary, instance::Core.MethodInstance, operands::Vector{Operand.Type})::Nothing
-    arguments = parameter_targets(flow, index, instance.def::Method, [operand_targets(flow, operand) for operand in operands])
+    arguments = parameter_targets(flow, index, instance.def::Method, operands)
     site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}())
     summary.closed_world && (flow.closed_world = true)
     for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below), effect) in effects
