@@ -756,6 +756,25 @@ PR 2b on corpus, winwsl, cold library inference, no cache, PR 2a and PR 2b back 
 
 - Query results (comparison, size, arithmetic) hold no reference or hold new value, so plain queries alias nothing. Alias queries are explicit list.
 
+Open-call census after PR 2b: each `possible` write of package method traced through callee summaries to open call that starts it.
+Cell: methods with `possible` write from that kind; in parentheses, methods with that kind as only source.
+
+| Kind | Distances | DataStructures | JSON |
+|---|---|---|---|
+| Callee is parameter or field | 0 | 20 (9) | 18 (2) |
+| Callee is computed value | 9 (0) | 115 (58) | 7 (3) |
+| Splat of unknown length | 9 (0) | 115 (69) | 55 (2) |
+| Dispatch over limit, package code | 39 (26) | 36 (8) | 67 (9) |
+| Dispatch in library code | 25 (2) | 129 (26) | 87 (25) |
+| Unknown foreign call | 23 (0) | 21 (0) | 13 (3) |
+| Contract breach | 9 (0) | 44 (6) | 56 (2) |
+
+- Callback records reach fewest methods, so they move to last PR. Splat dispatch comes first.
+- Computed callee in DataStructures: `convert(::Type{T}, ::AbstractDict)` calls `T(x)` with abstract `T`.
+- Distances package dispatch: `_evaluate` on untyped arguments has more than 3 methods.
+- Distances: 17 methods also reach callee taken from spread tuple; no method has it as only source.
+- Census found function stand-in bug: stand-in call was `effect_free`, so compaction deleted it. Method calling `f::Function` got "writes nothing" (#236).
+
 ### Stateful iterators
 
 - Trigger "every `iterate` on iterator not proven stateless" rejected: single pass is safe for both kinds, so it flags nearly all generic code.

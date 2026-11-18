@@ -102,6 +102,8 @@ Resolution of each call statement, first match wins:
 6. Base interface function with documented contract (`setindex!` writes collection; `length` reads only; `view` result lies within array). Breach in package method is finding.
 7. Else open: `possible` write on operands; result may point into operands, one direction, and to `unknown`.
 
+- Splat of tuple or array with unknown length: dispatch on `Vararg` of element type. Callee parameters past fixed operands take any element.
+- Splatted tuple slot has unknown position, so caller tuple collapses to `deep`. Splat of other collection stays open: its `iterate` runs.
 - Steps 5 and 6 assume methods loaded now. Write they find keeps certainty. "Writes nothing" from them is at most `possible`.
 - Contract: `first` and generic `isempty` start iteration of argument (`isempty` docstring warns). Type with own `isempty` or `isdone` method uses its summary.
 - Contract entry holds only behavior Base documents. Base type that writes where others read (`iterate` on `Iterators.Stateful`) gives `possible` write when operand type admits it.

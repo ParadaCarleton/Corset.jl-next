@@ -56,7 +56,8 @@ Measure on corpus: instances, time, memory, share of methods with `possible` wri
 ### 2 Call resolution
 
 Resolve calls that PR 1 leaves open: steps 2, 4, 5, 6 and 7 of `effects.md`, Calls.
-Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback records, provenance. Ablation: history, "Phase 5 call resolution".
+Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c splat dispatch; 2d provenance; 2e callback records.
+Open-call census after 2b set this order; callback records cover least. Ablation and census: history, "Phase 5 call resolution".
 
 - Zero-match call throws `MethodError`: dead code.
 - Foreign call table: `memmove`, runtime type queries. Unknown foreign call gives `possible` write.
@@ -80,6 +81,7 @@ Compiler effects for speed; stand-in cuts and effect kinds for correct verdicts.
 
 - Shortcut: empty summary for instance with `effect_free`, `inaccessiblememonly` and result without reference.
 - Skip shortcut when reached method outside Base carries effects override.
+- Compaction deletes call with unused result when compiler effects allow. Keep calls whose callee carries effects override: false claim hides write.
 - Cuts: `inference` stage finds units with dead call or store statements, then infers those at declared signature.
 - Effect kinds and audited Base table (`effects.md`, Effect kinds).
 - Throw paths: writes before throw stay. Calls that only build thrown value add nothing.
@@ -90,6 +92,7 @@ Tests:
 - Fixture per effect kind and per audited table entry.
 - `x isa BigFloat && (STATE[] += 1)` gives `cut`.
 - False `@assume_effects` in fixture dependency turns shortcut off.
+- Caller of method with false `:effect_free` claim that drops result keeps write.
 - `foreign_mutate!(x); error()` keeps write on `x`.
 
 Measure: share of instances shortcut skips; time it saves.

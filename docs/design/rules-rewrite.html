@@ -573,7 +573,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Struct that bound makes empty gets no stand-in: <code>Sized{N}</code> with <code>N = Any</code> has field type <code>Union{}</code>.</li>
 <li>Union or abstract argument takes first stand-in of each struct before second of any, so cut at signature limit reaches most structs.</li>
 <li>Macro that rebuilds struct (<code>@concrete struct</code>) gives constructors its own file; struct ties to its form by name.</li>
-<li>Function argument: stand-in function returns <code>Any</code> (inference barrier). Method stable under that assumption is exempt: stable whenever <code>f</code> is. Problems method causes itself are reported. Code after <code>f</code>'s result stays analyzed; values from that result give no findings. Opaque result type truncates inference frames.</li>
+<li>Function argument: stand-in function returns <code>Any</code> (inference barrier). Its call has unknown compiler effects, so compaction keeps it and <code>effects</code> sees open call. Method stable under that assumption is exempt: stable whenever <code>f</code> is. Problems method causes itself are reported. Code after <code>f</code>'s result stays analyzed; values from that result give no findings. Opaque result type truncates inference frames.</li>
 <li>No stand-in yet (<code>AbstractString</code>, <code>AbstractDict</code>, abstract type without package subtype) and explicit <code>::Any</code>: no findings from that argument's data.</li>
 <li>Unannotated method reached from analyzed caller is analyzed through caller inference: <code>inference</code> stage keeps explicit worklist of package frames reached from stand-in callers. Unannotated method nothing calls is skipped; <code>annotation</code> reports it. Expect low coverage on unannotated packages (Distances: 165 of 283 methods) until <code>annotation</code> fixer runs.</li>
 <li>Method Corset cannot analyze is blind spot: coverage line counts it with reason.</li>
@@ -824,6 +824,8 @@ Summary per variant: instance plus constant arguments callee uses as field name.
 <li>Else open: <code>possible</code> write on operands; result may point into operands, one direction, and to <code>unknown</code>.</li>
 </ol>
 <ul>
+<li>Splat of tuple or array with unknown length: dispatch on <code>Vararg</code> of element type. Callee parameters past fixed operands take any element.</li>
+<li>Splatted tuple slot has unknown position, so caller tuple collapses to <code>deep</code>. Splat of other collection stays open: its <code>iterate</code> runs.</li>
 <li>Steps 5 and 6 assume methods loaded now. Write they find keeps certainty. &quot;Writes nothing&quot; from them is at most <code>possible</code>.</li>
 <li>Contract: <code>first</code> and generic <code>isempty</code> start iteration of argument (<code>isempty</code> docstring warns). Type with own <code>isempty</code> or <code>isdone</code> method uses its summary.</li>
 <li>Contract entry holds only behavior Base documents. Base type that writes where others read (<code>iterate</code> on <code>Iterators.Stateful</code>) gives <code>possible</code> write when operand type admits it.</li>
@@ -1424,7 +1426,8 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 Measure on corpus: instances, time, memory, share of methods with <code>possible</code> write. Log numbers in history.</p>
 </div><div class="decision"><h3>2 Call resolution</h3>
 <p>Resolve calls that PR 1 leaves open: steps 2, 4, 5, 6 and 7 of <code>effects.md</code>, Calls.
-Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback records, provenance. Ablation: history, &quot;Phase 5 call resolution&quot;.</p>
+Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c splat dispatch; 2d provenance; 2e callback records.
+Open-call census after 2b set this order; callback records cover least. Ablation and census: history, &quot;Phase 5 call resolution&quot;.</p>
 <ul>
 <li>Zero-match call throws <code>MethodError</code>: dead code.</li>
 <li>Foreign call table: <code>memmove</code>, runtime type queries. Unknown foreign call gives <code>possible</code> write.</li>
@@ -1446,6 +1449,7 @@ Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback 
 <ul>
 <li>Shortcut: empty summary for instance with <code>effect_free</code>, <code>inaccessiblememonly</code> and result without reference.</li>
 <li>Skip shortcut when reached method outside Base carries effects override.</li>
+<li>Compaction deletes call with unused result when compiler effects allow. Keep calls whose callee carries effects override: false claim hides write.</li>
 <li>Cuts: <code>inference</code> stage finds units with dead call or store statements, then infers those at declared signature.</li>
 <li>Effect kinds and audited Base table (<code>effects.md</code>, Effect kinds).</li>
 <li>Throw paths: writes before throw stay. Calls that only build thrown value add nothing.</li>
@@ -1456,6 +1460,7 @@ Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback 
 <li>Fixture per effect kind and per audited table entry.</li>
 <li><code>x isa BigFloat &amp;&amp; (STATE[] += 1)</code> gives <code>cut</code>.</li>
 <li>False <code>@assume_effects</code> in fixture dependency turns shortcut off.</li>
+<li>Caller of method with false <code>:effect_free</code> claim that drops result keeps write.</li>
 <li><code>foreign_mutate!(x); error()</code> keeps write on <code>x</code>.</li>
 </ul>
 <p>Measure: share of instances shortcut skips; time it saves.</p>
