@@ -1,7 +1,17 @@
-"""Operand of call: IR `Value`, or `Part` at position of tuple value that `_apply_iterate` spreads."""
+"""
+Operand of call: IR `Value`; `Part` at position of tuple value that `_apply_iterate` spreads; or `Rest`: every element of
+tuple or array value spread with unknown count. `Rest` operands come after all others.
+"""
 @data Operand begin
     Value(Any)
     Part(Any, Int)
+    Rest(Any)
+end
+
+"""Whether `operand` stands for elements of unknown count (`Operand.Rest`)."""
+is_rest(operand::Operand.Type)::Bool = @match operand begin
+    Operand.Rest(_) => true
+    _ => false
 end
 
 """
@@ -169,12 +179,21 @@ call, more join; `Contract` effects with arguments and argument positions breach
     Dead()
 end
 
-"""Type of `operand` in `ir`."""
+"""Type of `operand` in `ir`: element type for `Rest`."""
 function operand_type(ir::CC.IRCode, operand::Operand.Type)::Any
     return @match operand begin
         Operand.Value(value) => value_type(ir, value)
         Operand.Part(value, position) => fieldtype(value_type(ir, value), position)
+        Operand.Rest(value) => eltype(value_type(ir, value))
     end
+end
+
+"""Argument types of call with `operands` for dispatch: `Rest` operands join into one trailing `Vararg`."""
+function call_types(ir::CC.IRCode, operands::Vector{Operand.Type})::Vector{Any}
+    types = Any[operand_type(ir, operand) for operand in operands if !is_rest(operand)]
+    rests = Any[operand_type(ir, operand) for operand in operands if is_rest(operand)]
+    isempty(rests) || push!(types, Vararg{Union{rests...}})
+    return types
 end
 
 """
@@ -196,23 +215,26 @@ end
 """
 Resolution of call with `operands` (callee first) in `ir`: builtin, intrinsic, up to `limit` matching methods, else open.
 Builtins that call operand (`invokelatest`, `_apply_iterate`, `finalizer`) resolve to call they make. Intrinsic operand
-can be nested constant expression (`cglobal((:name, library))`), so operand types wait until dispatch.
+can be nested constant expression (`cglobal((:name, library))`), so operand types wait until dispatch. Builtin other
+than `tuple` with `Rest` operands stays open.
 """
 function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt, limit::Int)::Outcome.Type
     callee = @match first(operands) begin
         Operand.Value(value) => constant(ir, value)
+        Operand.Rest(_) => return Outcome.Open(operands)
         Operand.Part(_, _) => nothing
     end
     if !isnothing(callee) && something(callee) isa Core.Builtin
         builtin = something(callee)
-        builtin isa Core.IntrinsicFunction && return Outcome.Intrinsic(builtin, operands[2:end])
-        builtin === Core._apply_iterate && return spread_call(ir, operands[3:end], world, limit)
         builtin in (Core.invokelatest, Core._call_latest, Core.finalizer) && return resolve(ir, operands[2:end], world, limit)
         builtin in (Core.invoke_in_world, Core._call_in_world, Core._call_in_world_total) && return resolve(ir, operands[3:end], world, limit)
+        builtin === Core.tuple || !any(is_rest, operands) || return Outcome.Open(operands)
+        builtin isa Core.IntrinsicFunction && return Outcome.Intrinsic(builtin, operands[2:end])
+        builtin === Core._apply_iterate && return spread_call(ir, operands[3:end], world, limit)
         builtin === Core.invoke && return invoke_call(ir, operands, world)
         return Outcome.Builtin(builtin, operands[2:end])
     end
-    instances = dispatch(Any[operand_type(ir, operand) for operand in operands], world, limit)
+    instances = dispatch(call_types(ir, operands), world, limit)
     isnothing(instances) && return contract_call(ir, callee, operands)
     # No matching method: call throws `MethodError`.
     return isempty(instances) ? Outcome.Dead() : Outcome.Dispatch(instances, operands)
@@ -221,11 +243,14 @@ end
 """
 Resolution of call with `operands` (callee first) that dispatch leaves open: contract of constant `callee` (`Some`) in
 `BASE_CONTRACTS`, else open. Callable first argument of function with callback form stays open: positions shift.
+`Rest` operand needs vararg role at or before its position: any later role could take its elements.
 """
 function contract_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operands::Vector{Operand.Type})::Outcome.Type
     contract = isnothing(callee) ? nothing : get(BASE_CONTRACTS, something(callee), nothing)
     isnothing(contract) && return Outcome.Open(operands)
     arguments = operands[2:end]
+    spread = findfirst(is_rest, arguments)
+    isnothing(spread) || 0 < contract.effects.rest <= spread || return Outcome.Open(operands)
     types = Any[operand_type(ir, argument) for argument in arguments]
     contract.callback && !isempty(types) && typeintersect(first(types), Base.Callable) !== Union{} && return Outcome.Open(operands)
     admits(position::Int, type::Any)::Bool = any(index -> typeintersect(types[index], type) !== Union{}, role(contract.effects, position, length(types)))
@@ -235,17 +260,26 @@ end
 """Positions among `count` arguments that take role of `position` in `effects`: from `rest` on, all; past end, none."""
 role(effects::CallEffects, position::Int, count::Int)::UnitRange{Int} = position == effects.rest ? (position:count) : (position:min(position, count))
 
-"""Resolution of `_apply_iterate` call: callee and spread `arguments` tuples of known length become operands."""
+"""
+Resolution of `_apply_iterate` call: callee and spread `arguments` become operands. Tuple of known length gives `Part`
+per position until first `Rest`; tuple or array of unknown length gives `Rest`. Other collections run `iterate`
+methods, so call stays open.
+"""
 function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt, limit::Int)::Outcome.Type
     operands = Operand.Type[first(arguments)]
     for argument in arguments[2:end]
         value = @match argument begin
             Operand.Value(value) => value
-            Operand.Part(_, _) => return Outcome.Open(arguments)
+            _ => return Outcome.Open(arguments)
         end
         type = value_type(ir, value)
-        definite_tuple(type) || return Outcome.Open(arguments)
-        append!(operands, (Operand.Part(value, position) for position in 1:fieldcount(type)))
+        if definite_tuple(type) && !any(is_rest, operands)
+            append!(operands, (Operand.Part(value, position) for position in 1:fieldcount(type)))
+        elseif type isa DataType && type <: Union{Tuple, Array}
+            push!(operands, Operand.Rest(value))
+        else
+            return Outcome.Open(arguments)
+        end
     end
     return resolve(ir, operands, world, limit)
 end
@@ -256,7 +290,7 @@ function invoke_call(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt)
     types = Any[operand_type(ir, operand) for operand in called]
     selector = @match operands[3] begin
         Operand.Value(value) => constant(ir, value)
-        Operand.Part(_, _) => nothing
+        _ => nothing
     end
     isnothing(selector) && return Outcome.Open(called)
     match = Base._which(Tuple{types[1], something(selector).parameters...}; world, raise = false)
