@@ -175,7 +175,10 @@ end
     @test doubts(either.writes) == Dict((parameter(2, box), false) => CODE_DOUBT, (parameter(2, setter, box), false) => CODE_DOUBT)
     @test isempty(either.callbacks)
     # Cycle member that resolves record of other member reads its summary, so it reruns when that summary changes.
-    @test (global_place(CASES, :TICKS), false, definite) in shape(named(:restart!).writes)
+    @test shape(named(:restart!).writes) == [(parameter(2), false, definite), (parameter(3), false, definite)]
+    # Record of earlier round goes when callable grows to fresh object: call resolves here.
+    @test isempty(raw_summary(CASES.pick_setter!, CASES.Setter, Int).callbacks)
+    @test shape(named(:pick_setter!).writes) == [(parameter(2, box), false, definite)]
     # Record waits for caller only when callable holds object below caller parameter, beside no fresh object.
     held, fresh = Targets(Origin.Caller(parameter(2)) => NO_DOUBT), Targets(Origin.Allocation(1) => NO_DOUBT)
     @test deferred([held, Targets()]) && !deferred([held, fresh]) && !deferred([fresh])
@@ -698,7 +701,7 @@ end
 covered(found::MethodEffects, root::Root.Type)::Bool = any(access -> root_of(access.place) == root, [found.writes; found.blind_writes])
 
 """Globals of fixture module that methods write, as deep copies."""
-globals_now()::Dict{Symbol, Any} = Dict(name => deepcopy(getglobal(CASES, name)) for name in (:COUNTER, :total, :NEST, :TICKS))
+globals_now()::Dict{Symbol, Any} = Dict(name => deepcopy(getglobal(CASES, name)) for name in (:COUNTER, :total, :NEST))
 
 const INTS = Data.Integers(-2, 3)
 const BOXES = map(value -> CASES.Box(value), INTS)
@@ -729,7 +732,8 @@ const CALLS = [
     (CASES.fill_pair!, map(tuple, BOXES)), (CASES.push_pair!, map(tuple, VECTORS)), (CASES.set_pair!, map(tuple, BOXES)),
     (CASES.call_setter!, both(map(CASES.Setter, BOXES), INTS)), (CASES.count_down!, map(tuple, BOXES)),
     (CASES.act_either!, both(Data.OneOf(map(CASES.Setter, BOXES), map(box -> CASES.Relay(CASES.Setter(box)), BOXES)), INTS)),
-    (CASES.restart!, both(BOXES, Data.Integers(0, 3))),
+    (CASES.restart!, map(drawn -> (drawn.first, drawn.second.first, drawn.second.second), Data.Pairs(BOXES, Data.Pairs(BOXES, Data.Integers(0, 3))))),
+    (CASES.pick_setter!, both(map(CASES.Setter, BOXES), INTS)),
 ]
 
 """Whether `to` is reachable from `from` along `successors`, in zero or more steps."""

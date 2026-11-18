@@ -212,17 +212,26 @@ end
 
 act_either!(action::Union{Setter, Relay}, value::Int)::Nothing = (action(value); nothing)
 
-# Call cycle: `restart!` resolves record of `Ticker` call, which is member of same cycle. Only `Ticker` call writes `TICKS`.
-const TICKS = Int[]
-
+# Call cycle: `restart!` resolves record of `Ticker` call, member of same cycle. `Ticker` call writes `second` only after
+# its summary takes write of `first` from `restart!`, which callees-first order solves after it.
 struct Ticker
     box::Box
 end
 
-(ticker::Ticker)(count::Int)::Nothing = count <= 0 ? nothing : (push!(TICKS, count); restart!(ticker.box, count - 1))
+(ticker::Ticker)(count::Int)::Nothing = count <= 0 ? nothing : restart!(ticker.box, Box(0), count - 1)
 
-restart!(box::Box, count::Int)::Nothing = (box.value = count; run_ticker(Ticker(box), count))
+restart!(first::Box, second::Box, count::Int)::Nothing = (first.value = count; run_ticker(Ticker(second), count))
 
 run_ticker(ticker::Ticker, count::Int)::Nothing = ticker(count)
+
+# Callable grows in round 2: loop phi takes fresh `Setter`, so call resolves here and record of round 1 goes.
+function pick_setter!(setter::Setter, value::Int)::Nothing
+    current = setter
+    for _ in 1:2
+        current(value)
+        current = Setter(Box(0))
+    end
+    return nothing
+end
 
 end

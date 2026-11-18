@@ -547,14 +547,14 @@ end
 
 """
 Resolve callback `record` at call statement `index`: callable is fresh here, so accesses of its variant apply to record
-targets. Record in `seen` adds nothing: recursion through callable repeats same accesses on same targets.
+targets. Record in `seen` adds nothing: recursion through callable repeats same accesses on same targets. Instance
+that kept record took `closed_world` of variant already (`apply!`).
 """
 function resolve!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, record::Deferred, defers::Bool, callees::Callees, seen::Set{Deferred})::Nothing
     record in seen && return nothing
     push!(seen, record)
     variant, arguments = record
     summary = summary!(callees, variant)
-    summary.closed_world && (flow.closed_world = true)
     site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
     apply_accesses!(flow, writes, reads, site, summary, defers, callees, seen)
     return nothing
