@@ -79,15 +79,25 @@ Engine code lives in `src/Effects/`.
 
 Doubt test (`findings.md`) needs to know where open type comes from.
 
-Each origin has one provenance:
+Each unit argument has one provenance:
 
 - Opaque: Corset chose its type and code did not. Its data gives blind spots only.
-  - Argument without stand-in (declared narrower than `Any`); element of stand-in array with element `Any`.
-  - Struct stand-in field whose parameter took its bound; result of `FunctionStandIn` call (`types.md`).
-- Opt-out: explicit `::Any` argument, field or element type declared `Any` (`types.md`, Explicit `Any`). Its data gives no finding and no blind spot.
-- Code: every other origin, untyped argument and untyped field included. Compiler sees same open type.
-- Provenance flows with origins through points-to and callee result aliases. No separate taint pass.
-- Provenance judges doubt from open dispatch only (step 7). Writes code performs, and resolved, joined or contract writes, keep certainty on every origin: `f(x::Any) = setfield!(x, :n, 0)` writes `x`.
+  - Argument without stand-in (declared narrower than `Any`); type variable with bound.
+  - Stand-in with open part: `FunctionStandIn`, array stand-in with element `Any`, struct stand-in whose parameter took its bound (`types.md`).
+- Opt-out: source declares `::Any`; declared concrete type with `Any` parameter (`types.md`, Explicit `Any`). Its data gives no finding and no blind spot.
+- Code: every other argument, untyped argument and type variable without bound included. Compiler sees same open type.
+- Unit that calls reach keeps caller types. Only function stand-in and array stand-in with open part are opaque there.
+
+Sources carry provenance through engine. No separate taint pass.
+
+- `code` doubt holds sources: parameter bits, `OPAQUE` (`FunctionStandIn`) and `INHERENT` (doubt in code itself).
+- Open dispatch (step 7) takes sources of each operand whose type is no dispatch element.
+- Caller place gives its parameter. Global, or more than one fresh object, gives `INHERENT`. Chain to operand adds its own sources.
+- Two `code` doubts join sources, along chain and across chains. Callee summary maps parameter sources to sources of call arguments.
+- Root unit resolves sources: code source gives `possible`. Else opaque source gives blind spot `open dispatch on opaque data`. Else no access.
+- Unresolved call has doubt in code itself: unknown foreign call, builtin with splat, splat of other collection, splat that contract cannot place, `invoke` without constant method.
+- Provenance covers argument and every place below it. Argument with open part is opaque, so open type that code declares below it gives blind spot.
+- Provenance judges doubt from open dispatch only. Writes code performs, and resolved, joined or contract writes, keep certainty on every origin: `f(x::Any) = setfield!(x, :n, 0)` writes `x`.
 
 #### Calls
 
@@ -114,7 +124,7 @@ Resolution of each call statement, first match wins:
 - Write contract (`setindex!`, `push!`, `append!`, `resize!`, `pop!`, `copyto!`, `merge!`) writes first argument and stores or copies elements into it.
 - Function with callable-first form (`get`, `get!`, `merge!`): contract holds only when first argument cannot be callable. Else call stays open.
 - Query result that may alias every argument tripled JSON `effects` time and changed no verdict.
-- Open call (step 7) whose open operands point to opaque and opt-out origins only: no finding. Opaque origin counts on coverage line: `open dispatch on opaque data`.
+- Open call (step 7) whose open operands come from opaque and opt-out arguments only: no finding (Provenance). Opaque argument counts on coverage line: `open dispatch on opaque data`.
 - Other open call: doubt in code, `possible` finding.
 - Limit 3 is compiler `max_methods`, never below. Limit 8 reached 20 times more instances on Distances.
 - Library code joins nothing: its run-time dispatch stays open (step 7). Joins there raised `possible` share and cost most time.

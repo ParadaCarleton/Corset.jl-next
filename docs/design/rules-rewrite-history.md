@@ -775,6 +775,19 @@ Cell: methods with `possible` write from that kind; in parentheses, methods with
 - Distances: 17 methods also reach callee taken from spread tuple; no method has it as only source.
 - Census found function stand-in bug: stand-in call was `effect_free`, so compaction deleted it. Method calling `f::Function` got "writes nothing" (#236).
 
+PR 2c (splat dispatch, #237) on corpus, winwsl, cold library inference, no cache, main and PR 2c back to back:
+
+| Arm | Distances | DataStructures | JSON |
+|---|---|---|---|
+| Main: `possible` share, `effects` s | 34.9%, 8.6 | 32.7%, 7.8 | 36.8%, 430 |
+| PR 2c: `possible` share, `effects` s | 34.9%, 6.6 | 28.8%, 11.0 | 36.1%, 546 |
+| Open calls, main to PR 2c | 295 to 295 | 567 to 499 | 1269 to 1257 |
+| Instances, main to PR 2c | 4079 to 4079 | 8085 to 8771 | 9050 to 9052 |
+
+- Splat dispatch cut DataStructures `possible` share by 3.9 points and JSON by 0.7. Distances splats nothing it can resolve.
+- DataStructures blind writes rose from 193 to 243: splat of tuple with unknown length collapses caller tuple to `deep`.
+- `effects` time on DataStructures and JSON rose with instances that splat dispatch reaches.
+
 ### Stateful iterators
 
 - Trigger "every `iterate` on iterator not proven stateless" rejected: single pass is safe for both kinds, so it flags nearly all generic code.

@@ -798,18 +798,28 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 </ul>
 <h4>Provenance</h4>
 <p>Doubt test (<code>findings.md</code>) needs to know where open type comes from.</p>
-<p>Each origin has one provenance:</p>
+<p>Each unit argument has one provenance:</p>
 <ul>
 <li>Opaque: Corset chose its type and code did not. Its data gives blind spots only.
 <ul>
-<li>Argument without stand-in (declared narrower than <code>Any</code>); element of stand-in array with element <code>Any</code>.</li>
-<li>Struct stand-in field whose parameter took its bound; result of <code>FunctionStandIn</code> call (<code>types.md</code>).</li>
+<li>Argument without stand-in (declared narrower than <code>Any</code>); type variable with bound.</li>
+<li>Stand-in with open part: <code>FunctionStandIn</code>, array stand-in with element <code>Any</code>, struct stand-in whose parameter took its bound (<code>types.md</code>).</li>
 </ul>
 </li>
-<li>Opt-out: explicit <code>::Any</code> argument, field or element type declared <code>Any</code> (<code>types.md</code>, Explicit <code>Any</code>). Its data gives no finding and no blind spot.</li>
-<li>Code: every other origin, untyped argument and untyped field included. Compiler sees same open type.</li>
-<li>Provenance flows with origins through points-to and callee result aliases. No separate taint pass.</li>
-<li>Provenance judges doubt from open dispatch only (step 7). Writes code performs, and resolved, joined or contract writes, keep certainty on every origin: <code>f(x::Any) = setfield!(x, :n, 0)</code> writes <code>x</code>.</li>
+<li>Opt-out: source declares <code>::Any</code>; declared concrete type with <code>Any</code> parameter (<code>types.md</code>, Explicit <code>Any</code>). Its data gives no finding and no blind spot.</li>
+<li>Code: every other argument, untyped argument and type variable without bound included. Compiler sees same open type.</li>
+<li>Unit that calls reach keeps caller types. Only function stand-in and array stand-in with open part are opaque there.</li>
+</ul>
+<p>Sources carry provenance through engine. No separate taint pass.</p>
+<ul>
+<li><code>code</code> doubt holds sources: parameter bits, <code>OPAQUE</code> (<code>FunctionStandIn</code>) and <code>INHERENT</code> (doubt in code itself).</li>
+<li>Open dispatch (step 7) takes sources of each operand whose type is no dispatch element.</li>
+<li>Caller place gives its parameter. Global, or more than one fresh object, gives <code>INHERENT</code>. Chain to operand adds its own sources.</li>
+<li>Two <code>code</code> doubts join sources, along chain and across chains. Callee summary maps parameter sources to sources of call arguments.</li>
+<li>Root unit resolves sources: code source gives <code>possible</code>. Else opaque source gives blind spot <code>open dispatch on opaque data</code>. Else no access.</li>
+<li>Unresolved call has doubt in code itself: unknown foreign call, builtin with splat, splat of other collection, splat that contract cannot place, <code>invoke</code> without constant method.</li>
+<li>Provenance covers argument and every place below it. Argument with open part is opaque, so open type that code declares below it gives blind spot.</li>
+<li>Provenance judges doubt from open dispatch only. Writes code performs, and resolved, joined or contract writes, keep certainty on every origin: <code>f(x::Any) = setfield!(x, :n, 0)</code> writes <code>x</code>.</li>
 </ul>
 <h4>Calls</h4>
 <p>Resolution of each call statement, first match wins:</p>
@@ -836,7 +846,7 @@ Summary per variant: instance plus constant arguments callee uses as field name.
 <li>Write contract (<code>setindex!</code>, <code>push!</code>, <code>append!</code>, <code>resize!</code>, <code>pop!</code>, <code>copyto!</code>, <code>merge!</code>) writes first argument and stores or copies elements into it.</li>
 <li>Function with callable-first form (<code>get</code>, <code>get!</code>, <code>merge!</code>): contract holds only when first argument cannot be callable. Else call stays open.</li>
 <li>Query result that may alias every argument tripled JSON <code>effects</code> time and changed no verdict.</li>
-<li>Open call (step 7) whose open operands point to opaque and opt-out origins only: no finding. Opaque origin counts on coverage line: <code>open dispatch on opaque data</code>.</li>
+<li>Open call (step 7) whose open operands come from opaque and opt-out arguments only: no finding (Provenance). Opaque argument counts on coverage line: <code>open dispatch on opaque data</code>.</li>
 <li>Other open call: doubt in code, <code>possible</code> finding.</li>
 <li>Limit 3 is compiler <code>max_methods</code>, never below. Limit 8 reached 20 times more instances on Distances.</li>
 <li>Library code joins nothing: its run-time dispatch stays open (step 7). Joins there raised <code>possible</code> share and cost most time.</li>
@@ -1329,7 +1339,7 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <td>Call resolution</td>
 <td>Foreign calls, callback records, join, Base contracts, open calls</td>
 <td>1</td>
-<td>2a #234; 2b #235; 2c next</td>
+<td>2a #234; 2b #235; 2c #237; 2d in review</td>
 </tr>
 <tr>
 <td>3</td>

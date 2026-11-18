@@ -7,7 +7,7 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 | # | PR | Holds | Needs | Status |
 |---|---|---|---|---|
 | 1 | Engine core | Units, IR, origins, points-to, builtins, static calls, solve, soundness property | — | #232 |
-| 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | 2a #234; 2b #235; 2c next |
+| 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | 2a #234; 2b #235; 2c #237; 2d in review |
 | 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts | 2 | — |
 | 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | — |
 | 5 | Corpus go/no-go | Gate below; no rule PR before it passes | 4 | — |
