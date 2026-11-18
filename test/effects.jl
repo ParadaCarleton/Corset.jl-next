@@ -384,6 +384,17 @@ end
     end
 end
 
+"""Function with `JOIN_LIMIT` methods: call on `Any` joins them."""
+three_way(x::Int) = x
+three_way(x::Float64) = x
+three_way(x::String) = x
+
+"""Function with one method past `JOIN_LIMIT`: call on `Any` stays open."""
+four_way(x::Int) = x
+four_way(x::Float64) = x
+four_way(x::String) = x
+four_way(x::Symbol) = x
+
 @testset "model and helpers" begin
     @test most(Doubt.none, Doubt.code, Doubt.blind) == Doubt.blind
     @test stronger(Effect(Doubt.code, 3, ""), Effect(Doubt.code, 2, "")) == Effect(Doubt.code, 2, "")
@@ -434,6 +445,8 @@ end
     @test joined == Dict(partial => Effect(Doubt.code, 5, ""))
     # Join must reach every call native inference resolves.
     @test JOIN_LIMIT >= Effects.CC.InferenceParams().max_methods
+    @test length(something(dispatch(Any[typeof(three_way), Any], Base.get_world_counter()))) == JOIN_LIMIT
+    @test isnothing(dispatch(Any[typeof(four_way), Any], Base.get_world_counter()))
     possible_first = Access(parameter(2), false, Confidence.possible, typed.site.span)
     @test worst([possible_first, Access(parameter(2), false, Confidence.definite, typed.site.span)])[1].confidence == Confidence.definite
 end

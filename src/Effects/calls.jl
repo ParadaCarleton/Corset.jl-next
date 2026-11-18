@@ -88,8 +88,11 @@ function operand_type(ir::CC.IRCode, operand::Operand.Type)::Any
     end
 end
 
-"""Most methods run-time dispatch joins (`effects.md`, Calls, step 5); never below compiler `max_methods`."""
-const JOIN_LIMIT = 8
+"""
+Most methods run-time dispatch joins (`effects.md`, Calls, step 5): compiler `max_methods`, never below. Limit 8 reached
+20 times more instances on Distances.
+"""
+const JOIN_LIMIT = 3
 
 """
 Instances of methods call with argument `types` can reach in `world`, each specialized to call; `nothing` past
