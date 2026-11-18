@@ -111,7 +111,7 @@ Resolution of each call statement, first match wins:
 - Iteration (`iterate`, `first`, `only`, `isempty`, `in`) reads like element query. `Iterators.Stateful`, `Channel` and `EachLine` get `possible` write.
 - Write contract (`setindex!`, `push!`, `append!`, `resize!`, `pop!`, `copyto!`, `merge!`) writes first argument and stores or copies elements into it.
 - Function with callable-first form (`get`, `get!`, `merge!`): contract holds only when first argument cannot be callable. Else call stays open.
-- Query result that may alias every argument cost JSON 3 times `effects` time and changed no verdict.
+- Query result that may alias every argument tripled JSON `effects` time and changed no verdict.
 - Open call (step 7) whose open operands point to opaque and opt-out origins only: no finding. Opaque origin counts on coverage line: `open dispatch on opaque data`.
 - Other open call: doubt in code, `possible` finding.
 - Limit 3 is compiler `max_methods`, never below. Limit 8 reached 20 times more instances on Distances.

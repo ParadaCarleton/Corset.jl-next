@@ -732,6 +732,29 @@ PR 2a on corpus, cold library inference, no cache. Cell: `possible` write share,
 - First corpus run hung: LinearAlgebra `_any(f ∘ transpose, parent(A), :)` adds `ComposedFunction` layer per step. Recursion limit ports `abstract_call_method` rule.
 - Crash journal key printed type with alias search: up to seconds per deep type. Non-compact `show` skips search.
 - Join is not monotone: summaries in call cycle oscillated for 9 h. Widening after 8 reruns ends it; corpus shows no unsettled access.
+- PR 1 and PR 2a tables ran on laptop low on memory. Later timings run on winwsl; compare arms of one run only.
+
+PR 2b on corpus, winwsl, cold library inference, no cache, PR 2a and PR 2b back to back (`benchmark/effects.jl`):
+
+| Arm | Distances | DataStructures | JSON |
+|---|---|---|---|
+| PR 2a: `possible` share, `effects` s | 51.8%, 10.7 | 47.5%, 14.7 | 47.4%, 348 |
+| PR 2b: `possible` share, `effects` s | 34.9%, 8.2 | 32.7%, 14.6 | 36.8%, 625 |
+| Open calls, PR 2a to PR 2b | 1232 to 295 | 2093 to 563 | 6335 to 1266 |
+| Contract calls | 937 | 1530 | 5069 |
+
+- Contracts cut `possible` share by 11 to 17 points. Blind writes fall too: 36 to 20 on Distances, 264 to 193 on DataStructures.
+- JSON `effects` takes 1.8 times PR 2a time and allocates 95 GB, against 65 GB. Resolved calls add stores to Serialization summaries.
+- First table aliased every query result: JSON ran over 1800 s and ran out of memory. Ablation of contract parts on JSON:
+
+| Contract part removed | `effects` s | `possible` share |
+|---|---|---|
+| None | 1128 | 36.8% |
+| Result aliases | 378 | 36.8% |
+| Element results | 745 | 36.8% |
+| Stores and copies | 696 | 36.8% |
+
+- Query results (comparison, size, arithmetic) hold no reference or hold new value, so plain queries alias nothing. Alias queries are explicit list.
 
 ### Stateful iterators
 

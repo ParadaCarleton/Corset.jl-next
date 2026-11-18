@@ -827,6 +827,13 @@ Summary per variant: instance plus constant arguments callee uses as field name.
 <li>Steps 5 and 6 assume methods loaded now. Write they find keeps certainty. &quot;Writes nothing&quot; from them is at most <code>possible</code>.</li>
 <li>Contract: <code>first</code> and generic <code>isempty</code> start iteration of argument (<code>isempty</code> docstring warns). Type with own <code>isempty</code> or <code>isdone</code> method uses its summary.</li>
 <li>Contract entry holds only behavior Base documents. Base type that writes where others read (<code>iterate</code> on <code>Iterators.Stateful</code>) gives <code>possible</code> write when operand type admits it.</li>
+<li>Query (comparison, size, predicate, arithmetic) reads arguments. Its result is new value.</li>
+<li>Alias query (<code>convert</code>, <code>getproperty</code>, <code>keys</code>, <code>max</code>, <code>conj</code>, <code>adjoint</code>) reads arguments. Its result may point beneath them.</li>
+<li>Element query (<code>getindex</code>) result is element of collection or lies beneath it, never in indices.</li>
+<li>Iteration (<code>iterate</code>, <code>first</code>, <code>only</code>, <code>isempty</code>, <code>in</code>) reads like element query. <code>Iterators.Stateful</code>, <code>Channel</code> and <code>EachLine</code> get <code>possible</code> write.</li>
+<li>Write contract (<code>setindex!</code>, <code>push!</code>, <code>append!</code>, <code>resize!</code>, <code>pop!</code>, <code>copyto!</code>, <code>merge!</code>) writes first argument and stores or copies elements into it.</li>
+<li>Function with callable-first form (<code>get</code>, <code>get!</code>, <code>merge!</code>): contract holds only when first argument cannot be callable. Else call stays open.</li>
+<li>Query result that may alias every argument tripled JSON <code>effects</code> time and changed no verdict.</li>
 <li>Open call (step 7) whose open operands point to opaque and opt-out origins only: no finding. Opaque origin counts on coverage line: <code>open dispatch on opaque data</code>.</li>
 <li>Other open call: doubt in code, <code>possible</code> finding.</li>
 <li>Limit 3 is compiler <code>max_methods</code>, never below. Limit 8 reached 20 times more instances on Distances.</li>
@@ -847,7 +854,7 @@ Summary per variant: instance plus constant arguments callee uses as field name.
 <li>Cut: call or store statement live at declared signature and dead at stand-in signature. Engine never sees it, so unit summary carries <code>cut</code>.</li>
 <li>Causes: call that fails on stand-in only; type test that stand-in decides (<code>x isa BigFloat &amp;&amp; (STATE[] += 1)</code>).</li>
 <li><code>inference</code> stage finds cuts: units with dead call or store statements first, then declared-signature inference of those units only.</li>
-<li>Package units count both causes. Library instances count failing calls only: Base type branches keep same effects (<code>findings.md</code>, Base contracts).</li>
+<li>Package units count both causes. Library instances count failing calls only: Base type branches keep same effects (<code>findings.md</code>, Confidence and blind spots).</li>
 <li>Callers inherit <code>cut</code>. Verdict none with <code>cut</code> goes to coverage line: <code>stand-in cuts path</code>.</li>
 <li>Definite and <code>possible</code> writes keep certainty with <code>cut</code>.</li>
 </ul>
@@ -1320,7 +1327,7 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <td>Call resolution</td>
 <td>Foreign calls, callback records, join, Base contracts, open calls</td>
 <td>1</td>
-<td>2a #234; 2b next</td>
+<td>2a #234; 2b #235; 2c next</td>
 </tr>
 <tr>
 <td>3</td>
@@ -1424,6 +1431,7 @@ Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback 
 <li>Callback record: call of parameter, static-parameter type or field callable. Caller substitutes callee summary and captured aliases.</li>
 <li>Join over at most 3 matching methods in package code. Disagreement gives <code>possible</code>. Library code keeps dispatch open.</li>
 <li>Base contract table holds documented behavior only. <code>iterate</code> on <code>Iterators.Stateful</code> gives <code>possible</code> write.</li>
+<li>Contract applies after join fails: library code and package dispatch over 3 methods. Contract verdict is closed-world.</li>
 <li>Open call: provenance decides finding, blind spot or nothing.</li>
 </ul>
 <p>Tests:</p>
