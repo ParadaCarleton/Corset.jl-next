@@ -38,10 +38,13 @@ end
 
 ((made::Templated{W})(arguments::Any...)::W) where {W} = W(made.constructor(arguments...))
 
-"""Function stand-in: each call returns `Any` to inference, so later code stays analyzed and its values give no findings."""
+"""
+Function stand-in: each call returns `Any` to inference, so later code stays analyzed and its values give no findings.
+Call has unknown compiler effects, like any callee: compaction keeps it, and caller is never `effect_free`.
+"""
 struct FunctionStandIn <: Function end
 
-(::FunctionStandIn)(arguments::Any...; keywords...)::Any = Base.inferencebarrier(nothing)
+(::FunctionStandIn)(arguments::Any...; keywords...)::Any = Base.inferencebarrier(Returns(nothing))(arguments...; keywords...)
 
 """Number stand-ins."""
 const NUMBERS = (FloatStandIn, IntStandIn)

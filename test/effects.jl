@@ -2,6 +2,7 @@ using Test: @test, @testset, @test_throws
 using Corset: Corset
 using Corset.Facts: Facts, MethodEffects, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision
 using Corset.Inference: infer_package, open_journal, records
+using Corset.StandIns: FunctionStandIn
 using Corset.Effects:
     Effects, Doubt, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
@@ -247,6 +248,7 @@ nest!(cell::Base.RefValue{Base.RefValue{Vector{Int}}}, values::Vector{Int}) = (c
 nest_write!(cell::Base.RefValue{Base.RefValue{Vector{Int}}}, values::Vector{Int}) = (nest!(cell, values); cell[][][1] = 0; nothing)
 open_on!(f::Any, x::Any) = (f(x); nothing)
 open_wrapped!(f::Any, values::Vector{Int}) = open_on!(f, Ref(values))
+open_keywords!(f::Any, x::Any) = (f(x; flag = true); nothing)
 open_result(f::Any, values::Vector{Int}) = f(values)
 open_result_write!(f::Any, values::Vector{Int}) = ((open_result(f, values)::Vector{Int})[1] = 0; nothing)
 open_element!(f::Any, values::Vector{Int}) = (f(values[1]); nothing)
@@ -385,6 +387,9 @@ end
     # Callee access below fresh wrapper reaches caller object inside; open result stays possible.
     @test summary_of(open_wrapped!, Any, Vector{Int}).writes[(parameter(3), true)].doubt == code
     @test summary_of(open_result_write!, Any, Vector{Int}).writes[top(3)].doubt == code
+    # Function stand-in stands for any callee: its call stays open, with or without keywords.
+    @test summary_of(open_on!, FunctionStandIn, Vector{Int}).writes[(parameter(3), true)].doubt == code
+    @test summary_of(open_keywords!, FunctionStandIn, Vector{Int}).writes[(parameter(3), true)].doubt == code
     @test all(((place, _),) -> root_of(place) != Root.Parameter(3), keys(summary_of(open_element!, Any, Vector{Int}).writes))
     mktempdir(@__DIR__) do directory
         journal = open_journal(directory)
