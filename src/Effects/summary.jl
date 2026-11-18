@@ -57,5 +57,7 @@ function summarize(flow::Flow)::Summary
     backing = Dict(node_of(holder) => nodes_of(targets) for (holder, targets) in flow.backing if shown(holder) && !isempty(targets))
     spread = Dict(node_of(holder) => nodes_of(targets) for (holder, targets) in flow.spread if shown(holder) && !isempty(targets))
     bound = Dict(binding => nodes_of(targets) for (binding, targets) in flow.bound if !isempty(targets))
-    return Summary(exported_effects(flow.writes), exported_effects(flow.reads), edges, backing, spread, bound, nodes_of(flow.result), length(exported), flow.closed_world)
+    # Records hold no fresh object (`deferred`), so they add no escaping object.
+    callbacks = Set{Callback}((variant = variant, parameters = map(nodes_of, arguments)) for records in values(flow.callbacks) for (variant, arguments) in records)
+    return Summary(exported_effects(flow.writes), exported_effects(flow.reads), edges, backing, spread, bound, callbacks, nodes_of(flow.result), length(exported), flow.closed_world)
 end

@@ -43,15 +43,16 @@ const ELEMENT_WRITES = IdDict{Any, Shape}(
 )
 
 """
-Transfer call statement `index` by its `outcome`; `summary_of(index, member)` gives summary of variant that call at
-`index` reaches through its `member`-th matching method.
+Transfer call statement `index` by its `outcome`, with callee variants and summaries from `callees`. Callback records of
+previous round at `index` give way to this round.
 """
-function call!(flow::Flow, index::Int, outcome::Outcome.Type, summary_of::Function)::Nothing
+function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees)::Nothing
+    delete!(flow.callbacks, index)
     @match outcome begin
         Outcome.Builtin(builtin, operands) => builtin!(flow, index, builtin, operands)
         Outcome.Intrinsic(intrinsic, operands) => intrinsic!(flow, index, intrinsic, operands)
         Outcome.Foreign(effects, operands) => table!(flow, index, effects, operands)
-        Outcome.Dispatch(instances, operands) => dispatch!(flow, index, instances, operands, summary_of)
+        Outcome.Dispatch(_, operands) => dispatch!(flow, index, operands, callees)
         Outcome.Contract(effects, operands, breached) => contract!(flow, index, effects, operands, breached)
         Outcome.Open(operands) => open!(flow, index, operands, open_doubt(flow, operands))
         Outcome.Unresolved(operands) => open!(flow, index, operands, CODE_DOUBT)
@@ -95,18 +96,21 @@ function contract!(flow::Flow, index::Int, effects::CallEffects, arguments::Vect
 end
 
 """
-Transfer call that reaches `instances` (`effects.md`, Calls, steps 3 and 5): one applies its summary; more join their
-summaries. Access every member makes keeps most doubt among them; access only some make is at least `possible`.
+Transfer call at `index` that reaches variants of `callees` (`effects.md`, Calls, steps 3 to 5): one applies its
+summary, or leaves callback record for caller; more join their summaries and resolve their records here. Access every
+member makes keeps most doubt among them; access only some make is at least `possible`.
 """
-function dispatch!(flow::Flow, index::Int, instances::Vector{Core.MethodInstance}, operands::Vector{Operand.Type}, summary_of::Function)::Nothing
-    if length(instances) == 1
-        apply!(flow, flow.writes, flow.reads, index, summary_of(index, 1), only(instances), operands)
+function dispatch!(flow::Flow, index::Int, operands::Vector{Operand.Type}, callees::Callees)::Nothing
+    variants = callees.variants[index]
+    if length(variants) == 1
+        variant = only(variants)
+        apply!(flow, flow.writes, flow.reads, index, summary!(callees, variant), variant, operands, !flow.flush, callees)
         return nothing
     end
     flow.closed_world = true
-    writes, reads = [OriginAccesses() for _ in instances], [OriginAccesses() for _ in instances]
-    for (member, instance) in enumerate(instances)
-        apply!(flow, writes[member], reads[member], index, summary_of(index, member), instance, operands)
+    writes, reads = [OriginAccesses() for _ in variants], [OriginAccesses() for _ in variants]
+    for (member, variant) in enumerate(variants)
+        apply!(flow, writes[member], reads[member], index, summary!(callees, variant), variant, operands, false, callees)
     end
     join_accesses!(flow.writes, writes)
     join_accesses!(flow.reads, reads)
@@ -508,18 +512,77 @@ function argument_sources(flow::Flow, site::CallSite, position::Int)::Sources
 end
 
 """
-Apply callee `summary` of `instance` at call statement `index` with `operands` (`effects.md`, Calls, step 3): effects
-on mapped places into `writes` and `reads`, callee stores between caller objects, and result. Vararg tuple becomes
-allocation at `index`.
+Apply callee `summary` of `variant` at call statement `index` with `operands` (`effects.md`, Calls, steps 3 and 4):
+stores and result now. Accesses go into `writes` and `reads`, or into callback record when `defers` and callable holds
+caller object (`deferred`). Vararg tuple becomes allocation at `index`.
 """
-function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, summary::Summary, instance::Core.MethodInstance, operands::Vector{Operand.Type})::Nothing
-    arguments = parameter_targets(flow, index, instance.def::Method, operands)
+function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, summary::Summary, variant::Variant, operands::Vector{Operand.Type}, defers::Bool, callees::Callees)::Nothing
+    arguments = parameter_targets(flow, index, first(variant).def::Method, operands)
     site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
     summary.closed_world && (flow.closed_world = true)
+    apply_stores!(flow, site, summary)
+    if defers && deferred(arguments)
+        defer!(flow, index, (variant, arguments))
+    else
+        apply_accesses!(flow, writes, reads, site, summary, defers, callees, Set{Deferred}())
+    end
+    return nothing
+end
+
+"""
+Accesses of callee `summary` at `site` into `writes` and `reads`, and its callback records: record waits again when
+`defers` and callable still holds caller object, else resolves here. `seen` holds records resolved at site.
+"""
+function apply_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::Set{Deferred})::Nothing
     for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below), effect) in effects
         objects = site_place(flow, site, place)
-        access!(table, below ? beneath(flow, objects) : objects, below, Effect(caller_doubt(flow, site, effect.doubt), index, effect.reason))
+        access!(table, below ? beneath(flow, objects) : objects, below, Effect(caller_doubt(flow, site, effect.doubt), site.index, effect.reason))
     end
+    for callback in summary.callbacks
+        record = (callback.variant, Targets[map_nodes(flow, nodes, site) for nodes in callback.parameters])
+        defers && deferred(last(record)) ? defer!(flow, site.index, record) : resolve!(flow, writes, reads, site.index, record, defers, callees, seen)
+    end
+    return nothing
+end
+
+"""
+Resolve callback `record` at call statement `index`: callable is fresh here, so accesses of its variant apply to record
+targets. Record in `seen` adds nothing: recursion through callable repeats same accesses on same targets.
+"""
+function resolve!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, record::Deferred, defers::Bool, callees::Callees, seen::Set{Deferred})::Nothing
+    record in seen && return nothing
+    push!(seen, record)
+    variant, arguments = record
+    summary = summary!(callees, variant)
+    summary.closed_world && (flow.closed_world = true)
+    site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
+    apply_accesses!(flow, writes, reads, site, summary, defers, callees, seen)
+    return nothing
+end
+
+"""Keep callback `record` of call statement `index` for caller; its targets are copied, since values grow in round."""
+function defer!(flow::Flow, index::Int, record::Deferred)::Nothing
+    push!(get!(Vector{Deferred}, flow.callbacks, index), (first(record), map(copy, last(record))))
+    return nothing
+end
+
+"""
+Whether call with callee parameter `arguments` (callable first) leaves accesses to caller: callable holds object below
+caller parameter, and no argument holds fresh object. Caller merges fresh objects of instance into one (`map_node`).
+"""
+function deferred(arguments::Vector{Targets})::Bool
+    any(parameter_origin, keys(first(arguments))) || return false
+    return !any(targets -> any(fresh_origin, keys(targets)), arguments)
+end
+
+"""Whether `origin` is caller object at path below parameter: caller can tell which object it is."""
+parameter_origin(origin::Origin.Type)::Bool = @match origin begin
+    Origin.Caller(Place.At(Root.Parameter(_), _)) => true
+    _ => false
+end
+
+"""Callee stores between caller objects at `site`, global bindings and result."""
+function apply_stores!(flow::Flow, site::CallSite, summary::Summary)::Nothing
     for ((node, step), nodes) in summary.edges
         store!(flow, map_node(flow, node, site), step, map_nodes(flow, nodes, site))
     end
@@ -532,6 +595,6 @@ function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index
     for (binding, nodes) in summary.bound
         bind!(flow, binding, map_nodes(flow, nodes, site))
     end
-    assign!(flow, index, map_nodes(flow, summary.result, site))
+    assign!(flow, site.index, map_nodes(flow, summary.result, site))
     return nothing
 end

@@ -179,4 +179,50 @@ emit_peer!(io::IO, box::Box)::Nothing = (send!(peer(io), box); nothing)
 
 apply_to!(f::Function, box::Box)::Nothing = (f(box); nothing)
 
+# Callback records: callable that holds caller object writes where caller made it.
+struct Setter
+    box::Box
+end
+
+(setter::Setter)(value::Int)::Nothing = (setter.box.value = value; nothing)
+
+# Tuple `foreach` wraps closure in `foldl` reducers: path from reducer to box has 3 steps.
+fill_pair!(box::Box)::Nothing = foreach(value -> (box.value = value), (1, 2))
+
+push_pair!(sink::Vector{Int})::Nothing = foreach(Base.Fix1(push!, sink), (1, 2))
+
+set_pair!(box::Box)::Nothing = foreach(Setter(box), (1, 2))
+
+# Root unit with callable from caller: no caller resolves record, so root does.
+call_setter!(setter::Setter, value::Int)::Nothing = foreach(setter, (value, value))
+
+struct Countdown
+    box::Box
+end
+
+(countdown::Countdown)(count::Int)::Nothing = count <= 0 ? nothing : (countdown.box.value = count; countdown(count - 1))
+
+count_down!(box::Box)::Nothing = Countdown(box)(3)
+
+struct Relay
+    setter::Setter
+end
+
+(relay::Relay)(value::Int)::Nothing = (relay.setter(value); nothing)
+
+act_either!(action::Union{Setter, Relay}, value::Int)::Nothing = (action(value); nothing)
+
+# Call cycle: `restart!` resolves record of `Ticker` call, which is member of same cycle. Only `Ticker` call writes `TICKS`.
+const TICKS = Int[]
+
+struct Ticker
+    box::Box
+end
+
+(ticker::Ticker)(count::Int)::Nothing = count <= 0 ? nothing : (push!(TICKS, count); restart!(ticker.box, count - 1))
+
+restart!(box::Box, count::Int)::Nothing = (box.value = count; run_ticker(Ticker(box), count))
+
+run_ticker(ticker::Ticker, count::Int)::Nothing = ticker(count)
+
 end

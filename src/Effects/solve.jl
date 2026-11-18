@@ -5,12 +5,6 @@ struct Body
     outcomes::Vector{Union{Nothing, Outcome.Type}}
 end
 
-"""
-Instance with constant arguments its callee uses as field name, by position (`effects.md`, Calls): `getproperty(x,
-:a)` summary loads field `a`. Pre-inlining IR keeps such wrapper calls, so summary without constant loses field.
-"""
-const Variant = Tuple{Core.MethodInstance, Vector{Pair{Int, Any}}}
-
 """Code of variant for solve: specialized IR, statement lines and outcomes of its body, and variants each call reaches."""
 struct Code
     ir::CC.IRCode
@@ -255,16 +249,30 @@ function reach!(run::Run, roots::Vector{Variant})::Vector{Variant}
     return order
 end
 
-"""Summary of `variant` with code, from current callee summaries of `run`: rounds over its IR until targets settle."""
-function variant_summary(run::Run, variant::Variant)::Summary
+"""
+Summary of `variant` with code, from current callee summaries of `run`: rounds over its IR until targets settle. Also
+gives variants whose summaries rounds read. `flush` resolves callback records here (`Flow`).
+"""
+function variant_summary(run::Run, variant::Variant, flush::Bool)::Tuple{Summary, Set{Variant}}
     code = run.codes[variant]
-    flow = start_flow(code.ir, code.outcomes, run.referent)
+    flow = start_flow(code.ir, code.outcomes, run.referent, flush)
+    callees = Callees(code.callees, run.summaries, Set{Variant}())
     while true
         flow.changed = false
-        round!(flow, (index, member) -> run.summaries[code.callees[index][member]])
+        round!(flow, callees)
         flow.changed || break
     end
-    return summarize(flow)
+    return summarize(flow), callees.read
+end
+
+"""
+Summary of root `variant` for verdicts after solve: no caller resolves its callback records, so root with records
+reruns with each record resolved at call statement where it starts.
+"""
+function root_summary(run::Run, variant::Variant)::Summary
+    summary = run.summaries[variant]
+    isempty(summary.callbacks) && return summary
+    return first(variant_summary(run, variant, true))
 end
 
 """Reruns of call cycle member before each new summary widens by its previous one (`widen`)."""
@@ -272,19 +280,24 @@ const WIDEN_AFTER = 8
 
 """
 Solve call cycle `members` (`effects.md`, Solve and cache): summaries start empty; member reruns only when summary of
-callee in cycle that it reads changes, and widens after `WIDEN_AFTER` reruns. `readers` lists callers inside cycle.
+member it read changes, and widens after `WIDEN_AFTER` reruns. Member reads callee summaries and variants of callback
+records it resolves, so readers come from each solve.
 """
-function solve_cycle!(run::Run, members::Vector{Variant}, readers::Dict{Variant, Vector{Variant}})::Nothing
+function solve_cycle!(run::Run, members::Vector{Variant})::Nothing
     for member in members
         body = run.bodies[first(member)]
         run.summaries[member] = body isa String ? open_summary(Int((first(member).def::Method).nargs), body) : empty_summary()
     end
+    readers = Dict(member => Variant[] for member in members)
     queue = filter(member -> haskey(run.codes, member), members)
     queued, reruns = Set(queue), Dict{Variant, Int}()
     while !isempty(queue)
         member = popfirst!(queue)
         delete!(queued, member)
-        summary = variant_summary(run, member)
+        summary, read = variant_summary(run, member, false)
+        for callee in read
+            haskey(readers, callee) && !(member in readers[callee]) && push!(readers[callee], member)
+        end
         reruns[member] = get(reruns, member, 0) + 1
         reruns[member] > WIDEN_AFTER && (summary = widen(run.summaries[member], summary))
         same(summary, run.summaries[member]) && continue
@@ -353,12 +366,7 @@ function solve!(run::Run, roots::Vector{Variant})::Nothing
         unique!(successors[position])
     end
     for component in components(successors)
-        inside = Set(component)
-        readers = Dict(order[member] => Variant[] for member in component)
-        for caller in component, callee in successors[caller]
-            callee in inside && push!(readers[order[callee]], order[caller])
-        end
-        solve_cycle!(run, order[component], readers)
+        solve_cycle!(run, order[component])
     end
     return nothing
 end

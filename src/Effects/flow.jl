@@ -4,11 +4,15 @@ const OriginAccesses = Dict{Tuple{Origin.Type, Bool}, Effect}
 """Targets by holder origin, for one slot kind: memory backing or unknown slot."""
 const OriginHolds = Dict{Origin.Type, Targets}
 
+"""Callback record during fixpoint: variant and targets of each callee parameter, callable first (`Callback`)."""
+const Deferred = Tuple{Variant, Vector{Targets}}
+
 """
 Points-to state of one instance during its fixpoint (`effects.md`, Origins and points-to): targets per IR value and
 argument; flow-insensitive heap by origin and slot, memory backing, unknown-slot stores and global bindings; result
-targets; accesses by origin and whether they cover places below. `changed` records growth of targets in current round;
-`closed_world` records join over methods loaded now (`Summary`).
+targets; accesses by origin and whether they cover places below; callback records by call statement. `changed` records
+growth of targets in current round; `closed_world` records join over methods loaded now (`Summary`). `flush` resolves
+every callback record here: root unit has no caller to resolve them.
 """
 mutable struct Flow
     const ir::CC.IRCode
@@ -22,19 +26,41 @@ mutable struct Flow
     const result::Targets
     const writes::OriginAccesses
     const reads::OriginAccesses
+    const callbacks::Dict{Int, Vector{Deferred}}
     const referent::IdDict{Any, Bool}
+    const flush::Bool
     changed::Bool
     closed_world::Bool
 end
 
-"""Flow of `ir` with call `outcomes` before first round: each referent argument points to its parameter."""
-function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, referent::IdDict{Any, Bool})::Flow
+"""
+Flow of `ir` with call `outcomes` before first round: each referent argument points to its parameter. `flush` resolves
+callback records in this instance (`Flow`).
+"""
+function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, referent::IdDict{Any, Bool}, flush::Bool)::Flow
     arguments = [
         referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), Step.Type[])) => NO_DOUBT) : Targets()
             for (position, type) in enumerate(ir.argtypes)
     ]
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
-    return Flow(ir, outcomes, [Targets() for _ in 1:length(ir.stmts)], arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), referent, false, false)
+    callbacks = Dict{Int, Vector{Deferred}}()
+    return Flow(ir, outcomes, [Targets() for _ in 1:length(ir.stmts)], arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, false, false)
+end
+
+"""
+Callee summaries for one instance solve: variants each call statement reaches, one per matching method; summaries by
+variant; and variants whose summaries solve read, so call cycle reruns readers when they change.
+"""
+struct Callees
+    variants::Vector{Vector{Variant}}
+    summaries::Dict{Variant, Summary}
+    read::Set{Variant}
+end
+
+"""Summary of `variant` from `callees`, recorded as read."""
+function summary!(callees::Callees, variant::Variant)::Summary
+    push!(callees.read, variant)
+    return callees.summaries[variant]
 end
 
 """Add `origin` with `doubt` to `targets`; chain with less doubt wins (`least`). Return whether `targets` changed."""
@@ -250,10 +276,10 @@ function assign!(flow::Flow, index::Int, targets::Targets, doubt::Doubt = NO_DOU
     return nothing
 end
 
-"""One round over every statement of `flow`, with callee summaries from `summary_of`."""
-function round!(flow::Flow, summary_of::Function)::Nothing
+"""One round over every statement of `flow`, with callee summaries from `callees`."""
+function round!(flow::Flow, callees::Callees)::Nothing
     for index in 1:length(flow.ir.stmts)
-        statement!(flow, index, flow.ir.stmts[index][:stmt], summary_of)
+        statement!(flow, index, flow.ir.stmts[index][:stmt], callees)
     end
     return nothing
 end
@@ -266,11 +292,11 @@ const INERT = (
 )
 
 """Transfer statement `index` of `flow` (`effects.md`, Calls)."""
-function statement!(flow::Flow, index::Int, statement::Any, summary_of::Function)::Nothing
+function statement!(flow::Flow, index::Int, statement::Any, callees::Callees)::Nothing
     if statement isa Expr
         head = statement.head
         if head in (:call, :foreigncall)
-            call!(flow, index, something(flow.outcomes[index]), summary_of)
+            call!(flow, index, something(flow.outcomes[index]), callees)
         elseif head === :new
             new!(flow, index, statement.args[1], Operand.Type[Operand.Value(value) for value in statement.args[2:end]])
         elseif head === :splatnew
