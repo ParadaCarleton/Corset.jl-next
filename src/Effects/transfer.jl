@@ -120,7 +120,7 @@ most doubtful level. Access absent from some member is at least `code`, doubt in
 function join_accesses!(table::OriginAccesses, members::Vector{OriginAccesses})::Nothing
     for key in union(keys.(members)...)
         found = [member[key] for member in members if haskey(member, key)]
-        first_worst = reduce((first, second) -> second.doubt.level > first.doubt.level ? second : first, found)
+        first_worst = reduce((first, second) -> level_of(second.doubt) > level_of(first.doubt) ? second : first, found)
         doubt = reduce(most, (effect.doubt for effect in found))
         length(found) == length(members) || (doubt = most(doubt, CODE_DOUBT))
         effect = Effect(doubt, first_worst.cause, first_worst.reason)
@@ -363,7 +363,7 @@ Doubt of open dispatch with `operands` (`effects.md`, Provenance): sources of ea
 open. `FunctionStandIn` stands for any function Corset chose. Call open without open operand type: doubt in code.
 """
 function open_doubt(flow::Flow, operands::Vector{Operand.Type})::Doubt
-    sources = UInt64(0)
+    sources = Sources(0)
     for operand in operands
         type = operand_type(flow.ir, operand)
         if type === FunctionStandIn
@@ -379,21 +379,21 @@ end
 Sources of open type of value with `targets`: parameter of each caller place, sources of each `code` chain, and
 `INHERENT` for global or fresh object merge. Fresh object has concrete type: its contents decide.
 """
-function type_sources(flow::Flow, targets::Targets)::UInt64
+function type_sources(flow::Flow, targets::Targets)::Sources
     count(fresh_origin, keys(targets)) > 1 && return INHERENT
-    sources = UInt64(0)
+    sources = Sources(0)
     for (origin, doubt) in beneath(flow, targets)
-        doubt.level == Level.code && (sources |= doubt.sources)
+        sources |= sources_of(doubt)
         sources |= origin_source(origin)
     end
     return sources == 0 ? INHERENT : sources
 end
 
 """Source of open type at `origin`: parameter of caller place, `INHERENT` for global; none for fresh and unknown objects."""
-function origin_source(origin::Origin.Type)::UInt64
+function origin_source(origin::Origin.Type)::Sources
     root = @match origin begin
         Origin.Caller(place) => root_of(place)
-        _ => return UInt64(0)
+        _ => return Sources(0)
     end
     return @match root begin
         Root.Parameter(position) => parameter_source(position)
@@ -443,7 +443,7 @@ struct CallSite
     index::Int
     fresh::Int
     places::Dict{Place.Type, Targets}
-    sources::Dict{Int, UInt64}
+    sources::Dict{Int, Sources}
 end
 
 """Targets of callee `place` at `site`, mapped once per call statement and round."""
@@ -490,18 +490,18 @@ Callee `doubt` at `site`: each parameter source becomes type sources of its argu
 without argument is doubt in code.
 """
 function caller_doubt(flow::Flow, site::CallSite, doubt::Doubt)::Doubt
-    doubt.level == Level.code && doubt.sources & PARAMETERS != 0 || return doubt
-    sources, pending = doubt.sources & ~PARAMETERS, doubt.sources & PARAMETERS
+    sources_of(doubt) & PARAMETERS != 0 || return doubt
+    sources, pending = sources_of(doubt) & ~PARAMETERS, sources_of(doubt) & PARAMETERS
     while pending != 0
         position = trailing_zeros(pending)
-        pending &= pending - UInt64(1)
+        pending &= pending - Sources(1)
         sources |= argument_sources(flow, site, position)
     end
     return Doubt(Level.code, sources)
 end
 
 """Type sources of argument `position` at `site`, found once per call statement and round; doubt in code past arguments."""
-function argument_sources(flow::Flow, site::CallSite, position::Int)::UInt64
+function argument_sources(flow::Flow, site::CallSite, position::Int)::Sources
     position <= length(site.arguments) || return INHERENT
     haskey(site.sources, position) || (site.sources[position] = type_sources(flow, site.arguments[position]))
     return site.sources[position]
@@ -514,7 +514,7 @@ allocation at `index`.
 """
 function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, summary::Summary, instance::Core.MethodInstance, operands::Vector{Operand.Type})::Nothing
     arguments = parameter_targets(flow, index, instance.def::Method, operands)
-    site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, UInt64}())
+    site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
     summary.closed_world && (flow.closed_world = true)
     for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below), effect) in effects
         objects = site_place(flow, site, place)

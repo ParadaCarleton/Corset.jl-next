@@ -23,50 +23,64 @@ limit: blind spot only).
 """
 @enumx Level none code blind
 
+"""Sources of `code` doubt as bits, and bits of `Doubt`."""
+const Sources = UInt32
+
+"""Bit of `Doubt` for `blind` level; sources use bits below it."""
+const BLIND = Sources(1) << (8 * sizeof(Sources) - 1)
+
 """
-Doubt of chain or effect (`effects.md`, Provenance): level, and for `code` level its sources as bits. `INHERENT`: doubt
-in code itself. `OPAQUE`: type Corset chose. Bit `p` (`parameter_source`): open type of parameter `p`; caller decides.
+Doubt of chain or effect (`effects.md`, Provenance): level (`level_of`), and for `code` level its sources as bits
+(`sources_of`). `INHERENT`: doubt in code itself. `OPAQUE`: type Corset chose. Bit `p` (`parameter_source`): open type
+of parameter `p`; caller decides. Packed in 4 bytes, since targets and effects copy it in every round: `none` is 0,
+`blind` is `BLIND` alone, `code` doubt is its sources.
 """
 struct Doubt
-    level::Level.T
-    sources::UInt64
-    function Doubt(level::Level.T, sources::UInt64)::Doubt
+    bits::Sources
+    function Doubt(level::Level.T, sources::Sources)::Doubt
         (level == Level.code) == (sources != 0) || throw(ArgumentError("doubt has sources exactly at `code` level: $level, $sources"))
-        return new(level, sources)
+        sources & BLIND == 0 || throw(ArgumentError("doubt sources use bits below `BLIND`: $sources"))
+        return new(level == Level.blind ? BLIND : sources)
     end
 end
 
-"""Source bit of doubt in code itself: no parameter type resolves it."""
-const INHERENT = UInt64(1)
+"""Level of `doubt`."""
+level_of(doubt::Doubt)::Level.T = doubt.bits == 0 ? Level.none : doubt.bits == BLIND ? Level.blind : Level.code
 
-"""Source bit of open type Corset chose: `FunctionStandIn` argument."""
-const OPAQUE = UInt64(1) << 62
+"""Sources of `doubt`: none below `code` level and above it."""
+sources_of(doubt::Doubt)::Sources = doubt.bits & ~BLIND
+
+"""Source bit of doubt in code itself: no parameter type resolves it."""
+const INHERENT = Sources(1)
 
 """Last parameter with own source bit; later parameters count as `INHERENT`."""
-const LAST_PARAMETER = 61
+const LAST_PARAMETER = 8 * sizeof(Sources) - 3
+
+"""Source bit of open type Corset chose: `FunctionStandIn` argument."""
+const OPAQUE = Sources(1) << (LAST_PARAMETER + 1)
 
 """Source bits of parameters 1 to `LAST_PARAMETER`."""
-const PARAMETERS = (UInt64(1) << (LAST_PARAMETER + 1)) - UInt64(2)
+const PARAMETERS = (Sources(1) << (LAST_PARAMETER + 1)) - Sources(2)
 
 """Source bit of parameter `position` (callee is 1); past `LAST_PARAMETER`, `INHERENT`."""
-parameter_source(position::Int)::UInt64 = 1 <= position <= LAST_PARAMETER ? UInt64(1) << position : INHERENT
+parameter_source(position::Int)::Sources = 1 <= position <= LAST_PARAMETER ? Sources(1) << position : INHERENT
 
 """No doubt: definite."""
-const NO_DOUBT = Doubt(Level.none, UInt64(0))
+const NO_DOUBT = Doubt(Level.none, Sources(0))
 
 """Doubt in code itself."""
 const CODE_DOUBT = Doubt(Level.code, INHERENT)
 
 """Blind doubt: Corset limit."""
-const BLIND_DOUBT = Doubt(Level.blind, UInt64(0))
+const BLIND_DOUBT = Doubt(Level.blind, Sources(0))
 
 """
 Doubt of chain through steps with `first` and `second`: most doubtful level. Two `code` doubts join sources: doubt is
 in code when either source is.
 """
 function most(first::Doubt, second::Doubt)::Doubt
-    first.level == second.level && return Doubt(first.level, first.sources | second.sources)
-    return first.level > second.level ? first : second
+    level_of(first) == level_of(second) && return Doubt(level_of(first), sources_of(first) | sources_of(second))
+    return level_of(first) > level_of(second) ? first : second
 end
 
 """
@@ -74,8 +88,8 @@ Doubt of two chains to one origin: least doubtful level. Two `code` doubts join 
 `possible` when its source is code.
 """
 function least(first::Doubt, second::Doubt)::Doubt
-    first.level == second.level && return Doubt(first.level, first.sources | second.sources)
-    return first.level < second.level ? first : second
+    level_of(first) == level_of(second) && return Doubt(level_of(first), sources_of(first) | sources_of(second))
+    return level_of(first) < level_of(second) ? first : second
 end
 
 """
@@ -99,7 +113,7 @@ Effect of two chains on one place: less doubt (`least`), cause and reason of cha
 cause; order is total, so rounds agree.
 """
 function stronger(first::Effect, second::Effect)::Effect
-    chosen = isless((second.doubt.level, second.cause, second.reason), (first.doubt.level, first.cause, first.reason)) ? second : first
+    chosen = isless((level_of(second.doubt), second.cause, second.reason), (level_of(first.doubt), first.cause, first.reason)) ? second : first
     return Effect(least(first.doubt, second.doubt), chosen.cause, chosen.reason)
 end
 

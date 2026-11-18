@@ -219,7 +219,7 @@ gives cause `alias` unless effect is blind already.
 """
 function access!(table::OriginAccesses, objects::Targets, below::Bool, effect::Effect)::Nothing
     for (origin, doubt) in objects
-        reason = effect.doubt.level == Level.blind ? effect.reason : doubt.level == Level.blind ? "alias" : ""
+        reason = level_of(effect.doubt) == Level.blind ? effect.reason : level_of(doubt) == Level.blind ? "alias" : ""
         found = Effect(most(effect.doubt, doubt), effect.cause, reason)
         key = (origin, below)
         table[key] = haskey(table, key) ? stronger(table[key], found) : found

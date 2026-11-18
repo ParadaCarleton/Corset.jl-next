@@ -13,7 +13,7 @@ const OPAQUE_DATA = "open dispatch on opaque data"
 Provenance of `code` doubt with `sources` in unit with argument `provenance` (`effects.md`, Provenance): `code` when
 doubt is in code itself or any source argument is code; else `opaque` when any source is; else `opt_out`.
 """
-function source_provenance(sources::UInt64, provenance::Vector{Provenance.T})::Provenance.T
+function source_provenance(sources::Sources, provenance::Vector{Provenance.T})::Provenance.T
     sources & INHERENT == 0 || return Provenance.code
     found = sources & OPAQUE == 0 ? Provenance.opt_out : Provenance.opaque
     for position in 1:LAST_PARAMETER
@@ -32,8 +32,8 @@ Accesses of unit `effects` with doubt below blind, and blind accesses, with caus
 function unit_accesses(effects::Accesses, span_of::Function, provenance::Vector{Provenance.T})::Tuple{Vector{Access}, Vector{BlindAccess}}
     accesses, blind = Access[], BlindAccess[]
     for ((place, below), effect) in effects
-        span, level = span_of(effect.cause), effect.doubt.level
-        kind = level == Level.code ? source_provenance(effect.doubt.sources, provenance) : Provenance.code
+        span, level = span_of(effect.cause), level_of(effect.doubt)
+        kind = level == Level.code ? source_provenance(sources_of(effect.doubt), provenance) : Provenance.code
         if level == Level.blind
             push!(blind, BlindAccess(place, below, BlindSpot(effect.reason, span)))
         elseif kind == Provenance.opaque

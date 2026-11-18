@@ -4,7 +4,7 @@ using Corset.Facts: Facts, MethodEffects, Access, BlindAccess, Place, Root, Step
 using Corset.Inference: infer_package, open_journal, records
 using Corset.StandIns: FunctionStandIn
 using Corset.Effects:
-    Effects, Doubt, Level, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
+    Effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
     components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body
@@ -528,8 +528,14 @@ four_way(x::Symbol) = x
     # Two `code` doubts join sources, both along chain and across chains.
     @test most(sourced(2), sourced(3)) == sourced(2, 3) && least(sourced(2), CODE_DOUBT) == Doubt(Level.code, parameter_source(2) | INHERENT)
     @test least(NO_DOUBT, sourced(2)) == NO_DOUBT && least(BLIND_DOUBT, sourced(2)) == sourced(2) && most(sourced(2), NO_DOUBT) == sourced(2)
-    @test parameter_source(62) == INHERENT && parameter_source(0) == INHERENT
-    @test_throws ArgumentError Doubt(Level.code, UInt64(0))
+    @test parameter_source(LAST_PARAMETER + 1) == INHERENT && parameter_source(0) == INHERENT
+    @test parameter_source(LAST_PARAMETER) & (INHERENT | OPAQUE) == 0 && parameter_source(LAST_PARAMETER) << 1 == OPAQUE
+    # Targets and effects copy doubt in every round.
+    @test sizeof(Doubt) == 4
+    @test (level_of(NO_DOUBT), level_of(sourced(2)), level_of(BLIND_DOUBT)) == (Level.none, Level.code, Level.blind)
+    @test sources_of(BLIND_DOUBT) == 0 && sources_of(NO_DOUBT) == 0 && sources_of(Doubt(Level.code, OPAQUE)) == OPAQUE
+    @test_throws ArgumentError Doubt(Level.code, BLIND)
+    @test_throws ArgumentError Doubt(Level.code, Sources(0))
     @test_throws ArgumentError Doubt(Level.none, OPAQUE)
     @test stronger(Effect(sourced(2), 3, ""), Effect(sourced(4), 2, "")) == Effect(sourced(2, 4), 2, "")
     @test stronger(Effect(CODE_DOUBT, 3, ""), Effect(CODE_DOUBT, 2, "")) == Effect(CODE_DOUBT, 2, "")
@@ -565,7 +571,7 @@ four_way(x::Symbol) = x
     flow = start_flow(code.ir, code.outcomes, run.referent)
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), _ -> empty_summary())
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), _ -> empty_summary())
-    @test map_node(flow, Node.Fresh(4), CallSite(Targets[], 7, 2, Dict{Place.Type, Targets}(), Dict{Int, UInt64}())) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
+    @test map_node(flow, Node.Fresh(4), CallSite(Targets[], 7, 2, Dict{Place.Type, Targets}(), Dict{Int, Sources}())) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
     @test deep(flow, Targets(Origin.Caller(parameter(2)) => NO_DOUBT)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => BLIND_DOUBT)
     # Spread part as callee: `MemoryRef` has no call method, so call throws.
     @test isa_variant(resolve(code.ir, Operand.Type[Operand.Part(Core.Argument(2), 1)], run.world, 1), Outcome.Dead)
@@ -745,7 +751,7 @@ const ACCESSES = Data.Dicts(Data.SampledFrom([(parameter(2), false), (parameter(
 const NODES = Data.Dicts(Data.SampledFrom([Node.Placed(parameter(2)), Node.Fresh(1), Node.Outside()]), DOUBTS; max_size = 3)
 
 """Whether `first` doubts at most as `second` does: lower level, or same level with every source of `second`."""
-at_most(first::Doubt, second::Doubt)::Bool = first.level < second.level || first.level == second.level && first.sources & second.sources == second.sources
+at_most(first::Doubt, second::Doubt)::Bool = level_of(first) < level_of(second) || level_of(first) == level_of(second) && sources_of(first) & sources_of(second) == sources_of(second)
 
 """Summaries over two parameters: few places, nodes and causes, so draws overlap."""
 const SUMMARIES = @composed function summaries(writes = ACCESSES, reads = ACCESSES, held = NODES, result = NODES, fresh = Data.Integers(0, 2), closed = Data.Booleans())
