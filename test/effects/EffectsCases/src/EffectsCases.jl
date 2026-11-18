@@ -147,6 +147,12 @@ end
 
 reset_slot!(slot::Base.RefValue{Any})::Nothing = (reset!(slot[]); nothing)
 
+reset_default!(target::Any = nothing)::Nothing = (reset!(target); nothing)
+
+# Untyped method: only unit call reaches, with caller types; `Any` element type is code there.
+reset_items!(count, items) = (reset!(items[1]); count)
+fill_any!(count::Integer, box::Box)::Nothing = (reset_items!(count, Any[box]); nothing)
+
 # More `IO` methods than join takes: call on `IO` stays open.
 send!(io::IOBuffer, box::Box)::Nothing = (box.value = 0; nothing)
 send!(io::IOStream, box::Box)::Nothing = (box.value = 0; nothing)

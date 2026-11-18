@@ -1,13 +1,14 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
 using Corset.Facts: Facts, MethodEffects, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision
-using Corset.Inference: infer_package, open_journal, records
+using Corset.Inference: infer_package, open_journal, records, explicit_any
 using Corset.StandIns: FunctionStandIn
+using Corset.Signatures: Provenance
 using Corset.Effects:
     Effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
-    components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body
+    components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, caller_doubt, source_provenance
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 
@@ -128,10 +129,15 @@ named(name::Symbol)::MethodEffects = only(found for found in FACTS.methods if fo
     end
     # Open call result keeps source of its open types: open call on it is blind too.
     @test isempty(named(:emit_peer!).writes) && (elsewhere, true, opaque) in blind_shape(named(:emit_peer!).blind_writes)
-    # Explicit `Any` opts out: no access, no blind spot.
-    for name in (:reset_any!, :reset_slot!, :call_on)
-        @test isempty(named(name).writes) && isempty(named(name).blind_writes)
+    # Explicit `Any` opts out, also with default value: no access, no blind spot.
+    defaulted = only(found for found in FACTS.methods if found.site.method.name == :reset_default! && found.site.method.nargs == 2)
+    for found in (named(:reset_any!), named(:reset_slot!), named(:call_on), defaulted)
+        @test isempty(found.writes) && isempty(found.blind_writes)
     end
+    @test explicit_any(named(:call_on).site, :f) && !explicit_any(named(:call_on).site, :box)
+    # Unit call reaches keeps caller types: `Vector{Any}` from `fill_any!` is code there.
+    reached = named(:reset_items!)
+    @test !isempty(reached.writes) && all(access -> access.confidence == possible, reached.writes) && isempty(reached.blind_writes)
     # Open type code wrote: `possible`, also beside opaque type.
     @test shape(named(:reset_typed!).writes) == [(parameter(2), true, possible)]
     @test shape(named(:emit_typed!).writes) == [(parameter(2), true, possible), (parameter(3), true, possible)]
@@ -281,8 +287,16 @@ open_keywords!(f::Any, x::Any) = (f(x; flag = true); nothing)
 open_result(f::Any, values::Vector{Int}) = f(values)
 open_result_write!(f::Any, values::Vector{Int}) = ((open_result(f, values)::Vector{Int})[1] = 0; nothing)
 open_element!(f::Any, values::Vector{Int}) = (f(values[1]); nothing)
+# Callers pass callee arguments in other positions, so caller maps each source to its own parameter.
+open_result_swapped(values::Vector{Int}, f::Any) = open_result(f, values)
+open_unknown!(f::Any) = (f(nothing)(nothing); nothing)
+open_unknown_through!(::Any, f::Any) = open_unknown!(f)
+# Step from unknown object keeps chain sources, through constant field and through unknown slot.
+open_loaded!(f::Any) = (((f(nothing)::Base.RefValue{Any})[])(nothing); nothing)
+open_loaded_any!(f::Any, name::Symbol) = (getfield(f(nothing)::Base.RefValue{Any}, name)(nothing); nothing)
 object_at(pointer::Ptr{Cvoid}) = unsafe_pointer_to_objref(pointer)
 unknown_foreign!(pointer::Ptr{Int}) = ccall(:corset_unknown_function, Cvoid, (Ptr{Int},), pointer)
+unknown_foreign_object!(x::Any) = ccall(:corset_unknown_function, Cvoid, (Any,), x)
 popped(table::IdDict{Int, Vector{Int}}) = pop!(table, 1)
 no_method(values::Vector{Int}) = sin(values)
 
@@ -369,6 +383,8 @@ end
     @test null_pointer(GlobalRef(Base, :C_NULL)) && !null_pointer(GlobalRef(@__MODULE__, :HOLDER)) && !null_pointer(GlobalRef(@__MODULE__, :slot))
     @test summary_of(object_at, Ptr{Cvoid}).result == Nodes(Node.Placed(parameter(2)) => none)
     @test doubts(summary_of(unknown_foreign!, Ptr{Int}).writes) == Dict((parameter(2), true) => code)
+    # Unknown C function: doubt in code, also on argument of open type.
+    @test doubts(summary_of(unknown_foreign_object!, Any).writes) == Dict((parameter(2), true) => code)
     popped_summary = summary_of(popped, IdDict{Int, Vector{Int}})
     @test doubts(popped_summary.writes) == Dict(top(2) => none) && popped_summary.result == Nodes(Node.Placed(parameter(2, Step.Element())) => none)
     for (target, name) in ((QuoteNode(:strlen), :strlen), (Expr(:tuple, QuoteNode(:f), "lib"), :f), ((:f, "lib"), :f), ("f", :f), (Expr(:tuple), nothing), ((), nothing), (1, nothing))
@@ -418,6 +434,13 @@ end
     # Callee access below fresh wrapper reaches caller object inside; open result keeps source of open callee.
     @test summary_of(open_wrapped!, Any, Vector{Int}).writes[(parameter(3), true)].doubt == sourced(2)
     @test summary_of(open_result_write!, Any, Vector{Int}).writes[top(3)].doubt == sourced(2)
+    # Callee source maps to caller argument in its position: effects, result nodes and unknown objects alike.
+    swapped = summary_of(open_result_swapped, Vector{Int}, Any)
+    @test doubts(swapped.writes) == Dict((parameter(2), true) => sourced(3), (parameter(3), true) => sourced(3))
+    @test swapped.result == Nodes(Node.Placed(parameter(2)) => sourced(3), Node.Placed(parameter(3)) => sourced(3), Node.Outside() => sourced(3))
+    @test summary_of(open_unknown_through!, Any, Any).writes[(Place.At(Root.Elsewhere(), Step.Type[]), true)].doubt == sourced(3)
+    @test summary_of(open_loaded!, Any).writes[(Place.At(Root.Elsewhere(), Step.Type[]), true)].doubt == sourced(2)
+    @test summary_of(open_loaded_any!, Any, Symbol).writes[(Place.At(Root.Elsewhere(), Step.Type[]), true)].doubt == sourced(2)
     # Function stand-in stands for any callee Corset chose: its call stays open, with or without keywords.
     @test summary_of(open_on!, FunctionStandIn, Vector{Int}).writes[(parameter(3), true)].doubt == Doubt(Level.code, OPAQUE)
     @test summary_of(open_keywords!, FunctionStandIn, Vector{Int}).writes[(parameter(3), true)].doubt == Doubt(Level.code, OPAQUE)
@@ -573,6 +596,18 @@ four_way(x::Symbol) = x
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), _ -> empty_summary())
     @test map_node(flow, Node.Fresh(4), CallSite(Targets[], 7, 2, Dict{Place.Type, Targets}(), Dict{Int, Sources}())) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
     @test deep(flow, Targets(Origin.Caller(parameter(2)) => NO_DOUBT)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => BLIND_DOUBT)
+    # Type sources: parameter of caller place, sources of chain; global and merge of fresh objects are doubt in code.
+    held_global = Origin.Caller(global_place(@__MODULE__, :HOLDER))
+    @test type_sources(flow, Targets(Origin.Unknown() => sourced(3))) == parameter_source(3)
+    @test type_sources(flow, Targets(held_global => NO_DOUBT, Origin.Caller(parameter(2)) => NO_DOUBT)) == INHERENT | parameter_source(2)
+    flow.heap[Origin.Allocation(1)] = Dict(Step.Field(:x) => Targets(Origin.Caller(parameter(2)) => NO_DOUBT))
+    @test type_sources(flow, Targets(Origin.Allocation(1) => NO_DOUBT)) == parameter_source(2)
+    @test type_sources(flow, Targets(Origin.Allocation(1) => NO_DOUBT, Origin.Allocation(2) => NO_DOUBT)) == INHERENT
+    # Callee parameter source becomes type sources of argument; parameter without argument is doubt in code.
+    site = CallSite([Targets(), Targets(Origin.Caller(parameter(4)) => NO_DOUBT)], 7, 0, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
+    @test caller_doubt(flow, site, sourced(2)) == sourced(4) && caller_doubt(flow, site, sourced(3)) == CODE_DOUBT
+    # Source past unit arguments is doubt in code.
+    @test source_provenance(parameter_source(3), [Provenance.code, Provenance.opaque]) == Provenance.code
     # Spread part as callee: `MemoryRef` has no call method, so call throws.
     @test isa_variant(resolve(code.ir, Operand.Type[Operand.Part(Core.Argument(2), 1)], run.world, 1), Outcome.Dead)
     typed = only(unit for unit in UNITS.typed if unit.site.method.name == :add)
@@ -584,6 +619,10 @@ four_way(x::Symbol) = x
     joined = Dict{Tuple{Origin.Type, Bool}, Effect}()
     join_accesses!(joined, [Dict(partial => Effect(NO_DOUBT, 5, "")), Dict{Tuple{Origin.Type, Bool}, Effect}()])
     @test joined == Dict(partial => Effect(CODE_DOUBT, 5, ""))
+    # Members with `code` doubt from different sources: join keeps sources of all.
+    joined = Dict{Tuple{Origin.Type, Bool}, Effect}()
+    join_accesses!(joined, [Dict(shared => Effect(sourced(2), 5, "")), Dict(shared => Effect(sourced(3), 6, ""))])
+    @test joined == Dict(shared => Effect(sourced(2, 3), 5, ""))
     # Join must reach every call native inference resolves.
     @test JOIN_LIMIT >= Effects.CC.InferenceParams().max_methods
     world = Base.get_world_counter()

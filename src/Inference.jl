@@ -113,17 +113,19 @@ function untyped_argument(node::SyntaxNode)::Bool
     return kind_name(node) == "tuple" || (kind_name(node) == "Identifier" && identifier_name(node) != "_")
 end
 
-"""Whether argument `name` of method of `site` has annotation `::Any` in source, keyword arguments included."""
+"""
+Whether positional argument `name` of method of `site` has annotation `::Any` in source. Keyword bodies get no
+stand-in signatures, so keyword annotations never count (`provenance`).
+"""
 function explicit_any(site::MethodSite, name::Symbol)::Bool
     parts = isnothing(site.node) ? nothing : signature(site.node)
     isnothing(parts) && return false
     return any(node -> annotated_any(site, node, string(name)), parts.arguments)
 end
 
-"""Whether argument `node` of signature of `site` (or keyword group) declares argument `name` as `::Any`."""
+"""Whether positional argument `node` of signature of `site` declares argument `name` as `::Any`."""
 function annotated_any(site::MethodSite, node::SyntaxNode, name::String)::Bool
     kind = kind_name(node)
-    kind == "parameters" && return any(child -> annotated_any(site, child, name), children_of(node))
     kind in ("=", "kw", "...") && return annotated_any(site, children_of(node)[1], name)
     kind == "::" && length(children_of(node)) == 2 || return false
     target, annotation = children_of(node)

@@ -51,6 +51,8 @@ module SignatureCases
     end
     measure(sized::Sized) = sized.values
     listed(values::Vector{Any}) = values
+    listed_deep(table::Dict{Symbol, Vector{Any}}) = table
+    first_listed(values::AbstractVector{Vector{Any}}) = values[1]
     abstract type Tree end
     struct Node{C <: Tree} <: Tree
         child::C
@@ -164,8 +166,10 @@ include("compilation.jl")
         @test provenances(:text, Int[]) == [[code, opaque]] && provenances(:bounded, Int[]) == [[code, opaque]]
         @test provenances(:free, Int[]) == [[code, code]] && provenances(:mixed, Int[]) == [[code, code, code]]
         @test provenances(:nested, Int[]) == [[code, code], [code, code]] && provenances(:measure, Int[]) == [[code, opaque]]
-        # Declared concrete type with `Any` parameter opts out.
-        @test provenances(:listed, Int[]) == [[code, opt_out]]
+        # Declared concrete type with `Any` parameter at any depth opts out.
+        @test provenances(:listed, Int[]) == [[code, opt_out]] && provenances(:listed_deep, Int[]) == [[code, opt_out]]
+        # Array stand-in with open part below its element: whole argument is Corset choice.
+        @test provenances(:first_listed, Int[]) == [[code, opaque]]
         # Signature call reaches carries caller types: only function and array stand-ins are Corset choice.
         @test argument_provenance(only(methods(CASES.first_item)), call(:first_item, AbstractVector), false, Int[]) == [code, code]
         @test argument_provenance(only(methods(CASES.first_item)), call(:first_item, ArrayStandIn{Any, 1}), false, Int[]) == [code, opaque]
