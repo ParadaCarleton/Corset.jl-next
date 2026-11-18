@@ -1,10 +1,14 @@
 """
 IR of inference `frame` before inlining, and source statement index of each IR statement (`effects.md`, IR). Passes run
 on copies, so frame stays as `inference` stage left it. Line of each statement carries its index through passes.
+Compaction keeps statements `kept` marks, though compiler effects let it delete them.
 """
-function frame_ir(frame::CC.InferenceState, interpreter::CC.NativeInterpreter)::Tuple{CC.IRCode, Vector{Int}}
+function frame_ir(frame::CC.InferenceState, interpreter::CC.NativeInterpreter, kept::Vector{Bool})::Tuple{CC.IRCode, Vector{Int}}
     source = copy(frame.src)
     count = length(source.code)
+    for index in findall(kept)
+        source.ssaflags[index] &= ~CC.IR_FLAG_EFFECT_FREE
+    end
     stream = CC.DebugInfoStream(Int32[part for index in 1:count for part in (index, 0, 0)])
     stream.def = frame.linfo
     source.debuginfo = Core.DebugInfo(stream, count)

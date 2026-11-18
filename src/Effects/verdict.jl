@@ -102,7 +102,7 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
         instance = typed.frame.linfo
         haskey(typed_of, instance) && continue
         typed_of[instance] = typed
-        run.bodies[instance] = frame_body(run, typed.frame)
+        run.bodies[instance] = instance_body(run, typed.frame)
     end
     roots = Variant[(typed.frame.linfo, Pair{Int, Any}[]) for typed in units.typed if typed_of[typed.frame.linfo] === typed]
     solve!(run, roots)
@@ -112,8 +112,9 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
         typed = typed_of[first(root)]
         # Unit that always throws on stand-ins shows no behavior of declared signature.
         typed.result === Union{} && (push!(spots, BlindSpot("always throws on stand-ins", typed.site.span)); continue)
-        summary, code = root_summary(run, root), run.codes[root]
-        span_of(cause::Int)::Span = cause_span(typed, code, cause)
+        # Shortcut root has no code; its summary holds no access to give span.
+        summary = root_summary(run, root)
+        span_of(cause::Int)::Span = cause_span(typed, run.codes[root], cause)
         writes, reads, blind_writes, blind_reads, aliases = get!(() -> (Access[], Access[], BlindAccess[], BlindAccess[], Place.Type[]), found, typed.site.method)
         unit_writes, unit_blind_writes = unit_accesses(summary.writes, span_of, typed.provenance)
         unit_reads, unit_blind_reads = unit_accesses(summary.reads, span_of, typed.provenance)

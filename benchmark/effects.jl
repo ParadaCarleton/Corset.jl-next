@@ -10,7 +10,9 @@ const CORPUS = ["Distances@0.10.12", "DataStructures@0.18.22", "JSON@1.13.4"]
 """Child process: load target `ARGS[1]`, then time `effects` stage on its copy `ARGS[2]` and count its run."""
 const CHILD = raw"""
 using Corset: Corset
-using Corset.Effects: Effects, start_run, frame_body, solve!, Variant, Outcome
+using Corset.Effects: Effects, start_run, solve!, Variant, Outcome
+# Older Corset builds every unit body; newer one may shortcut it (`instance_body`).
+const unit_body = isdefined(Effects, :instance_body) ? Effects.instance_body : Effects.frame_body
 using Corset.Facts: Confidence
 name, root = ARGS
 Base.require(Main, Symbol(name))
@@ -25,7 +27,7 @@ function solved(units)
     for typed in units.typed
         instance = typed.frame.linfo
         haskey(run.bodies, instance) && continue
-        run.bodies[instance] = frame_body(run, typed.frame)
+        run.bodies[instance] = unit_body(run, typed.frame)
         push!(roots, (instance, Pair{Int, Any}[]))
     end
     solve!(run, roots)
@@ -45,9 +47,11 @@ causes = Dict{String, Int}()
 foreach(spot -> causes[spot.cause] = get(causes, spot.cause, 0) + 1, spots)
 run = solve.value
 library = count(body -> body isa String, values(run.bodies))
-println("units=", length(units.typed), " instances=", length(run.bodies), " variants=", length(run.summaries), " failed_bodies=", library)
+shortcuts = isdefined(Effects, :Shortcut) ? count(body -> body isa Effects.Shortcut, values(run.bodies)) : 0
+println("units=", length(units.typed), " instances=", length(run.bodies), " variants=", length(run.summaries), " failed_bodies=", library, " shortcuts=", shortcuts)
 println("inference_s=", round(inference.time; digits = 2), " effects_s=", round(effects.time; digits = 2), " warm_solve_s=", round(solve.time; digits = 2))
-println("effects_alloc_mb=", round(effects.bytes / 2^20; digits = 1), " maxrss_mb=", round(Sys.maxrss() / 2^20; digits = 1))
+# Warm solve allocation counts engine only; `effects` allocation also counts cold native inference.
+println("effects_alloc_mb=", round(effects.bytes / 2^20; digits = 1), " warm_solve_alloc_mb=", round(solve.bytes / 2^20; digits = 1), " maxrss_mb=", round(Sys.maxrss() / 2^20; digits = 1))
 println("methods=", length(methods), " possible_write=", possible, " (", round(100 * possible / max(1, length(methods)); digits = 1), "%) definite_write=", definite, " blind_write=", blind)
 println("spots=", sort!(collect(causes); by = last, rev = true))
 closed = count(found -> found.closed_world, methods)
