@@ -524,23 +524,29 @@ function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index
     if defers && deferred(arguments)
         defer!(flow, index, (variant, arguments))
     else
-        apply_accesses!(flow, writes, reads, site, summary, defers, callees, Set{Deferred}())
+        apply_accesses!(flow, writes, reads, site, summary, defers, callees, nothing)
     end
     return nothing
 end
 
 """
 Accesses of callee `summary` at `site` into `writes` and `reads`, and its callback records: record waits again when
-`defers` and callable still holds caller object, else resolves here. `seen` holds records resolved at site.
+`defers` and callable still holds caller object, else resolves here. `seen` holds records resolved at site; first
+record resolved makes it, since most calls have none.
 """
-function apply_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::Set{Deferred})::Nothing
+function apply_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::Union{Nothing, Set{Deferred}})::Nothing
     for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below), effect) in effects
         objects = site_place(flow, site, place)
         access!(table, below ? beneath(flow, objects) : objects, below, Effect(caller_doubt(flow, site, effect.doubt), site.index, effect.reason))
     end
     for callback in summary.callbacks
         record = (callback.variant, Targets[map_nodes(flow, nodes, site) for nodes in callback.parameters])
-        defers && deferred(last(record)) ? defer!(flow, site.index, record) : resolve!(flow, writes, reads, site.index, record, defers, callees, seen)
+        if defers && deferred(last(record))
+            defer!(flow, site.index, record)
+        else
+            isnothing(seen) && (seen = Set{Deferred}())
+            resolve!(flow, writes, reads, site.index, record, defers, callees, seen)
+        end
     end
     return nothing
 end
