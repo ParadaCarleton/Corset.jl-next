@@ -6,8 +6,8 @@ using Corset.Effects:
     Effects, Doubt, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
-    components
-using Supposition: Supposition, Data, @check
+    components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body
+using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 
 const CASE = joinpath(@__DIR__, "effects", "EffectsCases")
@@ -84,6 +84,8 @@ end
     @test effects(:counter_ref).aliases == [global_place(CASES, :COUNTER)]
     @test shape(effects(:reset_counter!).writes) == [(global_place(CASES, :COUNTER), false, definite)]
     @test effects(:boxes_of, CASES.Box).aliases == [parameter(2)] && isempty(effects(:boxes_of, CASES.Box).writes)
+    # Open call result may be unknown object.
+    @test Place.At(Root.Elsewhere(), Step.Type[]) in effects(:call_on, Any, CASES.Box).aliases
     for name in (:countdown!, :ping!, :pong!)
         @test shape(effects(name, CASES.Box, Int).writes) == [(parameter(2), false, definite)]
     end
@@ -91,7 +93,15 @@ end
     @test shape(effects(:swap_count!, CASES.Counter, Int).writes) == [(parameter(2), false, definite)]
     @test shape(effects(:touch!, CASES.Box).writes) == [(parameter(2), false, definite)]
     @test isempty(effects(:touch!, String).writes)
-    @test shape(effects(:poke!, CASES.Loose).writes) == [(parameter(2, content), true, possible)]
+    @test shape(effects(:poke!, CASES.Loose).writes) == [(parameter(2, content), false, possible)]
+    either = Union{Base.RefValue{Int}, Base.RefValue{Float64}}
+    # Join: methods that agree keep certainty; methods loaded now decide it, so verdict is closed-world.
+    @test shape(effects(:stamp_either!, either).writes) == [(parameter(2), false, definite)] && effects(:stamp_either!, either).closed_world
+    @test isempty(effects(:measure_either, either).writes) && effects(:measure_either, either).closed_world
+    @test effects(:poke!, CASES.Loose).closed_world && !effects(:set_value!, CASES.Box, Int).closed_world
+    @test shape(effects(:copy_into!, Vector{Int}, Vector{Int}).writes) == [(parameter(2), false, definite)]
+    @test (parameter(3, Step.Element()), false, definite) in shape(effects(:copy_boxes!, Vector{CASES.Box}, Vector{CASES.Box}).writes)
+    @test (parameter(3), false, definite) in shape(effects(:remember!, IdDict{Int, CASES.Box}, CASES.Box).writes)
     @test shape(effects(:store_pointer!, Vector{Int}).writes) == [(parameter(2), false, definite)]
     @test blind_shape(effects(:bump_nest!).blind_writes) == [(Place.Deep(Root.Global(GlobalRef(CASES, :NEST))), false, "alias")]
     @test blind_shape(effects(:call_nest!).blind_writes) == [(Place.Deep(Root.Global(GlobalRef(CASES, :NEST))), false, "alias")]
@@ -115,8 +125,8 @@ end
 
 """Summary of method `f` on argument `types`, solved with every instance it reaches."""
 function summary_of(f::Any, types::Type...)::Summary
-    run = start_run(nothing)
-    root = (something(dispatch(Any[typeof(f), types...], run.world)), Pair{Int, Any}[])
+    run = start_run(nothing, Module[])
+    root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
     solve!(run, [root])
     return run.summaries[root]
 end
@@ -137,7 +147,7 @@ top(position::Int)::Tuple{Place.Type, Bool} = (parameter(position), false)
 const ANY_REF = Ref{Any}(nothing)
 const HOLDER = Ref([1])
 global slot::Vector{Int} = [1]
-global count::Int = 0
+global tally::Int = 0
 global loose::Any = nothing
 
 swap_field!(cell::Base.RefValue{Vector{Int}}, values::Vector{Int}) = Core.swapfield!(cell, :x, values)
@@ -148,7 +158,7 @@ once_field!(cell::Base.RefValue{Vector{Int}}, values::Vector{Int}) = Core.setfie
 named_field!(cell::Base.RefValue{Vector{Int}}, name::Symbol, values::Vector{Int}) = (Core.setfield!(cell, name, values); getfield(cell, name))
 rebind!(values::Vector{Int}) = (global slot = values; slot[1] = 2; nothing)
 swap_global!(values::Vector{Int}) = Core.swapglobal!(@__MODULE__, :slot, values)
-modify_global!() = Core.modifyglobal!(@__MODULE__, :count, +, 1)
+modify_global!() = Core.modifyglobal!(@__MODULE__, :tally, +, 1)
 replace_global!(values::Vector{Int}) = Core.replaceglobal!(@__MODULE__, :slot, values, values)
 once_global!(values::Vector{Int}) = Core.setglobalonce!(@__MODULE__, :loose, values)
 set_named!(holder::Module, name::Symbol, values::Vector{Int}) = Core.setglobal!(holder, name, values)
@@ -240,6 +250,10 @@ open_wrapped!(f::Any, values::Vector{Int}) = open_on!(f, Ref(values))
 open_result(f::Any, values::Vector{Int}) = f(values)
 open_result_write!(f::Any, values::Vector{Int}) = ((open_result(f, values)::Vector{Int})[1] = 0; nothing)
 open_element!(f::Any, values::Vector{Int}) = (f(values[1]); nothing)
+object_at(pointer::Ptr{Cvoid}) = unsafe_pointer_to_objref(pointer)
+unknown_foreign!(pointer::Ptr{Int}) = ccall(:corset_unknown_function, Cvoid, (Ptr{Int},), pointer)
+popped(table::IdDict{Int, Vector{Int}}) = pop!(table, 1)
+no_method(values::Vector{Int}) = sin(values)
 
 @testset "builtin transfer" begin
     none, code, blind = Doubt.none, Doubt.code, Doubt.blind
@@ -261,7 +275,7 @@ open_element!(f::Any, values::Vector{Int}) = (f(values[1]); nothing)
     @test doubts(rebound.writes) == Dict((global_place(here, :slot), false) => none, top(2) => none)
     @test rebound.bound == Dict(GlobalRef(here, :slot) => Nodes(Node.Placed(parameter(2)) => none))
     @test summary_of(swap_global!, Vector{Int}).result == Nodes(Node.Placed(global_place(here, :slot)) => none, Node.Placed(parameter(2)) => none)
-    @test doubts(summary_of(modify_global!).writes) == Dict((global_place(here, :count), false) => none)
+    @test doubts(summary_of(modify_global!).writes) == Dict((global_place(here, :tally), false) => none)
     @test haskey(summary_of(replace_global!, Vector{Int}).writes, (global_place(here, :slot), false))
     @test haskey(summary_of(once_global!, Vector{Int}).writes, (global_place(here, :loose), false))
     named_global = summary_of(set_named!, Module, Symbol, Vector{Int})
@@ -297,8 +311,16 @@ end
     @test summary_of(llvm, Ptr{Int}).writes[(parameter(2), true)].doubt == code
     @test summary_of(global_pointer).result == Nodes(Node.Outside() => code)
     @test summary_of(library_pointer).result == Nodes(Node.Outside() => code)
-    # Foreign calls stay open until foreign call table: pointer into string is unknown object.
-    @test Set(keys(doubts(summary_of(length_of, String).writes))) == Set([(Place.At(Root.Elsewhere(), Step.Type[]), false), (Place.At(Root.Elsewhere(), Step.Type[]), true)])
+    # Null pointer global points into no object, so `Cstring` error path writes no `C_NULL`.
+    @test all(((place, _),) -> root_of(place) != Root.Global(GlobalRef(Base, :C_NULL)), keys(summary_of(length_of, String).writes))
+    @test null_pointer(GlobalRef(Base, :C_NULL)) && !null_pointer(GlobalRef(@__MODULE__, :HOLDER)) && !null_pointer(GlobalRef(@__MODULE__, :slot))
+    @test summary_of(object_at, Ptr{Cvoid}).result == Nodes(Node.Placed(parameter(2)) => none)
+    @test doubts(summary_of(unknown_foreign!, Ptr{Int}).writes) == Dict((parameter(2), true) => code)
+    popped_summary = summary_of(popped, IdDict{Int, Vector{Int}})
+    @test doubts(popped_summary.writes) == Dict(top(2) => none) && popped_summary.result == Nodes(Node.Placed(parameter(2, Step.Element())) => none)
+    for (target, name) in ((QuoteNode(:strlen), :strlen), (Expr(:tuple, QuoteNode(:f), "lib"), :f), ((:f, "lib"), :f), ("f", :f), (Expr(:tuple), nothing), ((), nothing), (1, nothing))
+        @test foreign_name(target) === name
+    end
 end
 
 @testset "statements and calls" begin
@@ -318,6 +340,8 @@ end
     @test summary_of(invoke_missing, Vector{Int}).writes[(parameter(2), true)].doubt == code
     @test summary_of(spread_open!, Vector{Int}, Tuple{Vararg{Int}}).writes[(parameter(2), true)].doubt == code
     @test summary_of(dynamic!, Any).writes[(parameter(2), true)].doubt == code
+    # No method matches: call throws, so it writes and reads nothing.
+    @test isempty(summary_of(no_method, Vector{Int}).writes) && isempty(summary_of(no_method, Vector{Int}).reads)
     @test summary_of(nested_apply, Vector{Int}, Tuple{Tuple{Int}}).writes[(parameter(2), true)].doubt == code
     @test summary_of(embedded).result == Nodes(Node.Outside() => code)
     @test summary_of(unknown_field, Module, Symbol).result == Nodes(Node.Outside() => code)
@@ -326,8 +350,8 @@ end
     @test haskey(summary_of(any_of_fresh, Vector{Int}, Symbol).result, Node.Placed(parameter(2)))
     @test summary_of(field_global).result == Nodes(Node.Placed(global_place(@__MODULE__, :slot)) => none)
     @test summary_of(make_backed, Vector{Int}).result == Nodes(Node.Placed(parameter(2)) => none)
-    run = start_run(nothing)
-    instance = something(dispatch(Any[typeof(broken), Int], run.world))
+    run = start_run(nothing, Module[])
+    instance = only(something(dispatch(Any[typeof(broken), Int], run.world, 1)))
     @test library_body(run, instance) == "inference gave no code"
     @test summary_of(calls_broken, Vector{Int}).writes == Dict()
     broken_int = summary_of(x -> broken(x), Int)
@@ -343,15 +367,15 @@ end
     mktempdir(@__DIR__) do directory
         journal = open_journal(directory)
         try
-            target = something(dispatch(Any[typeof(push!), Vector{Int}, Int], run.world))
+            target = only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], run.world, 1)))
             push!(journal.crashed, journal_key(target))
-            crashed = start_run(journal)
-            root = (something(dispatch(Any[typeof(latest!), Vector{Int}], crashed.world)), Pair{Int, Any}[])
+            crashed = start_run(journal, Module[])
+            root = (only(something(dispatch(Any[typeof(latest!), Vector{Int}], crashed.world, 1))), Pair{Int, Any}[])
             solve!(crashed, [root])
             effect = crashed.summaries[root].writes[(parameter(2), true)]
             @test effect.doubt == blind && effect.reason == "inference crashed process"
-            fresh = start_run(journal)
-            other = (something(dispatch(Any[typeof(fill_one!), Vector{Int}], fresh.world)), Pair{Int, Any}[])
+            fresh = start_run(journal, Module[])
+            other = (only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], fresh.world, 1))), Pair{Int, Any}[])
             solve!(fresh, [other])
             @test any(record -> startswith(record.key, "effects\n") && record.finished, records(directory))
         finally
@@ -359,6 +383,17 @@ end
         end
     end
 end
+
+"""Function with `JOIN_LIMIT` methods: call on `Any` joins them."""
+three_way(x::Int) = x
+three_way(x::Float64) = x
+three_way(x::String) = x
+
+"""Function with one method past `JOIN_LIMIT`: call on `Any` stays open."""
+four_way(x::Int) = x
+four_way(x::Float64) = x
+four_way(x::String) = x
+four_way(x::Symbol) = x
 
 @testset "model and helpers" begin
     @test most(Doubt.none, Doubt.code, Doubt.blind) == Doubt.blind
@@ -386,8 +421,8 @@ end
     table = Dict{Tuple{Origin.Type, Bool}, Effect}()
     access!(table, Targets(Origin.Allocation(1) => Doubt.blind), false, Effect(Doubt.blind, 4, "cause"))
     @test table[(Origin.Allocation(1), false)] == Effect(Doubt.blind, 4, "cause")
-    run = start_run(nothing)
-    instance = something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world))
+    run = start_run(nothing, Module[])
+    instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world, 1)))
     solve!(run, [(instance, Pair{Int, Any}[])])
     code = run.codes[(instance, Pair{Int, Any}[])]
     @test constant(code.ir, GlobalRef(Base, :nothing)) == Some(nothing)
@@ -397,9 +432,27 @@ end
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), _ -> empty_summary())
     @test map_node(flow, Node.Fresh(4), CallSite(Targets[], 7, 2, Dict{Place.Type, Targets}())) == Targets(Origin.Allocation(7) => Doubt.blind)
     @test deep(flow, Targets(Origin.Caller(parameter(2)) => Doubt.none)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => Doubt.blind)
-    @test isa_variant(resolve(code.ir, Operand.Type[Operand.Part(Core.Argument(2), 1)], run.world), Outcome.Open)
+    # Spread part as callee: `MemoryRef` has no call method, so call throws.
+    @test isa_variant(resolve(code.ir, Operand.Type[Operand.Part(Core.Argument(2), 1)], run.world, 1), Outcome.Dead)
     typed = only(unit for unit in UNITS.typed if unit.site.method.name == :add)
     @test cause_span(typed, code, 0) == typed.site.span
+    shared, partial = (Origin.Allocation(1), false), (Origin.Allocation(2), false)
+    joined = Dict(partial => Effect(Doubt.none, 1, ""))
+    join_accesses!(joined, [Dict(shared => Effect(Doubt.none, 5, ""), partial => Effect(Doubt.code, 5, "")), Dict(shared => Effect(Doubt.blind, 5, "alias"))])
+    @test joined == Dict(shared => Effect(Doubt.blind, 5, "alias"), partial => Effect(Doubt.none, 1, ""))
+    joined = Dict{Tuple{Origin.Type, Bool}, Effect}()
+    join_accesses!(joined, [Dict(partial => Effect(Doubt.none, 5, "")), Dict{Tuple{Origin.Type, Bool}, Effect}()])
+    @test joined == Dict(partial => Effect(Doubt.code, 5, ""))
+    # Join must reach every call native inference resolves.
+    @test JOIN_LIMIT >= Effects.CC.InferenceParams().max_methods
+    world = Base.get_world_counter()
+    @test length(something(dispatch(Any[typeof(three_way), Any], world, JOIN_LIMIT))) == JOIN_LIMIT
+    @test isnothing(dispatch(Any[typeof(four_way), Any], world, JOIN_LIMIT))
+    # Package code joins; library code keeps run-time dispatch open.
+    @test isnothing(dispatch(Any[typeof(three_way), Any], world, 1))
+    package_run = start_run(nothing, [@__MODULE__])
+    @test join_limit(package_run, only(something(dispatch(Any[typeof(three_way), Int], world, 1)))) == JOIN_LIMIT
+    @test join_limit(package_run, only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], world, 1)))) == 1
     possible_first = Access(parameter(2), false, Confidence.possible, typed.site.span)
     @test worst([possible_first, Access(parameter(2), false, Confidence.definite, typed.site.span)])[1].confidence == Confidence.definite
 end
@@ -407,7 +460,11 @@ end
 """Whether `first` and `second` hold same state: same type, and same fields and elements, deep."""
 function same_state(first::Any, second::Any)::Bool
     typeof(first) == typeof(second) || return false
-    first isa AbstractArray && return size(first) == size(second) && all(map(same_state, first, second))
+    if first isa AbstractArray
+        size(first) == size(second) || return false
+        # Hash table memory (`IdDict`) holds unassigned slots.
+        return all(index -> isassigned(first, index) == isassigned(second, index) && (!isassigned(first, index) || same_state(first[index], second[index])), eachindex(first))
+    end
     type = typeof(first)
     isstructtype(type) && fieldcount(type) > 0 || return isequal(first, second)
     return all(fieldnames(type)) do name
@@ -426,6 +483,7 @@ const BOXES = map(value -> CASES.Box(value), INTS)
 const VECTORS = Data.Vectors(INTS; min_size = 2, max_size = 4)
 const WRAPPERS = map(box -> CASES.Wrapper(CASES.Chain(CASES.Holder(box))), BOXES)
 const LOOSES = map(content -> CASES.Loose(content), Data.OneOf(BOXES, VECTORS, Data.Just("text")))
+const CELLS = Data.OneOf(map(Ref, INTS), map(value -> Ref(Float64(value)), INTS))
 
 """Generator of argument tuples with first argument from `first` and second from `second`."""
 both(first::Data.Possibility, second::Data.Possibility)::Data.Possibility = map(Tuple, Data.Pairs(first, second))
@@ -443,6 +501,9 @@ const CALLS = [
     (CASES.swap_count!, both(map(CASES.Counter, INTS), INTS)), (CASES.touch!, map(tuple, Data.OneOf(BOXES, VECTORS, Data.Just("text")))),
     (CASES.poke!, map(tuple, LOOSES)), (CASES.store_pointer!, map(tuple, VECTORS)), (CASES.load_pointer, map(tuple, VECTORS)),
     (CASES.copy_box, map(tuple, BOXES)), (CASES.boxes_of, map(tuple, BOXES)), (CASES.bump_nest!, Data.Just(())), (CASES.call_nest!, Data.Just(())),
+    (CASES.stamp_either!, map(tuple, CELLS)), (CASES.measure_either, map(tuple, CELLS)), (CASES.copy_into!, map(values -> (zero(values), values), VECTORS)),
+    (CASES.copy_boxes!, map(boxes -> ([CASES.Box(1) for _ in boxes], boxes), Data.Vectors(BOXES; min_size = 1, max_size = 3))),
+    (CASES.remember!, map(box -> (IdDict{Int, CASES.Box}(), box), BOXES)),
 ]
 
 """Whether `to` is reachable from `from` along `successors`, in zero or more steps."""
@@ -483,12 +544,107 @@ const GRAPHS = map(graph, Data.Pairs(Data.Integers(1, 8), Data.Vectors(Data.Inte
     end
 end
 
+"""Link of synthetic call chain: each specialization stands for one instance."""
+chain_link(x::Any) = x
+
+@testset "slot-name parameters" begin
+    run = start_run(nothing, Module[])
+    instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world, 1)))
+    solve!(run, [(instance, Pair{Int, Any}[])])
+    ir = run.codes[(instance, Pair{Int, Any}[])].ir
+    # Chain of 10^5 calls: explicit stack keeps deep call chains off native stack.
+    links = [Effects.CC.specialize_method(only(methods(chain_link)), Tuple{typeof(chain_link), Val{position}}, Core.svec()) for position in 1:100_000]
+    argument = Operand.Value(Core.Argument(2))
+    for (position, link) in enumerate(links)
+        outcome = position == length(links) ? Outcome.Builtin(Core.getfield, [argument, Operand.Value(QuoteNode(:a))]) : Outcome.Dispatch([links[position + 1]], [Operand.Value(chain_link), argument])
+        run.bodies[link] = Body(ir, Int[], Union{Nothing, Outcome.Type}[outcome])
+    end
+    @test field_parameters!(run, first(links)) == Set([2])
+end
+
+"""Wrapper whose type grows at each recursion step."""
+struct Layer{T}
+    inner::T
+end
+
+deepen(x::Any, n::Int) = n == 0 ? x : deepen(Layer(x), n - 1)
+deepen_odd(x::Any, n::Int) = n == 0 ? x : deepen_even(Layer(x), n - 1)
+deepen_even(x::Any, n::Int) = n == 0 ? x : deepen_odd(Layer(x), n - 1)
+
+"""Steps layer content `Int`, `Float64`, `Float32`: signature changes at each step but never grows."""
+retag(x::Any, n::Int) = n == 0 ? x : retag(Layer(narrow(x.inner)), n - 1)
+narrow(x::Int) = Float64(x)
+narrow(x::Float64) = Float32(x)
+narrow(x::Float32) = x
+
+"""Shells whose abstract content makes recursive call join both `peel` methods."""
+abstract type Shell end
+struct OuterShell <: Shell
+    inner::Shell
+end
+struct InnerShell <: Shell
+    inner::Shell
+end
+
+peel(f::Any, shell::OuterShell) = peel(f ∘ identity, shell.inner)
+peel(f::Any, shell::InnerShell) = peel(f ∘ identity, shell.inner)
+
+@testset "recursion limit" begin
+    # Signature grows each step (`ComposedFunction` in LinearAlgebra `_any`): after one or two steps it widens.
+    # `retag` changes without growth: self-recursion compares with caller, so `Layer{Float32}` stays exact.
+    cases = ((deepen, (Int, Int), (:deepen,), 3, Tuple{typeof(deepen), Layer, Int}), (deepen_odd, (Int, Int), (:deepen_odd, :deepen_even), 5, Tuple{typeof(deepen_odd), Layer, Int}), (peel, (typeof(sin), OuterShell), (:peel,), 5, Tuple{typeof(peel), ComposedFunction, InnerShell}), (retag, (Layer{Int}, Int), (:retag,), 3, Tuple{typeof(retag), Layer{Float32}, Int}))
+    for (f, types, names, total, expected) in cases
+        run = start_run(nothing, [@__MODULE__])
+        root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
+        solve!(run, [root])
+        reached = filter(instance -> instance.def.name in names, collect(keys(run.bodies)))
+        @test length(reached) == total
+        @test any(instance -> instance.specTypes == expected, reached)
+    end
+    @test journal_key(only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], Base.get_world_counter(), 1)))) == "effects\nTuple{typeof(push!), Array{Int64, 1}, Int64}"
+end
+
+const DOUBTS = Data.SampledFrom([Doubt.none, Doubt.code, Doubt.blind])
+const EFFECTS = map(((doubt, cause),) -> Effect(doubt, cause, doubt == Doubt.blind ? "alias" : ""), Data.Pairs(DOUBTS, Data.Integers(1, 2)))
+const ACCESSES = Data.Dicts(Data.SampledFrom([(parameter(2), false), (parameter(2), true), (parameter(3), false)]), EFFECTS; max_size = 3)
+const NODES = Data.Dicts(Data.SampledFrom([Node.Placed(parameter(2)), Node.Fresh(1), Node.Outside()]), DOUBTS; max_size = 3)
+
+"""Summaries over two parameters: few places, nodes and causes, so draws overlap."""
+const SUMMARIES = @composed function summaries(writes = ACCESSES, reads = ACCESSES, held = NODES, result = NODES, fresh = Data.Integers(0, 2), closed = Data.Booleans())
+    edges = isempty(held) ? Edges() : Edges((Node.Placed(parameter(2)), Step.Element()) => held)
+    bound = isempty(held) ? Dict{GlobalRef, Nodes}() : Dict(GlobalRef(Main, :slot) => held)
+    return Summary(writes, reads, edges, Holds(Node.Fresh(1) => held), Holds(), bound, result, fresh, closed)
+end
+
+@testset "call cycle widening" begin
+    old = Summary(Accesses((parameter(2), false) => Effect(Doubt.none, 3, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Nodes(), 1, false)
+    new = Summary(Accesses((parameter(2), false) => Effect(Doubt.code, 2, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Nodes(), 0, true)
+    widened = widen(old, new)
+    @test widened.writes == Accesses((parameter(2), false) => Effect(Doubt.blind, 3, UNSETTLED))
+    @test widened.fresh == 1 && widened.closed_world
+    @check max_examples = 300 db = false function widen_grows(old = SUMMARIES, new = SUMMARIES)
+        widened = widen(old, new)
+        kept = all(issubset(keys(getfield(summary, name)), keys(getfield(widened, name))) for summary in (old, new), name in (:writes, :reads, :result))
+        certain = all(widened.result[node] <= doubt for summary in (old, new) for (node, doubt) in summary.result)
+        same(widen(widened, new), widened) && kept && certain && widened.fresh >= max(old.fresh, new.fresh)
+    end
+    # Rerun chain: access changes at most once after it appears, so finite places bound reruns.
+    @check max_examples = 300 db = false function widened_chain_settles(chain = Data.Vectors(SUMMARIES; min_size = 1, max_size = 6))
+        history = accumulate(widen, chain)
+        all(union((keys(summary.writes) for summary in history)...)) do key
+            present = [haskey(summary.writes, key) for summary in history]
+            seen = [summary.writes[key] for summary in history if haskey(summary.writes, key)]
+            issorted(present) && count(position -> seen[position] != seen[position + 1], 1:(length(seen) - 1)) <= 1
+        end
+    end
+end
+
 @testset "soundness" begin
     for (method, arguments) in CALLS
         @check max_examples = 20 db = false function observed_writes_covered(drawn = arguments)
             before, globals = deepcopy(drawn), globals_now()
             method(drawn...)
-            found = effects(nameof(method), map(typeof, drawn)...)
+            found = only(found for found in FACTS.methods if found.site.method.name == nameof(method) && Tuple{typeof(method), map(typeof, drawn)...} <: found.site.method.sig)
             changed = [Root.Parameter(position + 1) for position in eachindex(drawn) if !same_state(before[position], drawn[position])]
             moved = [Root.Global(GlobalRef(CASES, name)) for (name, old) in globals if !same_state(old, getglobal(CASES, name))]
             all(root -> covered(found, root), [changed; moved])

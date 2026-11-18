@@ -71,7 +71,8 @@ const Holds = Dict{Node.Type, Nodes}
 """
 Effect summary of method instance: writes and reads by place and whether they cover places below; stores between
 objects caller can see and fresh objects (`edges` by slot, `backing` for memory, `spread` for unknown slot, `bound`
-for global binding); result nodes; and count of fresh nodes. Places need parameters and globals only.
+for global binding); result nodes; count of fresh nodes; and `closed_world`: summary joins methods loaded now, so its
+"writes nothing" is at most `possible`. Places need parameters and globals only.
 """
 struct Summary
     writes::Accesses
@@ -82,13 +83,37 @@ struct Summary
     bound::Dict{GlobalRef, Nodes}
     result::Nodes
     fresh::Int
+    closed_world::Bool
 end
 
 """Summary of instance that writes, reads and returns nothing: start of fixpoint inside call cycle."""
-empty_summary()::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Nodes(), 0)
+empty_summary()::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Nodes(), 0, false)
 
 """Whether summaries `first` and `second` hold same effects, stores, result and causes."""
 same(first::Summary, second::Summary)::Bool = all(name -> getfield(first, name) == getfield(second, name), fieldnames(Summary))
+
+"""Blind spot cause of access that still changes when call cycle summary widens (`widen`)."""
+const UNSETTLED = "unsettled call cycle"
+
+"""Union of `old` and `new` nodes; less doubt wins."""
+union_nodes(old::Nodes, new::Nodes)::Nodes = mergewith(min, old, new)
+
+"""Union of `old` and `new` stores by holder."""
+(union_stores(old::Dict{K, Nodes}, new::Dict{K, Nodes})::Dict{K, Nodes}) where {K} = mergewith(union_nodes, old, new)
+
+"""Union of `old` and `new` accesses: access that differs between them becomes blind (`UNSETTLED`)."""
+widen_accesses(old::Accesses, new::Accesses)::Accesses = mergewith((first, second) -> first == second ? first : Effect(Doubt.blind, first.cause, UNSETTLED), old, new)
+
+"""
+Summary `new` widened by `old`: union of both; access that differs becomes blind. Join of methods is not monotone, so
+call cycle can loop; widened summaries only grow through finite values, so cycle settles.
+"""
+function widen(old::Summary, new::Summary)::Summary
+    writes, reads = widen_accesses(old.writes, new.writes), widen_accesses(old.reads, new.reads)
+    edges, backing, spread = union_stores(old.edges, new.edges), union_stores(old.backing, new.backing), union_stores(old.spread, new.spread)
+    bound, result = union_stores(old.bound, new.bound), union_nodes(old.result, new.result)
+    return Summary(writes, reads, edges, backing, spread, bound, result, max(old.fresh, new.fresh), old.closed_world || new.closed_world)
+end
 
 """
 Summary of instance with `count` parameters engine cannot analyze, for blind spot `cause`: blind write and read below
@@ -99,5 +124,5 @@ function open_summary(count::Int, cause::String)::Summary
     effects = Accesses((place, true) => Effect(Doubt.blind, 0, cause) for place in places)
     result = Nodes(Node.Placed(place) => Doubt.blind for place in places)
     result[Node.Outside()] = Doubt.blind
-    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), result, 0)
+    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), result, 0, false)
 end

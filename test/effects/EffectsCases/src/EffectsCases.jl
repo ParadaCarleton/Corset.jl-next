@@ -112,4 +112,22 @@ call_deeper!(wrapper::Wrapper)::Nothing = set_deeper!(wrapper, 1)
 
 read_module()::Int = getproperty(EffectsCases, :total)
 
+stamp!(cell::Base.RefValue{Int})::Nothing = (cell[] = 1; nothing)
+stamp!(cell::Base.RefValue{Float64})::Nothing = (cell[] = 1.0; nothing)
+
+stamp_either!(cell::Union{Base.RefValue{Int}, Base.RefValue{Float64}})::Nothing = stamp!(cell)
+
+measure(cell::Base.RefValue{Int})::Float64 = cell[]
+measure(cell::Base.RefValue{Float64})::Float64 = cell[]
+
+measure_either(cell::Union{Base.RefValue{Int}, Base.RefValue{Float64}})::Float64 = measure(cell)
+
+copy_into!(target::Vector{Int}, source::Vector{Int})::Nothing = (copyto!(target, source); nothing)
+
+copy_boxes!(target::Vector{Box}, source::Vector{Box})::Nothing = (copyto!(target, source); target[1].value = 0; nothing)
+
+remember!(table::IdDict{Int, Box}, box::Box)::Nothing = (table[1] = box; table[1].value = 0; nothing)
+
+call_on(f::Any, box::Box) = f(box)
+
 end
