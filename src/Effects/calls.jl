@@ -5,77 +5,166 @@
 end
 
 """
-Effects of known C function (`effects.md`, Calls, step 2), by argument position: arguments it writes and reads through;
-`copies` of source elements into destination elements; `stores` of argument into destination elements; arguments result
-points into; and arguments whose elements result may be.
+Effects of call that table knows (`effects.md`, Calls, steps 2 and 6), by argument position: arguments it writes and
+reads through; `copies` of source elements into destination elements; `stores` of argument into destination elements;
+arguments result points into; arguments whose elements result may be; and arguments result may point beneath
+(`aliases`, doubt in code). Every argument from position `rest` on takes role of `rest`; 0 means none.
 """
-Base.@kwdef struct ForeignEffects
+Base.@kwdef struct CallEffects
     writes::Vector{Int} = Int[]
     reads::Vector{Int} = Int[]
     copies::Vector{Pair{Int, Int}} = Pair{Int, Int}[]
     stores::Vector{Pair{Int, Int}} = Pair{Int, Int}[]
     result::Vector{Int} = Int[]
     elements::Vector{Int} = Int[]
+    aliases::Vector{Int} = Int[]
+    rest::Int = 0
 end
 
 """
 Foreign call table: C functions corpus reaches, from Base call sites and Julia runtime source. Pointer argument stands
 for object it points into. Missing name stays open.
 """
-const FOREIGN_EFFECTS = Dict{Symbol, ForeignEffects}(
-    :memmove => ForeignEffects(writes = [1], reads = [2], copies = [1 => 2], result = [1]),
-    :memcpy => ForeignEffects(writes = [1], reads = [2], copies = [1 => 2], result = [1]),
-    :memset => ForeignEffects(writes = [1], result = [1]),
-    :memcmp => ForeignEffects(reads = [1, 2]),
-    :memchr => ForeignEffects(reads = [1], result = [1]),
-    :memrchr => ForeignEffects(reads = [1], result = [1]),
-    :strlen => ForeignEffects(reads = [1]),
+const FOREIGN_EFFECTS = Dict{Symbol, CallEffects}(
+    :memmove => CallEffects(writes = [1], reads = [2], copies = [1 => 2], result = [1]),
+    :memcpy => CallEffects(writes = [1], reads = [2], copies = [1 => 2], result = [1]),
+    :memset => CallEffects(writes = [1], result = [1]),
+    :memcmp => CallEffects(reads = [1, 2]),
+    :memchr => CallEffects(reads = [1], result = [1]),
+    :memrchr => CallEffects(reads = [1], result = [1]),
+    :strlen => CallEffects(reads = [1]),
     # Destination memory, its pointer, source memory, its pointer, count.
-    :jl_genericmemory_copyto => ForeignEffects(writes = [1, 2], reads = [3, 4], copies = [1 => 3, 2 => 4]),
-    :jl_object_id => ForeignEffects(reads = [1]),
+    :jl_genericmemory_copyto => CallEffects(writes = [1, 2], reads = [3, 4], copies = [1 => 3, 2 => 4]),
+    :jl_object_id => CallEffects(reads = [1]),
     # Pointer of object, or object at pointer (`unsafe_pointer_to_objref`).
-    :jl_value_ptr => ForeignEffects(result = [1]),
-    :jl_string_ptr => ForeignEffects(result = [1]),
-    :jl_symbol_name => ForeignEffects(result = [1]),
-    :jl_symbol_n => ForeignEffects(reads = [1]),
+    :jl_value_ptr => CallEffects(result = [1]),
+    :jl_string_ptr => CallEffects(result = [1]),
+    :jl_symbol_name => CallEffects(result = [1]),
+    :jl_symbol_n => CallEffects(reads = [1]),
     # `String` and type results point to no object effects track.
-    :jl_alloc_string => ForeignEffects(),
-    :jl_pchar_to_string => ForeignEffects(reads = [1]),
+    :jl_alloc_string => CallEffects(),
+    :jl_pchar_to_string => CallEffects(reads = [1]),
     # Memory shares bytes of string; string takes bytes of memory, which it empties.
-    :jl_string_to_genericmemory => ForeignEffects(result = [1]),
-    :jl_genericmemory_to_string => ForeignEffects(writes = [1], reads = [1]),
-    :jl_genericmemory_owner => ForeignEffects(result = [1]),
+    :jl_string_to_genericmemory => CallEffects(result = [1]),
+    :jl_genericmemory_to_string => CallEffects(writes = [1], reads = [1]),
+    :jl_genericmemory_owner => CallEffects(result = [1]),
     # `IdDict` table: memory, key, value or default, flag pointer. Rehashed table counts as same memory.
-    :jl_eqtable_get => ForeignEffects(reads = [1], result = [3], elements = [1]),
-    :jl_eqtable_put => ForeignEffects(writes = [1, 4], reads = [1], stores = [1 => 2, 1 => 3], result = [1]),
-    :jl_eqtable_pop => ForeignEffects(writes = [1, 4], reads = [1], result = [3], elements = [1]),
-    :jl_eqtable_nextind => ForeignEffects(reads = [1]),
-    :jl_idtable_rehash => ForeignEffects(reads = [1], result = [1]),
-    :jl_idset_peek_bp => ForeignEffects(reads = [1, 2]),
-    :jl_type_unionall => ForeignEffects(),
-    :jl_types_equal => ForeignEffects(),
-    :jl_has_typevar => ForeignEffects(),
-    :jl_stored_inline => ForeignEffects(),
-    :jl_islayout_inline => ForeignEffects(writes = [2, 3]),
-    :jl_get_world_counter => ForeignEffects(),
-    :jl_get_tls_world_age => ForeignEffects(),
-    :jl_rethrow => ForeignEffects(),
-    :jl_rethrow_other => ForeignEffects(),
-    :utf8proc_category => ForeignEffects(),
-    Symbol("llvm.prefetch") => ForeignEffects(),
-    :uv_cwd => ForeignEffects(writes = [1, 2], reads = [2]),
+    :jl_eqtable_get => CallEffects(reads = [1], result = [3], elements = [1]),
+    :jl_eqtable_put => CallEffects(writes = [1, 4], reads = [1], stores = [1 => 2, 1 => 3], result = [1]),
+    :jl_eqtable_pop => CallEffects(writes = [1, 4], reads = [1], result = [3], elements = [1]),
+    :jl_eqtable_nextind => CallEffects(reads = [1]),
+    :jl_idtable_rehash => CallEffects(reads = [1], result = [1]),
+    :jl_idset_peek_bp => CallEffects(reads = [1, 2]),
+    :jl_type_unionall => CallEffects(),
+    :jl_types_equal => CallEffects(),
+    :jl_has_typevar => CallEffects(),
+    :jl_stored_inline => CallEffects(),
+    :jl_islayout_inline => CallEffects(writes = [2, 3]),
+    :jl_get_world_counter => CallEffects(),
+    :jl_get_tls_world_age => CallEffects(),
+    :jl_rethrow => CallEffects(),
+    :jl_rethrow_other => CallEffects(),
+    :utf8proc_category => CallEffects(),
+    Symbol("llvm.prefetch") => CallEffects(),
+    :uv_cwd => CallEffects(writes = [1, 2], reads = [2]),
+)
+
+"""
+Documented behavior of Base function (`effects.md`, Calls, step 6): `effects` on arguments; `callback` when function
+also has form with callable first argument, which shifts positions; `breaches` lists argument position and Base types
+that write there although contract only reads (`Iterators.Stateful`).
+"""
+struct BaseContract
+    effects::CallEffects
+    callback::Bool
+    breaches::Vector{Pair{Int, Any}}
+end
+
+"""Base iterators whose iteration consumes them: `iterate` writes argument (`effects.md`, Calls, step 6)."""
+const CONSUMED = Union{Iterators.Stateful, Channel, Base.EachLine}
+
+"""
+Query: no `!`, so no argument write (Julia style guide, "Append `!` to names of functions that modify their
+arguments"). Reads every argument; result is new value. Aliasing every query result cost JSON 3 times `effects` time.
+"""
+const QUERY = BaseContract(CallEffects(reads = [1], rest = 1), false, Pair{Int, Any}[])
+
+"""
+Alias query: like `QUERY`, but result may point beneath arguments: `convert` docstring says so; `max`, `conj`, `float`
+can return argument; `keys`, `adjoint` wrap it.
+"""
+const ALIAS_QUERY = BaseContract(CallEffects(reads = [1], aliases = [1], rest = 1), false, Pair{Int, Any}[])
+
+"""Element query: reads collection; result may be its element or point beneath it, never into indices (`getindex`)."""
+const ELEMENT_QUERY = BaseContract(CallEffects(reads = [1], elements = [1], aliases = [1]), false, Pair{Int, Any}[])
+
+"""Iteration: like `ELEMENT_QUERY`; consumed iterator in first argument gets `possible` write (`isempty` docstring)."""
+const ITERATION = BaseContract(CallEffects(reads = [1], elements = [1], aliases = [1], rest = 1), false, Pair{Int, Any}[1 => CONSUMED])
+
+"""Write to first argument, which call returns (`resize!`, `empty!`, `delete!`)."""
+const RETURNED_WRITE = BaseContract(CallEffects(writes = [1], result = [1]), false, Pair{Int, Any}[])
+
+"""Store of value at position 2 into first argument, which call returns (`setindex!`, `fill!`)."""
+const VALUE_STORE = BaseContract(CallEffects(writes = [1], stores = [1 => 2], result = [1]), false, Pair{Int, Any}[])
+
+"""Store of every argument after first into first argument, which call returns (`push!`)."""
+const ITEMS_STORE = BaseContract(CallEffects(writes = [1], stores = [1 => 2], result = [1], rest = 2), false, Pair{Int, Any}[])
+
+"""Copy of elements of every argument after first into first argument, which call returns (`append!`)."""
+const ITEMS_COPY = BaseContract(CallEffects(writes = [1], reads = [2], copies = [1 => 2], result = [1], rest = 2), false, Pair{Int, Any}[2 => CONSUMED])
+
+"""Base functions with `QUERY` contract: comparison, size queries, predicates, arithmetic."""
+const QUERIES = (
+    ==, !=, isequal, isless, <, <=, >, >=, cmp, hash, haskey, length, size, axes, ndims, eltype, keytype, valtype,
+    firstindex, lastindex, +, -, *, /, \, ^, //, div, rem, mod, fld, cld, abs, abs2, sign, sqrt, cbrt, exp, log, log2,
+    log10, imag, zero, one, oneunit, iszero, isone, !, ~, &, |, xor, <<, >>, >>>, isnan, isinf, isfinite, round, floor,
+    ceil, trunc,
+)
+
+"""Base functions with `ALIAS_QUERY` contract: result can be argument, its field, or wrapper around it."""
+const ALIAS_QUERIES = (convert, getproperty, keys, values, pairs, eachindex, max, min, real, conj, float, adjoint, transpose)
+
+"""Copy of source elements into destination, which call returns; 5-argument form takes source third (`copyto!`)."""
+const RANGE_COPY = BaseContract(CallEffects(writes = [1], reads = [2, 3], copies = [1 => 2, 1 => 3], result = [1]), false, Pair{Int, Any}[2 => CONSUMED])
+
+"""
+Base contract table: interface functions corpus calls through open dispatch, by documented behavior only. Functions
+with own effect kind (IO, locks, random numbers) and functions that call callbacks wait for PR 3 and callback records.
+"""
+const BASE_CONTRACTS = IdDict{Any, BaseContract}(
+    (query => QUERY for query in QUERIES)...,
+    (query => ALIAS_QUERY for query in ALIAS_QUERIES)...,
+    getindex => ELEMENT_QUERY, first => ITERATION, only => ITERATION, isempty => ITERATION,
+    iterate => ITERATION, Base.indexed_iterate => ITERATION,
+    # `in(item, collection)` iterates its second argument.
+    in => BaseContract(CallEffects(reads = [1], rest = 1), false, Pair{Int, Any}[2 => CONSUMED]),
+    # View and lazy wrapper: result lies within array; writes through it write array.
+    view => BaseContract(CallEffects(result = [1], aliases = [2], rest = 2), false, Pair{Int, Any}[]),
+    similar => BaseContract(CallEffects(), false, Pair{Int, Any}[]),
+    setindex! => VALUE_STORE, fill! => VALUE_STORE, push! => ITEMS_STORE, pushfirst! => ITEMS_STORE,
+    append! => ITEMS_COPY, prepend! => ITEMS_COPY,
+    resize! => RETURNED_WRITE, sizehint! => RETURNED_WRITE, empty! => RETURNED_WRITE, delete! => RETURNED_WRITE,
+    deleteat! => RETURNED_WRITE, copyto! => RANGE_COPY, unsafe_copyto! => RANGE_COPY,
+    insert! => BaseContract(CallEffects(writes = [1], stores = [1 => 3], result = [1]), false, Pair{Int, Any}[]),
+    pop! => BaseContract(CallEffects(writes = [1], elements = [1], aliases = [3]), false, Pair{Int, Any}[]),
+    popfirst! => BaseContract(CallEffects(writes = [1], elements = [1]), false, Pair{Int, Any}[]),
+    get => BaseContract(CallEffects(reads = [1, 2], elements = [1], aliases = [3]), true, Pair{Int, Any}[]),
+    get! => BaseContract(CallEffects(writes = [1], reads = [1], stores = [1 => 2, 1 => 3], elements = [1], aliases = [3]), true, Pair{Int, Any}[]),
+    merge! => BaseContract(CallEffects(writes = [1], reads = [2], copies = [1 => 2], result = [1], rest = 2), true, Pair{Int, Any}[]),
 )
 
 """
 Call statement resolution (`effects.md`, Calls): `Builtin` or `Intrinsic` with operands after callee; `Foreign` call
 table entry with C arguments; `Dispatch` to instances of matching methods with operands, callee first: one is static
-call, more join; `Open` call with operands; `Dead` when no method matches.
+call, more join; `Contract` effects with arguments and argument positions breach may write; `Open` call with operands;
+`Dead` when no method matches.
 """
 @data Outcome begin
     Builtin(Any, Vector{Operand.Type})
     Intrinsic(Any, Vector{Operand.Type})
-    Foreign(ForeignEffects, Vector{Operand.Type})
+    Foreign(CallEffects, Vector{Operand.Type})
     Dispatch(Vector{Core.MethodInstance}, Vector{Operand.Type})
+    Contract(CallEffects, Vector{Operand.Type}, Vector{Int})
     Open(Vector{Operand.Type})
     Dead()
 end
@@ -124,10 +213,27 @@ function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt, lim
         return Outcome.Builtin(builtin, operands[2:end])
     end
     instances = dispatch(Any[operand_type(ir, operand) for operand in operands], world, limit)
-    isnothing(instances) && return Outcome.Open(operands)
+    isnothing(instances) && return contract_call(ir, callee, operands)
     # No matching method: call throws `MethodError`.
     return isempty(instances) ? Outcome.Dead() : Outcome.Dispatch(instances, operands)
 end
+
+"""
+Resolution of call with `operands` (callee first) that dispatch leaves open: contract of constant `callee` (`Some`) in
+`BASE_CONTRACTS`, else open. Callable first argument of function with callback form stays open: positions shift.
+"""
+function contract_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operands::Vector{Operand.Type})::Outcome.Type
+    contract = isnothing(callee) ? nothing : get(BASE_CONTRACTS, something(callee), nothing)
+    isnothing(contract) && return Outcome.Open(operands)
+    arguments = operands[2:end]
+    types = Any[operand_type(ir, argument) for argument in arguments]
+    contract.callback && !isempty(types) && typeintersect(first(types), Base.Callable) !== Union{} && return Outcome.Open(operands)
+    admits(position::Int, type::Any)::Bool = any(index -> typeintersect(types[index], type) !== Union{}, role(contract.effects, position, length(types)))
+    return Outcome.Contract(contract.effects, arguments, Int[position for (position, type) in contract.breaches if admits(position, type)])
+end
+
+"""Positions among `count` arguments that take role of `position` in `effects`: from `rest` on, all; past end, none."""
+role(effects::CallEffects, position::Int, count::Int)::UnitRange{Int} = position == effects.rest ? (position:count) : (position:min(position, count))
 
 """Resolution of `_apply_iterate` call: callee and spread `arguments` tuples of known length become operands."""
 function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt, limit::Int)::Outcome.Type

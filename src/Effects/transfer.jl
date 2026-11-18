@@ -50,25 +50,46 @@ function call!(flow::Flow, index::Int, outcome::Outcome.Type, summary_of::Functi
     @match outcome begin
         Outcome.Builtin(builtin, operands) => builtin!(flow, index, builtin, operands)
         Outcome.Intrinsic(intrinsic, operands) => intrinsic!(flow, index, intrinsic, operands)
-        Outcome.Foreign(effects, operands) => foreign!(flow, index, effects, operands)
+        Outcome.Foreign(effects, operands) => table!(flow, index, effects, operands)
         Outcome.Dispatch(instances, operands) => dispatch!(flow, index, instances, operands, summary_of)
+        Outcome.Contract(effects, operands, breached) => contract!(flow, index, effects, operands, breached)
         Outcome.Open(operands) => open!(flow, index, operands)
         Outcome.Dead() => nothing
     end
     return nothing
 end
 
-"""Transfer foreign call of C function with `effects` on C `arguments` (`effects.md`, Calls, step 2)."""
-function foreign!(flow::Flow, index::Int, effects::ForeignEffects, arguments::Vector{Operand.Type})::Nothing
-    targets(position::Int)::Targets = operand_targets(flow, arguments[position])
+"""
+Transfer call with table `effects` on `arguments` (`effects.md`, Calls, steps 2 and 6): foreign call of C function, or
+Base contract.
+"""
+function table!(flow::Flow, index::Int, effects::CallEffects, arguments::Vector{Operand.Type})::Nothing
+    targets(position::Int)::Targets = union_targets(operand_targets(flow, arguments[at]) for at in role(effects, position, length(arguments)))
     foreach(position -> access!(flow.writes, targets(position), false, definite(index)), effects.writes)
     foreach(position -> access!(flow.reads, targets(position), false, definite(index)), effects.reads)
     for (destination, source) in effects.copies
         store!(flow, targets(destination), Step.Element(), load(flow, targets(source), Step.Element()))
     end
     foreach(((destination, source),) -> store!(flow, targets(destination), Step.Element(), targets(source)), effects.stores)
+    # Result that holds no reference (`==`, `length`) skips alias walks.
+    points(flow, flow.ir.stmts[index][:type]) || return nothing
     foreach(position -> assign!(flow, index, targets(position)), effects.result)
     foreach(position -> assign!(flow, index, load(flow, targets(position), Step.Element())), effects.elements)
+    foreach(position -> assign!(flow, index, beneath(flow, targets(position)), Doubt.code), effects.aliases)
+    return nothing
+end
+
+"""
+Transfer call by Base contract `effects` on `arguments` (`effects.md`, Calls, step 6); `breached` positions hold type
+that writes where contract reads: `possible` write. Contract holds for methods loaded now, so verdict is closed-world.
+"""
+function contract!(flow::Flow, index::Int, effects::CallEffects, arguments::Vector{Operand.Type}, breached::Vector{Int})::Nothing
+    flow.closed_world = true
+    table!(flow, index, effects, arguments)
+    for position in breached
+        objects = union_targets(operand_targets(flow, arguments[at]) for at in role(effects, position, length(arguments)))
+        access!(flow.writes, objects, false, Effect(Doubt.code, index, ""))
+    end
     return nothing
 end
 
