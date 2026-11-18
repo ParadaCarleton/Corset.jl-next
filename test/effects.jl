@@ -6,7 +6,7 @@ using Corset.Effects:
     Effects, Doubt, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
-    components, foreign_name, join_accesses!, JOIN_LIMIT, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body
+    components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 
@@ -125,8 +125,8 @@ end
 
 """Summary of method `f` on argument `types`, solved with every instance it reaches."""
 function summary_of(f::Any, types::Type...)::Summary
-    run = start_run(nothing)
-    root = (only(something(dispatch(Any[typeof(f), types...], run.world))), Pair{Int, Any}[])
+    run = start_run(nothing, Module[])
+    root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
     solve!(run, [root])
     return run.summaries[root]
 end
@@ -350,8 +350,8 @@ end
     @test haskey(summary_of(any_of_fresh, Vector{Int}, Symbol).result, Node.Placed(parameter(2)))
     @test summary_of(field_global).result == Nodes(Node.Placed(global_place(@__MODULE__, :slot)) => none)
     @test summary_of(make_backed, Vector{Int}).result == Nodes(Node.Placed(parameter(2)) => none)
-    run = start_run(nothing)
-    instance = only(something(dispatch(Any[typeof(broken), Int], run.world)))
+    run = start_run(nothing, Module[])
+    instance = only(something(dispatch(Any[typeof(broken), Int], run.world, 1)))
     @test library_body(run, instance) == "inference gave no code"
     @test summary_of(calls_broken, Vector{Int}).writes == Dict()
     broken_int = summary_of(x -> broken(x), Int)
@@ -367,15 +367,15 @@ end
     mktempdir(@__DIR__) do directory
         journal = open_journal(directory)
         try
-            target = only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], run.world)))
+            target = only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], run.world, 1)))
             push!(journal.crashed, journal_key(target))
-            crashed = start_run(journal)
-            root = (only(something(dispatch(Any[typeof(latest!), Vector{Int}], crashed.world))), Pair{Int, Any}[])
+            crashed = start_run(journal, Module[])
+            root = (only(something(dispatch(Any[typeof(latest!), Vector{Int}], crashed.world, 1))), Pair{Int, Any}[])
             solve!(crashed, [root])
             effect = crashed.summaries[root].writes[(parameter(2), true)]
             @test effect.doubt == blind && effect.reason == "inference crashed process"
-            fresh = start_run(journal)
-            other = (only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], fresh.world))), Pair{Int, Any}[])
+            fresh = start_run(journal, Module[])
+            other = (only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], fresh.world, 1))), Pair{Int, Any}[])
             solve!(fresh, [other])
             @test any(record -> startswith(record.key, "effects\n") && record.finished, records(directory))
         finally
@@ -421,8 +421,8 @@ four_way(x::Symbol) = x
     table = Dict{Tuple{Origin.Type, Bool}, Effect}()
     access!(table, Targets(Origin.Allocation(1) => Doubt.blind), false, Effect(Doubt.blind, 4, "cause"))
     @test table[(Origin.Allocation(1), false)] == Effect(Doubt.blind, 4, "cause")
-    run = start_run(nothing)
-    instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world)))
+    run = start_run(nothing, Module[])
+    instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world, 1)))
     solve!(run, [(instance, Pair{Int, Any}[])])
     code = run.codes[(instance, Pair{Int, Any}[])]
     @test constant(code.ir, GlobalRef(Base, :nothing)) == Some(nothing)
@@ -433,7 +433,7 @@ four_way(x::Symbol) = x
     @test map_node(flow, Node.Fresh(4), CallSite(Targets[], 7, 2, Dict{Place.Type, Targets}())) == Targets(Origin.Allocation(7) => Doubt.blind)
     @test deep(flow, Targets(Origin.Caller(parameter(2)) => Doubt.none)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => Doubt.blind)
     # Spread part as callee: `MemoryRef` has no call method, so call throws.
-    @test isa_variant(resolve(code.ir, Operand.Type[Operand.Part(Core.Argument(2), 1)], run.world), Outcome.Dead)
+    @test isa_variant(resolve(code.ir, Operand.Type[Operand.Part(Core.Argument(2), 1)], run.world, 1), Outcome.Dead)
     typed = only(unit for unit in UNITS.typed if unit.site.method.name == :add)
     @test cause_span(typed, code, 0) == typed.site.span
     shared, partial = (Origin.Allocation(1), false), (Origin.Allocation(2), false)
@@ -445,8 +445,14 @@ four_way(x::Symbol) = x
     @test joined == Dict(partial => Effect(Doubt.code, 5, ""))
     # Join must reach every call native inference resolves.
     @test JOIN_LIMIT >= Effects.CC.InferenceParams().max_methods
-    @test length(something(dispatch(Any[typeof(three_way), Any], Base.get_world_counter()))) == JOIN_LIMIT
-    @test isnothing(dispatch(Any[typeof(four_way), Any], Base.get_world_counter()))
+    world = Base.get_world_counter()
+    @test length(something(dispatch(Any[typeof(three_way), Any], world, JOIN_LIMIT))) == JOIN_LIMIT
+    @test isnothing(dispatch(Any[typeof(four_way), Any], world, JOIN_LIMIT))
+    # Package code joins; library code keeps run-time dispatch open.
+    @test isnothing(dispatch(Any[typeof(three_way), Any], world, 1))
+    package_run = start_run(nothing, [@__MODULE__])
+    @test join_limit(package_run, only(something(dispatch(Any[typeof(three_way), Int], world, 1)))) == JOIN_LIMIT
+    @test join_limit(package_run, only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], world, 1)))) == 1
     possible_first = Access(parameter(2), false, Confidence.possible, typed.site.span)
     @test worst([possible_first, Access(parameter(2), false, Confidence.definite, typed.site.span)])[1].confidence == Confidence.definite
 end
@@ -542,8 +548,8 @@ end
 chain_link(x::Any) = x
 
 @testset "slot-name parameters" begin
-    run = start_run(nothing)
-    instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world)))
+    run = start_run(nothing, Module[])
+    instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world, 1)))
     solve!(run, [(instance, Pair{Int, Any}[])])
     ir = run.codes[(instance, Pair{Int, Any}[])].ir
     # Chain of 10^5 calls: explicit stack keeps deep call chains off native stack.
@@ -581,14 +587,14 @@ peel(f::Any, shell::InnerShell) = peel(f ∘ identity, shell.inner)
     # Signature grows each step (`ComposedFunction` in LinearAlgebra `_any`): after one or two steps it widens.
     cases = ((deepen, (Int, Int), (:deepen,), 3, Tuple{typeof(deepen), Layer, Int}), (deepen_odd, (Int, Int), (:deepen_odd, :deepen_even), 5, Tuple{typeof(deepen_odd), Layer, Int}), (peel, (typeof(sin), OuterShell), (:peel,), 5, Tuple{typeof(peel), ComposedFunction, InnerShell}))
     for (f, types, names, total, widened) in cases
-        run = start_run(nothing)
-        root = (only(something(dispatch(Any[typeof(f), types...], run.world))), Pair{Int, Any}[])
+        run = start_run(nothing, [@__MODULE__])
+        root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
         solve!(run, [root])
         reached = filter(instance -> instance.def.name in names, collect(keys(run.bodies)))
         @test length(reached) == total
         @test any(instance -> instance.specTypes == widened, reached)
     end
-    @test journal_key(only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], Base.get_world_counter())))) == "effects\nTuple{typeof(push!), Array{Int64, 1}, Int64}"
+    @test journal_key(only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], Base.get_world_counter(), 1)))) == "effects\nTuple{typeof(push!), Array{Int64, 1}, Int64}"
 end
 
 const DOUBTS = Data.SampledFrom([Doubt.none, Doubt.code, Doubt.blind])

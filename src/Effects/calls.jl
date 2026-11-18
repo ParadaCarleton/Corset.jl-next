@@ -89,27 +89,27 @@ function operand_type(ir::CC.IRCode, operand::Operand.Type)::Any
 end
 
 """
-Most methods run-time dispatch joins (`effects.md`, Calls, step 5): compiler `max_methods`, never below. Limit 8 reached
-20 times more instances on Distances.
+Most methods run-time dispatch in package code joins (`effects.md`, Calls, step 5): compiler `max_methods`, never below.
+Limit 8 reached 20 times more instances on Distances. Library code joins none (`join_limit`).
 """
 const JOIN_LIMIT = 3
 
 """
 Instances of methods call with argument `types` can reach in `world`, each specialized to call; `nothing` past
-`JOIN_LIMIT` methods.
+`limit` methods.
 """
-function dispatch(types::Vector{Any}, world::UInt)::Union{Nothing, Vector{Core.MethodInstance}}
-    matches = Base._methods_by_ftype(Tuple{types...}, JOIN_LIMIT, world)
+function dispatch(types::Vector{Any}, world::UInt, limit::Int)::Union{Nothing, Vector{Core.MethodInstance}}
+    matches = Base._methods_by_ftype(Tuple{types...}, limit, world)
     matches isa Vector || return nothing
     return Core.MethodInstance[CC.specialize_method(match::Core.MethodMatch) for match in matches]
 end
 
 """
-Resolution of call with `operands` (callee first) in `ir`: builtin, intrinsic, matching methods up to limit, else open.
+Resolution of call with `operands` (callee first) in `ir`: builtin, intrinsic, up to `limit` matching methods, else open.
 Builtins that call operand (`invokelatest`, `_apply_iterate`, `finalizer`) resolve to call they make. Intrinsic operand
 can be nested constant expression (`cglobal((:name, library))`), so operand types wait until dispatch.
 """
-function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt)::Outcome.Type
+function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt, limit::Int)::Outcome.Type
     callee = @match first(operands) begin
         Operand.Value(value) => constant(ir, value)
         Operand.Part(_, _) => nothing
@@ -117,20 +117,20 @@ function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt)::Ou
     if !isnothing(callee) && something(callee) isa Core.Builtin
         builtin = something(callee)
         builtin isa Core.IntrinsicFunction && return Outcome.Intrinsic(builtin, operands[2:end])
-        builtin === Core._apply_iterate && return spread_call(ir, operands[3:end], world)
-        builtin in (Core.invokelatest, Core._call_latest, Core.finalizer) && return resolve(ir, operands[2:end], world)
-        builtin in (Core.invoke_in_world, Core._call_in_world, Core._call_in_world_total) && return resolve(ir, operands[3:end], world)
+        builtin === Core._apply_iterate && return spread_call(ir, operands[3:end], world, limit)
+        builtin in (Core.invokelatest, Core._call_latest, Core.finalizer) && return resolve(ir, operands[2:end], world, limit)
+        builtin in (Core.invoke_in_world, Core._call_in_world, Core._call_in_world_total) && return resolve(ir, operands[3:end], world, limit)
         builtin === Core.invoke && return invoke_call(ir, operands, world)
         return Outcome.Builtin(builtin, operands[2:end])
     end
-    instances = dispatch(Any[operand_type(ir, operand) for operand in operands], world)
+    instances = dispatch(Any[operand_type(ir, operand) for operand in operands], world, limit)
     isnothing(instances) && return Outcome.Open(operands)
     # No matching method: call throws `MethodError`.
     return isempty(instances) ? Outcome.Dead() : Outcome.Dispatch(instances, operands)
 end
 
 """Resolution of `_apply_iterate` call: callee and spread `arguments` tuples of known length become operands."""
-function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt)::Outcome.Type
+function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt, limit::Int)::Outcome.Type
     operands = Operand.Type[first(arguments)]
     for argument in arguments[2:end]
         value = @match argument begin
@@ -141,7 +141,7 @@ function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt
         definite_tuple(type) || return Outcome.Open(arguments)
         append!(operands, (Operand.Part(value, position) for position in 1:fieldcount(type)))
     end
-    return resolve(ir, operands, world)
+    return resolve(ir, operands, world, limit)
 end
 
 """Resolution of `Core.invoke(f, T, args...)`: method `T` selects, specialized to argument types; open without it."""
@@ -186,9 +186,9 @@ end
 Resolution of statement `statement` of `ir`: call or foreign call outcome; `nothing` for other statements. IR before
 inlining holds no `:invoke` statement.
 """
-function statement_outcome(ir::CC.IRCode, statement::Any, world::UInt)::Union{Nothing, Outcome.Type}
+function statement_outcome(ir::CC.IRCode, statement::Any, world::UInt, limit::Int)::Union{Nothing, Outcome.Type}
     statement isa Expr || return nothing
-    statement.head === :call && return resolve(ir, Operand.Type[Operand.Value(value) for value in statement.args], world)
+    statement.head === :call && return resolve(ir, Operand.Type[Operand.Value(value) for value in statement.args], world, limit)
     statement.head === :foreigncall && return foreign_outcome(statement)
     return nothing
 end

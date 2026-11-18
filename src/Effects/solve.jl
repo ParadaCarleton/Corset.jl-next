@@ -20,14 +20,15 @@ struct Code
 end
 
 """
-State of one effects run: world of dispatch and native inference, crash journal, referent cache; per instance its body
-or blind spot cause, caller that first reached it, and parameters it uses as field names; per variant its code and
-summary.
+State of one effects run: world of dispatch and native inference, crash journal, package modules, referent cache; per
+instance its body or blind spot cause, caller that first reached it, and parameters it uses as field names; per variant
+its code and summary.
 """
 struct Run
     world::UInt
     interpreter::CC.NativeInterpreter
     journal::Union{Nothing, Journal}
+    modules::Set{Module}
     referent::IdDict{Any, Bool}
     bodies::IdDict{Core.MethodInstance, Union{Body, String}}
     callers::IdDict{Core.MethodInstance, Core.MethodInstance}
@@ -36,12 +37,12 @@ struct Run
     summaries::Dict{Variant, Summary}
 end
 
-"""Run in current world with crash `journal`, before any code."""
-function start_run(journal::Union{Nothing, Journal})::Run
+"""Run in current world with crash `journal` for package `modules`, before any code."""
+function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module})::Run
     world = Base.get_world_counter()
     bodies, callers = IdDict{Core.MethodInstance, Union{Body, String}}(), IdDict{Core.MethodInstance, Core.MethodInstance}()
     fields = IdDict{Core.MethodInstance, Set{Int}}()
-    return Run(world, CC.NativeInterpreter(world), journal, IdDict{Any, Bool}(), bodies, callers, fields, Dict{Variant, Code}(), Dict{Variant, Summary}())
+    return Run(world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, fields, Dict{Variant, Code}(), Dict{Variant, Summary}())
 end
 
 """Instances from `instance` back to root, each followed by caller that first reached it."""
@@ -96,11 +97,17 @@ function limited_outcome(run::Run, chain::Vector{Core.MethodInstance}, outcome::
     end
 end
 
+"""
+Most methods call in `instance` joins: `JOIN_LIMIT` in package module, else 1. Joins in library code raised `possible`
+share on corpus, and JSON `effects` time went past 30 min.
+"""
+join_limit(run::Run, instance::Core.MethodInstance)::Int = (instance.def::Method).module in run.modules ? JOIN_LIMIT : 1
+
 """Body of inference `frame` in `run`; callees that grow along call chain are limited."""
 function frame_body(run::Run, frame::CC.InferenceState)::Body
     ir, lines = frame_ir(frame, run.interpreter)
-    chain = call_chain(run, frame.linfo)
-    return Body(ir, lines, [limited_outcome(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world)) for index in 1:length(ir.stmts)])
+    chain, limit = call_chain(run, frame.linfo), join_limit(run, frame.linfo)
+    return Body(ir, lines, [limited_outcome(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world, limit)) for index in 1:length(ir.stmts)])
 end
 
 """

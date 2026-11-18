@@ -69,7 +69,7 @@ const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{BlindAccess}, Vec
 (`effects.md`, Units and Facts). Crash `journal` records native inference of instances outside units.
 """
 function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Journal})::Tuple{EffectsFacts, Vector{BlindSpot}}
-    run = start_run(journal)
+    run = start_run(journal, package.modules)
     typed_of = IdDict{Core.MethodInstance, TypedCode}()
     for typed in units.typed
         instance = typed.frame.linfo
