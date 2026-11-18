@@ -821,6 +821,30 @@ PR 2e (callback records, #239) on corpus, winwsl, cold library inference, no cac
 - Mutation check: 12 mutants, 10 killed. Survivors kept record of round 1 after callable grew, and resolved record of cycle member without reading its summary.
 - Fixtures `pick_setter!` and `restart!` kill both survivors.
 
+### Phase 5 engine limits
+
+Probe before PR 3a: compiler effects make 41%, 20% and 32% of variants on Distances, DataStructures and JSON eligible for shortcut.
+Eligible variants hold 24%, 9.4% and 9.7% of IR statements. Their own summaries were mostly immutable reads and false-positive writes.
+
+PR 3a (compiler-effects shortcut, #240) on corpus, winwsl, cold library inference, no cache, main and PR 3a back to back:
+
+| Arm | Distances | DataStructures | JSON |
+|---|---|---|---|
+| Shortcut instances, PR 3a | 789 | 1127 | 1637 |
+| Instances, main to PR 3a | 4079 to 3002 | 8762 to 7923 | 9045 to 7521 |
+| `possible` share, main to PR 3a | 34.9% to 34.9% | 26.7% to 26.6% | 33.3% to 33.3% |
+| Blind writes, main to PR 3a | 20 to 27 | 246 to 240 | 94 to 94 |
+| `effects` allocation MB, main to PR 3a | 823 to 608 | 1772 to 1645 | 114293 to 113097 |
+| Warm solve allocation MB, main to PR 3a | 403 to 326 | 1202 to 1159 | 113272 to 112172 |
+
+- Warm solve allocation counts engine only; `effects` allocation also counts cold native inference.
+- Distances blind writes rise: shortcut removes false code-level write of `promote_op` to unknown object. That write hid blind write to same place, since `stronger` keeps least doubt.
+- Distances has 9 shortcut instances with nonempty own summary. Compiler disproves each: `promote_op` writes, throw-only `LazyString` message, uninhabited `SubArray{T, 1, Union{}}`, read-only callback records.
+- JSON allocation stays within 1%: its cost sits in Serialization call cycles (PR 1).
+- Corset, Moshi and Compiler carry claims (`@assume_effects`, generated methods), so no run can skip reach check of claims.
+- Coverage instrumentation (`--code-coverage=user`) gives every fixture statement an effect. Shortcut tests use Base instances.
+- Mutation check: 16 mutants over shortcut conditions, claims, reach and compaction keep; all killed.
+
 ### Stateful iterators
 
 - Trigger "every `iterate` on iterator not proven stateless" rejected: single pass is safe for both kinds, so it flags nearly all generic code.

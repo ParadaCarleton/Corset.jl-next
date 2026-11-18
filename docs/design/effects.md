@@ -140,11 +140,15 @@ Resolution of each call statement, first match wins:
 #### Compiler effects
 
 - Compiler effects come free with unit inference and native cache.
-- Instance with `effect_free`, `inaccessiblememonly` and result type that holds no reference has empty summary. Engine skips own analysis there.
+- Instance with `effect_free`, `inaccessiblememonly`, `notaskstate` and result type that holds no reference has empty summary. Engine skips own analysis and callees there.
+- `notaskstate` keeps `ScopedValue` reads: Base claims `effect_free` and `inaccessiblememonly` for them.
 - `effect_free` proves one direction. True: instance writes nothing caller sees, so its own verdict is none.
 - False proves no write: dynamic call or IO also clears it. Own analysis decides then, per argument and global.
 - Callee summary needs more than `effect_free`: result aliases. `view` writes nothing, but caller writes `A` through `view(A, 1:2)`.
-- `@assume_effects` makes compiler trust claim. Shortcut holds only when no method instance reaches outside Base carries effects override; call graph tells.
+- `@assume_effects` makes compiler trust claim. Shortcut holds only when no instance it reaches carries claim outside Base.
+- Claim: `@assume_effects` on method or on block in it. Generated method and method without source count as claim.
+- Native inference edges tell reach. Callee without cached code counts as claim. Corset, Moshi and Compiler carry claims, so each run checks reach of claims.
+- Compaction deletes unused call when compiler effects allow. Call that reaches claim stays, and so does statement under block claim of claiming method.
 - Own analysis runs on every method with claim outside Base. `false-effects` compares claims of package methods.
 
 #### Stand-in cuts

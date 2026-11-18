@@ -862,11 +862,15 @@ Summary per variant: instance plus constant arguments callee uses as field name.
 <h4>Compiler effects</h4>
 <ul>
 <li>Compiler effects come free with unit inference and native cache.</li>
-<li>Instance with <code>effect_free</code>, <code>inaccessiblememonly</code> and result type that holds no reference has empty summary. Engine skips own analysis there.</li>
+<li>Instance with <code>effect_free</code>, <code>inaccessiblememonly</code>, <code>notaskstate</code> and result type that holds no reference has empty summary. Engine skips own analysis and callees there.</li>
+<li><code>notaskstate</code> keeps <code>ScopedValue</code> reads: Base claims <code>effect_free</code> and <code>inaccessiblememonly</code> for them.</li>
 <li><code>effect_free</code> proves one direction. True: instance writes nothing caller sees, so its own verdict is none.</li>
 <li>False proves no write: dynamic call or IO also clears it. Own analysis decides then, per argument and global.</li>
 <li>Callee summary needs more than <code>effect_free</code>: result aliases. <code>view</code> writes nothing, but caller writes <code>A</code> through <code>view(A, 1:2)</code>.</li>
-<li><code>@assume_effects</code> makes compiler trust claim. Shortcut holds only when no method instance reaches outside Base carries effects override; call graph tells.</li>
+<li><code>@assume_effects</code> makes compiler trust claim. Shortcut holds only when no instance it reaches carries claim outside Base.</li>
+<li>Claim: <code>@assume_effects</code> on method or on block in it. Generated method and method without source count as claim.</li>
+<li>Native inference edges tell reach. Callee without cached code counts as claim. Corset, Moshi and Compiler carry claims, so each run checks reach of claims.</li>
+<li>Compaction deletes unused call when compiler effects allow. Call that reaches claim stays, and so does statement under block claim of claiming method.</li>
 <li>Own analysis runs on every method with claim outside Base. <code>false-effects</code> compares claims of package methods.</li>
 </ul>
 <h4>Stand-in cuts</h4>
@@ -1354,7 +1358,7 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <td>Engine limits</td>
 <td>Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts</td>
 <td>2</td>
-<td>—</td>
+<td>3a #240</td>
 </tr>
 <tr>
 <td>4</td>
@@ -1463,9 +1467,10 @@ Open-call census after 2b set this order; callback records cover least. Ablation
 </ul>
 <p>Measure: <code>possible</code> share per corpus package; methods per join; contract hits. Join limit 3 since 2a; keep it at least compiler <code>max_methods</code>.</p>
 </div><div class="decision"><h3>3 Engine limits</h3>
-<p>Compiler effects for speed; stand-in cuts and effect kinds for correct verdicts.</p>
+<p>Compiler effects for speed; stand-in cuts and effect kinds for correct verdicts.
+Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effect kinds; 3d throw paths and call facts.</p>
 <ul>
-<li>Shortcut: empty summary for instance with <code>effect_free</code>, <code>inaccessiblememonly</code> and result without reference.</li>
+<li>Shortcut: empty summary for instance with <code>effect_free</code>, <code>inaccessiblememonly</code>, <code>notaskstate</code> and result without reference.</li>
 <li>Skip shortcut when reached method outside Base carries effects override.</li>
 <li>Compaction deletes call with unused result when compiler effects allow. Keep calls whose callee carries effects override: false claim hides write.</li>
 <li>Cuts: <code>inference</code> stage finds units with dead call or store statements, then infers those at declared signature.</li>
