@@ -130,4 +130,47 @@ remember!(table::IdDict{Int, Box}, box::Box)::Nothing = (table[1] = box; table[1
 
 call_on(f::Any, box::Box) = f(box)
 
+# Provenance: open dispatch whose open types code wrote, Corset chose, or code opted out of.
+reset!(box::Box)::Nothing = (box.value = 0; nothing)
+reset!(counter::Counter)::Nothing = (@atomic counter.count = 0; nothing)
+reset!(cell::Base.RefValue{Int})::Nothing = (cell[] = 0; nothing)
+reset!(values::Vector{Int})::Nothing = (values[1] = 0; nothing)
+
+reset_first!(values::AbstractVector)::Nothing = (reset!(values[1]); nothing)
+
+reset_any!(target::Any)::Nothing = (reset!(target); nothing)
+
+function reset_typed!(target::T)::Nothing where {T}
+    reset!(target)
+    return nothing
+end
+
+reset_slot!(slot::Base.RefValue{Any})::Nothing = (reset!(slot[]); nothing)
+
+# More `IO` methods than join takes: call on `IO` stays open.
+send!(io::IOBuffer, box::Box)::Nothing = (box.value = 0; nothing)
+send!(io::IOStream, box::Box)::Nothing = (box.value = 0; nothing)
+send!(io::Base.DevNull, box::Box)::Nothing = nothing
+send!(io::Base.TTY, box::Box)::Nothing = nothing
+
+emit!(io::IO, box::Box)::Nothing = (send!(io, box); nothing)
+
+function emit_typed!(io::IO, target::T)::Nothing where {T}
+    send!(io, target)
+    return nothing
+end
+
+forward!(io, box) = (send!(io, box); nothing)
+
+emit_through!(io::IO, box::Box)::Nothing = (forward!(io, box); nothing)
+
+peer(io::IOBuffer)::IO = io
+peer(io::IOStream)::IO = io
+peer(io::Base.DevNull)::IO = io
+peer(io::Base.TTY)::IO = io
+
+emit_peer!(io::IO, box::Box)::Nothing = (send!(peer(io), box); nothing)
+
+apply_to!(f::Function, box::Box)::Nothing = (f(box); nothing)
+
 end

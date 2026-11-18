@@ -11,6 +11,7 @@ using Moshi.Data: @data
 using Moshi.Match: @match
 using ..Facts: PackageFacts, EffectsFacts, MethodEffects, Access, BlindAccess, Step, Root, Place, PATH_DEPTH, BlindSpot, Confidence, Span
 using ..Inference: TypedCode, Units, Journal, Record, record!, method_label
+using ..StandIns: FunctionStandIn
 
 const CC = Core.Compiler
 

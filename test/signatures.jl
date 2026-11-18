@@ -1,7 +1,7 @@
 using Test: @test, @testset
 using Corset: Corset
 using Corset.StandIns: ArrayStandIn, DenseStandIn, FloatStandIn, FunctionStandIn, IntStandIn
-using Corset.Signatures: LIMIT, method_signatures, struct_stand_ins
+using Corset.Signatures: LIMIT, Provenance, method_signatures, struct_stand_ins, argument_provenance
 
 """Methods whose stand-in signatures tests check."""
 module SignatureCases
@@ -50,6 +50,7 @@ module SignatureCases
         values::NTuple{N, Float64}
     end
     measure(sized::Sized) = sized.values
+    listed(values::Vector{Any}) = values
     abstract type Tree end
     struct Node{C <: Tree} <: Tree
         child::C
@@ -149,6 +150,27 @@ include("compilation.jl")
         found = signatures_of(:paired)
         @test found.signatures == [Tuple{typeof(CASES.paired), Type{element}, CASES.Bounded{element, V}} where {V <: AbstractVector} for element in (FloatStandIn, IntStandIn)]
         @test found.bare == [2]
+    end
+    @testset "argument provenance" begin
+        code, opaque, opt_out = Provenance.code, Provenance.opaque, Provenance.opt_out
+        provenances(name::Symbol, opted::Vector{Int})::Vector{Vector{Provenance.T}} = [argument_provenance(only(methods(getglobal(CASES, name))), signature, true, opted) for signature in signatures_of(name).signatures]
+        # Stand-in with open part Corset chose: function, array element `Any`, struct parameter at bound.
+        @test provenances(:apply, Int[]) == [[code, opaque, code]] && provenances(:apply, [2]) == [[code, opaque, opt_out]]
+        @test provenances(:first_item, Int[]) == [[code, opaque]] && provenances(:unbox, Int[]) == [[code, opaque]]
+        # Stand-ins without open part, and declared concrete types: code.
+        @test provenances(:total, Int[]) == [[code, code], [code, code]] && provenances(:kind, Int[]) == [[code, code]]
+        @test provenances(:plain, Int[]) == [[code, code]] && provenances(:many, Int[]) == [[code, code], [code, code]]
+        # Declared type kept: abstract one and bounded variable are Corset choice; unbounded variable is code.
+        @test provenances(:text, Int[]) == [[code, opaque]] && provenances(:bounded, Int[]) == [[code, opaque]]
+        @test provenances(:free, Int[]) == [[code, code]] && provenances(:mixed, Int[]) == [[code, code, code]]
+        @test provenances(:nested, Int[]) == [[code, code], [code, code]] && provenances(:measure, Int[]) == [[code, opaque]]
+        # Declared concrete type with `Any` parameter opts out.
+        @test provenances(:listed, Int[]) == [[code, opt_out]]
+        # Signature call reaches carries caller types: only function and array stand-ins are Corset choice.
+        @test argument_provenance(only(methods(CASES.first_item)), call(:first_item, AbstractVector), false, Int[]) == [code, code]
+        @test argument_provenance(only(methods(CASES.first_item)), call(:first_item, ArrayStandIn{Any, 1}), false, Int[]) == [code, opaque]
+        @test argument_provenance(only(methods(CASES.apply)), call(:apply, FunctionStandIn, Any), false, [2]) == [code, opaque, code]
+        @test argument_provenance(only(methods(CASES.unbox)), call(:unbox, CASES.Box{Any}), false, Int[]) == [code, code]
     end
     @testset "concrete struct list" begin
         # Caller may pass `Vector{DataType}`.

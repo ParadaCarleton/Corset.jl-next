@@ -30,18 +30,19 @@ end
 """Flow of `ir` with call `outcomes` before first round: each referent argument points to its parameter."""
 function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, referent::IdDict{Any, Bool})::Flow
     arguments = [
-        referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), Step.Type[])) => Doubt.none) : Targets()
+        referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), Step.Type[])) => NO_DOUBT) : Targets()
             for (position, type) in enumerate(ir.argtypes)
     ]
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     return Flow(ir, outcomes, [Targets() for _ in 1:length(ir.stmts)], arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), referent, false, false)
 end
 
-"""Add `origin` with `doubt` to `targets`; chain with less doubt wins. Return whether `targets` changed."""
-function add!(targets::Targets, origin::Origin.Type, doubt::Doubt.T)::Bool
+"""Add `origin` with `doubt` to `targets`; chain with less doubt wins (`least`). Return whether `targets` changed."""
+function add!(targets::Targets, origin::Origin.Type, doubt::Doubt)::Bool
     old = get(targets, origin, nothing)
-    isnothing(old) || doubt < old || return false
-    targets[origin] = doubt
+    new = isnothing(old) ? doubt : least(old, doubt)
+    new == old && return false
+    targets[origin] = new
     return true
 end
 
@@ -55,10 +56,13 @@ function union_targets(parts::Any)::Targets
 end
 
 """Targets of `targets` with each doubt raised to at least `doubt`."""
-raised(targets::Targets, doubt::Doubt.T)::Targets = Targets(origin => most(flag, doubt) for (origin, flag) in targets)
+raised(targets::Targets, doubt::Doubt)::Targets = Targets(origin => most(flag, doubt) for (origin, flag) in targets)
 
-"""Unknown object, reached through open call."""
-unknown()::Targets = Targets(Origin.Unknown() => Doubt.code)
+"""
+Unknown object with chain `doubt`. Engine reaches it with `code` doubt or more: steps from it and callee nodes for it
+add none (`follow`, `map_node`), so sources of chain stay.
+"""
+unknown(doubt::Doubt)::Targets = Targets(Origin.Unknown() => doubt)
 
 """Root of `place`."""
 root_of(place::Place.Type)::Root.Type = @match place begin
@@ -67,7 +71,7 @@ root_of(place::Place.Type)::Root.Type = @match place begin
 end
 
 """Join `source` into `target`, each doubt raised to at least `doubt`; mark `flow` changed when `target` changes."""
-function join!(flow::Flow, target::Targets, source::Targets, doubt::Doubt.T = Doubt.none)::Nothing
+function join!(flow::Flow, target::Targets, source::Targets, doubt::Doubt = NO_DOUBT)::Nothing
     for (origin, flag) in source
         add!(target, origin, most(flag, doubt)) && (flow.changed = true)
     end
@@ -117,7 +121,7 @@ null_pointer(binding::GlobalRef)::Bool = isconst(binding) && (pointer = getgloba
 """Targets of global `binding`: object caller sees there, and objects instance binds to it. Null pointer has none."""
 function global_targets(flow::Flow, binding::GlobalRef)::Targets
     null_pointer(binding) && return Targets()
-    return union_targets((Targets(Origin.Caller(Place.At(Root.Global(binding), Step.Type[])) => Doubt.none), get(flow.bound, binding, Targets())))
+    return union_targets((Targets(Origin.Caller(Place.At(Root.Global(binding), Step.Type[])) => NO_DOUBT), get(flow.bound, binding, Targets())))
 end
 
 """Targets of IR `value`: SSA value, argument, global binding, or constant object (unknown)."""
@@ -126,7 +130,7 @@ function value_targets(flow::Flow, value::Any)::Targets
     value isa Core.Argument && return flow.arguments[value.n]
     points(flow, CC.argextype(value, flow.ir)) || return Targets()
     value isa GlobalRef && return global_targets(flow, value)
-    return unknown()
+    return unknown(CODE_DOUBT)
 end
 
 """Targets of call `operand`: value, slot at position of spread tuple, or every element of `Rest`."""
@@ -145,10 +149,10 @@ function spread_elements(flow::Flow, value::Any)::Targets
 end
 
 """Place one `step` below `place`, and doubt step adds: past `PATH_DEPTH` steps path collapses to `Deep` (blind)."""
-function extend(place::Place.Type, step::Step.Type)::Tuple{Place.Type, Doubt.T}
+function extend(place::Place.Type, step::Step.Type)::Tuple{Place.Type, Doubt}
     return @match place begin
-        Place.At(root, steps) => length(steps) < PATH_DEPTH ? (Place.At(root, [steps; step]), Doubt.none) : (Place.Deep(root), Doubt.blind)
-        Place.Deep(root) => (Place.Deep(root), Doubt.blind)
+        Place.At(root, steps) => length(steps) < PATH_DEPTH ? (Place.At(root, [steps; step]), NO_DOUBT) : (Place.Deep(root), BLIND_DOUBT)
+        Place.Deep(root) => (Place.Deep(root), BLIND_DOUBT)
     end
 end
 
@@ -158,7 +162,7 @@ function follow(flow::Flow, origin::Origin.Type, step::Step.Type, seen::Set{Orig
     push!(seen, origin)
     @match origin begin
         Origin.Caller(place) => add!(found, Origin.Caller(first(extend(place, step))), last(extend(place, step)))
-        Origin.Unknown() => add!(found, origin, Doubt.code)
+        Origin.Unknown() => add!(found, origin, NO_DOUBT)
         Origin.Allocation(_) => nothing
     end
     for source in (slot(flow, origin, step), get(flow.spread, origin, Targets())), (target, doubt) in source
@@ -194,8 +198,8 @@ function load_any(flow::Flow, objects::Targets)::Targets
         origin in seen && continue
         push!(seen, origin)
         @match origin begin
-            Origin.Caller(place) => add!(found, Origin.Caller(Place.Deep(root_of(place))), Doubt.blind)
-            Origin.Unknown() => add!(found, origin, Doubt.code)
+            Origin.Caller(place) => add!(found, Origin.Caller(Place.Deep(root_of(place))), BLIND_DOUBT)
+            Origin.Unknown() => add!(found, origin, doubt)
             Origin.Allocation(_) => nothing
         end
         slots = get(flow.heap, origin, Dict{Step.Type, Targets}())
@@ -215,7 +219,7 @@ gives cause `alias` unless effect is blind already.
 """
 function access!(table::OriginAccesses, objects::Targets, below::Bool, effect::Effect)::Nothing
     for (origin, doubt) in objects
-        reason = effect.doubt == Doubt.blind ? effect.reason : doubt == Doubt.blind ? "alias" : ""
+        reason = effect.doubt.level == Level.blind ? effect.reason : doubt.level == Level.blind ? "alias" : ""
         found = Effect(most(effect.doubt, doubt), effect.cause, reason)
         key = (origin, below)
         table[key] = haskey(table, key) ? stronger(table[key], found) : found
@@ -241,7 +245,7 @@ end
 bind!(flow::Flow, binding::GlobalRef, values::Targets)::Nothing = join!(flow, slot!(flow.bound, binding), values)
 
 """Set targets of statement `index` to include `targets`, raised to `doubt`, when its type can point to object."""
-function assign!(flow::Flow, index::Int, targets::Targets, doubt::Doubt.T = Doubt.none)::Nothing
+function assign!(flow::Flow, index::Int, targets::Targets, doubt::Doubt = NO_DOUBT)::Nothing
     points(flow, flow.ir.stmts[index][:type]) && join!(flow, flow.values[index], targets, doubt)
     return nothing
 end
@@ -282,7 +286,7 @@ function statement!(flow::Flow, index::Int, statement::Any, summary_of::Function
             allocate!(flow, index)
             store!(flow, flow.values[index], nothing, union_targets(value_targets(flow, value) for value in statement.args))
         elseif head === :the_exception
-            assign!(flow, index, unknown())
+            assign!(flow, index, unknown(CODE_DOUBT))
         elseif !(head in INERT)
             throw(ArgumentError("effects engine has no transfer for IR statement head `$head`"))
         end
@@ -310,7 +314,7 @@ end
 
 """Make statement `index` an allocation: its value points to fresh object `Allocation(index)`."""
 function allocate!(flow::Flow, index::Int)::Nothing
-    assign!(flow, index, Targets(Origin.Allocation(index) => Doubt.none))
+    assign!(flow, index, Targets(Origin.Allocation(index) => NO_DOUBT))
     return nothing
 end
 
@@ -356,4 +360,4 @@ function field_step(type::Any, field::Any)::Union{Nothing, Step.Type}
 end
 
 """Definite effect starting at statement `index`."""
-definite(index::Int)::Effect = Effect(Doubt.none, index, "")
+definite(index::Int)::Effect = Effect(NO_DOUBT, index, "")

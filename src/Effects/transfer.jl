@@ -53,7 +53,8 @@ function call!(flow::Flow, index::Int, outcome::Outcome.Type, summary_of::Functi
         Outcome.Foreign(effects, operands) => table!(flow, index, effects, operands)
         Outcome.Dispatch(instances, operands) => dispatch!(flow, index, instances, operands, summary_of)
         Outcome.Contract(effects, operands, breached) => contract!(flow, index, effects, operands, breached)
-        Outcome.Open(operands) => open!(flow, index, operands)
+        Outcome.Open(operands) => open!(flow, index, operands, open_doubt(flow, operands))
+        Outcome.Unresolved(operands) => open!(flow, index, operands, CODE_DOUBT)
         Outcome.Dead() => nothing
     end
     return nothing
@@ -75,7 +76,7 @@ function table!(flow::Flow, index::Int, effects::CallEffects, arguments::Vector{
     points(flow, flow.ir.stmts[index][:type]) || return nothing
     foreach(position -> assign!(flow, index, targets(position)), effects.result)
     foreach(position -> assign!(flow, index, load(flow, targets(position), Step.Element())), effects.elements)
-    foreach(position -> assign!(flow, index, beneath(flow, targets(position)), Doubt.code), effects.aliases)
+    foreach(position -> assign!(flow, index, beneath(flow, targets(position)), CODE_DOUBT), effects.aliases)
     return nothing
 end
 
@@ -88,7 +89,7 @@ function contract!(flow::Flow, index::Int, effects::CallEffects, arguments::Vect
     table!(flow, index, effects, arguments)
     for position in breached
         objects = union_targets(operand_targets(flow, arguments[at]) for at in role(effects, position, length(arguments)))
-        access!(flow.writes, objects, false, Effect(Doubt.code, index, ""))
+        access!(flow.writes, objects, false, Effect(CODE_DOUBT, index, ""))
     end
     return nothing
 end
@@ -112,12 +113,17 @@ function dispatch!(flow::Flow, index::Int, instances::Vector{Core.MethodInstance
     return nothing
 end
 
-"""Record in `table` join of accesses of each member in `members`: access absent from some member is at least `code`."""
+"""
+Record in `table` join of accesses of each member in `members`: most doubt among members, cause of first member with
+most doubtful level. Access absent from some member is at least `code`, doubt in code itself.
+"""
 function join_accesses!(table::OriginAccesses, members::Vector{OriginAccesses})::Nothing
     for key in union(keys.(members)...)
         found = [member[key] for member in members if haskey(member, key)]
-        effect = reduce((first, second) -> second.doubt > first.doubt ? second : first, found)
-        length(found) == length(members) || (effect = Effect(most(effect.doubt, Doubt.code), effect.cause, effect.reason))
+        first_worst = reduce((first, second) -> second.doubt.level > first.doubt.level ? second : first, found)
+        doubt = reduce(most, (effect.doubt for effect in found))
+        length(found) == length(members) || (doubt = most(doubt, CODE_DOUBT))
+        effect = Effect(doubt, first_worst.cause, first_worst.reason)
         table[key] = haskey(table, key) ? stronger(table[key], effect) : effect
     end
     return nothing
@@ -148,7 +154,7 @@ function builtin!(flow::Flow, index::Int, builtin::Any, operands::Vector{Operand
         write!(flow, index, FIELD_WRITES[builtin], operands, targets(1), load_field(flow, operands[1], field), values -> store_field!(flow, operands[1], field, values), slot)
     elseif builtin === Core.getglobal
         binding = module_global(flow, operands)
-        isnothing(binding) ? assign!(flow, index, unknown()) : read_global!(flow, index, something(binding))
+        isnothing(binding) ? assign!(flow, index, unknown(CODE_DOUBT)) : read_global!(flow, index, something(binding))
     elseif haskey(GLOBAL_WRITES, builtin)
         global_write!(flow, index, GLOBAL_WRITES[builtin], operands)
     elseif haskey(ELEMENT_WRITES, builtin)
@@ -178,16 +184,16 @@ function builtin!(flow::Flow, index::Int, builtin::Any, operands::Vector{Operand
     elseif builtin === Core._svec_ref
         assign!(flow, index, load_any(flow, targets(1)))
     elseif builtin === Core.current_scope
-        assign!(flow, index, unknown())
+        assign!(flow, index, unknown(CODE_DOUBT))
     elseif !(builtin in INERT_BUILTINS)
         # Definition builtins (`_structtype`, `declare_global`) change global state; outside call resolution they stay open.
-        open!(flow, index, operands)
+        open!(flow, index, operands, CODE_DOUBT)
     end
     return nothing
 end
 
 """Place of global `binding` as targets: write to binding writes it."""
-global_place(binding::GlobalRef)::Targets = Targets(Origin.Caller(Place.At(Root.Global(binding), Step.Type[])) => Doubt.none)
+global_place(binding::GlobalRef)::Targets = Targets(Origin.Caller(Place.At(Root.Global(binding), Step.Type[])) => NO_DOUBT)
 
 """Read of global `binding` at statement `index`: mutable binding counts as read."""
 function read_global!(flow::Flow, index::Int, binding::GlobalRef)::Nothing
@@ -220,8 +226,8 @@ function write!(flow::Flow, index::Int, shape::Shape, operands::Vector{Operand.T
         given
     else
         reached = union_targets((operand_targets(flow, operands[shape.operator]), old, given))
-        open_effects!(flow, index, reached)
-        union_targets((raised(reached, Doubt.code), unknown()))
+        open_effects!(flow, index, reached, CODE_DOUBT)
+        union_targets((raised(reached, CODE_DOUBT), unknown(CODE_DOUBT)))
     end
     store(stored)
     @match shape.returns begin
@@ -239,7 +245,7 @@ end
 function global_write!(flow::Flow, index::Int, shape::Shape, operands::Vector{Operand.Type})::Nothing
     found = module_global(flow, operands)
     if isnothing(found)
-        write!(flow, index, shape, operands, unknown(), unknown(), values -> store!(flow, unknown(), nothing, values), Any)
+        write!(flow, index, shape, operands, unknown(CODE_DOUBT), unknown(CODE_DOUBT), values -> store!(flow, unknown(CODE_DOUBT), nothing, values), Any)
         return nothing
     end
     binding = something(found)
@@ -323,9 +329,9 @@ function intrinsic!(flow::Flow, index::Int, intrinsic::Any, operands::Vector{Ope
         access!(flow.reads, pointers, false, definite(index))
         assign!(flow, index, load(flow, pointers, Step.Element()))
     elseif intrinsic === intrinsics.llvmcall
-        open!(flow, index, operands)
+        open!(flow, index, operands, CODE_DOUBT)
     elseif intrinsic === intrinsics.cglobal
-        assign!(flow, index, unknown())
+        assign!(flow, index, unknown(CODE_DOUBT))
     else
         # Pointer arithmetic and `bitcast` keep pointer into same object.
         assign!(flow, index, union_targets(operand_targets(flow, operand) for operand in operands))
@@ -333,23 +339,66 @@ function intrinsic!(flow::Flow, index::Int, intrinsic::Any, operands::Vector{Ope
     return nothing
 end
 
-"""Possible write and read below every origin of `objects` that open call at statement `index` reaches."""
-function open_effects!(flow::Flow, index::Int, objects::Targets)::Nothing
-    effect, reached = Effect(Doubt.code, index, ""), beneath(flow, objects)
+"""Write and read with `doubt` below every origin of `objects` that open call at statement `index` reaches."""
+function open_effects!(flow::Flow, index::Int, objects::Targets, doubt::Doubt)::Nothing
+    effect, reached = Effect(doubt, index, ""), beneath(flow, objects)
     access!(flow.writes, reached, true, effect)
     access!(flow.reads, reached, true, effect)
     return nothing
 end
 
 """
-Transfer open call (`effects.md`, Calls, step 7): possible write and read below every operand; result may point into
-operands, one direction, and to unknown object.
+Transfer open call (`effects.md`, Calls, step 7) with `code` `doubt`: write and read below every operand; result may
+point into operands, one direction, and to unknown object.
 """
-function open!(flow::Flow, index::Int, operands::Vector{Operand.Type})::Nothing
+function open!(flow::Flow, index::Int, operands::Vector{Operand.Type}, doubt::Doubt)::Nothing
     objects = union_targets(operand_targets(flow, operand) for operand in operands)
-    open_effects!(flow, index, objects)
-    assign!(flow, index, union_targets((objects, unknown())), Doubt.code)
+    open_effects!(flow, index, objects, doubt)
+    assign!(flow, index, union_targets((objects, unknown(doubt))), doubt)
     return nothing
+end
+
+"""
+Doubt of open dispatch with `operands` (`effects.md`, Provenance): sources of each operand whose type leaves dispatch
+open. `FunctionStandIn` stands for any function Corset chose. Call open without open operand type: doubt in code.
+"""
+function open_doubt(flow::Flow, operands::Vector{Operand.Type})::Doubt
+    sources = UInt64(0)
+    for operand in operands
+        type = operand_type(flow.ir, operand)
+        if type === FunctionStandIn
+            sources |= OPAQUE
+        elseif !Base.isdispatchelem(type)
+            sources |= type_sources(flow, operand_targets(flow, operand))
+        end
+    end
+    return Doubt(Level.code, sources == 0 ? INHERENT : sources)
+end
+
+"""
+Sources of open type of value with `targets`: parameter of each caller place, sources of each `code` chain, and
+`INHERENT` for global or fresh object merge. Fresh object has concrete type: its contents decide.
+"""
+function type_sources(flow::Flow, targets::Targets)::UInt64
+    count(fresh_origin, keys(targets)) > 1 && return INHERENT
+    sources = UInt64(0)
+    for (origin, doubt) in beneath(flow, targets)
+        doubt.level == Level.code && (sources |= doubt.sources)
+        sources |= origin_source(origin)
+    end
+    return sources == 0 ? INHERENT : sources
+end
+
+"""Source of open type at `origin`: parameter of caller place, `INHERENT` for global; none for fresh and unknown objects."""
+function origin_source(origin::Origin.Type)::UInt64
+    root = @match origin begin
+        Origin.Caller(place) => root_of(place)
+        _ => return UInt64(0)
+    end
+    return @match root begin
+        Root.Parameter(position) => parameter_source(position)
+        _ => INHERENT
+    end
 end
 
 """
@@ -363,7 +412,7 @@ function map_place(flow::Flow, place::Place.Type, arguments::Vector{Targets})::T
         Place.Deep(Root.Parameter(position)) => deep(flow, arguments[position])
         Place.Deep(Root.Global(binding)) => deep(flow, global_targets(flow, binding))
         # Unknown object has no place below it.
-        _ => unknown()
+        _ => unknown(NO_DOUBT)
     end
 end
 
@@ -376,7 +425,7 @@ function deep(flow::Flow, objects::Targets)::Targets
             Origin.Caller(place) => Origin.Caller(Place.Deep(root_of(place)))
             _ => origin
         end
-        add!(found, reached, Doubt.blind) || continue
+        add!(found, reached, BLIND_DOUBT) || continue
         for targets in contents(flow, origin)
             append!(pending, keys(targets))
         end
@@ -385,14 +434,16 @@ function deep(flow::Flow, objects::Targets)::Targets
 end
 
 """
-Call statement `index` that applies callee summary: targets of each callee parameter, callee fresh node count, and
-callee places mapped so far. Stores of later edges miss cached places until next round, so fixpoint stays same.
+Call statement `index` that applies callee summary: targets of each callee parameter, callee fresh node count, callee
+places mapped so far, and type sources of arguments so far. Stores of later edges miss cached places until next round,
+so fixpoint stays same.
 """
 struct CallSite
     arguments::Vector{Targets}
     index::Int
     fresh::Int
     places::Dict{Place.Type, Targets}
+    sources::Dict{Int, UInt64}
 end
 
 """Targets of callee `place` at `site`, mapped once per call statement and round."""
@@ -402,8 +453,8 @@ site_place(flow::Flow, site::CallSite, place::Place.Type)::Targets = get!(() -> 
 function map_node(flow::Flow, node::Node.Type, site::CallSite)::Targets
     return @match node begin
         Node.Placed(place) => site_place(flow, site, place)
-        Node.Fresh(_) => Targets(Origin.Allocation(site.index) => site.fresh == 1 ? Doubt.none : Doubt.blind)
-        Node.Outside() => unknown()
+        Node.Fresh(_) => Targets(Origin.Allocation(site.index) => site.fresh == 1 ? NO_DOUBT : BLIND_DOUBT)
+        Node.Outside() => unknown(NO_DOUBT)
     end
 end
 
@@ -417,7 +468,7 @@ function parameter_targets(flow::Flow, index::Int, method::Method, operands::Vec
     fixed = method.isva ? method.nargs - 1 : method.nargs
     arguments = [given[1:min(fixed, length(given))]; [rest for _ in (length(given) + 1):fixed]]
     method.isva || return arguments
-    vararg = Targets(Origin.Allocation(index) => Doubt.none)
+    vararg = Targets(Origin.Allocation(index) => NO_DOUBT)
     for (position, targets) in enumerate(given[(fixed + 1):end])
         store!(flow, vararg, Step.Position(position), targets)
     end
@@ -425,13 +476,35 @@ function parameter_targets(flow::Flow, index::Int, method::Method, operands::Vec
     return [arguments; vararg]
 end
 
-"""Union of targets of callee `nodes` at `site`, each raised to its node doubt."""
+"""Union of targets of callee `nodes` at `site`, each raised to its node doubt (`caller_doubt`)."""
 function map_nodes(flow::Flow, nodes::Nodes, site::CallSite)::Targets
     found = Targets()
     for (node, doubt) in nodes, (origin, flag) in map_node(flow, node, site)
-        add!(found, origin, most(flag, doubt))
+        add!(found, origin, most(flag, caller_doubt(flow, site, doubt)))
     end
     return found
+end
+
+"""
+Callee `doubt` at `site`: each parameter source becomes type sources of its argument (`type_sources`). Parameter
+without argument is doubt in code.
+"""
+function caller_doubt(flow::Flow, site::CallSite, doubt::Doubt)::Doubt
+    doubt.level == Level.code && doubt.sources & PARAMETERS != 0 || return doubt
+    sources, pending = doubt.sources & ~PARAMETERS, doubt.sources & PARAMETERS
+    while pending != 0
+        position = trailing_zeros(pending)
+        pending &= pending - UInt64(1)
+        sources |= argument_sources(flow, site, position)
+    end
+    return Doubt(Level.code, sources)
+end
+
+"""Type sources of argument `position` at `site`, found once per call statement and round; doubt in code past arguments."""
+function argument_sources(flow::Flow, site::CallSite, position::Int)::UInt64
+    position <= length(site.arguments) || return INHERENT
+    haskey(site.sources, position) || (site.sources[position] = type_sources(flow, site.arguments[position]))
+    return site.sources[position]
 end
 
 """
@@ -441,11 +514,11 @@ allocation at `index`.
 """
 function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, summary::Summary, instance::Core.MethodInstance, operands::Vector{Operand.Type})::Nothing
     arguments = parameter_targets(flow, index, instance.def::Method, operands)
-    site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}())
+    site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, UInt64}())
     summary.closed_world && (flow.closed_world = true)
     for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below), effect) in effects
         objects = site_place(flow, site, place)
-        access!(table, below ? beneath(flow, objects) : objects, below, Effect(effect.doubt, index, effect.reason))
+        access!(table, below ? beneath(flow, objects) : objects, below, Effect(caller_doubt(flow, site, effect.doubt), index, effect.reason))
     end
     for ((node, step), nodes) in summary.edges
         store!(flow, map_node(flow, node, site), step, map_nodes(flow, nodes, site))
