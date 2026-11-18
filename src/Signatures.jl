@@ -4,6 +4,7 @@ Generic argument gets stand-ins that fit its bound; package abstract type gets e
 """
 module Signatures
 
+using EnumX: @enumx
 using ..StandIns: StandIns, ArrayStandIn, DenseStandIn, FunctionStandIn
 using ..Facts: tuple_parameters
 
@@ -183,6 +184,56 @@ function method_signatures(method::Method, structs::Vector{<:Type})::MethodSigna
         end
     end
     return MethodSignatures(method, signatures, sort!(unique!(bare)), over_limit)
+end
+
+"""
+Provenance of argument data (`effects.md`, Provenance): `code` when compiler sees same open type; `opaque` when Corset
+chose its type; `opt_out` for type code declares `Any`.
+"""
+@enumx Provenance code opaque opt_out
+
+"""Whether `type` holds open type: function stand-in, or open type parameter at any depth (`ArrayStandIn{Any, 1}`)."""
+function holds_open(type::Any)::Bool
+    type === FunctionStandIn && return true
+    type isa DataType || return false
+    return any(parameter -> parameter isa Type && (!isconcretetype(parameter) || holds_open(parameter)), type.parameters)
+end
+
+"""Whether `type` names `Any` as type parameter at any depth (`Vector{Any}`, `Dict{Symbol, Any}`)."""
+function names_any(type::Any)::Bool
+    type isa DataType || return false
+    return any(parameter -> parameter === Any || names_any(parameter), type.parameters)
+end
+
+"""
+Provenance of argument `position` (1 is first argument after callee) of `method` with unit argument type `type`.
+`stand_in`: stand-in signatures gave unit, so type that differs from declared type is stand-in Corset chose.
+`explicit_any`: source declares argument `::Any`.
+"""
+function provenance(method::Method, type::Any, position::Int, stand_in::Bool, explicit_any::Bool)::Provenance.T
+    # Function and array stand-ins come from Corset only, also in signatures calls reach.
+    stand_in_type = type === FunctionStandIn || (type isa DataType && (type <: ArrayStandIn || type <: DenseStandIn))
+    stand_in_type && holds_open(type) && return Provenance.opaque
+    stand_in || return Provenance.code
+    # Type variable that no stand-in fits: unbounded one hides nothing, as untyped argument; bounded one is Corset choice.
+    type isa TypeVar && return type.ub === Any ? Provenance.code : Provenance.opaque
+    type === Any && return explicit_any ? Provenance.opt_out : Provenance.code
+    Base.isdispatchelem(type) || return Provenance.opaque
+    type == Base.unwrapva(tuple_parameters(method.sig)[position + 1]) && return names_any(type) ? Provenance.opt_out : Provenance.code
+    return holds_open(type) ? Provenance.opaque : Provenance.code
+end
+
+"""
+Provenance of each argument of unit `signature` of `method`, callee first (`provenance`): callee is `code`. `opted`
+lists argument positions source declares `::Any`.
+"""
+function argument_provenance(method::Method, signature::Type, stand_in::Bool, opted::Vector{Int})::Vector{Provenance.T}
+    arguments = tuple_parameters(signature)
+    found = Provenance.T[Provenance.code]
+    for position in 1:(length(arguments) - 1)
+        push!(found, provenance(method, Base.unwrapva(arguments[position + 1]), position, stand_in, position in opted))
+    end
+    return found
 end
 
 end

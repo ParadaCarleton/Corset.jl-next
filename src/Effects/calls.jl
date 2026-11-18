@@ -166,8 +166,9 @@ const BASE_CONTRACTS = IdDict{Any, BaseContract}(
 """
 Call statement resolution (`effects.md`, Calls): `Builtin` or `Intrinsic` with operands after callee; `Foreign` call
 table entry with C arguments; `Dispatch` to instances of matching methods with operands, callee first: one is static
-call, more join; `Contract` effects with arguments and argument positions breach may write; `Open` call with operands;
-`Dead` when no method matches.
+call, more join; `Contract` effects with arguments and argument positions breach may write; `Open` dispatch with
+operands, whose open types decide doubt (`effects.md`, Provenance); `Unresolved` call with operands that types cannot
+resolve (unknown C function, unknown argument count), doubt in code; `Dead` when no method matches.
 """
 @data Outcome begin
     Builtin(Any, Vector{Operand.Type})
@@ -176,6 +177,7 @@ call, more join; `Contract` effects with arguments and argument positions breach
     Dispatch(Vector{Core.MethodInstance}, Vector{Operand.Type})
     Contract(CallEffects, Vector{Operand.Type}, Vector{Int})
     Open(Vector{Operand.Type})
+    Unresolved(Vector{Operand.Type})
     Dead()
 end
 
@@ -216,7 +218,8 @@ end
 Resolution of call with `operands` (callee first) in `ir`: builtin, intrinsic, up to `limit` matching methods, else open.
 Builtins that call operand (`invokelatest`, `_apply_iterate`, `finalizer`) resolve to call they make. Intrinsic operand
 can be nested constant expression (`cglobal((:name, library))`), so operand types wait until dispatch. Builtin other
-than `tuple` with `Rest` operands stays open.
+than `tuple` with `Rest` operands stays unresolved. Call of `FunctionStandIn` is open dispatch: it stands for any
+function.
 """
 function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt, limit::Int)::Outcome.Type
     callee = @match first(operands) begin
@@ -228,16 +231,25 @@ function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt, lim
         builtin = something(callee)
         builtin in (Core.invokelatest, Core._call_latest, Core.finalizer) && return resolve(ir, operands[2:end], world, limit)
         builtin in (Core.invoke_in_world, Core._call_in_world, Core._call_in_world_total) && return resolve(ir, operands[3:end], world, limit)
-        builtin === Core.tuple || !any(is_rest, operands) || return Outcome.Open(operands)
+        builtin === Core.tuple || !any(is_rest, operands) || return Outcome.Unresolved(operands)
         builtin isa Core.IntrinsicFunction && return Outcome.Intrinsic(builtin, operands[2:end])
         builtin === Core._apply_iterate && return spread_call(ir, operands[3:end], world, limit)
         builtin === Core.invoke && return invoke_call(ir, operands, world)
         return Outcome.Builtin(builtin, operands[2:end])
     end
+    stand_in_call(ir, callee, operands) && return Outcome.Open(operands)
     instances = dispatch(call_types(ir, operands), world, limit)
     isnothing(instances) && return contract_call(ir, callee, operands)
     # No matching method: call throws `MethodError`.
     return isempty(instances) ? Outcome.Dead() : Outcome.Dispatch(instances, operands)
+end
+
+"""Whether call of constant `callee` with `operands` calls `FunctionStandIn`, directly or with keywords (`Core.kwcall`)."""
+function stand_in_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operands::Vector{Operand.Type})::Bool
+    isnothing(callee) && return false
+    something(callee) isa FunctionStandIn && return true
+    something(callee) === Core.kwcall && length(operands) >= 3 || return false
+    return operand_type(ir, operands[3]) === FunctionStandIn
 end
 
 """
@@ -250,7 +262,7 @@ function contract_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operand
     isnothing(contract) && return Outcome.Open(operands)
     arguments = operands[2:end]
     spread = findfirst(is_rest, arguments)
-    isnothing(spread) || 0 < contract.effects.rest <= spread || return Outcome.Open(operands)
+    isnothing(spread) || 0 < contract.effects.rest <= spread || return Outcome.Unresolved(operands)
     types = Any[operand_type(ir, argument) for argument in arguments]
     contract.callback && !isempty(types) && typeintersect(first(types), Base.Callable) !== Union{} && return Outcome.Open(operands)
     admits(position::Int, type::Any)::Bool = any(index -> typeintersect(types[index], type) !== Union{}, role(contract.effects, position, length(types)))
@@ -263,14 +275,14 @@ role(effects::CallEffects, position::Int, count::Int)::UnitRange{Int} = position
 """
 Resolution of `_apply_iterate` call: callee and spread `arguments` become operands. Tuple of known length gives `Part`
 per position until first `Rest`; tuple or array of unknown length gives `Rest`. Other collections run `iterate`
-methods, so call stays open.
+methods, so call stays unresolved.
 """
 function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt, limit::Int)::Outcome.Type
     operands = Operand.Type[first(arguments)]
     for argument in arguments[2:end]
         value = @match argument begin
             Operand.Value(value) => value
-            _ => return Outcome.Open(arguments)
+            _ => return Outcome.Unresolved(arguments)
         end
         type = value_type(ir, value)
         if definite_tuple(type) && !any(is_rest, operands)
@@ -278,13 +290,13 @@ function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt
         elseif type isa DataType && type <: Union{Tuple, Array}
             push!(operands, Operand.Rest(value))
         else
-            return Outcome.Open(arguments)
+            return Outcome.Unresolved(arguments)
         end
     end
     return resolve(ir, operands, world, limit)
 end
 
-"""Resolution of `Core.invoke(f, T, args...)`: method `T` selects, specialized to argument types; open without it."""
+"""Resolution of `Core.invoke(f, T, args...)`: method `T` selects, specialized to argument types; unresolved without it."""
 function invoke_call(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt)::Outcome.Type
     called = Operand.Type[operands[2]; operands[4:end]]
     types = Any[operand_type(ir, operand) for operand in called]
@@ -292,9 +304,9 @@ function invoke_call(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt)
         Operand.Value(value) => constant(ir, value)
         _ => nothing
     end
-    isnothing(selector) && return Outcome.Open(called)
+    isnothing(selector) && return Outcome.Unresolved(called)
     match = Base._which(Tuple{types[1], something(selector).parameters...}; world, raise = false)
-    isnothing(match) && return Outcome.Open(called)
+    isnothing(match) && return Outcome.Unresolved(called)
     signature = typeintersect(Tuple{types...}, match.method.sig)
     signature === Union{} && return Outcome.Dead()
     return Outcome.Dispatch([CC.specialize_method(match.method, signature, match.sparams)], called)
@@ -311,13 +323,13 @@ function foreign_name(target::Any)::Union{Nothing, Symbol}
 end
 
 """
-Resolution of foreign call `statement`: table entry with C arguments when table knows name; else open on every operand,
-GC roots included. Arguments follow name, result type, argument types, vararg count and calling convention.
+Resolution of foreign call `statement`: table entry with C arguments when table knows name; else unresolved on every
+operand, GC roots included. Arguments follow name, result type, argument types, vararg count and calling convention.
 """
 function foreign_outcome(statement::Expr)::Outcome.Type
     name = foreign_name(statement.args[1])
     effects = isnothing(name) ? nothing : get(FOREIGN_EFFECTS, name, nothing)
-    isnothing(effects) && return Outcome.Open(Operand.Type[Operand.Value(value) for value in statement.args[6:end]])
+    isnothing(effects) && return Outcome.Unresolved(Operand.Type[Operand.Value(value) for value in statement.args[6:end]])
     count = length(statement.args[3]::Core.SimpleVector)
     return Outcome.Foreign(effects, Operand.Type[Operand.Value(value) for value in statement.args[6:(5 + count)]])
 end

@@ -1,18 +1,45 @@
+using ..Signatures: Provenance
+
 """Span of IR statement `cause` of unit `typed` with `code`: its source statement span, else method span."""
 function cause_span(typed::TypedCode, code::Code, cause::Int)::Span
     line = cause in eachindex(code.lines) ? code.lines[cause] : 0
     return line in eachindex(typed.spans) ? typed.spans[line] : typed.site.span
 end
 
-"""Accesses of unit `effects` with doubt below blind, and blind accesses, with cause spans from `span_of`."""
-function unit_accesses(effects::Accesses, span_of::Function)::Tuple{Vector{Access}, Vector{BlindAccess}}
+"""Blind spot cause of open dispatch whose open types Corset chose (`effects.md`, Provenance)."""
+const OPAQUE_DATA = "open dispatch on opaque data"
+
+"""
+Provenance of `code` doubt with `sources` in unit with argument `provenance` (`effects.md`, Provenance): `code` when
+doubt is in code itself or any source argument is code; else `opaque` when any source is; else `opt_out`.
+"""
+function source_provenance(sources::Sources, provenance::Vector{Provenance.T})::Provenance.T
+    sources & INHERENT == 0 || return Provenance.code
+    found = sources & OPAQUE == 0 ? Provenance.opt_out : Provenance.opaque
+    for position in 1:LAST_PARAMETER
+        sources & parameter_source(position) == 0 && continue
+        kind = position <= length(provenance) ? provenance[position] : Provenance.code
+        kind == Provenance.code && return Provenance.code
+        kind == Provenance.opaque && (found = Provenance.opaque)
+    end
+    return found
+end
+
+"""
+Accesses of unit `effects` with doubt below blind, and blind accesses, with cause spans from `span_of`. Argument
+`provenance` judges `code` doubt: opaque gives blind access (`OPAQUE_DATA`); opt-out gives no access.
+"""
+function unit_accesses(effects::Accesses, span_of::Function, provenance::Vector{Provenance.T})::Tuple{Vector{Access}, Vector{BlindAccess}}
     accesses, blind = Access[], BlindAccess[]
     for ((place, below), effect) in effects
-        span = span_of(effect.cause)
-        if effect.doubt == Doubt.blind
+        span, level = span_of(effect.cause), level_of(effect.doubt)
+        kind = level == Level.code ? source_provenance(sources_of(effect.doubt), provenance) : Provenance.code
+        if level == Level.blind
             push!(blind, BlindAccess(place, below, BlindSpot(effect.reason, span)))
-        else
-            push!(accesses, Access(place, below, effect.doubt == Doubt.none ? Confidence.definite : Confidence.possible, span))
+        elseif kind == Provenance.opaque
+            push!(blind, BlindAccess(place, below, BlindSpot(OPAQUE_DATA, span)))
+        elseif kind == Provenance.code
+            push!(accesses, Access(place, below, level == Level.none ? Confidence.definite : Confidence.possible, span))
         end
     end
     return accesses, blind
@@ -88,8 +115,8 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
         summary, code = run.summaries[root], run.codes[root]
         span_of(cause::Int)::Span = cause_span(typed, code, cause)
         writes, reads, blind_writes, blind_reads, aliases = get!(() -> (Access[], Access[], BlindAccess[], BlindAccess[], Place.Type[]), found, typed.site.method)
-        unit_writes, unit_blind_writes = unit_accesses(summary.writes, span_of)
-        unit_reads, unit_blind_reads = unit_accesses(summary.reads, span_of)
+        unit_writes, unit_blind_writes = unit_accesses(summary.writes, span_of, typed.provenance)
+        unit_reads, unit_blind_reads = unit_accesses(summary.reads, span_of, typed.provenance)
         append!(writes, unit_writes)
         append!(reads, unit_reads)
         append!(blind_writes, unit_blind_writes)

@@ -18,32 +18,104 @@ fresh_origin(origin::Origin.Type)::Bool = @match origin begin
 end
 
 """
-Doubt, least first: `none` (definite), `code` (open call: doubt in code, `possible` finding) and `blind` (Corset limit:
-blind spot only).
+Doubt level, least first: `none` (definite), `code` (open call: doubt in code, `possible` finding) and `blind` (Corset
+limit: blind spot only).
 """
-@enumx Doubt none code blind
+@enumx Level none code blind
 
-"""Doubt of chain through steps with `doubts`: most doubtful."""
-most(first::Doubt.T, rest::Doubt.T...)::Doubt.T = max(first, rest...)
+"""Sources of `code` doubt as bits, and bits of `Doubt`."""
+const Sources = UInt32
+
+"""Bit of `Doubt` for `blind` level; sources use bits below it."""
+const BLIND = Sources(1) << (8 * sizeof(Sources) - 1)
 
 """
-Origins value may point to, each with doubt of chain to it: `none` when exact, `code` through open call result, `blind`
-through collapsed path or merged call result. Two chains to one origin keep less doubt.
+Doubt of chain or effect (`effects.md`, Provenance): level (`level_of`), and for `code` level its sources as bits
+(`sources_of`). `INHERENT`: doubt in code itself. `OPAQUE`: type Corset chose. Bit `p` (`parameter_source`): open type
+of parameter `p`; caller decides. Packed in 4 bytes, since targets and effects copy it in every round: `none` is 0,
+`blind` is `BLIND` alone, `code` doubt is its sources.
 """
-const Targets = Dict{Origin.Type, Doubt.T}
+struct Doubt
+    bits::Sources
+    function Doubt(level::Level.T, sources::Sources)::Doubt
+        (level == Level.code) == (sources != 0) || throw(ArgumentError("doubt has sources exactly at `code` level: $level, $sources"))
+        sources & BLIND == 0 || throw(ArgumentError("doubt sources use bits below `BLIND`: $sources"))
+        return new(level == Level.blind ? BLIND : sources)
+    end
+end
+
+"""Level of `doubt`."""
+level_of(doubt::Doubt)::Level.T = doubt.bits == 0 ? Level.none : doubt.bits == BLIND ? Level.blind : Level.code
+
+"""Sources of `doubt`: none below `code` level and above it."""
+sources_of(doubt::Doubt)::Sources = doubt.bits & ~BLIND
+
+"""Source bit of doubt in code itself: no parameter type resolves it."""
+const INHERENT = Sources(1)
+
+"""Last parameter with own source bit; later parameters count as `INHERENT`."""
+const LAST_PARAMETER = 8 * sizeof(Sources) - 3
+
+"""Source bit of open type Corset chose: `FunctionStandIn` argument."""
+const OPAQUE = Sources(1) << (LAST_PARAMETER + 1)
+
+"""Source bits of parameters 1 to `LAST_PARAMETER`."""
+const PARAMETERS = (Sources(1) << (LAST_PARAMETER + 1)) - Sources(2)
+
+"""Source bit of parameter `position` (callee is 1); past `LAST_PARAMETER`, `INHERENT`."""
+parameter_source(position::Int)::Sources = 1 <= position <= LAST_PARAMETER ? Sources(1) << position : INHERENT
+
+"""No doubt: definite."""
+const NO_DOUBT = Doubt(Level.none, Sources(0))
+
+"""Doubt in code itself."""
+const CODE_DOUBT = Doubt(Level.code, INHERENT)
+
+"""Blind doubt: Corset limit."""
+const BLIND_DOUBT = Doubt(Level.blind, Sources(0))
+
+"""
+Doubt of chain through steps with `first` and `second`: most doubtful level. Two `code` doubts join sources: doubt is
+in code when either source is.
+"""
+function most(first::Doubt, second::Doubt)::Doubt
+    level_of(first) == level_of(second) && return Doubt(level_of(first), sources_of(first) | sources_of(second))
+    return level_of(first) > level_of(second) ? first : second
+end
+
+"""
+Doubt of two chains to one origin: least doubtful level. Two `code` doubts join sources: access through either chain is
+`possible` when its source is code.
+"""
+function least(first::Doubt, second::Doubt)::Doubt
+    level_of(first) == level_of(second) && return Doubt(level_of(first), sources_of(first) | sources_of(second))
+    return level_of(first) < level_of(second) ? first : second
+end
+
+"""
+Origins value may point to, each with doubt of chain to it: none when exact, `code` through open call result, `blind`
+through collapsed path or merged call result. Two chains to one origin keep less doubt (`least`).
+"""
+const Targets = Dict{Origin.Type, Doubt}
 
 """
 Effect on one place: doubt, IR statement where it starts in instance that summary describes, and blind spot cause when
 doubt is `blind` (empty otherwise).
 """
 struct Effect
-    doubt::Doubt.T
+    doubt::Doubt
     cause::Int
     reason::String
 end
 
-"""Effect of two chains on one place: less doubt wins, then earlier cause; order is total, so rounds agree."""
-stronger(first::Effect, second::Effect)::Effect = isless((second.doubt, second.cause, second.reason), (first.doubt, first.cause, first.reason)) ? second : first
+"""
+Effect of two chains on one place: less doubt (`least`), cause and reason of chain with lower level, then earlier
+cause; order is total, so rounds agree.
+"""
+function stronger(first::Effect, second::Effect)::Effect
+    chosen = isless((level_of(second.doubt), second.cause, second.reason), (level_of(first.doubt), first.cause, first.reason)) ? second : first
+    return Effect(least(first.doubt, second.doubt), chosen.cause, chosen.reason)
+end
 
 """
 Node of exported points-to graph: object caller can see at place, `Fresh` object instance makes at IR statement, or
@@ -57,7 +129,7 @@ end
 @derive Node[Hash, Eq, Show]
 
 """Nodes value may point to, each with doubt as in `Targets`."""
-const Nodes = Dict{Node.Type, Doubt.T}
+const Nodes = Dict{Node.Type, Doubt}
 
 """Effects by place and whether they cover places below."""
 const Accesses = Dict{Tuple{Place.Type, Bool}, Effect}
@@ -95,14 +167,14 @@ same(first::Summary, second::Summary)::Bool = all(name -> getfield(first, name) 
 """Blind spot cause of access that still changes when call cycle summary widens (`widen`)."""
 const UNSETTLED = "unsettled call cycle"
 
-"""Union of `old` and `new` nodes; less doubt wins."""
-union_nodes(old::Nodes, new::Nodes)::Nodes = mergewith(min, old, new)
+"""Union of `old` and `new` nodes; less doubt wins (`least`)."""
+union_nodes(old::Nodes, new::Nodes)::Nodes = mergewith(least, old, new)
 
 """Union of `old` and `new` stores by holder."""
 (union_stores(old::Dict{K, Nodes}, new::Dict{K, Nodes})::Dict{K, Nodes}) where {K} = mergewith(union_nodes, old, new)
 
 """Union of `old` and `new` accesses: access that differs between them becomes blind (`UNSETTLED`)."""
-widen_accesses(old::Accesses, new::Accesses)::Accesses = mergewith((first, second) -> first == second ? first : Effect(Doubt.blind, first.cause, UNSETTLED), old, new)
+widen_accesses(old::Accesses, new::Accesses)::Accesses = mergewith((first, second) -> first == second ? first : Effect(BLIND_DOUBT, first.cause, UNSETTLED), old, new)
 
 """
 Summary `new` widened by `old`: union of both; access that differs becomes blind. Join of methods is not monotone, so
@@ -121,8 +193,8 @@ every parameter, result anywhere.
 """
 function open_summary(count::Int, cause::String)::Summary
     places = [Place.At(Root.Parameter(position), Step.Type[]) for position in 1:count]
-    effects = Accesses((place, true) => Effect(Doubt.blind, 0, cause) for place in places)
-    result = Nodes(Node.Placed(place) => Doubt.blind for place in places)
-    result[Node.Outside()] = Doubt.blind
+    effects = Accesses((place, true) => Effect(BLIND_DOUBT, 0, cause) for place in places)
+    result = Nodes(Node.Placed(place) => BLIND_DOUBT for place in places)
+    result[Node.Outside()] = BLIND_DOUBT
     return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), result, 0, false)
 end

@@ -12,22 +12,22 @@ using Serialization: serialize, deserialize
 using SHA: sha256
 using TypedSyntax: TypedSyntax
 using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, HardArray, NarrowingLoss, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence, Weak, Exit
-using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span, parent_of, ancestors, base_macro
+using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span, parent_of, ancestors, base_macro, resolve_type
 using ..Package: Package
 using ..StandIns: StandIns
 using ..Widening: Widening, statement_call, statement_type
 using ..Narrowing: Narrowing
 using ..HardArrays: HardArrays
 using ..Guesses: annotation_guesses
-using ..Signatures: LIMIT, method_signatures, struct_stand_ins
+using ..Signatures: LIMIT, Provenance, method_signatures, struct_stand_ins, argument_provenance
 
 const CC = Core.Compiler
 
 """
 Typed code of package method on one signature: method site, signature, unoptimized typed statements, inferred result
-type, span of each statement, and inference frame (`effects` stage builds IR from it). Span is exact where syntax node
-spells statement (`statement_nodes`); line precision elsewhere. Code stays inside stage and `effects`; method store
-keeps `Inferred` record of it.
+type, span of each statement, inference frame (`effects` stage builds IR from it), and provenance of each argument,
+callee first (`argument_provenance`). Span is exact where syntax node spells statement (`statement_nodes`); line
+precision elsewhere. Code stays inside stage and `effects`; method store keeps `Inferred` record of it.
 """
 struct TypedCode
     site::MethodSite
@@ -36,6 +36,7 @@ struct TypedCode
     result::Type
     spans::Vector{Span}
     frame::CC.InferenceState
+    provenance::Vector{Provenance.T}
 end
 
 """
@@ -110,6 +111,25 @@ function untyped_argument(node::SyntaxNode)::Bool
         node = children_of(node)[1]
     end
     return kind_name(node) == "tuple" || (kind_name(node) == "Identifier" && identifier_name(node) != "_")
+end
+
+"""
+Whether positional argument `name` of method of `site` has annotation `::Any` in source. Keyword bodies get no
+stand-in signatures, so keyword annotations never count (`provenance`).
+"""
+function explicit_any(site::MethodSite, name::Symbol)::Bool
+    parts = isnothing(site.node) ? nothing : signature(site.node)
+    isnothing(parts) && return false
+    return any(node -> annotated_any(site, node, string(name)), parts.arguments)
+end
+
+"""Whether positional argument `node` of signature of `site` declares argument `name` as `::Any`."""
+function annotated_any(site::MethodSite, node::SyntaxNode, name::String)::Bool
+    kind = kind_name(node)
+    kind in ("=", "kw", "...") && return annotated_any(site, children_of(node)[1], name)
+    kind == "::" && length(children_of(node)) == 2 || return false
+    target, annotation = children_of(node)
+    return kind_name(target) == "Identifier" && identifier_name(target) == name && resolve_type(site.method.module, site.file, annotation) === Any
 end
 
 """
@@ -835,7 +855,8 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     isnothing(journal) || !isnothing(store) || throw(ArgumentError("crash journal records store keys, so it needs method store"))
     structs = struct_stand_ins(Type[site.type for site in package.structs])
     spots = BlindSpot[]
-    pending, skipped = Tuple{MethodSite, Type}[], MethodSite[]
+    # Each signature notes whether stand-in signatures gave it, or call reached it.
+    pending, skipped = Tuple{MethodSite, Type, Bool}[], MethodSite[]
     # Methods with signature inference skipped or failed, or code that tests type: results miss some argument types.
     incomplete = Set{Method}()
     for site in package.methods
@@ -844,7 +865,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
         found.over_limit && (push!(spots, BlindSpot("signatures over limit", site.span)); push!(incomplete, site.method))
         # Explicit `::Any` and unbounded type variable hide nothing compiler knows, so only narrower declared types count.
         any(position -> Facts.argument_type(site.method, position) != Any, found.bare) && push!(spots, BlindSpot("argument without stand-in", site.span))
-        append!(pending, ((site, signature) for signature in found.signatures))
+        append!(pending, ((site, signature, true) for signature in found.signatures))
     end
     by_path = Dict(file.path => file for file in files)
     lines = Dict(file.path => Package.Lines(file) for file in files)
@@ -857,7 +878,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     failing, gaps, settled, disrupting, narrowing = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[], NarrowingLoss[]
     hard, observed = HardArray[], IdDict{Method, Vector{Tuple{Type, Type}}}()
     while !isempty(pending)
-        site, call_signature = popfirst!(pending)
+        site, call_signature, stand_in = popfirst!(pending)
         (site.method, call_signature) in seen && continue
         push!(seen, (site.method, call_signature))
         # Calls can reach one method with ever new types (`f(x) = f((x,))`), so reached signatures stop at limit.
@@ -876,7 +897,9 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
                 instance, code, returned, frame_edges, flow, frame = result
                 append!(edges, frame_edges)
                 nodes = statement_nodes(code, mappings(code, instance, site), site.file)
-                push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes), frame))
+                opted = [position for position in 1:(site.method.nargs - 1) if explicit_any(site, code.slotnames[position + 1])]
+                provenance = argument_provenance(site.method, call_signature, stand_in, opted)
+                push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes), frame, provenance))
                 changes, branch = Widening.changes!(edges, instance, code)
                 constructions, array_branch = HardArrays.changes!(edges, instance, code)
                 lost = narrowings(last(typed), nodes, Narrowing.losses(code, flow, CC.sptypes_from_meth_instance(instance)))
@@ -905,7 +928,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
             method = dispatched(signature)
             file = get(by_path, string(method.file), nothing)
             isnothing(file) && continue
-            push!(pending, (get!(() -> Package.method_site(method, file, lines[file.path]), sites, method), signature))
+            push!(pending, (get!(() -> Package.method_site(method, file, lines[file.path]), sites, method), signature, false))
         end
         for (index, failure) in inferred.failures
             (site.method, index) in settled && continue
