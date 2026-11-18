@@ -265,4 +265,50 @@ drop_block_claim!(box::Box)::Nothing = (block_claim!(box); nothing)
 
 call_generated(x::Int)::Int = generated_next(x)
 
+# Stand-in cuts: stand-in decides type test, so write in branch is dead on stand-ins only.
+maybe_bump!(x::Real)::Nothing = (x isa BigFloat && (COUNTER[] += 1); nothing)
+
+call_maybe_bump!(x::Real)::Nothing = maybe_bump!(x)
+
+set_maybe_bump!(box::Box, x::Real)::Nothing = (box.value = 1; maybe_bump!(x))
+
+# Declared type decides test too: branch is dead on every signature, so it is no cut.
+integer_bump!(x::Integer)::Nothing = (x isa AbstractFloat && (COUNTER[] += 1); nothing)
+
+# Declared signature gives no generated code, so it cannot clear dead call.
+@generated generated_bump!(x::Real) = :(x isa BigFloat && (COUNTER[] += 1); nothing)
+
+# No method takes array stand-in: call never returns on stand-ins only, and no dead statement follows it.
+zero_dense!(values::Vector{Int})::Nothing = (values[1] = 0; nothing)
+
+maybe_zero!(values::AbstractVector{Int}, flag::Bool)::Nothing = (flag && zero_dense!(values); nothing)
+
+# Untyped helpers stay outside units: library cut check finds `pointer`, which fails on stand-in only.
+poke_at!(values, index) = (index > 0 && unsafe_store!(pointer(values), index); nothing)
+
+poke_some!(values::AbstractVector{Int}, index::Int)::Nothing = poke_at!(values, index)
+
+# Helper catches failing call, so compiler proves it `nothrow`; method with `try` still gets cut check.
+function poke_caught_at!(values, index)
+    try
+        index > 0 && unsafe_store!(pointer(values), index)
+    catch
+    end
+    return nothing
+end
+
+poke_quietly!(values::AbstractVector{Int}, index::Int)::Nothing = poke_caught_at!(values, index)
+
+# Call fails on model types too: no cut. `reject` returns for `Int`, so it is no throw helper.
+reject(values::AbstractVector)::Nothing = error("vector")
+reject(count::Int)::Int = count
+
+refuse(values) = (reject(values); nothing)
+
+# Conversion fails on model type too: failing-call fact, no cut.
+maybe_convert(values::AbstractVector{Int}, flag::Bool)::Nothing = (flag && convert(Int, values); nothing)
+
+# `error` throws on every signature: no cut.
+check_nonempty(values::AbstractVector{Int})::Nothing = (isempty(values) && error("empty"); nothing)
+
 end
