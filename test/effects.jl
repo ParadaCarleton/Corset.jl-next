@@ -571,6 +571,12 @@ deepen(x::Any, n::Int) = n == 0 ? x : deepen(Layer(x), n - 1)
 deepen_odd(x::Any, n::Int) = n == 0 ? x : deepen_even(Layer(x), n - 1)
 deepen_even(x::Any, n::Int) = n == 0 ? x : deepen_odd(Layer(x), n - 1)
 
+"""Steps layer content `Int`, `Float64`, `Float32`: signature changes at each step but never grows."""
+retag(x::Any, n::Int) = n == 0 ? x : retag(Layer(narrow(x.inner)), n - 1)
+narrow(x::Int) = Float64(x)
+narrow(x::Float64) = Float32(x)
+narrow(x::Float32) = x
+
 """Shells whose abstract content makes recursive call join both `peel` methods."""
 abstract type Shell end
 struct OuterShell <: Shell
@@ -585,14 +591,15 @@ peel(f::Any, shell::InnerShell) = peel(f ∘ identity, shell.inner)
 
 @testset "recursion limit" begin
     # Signature grows each step (`ComposedFunction` in LinearAlgebra `_any`): after one or two steps it widens.
-    cases = ((deepen, (Int, Int), (:deepen,), 3, Tuple{typeof(deepen), Layer, Int}), (deepen_odd, (Int, Int), (:deepen_odd, :deepen_even), 5, Tuple{typeof(deepen_odd), Layer, Int}), (peel, (typeof(sin), OuterShell), (:peel,), 5, Tuple{typeof(peel), ComposedFunction, InnerShell}))
-    for (f, types, names, total, widened) in cases
+    # `retag` changes without growth: self-recursion compares with caller, so `Layer{Float32}` stays exact.
+    cases = ((deepen, (Int, Int), (:deepen,), 3, Tuple{typeof(deepen), Layer, Int}), (deepen_odd, (Int, Int), (:deepen_odd, :deepen_even), 5, Tuple{typeof(deepen_odd), Layer, Int}), (peel, (typeof(sin), OuterShell), (:peel,), 5, Tuple{typeof(peel), ComposedFunction, InnerShell}), (retag, (Layer{Int}, Int), (:retag,), 3, Tuple{typeof(retag), Layer{Float32}, Int}))
+    for (f, types, names, total, expected) in cases
         run = start_run(nothing, [@__MODULE__])
         root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
         solve!(run, [root])
         reached = filter(instance -> instance.def.name in names, collect(keys(run.bodies)))
         @test length(reached) == total
-        @test any(instance -> instance.specTypes == widened, reached)
+        @test any(instance -> instance.specTypes == expected, reached)
     end
     @test journal_key(only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], Base.get_world_counter(), 1)))) == "effects\nTuple{typeof(push!), Array{Int64, 1}, Int64}"
 end
