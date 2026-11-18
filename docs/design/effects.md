@@ -107,13 +107,21 @@ Resolution of each call statement, first match wins:
 2. Foreign call: table of known C functions (`memmove` writes destination; runtime type queries read only). Unknown: `possible` write on pointer and object operands, doubt in code.
 3. Static call (one method matches, or `Core.invoke` with constant selector): callee summary. No method matches: call throws, so code after it is dead.
    Summary per variant: instance plus constant arguments callee uses as field name. `getproperty(x, :a)` keeps field `a`.
-4. Callee is parameter, type from static parameter, or field callable: summary records call with operands. Caller that knows callee substitutes its summary, captured aliases included.
+4. Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.
 5. Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: `possible`.
 6. Base interface function with documented contract (`setindex!` writes collection; `length` reads only; `view` result lies within array). Breach in package method is finding.
 7. Else open: `possible` write on operands; result may point into operands, one direction, and to `unknown`.
 
 - Splat of tuple or array with unknown length: dispatch on `Vararg` of element type. Callee parameters past fixed operands take any element.
 - Splatted tuple slot has unknown position, so caller tuple collapses to `deep`. Splat of other collection stays open: its `iterate` runs.
+- Instance specializes on call argument types. Callable type known to caller is concrete in callee too, so step 3 reaches its method.
+- Callback record keeps write path short. Tuple `foreach` wraps closure in `foldl` reducers: closure writes lie three steps below reducer.
+- Caller maps record to its own objects. Callable still holding object below caller parameter passes record to next caller.
+- Root unit has no caller: its verdict resolves records left in its summary.
+- Record with fresh argument applies now: caller merges fresh objects of callee into one, so record would lose them.
+- Join resolves records of its members. Member disagreement on access gives `possible`.
+- Recursion repeats record on same targets: record applies once.
+- Callable of abstract type stays open (step 7): solve reached no dispatch for caller type.
 - Steps 5 and 6 assume methods loaded now. Write they find keeps certainty. "Writes nothing" from them is at most `possible`.
 - Contract: `first` and generic `isempty` start iteration of argument (`isempty` docstring warns). Type with own `isempty` or `isdone` method uses its summary.
 - Contract entry holds only behavior Base documents. Base type that writes where others read (`iterate` on `Iterators.Stateful`) gives `possible` write when operand type admits it.
@@ -167,7 +175,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 #### Solve and cache
 
 - Call graph over variants; strongly connected components from iterative Tarjan; solve bottom-up.
-- Inside component: worklist. Member reruns only when summary it read changed.
+- Inside component: worklist. Member reads summaries of callees and of callback record variants it resolves. Member reruns when read summary changes.
 - Join of methods (Calls, step 5) is not monotone, so summaries in cycle can oscillate.
 - After 8 reruns, member summary widens: union with previous summary. Access that still changes becomes blind (`unsettled call cycle`).
 - Widened summaries only grow through finite values, so fixpoint ends.

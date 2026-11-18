@@ -828,7 +828,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Foreign call: table of known C functions (<code>memmove</code> writes destination; runtime type queries read only). Unknown: <code>possible</code> write on pointer and object operands, doubt in code.</li>
 <li>Static call (one method matches, or <code>Core.invoke</code> with constant selector): callee summary. No method matches: call throws, so code after it is dead.
 Summary per variant: instance plus constant arguments callee uses as field name. <code>getproperty(x, :a)</code> keeps field <code>a</code>.</li>
-<li>Callee is parameter, type from static parameter, or field callable: summary records call with operands. Caller that knows callee substitutes its summary, captured aliases included.</li>
+<li>Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.</li>
 <li>Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.</li>
 <li>Base interface function with documented contract (<code>setindex!</code> writes collection; <code>length</code> reads only; <code>view</code> result lies within array). Breach in package method is finding.</li>
 <li>Else open: <code>possible</code> write on operands; result may point into operands, one direction, and to <code>unknown</code>.</li>
@@ -836,6 +836,14 @@ Summary per variant: instance plus constant arguments callee uses as field name.
 <ul>
 <li>Splat of tuple or array with unknown length: dispatch on <code>Vararg</code> of element type. Callee parameters past fixed operands take any element.</li>
 <li>Splatted tuple slot has unknown position, so caller tuple collapses to <code>deep</code>. Splat of other collection stays open: its <code>iterate</code> runs.</li>
+<li>Instance specializes on call argument types. Callable type known to caller is concrete in callee too, so step 3 reaches its method.</li>
+<li>Callback record keeps write path short. Tuple <code>foreach</code> wraps closure in <code>foldl</code> reducers: closure writes lie three steps below reducer.</li>
+<li>Caller maps record to its own objects. Callable still holding object below caller parameter passes record to next caller.</li>
+<li>Root unit has no caller: its verdict resolves records left in its summary.</li>
+<li>Record with fresh argument applies now: caller merges fresh objects of callee into one, so record would lose them.</li>
+<li>Join resolves records of its members. Member disagreement on access gives <code>possible</code>.</li>
+<li>Recursion repeats record on same targets: record applies once.</li>
+<li>Callable of abstract type stays open (step 7): solve reached no dispatch for caller type.</li>
 <li>Steps 5 and 6 assume methods loaded now. Write they find keeps certainty. &quot;Writes nothing&quot; from them is at most <code>possible</code>.</li>
 <li>Contract: <code>first</code> and generic <code>isempty</code> start iteration of argument (<code>isempty</code> docstring warns). Type with own <code>isempty</code> or <code>isdone</code> method uses its summary.</li>
 <li>Contract entry holds only behavior Base documents. Base type that writes where others read (<code>iterate</code> on <code>Iterators.Stateful</code>) gives <code>possible</code> write when operand type admits it.</li>
@@ -891,7 +899,7 @@ Summary per variant: instance plus constant arguments callee uses as field name.
 <h4>Solve and cache</h4>
 <ul>
 <li>Call graph over variants; strongly connected components from iterative Tarjan; solve bottom-up.</li>
-<li>Inside component: worklist. Member reruns only when summary it read changed.</li>
+<li>Inside component: worklist. Member reads summaries of callees and of callback record variants it resolves. Member reruns when read summary changes.</li>
 <li>Join of methods (Calls, step 5) is not monotone, so summaries in cycle can oscillate.</li>
 <li>After 8 reruns, member summary widens: union with previous summary. Access that still changes becomes blind (<code>unsettled call cycle</code>).</li>
 <li>Widened summaries only grow through finite values, so fixpoint ends.</li>
@@ -1339,7 +1347,7 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <td>Call resolution</td>
 <td>Foreign calls, callback records, join, Base contracts, open calls</td>
 <td>1</td>
-<td>2a #234; 2b #235; 2c #237; 2d #238; 2e next</td>
+<td>2a #234; 2b #235; 2c #237; 2d #238; 2e #239</td>
 </tr>
 <tr>
 <td>3</td>
@@ -1441,7 +1449,7 @@ Open-call census after 2b set this order; callback records cover least. Ablation
 <ul>
 <li>Zero-match call throws <code>MethodError</code>: dead code.</li>
 <li>Foreign call table: <code>memmove</code>, runtime type queries. Unknown foreign call gives <code>possible</code> write.</li>
-<li>Callback record: call of parameter, static-parameter type or field callable. Caller substitutes callee summary and captured aliases.</li>
+<li>Callback record: static call on callable holding caller object. Caller applies callee accesses to its own objects.</li>
 <li>Join over at most 3 matching methods in package code. Disagreement gives <code>possible</code>. Library code keeps dispatch open.</li>
 <li>Base contract table holds documented behavior only. <code>iterate</code> on <code>Iterators.Stateful</code> gives <code>possible</code> write.</li>
 <li>Contract applies after join fails: library code and package dispatch over 3 methods. Contract verdict is closed-world.</li>

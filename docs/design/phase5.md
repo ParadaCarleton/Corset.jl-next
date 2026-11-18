@@ -7,7 +7,7 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 | # | PR | Holds | Needs | Status |
 |---|---|---|---|---|
 | 1 | Engine core | Units, IR, origins, points-to, builtins, static calls, solve, soundness property | — | #232 |
-| 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | 2a #234; 2b #235; 2c #237; 2d #238; 2e next |
+| 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | 2a #234; 2b #235; 2c #237; 2d #238; 2e #239 |
 | 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts | 2 | — |
 | 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | — |
 | 5 | Corpus go/no-go | Gate below; no rule PR before it passes | 4 | — |
@@ -61,7 +61,7 @@ Open-call census after 2b set this order; callback records cover least. Ablation
 
 - Zero-match call throws `MethodError`: dead code.
 - Foreign call table: `memmove`, runtime type queries. Unknown foreign call gives `possible` write.
-- Callback record: call of parameter, static-parameter type or field callable. Caller substitutes callee summary and captured aliases.
+- Callback record: static call on callable holding caller object. Caller applies callee accesses to its own objects.
 - Join over at most 3 matching methods in package code. Disagreement gives `possible`. Library code keeps dispatch open.
 - Base contract table holds documented behavior only. `iterate` on `Iterators.Stateful` gives `possible` write.
 - Contract applies after join fails: library code and package dispatch over 3 methods. Contract verdict is closed-world.

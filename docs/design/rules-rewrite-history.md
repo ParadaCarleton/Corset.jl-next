@@ -803,6 +803,24 @@ PR 2d (provenance, #238) on corpus, winwsl, cold library inference, no cache; 2c
 - Each `Targets` entry holds one `Doubt`. Packed 4-byte `Doubt` brings JSON allocation to 9% over 2c; 8-byte layout gave 34%.
 - Mutation check found caller remap untested: every fixture passed callee arguments in same positions. Tests now swap positions.
 
+PR 2e (callback records, #239) on corpus, winwsl, cold library inference, no cache, main and PR 2e back to back:
+
+| Arm | Distances | DataStructures | JSON |
+|---|---|---|---|
+| `possible` share, both arms | 34.9% | 26.7% | 33.3% |
+| Definite writes, main to PR 2e | 27 to 27 | 193 to 198 | 63 to 63 |
+| Blind writes, main to PR 2e | 20 to 20 | 251 to 246 | 94 to 94 |
+| `effects` allocation MB, main to PR 2e | 822 to 823 | 1761 to 1772 | 105981 to 112717 |
+
+- Records turn 5 DataStructures blind writes definite. Call counts and variants stay the same.
+- Probe of 20 callback shapes: tuple `foreach`, `Base.Fix1`, `ntuple` and `sort!(; by)` closures lose blind `deep` writes.
+- Generator into `sum` stays blind: `_xfadjoint` returns tuple holding `MappingRF`, and caller merges 2 fresh callee nodes into one.
+- Closure in `Function` field stays `possible`: abstract callable type reaches no method.
+- Resolved-record set made per `apply!` raised JSON allocation 7%. Set made on first record takes 0.6 points off.
+- `effects` allocation counts cold native inference. Parallel arms of main gave 102059 and 158294 MB with same verdicts: compare serial arms only.
+- Mutation check: 12 mutants, 10 killed. Survivors kept record of round 1 after callable grew, and resolved record of cycle member without reading its summary.
+- Fixtures `pick_setter!` and `restart!` kill both survivors.
+
 ### Stateful iterators
 
 - Trigger "every `iterate` on iterator not proven stateless" rejected: single pass is safe for both kinds, so it flags nearly all generic code.
