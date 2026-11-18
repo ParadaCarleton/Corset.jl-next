@@ -2,7 +2,7 @@ using Test: @test, @testset, @test_throws
 using Corset: Corset
 using Corset.Facts: Facts, MethodEffects, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision
 using Corset.Inference: infer_package, open_journal, records, explicit_any, cuts!, dead_calls
-using Corset.StandIns: FunctionStandIn, ArrayStandIn
+using Corset.StandIns: FunctionStandIn, ArrayStandIn, FloatStandIn
 using Corset.Signatures: Provenance
 using Corset.Effects:
     Effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
@@ -238,6 +238,15 @@ sourceless(x::Int)::Int = x + 3
     @test !reaches_untrusted!(run, Any[1, Int, plus]) && plus in run.trusted && !reaches_untrusted!(run, Core.svec(plus))
 end
 
+"""Library helper outside Base whose type test stand-in decides."""
+reset_if_vector!(values) = (values isa Vector && (values[1] = 0); nothing)
+
+"""Library helper outside Base whose type test is false on model types too."""
+skip_if_text(values) = (values isa AbstractString && identity(values); nothing)
+
+"""Generated library helper: stand-in code calls `pointer`, model code is shorter."""
+@generated generated_library_poke(values) = values <: Vector ? :(nothing) : :(identity(values); pointer(values); nothing)
+
 """Generated method without code on array stand-in."""
 @generated stand_in_broken(x) = x <: ArrayStandIn ? error("no code") : :(x)
 
@@ -268,6 +277,10 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
     @test isempty(unit(:check_nonempty).cuts) && isempty(cut_spots(:check_nonempty))
     converted = unit(:maybe_convert)
     @test isempty(converted.cuts) && any(index -> converted.code.ssavaluetypes[index] === Union{}, eachindex(converted.code.code))
+    # Stand-in dispatches to throwing package method, model type to writing one: no spot from failure check, cut stays.
+    @test !isempty(unit(:maybe_fill!).cuts) && !named(:maybe_fill!).complete && length(cut_spots(:maybe_fill!)) == 1
+    # Generated code differs per signature, so no statement lookup crosses signatures.
+    @test !isempty(unit(:fallback_bump!).cuts) && !isempty(unit(:generated_poke).cuts)
     # Library instance cut: caller is uncaught failure, or caught one that leaves helper `nothrow`.
     for name in (:poke_some!, :poke_quietly!)
         @test isempty(unit(name).cuts) && !named(name).complete && only(cut_spots(name)).span != named(name).site.span
@@ -277,7 +290,7 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
     @test generated.cuts == dead_calls(generated.code) && !isempty(generated.cuts)
     # Stand-in signature equal to declared signature: no second inference.
     method = only(methods(CASES.maybe_bump!))
-    @test cuts!(IdDict{Method, Union{Nothing, Core.CodeInfo}}(), method, method.sig, unit(:maybe_bump!).code, Pair{Int, Union{Facts.FailingCall, BlindSpot}}[]) == Int[]
+    @test cuts!(IdDict{Method, Union{Nothing, Core.CodeInfo}}(), method, method.sig, unit(:maybe_bump!).code, Int[]) == Int[]
     # Library call fails on stand-in only: instance keeps own analysis, and its summary carries cut.
     run = start_run(nothing, Module[CASES])
     instance_of(f::Any, types::Type...)::Core.MethodInstance = only(something(dispatch(Any[typeof(f), types...], run.world, 1)))
@@ -292,6 +305,12 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
     @test !stand_in_cut(run, frame_of(instance_of(Base.throw_boundserror, ArrayStandIn{Int, 1}, Tuple{Int}))) && first(run.helpers[throw])
     @test !stand_in_cut(run, frame_of(instance_of(size, ArrayStandIn{Int, 1})))
     @test !stand_in_cut(run, frame_of(instance_of(CASES.refuse, ArrayStandIn{Int, 1}))) && !first(run.helpers[CASES.reject])
+    # Type branch outside Base is cut, `nothrow` or not; stand-in method keeps contracts like Base.
+    @test stand_in_cut(run, frame_of(instance_of(reset_if_vector!, ArrayStandIn{Int, 1})))
+    @test cut!(run, instance_of(reset_if_vector!, ArrayStandIn{Int, 1}), Core.Compiler.EFFECTS_TOTAL)
+    @test !stand_in_cut(run, frame_of(instance_of(skip_if_text, ArrayStandIn{Int, 1})))
+    @test !stand_in_cut(run, frame_of(instance_of(+, FloatStandIn, FloatStandIn)))
+    @test stand_in_cut(run, frame_of(instance_of(generated_library_poke, ArrayStandIn{Int, 1})))
     # Cut check runs only on stand-in instance that can fail; instance without code counts as cut.
     total, throwing = Core.Compiler.EFFECTS_TOTAL, Core.Compiler.EFFECTS_THROWS
     vector_pointer = instance_of(pointer, Vector{Int})

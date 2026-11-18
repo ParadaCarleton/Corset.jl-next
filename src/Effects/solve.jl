@@ -85,13 +85,14 @@ end
 
 """
 Whether stand-ins cut own code of `instance` with cached compiler `effects` (`effects.md`, Stand-in cuts). Units come
-cut or not from `run.cuts`. Other instance needs cut check (`stand_in_cut`) only when it holds stand-in and call can
-fail: it is not `nothrow`, or its method catches.
+cut or not from `run.cuts`. Other instance needs cut check (`stand_in_cut`) only when it holds stand-in, and its method
+breaks no contract (type branches count, `keeps_contracts`) or its call can fail: it is not `nothrow`, or its method catches.
 """
 function cut!(run::Run, instance::Core.MethodInstance, effects::CC.Effects)::Bool
     haskey(run.cuts, instance) && return run.cuts[instance]
     holds_stand_in(instance.specTypes) || return false
-    CC.is_nothrow(effects) && !(instance.def isa Method && catches!(run, instance.def)) && return false
+    method = instance.def::Method
+    keeps_contracts(method) && CC.is_nothrow(effects) && !catches!(run, method) && return false
     # Instance without code counts as cut: its effects on model types are unknown.
     inferred = inferred!(run, instance)
     return inferred isa String ? (run.cuts[instance] = true) : last(inferred)
@@ -218,20 +219,31 @@ function frame_body(run::Run, frame::CC.InferenceState, cut::Bool)::Body
 end
 
 """
-Whether stand-ins cut path of library instance `frame` (`effects.md`, Stand-in cuts): reached call never returns, though
-it returns on model types. Base type branches keep same effects, so failing calls count only; throw helpers fail on
-every signature. Method of stand-in only, or instance on model types without code, cannot clear call, so it counts as cut.
+Whether stand-ins cut path of library instance `frame` (`effects.md`, Stand-in cuts): reached call never returns, or
+call statement is dead, though model types reach it. Methods that keep contracts count failing calls only
+(`keeps_contracts`); throw helpers fail on every signature. Method of stand-in only, generated method, or instance on
+model types without code, cannot clear call, so it counts as cut.
 """
 function stand_in_cut(run::Run, frame::CC.InferenceState)::Bool
     instance, code = frame.linfo, frame.src
     holds_stand_in(instance.specTypes) || return false
+    method = instance.def::Method
     failing = [index for (index, _, callee) in never_returning(code, CC.sptypes_from_meth_instance(instance)) if !first(get!(() -> throw_helper(callee), run.helpers, callee))]
-    isempty(failing) && return false
-    modeled = Inference.instance(instance.def::Method, model_type(instance.specTypes))
+    dead = keeps_contracts(method) ? Int[] : dead_calls(code)
+    isempty(failing) && isempty(dead) && return false
+    # Generated code differs per signature, so statement index of stand-in code names no statement of model code.
+    Base.hasgenerator(method) && return true
+    modeled = Inference.instance(method, model_type(instance.specTypes))
     reference = isnothing(modeled) ? nothing : CC.typeinf_frame(run.interpreter, modeled, false)
     isnothing(reference) && return true
-    return any(index -> reference.src.ssavaluetypes[index] !== Union{}, failing)
+    return any(index -> reference.src.ssavaluetypes[index] !== Union{}, failing) || any(index -> !(reference.src.code[index] isa Core.Const), dead)
 end
+
+"""
+Whether `method` keeps documented contracts, so its type branches keep same effects (`findings.md`, Confidence and
+blind spots): Base, Core, and stand-in methods that model them.
+"""
+keeps_contracts(method::Method)::Bool = Base.moduleroot(method.module) in (Base, Core) || method.module === StandIns
 
 """
 Crash journal key of native inference of `instance`; prefix keeps it apart from method store keys. Non-compact `show`

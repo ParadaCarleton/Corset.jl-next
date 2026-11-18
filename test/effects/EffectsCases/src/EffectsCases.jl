@@ -305,6 +305,26 @@ reject(count::Int)::Int = count
 
 refuse(values) = (reject(values); nothing)
 
+# Stand-in dispatches to throwing method; model type dispatches to writing one.
+fill_dense!(values::AbstractVector{Int})::Nothing = error("dense only")
+fill_dense!(values::Vector{Int})::Nothing = (values[1] = 0; nothing)
+
+maybe_fill!(values::AbstractVector{Int}, flag::Bool)::Nothing = (flag && fill_dense!(values); nothing)
+
+# Optional generator: declared signature takes fallback code, whose statements differ from generated ones.
+function fallback_bump!(x::Real)
+    if @generated
+        return :(x isa BigFloat && (COUNTER[] += 1); nothing)
+    else
+        identity(x)
+        x isa BigFloat && (COUNTER[] += 1)
+        return nothing
+    end
+end
+
+# Generated code differs per signature: model code cannot clear call that fails on stand-in.
+@generated generated_poke(values::AbstractVector{Int}, flag::Bool) = values <: Vector ? :(nothing) : :(flag && pointer(values); nothing)
+
 # Conversion fails on model type too: failing-call fact, no cut.
 maybe_convert(values::AbstractVector{Int}, flag::Bool)::Nothing = (flag && convert(Int, values); nothing)
 

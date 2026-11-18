@@ -544,128 +544,7 @@ end
 """Method call `signature` dispatches to; stage keeps only signatures that dispatch to one method."""
 dispatched(signature::Type)::Method = only(Base._methods_by_ftype(signature, 1, Base.get_world_counter())::Vector).method
 
-"""
-Throw helper verdict on `callee`, with compiler edges of inferences it ran. Helper: `throw`, or function each of whose
-methods throws for every argument type it declares (`error`, `rethrow`, `Base.Enums.enum_argument_error`). Fallback
-method that throws for one missing interface does not make function helper.
-"""
-function throw_helper(callee::Any)::Tuple{Bool, Vector{Any}}
-    callee === throw && return true, Any[]
-    found, edges = methods(callee), Any[]
-    isempty(found) && return false, edges
-    for method in found
-        inferred = infer(method, method.sig)
-        isnothing(inferred) && return false, edges
-        append!(edges, inferred[4])
-        inferred[3] === Union{} || return false, edges
-    end
-    return true, edges
-end
-
-"""
-Callable value of inferred `type`: its singleton, or type name of constructor with unknown parameters
-(`Type{Point{T}} where T` gives `Point`); else `nothing`.
-"""
-function callable(type::Any)::Any
-    singleton = CC.singleton_type(type)
-    !isnothing(singleton) && return singleton
-    bare = Base.unwrap_unionall(CC.widenconst(type))
-    bare isa DataType || return nothing
-    bare.name === Base.typename(Type) || return nothing
-    constructed = Base.unwrap_unionall(only(bare.parameters))
-    return constructed isa DataType ? constructed.name.wrapper : nothing
-end
-
-"""
-Function or type `call` calls, when inference knows it: inner callee of splatted call (`Core._apply_iterate`) and keyword
-call (`Core.kwcall`); else `nothing`.
-"""
-function called(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.VarState})::Any
-    callee = callable(CC.argextype(call.args[1], code, parameters))
-    callee in (Core._apply_iterate, Core.kwcall) && length(call.args) >= 3 && return callable(CC.argextype(call.args[3], code, parameters))
-    return callee
-end
-
-"""Whether `call` dispatches to one method that analyzed `files` define; its own frame reports failure inside it."""
-function package_call(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.VarState}, files::Dict{String, SyntaxFile})::Bool
-    types = Any[CC.widenconst(CC.argextype(argument, code, parameters)) for argument in call.args]
-    matches = Base._methods_by_ftype(Tuple{types...}, 1, Base.get_world_counter())
-    return matches isa Vector && length(matches) == 1 && haskey(files, string(only(matches).method.file))
-end
-
-"""
-Inferred type of statement `index` of `method` on `signature`, `Union{}` when it never returns, `nothing` without code.
-Adds compiler edges of inference to `edges`.
-"""
-function statement_type!(edges::Vector{Any}, method::Method, signature::Type, index::Int)::Union{Nothing, Type}
-    inferred = infer(method, signature)
-    isnothing(inferred) && return nothing
-    append!(edges, inferred[4])
-    return CC.widenconst(inferred[2].ssavaluetypes[index])
-end
-
-"""Name of called function; called type as `scope` prints it (`Vector{Float64}`); text of other callable value."""
-callee_text(callee::Any, scope::Module)::String = callee isa Function ? string(nameof(callee)) : callee isa Type ? sprint(show, callee; context = :module => scope) : repr(callee)
-
-"""
-Reached call statements of typed `code` that never return, with callee that inference knows (`called`): statement
-index, call and callee. `parameters` are static parameters of instance of `code`.
-"""
-function never_returning(code::Core.CodeInfo, parameters::Vector{CC.VarState})::Vector{Tuple{Int, Expr, Any}}
-    found = Tuple{Int, Expr, Any}[]
-    for (index, statement) in enumerate(code.code)
-        # Unreached statement is wrapped in `Core.Const`, so it is no call.
-        call = statement_call(statement)
-        (isnothing(call) || code.ssavaluetypes[index] !== Union{}) && continue
-        callee = called(code, call, parameters)
-        isnothing(callee) || push!(found, (index, call, callee))
-    end
-    return found
-end
-
-"""
-Call statements of `typed` that never return, by statement index: fact, or blind spot where call returns once stand-ins
-become their models. Skips unknown callees, calls of package methods in `files` and throw helpers. Adds compiler edges of
-inferences it runs to `edges`; `helpers` caches throw-helper verdicts with their edges.
-"""
-function failures!(edges::Vector{Any}, helpers::IdDict{Any, Tuple{Bool, Vector{Any}}}, typed::TypedCode, files::Dict{String, SyntaxFile})::Vector{Pair{Int, Union{FailingCall, BlindSpot}}}
-    found = Pair{Int, Union{FailingCall, BlindSpot}}[]
-    method, code = typed.site.method, typed.code
-    parameters = CC.sptypes_from_meth_instance(something(instance(method, typed.signature)))
-    for (index, call, callee) in never_returning(code, parameters)
-        package_call(code, call, parameters, files) && continue
-        helper, helper_edges = get!(() -> throw_helper(callee), helpers, callee)
-        append!(edges, helper_edges)
-        helper && continue
-        # Model signature without code cannot confirm failure either, so it also counts as blind spot.
-        modeled = statement_type!(edges, method, StandIns.model_type(typed.signature), index)
-        modeled !== Union{} && (push!(found, index => BlindSpot("call fails on stand-in only", typed.spans[index])); continue)
-        confidence = statement_type!(edges, method, method.sig, index) === Union{} ? Confidence.definite : Confidence.possible
-        push!(found, index => FailingCall(typed.spans[index], name_span(typed.site), callee_text(callee, method.module), confidence))
-    end
-    return found
-end
-
-"""Whether typed `statement` calls function or C code, assigned or not; stores are calls (`setfield!`, `setglobal!`)."""
-effect_statement(statement::Any)::Bool = (value = Widening.assigned(statement); value isa Expr && value.head in (:call, :foreigncall, :invoke))
-
-"""Indexes of call statements typed `code` never reaches: inference wraps unreached statement in `Core.Const`."""
-dead_calls(code::Core.CodeInfo)::Vector{Int} = [index for (index, statement) in enumerate(code.code) if statement isa Core.Const && effect_statement(statement.val)]
-
-"""
-Stand-in cuts of `typed` code of `method` on `signature` (`effects.md`, Stand-in cuts): dead call statements that
-declared signature reaches, and calls that fail on stand-in only (blind spots of `failures`). Infers declared signature
-once per method (`declared`), only for code with dead calls. Declared signature without code cannot clear dead call, so
-each counts as cut.
-"""
-function cuts!(declared::IdDict{Method, Union{Nothing, Core.CodeInfo}}, method::Method, signature::Type, code::Core.CodeInfo, failures::Vector{Pair{Int, Union{FailingCall, BlindSpot}}})::Vector{Int}
-    failing, dead = Int[index for (index, failure) in failures if failure isa BlindSpot], dead_calls(code)
-    (isempty(dead) || signature == method.sig) && return failing
-    reference = get!(() -> (result = infer(method, method.sig); isnothing(result) ? nothing : result[2]), declared, method)
-    isnothing(reference) && return sort!([dead; failing])
-    length(reference.code) == length(code.code) || error("declared and stand-in code of $method differ in length")
-    return sort!([filter(index -> !(reference.code[index] isa Core.Const), dead); failing])
-end
+include("Inference/failures.jl")
 
 """Method instance compiler edge `edge` stands for; `nothing` for other edge (binding, method-table lookup)."""
 function edge_instance(edge::Any)::Union{Nothing, Core.MethodInstance}
@@ -935,8 +814,8 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
                 provenance = argument_provenance(site.method, call_signature, stand_in, opted)
                 push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes), frame, provenance, Int[]))
                 # Failures need unit spans; cuts need failures.
-                failures = failures!(edges, helpers, last(typed), by_path)
-                append!(last(typed).cuts, cuts!(declared, site.method, call_signature, code, failures))
+                failures, stand_in_only = failures!(edges, helpers, last(typed), by_path)
+                append!(last(typed).cuts, cuts!(declared, site.method, call_signature, code, stand_in_only))
                 changes, branch = Widening.changes!(edges, instance, code)
                 constructions, array_branch = HardArrays.changes!(edges, instance, code)
                 lost = narrowings(last(typed), nodes, Narrowing.losses(code, flow, CC.sptypes_from_meth_instance(instance)))
