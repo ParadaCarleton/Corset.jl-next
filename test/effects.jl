@@ -220,7 +220,7 @@ invoke_missing(values::Vector{Int}) = invoke(push!, Tuple{Int}, values)
 spread!(values::Vector{Int}, more::Tuple{Int, Int}) = push!(values, more...)
 spread_open!(values::Vector{Int}, more::Tuple{Vararg{Int}}) = push!(values, more...)
 nested_spread!(values::Vector{Int}, more::Tuple{Tuple{Int}}) = push!(values, more[1]...)
-dynamic!(container::Any) = push!(container, 1)
+dynamic!(container::Any) = sort!(container)
 nested_apply(values::Vector{Int}, more::Tuple{Tuple{Int}}) = Core._apply_iterate(iterate, Core._apply_iterate, (iterate, push!, values), more)
 @eval embedded() = $(Ref([1]))
 unknown_field(holder::Module, name::Symbol) = getfield(Core.getglobal(holder, name)::Base.RefValue{Vector{Int}}, :x)
@@ -254,6 +254,28 @@ object_at(pointer::Ptr{Cvoid}) = unsafe_pointer_to_objref(pointer)
 unknown_foreign!(pointer::Ptr{Int}) = ccall(:corset_unknown_function, Cvoid, (Ptr{Int},), pointer)
 popped(table::IdDict{Int, Vector{Int}}) = pop!(table, 1)
 no_method(values::Vector{Int}) = sin(values)
+
+"""Mutable cell that contract fixtures write through element."""
+mutable struct Cell
+    x::Int
+end
+pushed!(container::Any) = push!(container, 1)
+measured(x::Any) = length(x)
+iterated(x::Any) = iterate(x)
+first_of_vector(x::AbstractVector) = first(x)
+merged_any!(d::Any, e::Any) = merge!(d, e)
+merged!(d::AbstractDict, e::AbstractDict) = merge!(d, e)
+push_many!(c::Any, a::Vector{Int}, b::Vector{Int}) = push!(c, a, b)
+converted(T::Type, x::Any) = convert(T, x)
+converted_fresh(T::Type, x::Vector{Int}) = convert(T, Any[x])
+indexed(A::Any, mask::Vector{Int}) = A[mask]
+view_write!(A::Any) = (view(A, 1)[1] = 0; nothing)
+element_write!(A::Any) = ((A[1]::Cell).x = 0; nothing)
+appended!(v::Vector{Int}, x::Any) = append!(v, x)
+similar_of(A::Any) = similar(A)
+contains_any(x::Any, c::Any) = x in c
+got(d::Any, k::Int) = get(d, k, 0)
+got_dict(d::AbstractDict, k::Int) = get(d, k, 0)
 
 @testset "builtin transfer" begin
     none, code, blind = Doubt.none, Doubt.code, Doubt.blind
@@ -382,6 +404,37 @@ end
             close(journal.io)
         end
     end
+end
+
+@testset "Base contracts" begin
+    none, code = Doubt.none, Doubt.code
+    # Write contract keeps certainty; verdict assumes methods loaded now keep contract.
+    for (writer, types) in ((pushed!, (Any,)), (merged!, (AbstractDict, AbstractDict)), (view_write!, (Any,)))
+        @test doubts(summary_of(writer, types...).writes) == Dict(top(2) => none) && summary_of(writer, types...).closed_world
+    end
+    many = summary_of(push_many!, Any, Vector{Int}, Vector{Int})
+    @test many.edges[(Node.Placed(parameter(2)), Step.Element())] == Nodes(Node.Placed(parameter(3)) => none, Node.Placed(parameter(4)) => none)
+    # Queries write nothing; result may alias argument (`convert`) or be element (`get`); `similar` result is fresh.
+    for (query, types) in ((measured, (Any,)), (first_of_vector, (AbstractVector,)), (similar_of, (Any,)), (got_dict, (AbstractDict, Int)))
+        @test isempty(summary_of(query, types...).writes) && summary_of(query, types...).closed_world
+    end
+    @test summary_of(converted, Type, Any).result == Nodes(Node.Placed(parameter(3)) => code)
+    # Plain query result is new value: aliasing it cost JSON 3 times `effects` time.
+    @test isempty(summary_of(measured, Any).result)
+    # Element query result lies in collection, never in indices.
+    @test haskey(summary_of(indexed, Any, Vector{Int}).result, Node.Placed(parameter(2))) && !haskey(summary_of(indexed, Any, Vector{Int}).result, Node.Placed(parameter(3)))
+    # Result may point beneath fresh argument: caller object inside it. `Any[x]` allocation is blind already.
+    @test haskey(summary_of(converted_fresh, Type, Vector{Int}).result, Node.Placed(parameter(3)))
+    @test summary_of(got_dict, AbstractDict, Int).result == Nodes(Node.Placed(parameter(2, Step.Element())) => none)
+    @test isempty(summary_of(similar_of, Any).result)
+    @test doubts(summary_of(element_write!, Any).writes) == Dict((parameter(2, Step.Element()), false) => none, top(2) => code)
+    # Argument that admits consumed iterator (`Iterators.Stateful`) gets `possible` write.
+    @test doubts(summary_of(iterated, Any).writes) == Dict(top(2) => code)
+    @test doubts(summary_of(contains_any, Any, Any).writes) == Dict(top(3) => code)
+    @test doubts(summary_of(appended!, Vector{Int}, Any).writes) == Dict(top(2) => none, top(3) => code)
+    # First argument that may be callable selects callback form: call stays open.
+    @test doubts(summary_of(merged_any!, Any, Any).writes) == Dict((parameter(2), true) => code, (parameter(3), true) => code)
+    @test doubts(summary_of(got, Any, Int).writes) == Dict((parameter(2), true) => code)
 end
 
 """Function with `JOIN_LIMIT` methods: call on `Any` joins them."""
