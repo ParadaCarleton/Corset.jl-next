@@ -63,6 +63,7 @@ Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback 
 - Callback record: call of parameter, static-parameter type or field callable. Caller substitutes callee summary and captured aliases.
 - Join over at most 3 matching methods in package code. Disagreement gives `possible`. Library code keeps dispatch open.
 - Base contract table holds documented behavior only. `iterate` on `Iterators.Stateful` gives `possible` write.
+- Contract applies after join fails: library code and package dispatch over 3 methods. Contract verdict is closed-world.
 - Open call: provenance decides finding, blind spot or nothing.
 
 Tests:

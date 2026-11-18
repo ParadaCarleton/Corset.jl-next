@@ -105,6 +105,13 @@ Resolution of each call statement, first match wins:
 - Steps 5 and 6 assume methods loaded now. Write they find keeps certainty. "Writes nothing" from them is at most `possible`.
 - Contract: `first` and generic `isempty` start iteration of argument (`isempty` docstring warns). Type with own `isempty` or `isdone` method uses its summary.
 - Contract entry holds only behavior Base documents. Base type that writes where others read (`iterate` on `Iterators.Stateful`) gives `possible` write when operand type admits it.
+- Query (comparison, size, predicate, arithmetic) reads arguments. Its result is new value.
+- Alias query (`convert`, `getproperty`, `keys`, `max`, `conj`, `adjoint`) reads arguments. Its result may point beneath them.
+- Element query (`getindex`) result is element of collection or lies beneath it, never in indices.
+- Iteration (`iterate`, `first`, `only`, `isempty`, `in`) reads like element query. `Iterators.Stateful`, `Channel` and `EachLine` get `possible` write.
+- Write contract (`setindex!`, `push!`, `append!`, `resize!`, `pop!`, `copyto!`, `merge!`) writes first argument and stores or copies elements into it.
+- Function with callable-first form (`get`, `get!`, `merge!`): contract holds only when first argument cannot be callable. Else call stays open.
+- Query result that may alias every argument cost JSON 3 times `effects` time and changed no verdict.
 - Open call (step 7) whose open operands point to opaque and opt-out origins only: no finding. Opaque origin counts on coverage line: `open dispatch on opaque data`.
 - Other open call: doubt in code, `possible` finding.
 - Limit 3 is compiler `max_methods`, never below. Limit 8 reached 20 times more instances on Distances.
@@ -125,7 +132,7 @@ Resolution of each call statement, first match wins:
 - Cut: call or store statement live at declared signature and dead at stand-in signature. Engine never sees it, so unit summary carries `cut`.
 - Causes: call that fails on stand-in only; type test that stand-in decides (`x isa BigFloat && (STATE[] += 1)`).
 - `inference` stage finds cuts: units with dead call or store statements first, then declared-signature inference of those units only.
-- Package units count both causes. Library instances count failing calls only: Base type branches keep same effects (`findings.md`, Base contracts).
+- Package units count both causes. Library instances count failing calls only: Base type branches keep same effects (`findings.md`, Confidence and blind spots).
 - Callers inherit `cut`. Verdict none with `cut` goes to coverage line: `stand-in cuts path`.
 - Definite and `possible` writes keep certainty with `cut`.
 
