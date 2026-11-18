@@ -819,7 +819,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Static call (one method matches, or <code>Core.invoke</code> with constant selector): callee summary. No method matches: call throws, so code after it is dead.
 Summary per variant: instance plus constant arguments callee uses as field name. <code>getproperty(x, :a)</code> keeps field <code>a</code>.</li>
 <li>Callee is parameter, type from static parameter, or field callable: summary records call with operands. Caller that knows callee substitutes its summary, captured aliases included.</li>
-<li>Run-time dispatch with at most 8 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.</li>
+<li>Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.</li>
 <li>Base interface function with documented contract (<code>setindex!</code> writes collection; <code>length</code> reads only; <code>view</code> result lies within array). Breach in package method is finding.</li>
 <li>Else open: <code>possible</code> write on operands; result may point into operands, one direction, and to <code>unknown</code>.</li>
 </ol>
@@ -829,7 +829,8 @@ Summary per variant: instance plus constant arguments callee uses as field name.
 <li>Contract entry holds only behavior Base documents. Base type that writes where others read (<code>iterate</code> on <code>Iterators.Stateful</code>) gives <code>possible</code> write when operand type admits it.</li>
 <li>Open call (step 7) whose open operands point to opaque and opt-out origins only: no finding. Opaque origin counts on coverage line: <code>open dispatch on opaque data</code>.</li>
 <li>Other open call: doubt in code, <code>possible</code> finding.</li>
-<li>Limit 8 is first guess; engine PR measures it. Never below compiler <code>max_methods</code>.</li>
+<li>Limit 3 is compiler <code>max_methods</code>, never below. Limit 8 reached 20 times more instances on Distances.</li>
+<li>Library code joins nothing: its run-time dispatch stays open (step 7). Joins there raised <code>possible</code> share and cost most time.</li>
 </ul>
 <h4>Compiler effects</h4>
 <ul>
@@ -1421,7 +1422,7 @@ Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback 
 <li>Zero-match call throws <code>MethodError</code>: dead code.</li>
 <li>Foreign call table: <code>memmove</code>, runtime type queries. Unknown foreign call gives <code>possible</code> write.</li>
 <li>Callback record: call of parameter, static-parameter type or field callable. Caller substitutes callee summary and captured aliases.</li>
-<li>Join over at most 8 matching methods. Disagreement gives <code>possible</code>.</li>
+<li>Join over at most 3 matching methods in package code. Disagreement gives <code>possible</code>. Library code keeps dispatch open.</li>
 <li>Base contract table holds documented behavior only. <code>iterate</code> on <code>Iterators.Stateful</code> gives <code>possible</code> write.</li>
 <li>Open call: provenance decides finding, blind spot or nothing.</li>
 </ul>
@@ -1431,7 +1432,7 @@ Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback 
 <li><code>f(x::Any) = setfield!(x, :n, 0)</code> keeps definite write.</li>
 <li>Open call on opaque argument gives blind spot only.</li>
 </ul>
-<p>Measure: <code>possible</code> share per corpus package; methods per join; contract hits. Tune limit 8; keep it at least compiler <code>max_methods</code>.</p>
+<p>Measure: <code>possible</code> share per corpus package; methods per join; contract hits. Join limit 3 since 2a; keep it at least compiler <code>max_methods</code>.</p>
 </div><div class="decision"><h3>3 Engine limits</h3>
 <p>Compiler effects for speed; stand-in cuts and effect kinds for correct verdicts.</p>
 <ul>

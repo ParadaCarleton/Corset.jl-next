@@ -98,7 +98,7 @@ Resolution of each call statement, first match wins:
 3. Static call (one method matches, or `Core.invoke` with constant selector): callee summary. No method matches: call throws, so code after it is dead.
    Summary per variant: instance plus constant arguments callee uses as field name. `getproperty(x, :a)` keeps field `a`.
 4. Callee is parameter, type from static parameter, or field callable: summary records call with operands. Caller that knows callee substitutes its summary, captured aliases included.
-5. Run-time dispatch with at most 8 matching methods: join their summaries. All agree: their certainty. Disagree: `possible`.
+5. Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: `possible`.
 6. Base interface function with documented contract (`setindex!` writes collection; `length` reads only; `view` result lies within array). Breach in package method is finding.
 7. Else open: `possible` write on operands; result may point into operands, one direction, and to `unknown`.
 
@@ -107,7 +107,8 @@ Resolution of each call statement, first match wins:
 - Contract entry holds only behavior Base documents. Base type that writes where others read (`iterate` on `Iterators.Stateful`) gives `possible` write when operand type admits it.
 - Open call (step 7) whose open operands point to opaque and opt-out origins only: no finding. Opaque origin counts on coverage line: `open dispatch on opaque data`.
 - Other open call: doubt in code, `possible` finding.
-- Limit 8 is first guess; engine PR measures it. Never below compiler `max_methods`.
+- Limit 3 is compiler `max_methods`, never below. Limit 8 reached 20 times more instances on Distances.
+- Library code joins nothing: its run-time dispatch stays open (step 7). Joins there raised `possible` share and cost most time.
 
 #### Compiler effects
 

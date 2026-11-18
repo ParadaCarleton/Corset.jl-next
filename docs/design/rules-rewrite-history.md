@@ -715,6 +715,24 @@ Ablation on corpus: one kind stays open; every other open call writes nothing. C
 - Path depth sweep: depth 3 and 4 kept `possible` share. JSON `effects` took 19 s at depth 2, 615 s at 3, over 3 h at 4. Depth stays 2.
 - `foreach(f, xs)` reaches closure through `foldl` wrappers, so its write path has depth 3. Callback records keep path short.
 
+PR 2a on corpus, cold library inference, no cache. Cell: `possible` write share, `effects` seconds.
+
+| Join scope | Distances | DataStructures | JSON |
+|---|---|---|---|
+| PR 1 | 54.3%, 5.8 | 55.6%, 7.9 | 58.1%, 24.2 |
+| None | 52.0%, 4.0 | 49.0%, 4.8 | 47.8%, 21.4 |
+| Package code, limit 3 (shipped) | 51.4%, 3.7 | 47.5%, 5.9 | 47.4%, 178 |
+| All code, limit 3 | 53.7%, 5.6 | 48.7%, 18.0 | over 1800 |
+
+- Foreign table and zero match cut `possible` share by 2 to 10 points. Joins add at most 1.5 points before contracts and callback records.
+- Limit 8 in all code reached 91,670 instances on Distances, against 4,691 in PR 1 and 8,165 at limit 3.
+- Joins in library code raised `possible` share: joined callees show global writes that open calls leave out.
+- JSON with package joins took 178 s and allocated 66 GB. Library summaries with over 1000 stores (`show`) repeat each round in call cycles.
+- PR 3 limits and PR 4 cache target JSON time. Gate needs `effects` at most `inference` time (5.8 s).
+- First corpus run hung: LinearAlgebra `_any(f ∘ transpose, parent(A), :)` adds `ComposedFunction` layer per step. Recursion limit ports `abstract_call_method` rule.
+- Crash journal key printed type with alias search: up to seconds per deep type. Non-compact `show` skips search.
+- Join is not monotone: summaries in call cycle oscillated for 9 h. Widening after 8 reruns ends it; corpus shows no unsettled access.
+
 ### Stateful iterators
 
 - Trigger "every `iterate` on iterator not proven stateless" rejected: single pass is safe for both kinds, so it flags nearly all generic code.
@@ -739,7 +757,7 @@ Ablation on corpus: one kind stays open; every other open call writes nothing. C
 - F111 `generic-resize`: `push!` and other resizing calls on argument annotated `AbstractVector`. Ranges, views, `SVector` and `Memory` cannot grow.
 - Julia has no resizable-array type, so annotation cannot state requirement. Rust rejects `push` on `&mut [T]` at compile time.
 - ArrayInterface.jl trait `can_change_size` answers question at run time; Base has no counterpart.
-- Trait is no fix: default is `false`, and only `Vector`, `AbstractDict` and forwarding wrappers say `true` (7.30). `BitVector` resizes but says `false`.
+- Trait is no fix: default is `false`, and only `Vector`, `AbstractDict` and forwarding wrappers say `true` (7.30). `BitVector` resizes but says `false` (JuliaArrays/ArrayInterface.jl#515).
 - Guard on trait rejects resizable types that never opted in, so method gets less generic than bare `push!`. Guard still counts as narrowing.
 - Group composability: package-internal callers often pass only `Vector`. Library preset warns; outside callers hit `MethodError` deep inside method.
 - F15 is mirror rule: it widens `::Vector`. Resized argument keeps `Vector`, so fixes of F15 and F111 never loop.

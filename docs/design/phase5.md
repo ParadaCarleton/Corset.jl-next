@@ -61,7 +61,7 @@ Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c callback 
 - Zero-match call throws `MethodError`: dead code.
 - Foreign call table: `memmove`, runtime type queries. Unknown foreign call gives `possible` write.
 - Callback record: call of parameter, static-parameter type or field callable. Caller substitutes callee summary and captured aliases.
-- Join over at most 8 matching methods. Disagreement gives `possible`.
+- Join over at most 3 matching methods in package code. Disagreement gives `possible`. Library code keeps dispatch open.
 - Base contract table holds documented behavior only. `iterate` on `Iterators.Stateful` gives `possible` write.
 - Open call: provenance decides finding, blind spot or nothing.
 
@@ -71,7 +71,7 @@ Tests:
 - `f(x::Any) = setfield!(x, :n, 0)` keeps definite write.
 - Open call on opaque argument gives blind spot only.
 
-Measure: `possible` share per corpus package; methods per join; contract hits. Tune limit 8; keep it at least compiler `max_methods`.
+Measure: `possible` share per corpus package; methods per join; contract hits. Join limit 3 since 2a; keep it at least compiler `max_methods`.
 
 ### 3 Engine limits
 
