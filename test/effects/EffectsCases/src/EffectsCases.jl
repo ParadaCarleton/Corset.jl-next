@@ -234,4 +234,35 @@ function pick_setter!(setter::Setter, value::Int)::Nothing
     return nothing
 end
 
+# Compiler effects: shortcut for instance compiler proves empty. Claims outside Base turn it off, false claims included.
+const SCOPE = Base.ScopedValues.ScopedValue{Int}(1)
+
+read_scope()::Int = SCOPE[]
+
+# Engine reads `Memory`; compiler proves read of its constant length touches nothing, so unit verdict keeps no read.
+memory_length(memory::Memory{Int})::Int = getfield(memory, :length)
+
+same_box(box::Box)::Box = box
+
+Base.@assume_effects :effect_free :inaccessiblememonly :notaskstate :nothrow :terminates_globally claim_bump!()::Nothing = (COUNTER[] += 1; nothing)
+
+call_claim_bump!()::Nothing = claim_bump!()
+
+Base.@assume_effects :effect_free :nothrow :terminates_globally claim_set!(box::Box)::Nothing = (box.value = 1; nothing)
+
+drop_claim_set!(box::Box)::Nothing = (claim_set!(box); nothing)
+
+function block_claim!(box::Box)::Nothing
+    Base.@assume_effects :effect_free :nothrow begin
+        box.value = 2
+    end
+    return nothing
+end
+
+drop_block_claim!(box::Box)::Nothing = (block_claim!(box); nothing)
+
+@generated generated_next(x::Int) = :(x + 1)
+
+call_generated(x::Int)::Int = generated_next(x)
+
 end

@@ -9,7 +9,7 @@ using Corset.Effects:
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
     components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, caller_doubt, source_provenance,
-    Callback, Callees, Variant, root_summary, deferred, parameter_origin
+    Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_claim!
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 
@@ -192,6 +192,51 @@ end
     @test root_summary(run, root) === run.summaries[root]
 end
 
+"""Method never called: it has no inferred code."""
+never_called(x::Int)::Int = x + 2
+
+"""Method whose source test removes."""
+sourceless(x::Int)::Int = x + 3
+
+@testset "compiler effects" begin
+    definite = Confidence.definite
+    run = start_run(nothing, Module[CASES])
+    instance_of(f::Any, types::Type...)::Core.MethodInstance = only(something(dispatch(Any[typeof(f), types...], run.world, 1)))
+    # Compiler proves `+` empty: shortcut, no code. Each other instance fails one condition, so engine analyzes it.
+    # Base instances: coverage counters are effects, so instrumented fixture code never takes shortcut.
+    @test body!(run, instance_of(+, Int, Int)) isa Shortcut
+    scope = Base.ScopedValues.ScopedValue{Int}
+    for (f, types) in ((setindex!, (Base.RefValue{Int}, Int)), (getindex, (Base.RefValue{Int},)), (getindex, (scope,)), (identity, (Vector{Int},)), (CASES.call_claim_bump!, ()), (CASES.call_generated, (Int,)))
+        @test body!(run, instance_of(f, types...)) isa Body
+    end
+    root = (instance_of(+, Int, Int), Pair{Int, Any}[])
+    solve!(run, [root])
+    @test same(root_summary(run, root), empty_summary()) && !haskey(run.codes, root)
+    # Unit verdict keeps no read of constant `Memory` length, which own analysis reads. Coverage turns shortcut off.
+    @test isempty(named(:memory_length).reads) == (Base.JLOptions().code_coverage == 0)
+    own = start_run(nothing, Module[CASES])
+    length_root = (instance_of(CASES.memory_length, Memory{Int}), Pair{Int, Any}[])
+    own.bodies[first(length_root)] = Effects.frame_body(own, Core.Compiler.typeinf_frame(own.interpreter, first(length_root), false))
+    solve!(own, [length_root])
+    @test collect(keys(own.summaries[length_root].reads)) == [(parameter(2), false)]
+    # Claim outside Base turns shortcut off: own analysis finds write that false claim hides.
+    @test shape(named(:call_claim_bump!).writes) == shape(named(:claim_bump!).writes) == [(global_place(CASES, :COUNTER), false, definite)]
+    # Compaction keeps call whose callee claims effects, and statement under block claim.
+    for name in (:claim_set!, :drop_claim_set!, :block_claim!, :drop_block_claim!)
+        @test shape(named(name).writes) == [(parameter(2), false, definite)]
+    end
+    @test claims!(run, only(methods(CASES.claim_bump!))) && claims!(run, only(methods(CASES.block_claim!))) && claims!(run, only(methods(CASES.generated_next)))
+    # Base claims stay trusted.
+    @test !claims!(run, only(methods(CASES.set_value!))) && !claims!(run, which(codeunit, (String, Int)))
+    method = only(methods(sourceless))
+    method.source = nothing
+    @test claims!(run, method)
+    # Callee without inferred code counts as claim. Search without claim marks instances it visited; other edges skip.
+    @test reaches_claim!(run, Any[Base.method_instance(never_called, (Int,))])
+    plus = Base.method_instance(+, (Int, Int))
+    @test !reaches_claim!(run, Any[1, Int, plus]) && plus in run.unclaimed && !reaches_claim!(run, Core.svec(plus))
+end
+
 @testset "engine stage" begin
     @test Corset.Engine.effects_facts(PACKAGE, UNITS, false, nothing) == (nothing, BlindSpot[])
     @test Corset.Engine.effects_facts(nothing, UNITS, true, nothing) == (nothing, BlindSpot[])
@@ -297,12 +342,13 @@ invoked!(values::Vector{Int}) = invoke(push!, Tuple{Vector{Int}, Any}, values, 1
 fill_one!(values::Vector{Int}) = (values[1] = 1; nothing)
 invoke_dead(text::String) = invoke(fill_one!, Tuple{Vector{Int}}, text)
 invoke_open(values::Vector{Int}, selector::Type) = invoke(push!, selector, values, 1)
-invoke_missing(values::Vector{Int}) = invoke(push!, Tuple{Int}, values)
+# Writes first, so compiler cannot prove call that always throws empty; engine sees unresolved call.
+invoke_missing(values::Vector{Int}) = (values[1] = 0; invoke(push!, Tuple{Int}, values))
 spread!(values::Vector{Int}, more::Tuple{Int, Int}) = push!(values, more...)
 spread_rest!(values::Vector{Int}, more::Tuple{Vararg{Int}}) = push!(values, more...)
 nested_spread!(values::Vector{Int}, more::Tuple{Tuple{Int}}) = push!(values, more[1]...)
 dynamic!(container::Any) = sort!(container)
-nested_apply(values::Vector{Int}, more::Tuple{Tuple{Int}}) = Core._apply_iterate(iterate, Core._apply_iterate, (iterate, push!, values), more)
+nested_apply(values::Vector{Int}, more::Tuple{Tuple{Int}}) = (values[1] = 0; Core._apply_iterate(iterate, Core._apply_iterate, (iterate, push!, values), more))
 @eval embedded() = $(Ref([1]))
 unknown_field(holder::Module, name::Symbol) = getfield(Core.getglobal(holder, name)::Base.RefValue{Vector{Int}}, :x)
 unknown_any(holder::Module, name::Symbol, field::Symbol) = getfield(Core.getglobal(holder, name), field)
@@ -734,6 +780,8 @@ const CALLS = [
     (CASES.act_either!, both(Data.OneOf(map(CASES.Setter, BOXES), map(box -> CASES.Relay(CASES.Setter(box)), BOXES)), INTS)),
     (CASES.restart!, map(drawn -> (drawn.first, drawn.second.first, drawn.second.second), Data.Pairs(BOXES, Data.Pairs(BOXES, Data.Integers(0, 3))))),
     (CASES.pick_setter!, both(map(CASES.Setter, BOXES), INTS)),
+    (CASES.read_scope, Data.Just(())), (CASES.same_box, map(tuple, BOXES)), (CASES.call_claim_bump!, Data.Just(())),
+    (CASES.drop_claim_set!, map(tuple, BOXES)), (CASES.drop_block_claim!, map(tuple, BOXES)), (CASES.call_generated, map(tuple, INTS)),
 ]
 
 """Whether `to` is reachable from `from` along `successors`, in zero or more steps."""
@@ -797,12 +845,15 @@ struct Layer{T}
     inner::T
 end
 
-deepen(x::Any, n::Int) = n == 0 ? x : deepen(Layer(x), n - 1)
-deepen_odd(x::Any, n::Int) = n == 0 ? x : deepen_even(Layer(x), n - 1)
-deepen_even(x::Any, n::Int) = n == 0 ? x : deepen_odd(Layer(x), n - 1)
+"""Steps of recursive fixtures: write keeps compiler from proving them empty, so engine reaches their callees."""
+const STEPS = Ref(0)
+
+deepen(x::Any, n::Int) = (STEPS[] += 1; n == 0 ? x : deepen(Layer(x), n - 1))
+deepen_odd(x::Any, n::Int) = (STEPS[] += 1; n == 0 ? x : deepen_even(Layer(x), n - 1))
+deepen_even(x::Any, n::Int) = (STEPS[] += 1; n == 0 ? x : deepen_odd(Layer(x), n - 1))
 
 """Steps layer content `Int`, `Float64`, `Float32`: signature changes at each step but never grows."""
-retag(x::Any, n::Int) = n == 0 ? x : retag(Layer(narrow(x.inner)), n - 1)
+retag(x::Any, n::Int) = (STEPS[] += 1; n == 0 ? x : retag(Layer(narrow(x.inner)), n - 1))
 narrow(x::Int) = Float64(x)
 narrow(x::Float64) = Float32(x)
 narrow(x::Float32) = x
@@ -816,8 +867,8 @@ struct InnerShell <: Shell
     inner::Shell
 end
 
-peel(f::Any, shell::OuterShell) = peel(f ∘ identity, shell.inner)
-peel(f::Any, shell::InnerShell) = peel(f ∘ identity, shell.inner)
+peel(f::Any, shell::OuterShell) = (STEPS[] += 1; peel(f ∘ identity, shell.inner))
+peel(f::Any, shell::InnerShell) = (STEPS[] += 1; peel(f ∘ identity, shell.inner))
 
 @testset "recursion limit" begin
     # Signature grows each step (`ComposedFunction` in LinearAlgebra `_any`): after one or two steps it widens.

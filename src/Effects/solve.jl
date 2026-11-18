@@ -13,10 +13,13 @@ struct Code
     callees::Vector{Vector{Variant}}
 end
 
+"""Instance whose compiler effects prove empty summary (`effects.md`, Compiler effects): engine skips own analysis."""
+struct Shortcut end
+
 """
 State of one effects run: world of dispatch and native inference, crash journal, package modules, referent cache; per
-instance its body or blind spot cause, caller that first reached it, and parameters it uses as field names; per variant
-its code and summary.
+instance its body, shortcut or blind spot cause, caller that first reached it, and parameters it uses as field names;
+per method whether it claims effects; instances that reach no claim; per variant its code and summary.
 """
 struct Run
     world::UInt
@@ -24,9 +27,11 @@ struct Run
     journal::Union{Nothing, Journal}
     modules::Set{Module}
     referent::IdDict{Any, Bool}
-    bodies::IdDict{Core.MethodInstance, Union{Body, String}}
+    bodies::IdDict{Core.MethodInstance, Union{Body, Shortcut, String}}
     callers::IdDict{Core.MethodInstance, Core.MethodInstance}
     fields::IdDict{Core.MethodInstance, Set{Int}}
+    claims::IdDict{Method, Bool}
+    unclaimed::Base.IdSet{Core.MethodInstance}
     codes::Dict{Variant, Code}
     summaries::Dict{Variant, Summary}
 end
@@ -34,9 +39,68 @@ end
 """Run in current world with crash `journal` for package `modules`, before any code."""
 function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module})::Run
     world = Base.get_world_counter()
-    bodies, callers = IdDict{Core.MethodInstance, Union{Body, String}}(), IdDict{Core.MethodInstance, Core.MethodInstance}()
-    fields = IdDict{Core.MethodInstance, Set{Int}}()
-    return Run(world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, fields, Dict{Variant, Code}(), Dict{Variant, Summary}())
+    bodies, callers = IdDict{Core.MethodInstance, Union{Body, Shortcut, String}}(), IdDict{Core.MethodInstance, Core.MethodInstance}()
+    fields, claims = IdDict{Core.MethodInstance, Set{Int}}(), IdDict{Method, Bool}()
+    return Run(world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, fields, claims, Base.IdSet{Core.MethodInstance}(), Dict{Variant, Code}(), Dict{Variant, Summary}())
+end
+
+"""
+Whether `method` outside Base claims effects (`effects.md`, Compiler effects): `@assume_effects` on method or on block
+in it. Generated method and method without source count: their code is unknown here.
+"""
+function claims!(run::Run, method::Method)::Bool
+    haskey(run.claims, method) && return run.claims[method]
+    claimed = if Base.moduleroot(method.module) in (Base, Core)
+        false
+    elseif method.purity != 0 || Base.hasgenerator(method) || method.source === nothing
+        true
+    else
+        any(overrides, Base.uncompressed_ast(method).ssaflags)
+    end
+    run.claims[method] = claimed
+    return claimed
+end
+
+"""
+Whether native inference `edges` (callee code instances) reach method that `claims!` effects. Callee without cached code
+counts as claim: its effects are unknown. Search that finds no claim marks every instance it visited.
+"""
+function reaches_claim!(run::Run, edges::Union{Vector{Any}, Core.SimpleVector})::Bool
+    visited, pending = Base.IdSet{Core.MethodInstance}(), Union{Vector{Any}, Core.SimpleVector}[edges]
+    while !isempty(pending)
+        for edge in pop!(pending)
+            edge isa Union{Core.CodeInstance, Core.MethodInstance} || continue
+            instance = edge isa Core.CodeInstance ? edge.def : edge
+            instance isa Core.ABIOverride && (instance = instance.def)
+            (instance in run.unclaimed || instance in visited) && continue
+            push!(visited, instance)
+            instance.def isa Method && claims!(run, instance.def) && return true
+            code = edge isa Core.CodeInstance ? edge : CC.get(CC.code_cache(run.interpreter), instance, nothing)
+            code isa Core.CodeInstance || return true
+            push!(pending, code.edges)
+        end
+    end
+    union!(run.unclaimed, visited)
+    return false
+end
+
+"""Callee code instances of call with inference `info`."""
+function call_edges(info::CC.CallInfo)::Vector{Any}
+    edges = Any[]
+    CC.add_edges!(edges, info)
+    return edges
+end
+
+"""
+Whether inference `frame` proves empty summary (`effects.md`, Compiler effects): instance writes nothing, touches no
+caller memory or task state, returns value without reference, and reaches no method that `claims!` effects.
+"""
+function proven_empty!(run::Run, frame::CC.InferenceState)::Bool
+    effects = frame.result.ipo_effects
+    CC.is_effect_free(effects) && CC.is_inaccessiblememonly(effects) && CC.is_notaskstate(effects) || return false
+    referent!(run.referent, CC.widenconst(frame.result.result)) && return false
+    method = frame.linfo.def
+    return !(method isa Method && claims!(run, method)) && !reaches_claim!(run, frame.edges)
 end
 
 """Instances from `instance` back to root, each followed by caller that first reached it."""
@@ -97,9 +161,18 @@ share on corpus, and JSON `effects` time went past 30 min.
 """
 join_limit(run::Run, instance::Core.MethodInstance)::Int = (instance.def::Method).module in run.modules ? JOIN_LIMIT : 1
 
-"""Body of inference `frame` in `run`; callees that grow along call chain are limited."""
+"""Whether statement `flag` carries block `@assume_effects` override."""
+overrides(flag::UInt32)::Bool = CC.decode_statement_effects_override(flag) != CC.EffectsOverride()
+
+"""
+Body of inference `frame` in `run`; callees that grow along call chain are limited. Compaction keeps calls that reach
+effects claim, and statements under block claim of instance that `claims!` effects.
+"""
 function frame_body(run::Run, frame::CC.InferenceState)::Body
-    ir, lines = frame_ir(frame, run.interpreter)
+    method = frame.linfo.def
+    own = method isa Method && claims!(run, method)
+    kept = [own && overrides(frame.src.ssaflags[index]) || reaches_claim!(run, call_edges(info)) for (index, info) in enumerate(frame.stmt_info)]
+    ir, lines = frame_ir(frame, run.interpreter, kept)
     chain, limit = call_chain(run, frame.linfo), join_limit(run, frame.linfo)
     return Body(ir, lines, [limited_outcome(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world, limit)) for index in 1:length(ir.stmts)])
 end
@@ -110,22 +183,25 @@ skips type alias search, which takes seconds on deep types.
 """
 journal_key(instance::Core.MethodInstance)::String = "effects\n" * sprint(show, instance.specTypes; context = :compact => false)
 
+"""Body of inference `frame`, or shortcut when its compiler effects prove empty summary (`proven_empty!`)."""
+instance_body(run::Run, frame::CC.InferenceState)::Union{Body, Shortcut} = proven_empty!(run, frame) ? Shortcut() : frame_body(run, frame)
+
 """
-Body of instance outside units: native inference, then passes. Blind spot cause instead when inference gives no code
-or crashed earlier run; crash journal records each inference, so relaunch skips instance that aborts process.
+Body of instance outside units: native inference, then shortcut or passes. Blind spot cause instead when inference gives
+no code or crashed earlier run; crash journal records each inference, so relaunch skips instance that aborts process.
 """
-function library_body(run::Run, instance::Core.MethodInstance)::Union{Body, String}
+function library_body(run::Run, instance::Core.MethodInstance)::Union{Body, Shortcut, String}
     journal = run.journal
     key = isnothing(journal) ? "" : journal_key(instance)
     isnothing(journal) || !(key in journal.crashed) || return "inference crashed process"
     isnothing(journal) || record!(journal, Record(key, method_label(instance.def::Method), false, nothing))
     frame = CC.typeinf_frame(run.interpreter, instance, false)
     isnothing(journal) || record!(journal, Record(key, "", true, nothing))
-    return isnothing(frame) ? "inference gave no code" : frame_body(run, frame)
+    return isnothing(frame) ? "inference gave no code" : instance_body(run, frame)
 end
 
 """Body of `instance`, inferred on first use."""
-body!(run::Run, instance::Core.MethodInstance)::Union{Body, String} = get!(() -> library_body(run, instance), run.bodies, instance)
+body!(run::Run, instance::Core.MethodInstance)::Union{Body, Shortcut, String} = get!(() -> library_body(run, instance), run.bodies, instance)
 
 """Builtins whose first two operands name slot: module and global name, or object and field."""
 const NAMING_BUILTINS = (Core.getfield, Core.getglobal, keys(FIELD_WRITES)..., keys(GLOBAL_WRITES)...)
