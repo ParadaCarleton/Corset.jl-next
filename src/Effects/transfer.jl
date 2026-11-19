@@ -48,6 +48,7 @@ previous round at `index` give way to this round.
 """
 function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees)::Nothing
     delete!(flow.callbacks, index)
+    derive_call!(flow, index, outcome_operands(outcome))
     @match outcome begin
         Outcome.Builtin(builtin, operands) => builtin!(flow, index, builtin, operands)
         Outcome.Intrinsic(intrinsic, operands) => intrinsic!(flow, index, intrinsic, operands)
@@ -58,6 +59,28 @@ function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees):
         Outcome.Unresolved(operands) => open!(flow, index, operands, CODE_DOUBT)
         Outcome.Dead() => nothing
     end
+    return nothing
+end
+
+"""Operands of call `outcome`, callee first where outcome keeps it; none for dead call."""
+outcome_operands(outcome::Outcome.Type)::Vector{Operand.Type} = @match outcome begin
+    Outcome.Builtin(_, operands) => operands
+    Outcome.Intrinsic(_, operands) => operands
+    Outcome.Foreign(_, operands) => operands
+    Outcome.Dispatch(_, operands) => operands
+    Outcome.Contract(_, operands, _) => operands
+    Outcome.Open(operands) => operands
+    Outcome.Unresolved(operands) => operands
+    Outcome.Dead() => Operand.Type[]
+end
+
+"""
+Derive type sources of call `index` with open result type from its `operands` (`effects.md`, Provenance): sources of
+each operand with open type. Type value and computed number carry no object, so their sources travel here.
+"""
+function derive_call!(flow::Flow, index::Int, operands::Vector{Operand.Type})::Nothing
+    Base.isdispatchelem(CC.widenconst(flow.ir.stmts[index][:type])) && return nothing
+    derive!(flow, index, reduce(|, (open_sources(flow, operand) for operand in operands); init = Sources(0)))
     return nothing
 end
 
@@ -83,14 +106,15 @@ end
 
 """
 Transfer call by Base contract `effects` on `arguments` (`effects.md`, Calls, step 6); `breached` positions hold type
-that writes where contract reads: `possible` write. Contract holds for methods loaded now, so verdict is closed-world.
+that writes where contract reads: `possible` write. Argument types decide breach, so write takes their dispatch doubt.
+Contract holds for methods loaded now, so verdict is closed-world.
 """
 function contract!(flow::Flow, index::Int, effects::CallEffects, arguments::Vector{Operand.Type}, breached::Vector{Int})::Nothing
     flow.closed_world = true
     table!(flow, index, effects, arguments)
     for position in breached
-        objects = union_targets(operand_targets(flow, arguments[at]) for at in role(effects, position, length(arguments)))
-        access!(flow.writes, objects, false, Effect(CODE_DOUBT, index, ""))
+        holders = arguments[role(effects, position, length(arguments))]
+        access!(flow.writes, union_targets(operand_targets(flow, holder) for holder in holders), false, Effect(open_doubt(flow, holders), index, ""))
     end
     return nothing
 end
@@ -98,7 +122,7 @@ end
 """
 Transfer call at `index` that reaches variants of `callees` (`effects.md`, Calls, steps 3 to 5): one applies its
 summary, or leaves callback record for caller; more join their summaries and resolve their records here. Access every
-member makes keeps most doubt among them; access only some make is at least `possible`.
+member makes keeps most doubt among them; access only some make takes doubt of dispatch between them (`open_doubt`).
 """
 function dispatch!(flow::Flow, index::Int, operands::Vector{Operand.Type}, callees::Callees)::Nothing
     variants = callees.variants[index]
@@ -112,21 +136,22 @@ function dispatch!(flow::Flow, index::Int, operands::Vector{Operand.Type}, calle
     for (member, variant) in enumerate(variants)
         apply!(flow, writes[member], reads[member], index, summary!(callees, variant), variant, operands, false, callees)
     end
-    join_accesses!(flow.writes, writes)
-    join_accesses!(flow.reads, reads)
+    partial = open_doubt(flow, operands)
+    join_accesses!(flow.writes, writes, partial)
+    join_accesses!(flow.reads, reads, partial)
     return nothing
 end
 
 """
 Record in `table` join of accesses of each member in `members`: most doubt among members, cause of first member with
-most doubtful level. Access absent from some member is at least `code`, doubt in code itself.
+most doubtful level. Access absent from some member is at least `partial`: operand types decide which member runs.
 """
-function join_accesses!(table::OriginAccesses, members::Vector{OriginAccesses})::Nothing
+function join_accesses!(table::OriginAccesses, members::Vector{OriginAccesses}, partial::Doubt)::Nothing
     for key in union(keys.(members)...)
         found = [member[key] for member in members if haskey(member, key)]
         first_worst = reduce((first, second) -> level_of(second.doubt) > level_of(first.doubt) ? second : first, found)
         doubt = reduce(most, (effect.doubt for effect in found))
-        length(found) == length(members) || (doubt = most(doubt, CODE_DOUBT))
+        length(found) == length(members) || (doubt = most(doubt, partial))
         effect = Effect(doubt, first_worst.cause, first_worst.reason)
         table[key] = haskey(table, key) ? stronger(table[key], effect) : effect
     end
@@ -364,32 +389,37 @@ end
 
 """
 Doubt of open dispatch with `operands` (`effects.md`, Provenance): sources of each operand whose type leaves dispatch
-open. `FunctionStandIn` stands for any function Corset chose. Call open without open operand type: doubt in code.
+open. Call open without open operand type: doubt in code.
 """
 function open_doubt(flow::Flow, operands::Vector{Operand.Type})::Doubt
-    sources = Sources(0)
-    for operand in operands
-        type = operand_type(flow.ir, operand)
-        if type === FunctionStandIn
-            sources |= OPAQUE
-        elseif !Base.isdispatchelem(type)
-            sources |= type_sources(flow, operand_targets(flow, operand))
-        end
-    end
+    sources = reduce(|, (open_sources(flow, operand) for operand in operands); init = Sources(0))
     return Doubt(Level.code, sources == 0 ? INHERENT : sources)
 end
 
 """
-Sources of open type of value with `targets`: parameter of each caller place, sources of each `code` chain, and
-`INHERENT` for global or fresh object merge. Fresh object has concrete type: its contents decide.
+Type sources of `operand` when its type leaves dispatch open, else none. `FunctionStandIn` stands for any function
+Corset chose.
 """
-function type_sources(flow::Flow, targets::Targets)::Sources
+function open_sources(flow::Flow, operand::Operand.Type)::Sources
+    type = operand_type(flow.ir, operand)
+    type === FunctionStandIn && return OPAQUE
+    Base.isdispatchelem(type) && return Sources(0)
+    return type_sources(flow, operand_targets(flow, operand), derived_of(flow, operand))
+end
+
+"""
+Sources of open type of value with `targets`: parameter of each caller place, sources of each `code` chain, and
+`INHERENT` for global or fresh object merge. Fresh object has concrete type: its contents decide. Value whose objects
+give no source takes its `derived` sources: type value and computed number hold no object.
+"""
+function type_sources(flow::Flow, targets::Targets, derived::Sources)::Sources
     count(fresh_origin, keys(targets)) > 1 && return INHERENT
     sources = Sources(0)
     for (origin, doubt) in beneath(flow, targets)
         sources |= sources_of(doubt)
         sources |= origin_source(origin)
     end
+    sources == 0 && (sources = derived)
     return sources == 0 ? INHERENT : sources
 end
 
@@ -438,12 +468,13 @@ function deep(flow::Flow, objects::Targets)::Targets
 end
 
 """
-Call statement `index` that applies callee summary: targets of each callee parameter, callee fresh node count, callee
-places mapped so far, and type sources of arguments so far. Stores of later edges miss cached places until next round,
-so fixpoint stays same.
+Call statement `index` that applies callee summary: targets and derived type sources of each callee parameter, callee
+fresh node count, callee places mapped so far, and type sources of arguments so far. Stores of later edges miss cached
+places until next round, so fixpoint stays same.
 """
 struct CallSite
     arguments::Vector{Targets}
+    derived::Vector{Sources}
     index::Int
     fresh::Int
     places::Dict{Place.Type, Targets}
@@ -480,6 +511,16 @@ function parameter_targets(flow::Flow, index::Int, method::Method, operands::Vec
     return [arguments; vararg]
 end
 
+"""Derived type sources of each callee parameter, grouped from call `operands` as `parameter_targets` groups targets."""
+function parameter_derived(flow::Flow, method::Method, operands::Vector{Operand.Type})::Vector{Sources}
+    given = Sources[derived_of(flow, operand) for operand in operands if !is_rest(operand)]
+    rest = reduce(|, (derived_of(flow, operand) for operand in operands if is_rest(operand)); init = Sources(0))
+    fixed = method.isva ? method.nargs - 1 : method.nargs
+    derived = [position <= length(given) ? given[position] : rest for position in 1:fixed]
+    method.isva && push!(derived, reduce(|, given[(fixed + 1):end]; init = rest))
+    return derived
+end
+
 """Union of targets of callee `nodes` at `site`, each raised to its node doubt (`caller_doubt`)."""
 function map_nodes(flow::Flow, nodes::Nodes, site::CallSite)::Targets
     found = Targets()
@@ -507,7 +548,7 @@ end
 """Type sources of argument `position` at `site`, found once per call statement and round; doubt in code past arguments."""
 function argument_sources(flow::Flow, site::CallSite, position::Int)::Sources
     position <= length(site.arguments) || return INHERENT
-    haskey(site.sources, position) || (site.sources[position] = type_sources(flow, site.arguments[position]))
+    haskey(site.sources, position) || (site.sources[position] = type_sources(flow, site.arguments[position], site.derived[position]))
     return site.sources[position]
 end
 
@@ -517,8 +558,9 @@ stores and result now. Accesses go into `writes` and `reads`, or into callback r
 caller object (`deferred`). Vararg tuple becomes allocation at `index`.
 """
 function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, summary::Summary, variant::Variant, operands::Vector{Operand.Type}, defers::Bool, callees::Callees)::Nothing
-    arguments = parameter_targets(flow, index, first(variant).def::Method, operands)
-    site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
+    method = first(variant).def::Method
+    arguments = parameter_targets(flow, index, method, operands)
+    site = CallSite(arguments, parameter_derived(flow, method, operands), index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
     summary.closed_world && (flow.closed_world = true)
     summary.cut && (flow.cut = true)
     apply_stores!(flow, site, summary)
@@ -555,14 +597,14 @@ end
 """
 Resolve callback `record` at call statement `index`: callable is fresh here, so accesses of its variant apply to record
 targets. Record in `seen` adds nothing: recursion through callable repeats same accesses on same targets. Instance
-that kept record took `closed_world` of variant already (`apply!`).
+that kept record took `closed_world` of variant already (`apply!`). Record keeps targets only, so no derived sources.
 """
 function resolve!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, record::Deferred, defers::Bool, callees::Callees, seen::Set{Deferred})::Nothing
     record in seen && return nothing
     push!(seen, record)
     variant, arguments = record
     summary = summary!(callees, variant)
-    site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
+    site = CallSite(arguments, zeros(Sources, length(arguments)), index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
     apply_accesses!(flow, writes, reads, site, summary, defers, callees, seen)
     return nothing
 end

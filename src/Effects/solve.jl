@@ -408,7 +408,7 @@ gives variants whose summaries rounds read. `flush` resolves callback records he
 """
 function variant_summary(run::Run, variant::Variant, flush::Bool)::Tuple{Summary, Set{Variant}}
     code = run.codes[variant]
-    flow = start_flow(code.ir, code.outcomes, run.referent, flush, code.cut)
+    flow = start_flow(code.ir, code.outcomes, run.referent, flush, code.cut, static_sources(first(variant).def::Method))
     callees = Callees(code.callees, run.summaries, Set{Variant}())
     while true
         flow.changed = false
