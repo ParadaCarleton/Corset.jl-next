@@ -46,4 +46,4 @@ makedocs(;
     warnonly = false,
 )
 
-deploydocs(repo = "github.com/ParadaCarleton/Corset.jl.git", push_preview = true)
+deploydocs(repo = "github.com/ParadaCarleton/Corset.jl-next.git", push_preview = true)

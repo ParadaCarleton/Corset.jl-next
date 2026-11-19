@@ -22,7 +22,7 @@ error[nan-compare]: `x != NaN` is never false
 Corset is not in the General registry. Add the `corset` app from this repository:
 
 ```julia
-pkg> app add https://github.com/ParadaCarleton/Corset.jl-private
+pkg> app add https://github.com/ParadaCarleton/Corset.jl-next
 ```
 
 Pkg puts the app in `~/.julia/bin`. Add that directory to `PATH`.
@@ -57,3 +57,4 @@ The [guide](docs/src/guide.md) tells how to set levels, opt out of a rule and ad
 Corset is free for noncommercial use under [PolyForm Noncommercial 1.0.0](LICENSE).
 Universities, public research institutes and other noncommercial organizations qualify, whatever their funding.
 Commercial use needs a separate license; contact [ParadaCarleton](https://github.com/ParadaCarleton).
+Legacy Corset (v0.3.0 and earlier) lives at [ParadaCarleton/Corset.jl](https://github.com/ParadaCarleton/Corset.jl) under MPL 2.0.

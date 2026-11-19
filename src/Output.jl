@@ -102,7 +102,7 @@ function sarif_report(report::Report, version::String)::Dict{String, Any}
     groups = Dict(string(entry.name) => string(entry.group) for entry in REGISTRY)
     names = sort!(unique([[string(diagnostic.finding.rule) for diagnostic in report.diagnostics]; isempty(report.stale) ? String[] : ["baseline"]]))
     rules = [Dict("id" => name, "properties" => Dict("group" => get(groups, name, "correctness"))) for name in names]
-    driver = Dict("name" => "Corset", "informationUri" => "https://github.com/ParadaCarleton/Corset.jl", "version" => version, "rules" => rules)
+    driver = Dict("name" => "Corset", "informationUri" => "https://github.com/ParadaCarleton/Corset.jl-next", "version" => version, "rules" => rules)
     results = [[sarif_result(report, diagnostic) for diagnostic in report.diagnostics]; [stale_result(key) for key in report.stale]]
     notifications = [
         Dict("level" => "note", "message" => Dict("text" => "skipped: $(spot.cause)"), "locations" => [sarif_location(report, Label(spot.span, spot.cause))])
