@@ -70,9 +70,37 @@ function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees):
         Outcome.Unresolved(operands) => open!(flow, writes, index, operands, CODE_DOUBT)
         Outcome.Dead() => nothing
     end
+    start = started(flow.ir, index, outcome)
+    isnothing(start) || access!(flow.reads, value_targets(flow, something(start)), false, definite(index), EffectKind.iteration)
     flow.record && (flow.call_kinds[index] = call_kinds(outcome, writes, callees, index))
     (message || flow.record) && merge_accesses!(flow.writes, writes, message)
     return nothing
+end
+
+"""
+Functions whose call starts iteration of first argument (`effects.md`, Facts), by argument count without state:
+`iterate(x)`, destructuring `indexed_iterate(x, i)`, `first(x)`, `only(x)` and `isempty(x)`.
+"""
+const STARTS = IdDict{Any, Int}(iterate => 1, Base.indexed_iterate => 2, first => 1, only => 1, isempty => 1)
+
+"""
+IR value whose iteration call statement `index` of `ir` with `outcome` starts (`STARTS`); `nothing` for other call.
+`iterate` without state starts at every resolution: its method continues with state. Other function starts through
+Base contract only; static call shows start through callee summary, and own method of type may start nothing.
+"""
+function started(ir::CC.IRCode, index::Int, outcome::Outcome.Type)::Union{Nothing, Some{Any}}
+    statement = ir.stmts[index][:stmt]::Expr
+    statement.head === :call || return nothing
+    callee = constant(ir, statement.args[1])
+    isnothing(callee) && return nothing
+    haskey(STARTS, something(callee)) || return nothing
+    length(statement.args) == STARTS[something(callee)] + 1 || return nothing
+    contract = @match outcome begin
+        Outcome.Contract(_, _, _) => true
+        Outcome.Dead() => return nothing
+        _ => false
+    end
+    return contract || something(callee) === iterate ? Some(statement.args[2]) : nothing
 end
 
 """Add effects of `scratch` to `table`; `only_definite` skips effects with doubt."""
