@@ -912,9 +912,17 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <ul>
 <li>Kinds: memory write, IO, default RNG, RNG argument, task-local state, <code>ScopedValue</code> read, lock and other synchronization, lazy init, audited internal state.</li>
 <li><code>bang-convention</code> exempts IO, RNG, lazy init and audited internal state. <code>unused-call</code> counts every kind. <code>hidden-input</code> reads default RNG, task-local state, <code>ScopedValue</code> and mutable globals.</li>
+<li>Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.</li>
+<li>Kind comes from types along place path, root first: first <code>IO</code> gives IO, <code>AbstractRNG</code> gives RNG argument.</li>
+<li>Lock, <code>Condition</code> and <code>Semaphore</code> on path give synchronization. Path without such type gives memory write.</li>
+<li>Path types: instance parameter type or global binding type, then field type or element type per step. Abstract type without field ends walk.</li>
+<li>Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.</li>
+<li>Write to RNG fields of <code>Task</code> (<code>rngState0</code> to <code>rngState4</code>): default RNG. Other write to <code>Task</code>, <code>task_local_storage</code> included: task-local state.</li>
+<li><code>ScopedValue</code> read: read of <code>ScopedValue</code> object or of current task scope.</li>
 <li>Lock write: acquire or release of lock that argument or global holds. <code>bang-convention</code> exempts balanced use (Release balance).</li>
 <li>Lazy init and audited internal state come from audited table of Base types and methods only:
 <ul>
+<li>Table keys holder type and field, or method. Listed entry sets kind before path types.</li>
 <li><code>Regex</code> compile cache, <code>LazyString</code>; Base logging and PCRE contexts.</li>
 <li>Repair method <code>unsafe_convert(Ref{BigFloat}, ::BigFloatData)</code>: rewrites stale MPFR limb pointer before each call.</li>
 </ul>

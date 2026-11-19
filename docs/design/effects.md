@@ -181,8 +181,16 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 
 - Kinds: memory write, IO, default RNG, RNG argument, task-local state, `ScopedValue` read, lock and other synchronization, lazy init, audited internal state.
 - `bang-convention` exempts IO, RNG, lazy init and audited internal state. `unused-call` counts every kind. `hidden-input` reads default RNG, task-local state, `ScopedValue` and mutable globals.
+- Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.
+- Kind comes from types along place path, root first: first `IO` gives IO, `AbstractRNG` gives RNG argument.
+- Lock, `Condition` and `Semaphore` on path give synchronization. Path without such type gives memory write.
+- Path types: instance parameter type or global binding type, then field type or element type per step. Abstract type without field ends walk.
+- Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.
+- Write to RNG fields of `Task` (`rngState0` to `rngState4`): default RNG. Other write to `Task`, `task_local_storage` included: task-local state.
+- `ScopedValue` read: read of `ScopedValue` object or of current task scope.
 - Lock write: acquire or release of lock that argument or global holds. `bang-convention` exempts balanced use (Release balance).
 - Lazy init and audited internal state come from audited table of Base types and methods only:
+  - Table keys holder type and field, or method. Listed entry sets kind before path types.
   - `Regex` compile cache, `LazyString`; Base logging and PCRE contexts.
   - Repair method `unsafe_convert(Ref{BigFloat}, ::BigFloatData)`: rewrites stale MPFR limb pointer before each call.
 - Package `setfieldonce!` and package caches follow memo-cache rule above: cheap proof or opt-out.
