@@ -1,22 +1,25 @@
 """
-IR of instance before specialization, source statement index of each IR statement, call outcome of each statement, and
-whether stand-ins cut path of its own code (`effects.md`, Stand-in cuts).
+IR of instance before specialization, source statement index of each IR statement, call outcome of each statement,
+whether each statement builds thrown value only (`message_statements`), and whether stand-ins cut path of its own code
+(`effects.md`, Stand-in cuts).
 """
 struct Body
     ir::CC.IRCode
     lines::Vector{Int}
     outcomes::Vector{Union{Nothing, Outcome.Type}}
+    message::Vector{Bool}
     cut::Bool
 end
 
 """
-Code of variant for solve: specialized IR, statement lines, outcomes and cut of its body, and variants each call
-reaches.
+Code of variant for solve: specialized IR, statement lines, outcomes, message statements and cut of its body, and
+variants each call reaches.
 """
 struct Code
     ir::CC.IRCode
     lines::Vector{Int}
     outcomes::Vector{Union{Nothing, Outcome.Type}}
+    message::Vector{Bool}
     callees::Vector{Vector{Variant}}
     cut::Bool
 end
@@ -215,7 +218,24 @@ function frame_body(run::Run, frame::CC.InferenceState, cut::Bool)::Body
     kept = [own && overrides(frame.src.ssaflags[index]) || reaches_untrusted!(run, call_edges(info)) for (index, info) in enumerate(frame.stmt_info)]
     ir, lines = frame_ir(frame, run.interpreter, kept)
     chain, limit = call_chain(run, frame.linfo), join_limit(run, frame.linfo)
-    return Body(ir, lines, [limited_outcome(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world, limit)) for index in 1:length(ir.stmts)], cut)
+    outcomes = [limited_outcome(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world, limit)) for index in 1:length(ir.stmts)]
+    return Body(ir, lines, outcomes, message_statements(ir, throw_sinks(run, ir)), cut)
+end
+
+"""
+Whether each statement of `ir` throws: call of `throw` or throw helper (`throw_helper`). Other call that never returns
+fails on stand-in: no sink, since stand-ins cut it.
+"""
+function throw_sinks(run::Run, ir::CC.IRCode)::Vector{Bool}
+    sinks = fill(false, length(ir.stmts))
+    for index in 1:length(ir.stmts)
+        statement = ir.stmts[index][:stmt]
+        statement isa Expr || continue
+        (statement.head === :call && ir.stmts[index][:type] === Union{}) || continue
+        callee = called(ir, statement, ir.sptypes)
+        sinks[index] = !isnothing(callee) && first(get!(() -> throw_helper(callee), run.helpers, callee))
+    end
+    return sinks
 end
 
 """
@@ -383,7 +403,7 @@ function variant_code(run::Run, variant::Variant, body::Body)::Code
             _ => nothing
         end
     end
-    return Code(ir, body.lines, body.outcomes, callees, body.cut)
+    return Code(ir, body.lines, body.outcomes, body.message, callees, body.cut)
 end
 
 """Variants `roots` reach through calls, roots first; gives code to each variant with body."""
@@ -408,7 +428,7 @@ gives variants whose summaries rounds read. `flush` resolves callback records he
 """
 function variant_summary(run::Run, variant::Variant, flush::Bool)::Tuple{Summary, Set{Variant}}
     code = run.codes[variant]
-    flow = start_flow(code.ir, code.outcomes, run.referent, flush, code.cut, static_sources(first(variant).def::Method))
+    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, flush, code.cut, static_sources(first(variant).def::Method))
     callees = Callees(code.callees, run.summaries, Set{Variant}())
     while true
         flow.changed = false

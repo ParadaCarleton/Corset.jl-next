@@ -82,5 +82,27 @@ function constant(ir::CC.IRCode, value::Any)::Union{Nothing, Some{Any}}
     return nothing
 end
 
+"""
+Whether each statement of `ir` builds thrown value only (`effects.md`, Effect kinds): it has use, and each use is
+`sinks` statement (throw) or other such statement. Use cycle never counts: least fixpoint.
+"""
+function message_statements(ir::CC.IRCode, sinks::Vector{Bool})::Vector{Bool}
+    users = [Int[] for _ in 1:length(ir.stmts)]
+    for index in 1:length(ir.stmts), reference in CC.userefs(ir.stmts[index][:stmt])
+        used = reference[]
+        used isa Core.SSAValue && push!(users[used.id], index)
+    end
+    message, changed = fill(false, length(ir.stmts)), true
+    while changed
+        changed = false
+        for index in reverse(eachindex(message))
+            (message[index] || isempty(users[index])) && continue
+            all(user -> sinks[user] || message[user], users[index]) || continue
+            message[index] = changed = true
+        end
+    end
+    return message
+end
+
 """Whether `type` is tuple type with definite field count: no `Vararg` parameter."""
 definite_tuple(type::Any)::Bool = type isa DataType && type <: Tuple && (isempty(type.parameters) || !Base.isvarargtype(type.parameters[end]))

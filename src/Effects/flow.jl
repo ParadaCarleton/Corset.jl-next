@@ -8,16 +8,18 @@ const OriginHolds = Dict{Origin.Type, Targets}
 const Deferred = Tuple{Variant, Vector{Targets}}
 
 """
-Points-to state of one instance during its fixpoint (`effects.md`, Origins and points-to): targets per IR value and
-argument; type sources each IR value derives from values that made it (`derived_of`) and of each static parameter;
-flow-insensitive heap by origin and slot, memory backing, unknown-slot stores and global bindings; result
-targets; accesses by origin and whether they cover places below; callback records by call statement. `changed` records
-growth of targets in current round; `closed_world` records join over methods loaded now, and `cut` path stand-ins cut
-(`Summary`). `flush` resolves every callback record here: root unit has no caller to resolve them.
+Points-to state of one instance during its fixpoint (`effects.md`, Origins and points-to): call outcome and message flag
+(`message_statements`) per statement; targets per IR value and argument; type sources each IR value derives from
+values that made it (`derived_of`) and of each static parameter; flow-insensitive heap by origin and slot, memory
+backing, unknown-slot stores and global bindings; result targets; accesses by origin and whether they cover places
+below; callback records by call statement. `changed` records growth of targets in current round; `closed_world` records
+join over methods loaded now, and `cut` path stand-ins cut (`Summary`). `flush` resolves every callback record here:
+root unit has no caller to resolve them.
 """
 mutable struct Flow
     const ir::CC.IRCode
     const outcomes::Vector{Union{Nothing, Outcome.Type}}
+    const message::Vector{Bool}
     const values::Vector{Targets}
     const derived::Vector{Sources}
     const statics::Vector{Sources}
@@ -38,18 +40,18 @@ mutable struct Flow
 end
 
 """
-Flow of `ir` with call `outcomes` before first round: each referent argument points to its parameter. `flush` resolves
-callback records in this instance; `cut` marks instance whose own code stand-ins cut; `statics` holds sources of each
-static parameter (`static_sources`).
+Flow of `ir` with call `outcomes` and `message` statements before first round: each referent argument points to its
+parameter. `flush` resolves callback records in this instance; `cut` marks instance whose own code stand-ins cut;
+`statics` holds sources of each static parameter (`static_sources`).
 """
-function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::Vector{Sources})::Flow
+function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, message::Vector{Bool}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::Vector{Sources})::Flow
     arguments = [
         referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), Step.Type[])) => NO_DOUBT) : Targets()
             for (position, type) in enumerate(ir.argtypes)
     ]
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     callbacks = Dict{Int, Vector{Deferred}}()
-    return Flow(ir, outcomes, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, false, false, cut)
+    return Flow(ir, outcomes, message, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, false, false, cut)
 end
 
 """
