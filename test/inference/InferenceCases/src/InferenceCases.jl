@@ -56,6 +56,9 @@ text(s::AbstractString) = s
 explicit(x::Any, y::Real) = y
 free(x::T) where {T} = x
 wide(a::Real, b::Real, c::Real, d::Real) = a + b + c + d
+first_value(values) = values[1]
+opening(values::AbstractVector) = first_value(values)
+viewing(values::AbstractMatrix) = first_value(view(values, :, 1))
 nest(x) = nest((x,))
 start(x::Real) = nest(x)
 function total(values::AbstractVector{<:Real})

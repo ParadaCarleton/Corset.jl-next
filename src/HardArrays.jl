@@ -10,7 +10,7 @@ and array from input is meeting.
 module HardArrays
 
 using ..Facts: Exit, tuple_parameters
-using ..StandIns: ArrayStandIn, DenseStandIn, Templated
+using ..StandIns: Templated, array_stand_in
 using ..Widening: Swap, converted!, breaks, exit_statement, type_branch, statement_call, argument_type, statement_type, resolved
 
 const CC = Core.Compiler
@@ -36,13 +36,15 @@ struct Change
     at::Int
 end
 
-"""Whether `type` is array stand-in."""
-array_stand_in(type::Any)::Bool = type isa DataType && (type <: ArrayStandIn || type <: DenseStandIn)
-
-"""Whether `type` holds array stand-in, parameters and union members included: lazy broadcast of input holds one."""
+"""
+Whether `type` holds array stand-in, parameters, variable bounds and union members included: lazy broadcast of
+input holds one, view of open stand-in holds it as bound.
+"""
 function holds_array(type::Any)::Bool
     array_stand_in(type) && return true
+    type isa TypeVar && return holds_array(type.ub)
     type isa Union && return holds_array(type.a) || holds_array(type.b)
+    type = Base.unwrap_unionall(type)
     return type isa DataType && any(holds_array, type.parameters)
 end
 
@@ -97,7 +99,8 @@ end
 """Replacements that give `chosen` stand-in array type of their template in `instance`."""
 function swaps(instance::Core.MethodInstance, chosen::Vector{Construction})::Vector{Swap}
     arguments = tuple_parameters(instance.specTypes)
-    return Swap[(index = construction.index, position = 1, value = Templated{arguments[construction.template].name.wrapper}(construction.callee)) for construction in chosen]
+    wrapper(slot::Int)::UnionAll = Base.unwrap_unionall(arguments[slot]).name.wrapper
+    return Swap[(index = construction.index, position = 1, value = Templated{wrapper(construction.template)}(construction.callee)) for construction in chosen]
 end
 
 """

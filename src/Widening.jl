@@ -59,9 +59,10 @@ struct Change
     expected::Type
 end
 
-"""Whether `type` holds float stand-in, parameters and union members included."""
+"""Whether `type` holds float stand-in, parameters, variable bounds and union members included."""
 function holds_float(type::Any)::Bool
     type === FloatStandIn && return true
+    type isa TypeVar && return holds_float(type.ub)
     type isa Union && return holds_float(type.a) || holds_float(type.b)
     type isa UnionAll && return holds_float(type.body)
     return type isa DataType && any(holds_float, type.parameters)
@@ -74,6 +75,10 @@ end
 function swapped(type::Any)::Any
     type === FloatStandIn && return Float64
     type isa Union && return Union{swapped(type.a), swapped(type.b)}
+    if type isa UnionAll
+        body = swapped(type.body)
+        return isnothing(body) ? nothing : UnionAll(type.var, body)
+    end
     type isa DataType || return type
     isempty(type.parameters) && return type
     return try

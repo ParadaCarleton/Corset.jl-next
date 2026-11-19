@@ -36,23 +36,42 @@ Family text of observed `type`, stand-ins as models: `Bool`, `Integer`, `Real`, 
 function family_text(type::Any, scope::Module)::Union{Nothing, String}
     type = StandIns.model_type(type)
     (type === Nothing || type === Missing) && return string(type)
+    (type isa DataType || type isa UnionAll) && type <: AbstractArray && return array_text(type, scope)
     (type isa DataType && type !== Any) || return nothing
     type <: Bool && return "Bool"
     type <: Integer && return "Integer"
     type <: Real && return "Real"
-    if type <: AbstractArray
-        dimensions, element = ndims(type), eltype(type)
-        name = dimensions == 1 ? "AbstractVector" : dimensions == 2 ? "AbstractMatrix" : "AbstractArray"
-        element === Any && return dimensions <= 2 ? name : "$name{<:Any, $dimensions}"
-        inner = element_text(element, scope)
-        isnothing(inner) && return nothing
-        return dimensions <= 2 ? "$name{<:$inner}" : "$name{<:$inner, $dimensions}"
-    end
     for family in NAMED
         type <: family && return string(nameof(family))
     end
     parent = supertype(type)
     return bound_name(parent === Any ? type : parent, scope)
+end
+
+"""
+Dimension count of array `type` and element bound; count `nothing` when open. Open stand-in model is `Array` family,
+whose type variables are element and count (`Array{T, 1} where T <: AbstractString`).
+"""
+function array_shape(type::Type)::Tuple{Union{Nothing, Int}, Any}
+    type isa DataType && return ndims(type), eltype(type)
+    body = Base.unwrap_unionall(type)
+    if body isa DataType && body <: Array
+        element, dimensions = body.parameters
+        return dimensions isa Int ? dimensions : nothing, element isa TypeVar ? element.ub : element
+    end
+    return (applicable(ndims, type) ? ndims(type) : nothing), Any
+end
+
+"""Family text of array `type`: `AbstractVector`, `AbstractMatrix` or `AbstractArray`, with element family and count."""
+function array_text(type::Type, scope::Module)::Union{Nothing, String}
+    dimensions, element = array_shape(type)
+    name = dimensions == 1 ? "AbstractVector" : dimensions == 2 ? "AbstractMatrix" : "AbstractArray"
+    # Open count names no count: `AbstractArray` takes any.
+    suffix = isnothing(dimensions) || dimensions <= 2 ? "" : ", $dimensions"
+    element === Any && return isempty(suffix) ? name : "$name{<:Any$suffix}"
+    inner = element_text(element, scope)
+    isnothing(inner) && return nothing
+    return "$name{<:$inner$suffix}"
 end
 
 """Members of `type`: union members, or `type` alone."""
