@@ -103,6 +103,52 @@ end
         end
     end
 
+    @testset "library key" begin
+        mktempdir(@__DIR__) do scratch
+            depot, developed = joinpath.(scratch, ["depot", "developed"])
+            registered = joinpath(depot, "packages", "Registered", "slug")
+            write_files(registered, "Project.toml" => "", "src/Registered.jl" => "module Registered end\n")
+            write_files(developed, "Project.toml" => "", "src/Developed.jl" => "module Developed end\n", "test/runtests.jl" => "")
+            packages = [Base.PkgId(Base.UUID(1), "Registered") => registered, Base.PkgId(Base.UUID(2), "Developed") => developed]
+            key(julia::String, loaded::Vector{Pair{Base.PkgId, String}})::String = Cache.library_key(julia, loaded, [depot])
+            original = key("1.13.4", packages)
+            # Depot slug derives from tree hash, so depot package counts by path; tests of path package never load.
+            write_files(registered, "src/Registered.jl" => "module Registered f() = 1 end\n")
+            write_files(developed, "test/runtests.jl" => "x = 1\n")
+            @test key("1.13.4", packages) == original && key("1.13.4", reverse(packages)) == original
+            @test key("1.14.0", packages) != original
+            write_files(developed, "src/Developed.jl" => "module Developed f() = 1 end\n")
+            @test key("1.13.4", packages) != original
+        end
+        # Target package stays out: library summary reaches none of its methods.
+        found = Cache.loaded_packages([Corset])
+        @test !any(((id, _),) -> id.name == "Corset", found) && any(((id, _),) -> id.name == "Moshi", found) && all(isdir ∘ last, found)
+        @test any(((id, _),) -> id.name == "Corset", Cache.loaded_packages(Module[]))
+    end
+
+    @testset "library entries" begin
+        mktempdir(@__DIR__) do scratch
+            directory, keys = joinpath(scratch, "library"), ["key $position" for position in 1:6]
+            # Marking absent entry writes nothing.
+            Cache.keep_library!(directory, keys[1], nothing)
+            @test !isdir(directory)
+            # File times are coarse, so each write waits.
+            for position in 1:5
+                Cache.keep_library!(directory, keys[position], position)
+                sleep(0.05)
+            end
+            @test count(key -> isfile(Cache.entry(directory, key)), keys) == Cache.LIBRARY_ENTRIES && !isfile(Cache.entry(directory, keys[1]))
+            # Use keeps entry over newer ones; staging file of other process stays.
+            staging, io = mktemp(directory)
+            close(io)
+            Cache.keep_library!(directory, keys[2], nothing)
+            sleep(0.05)
+            Cache.keep_library!(directory, keys[6], 6)
+            @test isfile(Cache.entry(directory, keys[2])) && !isfile(Cache.entry(directory, keys[3])) && isfile(staging)
+            @test Cache.lookup(Int, directory, keys[6], keys[6]) == 6
+        end
+    end
+
     @testset "entries" begin
         mktempdir(@__DIR__) do directory
             cache = joinpath(directory, "cache")
@@ -171,7 +217,7 @@ end
                 span = Corset.Facts.Span(b, 1, 11, Corset.Facts.Precision.exact)
                 fake = Corset.Facts.FailingCall(span, span, "fake", Corset.Facts.Confidence.definite)
                 bytes = Corset.Inference.serialized(Corset.Inference.Inferred(Union{}, Tuple{Type, Type}[], Type[], [1 => fake], true, false, Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[]))
-                store[held] = Corset.Inference.Entry(store[held].file, store[held].methods, store[held].staged, bytes)
+                store[held] = Corset.Inference.Entry(store[held].file, store[held].methods, store[held].staged, bytes, store[held].effects)
                 Cache.store!(cache, store_entry, key, store)
                 write(joinpath(checked, "src", "a.jl"), first_part * "\n")
                 @test occursin("call to `fake` never succeeds", cached_corset(cache, "check", package)[2])
