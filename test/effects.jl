@@ -1121,16 +1121,43 @@ function loop_message(parts::Vector{Any}, flag::Bool)::Nothing
 end
 
 """
-Last part thrown: loop phi feeds message only, and `string` call feeds phi only. Phi comes first in IR, so `string` call
-joins message on second pass.
+Previous part thrown: loop phi feeds message only, and `string` call feeds phi only. Phi comes first in IR, so `string`
+call joins message on second pass.
 """
-function last_part_message(parts::Vector{Any}, flag::Bool)::Nothing
+function previous_part_message(parts::Vector{Any}, flag::Bool)::Nothing
     text = ""
     for part in parts
+        flag && throw(ArgumentError(text))
         text = string(part)
     end
-    flag && throw(ArgumentError(text))
     return nothing
+end
+
+"""Package text of `x`: open `print` gives `possible` write."""
+described(x::Any)::String = string(x)
+
+"""Message from static call: callee summary applies inside message."""
+describe_message(x::Any, flag::Bool) = flag ? throw(ArgumentError(described(x))) : nothing
+
+"""Package text of `y`, by type of `x`: call on `Any` joins both methods."""
+shown(::Int, y::Any)::String = string(y)
+shown(::Float64, y::Any)::String = string(y)
+
+"""Message from joined call: join goes inside message."""
+join_message(x::Any, y::Any, flag::Bool) = flag ? throw(ArgumentError(shown(x, y))) : nothing
+
+"""Message from contract call with breach: `iterate` on `Any` may consume `Iterators.Stateful`."""
+breach_message(x::Any, flag::Bool) = flag ? throw(ArgumentError(string(iterate(x)))) : nothing
+
+"""Definite write before message, then same write inside message: write keeps first cause."""
+pop_twice!(stack::Vector{Any}, flag::Bool) = (pop!(stack); flag ? throw(ArgumentError(string(pop!(stack)))) : nothing)
+
+"""Run and root of `f` on argument `types`, solved with `modules` as package code."""
+function solved(f::Any, modules::Vector{Module}, types::Type...)::Tuple{Effects.Run, Variant}
+    run = start_run(nothing, modules)
+    root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
+    solve!(run, [root])
+    return run, root
 end
 
 """Open call builds thrown value: its writes go nowhere caller sees."""
@@ -1156,10 +1183,15 @@ report_taker!(taker::Taker, value::Int, flag::Bool)::Nothing = flag ? throw(Argu
     element = Step.Element()
     # Message call adds no `possible` write; same call feeding log keeps it.
     @test isempty(summary_of(message_write, Any, Bool).writes) && isempty(summary_of(open_message, Any, Any, Bool).writes)
-    @test isempty(summary_of(last_part_message, Vector{Any}, Bool).writes)
+    @test isempty(summary_of(previous_part_message, Vector{Any}, Bool).writes)
     @test doubts(summary_of(logged_write!, Vector{String}, Any).writes) == Dict(top(2) => NO_DOUBT, (parameter(3), true) => sourced(3))
-    # Definite write inside message stays, and so does write before throw.
+    # Static call, join and contract breach inside message add no `possible` write.
+    @test isempty(summary_of(describe_message, Any, Bool).writes) && isempty(summary_of(breach_message, Any, Bool).writes)
+    @test isempty(root_summary(solved(join_message, Module[@__MODULE__], Any, Any, Bool)...).writes)
+    # Definite write inside message stays, and so does write before throw; earlier write keeps its cause.
     @test doubts(summary_of(pop_message!, Vector{Any}, Bool).writes) == Dict(top(2) => NO_DOUBT)
+    run, root = solved(pop_twice!, Module[], Vector{Any}, Bool)
+    @test !run.codes[root].message[root_summary(run, root).writes[top(2)].cause]
     @test level_of(summary_of(open_then_throw!, Any, Any, Bool).writes[(parameter(3), true)].doubt) == Level.code
     @test isempty(summary_of(error_message, Any, Bool).writes)
     # Use cycle never counts as message; call that fails on its types is no throw.

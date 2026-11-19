@@ -96,7 +96,7 @@ function message_statements(ir::CC.IRCode, sinks::Vector{Bool})::Vector{Bool}
     while changed
         changed = false
         for index in reverse(eachindex(message))
-            (message[index] || sinks[index] || isempty(users[index])) && continue
+            (message[index] || isempty(users[index])) && continue
             all(user -> sinks[user] || message[user], users[index]) || continue
             message[index] = changed = true
         end
