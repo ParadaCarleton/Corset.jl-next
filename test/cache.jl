@@ -122,7 +122,9 @@ end
         end
         # Target package stays out: library summary reaches none of its methods.
         found = Cache.loaded_packages([Corset])
-        @test !any(((id, _),) -> id.name == "Corset", found) && any(((id, _),) -> id.name == "Moshi", found) && all(isdir ∘ last, found)
+        @test !any(((id, _),) -> id.name == "Corset", found)
+        # Earlier test files load packages from temporary directories they delete, so only dependency root is checked.
+        @test isfile(joinpath(only(root for (id, root) in found if id.name == "Moshi"), "Project.toml"))
         @test any(((id, _),) -> id.name == "Corset", Cache.loaded_packages(Module[]))
     end
 
