@@ -281,6 +281,8 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
     @test !isempty(unit(:maybe_fill!).cuts) && !named(:maybe_fill!).complete && length(cut_spots(:maybe_fill!)) == 1
     # Generated code differs per signature, so no statement lookup crosses signatures.
     @test !isempty(unit(:fallback_bump!).cuts) && !isempty(unit(:generated_poke).cuts)
+    # Generator runs on declared signature too, with other code there: generated method reads no declared code.
+    @test unit(:generated_shift!).cuts == dead_calls(unit(:generated_shift!).code) && !isempty(unit(:generated_shift!).cuts)
     # Library instance cut: caller is uncaught failure, or caught one that leaves helper `nothrow`.
     for name in (:poke_some!, :poke_quietly!)
         @test isempty(unit(name).cuts) && !named(name).complete && only(cut_spots(name)).span != named(name).site.span
@@ -316,6 +318,10 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
     vector_pointer = instance_of(pointer, Vector{Int})
     @test !cut!(run, vector_pointer, throwing) && !haskey(run.cuts, vector_pointer) && !cut!(run, instance_of(size, ArrayStandIn{Int, 1}), total)
     @test cut!(run, instance_of(CASES.poke_caught_at!, ArrayStandIn{Int, 1}, Int), total)
+    # Base method gets check when it can fail (`pointer` on stand-in only), or when `nothrow` with `try` (`isassigned`).
+    @test cut!(run, instance_of(pointer, ArrayStandIn{Float64, 1}), throwing)
+    assigned = instance_of(isassigned, ArrayStandIn{Int, 1}, Int)
+    @test !haskey(run.cuts, assigned) && (cut!(run, assigned, total); haskey(run.cuts, assigned))
     broken = instance_of(stand_in_broken, ArrayStandIn{Int, 1})
     @test cut!(run, broken, total) && run.cuts[broken]
     @test catches!(run, only(methods(CASES.poke_caught_at!))) && catches!(run, only(methods(stand_in_broken)))

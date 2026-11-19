@@ -322,6 +322,16 @@ function fallback_bump!(x::Real)
     end
 end
 
+# Optional generator runs on declared signature too, with other code there: its statements match no stand-in statement.
+function generated_shift!(x::Real)
+    if @generated
+        return x === Real ? :(nothing) : :(x isa BigFloat && (COUNTER[] += 1); nothing)
+    else
+        x isa BigFloat && (COUNTER[] += 1)
+        return nothing
+    end
+end
+
 # Generated code differs per signature: model code cannot clear call that fails on stand-in.
 @generated generated_poke(values::AbstractVector{Int}, flag::Bool) = values <: Vector ? :(nothing) : :(flag && pointer(values); nothing)
 
