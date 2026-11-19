@@ -10,7 +10,7 @@ Corset checks packages, applications and scripts. Its rules read the syntax tree
 Corset is not in the General registry. Add the `corset` app from its repository:
 
 ```julia
-pkg> app add https://github.com/ParadaCarleton/Corset.jl-private
+pkg> app add https://github.com/ParadaCarleton/Corset.jl-next
 ```
 
 Pkg puts the app in `~/.julia/bin`. Add that directory to `PATH`.
@@ -45,7 +45,7 @@ end
 ```
 
 ```@example first
-cd(() -> Corset.CLI.execute(["check", "demo.jl"], stdout, stdout), directory) # hide
+cd(() -> Corset.CLI.execute(["check", "demo.jl"], stdout, stdout; launch = false, cache = nothing), directory) # hide
 ```
 
 The exit code is `1` because each finding has level `deny`. The [Guide](guide.md) tells how to set levels.

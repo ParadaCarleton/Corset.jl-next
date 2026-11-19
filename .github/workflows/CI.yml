@@ -16,7 +16,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: ["1.13", "pre"]
+        # Corset supports latest Julia release only; prerelease compiler internals differ (`bb_vartables`).
+        version: ["1.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
