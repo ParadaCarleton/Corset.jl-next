@@ -55,10 +55,20 @@ struct BlindAccess
 end
 
 """
+Resource hold that throw skips release of (`effects` stage fact, F98): span of acquire, span of statement that may
+throw while method holds resource, and confidence: definite count, or `possible` from join of different counts.
+"""
+struct UnguardedHold
+    acquire::Span
+    throws::Span
+    confidence::Confidence.T
+end
+
+"""
 Effect summary of package method (`effects` stage fact): writes and reads over its units, blind writes and reads,
-places its result aliases, `complete`, and `closed_world`. Method with blind access, or incomplete method (inference
-skipped some argument types, or stand-ins cut path), has no definite none. Closed-world method joins methods loaded
-now: its none is at most `possible`.
+places its result aliases, holds throws skip (`unguarded`), `complete`, and `closed_world`. Method with blind access,
+or incomplete method (inference skipped some argument types, or stand-ins cut path), has no definite none.
+Closed-world method joins methods loaded now: its none is at most `possible`.
 """
 struct MethodEffects
     site::MethodSite
@@ -67,6 +77,7 @@ struct MethodEffects
     blind_writes::Vector{BlindAccess}
     blind_reads::Vector{BlindAccess}
     aliases::Vector{Place.Type}
+    unguarded::Vector{UnguardedHold}
     complete::Bool
     closed_world::Bool
 end

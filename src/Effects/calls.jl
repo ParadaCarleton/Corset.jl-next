@@ -344,3 +344,53 @@ function statement_outcome(ir::CC.IRCode, statement::Any, world::UInt, limit::In
     statement.head === :foreigncall && return foreign_outcome(statement)
     return nothing
 end
+
+"""Constant value of call `operand` in `ir`; `nothing` when not constant."""
+operand_constant(ir::CC.IRCode, operand::Operand.Type)::Union{Nothing, Some{Any}} = @match operand begin
+    Operand.Value(value) => constant(ir, value)
+    _ => nothing
+end
+
+"""
+Release balance primitive (`effects.md`, Release balance): hold `change` (`nothing` for `trylock`: blind spot), operand
+position of resource (0: call result), resource kind, and whether flow skips callee body: engine never reads lock or
+semaphore bodies.
+"""
+struct Primitive
+    change::Union{Nothing, Int}
+    operand::Int
+    resource::Resource.T
+    skips::Bool
+end
+
+"""
+Primitive that call with `operands` (callee first) and result of `type` makes in `ir`, or `nothing`. Keyword call
+(`Core.kwcall`) names callee third. Argument types pick resource: lock, `Semaphore`, `Condition`, `IOStream`.
+`wait(::Condition)` releases lock and takes it again.
+"""
+function primitive(ir::CC.IRCode, operands::Vector{Operand.Type}, type::Any)::Union{Nothing, Primitive}
+    callee, first_argument = operand_constant(ir, operands[1]), 2
+    if !isnothing(callee) && something(callee) === Core.kwcall && length(operands) >= 3
+        callee, first_argument = operand_constant(ir, operands[3]), 4
+    end
+    isnothing(callee) && return nothing
+    arguments = operands[first_argument:end]
+    any(is_rest, arguments) && return nothing
+    call = something(callee)
+    if length(arguments) == 1
+        resource = operand_type(ir, only(arguments))
+        lock_call = resource <: Base.AbstractLock
+        lock_call && call === lock && return Primitive(1, first_argument, Resource.lock, true)
+        lock_call && call === unlock && return Primitive(-1, first_argument, Resource.lock, true)
+        lock_call && call === trylock && return Primitive(nothing, first_argument, Resource.lock, true)
+        slot_call = resource <: Base.Semaphore
+        slot_call && call === Base.acquire && return Primitive(1, first_argument, Resource.lock, true)
+        slot_call && call === Base.release && return Primitive(-1, first_argument, Resource.lock, true)
+        call === wait && resource <: Base.GenericCondition && return Primitive(0, first_argument, Resource.lock, true)
+        call === close && resource <: IOStream && return Primitive(-1, first_argument, Resource.file, false)
+    end
+    # Do-block form (`open(f, path)`) releases in its own `finally`.
+    file_call = call === open && !isempty(arguments) && typeintersect(operand_type(ir, first(arguments)), Base.Callable) === Union{}
+    file_call && CC.widenconst(type) <: IOStream && return Primitive(1, 0, Resource.file, false)
+    return nothing
+end

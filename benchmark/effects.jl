@@ -59,6 +59,10 @@ bang_kind(access::Any)::Bool = !hasfield(typeof(access), :kind) || !(Symbol(acce
 bang_possible = count(found -> any(access -> access.confidence == Confidence.possible && bang_kind(access), found.writes), methods)
 bang_definite = count(found -> any(access -> access.confidence == Confidence.definite && bang_kind(access), found.writes), methods)
 println("bang_possible=", bang_possible, " (", round(100 * bang_possible / max(1, length(methods)); digits = 1), "%) bang_definite=", bang_definite)
+# Release balance facts (F98 and lock writes); older Corset has neither.
+unguarded = count(found -> hasfield(typeof(found), :unguarded) && !isempty(found.unguarded), methods)
+locked = count(found -> any(access -> hasfield(typeof(access), :kind) && Symbol(access.kind) === :synchronization, found.writes), methods)
+println("unguarded=", unguarded, " lock_write=", locked)
 closed = count(found -> found.closed_world, methods)
 unsettled = count(found -> any(access -> access.spot.cause == Effects.UNSETTLED, [found.blind_writes; found.blind_reads]), methods)
 # Variant names, not patterns: older Corset lacks newer outcome kinds. Moshi is Corset dependency, not direct one.

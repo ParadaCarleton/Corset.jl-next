@@ -53,10 +53,11 @@ function escaping(flow::Flow)::Set{Origin.Type}
 end
 
 """
-Summary of instance of `method` from `flow` at fixpoint: caller-visible accesses, stores of exported objects, and
-result.
+Summary of instance of `method` from `flow` at fixpoint, with callee summaries from `callees`: caller-visible accesses,
+stores of exported objects, result, and release balance (`balance`).
 """
-function summarize(flow::Flow, method::Method)::Summary
+function summarize(flow::Flow, method::Method, callees::Callees)::Summary
+    held, thrown, unguarded = balance(flow, callees)
     exported = escaping(flow)
     shown(origin::Origin.Type)::Bool = !fresh_origin(origin) || origin in exported
     edges = Dict((node_of(holder), step) => nodes_of(targets) for (holder, slots) in flow.heap if shown(holder) for (step, targets) in slots if !isempty(targets))
@@ -65,5 +66,9 @@ function summarize(flow::Flow, method::Method)::Summary
     bound = Dict(binding => nodes_of(targets) for (binding, targets) in flow.bound if !isempty(targets))
     # Records hold no fresh object (`deferred`), so they add no escaping object.
     callbacks = Set{Callback}((variant = variant, parameters = map(nodes_of, arguments)) for records in values(flow.callbacks) for (variant, arguments) in records)
-    return Summary(exported_effects(flow.ir, method, flow.writes), exported_effects(flow.ir, method, flow.reads), edges, backing, spread, bound, callbacks, nodes_of(flow.result), length(exported), flow.closed_world, flow.cut)
+    unguarded_nodes = Dict{Tuple{Node.Type, Resource.T}, Unguarded}((node_of(origin), resource) => hold for ((origin, resource), hold) in unguarded)
+    return Summary(
+        exported_effects(flow.ir, method, flow.writes), exported_effects(flow.ir, method, flow.reads), edges, backing, spread, bound, callbacks, nodes_of(flow.result), length(exported), flow.closed_world, flow.cut,
+        exported_holds(held, exported), exported_holds(thrown, exported), unguarded_nodes,
+    )
 end

@@ -350,4 +350,68 @@ function fill_units!(values::AbstractVector)::Nothing
     return nothing
 end
 
+# Holder of lock: lock write lands on field place.
+struct Guard
+    lock::ReentrantLock
+    items::Vector{Int}
+end
+
+# Acquire without release: definite lock write.
+grab_guard!(guard::Guard)::Nothing = (lock(guard.lock); nothing)
+
+# Store throws while method holds lock: release is skipped.
+function guarded_set!(guard::Guard, value::Int)::Nothing
+    lock(guard.lock)
+    guard.items[1] = value
+    unlock(guard.lock)
+    return nothing
+end
+
+# Two stores throw while method holds lock: F98 fact names first.
+function guarded_pair_set!(guard::Guard, value::Int)::Nothing
+    lock(guard.lock)
+    guard.items[1] = value
+    guard.items[2] = value
+    unlock(guard.lock)
+    return nothing
+end
+
+# Callee takes hold: acquire span is call in caller.
+function grab_then_set!(guard::Guard, value::Int)::Nothing
+    grab_guard!(guard)
+    guard.items[1] = value
+    unlock(guard.lock)
+    return nothing
+end
+
+# Release in `finally`: balanced.
+safe_set!(guard::Guard, value::Int)::Nothing = (@lock guard.lock (guard.items[1] = value); nothing)
+
+# Lock on one branch: possible lock write.
+maybe_grab!(guard::Guard, flag::Bool)::Nothing = (flag && lock(guard.lock); nothing)
+
+# `trylock` result decides hold: blind lock write.
+try_grab!(guard::Guard)::Bool = trylock(guard.lock)
+
+# Store throws while hold is blind: blind spot.
+function try_set!(guard::Guard, value::Int)::Nothing
+    trylock(guard.lock)
+    guard.items[1] = value
+    return nothing
+end
+
+# Holder whose lock field type is open.
+struct LooseGuard
+    lock::Any
+end
+
+# Only method of `take_lock!`: call on open field resolves to it.
+take_lock!(lock_object::ReentrantLock)::Nothing = (lock(lock_object); nothing)
+
+# Lock of field without lock type: path kind is memory.
+loose_grab!(guard::LooseGuard)::Nothing = take_lock!(guard.lock)
+
+# Lock that task storage holds: object outside every caller place.
+lock_stored()::Nothing = (lock(task_local_storage(:lock)::ReentrantLock); nothing)
+
 end

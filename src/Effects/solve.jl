@@ -435,7 +435,7 @@ function variant_summary(run::Run, variant::Variant, flush::Bool)::Tuple{Summary
         round!(flow, callees)
         flow.changed || break
     end
-    return summarize(flow, first(variant).def::Method), callees.read
+    return summarize(flow, first(variant).def::Method, callees), callees.read
 end
 
 """

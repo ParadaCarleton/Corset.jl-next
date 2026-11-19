@@ -10,7 +10,8 @@ using Corset.Effects:
     element_type, constant, value_type, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
     components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
-    special_kind, site_kind, field_kind, step_type, root_of
+    special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
+    unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
@@ -1071,19 +1072,25 @@ at_most(first::Doubt, second::Doubt)::Bool = level_of(first) < level_of(second) 
 const SUMMARIES = @composed function summaries(writes = ACCESSES, reads = ACCESSES, held = NODES, result = NODES, fresh = Data.Integers(0, 2), closed = Data.Booleans(), cut = Data.Booleans())
     edges = isempty(held) ? Edges() : Edges((Node.Placed(parameter(2)), Step.Element()) => held)
     bound = isempty(held) ? Dict{GlobalRef, Nodes}() : Dict(GlobalRef(Main, :slot) => held)
-    return Summary(writes, reads, edges, Holds(Node.Fresh(1) => held), Holds(), bound, Set{Callback}(), result, fresh, closed, cut)
+    return Summary(writes, reads, edges, Holds(Node.Fresh(1) => held), Holds(), bound, Set{Callback}(), result, fresh, closed, cut, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}())
 end
 
 @testset "call cycle widening" begin
-    old = Summary(Accesses((parameter(2), false, EffectKind.memory) => Effect(NO_DOUBT, 3, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 1, false, true)
-    new = Summary(Accesses((parameter(2), false, EffectKind.memory) => Effect(CODE_DOUBT, 2, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, true, false)
+    key, single = (Node.Placed(parameter(2)), Resource.lock), HoldCount(1, Level.none, 3, "")
+    old_holds, old_unguarded = HoldCounts(key => single), Dict(key => (hold = single, throws = 4))
+    old = Summary(Accesses((parameter(2), false, EffectKind.memory) => Effect(NO_DOUBT, 3, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 1, false, true, old_holds, old_holds, old_unguarded)
+    new_unguarded = Dict(key => (hold = single, throws = 5))
+    new = Summary(Accesses((parameter(2), false, EffectKind.memory) => Effect(CODE_DOUBT, 2, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, true, false, HoldCounts(key => HoldCount(2, Level.none, 2, "")), old_holds, new_unguarded)
     widened = widen(old, new)
     @test widened.writes == Accesses((parameter(2), false, EffectKind.memory) => Effect(BLIND_DOUBT, 3, UNSETTLED))
+    # Hold count and unguarded hold that change become blind; equal ones stay.
+    @test widened.held == HoldCounts(key => unsettled(single)) && widened.thrown == old_holds
+    @test widened.unguarded == Dict(key => (hold = unsettled(single), throws = 4))
     @test widened.fresh == 1 && widened.closed_world && widened.cut
     # Callback records of both summaries stay.
     instance = only(something(dispatch(Any[typeof(CASES.set_value!), CASES.Box, Int], Base.get_world_counter(), 1)))
     record = Callback((variant = (instance, Pair{Int, Any}[]), parameters = [Nodes(Node.Placed(parameter(2)) => NO_DOUBT)]))
-    recorded = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set([record]), Nodes(), 0, false, false)
+    recorded = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set([record]), Nodes(), 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}())
     @test widen(recorded, new).callbacks == Set([record]) && widen(new, recorded).callbacks == Set([record])
     @check max_examples = 300 db = false function widen_grows(old = SUMMARIES, new = SUMMARIES)
         widened = widen(old, new)
@@ -1271,7 +1278,6 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     # Audited method covers its root only: global read inside it keeps own kind.
     @test all(kind != EffectKind.task_local for (place, _, kind) in keys(remembered.reads) if root_of(place) != elsewhere)
     @test (Place.At(elsewhere, Step.Type[]), false, EffectKind.scoped_read) in keys(summary_of(level).reads)
-    @test EffectKind.synchronization in kinds_at(summary_of(hold!, ReentrantLock).reads, Root.Parameter(2))
     # Audited table: lazy compile, lazy text, PCRE contexts, logging state, `BigFloat` pointer repair.
     matched = summary_of(matches, Regex, String).writes
     @test matched[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT
@@ -1285,6 +1291,257 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     @test field_kind(Regex, Some{Any}(4)) == EffectKind.lazy_init && field_kind(Tuple{IOBuffer}, Some{Any}(1)) == EffectKind.memory && field_kind(IOBuffer, nothing) == io
     @test step_type(Tuple{Vararg{Int}}, Step.Position(3)) == Int && step_type(Tuple{Int}, Step.Position(2)) == Any && step_type(Vector{IOBuffer}, Step.Element()) == IOBuffer
     @test step_type(Any, Step.Field(:x)) == Any && step_type(Logger, Step.Field(:missing)) == Any && step_type(Dict{Int, Int}, Step.Element()) == Any
+end
+
+"""Holder of lock: hold lands on field place."""
+struct Guarded
+    lk::ReentrantLock
+end
+
+"""Holder of lock whose `grab` holds nothing: join of `grab` methods disagrees."""
+struct Lockless
+    lk::ReentrantLock
+end
+
+store_bare!(l::ReentrantLock, x::Vector{Int}) = (lock(l); x[1] = 1; unlock(l); nothing)
+function store_finally!(l::ReentrantLock, x::Vector{Int})
+    lock(l)
+    try
+        x[1] = 1
+    finally
+        unlock(l)
+    end
+    return nothing
+end
+store_macro!(l::ReentrantLock, x::Vector{Int}) = (@lock l (x[1] = 1); nothing)
+store_do!(l::ReentrantLock, x::Vector{Int}) = (lock(() -> (x[1] = 1), l); nothing)
+acquire_guard!(q::Guarded) = lock(q.lk)
+release_guard!(q::Guarded) = unlock(q.lk)
+guard_pair!(q::Guarded, x::Vector{Int}) = (acquire_guard!(q); x[1] = 1; release_guard!(q); nothing)
+function catch_pair!(q::Guarded, x::Vector{Int})
+    try
+        guard_pair!(q, x)
+    catch
+    end
+    return nothing
+end
+maybe_lock!(l::ReentrantLock, flag::Bool) = (flag && lock(l); nothing)
+paired_lock!(l::ReentrantLock, flag::Bool, x::Vector{Int}) = (flag && lock(l); x[1] = 1; flag && unlock(l); nothing)
+function lock_each!(l::ReentrantLock, n::Int)
+    for _ in 1:n
+        lock(l)
+    end
+    return nothing
+end
+write_file(path::String) = (f = open(path, "w"); write(f, 0x01); close(f); nothing)
+write_file_do(path::String) = (open(f -> write(f, 0x01), path, "w"); nothing)
+stream_byte(io::IOStream) = (write(io, 0x01); nothing)
+slot_store!(s::Base.Semaphore, x::Vector{Int}) = (Base.acquire(s); x[1] = 1; Base.release(s); nothing)
+try_unlock(l::ReentrantLock) = trylock(l) && (unlock(l); true)
+function wait_signal(c::Threads.Condition)
+    lock(c)
+    try
+        wait(c; first = true)
+    finally
+        unlock(c)
+    end
+    return nothing
+end
+const GLOBAL_LOCK = ReentrantLock()
+hold_global() = lock(GLOBAL_LOCK)
+function store_caught!(l::ReentrantLock, x::Vector{Int})
+    lock(l)
+    try
+        x[1] = 1
+    catch
+    end
+    unlock(l)
+    return nothing
+end
+function store_rethrow!(l::ReentrantLock, x::Vector{Int})
+    lock(l)
+    try
+        x[1] = 1
+    catch
+        rethrow()
+    end
+    unlock(l)
+    return nothing
+end
+function scoped_store!(l::ReentrantLock, x::Vector{Int})
+    lock(l)
+    try
+        Base.ScopedValues.@with LEVEL => 2 (x[1] = 1)
+    finally
+        unlock(l)
+    end
+    return nothing
+end
+run_closure(f) = (f(); nothing)
+lock_through!(q::Guarded) = (run_closure(() -> lock(q.lk)); nothing)
+grab!(q::Guarded) = lock(q.lk)
+grab!(::Lockless) = nothing
+grab_either!(q::Union{Guarded, Lockless}) = grab!(q)
+pair_caller!(q::Guarded, x::Vector{Int}) = (guard_pair!(q, x); nothing)
+lock_local() = (lock(ReentrantLock()); nothing)
+closed_file(path::String) = (f = open(path, "w"); close(f); f)
+"""Closure locks and throws: callback record carries hold to catch block of caller."""
+function closure_throw!(q::Guarded)
+    try
+        run_closure(() -> (lock(q.lk); throw(ArgumentError("held"))))
+    catch
+    end
+    return nothing
+end
+"""Field read on open type: lock operand reaches parameter with `code` doubt."""
+lock_open!(q) = (lock(q.lk::ReentrantLock); nothing)
+"""Global without value: read throws while method holds lock."""
+global UNSET_COUNT::Int
+read_locked(l::ReentrantLock) = (lock(l); count = UNSET_COUNT; unlock(l); count)
+"""Join of `grab!` methods gives unknown hold; store throws while method may hold lock."""
+grab_either_store!(q::Union{Guarded, Lockless}, x::Vector{Int}) = (grab!(q); x[1] = 1; nothing)
+"""Release inside `try`: catch block gets states of statements that throw only, not state at `try` entry."""
+function release_try!(l::ReentrantLock, x::Vector{Int})
+    lock(l)
+    try
+        unlock(l)
+        x[1] = 1
+    catch
+    end
+    return nothing
+end
+"""Body of scope cannot throw, so its `enter` has no catch block (`catch_dest` 0) inside outer `try`."""
+function scoped_sum(x::Int)
+    return try
+        Base.ScopedValues.@with LEVEL => 2 (x + 1)
+    catch
+        0
+    end
+end
+lock_either!(flag::Bool, a::ReentrantLock, b::ReentrantLock) = (lock(flag ? a : b); nothing)
+
+"""Hold of `summary` by caller node and resource: count and level."""
+holds(table::HoldCounts)::Dict{Tuple{Node.Type, Resource.T}, Tuple{Int, Level.T}} = Dict(key => (hold.count, hold.level) for (key, hold) in table)
+
+"""Node at parameter `position` and `steps`."""
+placed(position::Int, steps::Step.Type...)::Node.Type = Node.Placed(parameter(position, steps...))
+
+@testset "release balance" begin
+    lock_, file, none, code, blind = Resource.lock, Resource.file, Level.none, Level.code, Level.blind
+    lk = Step.Field(:lk)
+    # Release skipped on throw: F98 fact at statement that throws; `finally`, `@lock`, do-block and `catch` give none.
+    bare = summary_of(store_bare!, ReentrantLock, Vector{Int})
+    @test isempty(bare.held) && holds(bare.thrown) == Dict((placed(2), lock_) => (0, code))
+    @test only(values(bare.unguarded)).hold.count == 1 && only(keys(bare.unguarded)) == (placed(2), lock_)
+    for (f, types) in ((store_finally!, (ReentrantLock, Vector{Int})), (store_macro!, (ReentrantLock, Vector{Int})), (store_do!, (ReentrantLock, Vector{Int})), (store_caught!, (ReentrantLock, Vector{Int})), (scoped_store!, (ReentrantLock, Vector{Int})), (write_file_do, (String,)), (wait_signal, (Threads.Condition,)))
+        found = summary_of(f, types...)
+        @test isempty(found.held) && isempty(found.thrown) && isempty(found.unguarded)
+    end
+    @test only(values(summary_of(store_rethrow!, ReentrantLock, Vector{Int}).unguarded)).hold.level == none
+    @test only(values(summary_of(read_locked, ReentrantLock).unguarded)).hold.count == 1
+    @test isempty(summary_of(release_try!, ReentrantLock, Vector{Int}).held)
+    # Engine never reads lock or `wait` body: no scheduler writes.
+    @test isempty(summary_of(wait_signal, Threads.Condition).writes)
+    # Hold through callee: own acquire, callee normal exit, callback record; release balances it.
+    @test holds(summary_of(acquire_guard!, Guarded).held) == Dict((placed(2, lk), lock_) => (1, none))
+    @test holds(summary_of(release_guard!, Guarded).held) == Dict((placed(2, lk), lock_) => (-1, none))
+    # Acquire that throws takes nothing; release that throws still counts.
+    @test isempty(summary_of(acquire_guard!, Guarded).thrown)
+    @test holds(summary_of(release_guard!, Guarded).thrown) == Dict((placed(2, lk), lock_) => (-1, none))
+    pair = summary_of(guard_pair!, Guarded, Vector{Int})
+    @test isempty(pair.held) && only(values(pair.unguarded)).hold.count == 1
+    @test holds(summary_of(lock_through!, Guarded).held) == Dict((placed(2, lk), lock_) => (1, none))
+    @test holds(summary_of(closure_throw!, Guarded).held) == Dict((placed(2, lk), lock_) => (0, code))
+    @test holds(summary_of(hold_global).held) == Dict((Node.Placed(global_place(@__MODULE__, :GLOBAL_LOCK)), lock_) => (1, none))
+    # Callee throw-exit count alone is no F98 fact; catch turns it into `possible` hold.
+    caught = summary_of(catch_pair!, Guarded, Vector{Int})
+    @test holds(caught.held) == Dict((placed(2, lk), lock_) => (0, code)) && isempty(caught.unguarded)
+    passed = summary_of(pair_caller!, Guarded, Vector{Int})
+    @test isempty(passed.unguarded) && holds(passed.thrown) == Dict((placed(2, lk), lock_) => (0, code))
+    # Join of branches, loops and methods gives unknown; branch on same condition balances.
+    @test holds(summary_of(maybe_lock!, ReentrantLock, Bool).held) == Dict((placed(2), lock_) => (0, code))
+    @test isempty(summary_of(paired_lock!, ReentrantLock, Bool, Vector{Int}).held)
+    @test holds(summary_of(lock_each!, ReentrantLock, Int).held) == Dict((placed(2), lock_) => (0, code))
+    @test holds(root_summary(solved(grab_either!, Module[@__MODULE__], Union{Guarded, Lockless})...).held) == Dict((placed(2, lk), lock_) => (0, code))
+    either_store = root_summary(solved(grab_either_store!, Module[@__MODULE__], Union{Guarded, Lockless}, Vector{Int})...)
+    @test only(values(either_store.unguarded)).hold.level == code
+    # `IOStream` code locks stream only when `_dolock` holds: same condition, so stream ends balanced.
+    @test isempty(summary_of(stream_byte, IOStream).held)
+    # Fresh file: hold stays local, its skipped `close` is F98 fact.
+    opened = summary_of(write_file, String)
+    # Coverage shifts statement index of fresh node.
+    @test isempty(opened.held) && isa_variant(only(keys(opened.unguarded))[1], Node.Fresh) && only(keys(opened.unguarded))[2] == file
+    # Fresh lock that does not escape holds nothing caller sees; `close` releases file caller gets.
+    @test isempty(summary_of(lock_local).held) && isempty(summary_of(closed_file, String).held)
+    # Lock operand with two targets: Corset cannot count which one holds.
+    merged = summary_of(lock_either!, Bool, ReentrantLock, ReentrantLock).held
+    @test holds(merged) == Dict((placed(3), lock_) => (0, blind), (placed(4), lock_) => (0, blind)) && all(hold -> hold.reason == RELEASE_PATTERN, values(merged))
+    @test holds(summary_of(lock_open!, Any).held) == Dict((placed(2), lock_) => (0, blind))
+    # Lock write counts lock resource only; file hold on caller place writes nothing.
+    span = Span("fixture.jl", 1, 1, Precision.line)
+    file_held = HoldCounts((placed(2), lock_) => HoldCount(1, none, 1, ""), (placed(3), file) => HoldCount(1, none, 1, ""))
+    found = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, false, false, file_held, HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}())
+    writes, blind_writes = Effects.lock_writes(found, _ -> span, _ -> EffectKind.memory)
+    @test shape(writes) == [(parameter(2), false, Confidence.definite)] && only(writes).kind == EffectKind.synchronization && isempty(blind_writes)
+    # Semaphore slot counts like lock; `trylock` gives blind spot.
+    @test only(values(summary_of(slot_store!, Base.Semaphore, Vector{Int}).unguarded)).hold.count == 1
+    tried = summary_of(try_unlock, ReentrantLock)
+    @test holds(tried.held) == Dict((placed(2), lock_) => (0, blind)) && only(values(tried.held)).reason == RELEASE_PATTERN
+    # Hold count: reason exactly at blind level; count only at none level.
+    @test_throws ArgumentError HoldCount(0, blind, 1, "")
+    @test_throws ArgumentError HoldCount(0, code, 1, RELEASE_PATTERN)
+    @test HoldCount(3, code, 1, "") == HoldCount(0, code, 1, "")
+    single, double = HoldCount(1, none, 4, ""), HoldCount(2, none, 2, "")
+    # Sum keeps first cause; hold 0 takes cause of change.
+    @test plus(single, HoldCount(-1, none, 7, "")) == HoldCount(0, none, 4, "") && plus(ZERO_HOLD, single) == single
+    @test join_hold(single, single) == single && join_hold(single, double) == HoldCount(0, code, 2, "")
+    @test join_hold(single, HoldCount(0, blind, 9, RELEASE_PATTERN)) == HoldCount(0, blind, 4, RELEASE_PATTERN)
+    # Widening: count that differs becomes blind; absent key counts as 0.
+    key = (placed(2), lock_)
+    @test widen_holds(HoldCounts(key => single), HoldCounts(key => double)) == HoldCounts(key => unsettled(single))
+    @test widen_holds(HoldCounts(), HoldCounts(key => double))[key].reason == UNSETTLED
+    @test widen_holds(HoldCounts(key => double), HoldCounts(key => double)) == HoldCounts(key => double)
+    # Paths: equal counts merge and keep conditions both agree on; path past limit joins all.
+    origin = Origin.Caller(parameter(2))
+    path(count::Int, conditions::Pair{Symbol, Bool}...)::Path = (Effects.Counts((origin, lock_) => HoldCount(count, none, 1, "")), Dict{Any, Bool}(conditions...))
+    paths = Path[]
+    @test add_path!(paths, path(1, :flag => true)) && !add_path!(paths, path(1, :flag => true))
+    @test add_path!(paths, path(1, :flag => false)) && last(only(paths)) == Dict{Any, Bool}()
+    foreach(count -> add_path!(paths, path(count, :flag => true)), 2:PATH_LIMIT)
+    @test length(paths) == PATH_LIMIT
+    @test add_path!(paths, path(PATH_LIMIT + 1)) && only(paths)[1][(origin, lock_)].level == code
+    # Statement inside scope `enter` without catch block goes to catch block of outer `try`.
+    ir = first(only(Base.code_ircode(scoped_sum, (Int,))))
+    enters = [index => ir.stmts[index][:stmt].catch_dest for index in 1:length(ir.stmts) if ir.stmts[index][:stmt] isa Core.EnterNode]
+    scope, outer = only(first(entry) for entry in enters if last(entry) == 0), only(last(entry) for entry in enters if last(entry) != 0)
+    @test Effects.catch_block(ir, Core.Compiler.compute_trycatch(ir), scope + 1) == outer
+end
+
+@testset "release balance facts" begin
+    definite, possible, lock_place = Confidence.definite, Confidence.possible, parameter(2, Step.Field(:lock))
+    synchronized(found::MethodEffects)::Vector{Tuple{Place.Type, Bool, Confidence.T}} = shape(filter(access -> access.kind == EffectKind.synchronization, found.writes))
+    @test synchronized(named(:grab_guard!)) == [(lock_place, false, definite)]
+    @test line_text(only(named(:grab_guard!).writes).cause) == "grab_guard!(guard::Guard)::Nothing = (lock(guard.lock); nothing)"
+    @test synchronized(named(:maybe_grab!)) == [(lock_place, false, possible)] && isempty(named(:maybe_grab!).unguarded)
+    # Balanced use writes no lock; store that throws while lock is held is F98 fact.
+    set = named(:guarded_set!)
+    @test isempty(synchronized(set)) && shape(set.writes) == [(parameter(2, Step.Field(:items)), false, definite)]
+    hold = only(set.unguarded)
+    @test strip(line_text(hold.acquire)) == "lock(guard.lock)" && strip(line_text(hold.throws)) == "guard.items[1] = value"
+    @test hold.confidence == definite
+    @test strip(line_text(only(named(:guarded_pair_set!).unguarded).throws)) == "guard.items[1] = value"
+    @test strip(line_text(only(named(:grab_then_set!).unguarded).acquire)) == "grab_guard!(guard)"
+    safe = named(:safe_set!)
+    @test isempty(synchronized(safe)) && isempty(safe.unguarded) && isempty(safe.blind_writes)
+    # `trylock` gives blind lock write; throw while blind hold gives blind spot, no fact.
+    @test blind_shape(named(:try_grab!).blind_writes) == [(lock_place, false, RELEASE_PATTERN)]
+    tried = named(:try_set!)
+    @test isempty(tried.unguarded) && blind_shape(tried.blind_writes) == [(lock_place, false, RELEASE_PATTERN)]
+    @test any(spot -> spot.cause == RELEASE_PATTERN && strip(line_text(spot.span)) == "trylock(guard.lock)", SPOTS)
+    # Lock of field that inference widens is lock still.
+    @test synchronized(named(:loose_grab!)) == [(parameter(2, Step.Field(:lock)), false, definite)]
+    # Lock from task storage: Corset cannot tell which object holds.
+    @test (Place.At(Root.Elsewhere(), Step.Type[]), false, RELEASE_PATTERN) in blind_shape(named(:lock_stored).blind_writes)
 end
 
 @testset "soundness" begin
