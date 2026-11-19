@@ -862,6 +862,30 @@ PR 3b (stand-in cuts, #241) on corpus, winwsl, main and PR 3b back to back:
 - Return conversions cause no cuts: 0, 7 and 0 units whose cuts are only `convert` or `typeassert`.
 - `possible` share and blind writes do not change: cut methods carry other writes, so spot condition (no write) holds rarely.
 
+### Open array stand-ins
+
+- Cut probe of PR 3b: 144 of 509 Distances units carried cut, mostly dead loop bodies.
+- Cause: untyped `AbstractVector` took `ArrayStandIn{Any, 1}`. `oneunit(eltype(a))` is `oneunit(Any)`, which fails on stand-in and model, so code after it is dead.
+- Concrete `Any` element is one arbitrary element type. Open element (`ArrayStandIn{<:Any, 1}`) states what annotation states: any element.
+- Old rule also fixed dimensions at first fit from 1 to 3: `AbstractArray` gave vector only, 4-dimension argument got no stand-in.
+- Open `<:Real` element was rejected: inference gives `xs .* 0.5` abstract type, so `type-disruption` loses float widening. Number stand-ins stay.
+- Open stand-in breaks concrete-signature rule of worklist. Family test sets each variable to its bound; view of open stand-in holds it as variable bound.
+- Engine reads fields of array stand-in and `Array` families from their body (`Array{T, 1} where T`), so writes through open stand-in keep paths.
+- Field names for every struct family were rejected: JSON solve took 1459 s against 462 s on 3b. Named paths through code families (`WriteClosure{JS, arraylike, I} where …`) multiply places at each call. Stand-in and `Array` families alone took 488 s in parallel arms.
+- `Array` family in `layout` costs JSON 145 GB effects allocation against 112 GB without it; no JSON verdict changes.
+- Without family, writes through generic `Vector{K}` fields gain `:ref` step: DataStructures loses 2 definite writes and gains 33 alias spots.
+- Family for memory backing alone still took 141 GB, so whole family stays.
+- Distances `possible` share rose from 34.9% to 44.7%: open calls on values derived from open element (`promote_type(eltype(r), …)`) had no opaque source. Type values and fresh arrays carry no object origin. Rule: call result with open type takes sources of its open operands.
+
+### Derived provenance
+
+- First version joined derived sources with object sources: DataStructures `possible` share rose from 26.7% to 27.6%. Fresh objects added `INHERENT` beside opaque derived source.
+- Objects now decide when they give a source. Static parameters and arguments give theirs: Distances 44.7% to 42.6%.
+- Join of methods gave doubt in code to access that some members lack. Operand types pick member, so dispatch doubt replaces it: Distances 31.9%, DataStructures 23.7%.
+- Consumed-iterator breach gave doubt in code: `first(LinearIndices(dest))` inside `copyto!` reached `_pairwise!`. Breached argument type decides breach, so its sources replace it: Distances 30.9%.
+- JSON `possible` share fell from 32.6% to 29.9%; effects allocation rose 1%.
+- Early fixpoint rounds see sources still unknown. Accesses come from last round only, so their `INHERENT` stays out.
+
 ### Stateful iterators
 
 - Trigger "every `iterate` on iterator not proven stateless" rejected: single pass is safe for both kinds, so it flags nearly all generic code.

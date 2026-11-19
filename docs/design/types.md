@@ -6,6 +6,16 @@ Typed analysis: stand-in types, type-disruption, lost narrowing, arguments, unio
 
 Corset never reads or runs package tests. Signatures come from annotations: stand-in types for generic arguments and struct parameters (from their bounds), declared type otherwise. See **Arguments without stand-in**.
 
+### Array stand-ins
+
+- Array argument takes array stand-in shaped as its annotation: stand-in kind replaces container, element and dimensions keep annotation bounds.
+- `AbstractVector` gives `ArrayStandIn{<:Any, 1}`. `AbstractArray` gives `ArrayStandIn` with open dimensions. `AbstractVecOrMat` gives one stand-in per member.
+- Element bound below `Any` that number stand-ins fit takes them, as number argument does: `AbstractVector{<:Real}` gives float and integer elements.
+- Number stand-in elements keep float promotion that `type-disruption` reads (`xs .* 0.5`).
+- Other element stays open (`ArrayStandIn{<:AbstractString, 1}`). Concrete `Any` element decides element-type calls: `oneunit(eltype(xs))` fails, so loop body is dead.
+- `DenseArray` and `StridedArray` bounds take `DenseStandIn`.
+- Open stand-in is not concrete. Call reaches untyped method when each argument type is concrete once its variables take their bounds (view of open stand-in too).
+
 ### Arguments without stand-in
 
 - Package abstract type (`s::Shape`): infer once per concrete subtype package defines, with stand-ins for its parameters.

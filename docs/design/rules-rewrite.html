@@ -565,6 +565,16 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <p>Typed analysis: stand-in types, type-disruption, lost narrowing, arguments, unions, sum types.</p>
 <div class="decision"><h3>No tests</h3>
 <p>Corset never reads or runs package tests. Signatures come from annotations: stand-in types for generic arguments and struct parameters (from their bounds), declared type otherwise. See <strong>Arguments without stand-in</strong>.</p>
+</div><div class="decision"><h3>Array stand-ins</h3>
+<ul>
+<li>Array argument takes array stand-in shaped as its annotation: stand-in kind replaces container, element and dimensions keep annotation bounds.</li>
+<li><code>AbstractVector</code> gives <code>ArrayStandIn{&lt;:Any, 1}</code>. <code>AbstractArray</code> gives <code>ArrayStandIn</code> with open dimensions. <code>AbstractVecOrMat</code> gives one stand-in per member.</li>
+<li>Element bound below <code>Any</code> that number stand-ins fit takes them, as number argument does: <code>AbstractVector{&lt;:Real}</code> gives float and integer elements.</li>
+<li>Number stand-in elements keep float promotion that <code>type-disruption</code> reads (<code>xs .* 0.5</code>).</li>
+<li>Other element stays open (<code>ArrayStandIn{&lt;:AbstractString, 1}</code>). Concrete <code>Any</code> element decides element-type calls: <code>oneunit(eltype(xs))</code> fails, so loop body is dead.</li>
+<li><code>DenseArray</code> and <code>StridedArray</code> bounds take <code>DenseStandIn</code>.</li>
+<li>Open stand-in is not concrete. Call reaches untyped method when each argument type is concrete once its variables take their bounds (view of open stand-in too).</li>
+</ul>
 </div><div class="decision"><h3>Arguments without stand-in</h3>
 <ul>
 <li>Package abstract type (<code>s::Shape</code>): infer once per concrete subtype package defines, with stand-ins for its parameters.</li>
@@ -777,6 +787,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Constant object in code counts as <code>unknown</code>. Fresh objects of callee merge into one allocation at call statement.</li>
 <li><code>unknown</code>: object open call can return that no operand names, global included. Write to it is <code>possible</code> global write.</li>
 <li>Path: field name or element, at most 2 steps. Longer path collapses to <code>deep</code>.</li>
+<li>Field name comes from concrete type, array stand-in family or <code>Array</code> family. Other struct family (<code>Object{K, V} where …</code>) gives field position.</li>
 <li>Memory backing belongs to its owner: field of type <code>GenericMemory</code> or <code>GenericMemoryRef</code> adds no step. Write to <code>Vector</code> elements writes <code>Vector</code>.</li>
 <li><code>Ptr</code> value holds origins of object it points into, so foreign call through pointer writes that object.</li>
 <li>Constant null pointer global (<code>C_NULL</code>) points into no object.</li>
@@ -803,7 +814,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Opaque: Corset chose its type and code did not. Its data gives blind spots only.
 <ul>
 <li>Argument without stand-in (declared narrower than <code>Any</code>); type variable with bound.</li>
-<li>Stand-in with open part: <code>FunctionStandIn</code>, array stand-in with element <code>Any</code>, struct stand-in whose parameter took its bound (<code>types.md</code>).</li>
+<li>Stand-in with open part: <code>FunctionStandIn</code>, array stand-in with open element, struct stand-in whose parameter took its bound (<code>types.md</code>).</li>
 </ul>
 </li>
 <li>Opt-out: source declares <code>::Any</code>; declared concrete type with <code>Any</code> parameter (<code>types.md</code>, Explicit <code>Any</code>). Its data gives no finding and no blind spot.</li>
@@ -815,10 +826,16 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li><code>code</code> doubt holds sources: parameter bits, <code>OPAQUE</code> (<code>FunctionStandIn</code>) and <code>INHERENT</code> (doubt in code itself).</li>
 <li>Open dispatch (step 7) takes sources of each operand whose type is no dispatch element.</li>
 <li>Caller place gives its parameter. Global, or more than one fresh object, gives <code>INHERENT</code>. Chain to operand adds its own sources.</li>
+<li>Value without object source takes derived sources: type values and computed numbers hold no object. Objects decide when they give a source.</li>
+<li>Call result with open type derives sources of call operands with open type: <code>eltype(a)</code> and <code>w .* b</code> keep opaque source of open element.</li>
+<li>Argument with open type gives its parameter. Static parameter gives each parameter whose declared type holds it. Phi and pi nodes join sources of their values.</li>
+<li>Last fixpoint round records accesses: early round with sources still unknown adds no doubt in code.</li>
+<li>Callback record keeps targets only: its arguments give object sources alone.</li>
 <li>Two <code>code</code> doubts join sources, along chain and across chains. Callee summary maps parameter sources to sources of call arguments.</li>
 <li>Root unit resolves sources: code source gives <code>possible</code>. Else opaque source gives blind spot <code>open dispatch on opaque data</code>. Else no access.</li>
 <li>Unresolved call has doubt in code itself: unknown foreign call, builtin with splat, splat of other collection, splat that contract cannot place, <code>invoke</code> without constant method.</li>
 <li>Provenance covers argument and every place below it. Argument with open part is opaque, so open type that code declares below it gives blind spot.</li>
+<li>Contract write on argument that admits consumed iterator (<code>iterate(x::Any)</code>) takes sources of that argument: its type decides write.</li>
 <li>Provenance judges doubt from open dispatch only. Writes code performs, and resolved, joined or contract writes, keep certainty on every origin: <code>f(x::Any) = setfield!(x, :n, 0)</code> writes <code>x</code>.</li>
 </ul>
 <h4>Calls</h4>
@@ -829,7 +846,8 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Static call (one method matches, or <code>Core.invoke</code> with constant selector): callee summary. No method matches: call throws, so code after it is dead.
 Summary per variant: instance plus constant arguments callee uses as field name. <code>getproperty(x, :a)</code> keeps field <code>a</code>.</li>
 <li>Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.</li>
-<li>Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.</li>
+<li>Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.
+Access that some members lack takes sources of open operands, as open dispatch does: operand types pick member.</li>
 <li>Base interface function with documented contract (<code>setindex!</code> writes collection; <code>length</code> reads only; <code>view</code> result lies within array). Breach in package method is finding.</li>
 <li>Else open: <code>possible</code> write on operands; result may point into operands, one direction, and to <code>unknown</code>.</li>
 </ol>
@@ -1475,7 +1493,7 @@ Open-call census after 2b set this order; callback records cover least. Ablation
 <p>Measure: <code>possible</code> share per corpus package; methods per join; contract hits. Join limit 3 since 2a; keep it at least compiler <code>max_methods</code>.</p>
 </div><div class="decision"><h3>3 Engine limits</h3>
 <p>Compiler effects for speed; stand-in cuts and effect kinds for correct verdicts.
-Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effect kinds; 3d throw paths and call facts.</p>
+Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effect kinds; 3d throw paths and call facts. Before 3c: derived provenance (Provenance in <code>effects.md</code>).</p>
 <ul>
 <li>Shortcut: empty summary for instance with <code>effect_free</code>, <code>inaccessiblememonly</code>, <code>notaskstate</code> and result without reference.</li>
 <li>Skip shortcut when reached method outside Base carries effects override.</li>

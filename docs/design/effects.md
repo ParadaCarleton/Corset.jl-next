@@ -56,6 +56,7 @@ Engine code lives in `src/Effects/`.
 - Constant object in code counts as `unknown`. Fresh objects of callee merge into one allocation at call statement.
 - `unknown`: object open call can return that no operand names, global included. Write to it is `possible` global write.
 - Path: field name or element, at most 2 steps. Longer path collapses to `deep`.
+- Field name comes from concrete type, array stand-in family or `Array` family. Other struct family (`Object{K, V} where …`) gives field position.
 - Memory backing belongs to its owner: field of type `GenericMemory` or `GenericMemoryRef` adds no step. Write to `Vector` elements writes `Vector`.
 - `Ptr` value holds origins of object it points into, so foreign call through pointer writes that object.
 - Constant null pointer global (`C_NULL`) points into no object.
@@ -83,7 +84,7 @@ Each unit argument has one provenance:
 
 - Opaque: Corset chose its type and code did not. Its data gives blind spots only.
   - Argument without stand-in (declared narrower than `Any`); type variable with bound.
-  - Stand-in with open part: `FunctionStandIn`, array stand-in with element `Any`, struct stand-in whose parameter took its bound (`types.md`).
+  - Stand-in with open part: `FunctionStandIn`, array stand-in with open element, struct stand-in whose parameter took its bound (`types.md`).
 - Opt-out: source declares `::Any`; declared concrete type with `Any` parameter (`types.md`, Explicit `Any`). Its data gives no finding and no blind spot.
 - Code: every other argument, untyped argument and type variable without bound included. Compiler sees same open type.
 - Unit that calls reach keeps caller types. Only function stand-in and array stand-in with open part are opaque there.
@@ -93,10 +94,16 @@ Sources carry provenance through engine. No separate taint pass.
 - `code` doubt holds sources: parameter bits, `OPAQUE` (`FunctionStandIn`) and `INHERENT` (doubt in code itself).
 - Open dispatch (step 7) takes sources of each operand whose type is no dispatch element.
 - Caller place gives its parameter. Global, or more than one fresh object, gives `INHERENT`. Chain to operand adds its own sources.
+- Value without object source takes derived sources: type values and computed numbers hold no object. Objects decide when they give a source.
+- Call result with open type derives sources of call operands with open type: `eltype(a)` and `w .* b` keep opaque source of open element.
+- Argument with open type gives its parameter. Static parameter gives each parameter whose declared type holds it. Phi and pi nodes join sources of their values.
+- Last fixpoint round records accesses: early round with sources still unknown adds no doubt in code.
+- Callback record keeps targets only: its arguments give object sources alone.
 - Two `code` doubts join sources, along chain and across chains. Callee summary maps parameter sources to sources of call arguments.
 - Root unit resolves sources: code source gives `possible`. Else opaque source gives blind spot `open dispatch on opaque data`. Else no access.
 - Unresolved call has doubt in code itself: unknown foreign call, builtin with splat, splat of other collection, splat that contract cannot place, `invoke` without constant method.
 - Provenance covers argument and every place below it. Argument with open part is opaque, so open type that code declares below it gives blind spot.
+- Contract write on argument that admits consumed iterator (`iterate(x::Any)`) takes sources of that argument: its type decides write.
 - Provenance judges doubt from open dispatch only. Writes code performs, and resolved, joined or contract writes, keep certainty on every origin: `f(x::Any) = setfield!(x, :n, 0)` writes `x`.
 
 #### Calls
@@ -109,6 +116,7 @@ Resolution of each call statement, first match wins:
    Summary per variant: instance plus constant arguments callee uses as field name. `getproperty(x, :a)` keeps field `a`.
 4. Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.
 5. Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: `possible`.
+   Access that some members lack takes sources of open operands, as open dispatch does: operand types pick member.
 6. Base interface function with documented contract (`setindex!` writes collection; `length` reads only; `view` result lies within array). Breach in package method is finding.
 7. Else open: `possible` write on operands; result may point into operands, one direction, and to `unknown`.
 

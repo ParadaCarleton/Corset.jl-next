@@ -78,7 +78,7 @@ Measure: `possible` share per corpus package; methods per join; contract hits. J
 ### 3 Engine limits
 
 Compiler effects for speed; stand-in cuts and effect kinds for correct verdicts.
-Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effect kinds; 3d throw paths and call facts.
+Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effect kinds; 3d throw paths and call facts. Before 3c: derived provenance (Provenance in `effects.md`).
 
 - Shortcut: empty summary for instance with `effect_free`, `inaccessiblememonly`, `notaskstate` and result without reference.
 - Skip shortcut when reached method outside Base carries effects override.
