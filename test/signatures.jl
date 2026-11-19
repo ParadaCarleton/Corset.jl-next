@@ -19,6 +19,11 @@ module SignatureCases
     scale(x::Real, factor::Integer) = x * factor
     total(values::AbstractVector{<:Real}) = sum(values)
     first_item(values::AbstractVector) = values[1]
+    any_rank(values::AbstractArray) = values
+    real_rank(values::AbstractArray{<:Real}) = values
+    either(values::AbstractVecOrMat) = values
+    labels(values::AbstractVector{<:AbstractString}) = values
+    anything(values::AbstractVector{Any}) = values
     both(x::T, y::T) where {T <: Real} = x + y
     apply(f::Function, x) = f(x)
     kind(::Type{T}) where {T <: AbstractFloat} = T
@@ -97,7 +102,14 @@ include("compilation.jl")
         :area => [call(:area, CASES.Circle{FloatStandIn}), call(:area, CASES.Square), call(:area, CASES.Circle{IntStandIn})],
         :scale => [call(:scale, FloatStandIn, IntStandIn), call(:scale, IntStandIn, IntStandIn)],
         :total => [call(:total, ArrayStandIn{FloatStandIn, 1}), call(:total, ArrayStandIn{IntStandIn, 1})],
-        :first_item => [call(:first_item, ArrayStandIn{Any, 1})],
+        # Array stand-in keeps what bound leaves open; number element bound takes number stand-ins.
+        :first_item => [call(:first_item, ArrayStandIn{<:Any, 1})],
+        :any_rank => [call(:any_rank, ArrayStandIn)],
+        :real_rank => [call(:real_rank, ArrayStandIn{FloatStandIn}), call(:real_rank, ArrayStandIn{IntStandIn})],
+        :either => [call(:either, ArrayStandIn{<:Any, 1}), call(:either, ArrayStandIn{<:Any, 2})],
+        :labels => [call(:labels, ArrayStandIn{<:AbstractString, 1})],
+        :anything => [call(:anything, ArrayStandIn{Any, 1})],
+        :tensor => [call(:tensor, ArrayStandIn{Float64, 4})],
         :both => [call(:both, FloatStandIn, FloatStandIn), call(:both, IntStandIn, IntStandIn)],
         :kind => [call(:kind, Type{FloatStandIn})],
         :strided => [call(:strided, DenseStandIn{Float64, 2})],
@@ -118,7 +130,6 @@ include("compilation.jl")
     @testset "argument without stand-in keeps declared type" begin
         @test signatures_of(:apply).signatures == [call(:apply, FunctionStandIn, Any)] && signatures_of(:apply).bare == [2]
         @test signatures_of(:text).signatures == [call(:text, AbstractString)] && signatures_of(:text).bare == [1]
-        @test signatures_of(:tensor).signatures == [call(:tensor, AbstractArray{Float64, 4})] && signatures_of(:tensor).bare == [1]
         @test signatures_of(:measure).signatures == [call(:measure, CASES.Sized)] && signatures_of(:measure).bare == [1]
         free = signatures_of(:free)
         @test free.signatures == [only(methods(CASES.free)).sig] && free.bare == [1]
@@ -156,7 +167,7 @@ include("compilation.jl")
     @testset "argument provenance" begin
         code, opaque, opt_out = Provenance.code, Provenance.opaque, Provenance.opt_out
         provenances(name::Symbol, opted::Vector{Int})::Vector{Vector{Provenance.T}} = [argument_provenance(only(methods(getglobal(CASES, name))), signature, true, opted) for signature in signatures_of(name).signatures]
-        # Stand-in with open part Corset chose: function, array element `Any`, struct parameter at bound.
+        # Stand-in with open part Corset chose: function, open array element, struct parameter at bound.
         @test provenances(:apply, Int[]) == [[code, opaque, code]] && provenances(:apply, [2]) == [[code, opaque, opt_out]]
         @test provenances(:first_item, Int[]) == [[code, opaque]] && provenances(:unbox, Int[]) == [[code, opaque]]
         # Stand-ins without open part, and declared concrete types: code.
@@ -172,6 +183,7 @@ include("compilation.jl")
         @test provenances(:first_listed, Int[]) == [[code, opaque]]
         # Signature call reaches carries caller types: only function and array stand-ins are Corset choice.
         @test argument_provenance(only(methods(CASES.first_item)), call(:first_item, AbstractVector), false, Int[]) == [code, code]
+        @test argument_provenance(only(methods(CASES.first_item)), call(:first_item, ArrayStandIn{<:Any, 1}), false, Int[]) == [code, opaque]
         @test argument_provenance(only(methods(CASES.first_item)), call(:first_item, ArrayStandIn{Any, 1}), false, Int[]) == [code, opaque]
         @test argument_provenance(only(methods(CASES.apply)), call(:apply, FunctionStandIn, Any), false, [2]) == [code, opaque, code]
         @test argument_provenance(only(methods(CASES.unbox)), call(:unbox, CASES.Box{Any}), false, Int[]) == [code, code]
