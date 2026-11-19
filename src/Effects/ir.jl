@@ -56,8 +56,22 @@ function referent!(cache::IdDict{Any, Bool}, type::Any)::Bool
     return answer
 end
 
-"""Type of IR value `value` in `ir`, widened to plain type."""
-value_type(ir::CC.IRCode, value::Any)::Any = CC.widenconst(CC.argextype(value, ir))
+"""
+Type of IR value `value` in `ir`, widened to plain type. Library tuple of `cglobal` stays nested `Core.tuple` call,
+which `argextype` rejects: it gives tuple of its element types.
+"""
+function value_type(ir::CC.IRCode, value::Any)::Any
+    nested_tuple(ir, value) && return Tuple{(value_type(ir, element) for element in value.args[2:end])...}
+    return CC.widenconst(CC.argextype(value, ir))
+end
+
+"""Whether `value` is nested `Core.tuple` call expression inside statement of `ir`."""
+function nested_tuple(ir::CC.IRCode, value::Any)::Bool
+    value isa Expr || return false
+    value.head === :call || return false
+    callee = constant(ir, value.args[1])
+    return !isnothing(callee) && something(callee) === Core.tuple
+end
 
 """Constant `value` holds in `ir`: literal, constant global or singleton type instance; `nothing` when not constant."""
 function constant(ir::CC.IRCode, value::Any)::Union{Nothing, Some{Any}}

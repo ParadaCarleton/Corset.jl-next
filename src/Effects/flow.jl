@@ -9,7 +9,8 @@ const Deferred = Tuple{Variant, Vector{Targets}}
 
 """
 Points-to state of one instance during its fixpoint (`effects.md`, Origins and points-to): targets per IR value and
-argument; flow-insensitive heap by origin and slot, memory backing, unknown-slot stores and global bindings; result
+argument; type sources each IR value derives from values that made it (`derived_of`) and of each static parameter;
+flow-insensitive heap by origin and slot, memory backing, unknown-slot stores and global bindings; result
 targets; accesses by origin and whether they cover places below; callback records by call statement. `changed` records
 growth of targets in current round; `closed_world` records join over methods loaded now, and `cut` path stand-ins cut
 (`Summary`). `flush` resolves every callback record here: root unit has no caller to resolve them.
@@ -18,6 +19,8 @@ mutable struct Flow
     const ir::CC.IRCode
     const outcomes::Vector{Union{Nothing, Outcome.Type}}
     const values::Vector{Targets}
+    const derived::Vector{Sources}
+    const statics::Vector{Sources}
     const arguments::Vector{Targets}
     const heap::Dict{Origin.Type, Dict{Step.Type, Targets}}
     const backing::OriginHolds
@@ -36,16 +39,17 @@ end
 
 """
 Flow of `ir` with call `outcomes` before first round: each referent argument points to its parameter. `flush` resolves
-callback records in this instance; `cut` marks instance whose own code stand-ins cut (`Flow`).
+callback records in this instance; `cut` marks instance whose own code stand-ins cut; `statics` holds sources of each
+static parameter (`static_sources`).
 """
-function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool)::Flow
+function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::Vector{Sources})::Flow
     arguments = [
         referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), Step.Type[])) => NO_DOUBT) : Targets()
             for (position, type) in enumerate(ir.argtypes)
     ]
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     callbacks = Dict{Int, Vector{Deferred}}()
-    return Flow(ir, outcomes, [Targets() for _ in 1:length(ir.stmts)], arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, false, false, cut)
+    return Flow(ir, outcomes, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, false, false, cut)
 end
 
 """
@@ -277,8 +281,13 @@ function assign!(flow::Flow, index::Int, targets::Targets, doubt::Doubt = NO_DOU
     return nothing
 end
 
-"""One round over every statement of `flow`, with callee summaries from `callees`."""
+"""
+One round over every statement of `flow`, with callee summaries from `callees`. Accesses start empty: last round records
+them from settled targets and sources, so code doubt of early round with sources still unknown stays out.
+"""
 function round!(flow::Flow, callees::Callees)::Nothing
+    empty!(flow.writes)
+    empty!(flow.reads)
     for index in 1:length(flow.ir.stmts)
         statement!(flow, index, flow.ir.stmts[index][:stmt], callees)
     end
@@ -288,7 +297,7 @@ end
 """Expression heads that move no object: control, scope, metadata and coverage markers."""
 const INERT = (
     :boundscheck, :pop_exception, :leave, :throw_undef_if_not, :gc_preserve_begin, :gc_preserve_end, :loopinfo, :meta,
-    :inbounds, :code_coverage_effect, :isdefined, :static_parameter, :aliasscope, :popaliasscope, :undefcheck, :cfunction,
+    :inbounds, :code_coverage_effect, :isdefined, :aliasscope, :popaliasscope, :undefcheck, :cfunction,
     :latestworld,
 )
 
@@ -314,20 +323,22 @@ function statement!(flow::Flow, index::Int, statement::Any, callees::Callees)::N
             store!(flow, flow.values[index], nothing, union_targets(value_targets(flow, value) for value in statement.args))
         elseif head === :the_exception
             assign!(flow, index, unknown(CODE_DOUBT))
+        elseif head === :static_parameter
+            derive!(flow, index, flow.statics[statement.args[1]::Int])
         elseif !(head in INERT)
             throw(ArgumentError("effects engine has no transfer for IR statement head `$head`"))
         end
     elseif statement isa Core.PhiNode
         for position in eachindex(statement.values)
-            isassigned(statement.values, position) && assign!(flow, index, value_targets(flow, statement.values[position]))
+            isassigned(statement.values, position) && pass!(flow, index, statement.values[position])
         end
     elseif statement isa Core.PhiCNode
         for upsilon in statement.values
             node = flow.ir.stmts[(upsilon::Core.SSAValue).id][:stmt]::Core.UpsilonNode
-            isdefined(node, :val) && assign!(flow, index, value_targets(flow, node.val))
+            isdefined(node, :val) && pass!(flow, index, node.val)
         end
     elseif statement isa Core.PiNode
-        assign!(flow, index, value_targets(flow, statement.val))
+        pass!(flow, index, statement.val)
     elseif statement isa Core.ReturnNode
         isdefined(statement, :val) && join!(flow, flow.result, value_targets(flow, statement.val))
     elseif statement isa GlobalRef
@@ -337,6 +348,55 @@ function statement!(flow::Flow, index::Int, statement::Any, callees::Callees)::N
         throw(ArgumentError("effects engine has no transfer for IR statement of type `$(typeof(statement))`"))
     end
     return nothing
+end
+
+"""Pass IR `value` to statement `index` (phi or pi node): its targets and derived type sources."""
+function pass!(flow::Flow, index::Int, value::Any)::Nothing
+    assign!(flow, index, value_targets(flow, value))
+    derive!(flow, index, value_derived(flow, value))
+    return nothing
+end
+
+"""Add `sources` to derived type sources of statement `index`; mark `flow` changed when they grow."""
+function derive!(flow::Flow, index::Int, sources::Sources)::Nothing
+    grown = flow.derived[index] | sources
+    grown == flow.derived[index] && return nothing
+    flow.derived[index], flow.changed = grown, true
+    return nothing
+end
+
+"""
+Type sources IR `value` derives without object (`effects.md`, Provenance): sources of call or phi that made SSA value;
+parameter source of argument, since caller chose its type.
+"""
+function value_derived(flow::Flow, value::Any)::Sources
+    value isa Core.SSAValue && return flow.derived[value.id]
+    value isa Core.Argument && return parameter_source(value.n)
+    return Sources(0)
+end
+
+"""
+Parameter sources of each static parameter of `method` (`effects.md`, Provenance): every parameter whose declared type
+holds its type variable, since caller chose that type.
+"""
+function static_sources(method::Method)::Vector{Sources}
+    signature, variables = method.sig, TypeVar[]
+    while signature isa UnionAll
+        push!(variables, signature.var)
+        signature = signature.body
+    end
+    sources = zeros(Sources, length(variables))
+    for (position, type) in enumerate((signature::DataType).parameters), (at, variable) in enumerate(variables)
+        CC.has_typevar(type, variable) && (sources[at] |= parameter_source(position))
+    end
+    return sources
+end
+
+"""Derived type sources of call `operand` (`value_derived`): spread part and elements take sources of spread value."""
+derived_of(flow::Flow, operand::Operand.Type)::Sources = @match operand begin
+    Operand.Value(value) => value_derived(flow, value)
+    Operand.Part(value, _) => value_derived(flow, value)
+    Operand.Rest(value) => value_derived(flow, value)
 end
 
 """Make statement `index` an allocation: its value points to fresh object `Allocation(index)`."""
