@@ -1,7 +1,8 @@
 """
-Stand-in types: concrete types that stand for any caller type of their kind, so inference of generic method sees concrete type.
+Stand-in types: types that stand for any caller type of their kind, so inference of generic method sees one known type.
 Each wraps model type, narrowest Base type of its kind, and promotes like it: `Float32`, `Int32`, `Array`.
 Base fast paths for model types skip stand-in, so inference takes generic path, as user type would.
+Array stand-in for any element keeps element open (`ArrayStandIn{<:Any, 1}`): no element type decides code.
 """
 module StandIns
 
@@ -58,14 +59,26 @@ model(::Type{IntStandIn})::Type{Int32} = Int32
 gives `Vector{Float32}`.
 Function stand-in has no model and stays.
 """
-function model_type(type::Any)::Any
+model_type(type::Any)::Any = modeled(type, IdDict{TypeVar, TypeVar}())
+
+"""`model_type` of `type`; `variables` maps each type variable to one with modeled bounds (`P <: ArrayStandIn` of view)."""
+function modeled(type::Any, variables::IdDict{TypeVar, TypeVar})::Any
+    type isa TypeVar && return get(variables, type, type)
     type in NUMBERS && return model(type)
-    type isa Union && return Union{model_type(type.a), model_type(type.b)}
+    type isa Union && return Union{modeled(type.a, variables), modeled(type.b, variables)}
+    if type isa UnionAll
+        variable = TypeVar(type.var.name, modeled(type.var.lb, variables), modeled(type.var.ub, variables))
+        variables[type.var] = variable
+        return UnionAll(variable, modeled(type.body, variables))
+    end
     type isa DataType || return type
-    parameters = map(model_type, type.parameters)
+    parameters = Any[modeled(parameter, variables) for parameter in type.parameters]
     type <: Union{ArrayStandIn, DenseStandIn} && return Array{parameters...}
     return isempty(parameters) ? type : type.name.wrapper{parameters...}
 end
+
+"""Whether `type` is array stand-in, element open or not: `ArrayStandIn{<:Any, 1}`, `DenseStandIn{FloatStandIn, 2}`."""
+array_stand_in(type::Any)::Bool = (type isa DataType || type isa UnionAll) && type <: Union{ArrayStandIn, DenseStandIn}
 
 """Base number types stand-ins convert to and promote with."""
 const PARTNERS = (Bool, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, Float16, Float32, Float64, BigInt, BigFloat)

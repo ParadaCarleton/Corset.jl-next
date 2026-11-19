@@ -501,8 +501,25 @@ function narrowings(typed::TypedCode, nodes::Vector{Union{Nothing, SyntaxNode}},
     return found
 end
 
-"""Whether `type` is stand-in type or holds one as parameter: `ArrayStandIn{FloatStandIn, 1}`, `Circle{IntStandIn}`."""
-holds_stand_in(type::Any)::Bool = type isa DataType && (parentmodule(type) === StandIns || any(holds_stand_in, type.parameters))
+"""
+Whether `type` is stand-in type or holds one as parameter or variable bound: `ArrayStandIn{<:Any, 1}`,
+`Circle{IntStandIn}`, view of open stand-in (`SubArray{T, 1, P} where {T, P <: ArrayStandIn{<:Any, 2}}`).
+"""
+function holds_stand_in(type::Any)::Bool
+    type isa TypeVar && return holds_stand_in(type.ub)
+    type = Base.unwrap_unionall(type)
+    return type isa DataType && (parentmodule(type) === StandIns || any(holds_stand_in, type.parameters))
+end
+
+"""
+Whether every value of `type` has concrete type: concrete type, or struct family (`ArrayStandIn{<:Any, 1}`, its views).
+Struct type is concrete whatever its parameters; tuple is concrete only when its members are.
+"""
+function settled(type::Any)::Bool
+    type isa UnionAll || return isconcretetype(type)
+    body = Base.unwrap_unionall(type)
+    return body isa DataType && isstructtype(body) && !(body <: Tuple)
+end
 
 """
 Calls in typed `code` of `instance` to function of package `modules` with concrete argument types that dispatch to one
@@ -516,8 +533,9 @@ function package_calls(code::Core.CodeInfo, instance::Core.MethodInstance, modul
         isnothing(call) && continue
         callee = CC.widenconst(CC.argextype(call.args[1], code, parameters))
         (callee isa DataType && callee <: Function && parentmodule(callee) in modules) || continue
-        call_signature = Tuple{Any[CC.widenconst(CC.argextype(argument, code, parameters)) for argument in call.args]...}
-        isconcretetype(call_signature) || continue
+        types = Any[CC.widenconst(CC.argextype(argument, code, parameters)) for argument in call.args]
+        all(settled, types) || continue
+        call_signature = Tuple{types...}
         matches = Base._methods_by_ftype(call_signature, 1, Base.get_world_counter())
         (matches isa Vector && length(matches) == 1 && haskey(by_path, string(only(matches).method.file))) || continue
         push!(found, (call_signature, statement_type(code, index)))
@@ -534,7 +552,7 @@ function reached(code::Core.CodeInfo, instance::Core.MethodInstance)::Vector{Typ
         isnothing(call) && continue
         types = Any[CC.widenconst(CC.argextype(argument, code, parameters)) for argument in call.args]
         call_signature = Tuple{types...}
-        isconcretetype(call_signature) && any(holds_stand_in, types) || continue
+        all(settled, types) && any(holds_stand_in, types) || continue
         matches = Base._methods_by_ftype(call_signature, 1, Base.get_world_counter())
         matches isa Vector && length(matches) == 1 && push!(found, call_signature)
     end

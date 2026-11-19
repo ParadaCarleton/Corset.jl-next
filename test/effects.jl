@@ -2,7 +2,7 @@ using Test: @test, @testset, @test_throws
 using Corset: Corset
 using Corset.Facts: Facts, MethodEffects, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision
 using Corset.Inference: infer_package, open_journal, records, explicit_any, cuts!, dead_calls
-using Corset.StandIns: FunctionStandIn, ArrayStandIn, FloatStandIn
+using Corset.StandIns: FunctionStandIn, ArrayStandIn, DenseStandIn, FloatStandIn
 using Corset.Signatures: Provenance
 using Corset.Effects:
     Effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
@@ -273,6 +273,9 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
     zero = unit(:maybe_zero!)
     @test !isempty(zero.cuts) && all(index -> zero.code.ssavaluetypes[index] === Union{}, zero.cuts) && !isempty(dead_calls(zero.code))
     @test !named(:maybe_zero!).complete && length(cut_spots(:maybe_zero!)) == 1
+    # Open stand-in element decides no element-type call (`oneunit(eltype(values))`): loop write stays, no cut.
+    @test unit(:fill_units!).signature == Tuple{typeof(CASES.fill_units!), ArrayStandIn{<:Any, 1}} && isempty(unit(:fill_units!).cuts)
+    @test shape(named(:fill_units!).writes) == [(parameter(2, Step.Field(:data)), false, definite)] && named(:fill_units!).complete
     # Throw helper fails on every signature, and call that fails on model types too is fact: no cut.
     @test isempty(unit(:check_nonempty).cuts) && isempty(cut_spots(:check_nonempty))
     converted = unit(:maybe_convert)
@@ -753,12 +756,19 @@ four_way(x::Symbol) = x
     @test referent!(cache, AbstractVector) && !referent!(cache, Type{Int}) && referent!(cache, Ptr{Int})
     @test !referent!(cache, Tuple{Int, Symbol}) && referent!(cache, Tuple{Int, Vector{Int}}) && !referent!(cache, Module)
     @test field_step(Tuple{Int}, :a) === nothing && field_step(Tuple{Int}, 1) == Step.Position(1)
+    # Array stand-in and `Array` families name fields as members do; code struct family keeps `Position`.
     @test field_step(Base.RefValue{Int}, 1) == Step.Field(:x) && field_step(Base.RefValue, 1) == Step.Position(1)
+    @test field_step(ArrayStandIn{<:Any, 1}, 1) == Step.Field(:data) && field_step(Vector, 2) == Step.Field(:size)
+    @test field_step(Union{ArrayStandIn{T, 1}, DenseStandIn{T, 1}} where {T}, 1) == Step.Position(1)
+    @test field_step(AbstractVector, 1) == Step.Position(1) && field_step(NTuple{N, Int} where {N}, 1) == Step.Position(1)
     @test field_step(Base.RefValue{Int}, 1.0) === nothing
     @test backing_field(Vector{Int}, :ref) && !backing_field(Vector{Int}, :nope) && !backing_field(Vector{Int}, 9)
     @test !backing_field(Tuple{Memory{Int}}, 1) && !backing_field(Vector{Int}, :size)
+    @test backing_field(Vector, :ref) && !backing_field(AbstractVector, :ref) && !backing_field(NamedTuple{(:ref,)}, :ref)
+    @test !backing_field(Base.RefValue, :x)
     @test slot_type(Base.RefValue{Int}, nothing) == Any && slot_type(Base.RefValue{Int}, Some{Any}(:x)) == Int
     @test slot_type(Base.RefValue{Int}, Some{Any}(:nope)) == Any && slot_type(AbstractVector, Some{Any}(1)) == Any
+    @test slot_type(ArrayStandIn{<:Any, 1}, Some{Any}(:data)) == Vector && slot_type(Base.RefValue{<:Real}, Some{Any}(:x)) == Any
     @test element_type(Ptr{Int}) == Int && element_type(Vector{Int}) == Any && element_type(Union{Int, Ptr{Int}}) == Any
     @test element_type(MemoryRef{Vector{Int}}) == Vector{Int}
     @test root_of(Place.Deep(Root.Elsewhere())) == Root.Elsewhere()

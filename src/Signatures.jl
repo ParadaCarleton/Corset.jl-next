@@ -1,5 +1,5 @@
 """
-Stand-in signatures: concrete argument types `inference` stage infers package methods with.
+Stand-in signatures: argument types `inference` stage infers package methods with.
 Generic argument gets stand-ins that fit its bound; package abstract type gets each package struct below it.
 """
 module Signatures
@@ -34,18 +34,39 @@ function fitting(candidates::Any, bound::Type)::Vector{Type}
     return found
 end
 
-"""Array stand-ins for `bound`: element `Any` when bound allows any element; number stand-ins; else bound element type."""
+"""
+Array stand-ins for `bound` (`types.md`, Arguments without stand-in): first stand-in kind that fits, shaped as bound
+shapes it (`ArrayStandIn{<:AbstractString, 1}`); union bound gives one per member. Element and dimensions that bound
+leaves open stay open, except element bound below `Any` that number stand-ins fit (`numbered`).
+"""
 function arrays(bound::Type)::Vector{Type}
-    for dimensions in 1:3, kind in (ArrayStandIn, DenseStandIn)
-        kind{Any, dimensions} <: bound && return Type[kind{Any, dimensions}]
-        found = fitting((kind{element, dimensions} for element in StandIns.NUMBERS), bound)
+    for kind in (ArrayStandIn, DenseStandIn)
+        found, families = Type[], typeintersect(kind, bound)
+        for family in (families isa Union ? Base.uniontypes(families) : Any[families])
+            # Intersection can be wider than exact one: stand-in must fit bound.
+            family !== Union{} && family <: bound && append!(found, numbered(family))
+        end
         isempty(found) || return found
-        kind{eltype(bound), dimensions} <: bound && return Type[kind{eltype(bound), dimensions}]
     end
     return Type[]
 end
 
-"""Concrete types that stand for argument of declared type `bound`; `structs` are package struct stand-ins. Empty when none fits."""
+"""
+Array stand-in `family` with each number stand-in for element whose bound lies below `Any` (`AbstractVector{<:Real}`),
+as number argument takes them; `family` alone when none fits.
+"""
+function numbered(family::Type)::Vector{Type}
+    body = Base.unwrap_unionall(family)::DataType
+    element, found = first(body.parameters), Type[]
+    element isa TypeVar || return Type[family]
+    element.ub === Any && return Type[family]
+    for number in fitting(StandIns.NUMBERS, element.ub)
+        element.lb <: number && push!(found, Base.rewrap_unionall(body.name.wrapper{number, last(body.parameters)}, family))
+    end
+    return isempty(found) ? Type[family] : found
+end
+
+"""Types that stand for argument of declared type `bound`; `structs` are package struct stand-ins. Empty when none fits."""
 function stand_ins(bound::Type, structs::Vector{<:Type})::Vector{Type}
     bound === Any && return Type[]
     isconcretetype(bound) && return Type[bound]
@@ -192,9 +213,13 @@ chose its type; `opt_out` for type code declares `Any`.
 """
 @enumx Provenance code opaque opt_out
 
-"""Whether `type` holds open type: function stand-in, or open type parameter at any depth (`ArrayStandIn{Any, 1}`)."""
+"""
+Whether `type` holds open type: function stand-in, type variable (`ArrayStandIn{<:Any, 1}`), or type parameter that is
+not concrete, at any depth.
+"""
 function holds_open(type::Any)::Bool
     type === FunctionStandIn && return true
+    type isa UnionAll && return true
     type isa DataType || return false
     return any(parameter -> parameter isa Type && (!isconcretetype(parameter) || holds_open(parameter)), type.parameters)
 end
@@ -212,7 +237,7 @@ Provenance of argument `position` (1 is first argument after callee) of `method`
 """
 function provenance(method::Method, type::Any, position::Int, stand_in::Bool, explicit_any::Bool)::Provenance.T
     # Function and array stand-ins come from Corset only, also in signatures calls reach.
-    stand_in_type = type === FunctionStandIn || (type isa DataType && (type <: ArrayStandIn || type <: DenseStandIn))
+    stand_in_type = type === FunctionStandIn || StandIns.array_stand_in(type)
     stand_in_type && holds_open(type) && return Provenance.opaque
     stand_in || return Provenance.code
     # Type variable that no stand-in fits: unbounded one hides nothing, as untyped argument; bounded one is Corset choice.

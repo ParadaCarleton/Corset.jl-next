@@ -341,4 +341,13 @@ maybe_convert(values::AbstractVector{Int}, flag::Bool)::Nothing = (flag && conve
 # `error` throws on every signature: no cut.
 check_nonempty(values::AbstractVector{Int})::Nothing = (isempty(values) && error("empty"); nothing)
 
+# Open stand-in element: `oneunit` of element type fails on no stand-in, so loop write stays analyzed.
+function fill_units!(values::AbstractVector)::Nothing
+    unit_value = oneunit(eltype(values))
+    for index in eachindex(values)
+        values[index] = unit_value
+    end
+    return nothing
+end
+
 end

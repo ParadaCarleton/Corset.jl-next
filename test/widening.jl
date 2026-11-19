@@ -276,6 +276,11 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         @test swapped(Union{F, Nothing}) == Union{Float64, Nothing}
         @test isnothing(swapped(WideningCases.Picky{F}))
         @test swapped(Int) === Int
+        # Variable bound holds stand-in too; member or parameter that bound rejects fails whole type.
+        @test holds_float(Base.RefValue{T} where {T <: F}) && !holds_float(Base.RefValue{T} where {T <: I})
+        @test swapped(Base.RefValue{T} where {T <: F}) == (Base.RefValue{T} where {T <: Float64})
+        @test isnothing(swapped(Union{WideningCases.Picky{F}, Nothing})) && isnothing(swapped(Base.RefValue{WideningCases.Picky{F}}))
+        @test isnothing(swapped(Base.RefValue{T} where {T <: WideningCases.Picky{F}}))
         @test something(replacement((1, 2.0))) === (F(1.0f0), F(2.0f0))
         @test isnothing(replacement((1, 2im)))
         @test isnothing(replacement(1 + 2im))

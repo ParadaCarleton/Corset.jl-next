@@ -5,7 +5,8 @@ using Corset.StandIns: FloatStandIn, IntStandIn, ArrayStandIn, DenseStandIn, Fun
 using Corset.Package: source_name
 using Corset.Signatures: LIMIT
 using Corset.Inference:
-    TypedCode, infer_package, infer, mappings, statement_nodes, broadcast_node, callee_name, spells, untyped, throw_helper, callable, callee_text
+    TypedCode, infer_package, infer, mappings, statement_nodes, broadcast_node, callee_name, spells, untyped, throw_helper, callable, callee_text,
+    settled, holds_stand_in
 using Corset.Widening: statement_call
 using Base.Broadcast: broadcasted
 using Corset.Inference:
@@ -104,6 +105,11 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         # Wrapper passes empty keyword splat, so body gets concrete signature.
         slurpy = [code for code in TYPED if source_name(code.site.method) == "slurpy"]
         @test length(slurpy) == 4 && all(code -> isconcretetype(code.signature), slurpy)
+        # Open stand-in array and its view reach untyped helper: argument families of concrete types settle call.
+        @test typed("first_value", ArrayStandIn{<:Any, 1}).result == Any
+        @test count(code -> source_name(code.site.method) == "first_value", TYPED) == 2
+        @test !any(code -> source_name(code.site.method) == "tallied", TYPED)
+        @test any(guess -> text(guess.cause) == "collected" && guess.type == "AbstractVector", FACTS.guesses)
         # Calls reach `nest` with ever deeper tuples until limit.
         @test count(code -> code.site.method.name === :nest, TYPED) == LIMIT
         # Own signatures come before reached ones.
@@ -176,13 +182,14 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test isnothing(broadcast_node(lazy, Union{Nothing, Corset.Facts.SyntaxNode}[nothing for _ in lazy.code], something(index)))
     end
     @testset "blind spots" begin
-        unreached = ["lonely", "splatted", "first_of", "unreached", "joined", "hk"]
+        # `tallied` gets call with family that holds no stand-in, and worklist follows stand-ins only.
+        unreached = ["lonely", "splatted", "first_of", "unreached", "joined", "hk", "tallied"]
         @test spot_lines("untyped method no call reaches") == sort!(line_of.(unreached))
         @test spot_lines("argument without stand-in") == sort!(line_of.(["text", "mixed", "rewrapped"]))
         @test spot_lines("signatures over limit") == sort!(line_of.(["wide", "nest"]))
         @test spot_lines("inference gave no code") == [line_of("refused")]
         @test spot_lines("call fails on stand-in only") == [line_of("halved")]
-        @test length(SPOTS) == 13
+        @test length(SPOTS) == 14
     end
     @testset "failing calls" begin
         failing(name::String)::Vector{FailingCall} = [call for call in FACTS.failing if text(call.declared) == name]
@@ -358,5 +365,16 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test model_type(Tuple{typeof(sin), FloatStandIn, ArrayStandIn{IntStandIn, 2}, MODULE.Circle{FloatStandIn}}) ==
             Tuple{typeof(sin), Float32, Matrix{Int32}, MODULE.Circle{Float32}}
         @test model_type(DenseStandIn{FloatStandIn, 1}) == Vector{Float32} && model_type(FunctionStandIn) == FunctionStandIn
+        # Open stand-ins model as families; variable bound models too, so view of stand-in models as view of `Array`.
+        slice = Tuple{Base.Slice{Base.OneTo{Int}}, Int}
+        view_type = SubArray{T, 1, P, slice, true} where {T, P <: ArrayStandIn{<:Any, 2}}
+        @test model_type(ArrayStandIn{<:Real, 1}) == Vector{<:Real} && model_type(ArrayStandIn) == Array
+        @test model_type(Union{Nothing, ArrayStandIn{Float64, 1}}) == Union{Nothing, Vector{Float64}}
+        @test model_type(view_type) == (SubArray{T, 1, P, slice, true} where {T, P <: Matrix}) && !holds_stand_in(model_type(view_type))
+        @test holds_stand_in(view_type) && holds_stand_in(ArrayStandIn{<:Any, 1}) && !holds_stand_in(Vector{<:Real})
+        # Struct family settles; abstract type and tuple family do not. Named tuple family once threw on bound test.
+        @test settled(ArrayStandIn{<:Any, 1}) && settled(view_type) && settled(Int) && settled(Vector{<:Real})
+        @test !settled(AbstractVector) && !settled(NTuple{N, Int} where {N}) && !settled(Any) && !settled(Tuple{T} where {T})
+        @test settled(NamedTuple{names, T} where {names, T <: Tuple}) && !settled(Type{T} where {T}) && !settled(Union{Int, String})
     end
 end

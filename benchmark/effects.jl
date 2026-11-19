@@ -93,7 +93,10 @@ function package_copy(work::String, name::String, version::String)::String
     return copy
 end
 
-"""Measure package `name` at `version` with Corset at `corset` in fresh process; child gets 30 min."""
+"""Seconds child process gets before `timeout` stops it."""
+const CHILD_SECONDS = 1800
+
+"""Measure package `name` at `version` with Corset at `corset` in fresh process; child gets `CHILD_SECONDS`."""
 function measure(corset::String, work::String, name::String, version::String)::Nothing
     copy, environment = package_copy(work, name, version), joinpath(work, "env-$name")
     Pkg.activate(environment) do
@@ -101,8 +104,9 @@ function measure(corset::String, work::String, name::String, version::String)::N
         Pkg.precompile(; io = devnull)
     end
     println("== ", name, "@", version)
-    child = run(ignorestatus(`timeout -s INT -k 30 1800 $(Base.julia_cmd()) --startup-file=no --project=$environment -e $CHILD -- $name $copy`))
-    success(child) || println("child exit ", child.exitcode, child.exitcode == 124 ? " (timed out after 1800 s)" : "")
+    seconds = @elapsed child = run(ignorestatus(`timeout -s INT -k 30 $CHILD_SECONDS $(Base.julia_cmd()) --startup-file=no --project=$environment -e $CHILD -- $name $copy`))
+    # Child that ignores INT dies by KILL (137), so elapsed time tells timeout from crash.
+    success(child) || println("child exit ", child.exitcode, seconds >= CHILD_SECONDS ? " (timed out after $CHILD_SECONDS s)" : "")
     return nothing
 end
 

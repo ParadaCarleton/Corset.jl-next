@@ -134,6 +134,11 @@ end
         @test strides(matrix) == (1, 2) && Base.elsize(typeof(matrix)) == 8 && view(matrix, :, 1) isa StridedVector
         @test GC.@preserve matrix unsafe_load(pointer(matrix), 2) == 3.0
     end
+    @testset "array stand-in test takes open families" begin
+        @test StandIns.array_stand_in(ArrayStandIn{<:Any, 1}) && StandIns.array_stand_in(DenseStandIn{FloatStandIn, 2})
+        @test StandIns.array_stand_in(ArrayStandIn) && !StandIns.array_stand_in(Vector{Int}) && !StandIns.array_stand_in(Union{})
+        @test !StandIns.array_stand_in(TypeVar(:T, ArrayStandIn)) && !StandIns.array_stand_in(Union{ArrayStandIn{Int, 1}, Nothing})
+    end
     @testset "function stand-in result is opaque" begin
         @test Base.infer_return_type(FunctionStandIn(), (Int,)) === Any && FunctionStandIn()(1; keyword = 2) === nothing
     end

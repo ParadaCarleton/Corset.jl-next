@@ -54,6 +54,8 @@ const FV, DV = ArrayStandIn{FloatStandIn, 1}, DenseStandIn{FloatStandIn, 1}
     @testset "escape" begin
         @test scan(cases.returned, FV) == ([(zeros, 2, Exit.returned)], false)
         @test scan(cases.returned, DV) == ([(zeros, 2, Exit.returned)], false)
+        # Open stand-in family gives swap its wrapper too.
+        @test scan(cases.returned, ArrayStandIn{<:Any, 1}) == ([(zeros, 2, Exit.returned)], false)
         @test scan(cases.typed, FV) == ([(Vector{Float64}, 2, Exit.returned)], false)
         @test scan(cases.similar_type, FV) == ([(similar, 2, Exit.returned)], false)
         @test scan(cases.stored!, Vector{Any}, FV) == ([(ones, 3, Exit.stored)], false)
@@ -83,5 +85,7 @@ const FV, DV = ArrayStandIn{FloatStandIn, 1}, DenseStandIn{FloatStandIn, 1}
         @test holds_array(Base.Broadcast.Broadcasted{Nothing, Nothing, typeof(+), Tuple{FV, Int}})
         @test holds_array(Union{Nothing, FV})
         @test !holds_array(Vector{Float64})
+        # View of open stand-in holds stand-in only as variable bound.
+        @test holds_array(Base.RefValue{T} where {T <: ArrayStandIn{<:Any, 1}}) && !holds_array(Base.RefValue{T} where {T <: Vector})
     end
 end

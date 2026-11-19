@@ -31,6 +31,14 @@ struct Hidden end
         @test guess(Vector{Any}) == "AbstractVector"
         @test guess(Array{Any, 3}) == "AbstractArray{<:Any, 3}"
         @test guess(Vector{String}) == "AbstractVector{<:AbstractString}"
+        # Open stand-in elements and counts: element bound names family; open count names none.
+        @test guess(ArrayStandIn{<:Any, 1}) == "AbstractVector" && guess(ArrayStandIn) == "AbstractArray"
+        @test guess(ArrayStandIn{<:AbstractString, 3}) == "AbstractArray{<:AbstractString, 3}"
+        @test guess(ArrayStandIn{FloatStandIn}) == "AbstractArray{<:Real}" && guess(Vector{<:Real}) == "AbstractVector{<:Real}"
+        @test guess(SubArray{Float64, 1, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int}}, Int}, true}) == "AbstractVector{<:Real}"
+        # View of open stand-in: family of other type than `Array` gives count when every member shares it.
+        @test guess(SubArray{T, 1, ArrayStandIn{T, 2}, Tuple{Base.Slice{Base.OneTo{Int}}, Int}, true} where {T}) == "AbstractVector"
+        @test guess(SubArray) == "AbstractArray"
         @test guess(String, SubString{String}) == "AbstractString"
         @test guess(ComplexF64) == "Number"
         @test guess(typeof(sin)) == "Function"
@@ -48,7 +56,7 @@ struct Hidden end
         @test isnothing(guess(Hidden))
         @test isnothing(guess(Vector{Hidden}))
         @test isnothing(annotation_text(Any[], scope))
-        @test isnothing(family_text(Vector{<:Real}, scope))
+        @test isnothing(family_text(Ref{<:Real}, scope)) && isnothing(guess(Vector{<:Hidden}))
         @test isnothing(annotation_text(Any[typeof(sin)], Shadowing))
     end
     @testset "evidence" begin
