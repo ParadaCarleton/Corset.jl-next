@@ -9,9 +9,12 @@ using Corset.Effects:
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, value_type, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
     components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
-    Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!
+    Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
+    special_kind, site_kind, field_kind, step_type, root_of
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
+using Random: Xoshiro
+using Base.ScopedValues: ScopedValue
 
 const CASE = joinpath(@__DIR__, "effects", "EffectsCases")
 
@@ -895,6 +898,8 @@ four_way(x::Symbol) = x
     @test join_limit(package_run, only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], world, 1)))) == 1
     possible_first = Access(parameter(2), false, EffectKind.memory, Confidence.possible, typed.site.span)
     @test worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, typed.site.span)])[1].confidence == Confidence.definite
+    # Kinds stay apart: definite IO write never hides `possible` memory write.
+    @test length(worst([possible_first, Access(parameter(2), false, EffectKind.io, Confidence.definite, typed.site.span)])) == 2
 end
 
 """Whether `first` and `second` hold same state: same type, and same fields and elements, deep."""
@@ -1203,6 +1208,83 @@ report_taker!(taker::Taker, value::Int, flag::Bool)::Nothing = flag ? throw(Argu
     # Callback record of message call resolves there: definite write, no record left for caller.
     raw = raw_summary(report_taker!, Taker, Int, Bool)
     @test isempty(raw.callbacks) && doubts(raw.writes) == Dict((parameter(2, Step.Field(:box)), false) => NO_DOUBT)
+end
+
+"""Line to IO argument: open `println` writes IO."""
+log_line(io::IO, x::Int) = println(io, x)
+
+"""Byte into buffer: definite IO write."""
+write_byte!(io::IOBuffer, b::UInt8) = write(io, b)
+
+"""Line to `stdout`: global binding declared `IO`."""
+say(x::Int) = println(stdout, x)
+
+"""Holder of buffer: path crosses `IO` at field."""
+struct Logger
+    io::IOBuffer
+end
+
+log_byte!(logger::Logger, b::UInt8) = write(logger.io, b)
+
+"""Plain vector write; caller whose path crosses `IO` makes it IO write."""
+push_byte!(bytes::Vector{UInt8}, b::UInt8) = (push!(bytes, b); nothing)
+
+"""IO that keeps bytes in plain vector."""
+struct Sink <: IO
+    bytes::Vector{UInt8}
+end
+
+sink_push!(sink::Sink, b::UInt8) = push_byte!(sink.bytes, b)
+
+roll(rng::Xoshiro) = rand(rng)
+roll_default() = rand()
+remember!(x::Int) = task_local_storage(:effects_test, x)
+
+"""Scoped value: read of current task scope."""
+const LEVEL = ScopedValue(1)
+level() = LEVEL[]
+
+hold!(l::ReentrantLock) = lock(l)
+matches(r::Regex, s::String) = occursin(r, s)
+text_of(s::LazyString) = String(s)
+note(x::Int) = @info "note" x
+
+"""Kinds of accesses in `table` on places with `root`."""
+kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.Type)::Set{EffectKind.T} = Set(kind for (place, _, kind) in keys(table) if root_of(place) == root)
+
+@testset "effect kinds" begin
+    io, elsewhere = EffectKind.io, Root.Elsewhere()
+    # IO by declared type of argument, global, or field on path.
+    logged = summary_of(log_line, IO, Int).writes
+    @test collect(keys(logged)) == [(parameter(2), true, io)] && level_of(only(values(logged)).doubt) == Level.code
+    @test doubts(summary_of(write_byte!, IOBuffer, UInt8).writes) == Dict((parameter(2), false, io) => NO_DOUBT)
+    @test Set(kind for (_, _, kind) in keys(summary_of(say, Int).writes)) == Set([io])
+    @test doubts(summary_of(log_byte!, Logger, UInt8).writes) == Dict((parameter(2, Step.Field(:io)), false, io) => NO_DOUBT)
+    # Caller classifies callee memory write again by own path.
+    @test doubts(summary_of(push_byte!, Vector{UInt8}, UInt8).writes) == Dict(top(2) => NO_DOUBT)
+    @test doubts(summary_of(sink_push!, Sink, UInt8).writes) == Dict((parameter(2, Step.Field(:bytes)), false, io) => NO_DOUBT)
+    # RNG argument, default RNG in `Task` fields, task-local storage, scoped read.
+    @test doubts(summary_of(roll, Xoshiro).writes) == Dict((parameter(2), false, EffectKind.rng_argument) => NO_DOUBT)
+    @test EffectKind.default_rng in kinds_at(summary_of(roll_default).writes, elsewhere) && EffectKind.default_rng in kinds_at(summary_of(roll_default).reads, elsewhere)
+    remembered = summary_of(remember!, Int)
+    @test kinds_at(remembered.writes, elsewhere) == Set([EffectKind.task_local])
+    # Audited method covers its root only: global read inside it keeps own kind.
+    @test all(kind != EffectKind.task_local for (place, _, kind) in keys(remembered.reads) if root_of(place) != elsewhere)
+    @test (Place.At(elsewhere, Step.Type[]), false, EffectKind.scoped_read) in keys(summary_of(level).reads)
+    @test EffectKind.synchronization in kinds_at(summary_of(hold!, ReentrantLock).reads, Root.Parameter(2))
+    # Audited table: lazy compile, lazy text, PCRE contexts, logging state, `BigFloat` pointer repair.
+    matched = summary_of(matches, Regex, String).writes
+    @test matched[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT
+    @test EffectKind.audited in kinds_at(matched, Root.Global(GlobalRef(Base.PCRE, :THREAD_MATCH_CONTEXTS)))
+    @test summary_of(text_of, LazyString).writes[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT
+    @test EffectKind.audited in kinds_at(summary_of(note, Int).reads, Root.Global(GlobalRef(Base.CoreLogging, :_global_logstate)))
+    @test kinds_at(summary_of(Base.unsafe_convert, Type{Ref{BigFloat}}, Base.MPFR.BigFloatData).writes, Root.Parameter(3)) == Set([EffectKind.audited])
+    # Helpers: special types, `Task` fields, field index, step types.
+    @test special_kind(IOBuffer) == io && isnothing(special_kind(Union{})) && isnothing(special_kind(1)) && special_kind(Base.Semaphore) == EffectKind.synchronization
+    @test (site_kind(Task, :rngState0), site_kind(Task, :scope), site_kind(Task, :storage)) == (EffectKind.default_rng, EffectKind.scoped_read, EffectKind.task_local)
+    @test field_kind(Regex, Some{Any}(4)) == EffectKind.lazy_init && field_kind(Tuple{IOBuffer}, Some{Any}(1)) == EffectKind.memory && field_kind(IOBuffer, nothing) == io
+    @test step_type(Tuple{Vararg{Int}}, Step.Position(3)) == Int && step_type(Tuple{Int}, Step.Position(2)) == Any && step_type(Vector{IOBuffer}, Step.Element()) == IOBuffer
+    @test step_type(Any, Step.Field(:x)) == Any && step_type(Logger, Step.Field(:missing)) == Any && step_type(Dict{Int, Int}, Step.Element()) == Any
 end
 
 @testset "soundness" begin

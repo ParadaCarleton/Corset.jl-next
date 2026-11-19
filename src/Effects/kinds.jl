@@ -20,12 +20,12 @@ const AUDITED_GLOBALS = Dict{GlobalRef, EffectKind.T}(
 )
 
 """
-Audited state by method: its memory accesses take listed kind. `unsafe_convert(Ref{BigFloat}, ::BigFloatData)` rewrites
-stale MPFR limb pointer before each call; `task_local_storage` writes storage of current task.
+Audited state by method: its memory accesses below listed root take listed kind. `unsafe_convert(Ref{BigFloat},
+::BigFloatData)` rewrites stale MPFR limb pointer of its argument; `task_local_storage` writes storage of current task.
 """
-const AUDITED_METHODS = Dict{Method, EffectKind.T}(
-    which(Base.unsafe_convert, (Type{Ref{BigFloat}}, Base.MPFR.BigFloatData)) => EffectKind.audited,
-    (method => EffectKind.task_local for method in methods(task_local_storage))...,
+const AUDITED_METHODS = Dict{Method, Pair{Root.Type, EffectKind.T}}(
+    which(Base.unsafe_convert, (Type{Ref{BigFloat}}, Base.MPFR.BigFloatData)) => (Root.Parameter(3) => EffectKind.audited),
+    (method => (Root.Elsewhere() => EffectKind.task_local) for method in methods(task_local_storage))...,
 )
 
 """Kind of access to object of `type` itself: `IO`, RNG or synchronization object; `nothing` for other types."""
@@ -98,10 +98,12 @@ function path_kind(ir::CC.IRCode, place::Place.Type)::EffectKind.T
 end
 
 """
-Kind of access with `kind` to `place` in instance of `method` with IR `ir`: memory access takes kind of audited
-method, else kind of its path.
+Kind of access with `kind` to `place` in instance of `method` with IR `ir`: memory access below root of audited
+method takes its kind, else kind of its path.
 """
 function place_kind(ir::CC.IRCode, method::Method, place::Place.Type, kind::EffectKind.T)::EffectKind.T
     kind == EffectKind.memory || return kind
-    return haskey(AUDITED_METHODS, method) ? AUDITED_METHODS[method] : path_kind(ir, place)
+    audited = get(AUDITED_METHODS, method, nothing)
+    !isnothing(audited) && root_of(place) == first(audited) && return last(audited)
+    return path_kind(ir, place)
 end
