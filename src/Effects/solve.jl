@@ -1,27 +1,32 @@
 """
 IR of instance before specialization, source statement index of each IR statement, call outcome of each statement,
-whether each statement builds thrown value only (`message_statements`), and whether stand-ins cut path of its own code
-(`effects.md`, Stand-in cuts).
+whether each statement builds thrown value only (`message_statements`), whether code uses value of each statement,
+whether stand-ins cut path of its own code (`effects.md`, Stand-in cuts), and `shortcut`: compiler effects prove empty
+summary (`proven_empty!`). Only unit keeps body with shortcut: its call facts need code.
 """
 struct Body
     ir::CC.IRCode
     lines::Vector{Int}
     outcomes::Vector{Union{Nothing, Outcome.Type}}
     message::Vector{Bool}
+    used::Vector{Bool}
     cut::Bool
+    shortcut::Bool
 end
 
 """
-Code of variant for solve: specialized IR, statement lines, outcomes, message statements and cut of its body, and
-variants each call reaches.
+Code of variant for solve: specialized IR, statement lines, outcomes, message statements, used statements, cut and
+shortcut of its body, and variants each call reaches.
 """
 struct Code
     ir::CC.IRCode
     lines::Vector{Int}
     outcomes::Vector{Union{Nothing, Outcome.Type}}
     message::Vector{Bool}
+    used::Vector{Bool}
     callees::Vector{Vector{Variant}}
     cut::Bool
+    shortcut::Bool
 end
 
 """Instance whose compiler effects prove empty summary (`effects.md`, Compiler effects): engine skips own analysis."""
@@ -208,18 +213,22 @@ join_limit(run::Run, instance::Core.MethodInstance)::Int = (instance.def::Method
 overrides(flag::UInt32)::Bool = CC.decode_statement_effects_override(flag) != CC.EffectsOverride()
 
 """
-Body of inference `frame` in `run`, whose own code stand-ins `cut`; callees that grow along call chain are limited.
-Compaction keeps calls that reach untrusted instance (`reaches_untrusted!`), and statements under block claim of
-instance that `claims!` effects.
+Body of inference `frame` in `run`, whose own code stand-ins `cut`, with `shortcut` (`Body`); callees that grow along
+call chain are limited. Compaction keeps calls that reach untrusted instance (`reaches_untrusted!`), and statements
+under block claim of instance that `claims!` effects. Unit keeps every call: call facts need discarded calls too.
 """
-function frame_body(run::Run, frame::CC.InferenceState, cut::Bool)::Body
+function frame_body(run::Run, frame::CC.InferenceState, cut::Bool, unit::Bool, shortcut::Bool)::Body
     method = frame.linfo.def
     own = method isa Method && claims!(run, method)
-    kept = [own && overrides(frame.src.ssaflags[index]) || reaches_untrusted!(run, call_edges(info)) for (index, info) in enumerate(frame.stmt_info)]
+    kept = [
+        (unit && call_statement(frame.src.code[index])) || (own && overrides(frame.src.ssaflags[index])) || reaches_untrusted!(run, call_edges(info))
+            for (index, info) in enumerate(frame.stmt_info)
+    ]
     ir, lines = frame_ir(frame, run.interpreter, kept)
     chain, limit = call_chain(run, frame.linfo), join_limit(run, frame.linfo)
     outcomes = [limited_outcome(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world, limit)) for index in 1:length(ir.stmts)]
-    return Body(ir, lines, outcomes, message_statements(ir, throw_sinks(run, ir)), cut)
+    users = statement_users(ir)
+    return Body(ir, lines, outcomes, message_statements(users, throw_sinks(run, ir)), map(!isempty, users), cut, shortcut)
 end
 
 """
@@ -275,7 +284,13 @@ journal_key(instance::Core.MethodInstance)::String = "effects\n" * sprint(show, 
 Body of inference `frame` whose own code stand-ins `cut`, or shortcut when its compiler effects prove empty summary
 (`proven_empty!`). Compiler effects hold for stand-ins only, so cut instance gets no shortcut.
 """
-instance_body(run::Run, frame::CC.InferenceState, cut::Bool)::Union{Body, Shortcut} = !cut && proven_empty!(run, frame) ? Shortcut() : frame_body(run, frame, cut)
+instance_body(run::Run, frame::CC.InferenceState, cut::Bool)::Union{Body, Shortcut} = !cut && proven_empty!(run, frame) ? Shortcut() : frame_body(run, frame, cut, false, false)
+
+"""
+Body of unit with inference `frame` whose own code stand-ins `cut`: every call stays, and shortcut (`instance_body`)
+keeps code for call facts.
+"""
+unit_body(run::Run, frame::CC.InferenceState, cut::Bool)::Body = frame_body(run, frame, cut, true, !cut && proven_empty!(run, frame))
 
 """
 Native inference frame of instance outside units, and whether stand-ins cut it (`stand_in_cut`, kept in `run.cuts`).
@@ -403,7 +418,7 @@ function variant_code(run::Run, variant::Variant, body::Body)::Code
             _ => nothing
         end
     end
-    return Code(ir, body.lines, body.outcomes, body.message, callees, body.cut)
+    return Code(ir, body.lines, body.outcomes, body.message, body.used, callees, body.cut, body.shortcut)
 end
 
 """Variants `roots` reach through calls, roots first; gives code to each variant with body."""
@@ -423,18 +438,28 @@ function reach!(run::Run, roots::Vector{Variant})::Vector{Variant}
 end
 
 """
-Summary of `variant` with code, from current callee summaries of `run`: rounds over its IR until targets settle. Also
-gives variants whose summaries rounds read. `flush` resolves callback records here (`Flow`).
+Flow of `variant` with code at fixpoint, from current callee summaries of `run`: rounds over its IR until targets
+settle. Also gives its callees, with variants whose summaries rounds read. `flush` resolves callback records here;
+`record` keeps write kinds of each call (`Flow`).
 """
-function variant_summary(run::Run, variant::Variant, flush::Bool)::Tuple{Summary, Set{Variant}}
+function variant_flow(run::Run, variant::Variant, flush::Bool, record::Bool)::Tuple{Flow, Callees}
     code = run.codes[variant]
-    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, flush, code.cut, static_sources(first(variant).def::Method))
+    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, flush, code.cut, static_sources(first(variant).def::Method), record)
     callees = Callees(code.callees, run.summaries, Set{Variant}())
     while true
         flow.changed = false
         round!(flow, callees)
         flow.changed || break
     end
+    return flow, callees
+end
+
+"""
+Summary of `variant` with code, from current callee summaries of `run` (`variant_flow`), and variants whose summaries
+rounds read. `flush` resolves callback records here.
+"""
+function variant_summary(run::Run, variant::Variant, flush::Bool)::Tuple{Summary, Set{Variant}}
+    flow, callees = variant_flow(run, variant, flush, false)
     return summarize(flow, first(variant).def::Method, callees), callees.read
 end
 
@@ -446,6 +471,16 @@ function root_summary(run::Run, variant::Variant)::Summary
     summary = run.summaries[variant]
     isempty(summary.callbacks) && return summary
     return first(variant_summary(run, variant, true))
+end
+
+"""
+Call statement facts of root `variant` with code (`effects.md`, Facts), by IR statement: rerun resolves callback records
+at call, as root has no caller, and records write kinds of each call.
+"""
+function root_calls(run::Run, variant::Variant)::Vector{Pair{Int, CallRecord}}
+    flow = first(variant_flow(run, variant, true, true))
+    code = run.codes[variant]
+    return [index => call_record(flow, index, code.used[index]) for index in 1:length(code.ir.stmts) if !isnothing(code.outcomes[index])]
 end
 
 """Reruns of call cycle member before each new summary widens by its previous one (`widen`)."""
@@ -462,7 +497,8 @@ function solve_cycle!(run::Run, members::Vector{Variant})::Nothing
         run.summaries[member] = body isa String ? open_summary(Int((first(member).def::Method).nargs), body) : empty_summary()
     end
     readers = Dict(member => Variant[] for member in members)
-    queue = filter(member -> haskey(run.codes, member), members)
+    # Shortcut unit keeps code for call facts; its summary stays empty.
+    queue = filter(member -> haskey(run.codes, member) && !run.codes[member].shortcut, members)
     queued, reruns = Set(queue), Dict{Variant, Int}()
     while !isempty(queue)
         member = popfirst!(queue)

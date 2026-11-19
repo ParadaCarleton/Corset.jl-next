@@ -1,6 +1,6 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
-using Corset.Facts: Facts, MethodEffects, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind
+using Corset.Facts: Facts, MethodEffects, Callee, CallFact, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind
 using Corset.Inference: infer_package, open_journal, records, explicit_any, cuts!, dead_calls
 using Corset.StandIns: FunctionStandIn, ArrayStandIn, DenseStandIn, FloatStandIn
 using Corset.Signatures: Provenance
@@ -11,7 +11,7 @@ using Corset.Effects:
     components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
-    unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD
+    unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
@@ -227,7 +227,7 @@ sourceless(x::Int)::Int = x + 3
     @test isempty(named(:memory_length).reads) == (Base.JLOptions().code_coverage == 0)
     own = start_run(nothing, Module[CASES])
     length_root = (instance_of(CASES.memory_length, Memory{Int}), Pair{Int, Any}[])
-    own.bodies[first(length_root)] = Effects.frame_body(own, Core.Compiler.typeinf_frame(own.interpreter, first(length_root), false), false)
+    own.bodies[first(length_root)] = Effects.frame_body(own, Core.Compiler.typeinf_frame(own.interpreter, first(length_root), false), false, false, false)
     solve!(own, [length_root])
     @test collect(keys(own.summaries[length_root].reads)) == [memory((parameter(2), false))]
     # Claim outside Base turns shortcut off: own analysis finds write that false claim hides.
@@ -839,7 +839,7 @@ four_way(x::Symbol) = x
     @test constant(code.ir, GlobalRef(Base, :nothing)) == Some(nothing)
     @test operand_type(code.ir, Operand.Part(Core.Argument(2), 1)) == MemoryRef{Int}
     @test value_type(code.ir, Expr(:call, GlobalRef(Core, :tuple), QuoteNode(:jl_n_threads), "libjulia-internal")) == Tuple{Symbol, String}
-    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[])
+    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false)
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test map_node(flow, Node.Fresh(4), CallSite(Targets[], Sources[], 7, 2, Dict{Place.Type, Targets}(), Dict{Int, Sources}())) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
@@ -1010,7 +1010,7 @@ chain_link(x::Any) = x
     argument = Operand.Value(Core.Argument(2))
     for (position, link) in enumerate(links)
         outcome = position == length(links) ? Outcome.Builtin(Core.getfield, [argument, Operand.Value(QuoteNode(:a))]) : Outcome.Dispatch([links[position + 1]], [Operand.Value(chain_link), argument])
-        run.bodies[link] = Body(ir, Int[], Union{Nothing, Outcome.Type}[outcome], [false], false)
+        run.bodies[link] = Body(ir, Int[], Union{Nothing, Outcome.Type}[outcome], [false], [false], false, false)
     end
     @test field_parameters!(run, first(links)) == Set([2])
 end
@@ -1542,6 +1542,50 @@ end
     @test synchronized(named(:loose_grab!)) == [(parameter(2, Step.Field(:lock)), false, definite)]
     # Lock from task storage: Corset cannot tell which object holds.
     @test (Place.At(Root.Elsewhere(), Step.Type[]), false, RELEASE_PATTERN) in blind_shape(named(:lock_stored).blind_writes)
+end
+
+@testset "call facts" begin
+    memory_kind, lock_kind = EffectKind.memory, EffectKind.synchronization
+    calls_to(name::Symbol, callee::Symbol)::Vector{CallFact} = [call for call in named(name).calls if any(method -> method.name === callee, something(callee_methods(call.callee), Method[]))]
+    # Unit keeps discarded call that compaction deletes: no effect, no throw, terminates.
+    dropped = only(calls_to(:drop_calls!, :abs))
+    @test !dropped.used && isempty(dropped.kinds) && !dropped.throws && dropped.terminates
+    @test strip(line_text(dropped.span)) == "abs(length(values))"
+    pushed = only(calls_to(:drop_calls!, :push!))
+    @test !pushed.used && pushed.kinds == [memory_kind]
+    @test only(calls_to(:drop_calls!, :parse)).throws
+    @test [call.used for call in calls_to(:drop_calls!, :length)] == [true, true]
+    foreign = only(call for call in named(:drop_calls!).calls if call.callee == Callee.Foreign())
+    @test !foreign.used && isempty(foreign.kinds)
+    # Builtin, open call, and call that no method matches: it throws.
+    odd = named(:odd_calls).calls
+    @test any(call -> call.callee == Callee.Builtin(Core.ifelse) && !call.used && isempty(call.kinds) && !call.throws, odd)
+    @test any(call -> call.callee == Callee.Open() && !call.used, odd)
+    dead = only(call for call in odd if call.callee == Callee.Methods(Method[]))
+    @test dead.throws && !dead.used
+    # Lock primitive, and callee that leaves lock held: synchronization.
+    @test only(calls_to(:grab_guard!, :lock)).kinds == [lock_kind]
+    @test only(calls_to(:grab_then_set!, :grab_guard!)).kinds == [lock_kind]
+    # Shortcut unit keeps code for call facts; its summary stays empty.
+    run = start_run(nothing, Module[])
+    plus = Base.method_instance(+, (Int, Int))
+    body = unit_body(run, Core.Compiler.typeinf_frame(run.interpreter, plus, false), false)
+    @test body.shortcut
+    run.bodies[plus] = body
+    root = (plus, Pair{Int, Any}[])
+    solve!(run, [root])
+    @test same(root_summary(run, root), empty_summary()) && haskey(run.codes, root)
+    added = only(last.(root_calls(run, root)))
+    @test added.callee == Callee.Builtin(Core.Intrinsics.add_int) && added.used && !added.throws && added.terminates
+    # Units of method merge: methods join; other callee pair gives open dispatch.
+    span = named(:drop_calls!).site.span
+    first_fact = CallFact(span, Callee.Methods([only(methods(CASES.no_text_method))]), [EffectKind.io], false, true, false)
+    second_fact = CallFact(span, Callee.Methods([only(methods(CASES.take_lock!))]), [memory_kind], true, false, true)
+    merged = merge_calls(first_fact, second_fact)
+    @test merged.callee == Callee.Methods([only(methods(CASES.no_text_method)), only(methods(CASES.take_lock!))])
+    @test merged.kinds == [memory_kind, EffectKind.io] && merged.throws && !merged.terminates && merged.used
+    @test merge_callees(Callee.Foreign(), Callee.Foreign()) == Callee.Foreign()
+    @test merge_callees(Callee.Foreign(), first_fact.callee) == Callee.Open()
 end
 
 @testset "soundness" begin

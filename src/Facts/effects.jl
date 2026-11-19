@@ -65,10 +65,36 @@ struct UnguardedHold
 end
 
 """
+Callee of call statement: `Methods` that dispatch reaches (none when no method matches: call throws), `Builtin` or
+intrinsic function, `Foreign` C function, or `Open` dispatch (Base contract, open or unresolved call).
+"""
+@data Callee begin
+    Methods(Vector{Method})
+    Builtin(Core.Builtin)
+    Foreign()
+    Open()
+end
+@derive Callee[Hash, Eq, Show]
+
+"""
+Call statement of package method (`effects` stage fact, F54, F86): span, callee, and kinds of writes call makes at any
+certainty, holds it leaves included. Compiler effects give `throws` (may throw) and `terminates`. `used`: code reads
+result. Units of method merge: any unit that may throw, writes or uses result decides.
+"""
+struct CallFact
+    span::Span
+    callee::Callee.Type
+    kinds::Vector{EffectKind.T}
+    throws::Bool
+    terminates::Bool
+    used::Bool
+end
+
+"""
 Effect summary of package method (`effects` stage fact): writes and reads over its units, blind writes and reads,
-places its result aliases, holds throws skip (`unguarded`), `complete`, and `closed_world`. Method with blind access,
-or incomplete method (inference skipped some argument types, or stand-ins cut path), has no definite none.
-Closed-world method joins methods loaded now: its none is at most `possible`.
+places its result aliases, holds throws skip (`unguarded`), call statements (`calls`, by span), `complete`, and
+`closed_world`. Method with blind access, or incomplete method (inference skipped some argument types, or stand-ins cut
+path), has no definite none. Closed-world method joins methods loaded now: its none is at most `possible`.
 """
 struct MethodEffects
     site::MethodSite
@@ -78,6 +104,7 @@ struct MethodEffects
     blind_reads::Vector{BlindAccess}
     aliases::Vector{Place.Type}
     unguarded::Vector{UnguardedHold}
+    calls::Vector{CallFact}
     complete::Bool
     closed_world::Bool
 end
