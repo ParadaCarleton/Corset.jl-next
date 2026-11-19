@@ -919,7 +919,7 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <li>Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.</li>
 <li>Write to RNG fields of <code>Task</code> (<code>rngState0</code> to <code>rngState4</code>): default RNG. Other write to <code>Task</code>, <code>task_local_storage</code> included: task-local state.</li>
 <li><code>ScopedValue</code> read: read of <code>ScopedValue</code> object or of current task scope.</li>
-<li>Lock write: acquire or release of lock that argument or global holds. <code>bang-convention</code> exempts balanced use (Release balance).</li>
+<li>Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.</li>
 <li>Lazy init and audited internal state come from audited table of Base types and methods only:
 <ul>
 <li>Table keys holder type and field, or method. Listed entry sets kind before path types.</li>
@@ -938,20 +938,29 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <li>Throw-only exemption (F86) needs no write on any path.</li>
 </ul>
 <h4>Release balance</h4>
-<p>Summary keeps hold count per resource place at normal exit and at throw exit. Counts: 0, 1, many, unknown; release counts -1.</p>
+<p>Summary keeps hold count per resource place at normal exit and at throw exit. Count is exact (acquires less releases), unknown, or blind.</p>
 <ul>
-<li>Resources: lock, <code>Semaphore</code> slot, file that <code>open</code> returns. Resource place: one exact target of operand, fresh <code>open</code> result included.</li>
+<li>Resources: lock, <code>Semaphore</code> slot, file that <code>open</code> returns. Resource place: one target of operand, exact caller place or fresh object.</li>
+<li>Count key: resource place and resource kind. Fresh <code>IOStream</code> holds file and own lock: they count apart.</li>
+<li>Merged fresh objects of callee count together: <code>open</code> result is one of them.</li>
 <li>Operand with other targets: blind spot <code>release pattern</code>.</li>
-<li>Primitive table: <code>lock</code>, <code>unlock</code>, <code>acquire</code>, <code>release</code>, <code>open</code>, <code>close</code>, <code>iolock_begin</code>, <code>iolock_end</code>. Engine never reads lock or semaphore bodies.</li>
+<li>Primitive table: <code>lock</code>, <code>unlock</code>, <code>trylock</code> on lock; <code>acquire</code>, <code>release</code> on <code>Semaphore</code>; <code>open</code> with <code>IOStream</code> result; <code>close</code> on <code>IOStream</code>.</li>
 <li>Table also: <code>wait(::Condition)</code> releases lock and takes it again.</li>
+<li>Engine never reads lock, semaphore or <code>wait</code> bodies. It reads <code>open</code> and <code>close</code> bodies for their IO.</li>
+<li>Base libuv lock (<code>iolock_begin</code>) holds no Julia object: engine skips it.</li>
 <li><code>lock(f, l)</code>, <code>open(f, path)</code> and <code>@lock l expr</code> need no entry: each releases in <code>finally</code>, which dataflow balances.</li>
 <li><code>trylock</code> gives blind spot <code>release pattern</code>. Count that follows its result comes later.</li>
 <li>Dataflow over CFG blocks. Statement that may throw (compiler <code>nothrow</code> off) inside <code>try</code> has edge to its catch block.</li>
+<li>Block keeps at most 4 paths: counts and branch conditions taken. Fifth path joins all paths into one.</li>
+<li>Branch on condition that path took before takes same side: <code>l &amp;&amp; lock(x) … l &amp;&amp; unlock(x)</code> balances (Base <code>@_lock_ios</code>).</li>
+<li>Condition is forgotten when loop runs its statement again.</li>
+<li>Primitive that throws: acquire takes nothing, release still counts. <code>unlock</code> throws only when lock is not held.</li>
 <li>Join of different counts gives unknown; count that grows round a loop gives unknown.</li>
 <li>Throw exit: statement that may throw outside every <code>try</code>. Its count joins into throw-exit count.</li>
-<li>Call applies callee counts on caller places like writes: through join, contract and callback record. Callee throw-exit count joins at call statement.</li>
+<li>Call applies callee counts on caller places like writes: through join and callback record. Callee throw-exit count joins at call statement.</li>
 <li>Normal-exit lock or semaphore count not 0 on argument or global: lock write. Exact count gives definite; unknown from join gives <code>possible</code>.</li>
-<li>Throw-exit count above 0 gives F98 (<code>unguarded-release</code>) fact: release skipped when code throws. Finding goes to method that acquires.</li>
+<li>F98 (<code>unguarded-release</code>) fact: statement throws outside every <code>try</code> while method holds resource. Release is skipped.</li>
+<li>Hold comes from own acquire or callee normal exit. Callee throw-exit count alone gives none: finding goes to method that acquires.</li>
 </ul>
 <h4>Solve and cache</h4>
 <ul>

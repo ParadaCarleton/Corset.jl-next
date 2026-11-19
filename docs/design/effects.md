@@ -188,7 +188,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.
 - Write to RNG fields of `Task` (`rngState0` to `rngState4`): default RNG. Other write to `Task`, `task_local_storage` included: task-local state.
 - `ScopedValue` read: read of `ScopedValue` object or of current task scope.
-- Lock write: acquire or release of lock that argument or global holds. `bang-convention` exempts balanced use (Release balance).
+- Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.
 - Lazy init and audited internal state come from audited table of Base types and methods only:
   - Table keys holder type and field, or method. Listed entry sets kind before path types.
   - `Regex` compile cache, `LazyString`; Base logging and PCRE contexts.
@@ -205,20 +205,29 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 
 #### Release balance
 
-Summary keeps hold count per resource place at normal exit and at throw exit. Counts: 0, 1, many, unknown; release counts -1.
+Summary keeps hold count per resource place at normal exit and at throw exit. Count is exact (acquires less releases), unknown, or blind.
 
-- Resources: lock, `Semaphore` slot, file that `open` returns. Resource place: one exact target of operand, fresh `open` result included.
+- Resources: lock, `Semaphore` slot, file that `open` returns. Resource place: one target of operand, exact caller place or fresh object.
+- Count key: resource place and resource kind. Fresh `IOStream` holds file and own lock: they count apart.
+- Merged fresh objects of callee count together: `open` result is one of them.
 - Operand with other targets: blind spot `release pattern`.
-- Primitive table: `lock`, `unlock`, `acquire`, `release`, `open`, `close`, `iolock_begin`, `iolock_end`. Engine never reads lock or semaphore bodies.
+- Primitive table: `lock`, `unlock`, `trylock` on lock; `acquire`, `release` on `Semaphore`; `open` with `IOStream` result; `close` on `IOStream`.
 - Table also: `wait(::Condition)` releases lock and takes it again.
+- Engine never reads lock, semaphore or `wait` bodies. It reads `open` and `close` bodies for their IO.
+- Base libuv lock (`iolock_begin`) holds no Julia object: engine skips it.
 - `lock(f, l)`, `open(f, path)` and `@lock l expr` need no entry: each releases in `finally`, which dataflow balances.
 - `trylock` gives blind spot `release pattern`. Count that follows its result comes later.
 - Dataflow over CFG blocks. Statement that may throw (compiler `nothrow` off) inside `try` has edge to its catch block.
+- Block keeps at most 4 paths: counts and branch conditions taken. Fifth path joins all paths into one.
+- Branch on condition that path took before takes same side: `l && lock(x) … l && unlock(x)` balances (Base `@_lock_ios`).
+- Condition is forgotten when loop runs its statement again.
+- Primitive that throws: acquire takes nothing, release still counts. `unlock` throws only when lock is not held.
 - Join of different counts gives unknown; count that grows round a loop gives unknown.
 - Throw exit: statement that may throw outside every `try`. Its count joins into throw-exit count.
-- Call applies callee counts on caller places like writes: through join, contract and callback record. Callee throw-exit count joins at call statement.
+- Call applies callee counts on caller places like writes: through join and callback record. Callee throw-exit count joins at call statement.
 - Normal-exit lock or semaphore count not 0 on argument or global: lock write. Exact count gives definite; unknown from join gives `possible`.
-- Throw-exit count above 0 gives F98 (`unguarded-release`) fact: release skipped when code throws. Finding goes to method that acquires.
+- F98 (`unguarded-release`) fact: statement throws outside every `try` while method holds resource. Release is skipped.
+- Hold comes from own acquire or callee normal exit. Callee throw-exit count alone gives none: finding goes to method that acquires.
 
 #### Solve and cache
 
