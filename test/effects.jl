@@ -1120,6 +1120,22 @@ function loop_message(parts::Vector{Any}, flag::Bool)::Nothing
     return nothing
 end
 
+"""
+Last part thrown: loop phi feeds message only, and `string` call feeds phi only. Phi comes first in IR, so `string` call
+joins message on second pass.
+"""
+function last_part_message(parts::Vector{Any}, flag::Bool)::Nothing
+    text = ""
+    for part in parts
+        text = string(part)
+    end
+    flag && throw(ArgumentError(text))
+    return nothing
+end
+
+"""Open call builds thrown value: its writes go nowhere caller sees."""
+open_message(f::Any, x::Any, flag::Bool) = flag ? throw(ArgumentError(f(x))) : nothing
+
 """Text unchanged; no method takes second argument."""
 takes_text(text::String)::String = text
 
@@ -1139,7 +1155,8 @@ report_taker!(taker::Taker, value::Int, flag::Bool)::Nothing = flag ? throw(Argu
 @testset "throw paths" begin
     element = Step.Element()
     # Message call adds no `possible` write; same call feeding log keeps it.
-    @test isempty(summary_of(message_write, Any, Bool).writes)
+    @test isempty(summary_of(message_write, Any, Bool).writes) && isempty(summary_of(open_message, Any, Any, Bool).writes)
+    @test isempty(summary_of(last_part_message, Vector{Any}, Bool).writes)
     @test doubts(summary_of(logged_write!, Vector{String}, Any).writes) == Dict(top(2) => NO_DOUBT, (parameter(3), true) => sourced(3))
     # Definite write inside message stays, and so does write before throw.
     @test doubts(summary_of(pop_message!, Vector{Any}, Bool).writes) == Dict(top(2) => NO_DOUBT)
