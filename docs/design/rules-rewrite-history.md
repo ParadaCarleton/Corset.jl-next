@@ -886,6 +886,17 @@ PR 3b (stand-in cuts, #241) on corpus, winwsl, main and PR 3b back to back:
 - JSON `possible` share fell from 32.6% to 29.9%; effects allocation rose 1%.
 - Early fixpoint rounds see sources still unknown. Accesses come from last round only, so their `INHERENT` stays out.
 
+### Lock writes
+
+- `lock(q.lk)` writes lock state inside argument `q`, so `bang-convention` would demand `!` on every thread-safe container method.
+- Rejected: exempt all synchronization. Method that returns while it holds lock changes state caller sees.
+- Rejected: count every lock write. Base names `lock` and `notify` without `!`; findings would flag balanced use.
+- Chosen: exempt balanced use, checked by full dataflow of hold counts. Estimate: about 1.5 times basic pattern check.
+- Basic check risk: Base has 663 lock sites in 42 files; missed patterns put blind spots on every caller.
+- Exception edges, needed for `finally`, also give hold count at throw exits.
+- Throw-exit count is F98 fact. Syntax F98 sees same block only and reports code that cannot throw, so F98 moves to effects stage.
+- File pair joins: fresh `open` result is exact place. Distances, DataStructures and JSON have no lock call; fixtures carry tests.
+
 ### Stateful iterators
 
 - Trigger "every `iterate` on iterator not proven stateless" rejected: single pass is safe for both kinds, so it flags nearly all generic code.

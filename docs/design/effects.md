@@ -181,6 +181,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 
 - Kinds: memory write, IO, default RNG, RNG argument, task-local state, `ScopedValue` read, lock and other synchronization, lazy init, audited internal state.
 - `bang-convention` exempts IO, RNG, lazy init and audited internal state. `unused-call` counts every kind. `hidden-input` reads default RNG, task-local state, `ScopedValue` and mutable globals.
+- Lock write: acquire or release of lock that argument or global holds. `bang-convention` exempts balanced use (Release balance).
 - Lazy init and audited internal state come from audited table of Base types and methods only:
   - `Regex` compile cache, `LazyString`; Base logging and PCRE contexts.
   - Repair method `unsafe_convert(Ref{BigFloat}, ::BigFloatData)`: rewrites stale MPFR limb pointer before each call.
@@ -188,8 +189,28 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - Write to other module's global outside audited table counts as global write; requirement propagates.
 - Writes to fresh local objects inside error paths (message building) are local writes.
 - Argument or global write before throw stays in summary: caller that catches sees it, open calls included (`foreign_mutate!(x); error()`).
-- Calls whose results feed only thrown value (message building) add no `possible` writes.
+- Message call: call whose result feeds only thrown value, directly or through other message statements. It adds definite writes only.
+- Thrown value: argument of `throw` or of throw-helper call (`error`). Other call that never returns fails on stand-in: stand-in cuts handle it.
+- Use cycle never counts: `string` call that builds message in loop keeps its writes.
+- Message call resolves callback records at call: record would carry its writes to caller.
 - Throw-only exemption (F86) needs no write on any path.
+
+#### Release balance
+
+Summary keeps hold count per resource place at normal exit and at throw exit. Counts: 0, 1, many, unknown; release counts -1.
+
+- Resources: lock, `Semaphore` slot, file that `open` returns. Resource place: one exact target of operand, fresh `open` result included.
+- Operand with other targets: blind spot `release pattern`.
+- Primitive table: `lock`, `unlock`, `acquire`, `release`, `open`, `close`, `iolock_begin`, `iolock_end`. Engine never reads lock or semaphore bodies.
+- Table also: `wait(::Condition)` releases lock and takes it again.
+- `lock(f, l)`, `open(f, path)` and `@lock l expr` need no entry: each releases in `finally`, which dataflow balances.
+- `trylock` gives blind spot `release pattern`. Count that follows its result comes later.
+- Dataflow over CFG blocks. Statement that may throw (compiler `nothrow` off) inside `try` has edge to its catch block.
+- Join of different counts gives unknown; count that grows round a loop gives unknown.
+- Throw exit: statement that may throw outside every `try`. Its count joins into throw-exit count.
+- Call applies callee counts on caller places like writes: through join, contract and callback record. Callee throw-exit count joins at call statement.
+- Normal-exit lock or semaphore count not 0 on argument or global: lock write. Exact count gives definite; unknown from join gives `possible`.
+- Throw-exit count above 0 gives F98 (`unguarded-release`) fact: release skipped when code throws. Finding goes to method that acquires.
 
 #### Solve and cache
 

@@ -8,11 +8,11 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 |---|---|---|---|---|
 | 1 | Engine core | Units, IR, origins, points-to, builtins, static calls, solve, soundness property | — | #232 |
 | 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | 2a #234; 2b #235; 2c #237; 2d #238; 2e #239 |
-| 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts | 2 | 3a #240, 3b #241 |
+| 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance | 2 | 3a #240, 3b #241 |
 | 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | — |
 | 5 | Corpus go/no-go | Gate below; no rule PR before it passes | 4 | — |
 | 6 | `bang-convention` | F53, F86 | 5 | — |
-| 7 | Effect rules | F54, F55, F56, F58 | 5 | — |
+| 7 | Effect rules | F54, F55, F56, F58, F98 | 5 | — |
 | 8 | Alias rules | F48, F50, F51, F109 | 5 | — |
 | 9 | Lifecycle facts | `lifecycle` stage | 5 | — |
 | 10 | Lifecycle rules | F32, F33, F34, F39, F40, F41 | 9 | — |
@@ -78,14 +78,15 @@ Measure: `possible` share per corpus package; methods per join; contract hits. J
 ### 3 Engine limits
 
 Compiler effects for speed; stand-in cuts and effect kinds for correct verdicts.
-Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effect kinds; 3d throw paths and call facts. Before 3c: derived provenance (Provenance in `effects.md`).
+Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effect kinds; 3d throw paths and call facts; 3e release balance. Before 3c: derived provenance (Provenance in `effects.md`). Throw paths land before 3c; call facts read effect kinds, so they follow 3c.
 
 - Shortcut: empty summary for instance with `effect_free`, `inaccessiblememonly`, `notaskstate` and result without reference.
 - Skip shortcut when reached method outside Base carries effects override.
 - Compaction deletes call with unused result when compiler effects allow. Keep calls whose callee carries effects override: false claim hides write.
 - Cuts: `inference` stage finds units with dead call or store statements, then infers those at declared signature.
 - Effect kinds and audited Base table (`effects.md`, Effect kinds).
-- Throw paths: writes before throw stay. Calls that only build thrown value add nothing.
+- Release balance (`effects.md`): hold counts of locks, semaphores and files at normal and throw exits. `trylock` comes later.
+- Throw paths: writes before throw stay. Calls that only build thrown value add definite writes only.
 - Call facts: callee, kinds, may throw, result used or discarded.
 
 Tests:
@@ -95,6 +96,8 @@ Tests:
 - False `@assume_effects` in fixture dependency turns shortcut off.
 - Caller of method with false `:effect_free` claim that drops result keeps write.
 - `foreign_mutate!(x); error()` keeps write on `x`.
+- `lock(l); x[i] = v; unlock(l)` gives F98 fact; `@lock`, `lock(f, l)` and `finally` release give none.
+- `hold!(q) = lock(q.lk)` gives definite lock write; lock in one branch only gives `possible`.
 
 Measure: share of instances shortcut skips; time it saves.
 
@@ -134,6 +137,7 @@ Fail: revise call resolution, then run gate again. Log result in history; put ti
 - `hidden-input` (F55): reads default RNG, task-local state, `ScopedValue` or mutable global.
 - `impure-lambda` (F56): anonymous function captures mutable state.
 - `false-effects` (F58): own analysis contradicts package `@assume_effects` claim.
+- `unguarded-release` (F98): effects version reads throw-exit count; delete syntax version in same PR.
 
 ### 8 Alias rules
 
@@ -173,5 +177,4 @@ Rules read per-unit statement events and must-alias pairs.
 
 Owner decides before PR that names decision:
 
-- PR 3: lock writes. `lock(q.lk)` on argument writes lock state, so `bang-convention` would demand `!`. Proposal: exempt synchronization.
 - PR 6: fix tier of rename. Proposal: `breaking` for public or exported name; `likely` for other names.

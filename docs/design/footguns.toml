@@ -739,8 +739,8 @@ area = "concurrency"
 text = "Release skipped when code between acquire and release throws"
 example = "`lock(l); work(); unlock(l)`"
 group = "correctness"
-stage = "syntax"
-note = "Pairs: `lock`/`unlock`, `acquire`/`release`, `open`/`close`. Held lock deadlocks next caller. Fix: do-block form, or `try`/`finally`."
+stage = "effects"
+note = "Pairs: `lock`/`unlock`, `acquire`/`release`, `open`/`close`. Held lock deadlocks next caller. Reads throw-exit count (`effects.md`, Release balance): sees release in branch, loop or callee; code that cannot throw passes. Syntax version ships until effects version passes corpus gate. Fix: do-block form, or `try`/`finally`."
 
 [[footgun]]
 id = 99
