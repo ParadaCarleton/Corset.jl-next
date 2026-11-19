@@ -44,20 +44,33 @@ const ELEMENT_WRITES = IdDict{Any, Shape}(
 
 """
 Transfer call statement `index` by its `outcome`, with callee variants and summaries from `callees`. Callback records of
-previous round at `index` give way to this round.
+previous round at `index` give way to this round. Message call (`message_statements`) adds definite writes only
+(`effects.md`, Effect kinds): its writes go into scratch table, and it resolves callback records here.
 """
 function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees)::Nothing
     delete!(flow.callbacks, index)
     derive_call!(flow, index, outcome_operands(outcome))
+    message = flow.message[index]
+    writes = message ? OriginAccesses() : flow.writes
     @match outcome begin
-        Outcome.Builtin(builtin, operands) => builtin!(flow, index, builtin, operands)
-        Outcome.Intrinsic(intrinsic, operands) => intrinsic!(flow, index, intrinsic, operands)
-        Outcome.Foreign(effects, operands) => table!(flow, index, effects, operands)
-        Outcome.Dispatch(_, operands) => dispatch!(flow, index, operands, callees)
-        Outcome.Contract(effects, operands, breached) => contract!(flow, index, effects, operands, breached)
-        Outcome.Open(operands) => open!(flow, index, operands, open_doubt(flow, operands))
-        Outcome.Unresolved(operands) => open!(flow, index, operands, CODE_DOUBT)
+        Outcome.Builtin(builtin, operands) => builtin!(flow, writes, index, builtin, operands)
+        Outcome.Intrinsic(intrinsic, operands) => intrinsic!(flow, writes, index, intrinsic, operands)
+        Outcome.Foreign(effects, operands) => table!(flow, writes, index, effects, operands)
+        Outcome.Dispatch(_, operands) => dispatch!(flow, writes, index, operands, callees, !flow.flush && !message)
+        Outcome.Contract(effects, operands, breached) => contract!(flow, writes, index, effects, operands, breached)
+        Outcome.Open(operands) => open!(flow, writes, index, operands, open_doubt(flow, operands))
+        Outcome.Unresolved(operands) => open!(flow, writes, index, operands, CODE_DOUBT)
         Outcome.Dead() => nothing
+    end
+    message && merge_definite!(flow.writes, writes)
+    return nothing
+end
+
+"""Add definite effects of `scratch` to `table`."""
+function merge_definite!(table::OriginAccesses, scratch::OriginAccesses)::Nothing
+    for (key, effect) in scratch
+        level_of(effect.doubt) == Level.none || continue
+        table[key] = haskey(table, key) ? stronger(table[key], effect) : effect
     end
     return nothing
 end
@@ -86,11 +99,11 @@ end
 
 """
 Transfer call with table `effects` on `arguments` (`effects.md`, Calls, steps 2 and 6): foreign call of C function, or
-Base contract.
+Base contract. Writes go into `writes`.
 """
-function table!(flow::Flow, index::Int, effects::CallEffects, arguments::Vector{Operand.Type})::Nothing
+function table!(flow::Flow, writes::OriginAccesses, index::Int, effects::CallEffects, arguments::Vector{Operand.Type})::Nothing
     targets(position::Int)::Targets = union_targets(operand_targets(flow, arguments[at]) for at in role(effects, position, length(arguments)))
-    foreach(position -> access!(flow.writes, targets(position), false, definite(index)), effects.writes)
+    foreach(position -> access!(writes, targets(position), false, definite(index)), effects.writes)
     foreach(position -> access!(flow.reads, targets(position), false, definite(index)), effects.reads)
     for (destination, source) in effects.copies
         store!(flow, targets(destination), Step.Element(), load(flow, targets(source), Step.Element()))
@@ -107,38 +120,39 @@ end
 """
 Transfer call by Base contract `effects` on `arguments` (`effects.md`, Calls, step 6); `breached` positions hold type
 that writes where contract reads: `possible` write. Argument types decide breach, so write takes their dispatch doubt.
-Contract holds for methods loaded now, so verdict is closed-world.
+Contract holds for methods loaded now, so verdict is closed-world. Writes go into `writes`.
 """
-function contract!(flow::Flow, index::Int, effects::CallEffects, arguments::Vector{Operand.Type}, breached::Vector{Int})::Nothing
+function contract!(flow::Flow, writes::OriginAccesses, index::Int, effects::CallEffects, arguments::Vector{Operand.Type}, breached::Vector{Int})::Nothing
     flow.closed_world = true
-    table!(flow, index, effects, arguments)
+    table!(flow, writes, index, effects, arguments)
     for position in breached
         holders = arguments[role(effects, position, length(arguments))]
-        access!(flow.writes, union_targets(operand_targets(flow, holder) for holder in holders), false, Effect(open_doubt(flow, holders), index, ""))
+        access!(writes, union_targets(operand_targets(flow, holder) for holder in holders), false, Effect(open_doubt(flow, holders), index, ""))
     end
     return nothing
 end
 
 """
 Transfer call at `index` that reaches variants of `callees` (`effects.md`, Calls, steps 3 to 5): one applies its
-summary, or leaves callback record for caller; more join their summaries and resolve their records here. Access every
-member makes keeps most doubt among them; access only some make takes doubt of dispatch between them (`open_doubt`).
+summary, or leaves callback record for caller when `defers`; more join their summaries and resolve their records here.
+Access every member makes keeps most doubt among them; access only some make takes doubt of dispatch between them
+(`open_doubt`). Writes go into `writes`.
 """
-function dispatch!(flow::Flow, index::Int, operands::Vector{Operand.Type}, callees::Callees)::Nothing
+function dispatch!(flow::Flow, writes::OriginAccesses, index::Int, operands::Vector{Operand.Type}, callees::Callees, defers::Bool)::Nothing
     variants = callees.variants[index]
     if length(variants) == 1
         variant = only(variants)
-        apply!(flow, flow.writes, flow.reads, index, summary!(callees, variant), variant, operands, !flow.flush, callees)
+        apply!(flow, writes, flow.reads, index, summary!(callees, variant), variant, operands, defers, callees)
         return nothing
     end
     flow.closed_world = true
-    writes, reads = [OriginAccesses() for _ in variants], [OriginAccesses() for _ in variants]
+    member_writes, member_reads = [OriginAccesses() for _ in variants], [OriginAccesses() for _ in variants]
     for (member, variant) in enumerate(variants)
-        apply!(flow, writes[member], reads[member], index, summary!(callees, variant), variant, operands, false, callees)
+        apply!(flow, member_writes[member], member_reads[member], index, summary!(callees, variant), variant, operands, false, callees)
     end
     partial = open_doubt(flow, operands)
-    join_accesses!(flow.writes, writes, partial)
-    join_accesses!(flow.reads, reads, partial)
+    join_accesses!(writes, member_writes, partial)
+    join_accesses!(flow.reads, member_reads, partial)
     return nothing
 end
 
@@ -166,8 +180,8 @@ function operand_constant(flow::Flow, operand::Operand.Type)::Union{Nothing, Som
     end
 end
 
-"""Transfer builtin call (`effects.md`, Calls, step 1)."""
-function builtin!(flow::Flow, index::Int, builtin::Any, operands::Vector{Operand.Type})::Nothing
+"""Transfer builtin call (`effects.md`, Calls, step 1); writes go into `writes`."""
+function builtin!(flow::Flow, writes::OriginAccesses, index::Int, builtin::Any, operands::Vector{Operand.Type})::Nothing
     targets(position::Int)::Targets = operand_targets(flow, operands[position])
     if builtin === Core.getfield
         binding = module_global(flow, operands)
@@ -180,14 +194,14 @@ function builtin!(flow::Flow, index::Int, builtin::Any, operands::Vector{Operand
     elseif haskey(FIELD_WRITES, builtin)
         field = operand_constant(flow, operands[2])
         slot = slot_type(operand_type(flow.ir, operands[1]), field)
-        write!(flow, index, FIELD_WRITES[builtin], operands, targets(1), load_field(flow, operands[1], field), values -> store_field!(flow, operands[1], field, values), slot)
+        write!(flow, writes, index, FIELD_WRITES[builtin], operands, targets(1), load_field(flow, operands[1], field), values -> store_field!(flow, operands[1], field, values), slot)
     elseif builtin === Core.getglobal
         binding = module_global(flow, operands)
         isnothing(binding) ? assign!(flow, index, unknown(CODE_DOUBT)) : read_global!(flow, index, something(binding))
     elseif haskey(GLOBAL_WRITES, builtin)
-        global_write!(flow, index, GLOBAL_WRITES[builtin], operands)
+        global_write!(flow, writes, index, GLOBAL_WRITES[builtin], operands)
     elseif haskey(ELEMENT_WRITES, builtin)
-        element_write!(flow, index, ELEMENT_WRITES[builtin], operands)
+        element_write!(flow, writes, index, ELEMENT_WRITES[builtin], operands)
     elseif builtin === Core.memoryrefget
         access!(flow.reads, targets(1), false, definite(index))
         assign!(flow, index, load(flow, targets(1), Step.Element()))
@@ -216,7 +230,7 @@ function builtin!(flow::Flow, index::Int, builtin::Any, operands::Vector{Operand
         assign!(flow, index, unknown(CODE_DOUBT))
     elseif !(builtin in INERT_BUILTINS)
         # Definition builtins (`_structtype`, `declare_global`) change global state; outside call resolution they stay open.
-        open!(flow, index, operands, CODE_DOUBT)
+        open!(flow, writes, index, operands, CODE_DOUBT)
     end
     return nothing
 end
@@ -243,10 +257,10 @@ end
 """
 Transfer write of slot of `objects` with `shape` and call `operands`: record write, store value, and set result.
 `old` holds slot content before write; `store` puts targets into slot of declared type `slot`. Slot of type that
-points to no object holds no targets. `modify` operator call stays open.
+points to no object holds no targets. `modify` operator call stays open. Writes go into `writes`.
 """
-function write!(flow::Flow, index::Int, shape::Shape, operands::Vector{Operand.Type}, objects::Targets, old::Targets, store::Function, slot::Any)::Nothing
-    access!(flow.writes, objects, false, definite(index))
+function write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Shape, operands::Vector{Operand.Type}, objects::Targets, old::Targets, store::Function, slot::Any)::Nothing
+    access!(writes, objects, false, definite(index))
     shape.returns in (Returns.stored, Returns.object) || access!(flow.reads, objects, false, definite(index))
     holds = points(flow, slot)
     old = holds ? old : Targets()
@@ -255,7 +269,7 @@ function write!(flow::Flow, index::Int, shape::Shape, operands::Vector{Operand.T
         given
     else
         reached = union_targets((operand_targets(flow, operands[shape.operator]), old, given))
-        open_effects!(flow, index, reached, CODE_DOUBT)
+        open_effects!(flow, writes, index, reached, CODE_DOUBT)
         union_targets((raised(reached, CODE_DOUBT), unknown(CODE_DOUBT)))
     end
     store(stored)
@@ -270,16 +284,18 @@ function write!(flow::Flow, index::Int, shape::Shape, operands::Vector{Operand.T
     return nothing
 end
 
-"""Transfer write of global binding `operands` name; binding that is not constant writes unknown object."""
-function global_write!(flow::Flow, index::Int, shape::Shape, operands::Vector{Operand.Type})::Nothing
+"""
+Transfer write of global binding `operands` name, into `writes`; binding that is not constant writes unknown object.
+"""
+function global_write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Shape, operands::Vector{Operand.Type})::Nothing
     found = module_global(flow, operands)
     if isnothing(found)
-        write!(flow, index, shape, operands, unknown(CODE_DOUBT), unknown(CODE_DOUBT), values -> store!(flow, unknown(CODE_DOUBT), nothing, values), Any)
+        write!(flow, writes, index, shape, operands, unknown(CODE_DOUBT), unknown(CODE_DOUBT), values -> store!(flow, unknown(CODE_DOUBT), nothing, values), Any)
         return nothing
     end
     binding = something(found)
     slot = Core.get_binding_type(binding.mod, binding.name)
-    write!(flow, index, shape, operands, global_place(binding), global_targets(flow, binding), values -> bind!(flow, binding, values), slot)
+    write!(flow, writes, index, shape, operands, global_place(binding), global_targets(flow, binding), values -> bind!(flow, binding, values), slot)
     return nothing
 end
 
@@ -290,11 +306,11 @@ function pack!(flow::Flow, index::Int, fields::Pair{<:Step.Type, Targets}...)::N
     return nothing
 end
 
-"""Transfer write of memory element or pointer target: first operand holds memory or pointer."""
-function element_write!(flow::Flow, index::Int, shape::Shape, operands::Vector{Operand.Type})::Nothing
+"""Transfer write of memory element or pointer target, into `writes`: first operand holds memory or pointer."""
+function element_write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Shape, operands::Vector{Operand.Type})::Nothing
     objects = operand_targets(flow, operands[1])
     slot = element_type(operand_type(flow.ir, operands[1]))
-    write!(flow, index, shape, operands, objects, load(flow, objects, Step.Element()), values -> store!(flow, objects, Step.Element(), values), slot)
+    write!(flow, writes, index, shape, operands, objects, load(flow, objects, Step.Element()), values -> store!(flow, objects, Step.Element(), values), slot)
     return nothing
 end
 
@@ -348,17 +364,19 @@ function store_field!(flow::Flow, object::Operand.Type, field::Union{Nothing, So
     return nothing
 end
 
-"""Transfer intrinsic call: pointer writes and reads; other intrinsics pass pointer operands to result."""
-function intrinsic!(flow::Flow, index::Int, intrinsic::Any, operands::Vector{Operand.Type})::Nothing
+"""
+Transfer intrinsic call: pointer writes into `writes`, and reads; other intrinsics pass pointer operands to result.
+"""
+function intrinsic!(flow::Flow, writes::OriginAccesses, index::Int, intrinsic::Any, operands::Vector{Operand.Type})::Nothing
     intrinsics = Core.Intrinsics
     if haskey(ELEMENT_WRITES, intrinsic)
-        element_write!(flow, index, ELEMENT_WRITES[intrinsic], operands)
+        element_write!(flow, writes, index, ELEMENT_WRITES[intrinsic], operands)
     elseif intrinsic === intrinsics.pointerref || intrinsic === intrinsics.atomic_pointerref
         pointers = operand_targets(flow, operands[1])
         access!(flow.reads, pointers, false, definite(index))
         assign!(flow, index, load(flow, pointers, Step.Element()))
     elseif intrinsic === intrinsics.llvmcall
-        open!(flow, index, operands, CODE_DOUBT)
+        open!(flow, writes, index, operands, CODE_DOUBT)
     elseif intrinsic === intrinsics.cglobal
         assign!(flow, index, unknown(CODE_DOUBT))
     else
@@ -368,21 +386,23 @@ function intrinsic!(flow::Flow, index::Int, intrinsic::Any, operands::Vector{Ope
     return nothing
 end
 
-"""Write and read with `doubt` below every origin of `objects` that open call at statement `index` reaches."""
-function open_effects!(flow::Flow, index::Int, objects::Targets, doubt::Doubt)::Nothing
+"""
+Write into `writes` and read with `doubt` below every origin of `objects` that open call at statement `index` reaches.
+"""
+function open_effects!(flow::Flow, writes::OriginAccesses, index::Int, objects::Targets, doubt::Doubt)::Nothing
     effect, reached = Effect(doubt, index, ""), beneath(flow, objects)
-    access!(flow.writes, reached, true, effect)
+    access!(writes, reached, true, effect)
     access!(flow.reads, reached, true, effect)
     return nothing
 end
 
 """
-Transfer open call (`effects.md`, Calls, step 7) with `code` `doubt`: write and read below every operand; result may
-point into operands, one direction, and to unknown object.
+Transfer open call (`effects.md`, Calls, step 7) with `code` `doubt`: write into `writes` and read below every operand;
+result may point into operands, one direction, and to unknown object.
 """
-function open!(flow::Flow, index::Int, operands::Vector{Operand.Type}, doubt::Doubt)::Nothing
+function open!(flow::Flow, writes::OriginAccesses, index::Int, operands::Vector{Operand.Type}, doubt::Doubt)::Nothing
     objects = union_targets(operand_targets(flow, operand) for operand in operands)
-    open_effects!(flow, index, objects, doubt)
+    open_effects!(flow, writes, index, objects, doubt)
     assign!(flow, index, union_targets((objects, unknown(doubt))), doubt)
     return nothing
 end

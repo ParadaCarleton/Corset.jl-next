@@ -832,7 +832,7 @@ four_way(x::Symbol) = x
     @test constant(code.ir, GlobalRef(Base, :nothing)) == Some(nothing)
     @test operand_type(code.ir, Operand.Part(Core.Argument(2), 1)) == MemoryRef{Int}
     @test value_type(code.ir, Expr(:call, GlobalRef(Core, :tuple), QuoteNode(:jl_n_threads), "libjulia-internal")) == Tuple{Symbol, String}
-    flow = start_flow(code.ir, code.outcomes, run.referent, false, false, Sources[])
+    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[])
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test map_node(flow, Node.Fresh(4), CallSite(Targets[], Sources[], 7, 2, Dict{Place.Type, Targets}(), Dict{Int, Sources}())) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
@@ -1001,7 +1001,7 @@ chain_link(x::Any) = x
     argument = Operand.Value(Core.Argument(2))
     for (position, link) in enumerate(links)
         outcome = position == length(links) ? Outcome.Builtin(Core.getfield, [argument, Operand.Value(QuoteNode(:a))]) : Outcome.Dispatch([links[position + 1]], [Operand.Value(chain_link), argument])
-        run.bodies[link] = Body(ir, Int[], Union{Nothing, Outcome.Type}[outcome], false)
+        run.bodies[link] = Body(ir, Int[], Union{Nothing, Outcome.Type}[outcome], [false], false)
     end
     @test field_parameters!(run, first(links)) == Set([2])
 end
@@ -1093,6 +1093,64 @@ end
             issorted(present) && count(position -> seen[position] != seen[position + 1], 1:(length(seen) - 1)) <= 1
         end
     end
+end
+
+"""Builds thrown value: open `print` on `x` writes nothing caller sees (`effects.md`, Effect kinds)."""
+message_write(x::Any, flag::Bool) = flag ? throw(ArgumentError(string("bad ", x))) : nothing
+
+"""Same `string` call, result goes to log: open `print` keeps `possible` write."""
+logged_write!(log::Vector{String}, x::Any) = (push!(log, string(x)); nothing)
+
+"""Message holds `pop!`: its definite write on stack stays."""
+pop_message!(stack::Vector{Any}, flag::Bool) = flag ? throw(ArgumentError(string("top ", pop!(stack)))) : nothing
+
+"""Open call before throw: caller that catches sees its write."""
+open_then_throw!(f::Any, x::Any, flag::Bool) = flag ? (f(x); error("failed")) : nothing
+
+"""Throw helper `error` builds message itself: its summary adds no write."""
+error_message(x::Any, flag::Bool) = flag ? error("bad ", x) : nothing
+
+"""Message built in loop: use cycle keeps `string` call out of message, so its write stays."""
+function loop_message(parts::Vector{Any}, flag::Bool)::Nothing
+    text = ""
+    for part in parts
+        text = string(text, part)
+    end
+    flag && throw(ArgumentError(text))
+    return nothing
+end
+
+"""Text unchanged; no method takes second argument."""
+takes_text(text::String)::String = text
+
+"""Call that fails on its argument types is no throw helper: `string` call result feeds no thrown value."""
+fails_on_arity(parts::Vector{Any}) = takes_text(string(parts[1]), 1)
+
+"""Callable that holds box of caller: writes value, returns old value."""
+struct Taker
+    box::CASES.Box
+end
+
+(taker::Taker)(value::Int)::Int = (old = taker.box.value; taker.box.value = value; old)
+
+"""Message call with callable from caller: record resolves at call, so caller sees definite write alone."""
+report_taker!(taker::Taker, value::Int, flag::Bool)::Nothing = flag ? throw(ArgumentError(string(taker(value)))) : nothing
+
+@testset "throw paths" begin
+    element = Step.Element()
+    # Message call adds no `possible` write; same call feeding log keeps it.
+    @test isempty(summary_of(message_write, Any, Bool).writes)
+    @test doubts(summary_of(logged_write!, Vector{String}, Any).writes) == Dict(top(2) => NO_DOUBT, (parameter(3), true) => sourced(3))
+    # Definite write inside message stays, and so does write before throw.
+    @test doubts(summary_of(pop_message!, Vector{Any}, Bool).writes) == Dict(top(2) => NO_DOUBT)
+    @test level_of(summary_of(open_then_throw!, Any, Any, Bool).writes[(parameter(3), true)].doubt) == Level.code
+    @test isempty(summary_of(error_message, Any, Bool).writes)
+    # Use cycle never counts as message; call that fails on its types is no throw.
+    @test doubts(summary_of(loop_message, Vector{Any}, Bool).writes) == Dict((parameter(2, element), true) => sourced(2))
+    @test doubts(summary_of(fails_on_arity, Vector{Any}).writes) == Dict((parameter(2, element), true) => sourced(2))
+    # Callback record of message call resolves there: definite write, no record left for caller.
+    raw = raw_summary(report_taker!, Taker, Int, Bool)
+    @test isempty(raw.callbacks) && doubts(raw.writes) == Dict((parameter(2, Step.Field(:box)), false) => NO_DOUBT)
 end
 
 @testset "soundness" begin

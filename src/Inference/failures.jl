@@ -31,10 +31,10 @@ function callable(type::Any)::Any
 end
 
 """
-Function or type `call` calls, when inference knows it: inner callee of splatted call (`Core._apply_iterate`) and keyword
-call (`Core.kwcall`); else `nothing`.
+Function or type `call` in typed `code` (lowered or IR) calls, when inference knows it: inner callee of splatted call
+(`Core._apply_iterate`) and keyword call (`Core.kwcall`); else `nothing`.
 """
-function called(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.VarState})::Any
+function called(code::Union{Core.CodeInfo, CC.IRCode}, call::Expr, parameters::Vector{CC.VarState})::Any
     callee = callable(CC.argextype(call.args[1], code, parameters))
     callee in (Core._apply_iterate, Core.kwcall) && length(call.args) >= 3 && return callable(CC.argextype(call.args[3], code, parameters))
     return callee
