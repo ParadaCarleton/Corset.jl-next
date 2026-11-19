@@ -1,16 +1,24 @@
-"""IR of instance before specialization, source statement index of each IR statement, and call outcome of each statement."""
+"""
+IR of instance before specialization, source statement index of each IR statement, call outcome of each statement, and
+whether stand-ins cut path of its own code (`effects.md`, Stand-in cuts).
+"""
 struct Body
     ir::CC.IRCode
     lines::Vector{Int}
     outcomes::Vector{Union{Nothing, Outcome.Type}}
+    cut::Bool
 end
 
-"""Code of variant for solve: specialized IR, statement lines and outcomes of its body, and variants each call reaches."""
+"""
+Code of variant for solve: specialized IR, statement lines, outcomes and cut of its body, and variants each call
+reaches.
+"""
 struct Code
     ir::CC.IRCode
     lines::Vector{Int}
     outcomes::Vector{Union{Nothing, Outcome.Type}}
     callees::Vector{Vector{Variant}}
+    cut::Bool
 end
 
 """Instance whose compiler effects prove empty summary (`effects.md`, Compiler effects): engine skips own analysis."""
@@ -19,7 +27,9 @@ struct Shortcut end
 """
 State of one effects run: world of dispatch and native inference, crash journal, package modules, referent cache; per
 instance its body, shortcut or blind spot cause, caller that first reached it, and parameters it uses as field names;
-per method whether it claims effects; instances that reach no claim; per variant its code and summary.
+per method whether it claims effects and whether it catches; throw-helper verdict per callee (`throw_helper`); per
+instance whether stand-ins cut its own code; instances whose reach compiler effects describe on model types too
+(`reaches_untrusted!`); per variant its code and summary.
 """
 struct Run
     world::UInt
@@ -31,7 +41,10 @@ struct Run
     callers::IdDict{Core.MethodInstance, Core.MethodInstance}
     fields::IdDict{Core.MethodInstance, Set{Int}}
     claims::IdDict{Method, Bool}
-    unclaimed::Base.IdSet{Core.MethodInstance}
+    catches::IdDict{Method, Bool}
+    helpers::IdDict{Any, Tuple{Bool, Vector{Any}}}
+    cuts::IdDict{Core.MethodInstance, Bool}
+    trusted::Base.IdSet{Core.MethodInstance}
     codes::Dict{Variant, Code}
     summaries::Dict{Variant, Summary}
 end
@@ -40,8 +53,9 @@ end
 function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module})::Run
     world = Base.get_world_counter()
     bodies, callers = IdDict{Core.MethodInstance, Union{Body, Shortcut, String}}(), IdDict{Core.MethodInstance, Core.MethodInstance}()
-    fields, claims = IdDict{Core.MethodInstance, Set{Int}}(), IdDict{Method, Bool}()
-    return Run(world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, fields, claims, Base.IdSet{Core.MethodInstance}(), Dict{Variant, Code}(), Dict{Variant, Summary}())
+    fields, claims, catches = IdDict{Core.MethodInstance, Set{Int}}(), IdDict{Method, Bool}(), IdDict{Method, Bool}()
+    helpers, cuts, trusted = IdDict{Any, Tuple{Bool, Vector{Any}}}(), IdDict{Core.MethodInstance, Bool}(), Base.IdSet{Core.MethodInstance}()
+    return Run(world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, fields, claims, catches, helpers, cuts, trusted, Dict{Variant, Code}(), Dict{Variant, Summary}())
 end
 
 """
@@ -61,26 +75,51 @@ function claims!(run::Run, method::Method)::Bool
     return claimed
 end
 
+"""Whether `method` can catch: `try` in its code. Generated method and method without source count: their code is unknown."""
+function catches!(run::Run, method::Method)::Bool
+    haskey(run.catches, method) && return run.catches[method]
+    found = Base.hasgenerator(method) || method.source === nothing || any(statement -> statement isa Core.EnterNode, Base.uncompressed_ast(method).code)
+    run.catches[method] = found
+    return found
+end
+
 """
-Whether native inference `edges` (callee code instances) reach method that `claims!` effects. Callee without cached code
-counts as claim: its effects are unknown. Search that finds no claim marks every instance it visited.
+Whether stand-ins cut own code of `instance` with cached compiler `effects` (`effects.md`, Stand-in cuts). Units come
+cut or not from `run.cuts`. Other instance needs cut check (`stand_in_cut`) only when it holds stand-in, and its method
+breaks no contract (type branches count, `keeps_contracts`) or its call can fail: it is not `nothrow`, or its method catches.
 """
-function reaches_claim!(run::Run, edges::Union{Vector{Any}, Core.SimpleVector})::Bool
+function cut!(run::Run, instance::Core.MethodInstance, effects::CC.Effects)::Bool
+    haskey(run.cuts, instance) && return run.cuts[instance]
+    holds_stand_in(instance.specTypes) || return false
+    method = instance.def::Method
+    keeps_contracts(method) && CC.is_nothrow(effects) && !catches!(run, method) && return false
+    # Instance without code counts as cut: its effects on model types are unknown.
+    inferred = inferred!(run, instance)
+    return inferred isa String ? (run.cuts[instance] = true) : last(inferred)
+end
+
+"""
+Whether native inference `edges` (callee code instances) reach instance whose compiler effects can miss effects on model
+types: method that `claims!` effects, instance that stand-ins cut (`cut!`), or callee without cached code. Search that
+finds none marks every instance it visited trusted.
+"""
+function reaches_untrusted!(run::Run, edges::Union{Vector{Any}, Core.SimpleVector})::Bool
     visited, pending = Base.IdSet{Core.MethodInstance}(), Union{Vector{Any}, Core.SimpleVector}[edges]
     while !isempty(pending)
         for edge in pop!(pending)
             edge isa Union{Core.CodeInstance, Core.MethodInstance} || continue
             instance = edge isa Core.CodeInstance ? edge.def : edge
             instance isa Core.ABIOverride && (instance = instance.def)
-            (instance in run.unclaimed || instance in visited) && continue
+            (instance in run.trusted || instance in visited) && continue
             push!(visited, instance)
             instance.def isa Method && claims!(run, instance.def) && return true
             code = edge isa Core.CodeInstance ? edge : CC.get(CC.code_cache(run.interpreter), instance, nothing)
             code isa Core.CodeInstance || return true
+            cut!(run, instance, CC.decode_effects(code.ipo_purity_bits)) && return true
             push!(pending, code.edges)
         end
     end
-    union!(run.unclaimed, visited)
+    union!(run.trusted, visited)
     return false
 end
 
@@ -93,14 +132,15 @@ end
 
 """
 Whether inference `frame` proves empty summary (`effects.md`, Compiler effects): instance writes nothing, touches no
-caller memory or task state, returns value without reference, and reaches no method that `claims!` effects.
+caller memory or task state, returns value without reference, does not `claims!` effects, and its callees reach nothing
+untrusted (`reaches_untrusted!`).
 """
 function proven_empty!(run::Run, frame::CC.InferenceState)::Bool
     effects = frame.result.ipo_effects
     CC.is_effect_free(effects) && CC.is_inaccessiblememonly(effects) && CC.is_notaskstate(effects) || return false
     referent!(run.referent, CC.widenconst(frame.result.result)) && return false
     method = frame.linfo.def
-    return !(method isa Method && claims!(run, method)) && !reaches_claim!(run, frame.edges)
+    return !(method isa Method && claims!(run, method)) && !reaches_untrusted!(run, frame.edges)
 end
 
 """Instances from `instance` back to root, each followed by caller that first reached it."""
@@ -165,17 +205,45 @@ join_limit(run::Run, instance::Core.MethodInstance)::Int = (instance.def::Method
 overrides(flag::UInt32)::Bool = CC.decode_statement_effects_override(flag) != CC.EffectsOverride()
 
 """
-Body of inference `frame` in `run`; callees that grow along call chain are limited. Compaction keeps calls that reach
-effects claim, and statements under block claim of instance that `claims!` effects.
+Body of inference `frame` in `run`, whose own code stand-ins `cut`; callees that grow along call chain are limited.
+Compaction keeps calls that reach untrusted instance (`reaches_untrusted!`), and statements under block claim of
+instance that `claims!` effects.
 """
-function frame_body(run::Run, frame::CC.InferenceState)::Body
+function frame_body(run::Run, frame::CC.InferenceState, cut::Bool)::Body
     method = frame.linfo.def
     own = method isa Method && claims!(run, method)
-    kept = [own && overrides(frame.src.ssaflags[index]) || reaches_claim!(run, call_edges(info)) for (index, info) in enumerate(frame.stmt_info)]
+    kept = [own && overrides(frame.src.ssaflags[index]) || reaches_untrusted!(run, call_edges(info)) for (index, info) in enumerate(frame.stmt_info)]
     ir, lines = frame_ir(frame, run.interpreter, kept)
     chain, limit = call_chain(run, frame.linfo), join_limit(run, frame.linfo)
-    return Body(ir, lines, [limited_outcome(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world, limit)) for index in 1:length(ir.stmts)])
+    return Body(ir, lines, [limited_outcome(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world, limit)) for index in 1:length(ir.stmts)], cut)
 end
+
+"""
+Whether stand-ins cut path of library instance `frame` (`effects.md`, Stand-in cuts): reached call never returns, or
+call statement is dead, though model types reach it. Methods that keep contracts count failing calls only
+(`keeps_contracts`); throw helpers fail on every signature. Method of stand-in only, generated method, or instance on
+model types without code, cannot clear call, so it counts as cut.
+"""
+function stand_in_cut(run::Run, frame::CC.InferenceState)::Bool
+    instance, code = frame.linfo, frame.src
+    holds_stand_in(instance.specTypes) || return false
+    method = instance.def::Method
+    failing = [index for (index, _, callee) in never_returning(code, CC.sptypes_from_meth_instance(instance)) if !first(get!(() -> throw_helper(callee), run.helpers, callee))]
+    dead = keeps_contracts(method) ? Int[] : dead_calls(code)
+    isempty(failing) && isempty(dead) && return false
+    # Generated code differs per signature, so statement index of stand-in code names no statement of model code.
+    Base.hasgenerator(method) && return true
+    modeled = Inference.instance(method, model_type(instance.specTypes))
+    reference = isnothing(modeled) ? nothing : CC.typeinf_frame(run.interpreter, modeled, false)
+    isnothing(reference) && return true
+    return any(index -> reference.src.ssavaluetypes[index] !== Union{}, failing) || any(index -> !(reference.src.code[index] isa Core.Const), dead)
+end
+
+"""
+Whether `method` keeps documented contracts, so its type branches keep same effects (`findings.md`, Confidence and
+blind spots): Base, Core, and stand-in methods that model them.
+"""
+keeps_contracts(method::Method)::Bool = Base.moduleroot(method.module) in (Base, Core) || method.module === StandIns
 
 """
 Crash journal key of native inference of `instance`; prefix keeps it apart from method store keys. Non-compact `show`
@@ -183,22 +251,31 @@ skips type alias search, which takes seconds on deep types.
 """
 journal_key(instance::Core.MethodInstance)::String = "effects\n" * sprint(show, instance.specTypes; context = :compact => false)
 
-"""Body of inference `frame`, or shortcut when its compiler effects prove empty summary (`proven_empty!`)."""
-instance_body(run::Run, frame::CC.InferenceState)::Union{Body, Shortcut} = proven_empty!(run, frame) ? Shortcut() : frame_body(run, frame)
+"""
+Body of inference `frame` whose own code stand-ins `cut`, or shortcut when its compiler effects prove empty summary
+(`proven_empty!`). Compiler effects hold for stand-ins only, so cut instance gets no shortcut.
+"""
+instance_body(run::Run, frame::CC.InferenceState, cut::Bool)::Union{Body, Shortcut} = !cut && proven_empty!(run, frame) ? Shortcut() : frame_body(run, frame, cut)
 
 """
-Body of instance outside units: native inference, then shortcut or passes. Blind spot cause instead when inference gives
-no code or crashed earlier run; crash journal records each inference, so relaunch skips instance that aborts process.
+Native inference frame of instance outside units, and whether stand-ins cut it (`stand_in_cut`, kept in `run.cuts`).
+Blind spot cause instead when inference gives no code or crashed earlier run; crash journal records each inference, so
+relaunch skips instance that aborts process.
 """
-function library_body(run::Run, instance::Core.MethodInstance)::Union{Body, Shortcut, String}
+function inferred!(run::Run, instance::Core.MethodInstance)::Union{Tuple{CC.InferenceState, Bool}, String}
     journal = run.journal
     key = isnothing(journal) ? "" : journal_key(instance)
     isnothing(journal) || !(key in journal.crashed) || return "inference crashed process"
     isnothing(journal) || record!(journal, Record(key, method_label(instance.def::Method), false, nothing))
     frame = CC.typeinf_frame(run.interpreter, instance, false)
+    # Model-type inference of cut check runs inside journal record too.
+    cut = !isnothing(frame) && get!(() -> stand_in_cut(run, frame), run.cuts, instance)
     isnothing(journal) || record!(journal, Record(key, "", true, nothing))
-    return isnothing(frame) ? "inference gave no code" : instance_body(run, frame)
+    return isnothing(frame) ? "inference gave no code" : (frame, cut)
 end
+
+"""Body of instance outside units: native inference (`inferred!`), then shortcut or passes; else blind spot cause."""
+library_body(run::Run, instance::Core.MethodInstance)::Union{Body, Shortcut, String} = (inferred = inferred!(run, instance); inferred isa String ? inferred : instance_body(run, inferred...))
 
 """Body of `instance`, inferred on first use."""
 body!(run::Run, instance::Core.MethodInstance)::Union{Body, Shortcut, String} = get!(() -> library_body(run, instance), run.bodies, instance)
@@ -306,7 +383,7 @@ function variant_code(run::Run, variant::Variant, body::Body)::Code
             _ => nothing
         end
     end
-    return Code(ir, body.lines, body.outcomes, callees)
+    return Code(ir, body.lines, body.outcomes, callees, body.cut)
 end
 
 """Variants `roots` reach through calls, roots first; gives code to each variant with body."""
@@ -331,7 +408,7 @@ gives variants whose summaries rounds read. `flush` resolves callback records he
 """
 function variant_summary(run::Run, variant::Variant, flush::Bool)::Tuple{Summary, Set{Variant}}
     code = run.codes[variant]
-    flow = start_flow(code.ir, code.outcomes, run.referent, flush)
+    flow = start_flow(code.ir, code.outcomes, run.referent, flush, code.cut)
     callees = Callees(code.callees, run.summaries, Set{Variant}())
     while true
         flow.changed = false

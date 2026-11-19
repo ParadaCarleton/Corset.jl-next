@@ -11,8 +11,9 @@ const CORPUS = ["Distances@0.10.12", "DataStructures@0.18.22", "JSON@1.13.4"]
 const CHILD = raw"""
 using Corset: Corset
 using Corset.Effects: Effects, start_run, solve!, Variant, Outcome
-# Older Corset builds every unit body; newer one may shortcut it (`instance_body`).
-const unit_body = isdefined(Effects, :instance_body) ? Effects.instance_body : Effects.frame_body
+# Older Corset builds every unit body; newer one may shortcut it (`instance_body`), then also knows stand-in cuts.
+const cuts = isdefined(Effects, :stand_in_cut)
+unit_body(run, typed) = cuts ? Effects.instance_body(run, typed.frame, run.cuts[typed.frame.linfo]) : isdefined(Effects, :instance_body) ? Effects.instance_body(run, typed.frame) : Effects.frame_body(run, typed.frame)
 using Corset.Facts: Confidence
 name, root = ARGS
 Base.require(Main, Symbol(name))
@@ -23,13 +24,11 @@ _, _, units, _ = inference.value
 # Solve every unit as `effects_facts` does; return run for counts.
 function solved(units)
     run = start_run(nothing, loaded.facts.modules)
-    roots = Variant[]
-    for typed in units.typed
-        instance = typed.frame.linfo
-        haskey(run.bodies, instance) && continue
-        run.bodies[instance] = unit_body(run, typed.frame)
-        push!(roots, (instance, Pair{Int, Any}[]))
-    end
+    firsts = IdDict{Core.MethodInstance, Any}()
+    foreach(typed -> get!(firsts, typed.frame.linfo, typed), units.typed)
+    roots = Variant[(typed.frame.linfo, Pair{Int, Any}[]) for typed in units.typed if firsts[typed.frame.linfo] === typed]
+    cuts && foreach(((instance, _),) -> run.cuts[instance] = !isempty(firsts[instance].cuts), roots)
+    foreach(((instance, _),) -> run.bodies[instance] = unit_body(run, firsts[instance]), roots)
     solve!(run, roots)
     return run
 end
@@ -59,7 +58,7 @@ unsettled = count(found -> any(access -> access.spot.cause == Effects.UNSETTLED,
 # Variant names, not patterns: older Corset lacks newer outcome kinds. Moshi is Corset dependency, not direct one.
 variant_name = only(m for m in values(Base.loaded_modules) if nameof(m) === :Moshi).Data.variant_name
 kinds = Dict{String, Int}()
-for body in values(run.bodies), outcome in (body isa String ? () : body.outcomes)
+for body in values(run.bodies), outcome in (body isa Effects.Body ? body.outcomes : ())
     isnothing(outcome) && continue
     kind = string(variant_name(something(outcome)))
     width = Effects.@match something(outcome) begin
@@ -70,6 +69,14 @@ for body in values(run.bodies), outcome in (body isa String ? () : body.outcomes
     kinds[kind] = get(kinds, kind, 0) + 1
 end
 println("closed_world=", closed, " unsettled=", unsettled, " calls=", sort!(collect(kinds)))
+incomplete = count(found -> !found.complete, methods)
+if cuts
+    cut_units = count(typed -> !isempty(typed.cuts), units.typed)
+    cut_bodies = count(body -> body isa Effects.Body && body.cut, values(run.bodies))
+    println("incomplete=", incomplete, " cut_units=", cut_units, " cut_checks=", length(run.cuts), " cut_instances=", count(values(run.cuts)), " cut_bodies=", cut_bodies)
+else
+    println("incomplete=", incomplete)
+end
 """
 
 """Copy of registered package `name` at `version` in `work`, made writable, with library preset."""

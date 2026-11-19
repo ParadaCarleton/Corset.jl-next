@@ -520,6 +520,7 @@ function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index
     arguments = parameter_targets(flow, index, first(variant).def::Method, operands)
     site = CallSite(arguments, index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
     summary.closed_world && (flow.closed_world = true)
+    summary.cut && (flow.cut = true)
     apply_stores!(flow, site, summary)
     if defers && deferred(arguments)
         defer!(flow, index, (variant, arguments))

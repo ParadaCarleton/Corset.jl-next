@@ -1,15 +1,15 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
 using Corset.Facts: Facts, MethodEffects, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision
-using Corset.Inference: infer_package, open_journal, records, explicit_any
-using Corset.StandIns: FunctionStandIn
+using Corset.Inference: infer_package, open_journal, records, explicit_any, cuts!, dead_calls
+using Corset.StandIns: FunctionStandIn, ArrayStandIn, FloatStandIn
 using Corset.Signatures: Provenance
 using Corset.Effects:
     Effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
     components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, caller_doubt, source_provenance,
-    Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_claim!
+    Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 
@@ -111,7 +111,8 @@ end
     @test all(found -> found.site.method.name != :fail, FACTS.methods)
     @test BlindSpot("always throws on stand-ins", only(site for site in UNITS.typed if site.site.method.name == :fail).site.span) in SPOTS
     @test any(spot -> spot.cause == "alias", SPOTS)
-    @test all(found -> found.complete == !(found.site.method in UNITS.incomplete), FACTS.methods)
+    # Stand-in cuts make method incomplete too ("stand-in cuts" testset).
+    @test all(found -> !(found.site.method in UNITS.incomplete) || !found.complete, FACTS.methods)
 end
 
 """Effects of only fixture method `name`."""
@@ -216,7 +217,7 @@ sourceless(x::Int)::Int = x + 3
     @test isempty(named(:memory_length).reads) == (Base.JLOptions().code_coverage == 0)
     own = start_run(nothing, Module[CASES])
     length_root = (instance_of(CASES.memory_length, Memory{Int}), Pair{Int, Any}[])
-    own.bodies[first(length_root)] = Effects.frame_body(own, Core.Compiler.typeinf_frame(own.interpreter, first(length_root), false))
+    own.bodies[first(length_root)] = Effects.frame_body(own, Core.Compiler.typeinf_frame(own.interpreter, first(length_root), false), false)
     solve!(own, [length_root])
     @test collect(keys(own.summaries[length_root].reads)) == [(parameter(2), false)]
     # Claim outside Base turns shortcut off: own analysis finds write that false claim hides.
@@ -231,10 +232,100 @@ sourceless(x::Int)::Int = x + 3
     method = only(methods(sourceless))
     method.source = nothing
     @test claims!(run, method)
-    # Callee without inferred code counts as claim. Search without claim marks instances it visited; other edges skip.
-    @test reaches_claim!(run, Any[Base.method_instance(never_called, (Int,))])
+    # Callee without inferred code counts as untrusted. Search that finds none marks instances it visited; other edges skip.
+    @test reaches_untrusted!(run, Any[Base.method_instance(never_called, (Int,))])
     plus = Base.method_instance(+, (Int, Int))
-    @test !reaches_claim!(run, Any[1, Int, plus]) && plus in run.unclaimed && !reaches_claim!(run, Core.svec(plus))
+    @test !reaches_untrusted!(run, Any[1, Int, plus]) && plus in run.trusted && !reaches_untrusted!(run, Core.svec(plus))
+end
+
+"""Library helper outside Base whose type test stand-in decides."""
+reset_if_vector!(values) = (values isa Vector && (values[1] = 0); nothing)
+
+"""Library helper outside Base whose type test is false on model types too."""
+skip_if_text(values) = (values isa AbstractString && identity(values); nothing)
+
+"""Generated library helper: stand-in code calls `pointer`, model code is shorter."""
+@generated generated_library_poke(values) = values <: Vector ? :(nothing) : :(identity(values); pointer(values); nothing)
+
+"""Generated method without code on array stand-in."""
+@generated stand_in_broken(x) = x <: ArrayStandIn ? error("no code") : :(x)
+
+"""Unit of fixture method `name`, first in inference order."""
+unit(name::Symbol)::Corset.Inference.TypedCode = first(typed for typed in UNITS.typed if typed.site.method.name == name)
+
+"""Blind spot of fixture method `name` with cause `CUT`, if any."""
+cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cause == CUT && spot.span.file == named(name).site.span.file && line_text(spot.span) == line_text(named(name).site.span)]
+
+@testset "stand-in cuts" begin
+    definite = Confidence.definite
+    # Stand-in decides type test: write is dead on stand-ins only. Verdict none goes to coverage line.
+    @test !isempty(unit(:maybe_bump!).cuts) && isempty(named(:maybe_bump!).writes) && !named(:maybe_bump!).complete
+    # Blind spot points at cut statement; caller spot points at call that reaches cut.
+    @test only(cut_spots(:maybe_bump!)).span != named(:maybe_bump!).site.span
+    # Caller inherits cut through callee summary, though compiler proves caller empty on stand-ins.
+    @test isempty(unit(:call_maybe_bump!).cuts) && !named(:call_maybe_bump!).complete && length(cut_spots(:call_maybe_bump!)) == 1
+    # Write keeps certainty with cut; verdict is not none, so no blind spot. Compaction keeps empty call to cut unit.
+    @test shape(named(:set_maybe_bump!).writes) == [(parameter(2), false, definite)] && !named(:set_maybe_bump!).complete
+    @test isempty(cut_spots(:set_maybe_bump!))
+    # Branch dead on declared signature too: no cut. Type test alone makes method incomplete.
+    @test isempty(unit(:integer_bump!).cuts) && isempty(cut_spots(:integer_bump!))
+    # Call that fails on stand-in only is cut; dead return conversion is dead on declared signature too.
+    zero = unit(:maybe_zero!)
+    @test !isempty(zero.cuts) && all(index -> zero.code.ssavaluetypes[index] === Union{}, zero.cuts) && !isempty(dead_calls(zero.code))
+    @test !named(:maybe_zero!).complete && length(cut_spots(:maybe_zero!)) == 1
+    # Throw helper fails on every signature, and call that fails on model types too is fact: no cut.
+    @test isempty(unit(:check_nonempty).cuts) && isempty(cut_spots(:check_nonempty))
+    converted = unit(:maybe_convert)
+    @test isempty(converted.cuts) && any(index -> converted.code.ssavaluetypes[index] === Union{}, eachindex(converted.code.code))
+    # Stand-in dispatches to throwing package method, model type to writing one: no spot from failure check, cut stays.
+    @test !isempty(unit(:maybe_fill!).cuts) && !named(:maybe_fill!).complete && length(cut_spots(:maybe_fill!)) == 1
+    # Generated code differs per signature, so no statement lookup crosses signatures.
+    @test !isempty(unit(:fallback_bump!).cuts) && !isempty(unit(:generated_poke).cuts)
+    # Generator runs on declared signature too, with other code there: generated method reads no declared code.
+    @test unit(:generated_shift!).cuts == dead_calls(unit(:generated_shift!).code) && !isempty(unit(:generated_shift!).cuts)
+    # Library instance cut: caller is uncaught failure, or caught one that leaves helper `nothrow`.
+    for name in (:poke_some!, :poke_quietly!)
+        @test isempty(unit(name).cuts) && !named(name).complete && only(cut_spots(name)).span != named(name).site.span
+    end
+    # Declared signature without code: every dead call counts.
+    generated = unit(:generated_bump!)
+    @test generated.cuts == dead_calls(generated.code) && !isempty(generated.cuts)
+    # Stand-in signature equal to declared signature: no second inference.
+    method = only(methods(CASES.maybe_bump!))
+    @test cuts!(IdDict{Method, Union{Nothing, Core.CodeInfo}}(), method, method.sig, unit(:maybe_bump!).code, Int[]) == Int[]
+    # Library call fails on stand-in only: instance keeps own analysis, and its summary carries cut.
+    run = start_run(nothing, Module[CASES])
+    instance_of(f::Any, types::Type...)::Core.MethodInstance = only(something(dispatch(Any[typeof(f), types...], run.world, 1)))
+    frame_of(instance::Core.MethodInstance)::Core.Compiler.InferenceState = Core.Compiler.typeinf_frame(run.interpreter, instance, false)
+    stand_in = instance_of(pointer, ArrayStandIn{Int, 1})
+    @test stand_in_cut(run, frame_of(stand_in)) && (body!(run, stand_in)::Body).cut
+    root = (stand_in, Pair{Int, Any}[])
+    solve!(run, [root])
+    @test run.summaries[root].cut
+    # No stand-in, throw helper, or call that fails on model types too: no cut.
+    @test !stand_in_cut(run, frame_of(instance_of(pointer, Vector{Int})))
+    @test !stand_in_cut(run, frame_of(instance_of(Base.throw_boundserror, ArrayStandIn{Int, 1}, Tuple{Int}))) && first(run.helpers[throw])
+    @test !stand_in_cut(run, frame_of(instance_of(size, ArrayStandIn{Int, 1})))
+    @test !stand_in_cut(run, frame_of(instance_of(CASES.refuse, ArrayStandIn{Int, 1}))) && !first(run.helpers[CASES.reject])
+    # Type branch outside Base is cut, `nothrow` or not; stand-in method keeps contracts like Base.
+    @test stand_in_cut(run, frame_of(instance_of(reset_if_vector!, ArrayStandIn{Int, 1})))
+    @test cut!(run, instance_of(reset_if_vector!, ArrayStandIn{Int, 1}), Core.Compiler.EFFECTS_TOTAL)
+    @test !stand_in_cut(run, frame_of(instance_of(skip_if_text, ArrayStandIn{Int, 1})))
+    @test !stand_in_cut(run, frame_of(instance_of(+, FloatStandIn, FloatStandIn)))
+    @test stand_in_cut(run, frame_of(instance_of(generated_library_poke, ArrayStandIn{Int, 1})))
+    # Cut check runs only on stand-in instance that can fail; instance without code counts as cut.
+    total, throwing = Core.Compiler.EFFECTS_TOTAL, Core.Compiler.EFFECTS_THROWS
+    vector_pointer = instance_of(pointer, Vector{Int})
+    @test !cut!(run, vector_pointer, throwing) && !haskey(run.cuts, vector_pointer) && !cut!(run, instance_of(size, ArrayStandIn{Int, 1}), total)
+    @test cut!(run, instance_of(CASES.poke_caught_at!, ArrayStandIn{Int, 1}, Int), total)
+    # Base method gets check when it can fail (`pointer` on stand-in only), or when `nothrow` with `try` (`isassigned`).
+    @test cut!(run, instance_of(pointer, ArrayStandIn{Float64, 1}), throwing)
+    assigned = instance_of(isassigned, ArrayStandIn{Int, 1}, Int)
+    @test !haskey(run.cuts, assigned) && (cut!(run, assigned, total); haskey(run.cuts, assigned))
+    broken = instance_of(stand_in_broken, ArrayStandIn{Int, 1})
+    @test cut!(run, broken, total) && run.cuts[broken]
+    @test catches!(run, only(methods(CASES.poke_caught_at!))) && catches!(run, only(methods(stand_in_broken)))
+    @test !catches!(run, only(methods(CASES.poke_at!)))
 end
 
 @testset "engine stage" begin
@@ -682,7 +773,7 @@ four_way(x::Symbol) = x
     code = run.codes[(instance, Pair{Int, Any}[])]
     @test constant(code.ir, GlobalRef(Base, :nothing)) == Some(nothing)
     @test operand_type(code.ir, Operand.Part(Core.Argument(2), 1)) == MemoryRef{Int}
-    flow = start_flow(code.ir, code.outcomes, run.referent, false)
+    flow = start_flow(code.ir, code.outcomes, run.referent, false, false)
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test map_node(flow, Node.Fresh(4), CallSite(Targets[], 7, 2, Dict{Place.Type, Targets}(), Dict{Int, Sources}())) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
@@ -835,7 +926,7 @@ chain_link(x::Any) = x
     argument = Operand.Value(Core.Argument(2))
     for (position, link) in enumerate(links)
         outcome = position == length(links) ? Outcome.Builtin(Core.getfield, [argument, Operand.Value(QuoteNode(:a))]) : Outcome.Dispatch([links[position + 1]], [Operand.Value(chain_link), argument])
-        run.bodies[link] = Body(ir, Int[], Union{Nothing, Outcome.Type}[outcome])
+        run.bodies[link] = Body(ir, Int[], Union{Nothing, Outcome.Type}[outcome], false)
     end
     @test field_parameters!(run, first(links)) == Set([2])
 end
@@ -894,29 +985,29 @@ const NODES = Data.Dicts(Data.SampledFrom([Node.Placed(parameter(2)), Node.Fresh
 at_most(first::Doubt, second::Doubt)::Bool = level_of(first) < level_of(second) || level_of(first) == level_of(second) && sources_of(first) & sources_of(second) == sources_of(second)
 
 """Summaries over two parameters: few places, nodes and causes, so draws overlap."""
-const SUMMARIES = @composed function summaries(writes = ACCESSES, reads = ACCESSES, held = NODES, result = NODES, fresh = Data.Integers(0, 2), closed = Data.Booleans())
+const SUMMARIES = @composed function summaries(writes = ACCESSES, reads = ACCESSES, held = NODES, result = NODES, fresh = Data.Integers(0, 2), closed = Data.Booleans(), cut = Data.Booleans())
     edges = isempty(held) ? Edges() : Edges((Node.Placed(parameter(2)), Step.Element()) => held)
     bound = isempty(held) ? Dict{GlobalRef, Nodes}() : Dict(GlobalRef(Main, :slot) => held)
-    return Summary(writes, reads, edges, Holds(Node.Fresh(1) => held), Holds(), bound, Set{Callback}(), result, fresh, closed)
+    return Summary(writes, reads, edges, Holds(Node.Fresh(1) => held), Holds(), bound, Set{Callback}(), result, fresh, closed, cut)
 end
 
 @testset "call cycle widening" begin
-    old = Summary(Accesses((parameter(2), false) => Effect(NO_DOUBT, 3, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 1, false)
-    new = Summary(Accesses((parameter(2), false) => Effect(CODE_DOUBT, 2, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, true)
+    old = Summary(Accesses((parameter(2), false) => Effect(NO_DOUBT, 3, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 1, false, true)
+    new = Summary(Accesses((parameter(2), false) => Effect(CODE_DOUBT, 2, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, true, false)
     widened = widen(old, new)
     @test widened.writes == Accesses((parameter(2), false) => Effect(BLIND_DOUBT, 3, UNSETTLED))
-    @test widened.fresh == 1 && widened.closed_world
+    @test widened.fresh == 1 && widened.closed_world && widened.cut
     # Callback records of both summaries stay.
     instance = only(something(dispatch(Any[typeof(CASES.set_value!), CASES.Box, Int], Base.get_world_counter(), 1)))
     record = Callback((variant = (instance, Pair{Int, Any}[]), parameters = [Nodes(Node.Placed(parameter(2)) => NO_DOUBT)]))
-    recorded = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set([record]), Nodes(), 0, false)
+    recorded = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set([record]), Nodes(), 0, false, false)
     @test widen(recorded, new).callbacks == Set([record]) && widen(new, recorded).callbacks == Set([record])
     @check max_examples = 300 db = false function widen_grows(old = SUMMARIES, new = SUMMARIES)
         widened = widen(old, new)
         kept = all(issubset(keys(getfield(summary, name)), keys(getfield(widened, name))) for summary in (old, new), name in (:writes, :reads, :result))
         # Least doubt per node: level never rises; `code` sources only grow.
         certain = all(at_most(widened.result[node], doubt) for summary in (old, new) for (node, doubt) in summary.result)
-        same(widen(widened, new), widened) && kept && certain && widened.fresh >= max(old.fresh, new.fresh)
+        same(widen(widened, new), widened) && kept && certain && widened.fresh >= max(old.fresh, new.fresh) && widened.cut == (old.cut || new.cut)
     end
     # Rerun chain: access changes at most once after it appears, so finite places bound reruns.
     @check max_examples = 300 db = false function widened_chain_settles(chain = Data.Vectors(SUMMARIES; min_size = 1, max_size = 6))
