@@ -8,8 +8,8 @@ const OriginHolds = Dict{Origin.Type, Targets}
 const Deferred = Tuple{Variant, Vector{Targets}}
 
 """
-Points-to state of one instance during its fixpoint (`effects.md`, Origins and points-to): call outcome and message flag
-(`message_statements`) per statement; targets per IR value and argument; type sources each IR value derives from
+Points-to state of one instance during its fixpoint (`effects.md`, Origins and points-to): call outcome, message flag
+(`message_statements`) and release balance primitive (`primitive`) per statement; targets per IR value and argument; type sources each IR value derives from
 values that made it (`derived_of`) and of each static parameter; flow-insensitive heap by origin and slot, memory
 backing, unknown-slot stores and global bindings; result targets; accesses by origin and whether they cover places
 below; callback records by call statement. `changed` records growth of targets in current round; `closed_world` records
@@ -20,6 +20,7 @@ mutable struct Flow
     const ir::CC.IRCode
     const outcomes::Vector{Union{Nothing, Outcome.Type}}
     const message::Vector{Bool}
+    const primitives::Vector{Union{Nothing, Primitive}}
     const values::Vector{Targets}
     const derived::Vector{Sources}
     const statics::Vector{Sources}
@@ -51,7 +52,17 @@ function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}
     ]
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     callbacks = Dict{Int, Vector{Deferred}}()
-    return Flow(ir, outcomes, message, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, false, false, cut)
+    primitives = Union{Nothing, Primitive}[statement_primitive(ir, index, outcomes[index]) for index in 1:length(ir.stmts)]
+    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, false, false, cut)
+end
+
+"""Release balance primitive of statement `index` of `ir` with call `outcome`: dispatched call only (`primitive`)."""
+function statement_primitive(ir::CC.IRCode, index::Int, outcome::Union{Nothing, Outcome.Type})::Union{Nothing, Primitive}
+    isnothing(outcome) && return nothing
+    return @match something(outcome) begin
+        Outcome.Dispatch(_, operands) => primitive(ir, operands, ir.stmts[index][:type])
+        _ => nothing
+    end
 end
 
 """

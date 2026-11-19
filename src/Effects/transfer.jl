@@ -45,11 +45,15 @@ const ELEMENT_WRITES = IdDict{Any, Shape}(
 """
 Transfer call statement `index` by its `outcome`, with callee variants and summaries from `callees`. Callback records of
 previous round at `index` give way to this round. Message call (`message_statements`) adds definite writes only
-(`effects.md`, Effect kinds): its writes go into scratch table, and it resolves callback records here.
+(`effects.md`, Effect kinds): its writes go into scratch table, and it resolves callback records here. Lock or semaphore
+primitive (`primitive`) skips callee body; its result is unknown object.
 """
 function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees)::Nothing
     delete!(flow.callbacks, index)
     derive_call!(flow, index, outcome_operands(outcome))
+    skipped = flow.primitives[index]
+    # Lock body moves scheduler state only; release balance counts its hold.
+    !isnothing(skipped) && skipped.skips && return assign!(flow, index, unknown(CODE_DOUBT))
     message = flow.message[index]
     writes = message ? OriginAccesses() : flow.writes
     @match outcome begin
@@ -172,14 +176,6 @@ function join_accesses!(table::OriginAccesses, members::Vector{OriginAccesses}, 
     return nothing
 end
 
-"""Constant value of call `operand`; `nothing` when not constant."""
-function operand_constant(flow::Flow, operand::Operand.Type)::Union{Nothing, Some{Any}}
-    return @match operand begin
-        Operand.Value(value) => constant(flow.ir, value)
-        _ => nothing
-    end
-end
-
 """Transfer builtin call (`effects.md`, Calls, step 1); writes go into `writes`."""
 function builtin!(flow::Flow, writes::OriginAccesses, index::Int, builtin::Any, operands::Vector{Operand.Type})::Nothing
     targets(position::Int)::Targets = operand_targets(flow, operands[position])
@@ -187,14 +183,14 @@ function builtin!(flow::Flow, writes::OriginAccesses, index::Int, builtin::Any, 
         binding = module_global(flow, operands)
         if isnothing(binding)
             # Own name: closure of field write branch captures `field`; second assignment boxes it.
-            read_field = operand_constant(flow, operands[2])
+            read_field = operand_constant(flow.ir, operands[2])
             access!(flow.reads, targets(1), false, definite(index), field_kind(operand_type(flow.ir, operands[1]), read_field))
             assign!(flow, index, load_field(flow, operands[1], read_field))
         else
             read_global!(flow, index, something(binding))
         end
     elseif haskey(FIELD_WRITES, builtin)
-        field = operand_constant(flow, operands[2])
+        field = operand_constant(flow.ir, operands[2])
         slot = slot_type(operand_type(flow.ir, operands[1]), field)
         kind = field_kind(operand_type(flow.ir, operands[1]), field)
         write!(flow, writes, index, FIELD_WRITES[builtin], operands, targets(1), load_field(flow, operands[1], field), values -> store_field!(flow, operands[1], field, values), slot, kind)
@@ -252,7 +248,7 @@ end
 """Global binding that call with constant module and symbol operands names; `nothing` otherwise."""
 function module_global(flow::Flow, operands::Vector{Operand.Type})::Union{Nothing, Some{GlobalRef}}
     length(operands) >= 2 || return nothing
-    owner, name = operand_constant(flow, operands[1]), operand_constant(flow, operands[2])
+    owner, name = operand_constant(flow.ir, operands[1]), operand_constant(flow.ir, operands[2])
     (isnothing(owner) || isnothing(name)) && return nothing
     something(owner) isa Module && something(name) isa Symbol || return nothing
     return Some(GlobalRef(something(owner), something(name)))

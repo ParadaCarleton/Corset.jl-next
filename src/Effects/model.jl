@@ -140,6 +140,34 @@ const Edges = Dict{Tuple{Node.Type, Step.Type}, Nodes}
 """Stores of exported graph by holder node, for one slot kind: memory backing or unknown slot."""
 const Holds = Dict{Node.Type, Nodes}
 
+"""Resource of release balance (`effects.md`, Release balance): lock or `Semaphore` slot, or file that `open` returns."""
+@enumx Resource lock file
+
+"""
+Hold count of resource (`effects.md`, Release balance): acquires less releases at `none` level; `code` level is join of
+different counts; `blind` level is release pattern Corset cannot count, with `reason`. `cause`: statement that took hold
+first. Count is 0 above `none` level, so equal counts compare equal.
+"""
+struct HoldCount
+    count::Int
+    level::Level.T
+    cause::Int
+    reason::String
+    function HoldCount(count::Int, level::Level.T, cause::Int, reason::String)::HoldCount
+        (level == Level.blind) == !isempty(reason) || throw(ArgumentError("hold count has reason exactly at `blind` level: $level, $reason"))
+        return new(level == Level.none ? count : 0, level, cause, reason)
+    end
+end
+
+"""
+Hold counts by exported node and resource; absent key holds exact 0. Merged fresh node can hold file and its own lock,
+so resource is part of key.
+"""
+const HoldCounts = Dict{Tuple{Node.Type, Resource.T}, HoldCount}
+
+"""Hold that throw skips release of (`effects.md`, Release balance, F98): hold count at throw, and throw statement."""
+const Unguarded = @NamedTuple{hold::HoldCount, throws::Int}
+
 """
 Instance with constant arguments its callee uses as field name, by position (`effects.md`, Calls): `getproperty(x,
 :a)` summary loads field `a`. Pre-inlining IR keeps such wrapper calls, so summary without constant loses field.
@@ -158,6 +186,8 @@ objects caller can see and fresh objects (`edges` by slot, `backing` for memory,
 for global binding); callback records whose accesses caller applies; result nodes; count of fresh nodes;
 `closed_world`: summary joins methods loaded now, so its "writes nothing" is at most `possible`; and `cut`: path
 stand-ins cut reaches it, so its "writes nothing" holds for stand-ins only. Places need parameters and globals only.
+Release balance: hold counts at normal exit (`held`) and throw exit (`thrown`), and holds own throws skip
+(`unguarded`, local resources too).
 """
 struct Summary
     writes::Accesses
@@ -171,10 +201,13 @@ struct Summary
     fresh::Int
     closed_world::Bool
     cut::Bool
+    held::HoldCounts
+    thrown::HoldCounts
+    unguarded::Dict{Tuple{Node.Type, Resource.T}, Unguarded}
 end
 
 """Summary of instance that writes, reads and returns nothing: start of fixpoint inside call cycle."""
-empty_summary()::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, false, false)
+empty_summary()::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}())
 
 """Whether summaries `first` and `second` hold same effects, stores, result and causes."""
 same(first::Summary, second::Summary)::Bool = all(name -> getfield(first, name) == getfield(second, name), fieldnames(Summary))
@@ -199,7 +232,22 @@ function widen(old::Summary, new::Summary)::Summary
     writes, reads = widen_accesses(old.writes, new.writes), widen_accesses(old.reads, new.reads)
     edges, backing, spread = union_stores(old.edges, new.edges), union_stores(old.backing, new.backing), union_stores(old.spread, new.spread)
     bound, callbacks, result = union_stores(old.bound, new.bound), union(old.callbacks, new.callbacks), union_nodes(old.result, new.result)
-    return Summary(writes, reads, edges, backing, spread, bound, callbacks, result, max(old.fresh, new.fresh), old.closed_world || new.closed_world, old.cut || new.cut)
+    held, thrown = widen_holds(old.held, new.held), widen_holds(old.thrown, new.thrown)
+    unguarded = mergewith((first, second) -> first == second ? first : (hold = unsettled(first.hold), throws = first.throws), old.unguarded, new.unguarded)
+    return Summary(writes, reads, edges, backing, spread, bound, callbacks, result, max(old.fresh, new.fresh), old.closed_world || new.closed_world, old.cut || new.cut, held, thrown, unguarded)
+end
+
+"""Blind hold of resource of `hold` with cause `UNSETTLED`: count that still changes when call cycle widens."""
+unsettled(hold::HoldCount)::HoldCount = HoldCount(0, Level.blind, hold.cause, UNSETTLED)
+
+"""Hold counts of `old` and `new` by key, absent key 0: count that differs becomes blind (`unsettled`)."""
+function widen_holds(old::HoldCounts, new::HoldCounts)::HoldCounts
+    found = HoldCounts()
+    for key in union(keys(old), keys(new))
+        first, second = get(old, key, nothing), get(new, key, nothing)
+        found[key] = first == second ? something(first) : unsettled(something(first, second))
+    end
+    return found
 end
 
 """
@@ -211,5 +259,5 @@ function open_summary(count::Int, cause::String)::Summary
     effects = Accesses((place, true, EffectKind.memory) => Effect(BLIND_DOUBT, 0, cause) for place in places)
     result = Nodes(Node.Placed(place) => BLIND_DOUBT for place in places)
     result[Node.Outside()] = BLIND_DOUBT
-    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), result, 0, false, false)
+    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), result, 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}())
 end

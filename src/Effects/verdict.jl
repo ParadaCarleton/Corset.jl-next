@@ -71,6 +71,49 @@ function node_contents(summary::Summary, node::Node.Type)::Vector{Node.Type}
     return found
 end
 
+"""
+Lock writes of `summary`, cause spans from `span_of` and place kinds from `kind_of` (`effects.md`, Release balance): lock
+or semaphore count not 0 at normal exit on caller place. Exact count gives definite write, join gives `possible`, release
+pattern gives blind write. Lock inside `IO` gives IO. Fresh lock stays local.
+"""
+function lock_writes(summary::Summary, span_of::Function, kind_of::Function)::Tuple{Vector{Access}, Vector{BlindAccess}}
+    writes, blind = Access[], BlindAccess[]
+    for ((node, resource), hold) in summary.held
+        resource == Resource.lock || continue
+        place = @match node begin
+            Node.Placed(place) => place
+            Node.Outside() => Place.At(Root.Elsewhere(), Step.Type[])
+            Node.Fresh(_) => nothing
+        end
+        isnothing(place) && continue
+        span, found = span_of(hold.cause), kind_of(place)::EffectKind.T
+        # Lock of field whose type inference widened is lock still.
+        kind = found == EffectKind.memory ? EffectKind.synchronization : found
+        if hold.level == Level.blind
+            push!(blind, BlindAccess(place, false, kind, BlindSpot(hold.reason, span)))
+        else
+            push!(writes, Access(place, false, kind, hold.level == Level.none ? Confidence.definite : Confidence.possible, span))
+        end
+    end
+    return writes, blind
+end
+
+"""
+Holds throws skip in `summary` (F98), with spans from `span_of`: exact count gives definite, join gives `possible`.
+Release pattern Corset cannot count gives blind spot.
+"""
+function unguarded_holds(summary::Summary, span_of::Function)::Tuple{Vector{UnguardedHold}, Vector{BlindSpot}}
+    holds, spots = UnguardedHold[], BlindSpot[]
+    for (; hold, throws) in values(summary.unguarded)
+        if hold.level == Level.blind
+            push!(spots, BlindSpot(hold.reason, span_of(hold.cause)))
+        else
+            push!(holds, UnguardedHold(span_of(hold.cause), span_of(throws), hold.level == Level.none ? Confidence.definite : Confidence.possible))
+        end
+    end
+    return holds, spots
+end
+
 """Order key of access to `place` with `below` and `kind`: places sort by text."""
 place_key(place::Place.Type, below::Bool, kind::EffectKind.T)::Tuple{String, Bool, EffectKind.T} = (repr(place), below, kind)
 
@@ -100,8 +143,8 @@ function cut_span(run::Run, typed::TypedCode, root::Variant)::Span
     return isnothing(index) ? typed.site.span : cause_span(typed, code, index)
 end
 
-"""Accesses of all units of one method: writes, reads, blind writes, blind reads, result aliases."""
-const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{BlindAccess}, Vector{BlindAccess}, Vector{Place.Type}}
+"""Accesses of all units of one method: writes, reads, blind writes, blind reads, result aliases, holds throws skip."""
+const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{BlindAccess}, Vector{BlindAccess}, Vector{Place.Type}, Vector{UnguardedHold}}
 
 """
 `effects` stage facts of `package` from inference `units`, and blind spots: summary per package method over its units
@@ -131,8 +174,15 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
         # Shortcut root has no code; its summary holds no access to give span.
         summary = root_summary(run, root)
         span_of(cause::Int)::Span = cause_span(typed, run.codes[root], cause)
-        writes, reads, blind_writes, blind_reads, aliases = get!(() -> (Access[], Access[], BlindAccess[], BlindAccess[], Place.Type[]), found, typed.site.method)
+        kind_of(place::Place.Type)::EffectKind.T = path_kind(run.codes[root].ir, place)
+        writes, reads, blind_writes, blind_reads, aliases, unguarded = get!(() -> (Access[], Access[], BlindAccess[], BlindAccess[], Place.Type[], UnguardedHold[]), found, typed.site.method)
         unit_writes, unit_blind_writes = unit_accesses(summary.writes, span_of, typed.provenance)
+        held_writes, held_blind = lock_writes(summary, span_of, kind_of)
+        append!(unit_writes, held_writes)
+        append!(unit_blind_writes, held_blind)
+        unit_unguarded, unguarded_spots = unguarded_holds(summary, span_of)
+        append!(unguarded, unit_unguarded)
+        append!(spots, unguarded_spots)
         unit_reads, unit_blind_reads = unit_accesses(summary.reads, span_of, typed.provenance)
         append!(writes, unit_writes)
         append!(reads, unit_reads)
@@ -145,9 +195,9 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
     methods = MethodEffects[]
     for site in package.methods
         haskey(found, site.method) || continue
-        writes, reads, blind_writes, blind_reads, aliases = found[site.method]
+        writes, reads, blind_writes, blind_reads, aliases, unguarded = found[site.method]
         complete = !(site.method in units.incomplete) && !haskey(cuts, site.method)
-        effects = MethodEffects(site, worst(writes), worst(reads), blind_order(blind_writes), blind_order(blind_reads), sort!(unique!(aliases); by = repr), complete, closed[site.method])
+        effects = MethodEffects(site, worst(writes), worst(reads), blind_order(blind_writes), blind_order(blind_reads), sort!(unique!(aliases); by = repr), sort!(unique!(unguarded); by = repr), complete, closed[site.method])
         push!(methods, effects)
         append!(spots, (access.spot for access in [effects.blind_writes; effects.blind_reads]))
         # Write keeps its certainty with cut; only verdict none goes to coverage line.
