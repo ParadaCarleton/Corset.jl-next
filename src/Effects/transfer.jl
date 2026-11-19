@@ -276,11 +276,11 @@ end
 """Declared type of constant `field` (`Some`; `nothing` when not constant) of object of `type`; `Any` when unknown."""
 function slot_type(type::Any, field::Union{Nothing, Some{Any}})::Any
     isnothing(field) && return Any
-    name = something(field)
-    type isa DataType || return Any
-    isconcretetype(type) || return Any
-    known = name isa Symbol ? hasfield(type, name) : name isa Int && 1 <= name <= fieldcount(type)
-    return known ? fieldtype(type, name) : Any
+    name, fields = something(field), layout(type)
+    isnothing(fields) && return Any
+    known = name isa Symbol ? hasfield(fields, name) : name isa Int && 1 <= name <= fieldcount(fields)
+    # Field type of family body names its variables; rewrap keeps them bound.
+    return known ? Base.rewrap_unionall(fieldtype(fields, name), type) : Any
 end
 
 """Element type of memory reference or pointer `type`; `Any` when unknown."""

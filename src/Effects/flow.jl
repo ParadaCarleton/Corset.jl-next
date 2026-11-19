@@ -362,10 +362,24 @@ function new!(flow::Flow, index::Int, type_value::Any, operands::Vector{Operand.
     return nothing
 end
 
+"""
+Struct type that gives fields of object of `type`: concrete `type`, or body of array stand-in or `Array` family
+(`ArrayStandIn{<:Any, 1}` and its `Vector` data). `nothing` for other type.
+Code struct family keeps `Position` steps: its field paths multiply places to map at each call.
+"""
+function layout(type::Any)::Union{Nothing, DataType}
+    isconcretetype(type) && return type
+    type isa UnionAll || return nothing
+    array_stand_in(type) || type <: Array || return nothing
+    body = Base.unwrap_unionall(type)
+    return body isa DataType ? body : nothing
+end
+
 """Whether field `field` of `type` holds memory backing (`GenericMemory` or `GenericMemoryRef`): it adds no path step."""
 function backing_field(type::Any, field::Union{Symbol, Int})::Bool
-    type isa DataType || return false
-    isconcretetype(type) && !(type <: Tuple) || return false
+    type = layout(type)
+    isnothing(type) && return false
+    type <: Tuple && return false
     field isa Symbol && !hasfield(type, field) && return false
     field isa Int && !(1 <= field <= fieldcount(type)) && return false
     return fieldtype(type, field) <: Union{GenericMemory, GenericMemoryRef}
@@ -381,9 +395,9 @@ function field_step(type::Any, field::Any)::Union{Nothing, Step.Type}
     end
     field isa Symbol && return Step.Field(field)
     field isa Int || return nothing
-    type isa DataType || return Step.Position(field)
-    named = isconcretetype(type) && 1 <= field <= fieldcount(type)
-    return named ? Step.Field(fieldname(type, field)) : Step.Position(field)
+    fields = layout(type)
+    isnothing(fields) && return Step.Position(field)
+    return 1 <= field <= fieldcount(fields) ? Step.Field(fieldname(fields, field)) : Step.Position(field)
 end
 
 """Definite effect starting at statement `index`."""
