@@ -54,6 +54,8 @@ const FV, DV = ArrayStandIn{FloatStandIn, 1}, DenseStandIn{FloatStandIn, 1}
     @testset "escape" begin
         @test scan(cases.returned, FV) == ([(zeros, 2, Exit.returned)], false)
         @test scan(cases.returned, DV) == ([(zeros, 2, Exit.returned)], false)
+        # Open stand-in family gives swap its wrapper too.
+        @test scan(cases.returned, ArrayStandIn{<:Any, 1}) == ([(zeros, 2, Exit.returned)], false)
         @test scan(cases.typed, FV) == ([(Vector{Float64}, 2, Exit.returned)], false)
         @test scan(cases.similar_type, FV) == ([(similar, 2, Exit.returned)], false)
         @test scan(cases.stored!, Vector{Any}, FV) == ([(ones, 3, Exit.stored)], false)

@@ -1,7 +1,7 @@
 using Test: @test, @testset
 using Corset: Corset
 using Corset.StandIns: ArrayStandIn, DenseStandIn, FloatStandIn, FunctionStandIn, IntStandIn
-using Corset.Signatures: LIMIT, Provenance, method_signatures, struct_stand_ins, argument_provenance
+using Corset.Signatures: LIMIT, Provenance, method_signatures, struct_stand_ins, argument_provenance, arrays
 
 """Methods whose stand-in signatures tests check."""
 module SignatureCases
@@ -24,6 +24,7 @@ module SignatureCases
     either(values::AbstractVecOrMat) = values
     labels(values::AbstractVector{<:AbstractString}) = values
     anything(values::AbstractVector{Any}) = values
+    bracketed(values::(AbstractVector{T} where {Int <: T <: Real})) = values
     both(x::T, y::T) where {T <: Real} = x + y
     apply(f::Function, x) = f(x)
     kind(::Type{T}) where {T <: AbstractFloat} = T
@@ -109,6 +110,8 @@ include("compilation.jl")
         :either => [call(:either, ArrayStandIn{<:Any, 1}), call(:either, ArrayStandIn{<:Any, 2})],
         :labels => [call(:labels, ArrayStandIn{<:AbstractString, 1})],
         :anything => [call(:anything, ArrayStandIn{Any, 1})],
+        # Lower element bound that no number stand-in meets keeps element open.
+        :bracketed => [call(:bracketed, ArrayStandIn{T, 1} where {Int <: T <: Real})],
         :tensor => [call(:tensor, ArrayStandIn{Float64, 4})],
         :both => [call(:both, FloatStandIn, FloatStandIn), call(:both, IntStandIn, IntStandIn)],
         :kind => [call(:kind, Type{FloatStandIn})],
@@ -126,6 +129,14 @@ include("compilation.jl")
     @testset "$name" for (name, signatures) in expected
         found = signatures_of(name)
         @test found.signatures == signatures && isempty(found.bare) && !found.over_limit
+    end
+    @testset "array stand-ins fit bound" begin
+        bounds = Any[
+            AbstractVector{<:Tuple{Vararg{T}}} where {T}, AbstractVector{Type{T}} where {T}, AbstractVector{Union{T, Nothing}} where {T <: Real},
+            AbstractVecOrMat{T} where {T <: AbstractString}, AbstractArray{<:Real, N} where {N}, AbstractArray{Tuple{N}, N} where {N},
+            AbstractMatrix{<:Union{Missing, T}} where {T <: Real}, StridedArray{<:Real}, AbstractArray{<:Any, 0},
+        ]
+        @test all(bound -> !isempty(arrays(bound)) && all(stand_in -> stand_in <: bound, arrays(bound)), bounds)
     end
     @testset "argument without stand-in keeps declared type" begin
         @test signatures_of(:apply).signatures == [call(:apply, FunctionStandIn, Any)] && signatures_of(:apply).bare == [2]
