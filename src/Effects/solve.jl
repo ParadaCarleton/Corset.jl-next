@@ -33,13 +33,27 @@ end
 struct Shortcut end
 
 """
+Summary cache state of one run (`library.jl`): library cache entries, key and library verdict per instance
+(`outside!`), answers of `names_package!`, native inference edges of each instance run inferred (`inferred!`), and
+instances of units method store served (`stored`).
+"""
+struct Lookup
+    library::Library
+    keys::IdDict{Core.MethodInstance, String}
+    outside::IdDict{Core.MethodInstance, Bool}
+    named::IdDict{Any, Bool}
+    edges::IdDict{Core.MethodInstance, Vector{Any}}
+    stored::Base.IdSet{Core.MethodInstance}
+end
+
+"""
 State of one effects run: world of dispatch and native inference, crash journal, package modules, referent cache; per
 instance its body, shortcut or blind spot cause, caller that first reached it, and parameters it uses as field names;
 per method whether it claims effects and whether it catches; throw-helper verdict per callee (`throw_helper`); per
 instance whether stand-ins cut its own code; instances whose reach compiler effects describe on model types too
-(`reaches_untrusted!`); per variant its code and summary.
+(`reaches_untrusted!`); per variant its code and summary; summary cache state (`Lookup`).
 """
-struct Run
+struct Run  # corset: allow wide-struct -- one memo per analysis; summary cache state nests in `Lookup`
     world::UInt
     interpreter::CC.NativeInterpreter
     journal::Union{Nothing, Journal}
@@ -55,16 +69,23 @@ struct Run
     trusted::Base.IdSet{Core.MethodInstance}
     codes::Dict{Variant, Code}
     summaries::Dict{Variant, Summary}
+    cache::Lookup
 end
 
-"""Run in current world with crash `journal` for package `modules`, before any code."""
-function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module})::Run
+"""Run in current world with crash `journal` for package `modules` and `library` cache, before any code."""
+function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module}, library::Library)::Run
     world = Base.get_world_counter()
     bodies, callers = IdDict{Core.MethodInstance, Union{Body, Shortcut, String}}(), IdDict{Core.MethodInstance, Core.MethodInstance}()
     fields, claims, catches = IdDict{Core.MethodInstance, Set{Int}}(), IdDict{Method, Bool}(), IdDict{Method, Bool}()
     helpers, cuts, trusted = IdDict{Any, Tuple{Bool, Vector{Any}}}(), IdDict{Core.MethodInstance, Bool}(), Base.IdSet{Core.MethodInstance}()
-    return Run(world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, fields, claims, catches, helpers, cuts, trusted, Dict{Variant, Code}(), Dict{Variant, Summary}())
+    return Run(
+        world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, fields, claims, catches, helpers, cuts, trusted, Dict{Variant, Code}(), Dict{Variant, Summary}(),
+        Lookup(library, IdDict{Core.MethodInstance, String}(), IdDict{Core.MethodInstance, Bool}(), IdDict{Any, Bool}(), IdDict{Core.MethodInstance, Vector{Any}}(), Base.IdSet{Core.MethodInstance}()),
+    )
 end
+
+"""Run of `start_run` without library cache: every instance gets native inference."""
+start_run(journal::Union{Nothing, Journal}, modules::Vector{Module})::Run = start_run(journal, modules, Library())
 
 """
 Whether `method` outside Base claims effects (`effects.md`, Compiler effects): `@assume_effects` on method or on block
@@ -101,6 +122,8 @@ function cut!(run::Run, instance::Core.MethodInstance, effects::CC.Effects)::Boo
     holds_stand_in(instance.specTypes) || return false
     method = instance.def::Method
     keeps_contracts(method) && CC.is_nothrow(effects) && !catches!(run, method) && return false
+    stored = stored_cut(run, instance)
+    isnothing(stored) || return (run.cuts[instance] = stored)
     # Instance without code counts as cut: its effects on model types are unknown.
     inferred = inferred!(run, instance)
     return inferred isa String ? (run.cuts[instance] = true) : last(inferred)
@@ -189,7 +212,8 @@ end
 function limit_callees!(run::Run, chain::Vector{Core.MethodInstance}, instances::Vector{Core.MethodInstance})::Vector{Core.MethodInstance}
     limited = Core.MethodInstance[limit_callee(run, chain, instance, length(instances) > 1) for instance in instances]
     for callee in limited
-        callee === first(chain) || haskey(run.bodies, callee) || haskey(run.callers, callee) || (run.callers[callee] = first(chain))
+        # Unit has no first caller: its body starts chain.
+        callee === first(chain) || haskey(run.bodies, callee) || callee in run.cache.stored || haskey(run.callers, callee) || (run.callers[callee] = first(chain))
     end
     return limited
 end
@@ -303,8 +327,9 @@ function inferred!(run::Run, instance::Core.MethodInstance)::Union{Tuple{CC.Infe
     isnothing(journal) || !(key in journal.crashed) || return "inference crashed process"
     isnothing(journal) || record!(journal, Record(key, method_label(instance.def::Method), false, nothing))
     frame = CC.typeinf_frame(run.interpreter, instance, false)
-    # Model-type inference of cut check runs inside journal record too.
-    cut = !isnothing(frame) && get!(() -> stand_in_cut(run, frame), run.cuts, instance)
+    isnothing(frame) || (run.cache.edges[instance] = frame.edges)
+    # Model-type inference of cut check runs inside journal record too; library cache can spare it.
+    cut = !isnothing(frame) && get!(() -> stored_or_cut(run, instance, frame), run.cuts, instance)
     isnothing(journal) || record!(journal, Record(key, "", true, nothing))
     return isnothing(frame) ? "inference gave no code" : (frame, cut)
 end
@@ -312,8 +337,14 @@ end
 """Body of instance outside units: native inference (`inferred!`), then shortcut or passes; else blind spot cause."""
 library_body(run::Run, instance::Core.MethodInstance)::Union{Body, Shortcut, String} = (inferred = inferred!(run, instance); inferred isa String ? inferred : instance_body(run, inferred...))
 
-"""Body of `instance`, inferred on first use."""
-body!(run::Run, instance::Core.MethodInstance)::Union{Body, Shortcut, String} = get!(() -> library_body(run, instance), run.bodies, instance)
+"""
+Body of `instance`, inferred on first use. Instance of stored unit (`Run`) takes unit body (`unit_body`) of native
+inference, as run that infers unit gives it.
+"""
+body!(run::Run, instance::Core.MethodInstance)::Union{Body, Shortcut, String} = get!(() -> instance in run.cache.stored ? stored_body(run, instance) : library_body(run, instance), run.bodies, instance)
+
+"""Unit body of stored unit `instance` from native inference (`inferred!`); else blind spot cause."""
+stored_body(run::Run, instance::Core.MethodInstance)::Union{Body, String} = (inferred = inferred!(run, instance); inferred isa String ? inferred : unit_body(run, inferred...))
 
 """Builtins whose first two operands name slot: module and global name, or object and field."""
 const NAMING_BUILTINS = (Core.getfield, Core.getglobal, keys(FIELD_WRITES)..., keys(GLOBAL_WRITES)...)
@@ -352,10 +383,15 @@ function append_calls!(calls::Vector{Pair{Vector{Operand.Type}, Core.MethodInsta
     return nothing
 end
 
-"""Frame of `instance`, recorded in progress: operands of naming builtins added now, calls wait for callee."""
+"""
+Frame of `instance`, recorded in progress: operands of naming builtins added now, calls wait for callee. Library cache
+entry gives parameters at once, without code.
+"""
 function fields_frame!(run::Run, instance::Core.MethodInstance)::FieldsFrame
-    found = run.fields[instance] = Set{Int}()
+    stored = stored_fields(run, instance)
+    found = run.fields[instance] = isnothing(stored) ? Set{Int}() : copy(stored)
     frame = FieldsFrame(found, Pair{Vector{Operand.Type}, Core.MethodInstance}[], 1)
+    isnothing(stored) || return frame
     body = body!(run, instance)
     body isa Body || return frame
     for outcome in body.outcomes
@@ -421,7 +457,10 @@ function variant_code(run::Run, variant::Variant, body::Body)::Code
     return Code(ir, body.lines, body.outcomes, body.message, body.used, callees, body.cut, body.shortcut)
 end
 
-"""Variants `roots` reach through calls, roots first; gives code to each variant with body."""
+"""
+Variants `roots` reach through calls, roots first; gives code to each variant with body. Variant that library cache
+holds takes stored summary (hit): it needs no body, and walk stops there.
+"""
 function reach!(run::Run, roots::Vector{Variant})::Vector{Variant}
     order, seen, pending = Variant[], Set{Variant}(), reverse(roots)
     while !isempty(pending)
@@ -429,6 +468,8 @@ function reach!(run::Run, roots::Vector{Variant})::Vector{Variant}
         variant in seen && continue
         push!(seen, variant)
         push!(order, variant)
+        stored = stored_summary(run, variant)
+        isnothing(stored) || (run.summaries[variant] = stored; continue)
         body = body!(run, first(variant))
         body isa Body || continue
         code = run.codes[variant] = variant_code(run, variant, body)
@@ -562,9 +603,8 @@ function components(successors::Vector{Vector{Int}})::Vector{Vector{Int}}
     return found
 end
 
-"""Summaries of `roots` and every variant they reach: call graph components solved callees first."""
-function solve!(run::Run, roots::Vector{Variant})::Nothing
-    order = reach!(run, roots)
+"""Callee positions in `order` of each variant of `order` with code: call graph of solve."""
+function call_graph(run::Run, order::Vector{Variant})::Vector{Vector{Int}}
     vertex = Dict(variant => position for (position, variant) in enumerate(order))
     successors = [Int[] for _ in order]
     for (position, variant) in enumerate(order)
@@ -574,8 +614,20 @@ function solve!(run::Run, roots::Vector{Variant})::Nothing
         end
         unique!(successors[position])
     end
-    for component in components(successors)
-        solve_cycle!(run, order[component])
+    return successors
+end
+
+"""
+Summaries of `roots` and every variant they reach: call graph components solved callees first. Library cache hit has
+no code, so it forms component alone and keeps its stored summary.
+"""
+function solve!(run::Run, roots::Vector{Variant})::Nothing
+    order = reach!(run, roots)
+    for component in components(call_graph(run, order))
+        members = order[component]
+        # Only hit has summary before its component solves.
+        all(member -> haskey(run.summaries, member), members) && continue
+        solve_cycle!(run, members)
     end
     return nothing
 end
