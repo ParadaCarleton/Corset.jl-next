@@ -775,7 +775,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 </ul>
 <h4>IR</h4>
 <ul>
-<li><code>inference</code> stage hands typed code of units it inferred this run to effects. Method store keeps facts only; stored unit keeps its stored summary.</li>
+<li><code>inference</code> stage hands typed code of units it inferred this run to effects. Stored unit needs no typed code: its entry keeps effects record (see <strong>Solve and cache</strong>).</li>
 <li>Typed SSA IR before inlining: copy unit's unoptimized code; run compiler passes until <code>CC: COMPACT_1</code>. Package units need no second inference.</li>
 <li>Calls stay call statements, so allocations and consumers map to source through <code>inference</code> stage spans.</li>
 <li>Passes renumber statements. Before passes, line of each statement gets its source index; passes carry line to IR.</li>
@@ -889,6 +889,7 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <li>Claim: <code>@assume_effects</code> on method or on block in it. Generated method and method without source count as claim.</li>
 <li>Native inference edges tell reach. Callee without cached code counts as claim. Corset, Moshi and Compiler carry claims, so each run checks reach of claims.</li>
 <li>Compaction deletes unused call when compiler effects allow. Call that reaches claim or cut stays, and so does statement under block claim of claiming method.</li>
+<li>Unit keeps every call: call facts need discarded calls (Facts). Unit with shortcut keeps code too; its summary stays empty.</li>
 <li>Own analysis runs on every method with claim outside Base. <code>false-effects</code> compares claims of package methods.</li>
 </ul>
 <h4>Stand-in cuts</h4>
@@ -910,7 +911,7 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <h4>Effect kinds</h4>
 <p>Summary keeps every effect with its kind. Rules apply exemptions; engine filters nothing.</p>
 <ul>
-<li>Kinds: memory write, IO, default RNG, RNG argument, task-local state, <code>ScopedValue</code> read, lock and other synchronization, lazy init, audited internal state.</li>
+<li>Kinds: memory write, IO, default RNG, RNG argument, task-local state, <code>ScopedValue</code> read, lock and other synchronization, lazy init, audited internal state, iteration start.</li>
 <li><code>bang-convention</code> exempts IO, RNG, lazy init and audited internal state. <code>unused-call</code> counts every kind. <code>hidden-input</code> reads default RNG, task-local state, <code>ScopedValue</code> and mutable globals.</li>
 <li>Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.</li>
 <li>Kind comes from types along place path, root first: first <code>IO</code> gives IO, <code>AbstractRNG</code> gives RNG argument.</li>
@@ -972,9 +973,23 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <li>Callee signature can grow along call chain without end: <code>_any(f ∘ transpose, parent(A), :)</code> adds <code>ComposedFunction</code> layer per step.</li>
 <li>Engine limits callee like native inference (<code>abstract_call_method</code>): method that recurs on call chain gets <code>limit_type_size</code> signature.</li>
 <li>Call chain: caller that first reached each instance. Join limits hard, against method signature.</li>
-<li>Library summary: instance whose signature names no package type and whose edges reach no package method. Targets share its disk cache.</li>
-<li>Key: Julia version, Corset version, loaded extensions, and content digest of each loaded package: Manifest tree hash, or source digest for path and developed packages.</li>
-<li>Package summary: method store entry beside <code>Inferred</code>, same invalidation.</li>
+<li>Library instance: method outside package, signature names no package type, and so does each instance its native inference edges reach.</li>
+<li>Edges come from cached code, else from inference in this run. Instance without either counts as package.</li>
+<li>Package method that changes dispatch of library call removes cached code of caller, so edge walk sees it.</li>
+<li>Library summary: variant of library instance whose solve reaches no package code. Disk cache keeps it; cache hit skips native inference and passes.</li>
+<li>Cache also keeps slot-name parameters and stand-in cut of library instances.</li>
+<li>Summary with callback record stays out: its caller needs record variants too. Variant with package module constant stays out.</li>
+<li>Run that skipped crashed instance stores nothing: its blind spot holds for that run only.</li>
+<li>Key: Julia version, cache flags, and content of each loaded package except target. Corset and extensions are loaded packages too.</li>
+<li>Package content: path in depot <code>packages</code> or standard library, since depot slug derives from tree hash. Else digest of project file, <code>src</code>, <code>ext</code> and <code>deps</code>.</li>
+<li>Target stays out of key: library summary reaches no target method, so target edit keeps key.</li>
+<li>Key covers every loaded package, so cache entry serves one environment. Directory keeps newest 4.</li>
+<li>Gap: target with other dependencies shares no entry. Per-entry package set would let corpus packages share Base summaries.</li>
+<li>Package summary: method store entry keeps effects record of unit beside <code>Inferred</code>, with same invalidation.</li>
+<li>Record: accesses with spans, holds, call facts, blind spots and cuts. Call fact names callee methods by signature, since deserialized <code>Method</code> is new object.</li>
+<li>Effects run infers again each unit whose entry has no record. Inference run keeps records of stored entries.</li>
+<li>Stored unit that fresh unit calls gets unit body from native inference and no first caller, as in cold run.</li>
+<li>Stored units start no walk, so first caller of library instance can differ from cold run. Only recursion limit reads call chain.</li>
 <li>Budget: with warm library cache, effects stage takes at most <code>inference</code> stage time.</li>
 <li>Solver cost and accuracy are unmeasured. Engine PR measures both on corpus before rule PRs.</li>
 </ul>
@@ -982,10 +997,13 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <ul>
 <li>Per package method: writes and reads by place with certainty and cause span; blind writes and reads with blind spot; result aliases.</li>
 <li>Iteration starts by place: <code>iterate</code> without state, directly or through callee. Summary joins and widens them like reads.</li>
+<li>Start is read of kind <code>iteration</code>. Base contract of <code>first</code>, <code>only</code>, generic <code>isempty</code> and destructuring starts too.</li>
 <li>Fact of incomplete method has <code>complete</code> false: it gets no definite none.</li>
 <li>Per unit, for <code>lifecycle</code> and statement rules (F48, F50, F51): allocation sites, read, write and iteration-start events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.</li>
 <li>Element event carries index operand: constant or SSA value. <code>lifecycle</code> decides which elements writes cover (F33, F34).</li>
-<li>Per call statement: callee, effect kinds, may throw, result used or discarded (F54, F86).</li>
+<li>Per call statement: callee, kinds of its writes at any certainty, may throw, terminates, result used or discarded (F54, F86).</li>
+<li>Callee holds that call leaves count as writes: lock gives synchronization, file gives IO.</li>
+<li>Units of method merge by source statement: unit that may throw, writes or uses result decides.</li>
 <li><code>unused-call</code> needs no effect of any kind, no throw and termination: discarded <code>parse(Int, text)</code> validates input.</li>
 <li>Join of two allocations at branch (<code>y = flag ? a : b</code>) makes fact <code>possible</code>.</li>
 <li>Callee content reads come from summaries: <code>sum</code> reads, <code>fill!</code> does not.</li>
@@ -1196,6 +1214,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li>Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.</li>
 <li>Later: <code>syntax</code> stage findings per file, keyed by file content hash.</li>
 <li><code>inference</code> stage keeps method store per checked path beside analysis entry. Store holds one entry per inferred method and signature: reached signatures, stage facts and blind spots.</li>
+<li><code>effects</code> run adds effects record of unit to each entry (<code>effects.md</code>, Solve and cache). Library summaries keep own directory <code>library</code> per environment.</li>
 <li>Entry holds plain data: spans, names, call signatures. Typed code stays inside stage, so no rule reads data that store leaves out.</li>
 <li>Entry depends on content hash of file of its method, since spans hold byte offsets.</li>
 <li>Entry also depends on lowered code of each package method that inference read through compiler edges, transitively. Lowered code holds macro output and <code>@eval</code> code.</li>
@@ -1489,7 +1508,7 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <p>Sound summaries for package units through builtins and static calls. Other calls stay open (step 7) until PR 2.</p>
 <ul>
 <li><code>inference</code> stage keeps <code>TypedCode</code> of units it infers this run; <code>inference_facts</code> returns them to <code>Engine</code>.</li>
-<li>Until PR 4, <code>effects</code> run bypasses method store: stored unit has no typed code.</li>
+<li>From PR 4, method store entry keeps effects record of unit, so stored unit needs no typed code.</li>
 <li><code>Engine</code> runs <code>effects</code> after <code>inference</code> when enabled rule reads <code>effects</code>. <code>FactSet</code> gains <code>effects</code> field.</li>
 <li><code>src/Effects/</code>: units, IR, origins, points-to, builtins (call step 1), static calls (call step 3), solve.</li>
 <li>IR: copy unit code, then run passes until <code>CC: COMPACT_1</code>. Instance outside package: native inference first.</li>
