@@ -24,4 +24,4 @@ Principles behind every design choice, and what Corset does not do.
 - Findings in dependency code, Base included. Analysis reads dependency code freely (callee summaries, inference); only findings stay inside package. Code that package macros write counts as package code; code that other packages' macros write does not.
 - Julia versions older than latest release.
 - Security sandbox around package code. Corset loads code its user chose to lint.
-- Version 1: language server; race and ownership analysis. Shape rules F68–F70 stay.
+- Version 1: language server; race and ownership analysis. Thread pattern rules F68–F70 stay.
