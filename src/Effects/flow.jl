@@ -14,7 +14,7 @@ values that made it (`derived_of`) and of each static parameter; flow-insensitiv
 backing, unknown-slot stores and global bindings; result targets; accesses by origin and whether they cover places
 below; callback records by call statement. `changed` records growth of targets in current round; `closed_world` records
 join over methods loaded now, and `cut` path stand-ins cut (`Summary`). `flush` resolves every callback record here:
-root unit has no caller to resolve them.
+root unit has no caller to resolve them. `record` keeps kinds of writes each call statement makes (`call_kinds`).
 """
 mutable struct Flow
     const ir::CC.IRCode
@@ -35,6 +35,8 @@ mutable struct Flow
     const callbacks::Dict{Int, Vector{Deferred}}
     const referent::IdDict{Any, Bool}
     const flush::Bool
+    const record::Bool
+    const call_kinds::Dict{Int, Set{EffectKind.T}}
     changed::Bool
     closed_world::Bool
     cut::Bool
@@ -43,9 +45,9 @@ end
 """
 Flow of `ir` with call `outcomes` and `message` statements before first round: each referent argument points to its
 parameter. `flush` resolves callback records in this instance; `cut` marks instance whose own code stand-ins cut;
-`statics` holds sources of each static parameter (`static_sources`).
+`statics` holds sources of each static parameter (`static_sources`); `record` keeps write kinds of each call.
 """
-function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, message::Vector{Bool}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::Vector{Sources})::Flow
+function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, message::Vector{Bool}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::Vector{Sources}, record::Bool)::Flow
     arguments = [
         referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), Step.Type[])) => NO_DOUBT) : Targets()
             for (position, type) in enumerate(ir.argtypes)
@@ -53,7 +55,7 @@ function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     callbacks = Dict{Int, Vector{Deferred}}()
     primitives = Union{Nothing, Primitive}[statement_primitive(ir, index, outcomes[index]) for index in 1:length(ir.stmts)]
-    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, false, false, cut)
+    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, Dict{Int, Set{EffectKind.T}}(), false, false, cut)
 end
 
 """Release balance primitive of statement `index` of `ir` with call `outcome`: dispatched call only (`primitive`)."""
@@ -301,6 +303,7 @@ them from settled targets and sources, so code doubt of early round with sources
 function round!(flow::Flow, callees::Callees)::Nothing
     empty!(flow.writes)
     empty!(flow.reads)
+    empty!(flow.call_kinds)
     for index in 1:length(flow.ir.stmts)
         statement!(flow, index, flow.ir.stmts[index][:stmt], callees)
     end

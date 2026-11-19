@@ -82,17 +82,28 @@ function constant(ir::CC.IRCode, value::Any)::Union{Nothing, Some{Any}}
     return nothing
 end
 
-"""
-Whether each statement of `ir` builds thrown value only (`effects.md`, Effect kinds): it has use, and each use is
-`sinks` statement (throw) or other such statement. Use cycle never counts: least fixpoint.
-"""
-function message_statements(ir::CC.IRCode, sinks::Vector{Bool})::Vector{Bool}
+"""Statements that use value of each statement of `ir`."""
+function statement_users(ir::CC.IRCode)::Vector{Vector{Int}}
     users = [Int[] for _ in 1:length(ir.stmts)]
     for index in 1:length(ir.stmts), reference in CC.userefs(ir.stmts[index][:stmt])
         used = reference[]
         used isa Core.SSAValue && push!(users[used.id], index)
     end
-    message, changed = fill(false, length(ir.stmts)), true
+    return users
+end
+
+"""Whether lowered `statement` calls function, directly or as value of slot assignment (`_4 = f(x)`)."""
+function call_statement(statement::Any)::Bool
+    statement isa Expr && statement.head === :(=) && (statement = statement.args[2])
+    return statement isa Expr && statement.head in (:call, :invoke, :foreigncall)
+end
+
+"""
+Whether each statement of `ir` with `users` (`statement_users`) builds thrown value only (`effects.md`, Effect kinds):
+it has use, and each use is `sinks` statement (throw) or other such statement. Use cycle never counts: least fixpoint.
+"""
+function message_statements(users::Vector{Vector{Int}}, sinks::Vector{Bool})::Vector{Bool}
+    message, changed = fill(false, length(users)), true
     while changed
         changed = false
         for index in reverse(eachindex(message))

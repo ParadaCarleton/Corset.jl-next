@@ -46,16 +46,20 @@ const ELEMENT_WRITES = IdDict{Any, Shape}(
 Transfer call statement `index` by its `outcome`, with callee variants and summaries from `callees`. Callback records of
 previous round at `index` give way to this round. Message call (`message_statements`) adds definite writes only
 (`effects.md`, Effect kinds): its writes go into scratch table, and it resolves callback records here. Lock or semaphore
-primitive (`primitive`) skips callee body; its result is unknown object.
+primitive (`primitive`) skips callee body; its result is unknown object. Flow that records call kinds (`Flow`) sends
+writes through scratch table too.
 """
 function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees)::Nothing
     delete!(flow.callbacks, index)
     derive_call!(flow, index, outcome_operands(outcome))
     skipped = flow.primitives[index]
-    # Lock body moves scheduler state only; release balance counts its hold.
-    !isnothing(skipped) && skipped.skips && return assign!(flow, index, unknown(CODE_DOUBT))
+    if !isnothing(skipped) && skipped.skips
+        flow.record && (flow.call_kinds[index] = Set([EffectKind.synchronization]))
+        # Lock body moves scheduler state only; release balance counts its hold.
+        return assign!(flow, index, unknown(CODE_DOUBT))
+    end
     message = flow.message[index]
-    writes = message ? OriginAccesses() : flow.writes
+    writes = message || flow.record ? OriginAccesses() : flow.writes
     @match outcome begin
         Outcome.Builtin(builtin, operands) => builtin!(flow, writes, index, builtin, operands)
         Outcome.Intrinsic(intrinsic, operands) => intrinsic!(flow, writes, index, intrinsic, operands)
@@ -66,17 +70,61 @@ function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees):
         Outcome.Unresolved(operands) => open!(flow, writes, index, operands, CODE_DOUBT)
         Outcome.Dead() => nothing
     end
-    message && merge_definite!(flow.writes, writes)
+    flow.record && (flow.call_kinds[index] = call_kinds(outcome, writes, callees, index))
+    (message || flow.record) && merge_accesses!(flow.writes, writes, message)
     return nothing
 end
 
-"""Add definite effects of `scratch` to `table`."""
-function merge_definite!(table::OriginAccesses, scratch::OriginAccesses)::Nothing
+"""Add effects of `scratch` to `table`; `only_definite` skips effects with doubt."""
+function merge_accesses!(table::OriginAccesses, scratch::OriginAccesses, only_definite::Bool)::Nothing
     for (key, effect) in scratch
-        level_of(effect.doubt) == Level.none || continue
+        only_definite && level_of(effect.doubt) != Level.none && continue
         table[key] = haskey(table, key) ? stronger(table[key], effect) : effect
     end
     return nothing
+end
+
+"""
+Kinds of `writes` of call statement `index` with `outcome`, at any certainty, and of holds its callees from `callees`
+leave at normal exit: lock gives synchronization, file gives IO.
+"""
+function call_kinds(outcome::Outcome.Type, writes::OriginAccesses, callees::Callees, index::Int)::Set{EffectKind.T}
+    kinds = Set{EffectKind.T}(kind for (_, _, kind) in keys(writes))
+    dispatched = @match outcome begin
+        Outcome.Dispatch(_, _) => true
+        _ => false
+    end
+    dispatched || return kinds
+    # Held counts keep no exact 0 (`set_hold!`).
+    for variant in callees.variants[index], (_, resource) in keys(callees.summaries[variant].held)
+        push!(kinds, resource == Resource.lock ? EffectKind.synchronization : EffectKind.io)
+    end
+    return kinds
+end
+
+"""Call statement facts before span (`CallFact`): callee, write kinds, may throw, terminates, result used."""
+const CallRecord = @NamedTuple{callee::Callee.Type, kinds::Vector{EffectKind.T}, throws::Bool, terminates::Bool, used::Bool}
+
+"""
+Facts of call statement `index` of `flow` that records call kinds, whose result code `used`: callee, write kinds, and
+compiler `nothrow` and `terminates` flags.
+"""
+function call_record(flow::Flow, index::Int, used::Bool)::CallRecord
+    kinds = sort!(collect(get(flow.call_kinds, index, Set{EffectKind.T}())))
+    terminates = flow.ir.stmts[index][:flag] & CC.IR_FLAG_TERMINATES != 0
+    return (callee = outcome_callee(flow.ir.stmts[index][:stmt], something(flow.outcomes[index])), kinds = kinds, throws = may_throw(flow.ir, index), terminates = terminates, used = used)
+end
+
+"""Callee of call `statement` with `outcome` (`Callee`): foreign call names C function."""
+function outcome_callee(statement::Expr, outcome::Outcome.Type)::Callee.Type
+    statement.head === :foreigncall && return Callee.Foreign()
+    return @match outcome begin
+        Outcome.Builtin(builtin, _) => Callee.Builtin(builtin)
+        Outcome.Intrinsic(intrinsic, _) => Callee.Builtin(intrinsic)
+        Outcome.Dispatch(instances, _) => Callee.Methods(unique!(Method[instance.def for instance in instances]))
+        Outcome.Dead() => Callee.Methods(Method[])
+        _ => Callee.Open()
+    end
 end
 
 """Operands of call `outcome`, callee first where outcome keeps it; none for dead call."""

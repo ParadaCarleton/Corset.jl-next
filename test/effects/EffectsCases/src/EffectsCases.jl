@@ -414,4 +414,25 @@ loose_grab!(guard::LooseGuard)::Nothing = take_lock!(guard.lock)
 # Lock that task storage holds: object outside every caller place.
 lock_stored()::Nothing = (lock(task_local_storage(:lock)::ReentrantLock); nothing)
 
+# Call facts: discarded calls with and without effect, call that may throw, foreign call, used result.
+function drop_calls!(values::Vector{Int}, text::String)::Int
+    abs(length(values))
+    push!(values, 1)
+    parse(Int, text)
+    ccall(:strlen, Csize_t, (Cstring,), text)
+    count = length(values)
+    return count
+end
+
+# Call facts: builtin, open call and call that no method matches.
+function odd_calls(f::Any, flag::Bool, text::String)::Nothing
+    Core.ifelse(flag, 1, 2)
+    f(text)
+    flag && no_text_method(text)
+    return nothing
+end
+
+# Only method of `no_text_method`: `String` argument matches none.
+no_text_method(value::Int)::Int = value
+
 end

@@ -157,6 +157,7 @@ Resolution of each call statement, first match wins:
 - Claim: `@assume_effects` on method or on block in it. Generated method and method without source count as claim.
 - Native inference edges tell reach. Callee without cached code counts as claim. Corset, Moshi and Compiler carry claims, so each run checks reach of claims.
 - Compaction deletes unused call when compiler effects allow. Call that reaches claim or cut stays, and so does statement under block claim of claiming method.
+- Unit keeps every call: call facts need discarded calls (Facts). Unit with shortcut keeps code too; its summary stays empty.
 - Own analysis runs on every method with claim outside Base. `false-effects` compares claims of package methods.
 
 #### Stand-in cuts
@@ -252,7 +253,9 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Fact of incomplete method has `complete` false: it gets no definite none.
 - Per unit, for `lifecycle` and statement rules (F48, F50, F51): allocation sites, read, write and iteration-start events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.
 - Element event carries index operand: constant or SSA value. `lifecycle` decides which elements writes cover (F33, F34).
-- Per call statement: callee, effect kinds, may throw, result used or discarded (F54, F86).
+- Per call statement: callee, kinds of its writes at any certainty, may throw, terminates, result used or discarded (F54, F86).
+- Callee holds that call leaves count as writes: lock gives synchronization, file gives IO.
+- Units of method merge by source statement: unit that may throw, writes or uses result decides.
 - `unused-call` needs no effect of any kind, no throw and termination: discarded `parse(Int, text)` validates input.
 - Join of two allocations at branch (`y = flag ? a : b`) makes fact `possible`.
 - Callee content reads come from summaries: `sum` reads, `fill!` does not.

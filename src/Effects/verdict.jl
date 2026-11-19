@@ -143,8 +143,47 @@ function cut_span(run::Run, typed::TypedCode, root::Variant)::Span
     return isnothing(index) ? typed.site.span : cause_span(typed, code, index)
 end
 
-"""Accesses of all units of one method: writes, reads, blind writes, blind reads, result aliases, holds throws skip."""
-const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{BlindAccess}, Vector{BlindAccess}, Vector{Place.Type}, Vector{UnguardedHold}}
+"""Call facts of one method by source statement and span."""
+const Calls = Dict{Tuple{Int, Span}, CallFact}
+
+"""
+Accesses of all units of one method: writes, reads, blind writes, blind reads, result aliases, holds throws skip, call
+facts.
+"""
+const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{BlindAccess}, Vector{BlindAccess}, Vector{Place.Type}, Vector{UnguardedHold}, Calls}
+
+"""Methods of `callee` that dispatch reaches; `nothing` for other callee."""
+callee_methods(callee::Callee.Type)::Union{Nothing, Vector{Method}} = @match callee begin
+    Callee.Methods(methods) => methods
+    _ => nothing
+end
+
+"""Callee of call statement over two units of method: methods of both; open when either is other callee."""
+function merge_callees(first::Callee.Type, second::Callee.Type)::Callee.Type
+    first == second && return first
+    left, right = callee_methods(first), callee_methods(second)
+    return isnothing(left) || isnothing(right) ? Callee.Open() : Callee.Methods(union(left, right))
+end
+
+"""Fact of call statement over two units of method (`CallFact`)."""
+function merge_calls(first::CallFact, second::CallFact)::CallFact
+    kinds = sort!(union(first.kinds, second.kinds))
+    return CallFact(first.span, merge_callees(first.callee, second.callee), kinds, first.throws || second.throws, first.terminates && second.terminates, first.used || second.used)
+end
+
+"""Add call facts of `root` to `calls` of its method, with spans from `span_of`: units of method merge (`merge_calls`)."""
+function add_calls!(calls::Calls, run::Run, root::Variant, span_of::Function)::Nothing
+    lines = run.codes[root].lines
+    for (index, record) in root_calls(run, root)
+        fact = CallFact(span_of(index), record...)
+        key = (lines[index], fact.span)
+        calls[key] = haskey(calls, key) ? merge_calls(calls[key], fact) : fact
+    end
+    return nothing
+end
+
+"""Call facts of `calls` in source order."""
+call_order(calls::Calls)::Vector{CallFact} = [fact for (_, fact) in sort!(collect(calls); by = (((line, span), _),) -> (span.file, span.first_byte, span.last_byte, line))]
 
 """
 `effects` stage facts of `package` from inference `units`, and blind spots: summary per package method over its units
@@ -162,7 +201,7 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
     roots = Variant[(typed.frame.linfo, Pair{Int, Any}[]) for typed in units.typed if typed_of[typed.frame.linfo] === typed]
     # Every unit cut is known before first shortcut check walks callees; unit order keeps first callers fixed.
     for (instance, _) in roots
-        run.bodies[instance] = instance_body(run, typed_of[instance].frame, run.cuts[instance])
+        run.bodies[instance] = unit_body(run, typed_of[instance].frame, run.cuts[instance])
     end
     solve!(run, roots)
     spots = BlindSpot[]
@@ -171,11 +210,10 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
         typed = typed_of[first(root)]
         # Unit that always throws on stand-ins shows no behavior of declared signature.
         typed.result === Union{} && (push!(spots, BlindSpot("always throws on stand-ins", typed.site.span)); continue)
-        # Shortcut root has no code; its summary holds no access to give span.
         summary = root_summary(run, root)
         span_of(cause::Int)::Span = cause_span(typed, run.codes[root], cause)
         kind_of(place::Place.Type)::EffectKind.T = path_kind(run.codes[root].ir, place)
-        writes, reads, blind_writes, blind_reads, aliases, unguarded = get!(() -> (Access[], Access[], BlindAccess[], BlindAccess[], Place.Type[], UnguardedHold[]), found, typed.site.method)
+        writes, reads, blind_writes, blind_reads, aliases, unguarded, calls = get!(() -> (Access[], Access[], BlindAccess[], BlindAccess[], Place.Type[], UnguardedHold[], Calls()), found, typed.site.method)
         unit_writes, unit_blind_writes = unit_accesses(summary.writes, span_of, typed.provenance)
         held_writes, held_blind = lock_writes(summary, span_of, kind_of)
         append!(unit_writes, held_writes)
@@ -189,15 +227,19 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
         append!(blind_writes, unit_blind_writes)
         append!(blind_reads, unit_blind_reads)
         append!(aliases, result_aliases(summary))
+        add_calls!(calls, run, root, span_of)
         closed[typed.site.method] = get(closed, typed.site.method, false) || summary.closed_world
         summary.cut && !haskey(cuts, typed.site.method) && (cuts[typed.site.method] = cut_span(run, typed, root))
     end
     methods = MethodEffects[]
     for site in package.methods
         haskey(found, site.method) || continue
-        writes, reads, blind_writes, blind_reads, aliases, unguarded = found[site.method]
+        writes, reads, blind_writes, blind_reads, aliases, unguarded, calls = found[site.method]
         complete = !(site.method in units.incomplete) && !haskey(cuts, site.method)
-        effects = MethodEffects(site, worst(writes), worst(reads), blind_order(blind_writes), blind_order(blind_reads), sort!(unique!(aliases); by = repr), sort!(unique!(unguarded); by = repr), complete, closed[site.method])
+        effects = MethodEffects(
+            site, worst(writes), worst(reads), blind_order(blind_writes), blind_order(blind_reads), sort!(unique!(aliases); by = repr), sort!(unique!(unguarded); by = repr),
+            call_order(calls), complete, closed[site.method],
+        )
         push!(methods, effects)
         append!(spots, (access.spot for access in [effects.blind_writes; effects.blind_reads]))
         # Write keeps its certainty with cut; only verdict none goes to coverage line.

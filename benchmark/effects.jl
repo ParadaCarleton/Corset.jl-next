@@ -12,8 +12,12 @@ const CHILD = raw"""
 using Corset: Corset
 using Corset.Effects: Effects, start_run, solve!, Variant, Outcome
 # Older Corset builds every unit body; newer one may shortcut it (`instance_body`), then also knows stand-in cuts.
+# Newest keeps unit body with shortcut flag (`unit_body`) for call facts.
 const cuts = isdefined(Effects, :stand_in_cut)
-unit_body(run, typed) = cuts ? Effects.instance_body(run, typed.frame, run.cuts[typed.frame.linfo]) : isdefined(Effects, :instance_body) ? Effects.instance_body(run, typed.frame) : Effects.frame_body(run, typed.frame)
+function unit_body(run, typed)
+    isdefined(Effects, :unit_body) && return Effects.unit_body(run, typed.frame, run.cuts[typed.frame.linfo])
+    return cuts ? Effects.instance_body(run, typed.frame, run.cuts[typed.frame.linfo]) : isdefined(Effects, :instance_body) ? Effects.instance_body(run, typed.frame) : Effects.frame_body(run, typed.frame)
+end
 using Corset.Facts: Confidence
 name, root = ARGS
 Base.require(Main, Symbol(name))
@@ -46,7 +50,8 @@ causes = Dict{String, Int}()
 foreach(spot -> causes[spot.cause] = get(causes, spot.cause, 0) + 1, spots)
 run = solve.value
 library = count(body -> body isa String, values(run.bodies))
-shortcuts = isdefined(Effects, :Shortcut) ? count(body -> body isa Effects.Shortcut, values(run.bodies)) : 0
+shortcut_body(body) = body isa Effects.Shortcut || body isa Effects.Body && hasfield(Effects.Body, :shortcut) && body.shortcut
+shortcuts = isdefined(Effects, :Shortcut) ? count(shortcut_body, values(run.bodies)) : 0
 println("units=", length(units.typed), " instances=", length(run.bodies), " variants=", length(run.summaries), " failed_bodies=", library, " shortcuts=", shortcuts)
 println("inference_s=", round(inference.time; digits = 2), " effects_s=", round(effects.time; digits = 2), " warm_solve_s=", round(solve.time; digits = 2))
 # Warm solve allocation counts engine only; `effects` allocation also counts cold native inference.
@@ -63,6 +68,11 @@ println("bang_possible=", bang_possible, " (", round(100 * bang_possible / max(1
 unguarded = count(found -> hasfield(typeof(found), :unguarded) && !isempty(found.unguarded), methods)
 locked = count(found -> any(access -> hasfield(typeof(access), :kind) && Symbol(access.kind) === :synchronization, found.writes), methods)
 println("unguarded=", unguarded, " lock_write=", locked)
+# Call facts; older Corset has none. Candidates of `unused-call` (F54): discarded, no effect, no throw, terminates.
+calls = [call for found in methods if hasfield(typeof(found), :calls) for call in found.calls]
+discarded = count(call -> !call.used, calls)
+unused = count(call -> !call.used && isempty(call.kinds) && !call.throws && call.terminates, calls)
+println("calls=", length(calls), " discarded=", discarded, " unused_call=", unused)
 closed = count(found -> found.closed_world, methods)
 unsettled = count(found -> any(access -> access.spot.cause == Effects.UNSETTLED, [found.blind_writes; found.blind_reads]), methods)
 # Variant names, not patterns: older Corset lacks newer outcome kinds. Moshi is Corset dependency, not direct one.
