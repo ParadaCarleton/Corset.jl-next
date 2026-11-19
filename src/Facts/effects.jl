@@ -31,23 +31,26 @@ end
 const PATH_DEPTH = 2
 
 """
-Access to caller-visible object (`effects` stage fact): place, whether it covers every place below it too, confidence,
-and cause span in package code. `possible` access from open call is doubt in code; collapsed path gives blind spot.
+Access to caller-visible object (`effects` stage fact): place, whether it covers every place below it too, kind,
+confidence, and cause span in package code. `possible` access from open call is doubt in code; collapsed path gives
+blind spot.
 """
 struct Access
     place::Place.Type
     below::Bool
+    kind::EffectKind.T
     confidence::Confidence.T
     cause::Span
 end
 
 """
-Access Corset cannot judge (`effects` stage fact): place, whether it covers places below, and blind spot with cause
-(`alias` for collapsed path or merged call result). It counts on coverage line only.
+Access Corset cannot judge (`effects` stage fact): place, whether it covers places below, kind, and blind spot with
+cause (`alias` for collapsed path or merged call result). It counts on coverage line only.
 """
 struct BlindAccess
     place::Place.Type
     below::Bool
+    kind::EffectKind.T
     spot::BlindSpot
 end
 

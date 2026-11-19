@@ -31,15 +31,15 @@ Accesses of unit `effects` with doubt below blind, and blind accesses, with caus
 """
 function unit_accesses(effects::Accesses, span_of::Function, provenance::Vector{Provenance.T})::Tuple{Vector{Access}, Vector{BlindAccess}}
     accesses, blind = Access[], BlindAccess[]
-    for ((place, below), effect) in effects
+    for ((place, below, effect_kind), effect) in effects
         span, level = span_of(effect.cause), level_of(effect.doubt)
-        kind = level == Level.code ? source_provenance(sources_of(effect.doubt), provenance) : Provenance.code
+        judged = level == Level.code ? source_provenance(sources_of(effect.doubt), provenance) : Provenance.code
         if level == Level.blind
-            push!(blind, BlindAccess(place, below, BlindSpot(effect.reason, span)))
-        elseif kind == Provenance.opaque
-            push!(blind, BlindAccess(place, below, BlindSpot(OPAQUE_DATA, span)))
-        elseif kind == Provenance.code
-            push!(accesses, Access(place, below, level == Level.none ? Confidence.definite : Confidence.possible, span))
+            push!(blind, BlindAccess(place, below, effect_kind, BlindSpot(effect.reason, span)))
+        elseif judged == Provenance.opaque
+            push!(blind, BlindAccess(place, below, effect_kind, BlindSpot(OPAQUE_DATA, span)))
+        elseif judged == Provenance.code
+            push!(accesses, Access(place, below, effect_kind, level == Level.none ? Confidence.definite : Confidence.possible, span))
         end
     end
     return accesses, blind
@@ -71,22 +71,22 @@ function node_contents(summary::Summary, node::Node.Type)::Vector{Node.Type}
     return found
 end
 
-"""Order key of access to `place` with `below`: places sort by text."""
-place_key(place::Place.Type, below::Bool)::Tuple{String, Bool} = (repr(place), below)
+"""Order key of access to `place` with `below` and `kind`: places sort by text."""
+place_key(place::Place.Type, below::Bool, kind::EffectKind.T)::Tuple{String, Bool, EffectKind.T} = (repr(place), below, kind)
 
-"""Worst access per place and coverage over `accesses` of all units: definite beats possible; first cause stays."""
+"""Worst access per place, coverage and kind over `accesses` of all units: definite beats possible; first cause stays."""
 function worst(accesses::Vector{Access})::Vector{Access}
-    found = Dict{Tuple{Place.Type, Bool}, Access}()
+    found = Dict{Tuple{Place.Type, Bool, EffectKind.T}, Access}()
     for access in accesses
-        key = (access.place, access.below)
+        key = (access.place, access.below, access.kind)
         old = get(found, key, nothing)
         (isnothing(old) || access.confidence < old.confidence) && (found[key] = access)
     end
-    return sort!(collect(values(found)); by = access -> place_key(access.place, access.below))
+    return sort!(collect(values(found)); by = access -> place_key(access.place, access.below, access.kind))
 end
 
 """Blind accesses of all units, each once, by place."""
-blind_order(accesses::Vector{BlindAccess})::Vector{BlindAccess} = sort!(unique!(accesses); by = access -> place_key(access.place, access.below))
+blind_order(accesses::Vector{BlindAccess})::Vector{BlindAccess} = sort!(unique!(accesses); by = access -> place_key(access.place, access.below, access.kind))
 
 """Blind spot cause of method whose verdict writes nothing on path stand-ins cut (`effects.md`, Stand-in cuts)."""
 const CUT = "stand-in cuts path"

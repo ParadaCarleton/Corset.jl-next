@@ -1,6 +1,6 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
-using Corset.Facts: Facts, MethodEffects, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision
+using Corset.Facts: Facts, MethodEffects, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind
 using Corset.Inference: infer_package, open_journal, records, explicit_any, cuts!, dead_calls
 using Corset.StandIns: FunctionStandIn, ArrayStandIn, DenseStandIn, FloatStandIn
 using Corset.Signatures: Provenance
@@ -149,8 +149,11 @@ named(name::Symbol)::MethodEffects = only(found for found in FACTS.methods if fo
     @test any(spot -> spot.cause == opaque, SPOTS)
 end
 
-"""Doubt of each access of summary `table`."""
-doubts(table::Dict{Tuple{Place.Type, Bool}, Effect})::Dict{Tuple{Place.Type, Bool}, Doubt} = Dict(key => effect.doubt for (key, effect) in table)
+"""Key of memory access to `place` with `below`."""
+memory(key::Tuple{Place.Type, Bool})::Tuple{Place.Type, Bool, EffectKind.T} = (key..., EffectKind.memory)
+
+"""Doubt per access of `table`; memory access drops kind from key, so plain place keys compare."""
+doubts(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect})::Dict{Tuple, Doubt} = Dict((kind == EffectKind.memory ? (place, below) : (place, below, kind)) => effect.doubt for ((place, below, kind), effect) in table)
 
 """Summary of fixture method `f` on argument `types`, solved as package code, before root resolves its callback records."""
 function raw_summary(f::Any, types::Type...)::Summary
@@ -222,7 +225,7 @@ sourceless(x::Int)::Int = x + 3
     length_root = (instance_of(CASES.memory_length, Memory{Int}), Pair{Int, Any}[])
     own.bodies[first(length_root)] = Effects.frame_body(own, Core.Compiler.typeinf_frame(own.interpreter, first(length_root), false), false)
     solve!(own, [length_root])
-    @test collect(keys(own.summaries[length_root].reads)) == [(parameter(2), false)]
+    @test collect(keys(own.summaries[length_root].reads)) == [memory((parameter(2), false))]
     # Claim outside Base turns shortcut off: own analysis finds write that false claim hides.
     @test shape(named(:call_claim_bump!).writes) == shape(named(:claim_bump!).writes) == [(global_place(CASES, :COUNTER), false, definite)]
     # Compaction keeps call whose callee claims effects, and statement under block claim.
@@ -544,8 +547,8 @@ got_dict(d::AbstractDict, k::Int) = get(d, k, 0)
     @test swapped.result == Nodes(Node.Placed(parameter(2, Step.Field(:x))) => none, Node.Placed(parameter(3)) => none)
     @test doubts(summary_of(modify_field!, Base.RefValue{Int}).writes) == Dict(top(2) => none)
     closure = summary_of(modify_closure!, Base.RefValue{Vector{Int}}, Vector{Int})
-    @test closure.writes[(parameter(2, Step.Field(:x)), true)].doubt == code
-    @test closure.writes[(parameter(3), true)].doubt == code
+    @test closure.writes[memory((parameter(2, Step.Field(:x)), true))].doubt == code
+    @test closure.writes[memory((parameter(3), true))].doubt == code
     @test haskey(summary_of(replace_field!, Base.RefValue{Vector{Int}}, Vector{Int}).edges, (Node.Placed(parameter(2)), Step.Field(:x)))
     @test doubts(summary_of(once_field!, Base.RefValue{Vector{Int}}, Vector{Int}).writes) == Dict(top(2) => none)
     named = summary_of(named_field!, Base.RefValue{Vector{Int}}, Symbol, Vector{Int})
@@ -557,18 +560,18 @@ got_dict(d::AbstractDict, k::Int) = get(d, k, 0)
     @test rebound.bound == Dict(GlobalRef(here, :slot) => Nodes(Node.Placed(parameter(2)) => none))
     @test summary_of(swap_global!, Vector{Int}).result == Nodes(Node.Placed(global_place(here, :slot)) => none, Node.Placed(parameter(2)) => none)
     @test doubts(summary_of(modify_global!).writes) == Dict((global_place(here, :tally), false) => none)
-    @test haskey(summary_of(replace_global!, Vector{Int}).writes, (global_place(here, :slot), false))
-    @test haskey(summary_of(once_global!, Vector{Int}).writes, (global_place(here, :loose), false))
+    @test haskey(summary_of(replace_global!, Vector{Int}).writes, memory((global_place(here, :slot), false)))
+    @test haskey(summary_of(once_global!, Vector{Int}).writes, memory((global_place(here, :loose), false)))
     named_global = summary_of(set_named!, Module, Symbol, Vector{Int})
     @test doubts(named_global.writes) == Dict((Place.At(Root.Elsewhere(), Step.Type[]), false) => code)
     @test named_global.spread == Dict(Node.Outside() => Nodes(Node.Placed(parameter(4)) => code))
     @test summary_of(get_named, Module, Symbol).result == Nodes(Node.Outside() => code)
     @test summary_of(get_slot).result == Nodes(Node.Placed(global_place(here, :slot)) => none)
-    @test isempty(summary_of(read_holder).reads[(global_place(here, :HOLDER), false)].reason)
+    @test isempty(summary_of(read_holder).reads[memory((global_place(here, :HOLDER), false))].reason)
     @test doubts(summary_of(memory_get, Memory{Vector{Int}}).reads) == Dict(top(2) => none)
     @test summary_of(memory_get, Memory{Vector{Int}}).result == Nodes(Node.Placed(parameter(2, Step.Element())) => none)
     for writer in (memory_once!, memory_swap!, memory_modify!, memory_replace!)
-        @test summary_of(writer, Memory{Vector{Int}}, Vector{Int}).writes[top(2)].doubt == none
+        @test summary_of(writer, Memory{Vector{Int}}, Vector{Int}).writes[memory(top(2))].doubt == none
     end
     @test doubts(summary_of(memory_assigned, Memory{Vector{Int}}).reads) == Dict(top(2) => none)
     @test summary_of(fresh_memory).fresh == 1
@@ -585,11 +588,11 @@ end
 @testset "intrinsic and foreign call transfer" begin
     none, code = NO_DOUBT, CODE_DOUBT
     for writer in (pointer_set!, pointer_swap!, pointer_modify!, pointer_replace!)
-        @test summary_of(writer, Ptr{Int}).writes[top(2)].doubt == none
+        @test summary_of(writer, Ptr{Int}).writes[memory(top(2))].doubt == none
     end
     @test doubts(summary_of(pointer_get, Ptr{Int}).reads) == Dict(top(2) => none)
     @test summary_of(llvm, Ptr{Int}).result == Nodes(Node.Placed(parameter(2)) => code, Node.Outside() => code)
-    @test summary_of(llvm, Ptr{Int}).writes[(parameter(2), true)].doubt == code
+    @test summary_of(llvm, Ptr{Int}).writes[memory((parameter(2), true))].doubt == code
     @test summary_of(global_pointer).result == Nodes(Node.Outside() => code)
     @test summary_of(library_pointer).result == Nodes(Node.Outside() => code)
     # Open pointer type derives sources from operands, library tuple expression among them.
@@ -618,18 +621,18 @@ end
     caught_summary = summary_of(caught, Vector{Int})
     @test any(nodes -> haskey(nodes, Node.Outside()), values(caught_summary.edges))
     for (pusher, types) in ((latest!, (Vector{Int},)), (world!, (Vector{Int},)), (invoked!, (Vector{Int},)), (spread!, (Vector{Int}, Tuple{Int, Int})), (nested_spread!, (Vector{Int}, Tuple{Tuple{Int}})))
-        @test summary_of(pusher, types...).writes[top(2)].doubt == none
+        @test summary_of(pusher, types...).writes[memory(top(2))].doubt == none
     end
     @test isempty(summary_of(invoke_dead, String).writes)
-    @test summary_of(invoke_open, Vector{Int}, Type).writes[(parameter(2), true)].doubt == code
-    @test summary_of(invoke_missing, Vector{Int}).writes[(parameter(2), true)].doubt == code
+    @test summary_of(invoke_open, Vector{Int}, Type).writes[memory((parameter(2), true))].doubt == code
+    @test summary_of(invoke_missing, Vector{Int}).writes[memory((parameter(2), true))].doubt == code
     # Tuple of unknown length dispatches on `Vararg`: `push!` contract writes `values` only.
     @test doubts(summary_of(spread_rest!, Vector{Int}, Tuple{Vararg{Int}}).writes) == Dict(top(2) => none)
     # Open dispatch on `::Any` argument: its type is source of doubt, so caller provenance decides.
-    @test summary_of(dynamic!, Any).writes[(parameter(2), true)].doubt == sourced(2)
+    @test summary_of(dynamic!, Any).writes[memory((parameter(2), true))].doubt == sourced(2)
     # No method matches: call throws, so it writes and reads nothing.
     @test isempty(summary_of(no_method, Vector{Int}).writes) && isempty(summary_of(no_method, Vector{Int}).reads)
-    @test summary_of(nested_apply, Vector{Int}, Tuple{Tuple{Int}}).writes[(parameter(2), true)].doubt == code
+    @test summary_of(nested_apply, Vector{Int}, Tuple{Tuple{Int}}).writes[memory((parameter(2), true))].doubt == code
     @test summary_of(embedded).result == Nodes(Node.Outside() => code)
     @test summary_of(unknown_field, Module, Symbol).result == Nodes(Node.Outside() => code)
     @test summary_of(unknown_any, Module, Symbol, Symbol).result == Nodes(Node.Outside() => code)
@@ -645,38 +648,38 @@ end
     @test isempty(broken_int.writes)
     # Phi joins both branches; fresh objects escape through globals and caller objects.
     @test doubts(summary_of(pick!, Vector{Int}, Vector{Int}, Bool).writes) == Dict(top(2) => none, top(3) => none)
-    @test summary_of(held_write!, Vector{Int}).writes[top(2)].doubt == none
-    @test summary_of(nest_write!, Base.RefValue{Base.RefValue{Vector{Int}}}, Vector{Int}).writes[top(3)].doubt == none
+    @test summary_of(held_write!, Vector{Int}).writes[memory(top(2))].doubt == none
+    @test summary_of(nest_write!, Base.RefValue{Base.RefValue{Vector{Int}}}, Vector{Int}).writes[memory(top(3))].doubt == none
     # Callee access below fresh wrapper reaches caller object inside; open result keeps source of open callee.
-    @test summary_of(open_wrapped!, Any, Vector{Int}).writes[(parameter(3), true)].doubt == sourced(2)
-    @test summary_of(open_result_write!, Any, Vector{Int}).writes[top(3)].doubt == sourced(2)
+    @test summary_of(open_wrapped!, Any, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
+    @test summary_of(open_result_write!, Any, Vector{Int}).writes[memory(top(3))].doubt == sourced(2)
     # Callee source maps to caller argument in its position: effects, result nodes and unknown objects alike.
     swapped = summary_of(open_result_swapped, Vector{Int}, Any)
     @test doubts(swapped.writes) == Dict((parameter(2), true) => sourced(3), (parameter(3), true) => sourced(3))
     @test swapped.result == Nodes(Node.Placed(parameter(2)) => sourced(3), Node.Placed(parameter(3)) => sourced(3), Node.Outside() => sourced(3))
-    @test summary_of(open_unknown_through!, Any, Any).writes[(Place.At(Root.Elsewhere(), Step.Type[]), true)].doubt == sourced(3)
-    @test summary_of(open_loaded!, Any).writes[(Place.At(Root.Elsewhere(), Step.Type[]), true)].doubt == sourced(2)
-    @test summary_of(open_loaded_any!, Any, Symbol).writes[(Place.At(Root.Elsewhere(), Step.Type[]), true)].doubt == sourced(2)
+    @test summary_of(open_unknown_through!, Any, Any).writes[memory((Place.At(Root.Elsewhere(), Step.Type[]), true))].doubt == sourced(3)
+    @test summary_of(open_loaded!, Any).writes[memory((Place.At(Root.Elsewhere(), Step.Type[]), true))].doubt == sourced(2)
+    @test summary_of(open_loaded_any!, Any, Symbol).writes[memory((Place.At(Root.Elsewhere(), Step.Type[]), true))].doubt == sourced(2)
     # Type value derived from open argument keeps its source: through call, phi, callee parameter and vararg tuple.
-    @test summary_of(derived_write!, Any, Vector{Int}).writes[(parameter(3), true)].doubt == sourced(2)
-    @test summary_of(either_write!, Any, Any, Bool, Vector{Int}).writes[(parameter(5), true)].doubt == sourced(2, 3)
-    @test summary_of(kind_on!, Type, Vector{Int}).writes[(parameter(3), true)].doubt == sourced(2)
-    @test summary_of(derived_through!, Any, Vector{Int}).writes[(parameter(3), true)].doubt == sourced(2)
-    @test summary_of(derived_spread!, Any, Vector{Int}).writes[(parameter(3), true)].doubt == sourced(2)
-    @test summary_of(derived_part!, Any, Vector{Int}).writes[(parameter(3), true)].doubt == sourced(2)
-    @test summary_of(static_write!, Type, Vector{Int}).writes[(parameter(3), true)].doubt == sourced(2)
+    @test summary_of(derived_write!, Any, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
+    @test summary_of(either_write!, Any, Any, Bool, Vector{Int}).writes[memory((parameter(5), true))].doubt == sourced(2, 3)
+    @test summary_of(kind_on!, Type, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
+    @test summary_of(derived_through!, Any, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
+    @test summary_of(derived_spread!, Any, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
+    @test summary_of(derived_part!, Any, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
+    @test summary_of(static_write!, Type, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
     joined_run = start_run(nothing, Module[@__MODULE__])
     joined_root = (only(something(dispatch(Any[typeof(half_join!), Union{Vector{Int}, Vector{Float64}}], joined_run.world, 1))), Pair{Int, Any}[])
     solve!(joined_run, [joined_root])
-    @test root_summary(joined_run, joined_root).writes[top(2)].doubt == sourced(2)
+    @test root_summary(joined_run, joined_root).writes[memory(top(2))].doubt == sourced(2)
     # `DataType` value dispatches on type it holds: `typeof(x)` keeps source of `x`.
-    @test summary_of(typeof_write!, Any, Vector{Int}).writes[(parameter(3), true)].doubt == sourced(2)
-    @test summary_of(derived_rest!, Vector{Type}, Vector{Int}).writes[(parameter(3), true)].doubt == sourced(2)
+    @test summary_of(typeof_write!, Any, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
+    @test summary_of(derived_rest!, Vector{Type}, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
     # Loop brings source to earlier call in later round: last round decides doubt.
-    @test summary_of(derived_loop!, Any, Vector{Int}, Int).writes[(parameter(3), true)].doubt == sourced(2)
+    @test summary_of(derived_loop!, Any, Vector{Int}, Int).writes[memory((parameter(3), true))].doubt == sourced(2)
     # Function stand-in stands for any callee Corset chose: its call stays open, with or without keywords.
-    @test summary_of(open_on!, FunctionStandIn, Vector{Int}).writes[(parameter(3), true)].doubt == Doubt(Level.code, OPAQUE)
-    @test summary_of(open_keywords!, FunctionStandIn, Vector{Int}).writes[(parameter(3), true)].doubt == Doubt(Level.code, OPAQUE)
+    @test summary_of(open_on!, FunctionStandIn, Vector{Int}).writes[memory((parameter(3), true))].doubt == Doubt(Level.code, OPAQUE)
+    @test summary_of(open_keywords!, FunctionStandIn, Vector{Int}).writes[memory((parameter(3), true))].doubt == Doubt(Level.code, OPAQUE)
     @test all(((place, _),) -> root_of(place) != Root.Parameter(3), keys(summary_of(open_element!, Any, Vector{Int}).writes))
     mktempdir(@__DIR__) do directory
         journal = open_journal(directory)
@@ -686,7 +689,7 @@ end
             crashed = start_run(journal, Module[])
             root = (only(something(dispatch(Any[typeof(latest!), Vector{Int}], crashed.world, 1))), Pair{Int, Any}[])
             solve!(crashed, [root])
-            effect = crashed.summaries[root].writes[(parameter(2), true)]
+            effect = crashed.summaries[root].writes[memory((parameter(2), true))]
             @test effect.doubt == blind && effect.reason == "inference crashed process"
             fresh = start_run(journal, Module[])
             other = (only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], fresh.world, 1))), Pair{Int, Any}[])
@@ -798,7 +801,7 @@ four_way(x::Symbol) = x
     @test stronger(Effect(NO_DOUBT, 3, ""), Effect(CODE_DOUBT, 2, "")) == Effect(NO_DOUBT, 3, "")
     @test same(empty_summary(), empty_summary()) && !same(empty_summary(), open_summary(1, "cause"))
     opened = open_summary(2, "cause")
-    @test opened.writes[(parameter(2), true)] == Effect(BLIND_DOUBT, 0, "cause") && opened.result[Node.Outside()] == BLIND_DOUBT
+    @test opened.writes[memory((parameter(2), true))] == Effect(BLIND_DOUBT, 0, "cause") && opened.result[Node.Outside()] == BLIND_DOUBT
     cache = IdDict{Any, Bool}()
     @test !referent!(cache, Union{}) && referent!(cache, Union{Int, Vector{Int}}) && !referent!(cache, Union{Int, Symbol})
     @test referent!(cache, AbstractVector) && !referent!(cache, Type{Int}) && referent!(cache, Ptr{Int})
@@ -822,9 +825,9 @@ four_way(x::Symbol) = x
     @test root_of(Place.Deep(Root.Elsewhere())) == Root.Elsewhere()
     targets = Targets(Origin.Unknown() => CODE_DOUBT)
     @test !add!(targets, Origin.Unknown(), BLIND_DOUBT) && add!(targets, Origin.Unknown(), NO_DOUBT)
-    table = Dict{Tuple{Origin.Type, Bool}, Effect}()
-    access!(table, Targets(Origin.Allocation(1) => BLIND_DOUBT), false, Effect(BLIND_DOUBT, 4, "cause"))
-    @test table[(Origin.Allocation(1), false)] == Effect(BLIND_DOUBT, 4, "cause")
+    table = Dict{Tuple{Origin.Type, Bool, EffectKind.T}, Effect}()
+    access!(table, Targets(Origin.Allocation(1) => BLIND_DOUBT), false, Effect(BLIND_DOUBT, 4, "cause"), EffectKind.memory)
+    @test table[(Origin.Allocation(1), false, EffectKind.memory)] == Effect(BLIND_DOUBT, 4, "cause")
     run = start_run(nothing, Module[])
     instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world, 1)))
     solve!(run, [(instance, Pair{Int, Any}[])])
@@ -869,15 +872,15 @@ four_way(x::Symbol) = x
     @test isa_variant(resolve(code.ir, Operand.Type[Operand.Part(Core.Argument(2), 1)], run.world, 1), Outcome.Dead)
     typed = only(unit for unit in UNITS.typed if unit.site.method.name == :add)
     @test cause_span(typed, code, 0) == typed.site.span
-    shared, partial = (Origin.Allocation(1), false), (Origin.Allocation(2), false)
+    shared, partial = (Origin.Allocation(1), false, EffectKind.memory), (Origin.Allocation(2), false, EffectKind.memory)
     joined = Dict(partial => Effect(NO_DOUBT, 1, ""))
     join_accesses!(joined, [Dict(shared => Effect(NO_DOUBT, 5, ""), partial => Effect(CODE_DOUBT, 5, "")), Dict(shared => Effect(BLIND_DOUBT, 5, "alias"))], CODE_DOUBT)
     @test joined == Dict(shared => Effect(BLIND_DOUBT, 5, "alias"), partial => Effect(NO_DOUBT, 1, ""))
-    joined = Dict{Tuple{Origin.Type, Bool}, Effect}()
-    join_accesses!(joined, [Dict(partial => Effect(NO_DOUBT, 5, "")), Dict{Tuple{Origin.Type, Bool}, Effect}()], sourced(4))
+    joined = Dict{Tuple{Origin.Type, Bool, EffectKind.T}, Effect}()
+    join_accesses!(joined, [Dict(partial => Effect(NO_DOUBT, 5, "")), Dict{Tuple{Origin.Type, Bool, EffectKind.T}, Effect}()], sourced(4))
     @test joined == Dict(partial => Effect(sourced(4), 5, ""))
     # Members with `code` doubt from different sources: join keeps sources of all.
-    joined = Dict{Tuple{Origin.Type, Bool}, Effect}()
+    joined = Dict{Tuple{Origin.Type, Bool, EffectKind.T}, Effect}()
     join_accesses!(joined, [Dict(shared => Effect(sourced(2), 5, "")), Dict(shared => Effect(sourced(3), 6, ""))], CODE_DOUBT)
     @test joined == Dict(shared => Effect(sourced(2, 3), 5, ""))
     # Join must reach every call native inference resolves.
@@ -890,8 +893,8 @@ four_way(x::Symbol) = x
     package_run = start_run(nothing, [@__MODULE__])
     @test join_limit(package_run, only(something(dispatch(Any[typeof(three_way), Int], world, 1)))) == JOIN_LIMIT
     @test join_limit(package_run, only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], world, 1)))) == 1
-    possible_first = Access(parameter(2), false, Confidence.possible, typed.site.span)
-    @test worst([possible_first, Access(parameter(2), false, Confidence.definite, typed.site.span)])[1].confidence == Confidence.definite
+    possible_first = Access(parameter(2), false, EffectKind.memory, Confidence.possible, typed.site.span)
+    @test worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, typed.site.span)])[1].confidence == Confidence.definite
 end
 
 """Whether `first` and `second` hold same state: same type, and same fields and elements, deep."""
@@ -1053,7 +1056,7 @@ end
 
 const DOUBTS = Data.SampledFrom([NO_DOUBT, CODE_DOUBT, sourced(2), sourced(3), BLIND_DOUBT])
 const EFFECTS = map(((doubt, cause),) -> Effect(doubt, cause, doubt == BLIND_DOUBT ? "alias" : ""), Data.Pairs(DOUBTS, Data.Integers(1, 2)))
-const ACCESSES = Data.Dicts(Data.SampledFrom([(parameter(2), false), (parameter(2), true), (parameter(3), false)]), EFFECTS; max_size = 3)
+const ACCESSES = Data.Dicts(Data.SampledFrom([(parameter(2), false, EffectKind.memory), (parameter(2), true, EffectKind.memory), (parameter(3), false, EffectKind.io)]), EFFECTS; max_size = 3)
 const NODES = Data.Dicts(Data.SampledFrom([Node.Placed(parameter(2)), Node.Fresh(1), Node.Outside()]), DOUBTS; max_size = 3)
 
 """Whether `first` doubts at most as `second` does: lower level, or same level with every source of `second`."""
@@ -1067,10 +1070,10 @@ const SUMMARIES = @composed function summaries(writes = ACCESSES, reads = ACCESS
 end
 
 @testset "call cycle widening" begin
-    old = Summary(Accesses((parameter(2), false) => Effect(NO_DOUBT, 3, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 1, false, true)
-    new = Summary(Accesses((parameter(2), false) => Effect(CODE_DOUBT, 2, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, true, false)
+    old = Summary(Accesses((parameter(2), false, EffectKind.memory) => Effect(NO_DOUBT, 3, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 1, false, true)
+    new = Summary(Accesses((parameter(2), false, EffectKind.memory) => Effect(CODE_DOUBT, 2, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, true, false)
     widened = widen(old, new)
-    @test widened.writes == Accesses((parameter(2), false) => Effect(BLIND_DOUBT, 3, UNSETTLED))
+    @test widened.writes == Accesses((parameter(2), false, EffectKind.memory) => Effect(BLIND_DOUBT, 3, UNSETTLED))
     @test widened.fresh == 1 && widened.closed_world && widened.cut
     # Callback records of both summaries stay.
     instance = only(something(dispatch(Any[typeof(CASES.set_value!), CASES.Box, Int], Base.get_world_counter(), 1)))
@@ -1191,8 +1194,8 @@ report_taker!(taker::Taker, value::Int, flag::Bool)::Nothing = flag ? throw(Argu
     # Definite write inside message stays, and so does write before throw; earlier write keeps its cause.
     @test doubts(summary_of(pop_message!, Vector{Any}, Bool).writes) == Dict(top(2) => NO_DOUBT)
     run, root = solved(pop_twice!, Module[], Vector{Any}, Bool)
-    @test !run.codes[root].message[root_summary(run, root).writes[top(2)].cause]
-    @test level_of(summary_of(open_then_throw!, Any, Any, Bool).writes[(parameter(3), true)].doubt) == Level.code
+    @test !run.codes[root].message[root_summary(run, root).writes[memory(top(2))].cause]
+    @test level_of(summary_of(open_then_throw!, Any, Any, Bool).writes[memory((parameter(3), true))].doubt) == Level.code
     @test isempty(summary_of(error_message, Any, Bool).writes)
     # Use cycle never counts as message; call that fails on its types is no throw.
     @test doubts(summary_of(loop_message, Vector{Any}, Bool).writes) == Dict((parameter(2, element), true) => sourced(2))

@@ -1,5 +1,5 @@
-"""Effects by origin and whether they cover objects below."""
-const OriginAccesses = Dict{Tuple{Origin.Type, Bool}, Effect}
+"""Effects by origin, whether they cover objects below, and kind at access statement."""
+const OriginAccesses = Dict{Tuple{Origin.Type, Bool, EffectKind.T}, Effect}
 
 """Targets by holder origin, for one slot kind: memory backing or unknown slot."""
 const OriginHolds = Dict{Origin.Type, Targets}
@@ -247,14 +247,14 @@ function load_any(flow::Flow, objects::Targets)::Targets
 end
 
 """
-Record access in `table` (writes or reads) on each origin of `objects`. Chain doubt raises effect doubt; blind chain
-gives cause `alias` unless effect is blind already.
+Record access of `kind` in `table` (writes or reads) on each origin of `objects`. Chain doubt raises effect doubt;
+blind chain gives cause `alias` unless effect is blind already.
 """
-function access!(table::OriginAccesses, objects::Targets, below::Bool, effect::Effect)::Nothing
+function access!(table::OriginAccesses, objects::Targets, below::Bool, effect::Effect, kind::EffectKind.T)::Nothing
     for (origin, doubt) in objects
         reason = level_of(effect.doubt) == Level.blind ? effect.reason : level_of(doubt) == Level.blind ? "alias" : ""
         found = Effect(most(effect.doubt, doubt), effect.cause, reason)
-        key = (origin, below)
+        key = (origin, below, kind)
         table[key] = haskey(table, key) ? stronger(table[key], found) : found
     end
     return nothing
@@ -344,7 +344,7 @@ function statement!(flow::Flow, index::Int, statement::Any, callees::Callees)::N
     elseif statement isa Core.ReturnNode
         isdefined(statement, :val) && join!(flow, flow.result, value_targets(flow, statement.val))
     elseif statement isa GlobalRef
-        isconst(statement) || access!(flow.reads, global_targets(flow, statement), false, definite(index))
+        isconst(statement) || access!(flow.reads, global_targets(flow, statement), false, definite(index), EffectKind.memory)
         assign!(flow, index, value_targets(flow, statement))
     elseif !(statement isa Union{Nothing, Core.GotoNode, Core.GotoIfNot, Core.EnterNode, Core.UpsilonNode})
         throw(ArgumentError("effects engine has no transfer for IR statement of type `$(typeof(statement))`"))

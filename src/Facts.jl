@@ -11,7 +11,7 @@ using EnumX: @enumx
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
 using ReadOnlyArrays: ReadOnlyVector
 
-export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, Weak, Exit
+export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, Weak, Exit, EffectKind
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, InferenceFacts, Step, Root, Place, Access, BlindAccess, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
@@ -42,6 +42,11 @@ Where weak value changes type: value method `returned`, value it `stored` in arg
 container, or `intermediate` only.
 """
 @enumx Exit returned stored intermediate
+"""
+Kind of access (`effects.md`, Effect kinds): plain `memory`, `io`, `default_rng`, `rng_argument`, `task_local` state,
+`scoped_read` of `ScopedValue`, `synchronization`, `lazy_init` or `audited` internal state. Rules apply exemptions.
+"""
+@enumx EffectKind memory io default_rng rng_argument task_local scoped_read synchronization lazy_init audited
 
 """Byte range `first_byte:last_byte` of `file`, 1-based and inclusive."""
 struct Span
