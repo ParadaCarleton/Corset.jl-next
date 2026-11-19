@@ -83,5 +83,7 @@ const FV, DV = ArrayStandIn{FloatStandIn, 1}, DenseStandIn{FloatStandIn, 1}
         @test holds_array(Base.Broadcast.Broadcasted{Nothing, Nothing, typeof(+), Tuple{FV, Int}})
         @test holds_array(Union{Nothing, FV})
         @test !holds_array(Vector{Float64})
+        # View of open stand-in holds stand-in only as variable bound.
+        @test holds_array(Base.RefValue{T} where {T <: ArrayStandIn{<:Any, 1}}) && !holds_array(Base.RefValue{T} where {T <: Vector})
     end
 end

@@ -69,20 +69,33 @@ function holds_float(type::Any)::Bool
 end
 
 """
-`type` with float stand-in replaced by `Float64`, parameters included; `nothing` when parameter bound rejects
-`Float64`. Meeting test swaps input to it.
+`type` with float stand-in replaced by `Float64`, parameters, variable bounds and union members included (as
+`holds_float` reads them); `nothing` when parameter bound rejects `Float64`. Meeting test swaps input to it.
 """
-function swapped(type::Any)::Any
+swapped(type::Any)::Any = swapped(type, IdDict{TypeVar, TypeVar}())
+
+"""`swapped` of `type`; `variables` maps each type variable to one with swapped bounds."""
+function swapped(type::Any, variables::IdDict{TypeVar, TypeVar})::Any
     type === FloatStandIn && return Float64
-    type isa Union && return Union{swapped(type.a), swapped(type.b)}
+    type isa TypeVar && return get(variables, type, type)
+    if type isa Union
+        members = (swapped(type.a, variables), swapped(type.b, variables))
+        return any(isnothing, members) ? nothing : Union{members...}
+    end
     if type isa UnionAll
-        body = swapped(type.body)
-        return isnothing(body) ? nothing : UnionAll(type.var, body)
+        bounds = (swapped(type.var.lb, variables), swapped(type.var.ub, variables))
+        any(isnothing, bounds) && return nothing
+        variable = variables[type.var] = TypeVar(type.var.name, bounds...)
+        body = swapped(type.body, variables)
+        return isnothing(body) ? nothing : UnionAll(variable, body)
     end
     type isa DataType || return type
     isempty(type.parameters) && return type
+    parameters = Any[swapped(parameter, variables) for parameter in type.parameters]
+    # `nothing` is valid parameter value (`Ref{nothing}`), so failed parameter must stop here.
+    any(isnothing, parameters) && return nothing
     return try
-        type.name.wrapper{Any[swapped(parameter) for parameter in type.parameters]...}
+        type.name.wrapper{parameters...}
     catch error
         error isa TypeError || rethrow()
         nothing
