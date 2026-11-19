@@ -131,8 +131,8 @@ end
 """Nodes value may point to, each with doubt as in `Targets`."""
 const Nodes = Dict{Node.Type, Doubt}
 
-"""Effects by place and whether they cover places below."""
-const Accesses = Dict{Tuple{Place.Type, Bool}, Effect}
+"""Effects by place, whether they cover places below, and kind."""
+const Accesses = Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}
 
 """Stores of exported graph by holder node and slot."""
 const Edges = Dict{Tuple{Node.Type, Step.Type}, Nodes}
@@ -208,7 +208,7 @@ every parameter, result anywhere.
 """
 function open_summary(count::Int, cause::String)::Summary
     places = [Place.At(Root.Parameter(position), Step.Type[]) for position in 1:count]
-    effects = Accesses((place, true) => Effect(BLIND_DOUBT, 0, cause) for place in places)
+    effects = Accesses((place, true, EffectKind.memory) => Effect(BLIND_DOUBT, 0, cause) for place in places)
     result = Nodes(Node.Placed(place) => BLIND_DOUBT for place in places)
     result[Node.Outside()] = BLIND_DOUBT
     return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), result, 0, false, false)

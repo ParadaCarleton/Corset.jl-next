@@ -53,6 +53,12 @@ println("inference_s=", round(inference.time; digits = 2), " effects_s=", round(
 println("effects_alloc_mb=", round(effects.bytes / 2^20; digits = 1), " warm_solve_alloc_mb=", round(solve.bytes / 2^20; digits = 1), " maxrss_mb=", round(Sys.maxrss() / 2^20; digits = 1))
 println("methods=", length(methods), " possible_write=", possible, " (", round(100 * possible / max(1, length(methods)); digits = 1), "%) definite_write=", definite, " blind_write=", blind)
 println("spots=", sort!(collect(causes); by = last, rev = true))
+# Write kinds `bang-convention` exempts (`effects.md`, Effect kinds); older Corset has no kinds.
+const EXEMPT = (:io, :default_rng, :rng_argument, :lazy_init, :audited)
+bang_kind(access::Any)::Bool = !hasfield(typeof(access), :kind) || !(Symbol(access.kind) in EXEMPT)
+bang_possible = count(found -> any(access -> access.confidence == Confidence.possible && bang_kind(access), found.writes), methods)
+bang_definite = count(found -> any(access -> access.confidence == Confidence.definite && bang_kind(access), found.writes), methods)
+println("bang_possible=", bang_possible, " (", round(100 * bang_possible / max(1, length(methods)); digits = 1), "%) bang_definite=", bang_definite)
 closed = count(found -> found.closed_world, methods)
 unsettled = count(found -> any(access -> access.spot.cause == Effects.UNSETTLED, [found.blind_writes; found.blind_reads]), methods)
 # Variant names, not patterns: older Corset lacks newer outcome kinds. Moshi is Corset dependency, not direct one.

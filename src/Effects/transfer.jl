@@ -103,8 +103,8 @@ Base contract. Writes go into `writes`.
 """
 function table!(flow::Flow, writes::OriginAccesses, index::Int, effects::CallEffects, arguments::Vector{Operand.Type})::Nothing
     targets(position::Int)::Targets = union_targets(operand_targets(flow, arguments[at]) for at in role(effects, position, length(arguments)))
-    foreach(position -> access!(writes, targets(position), false, definite(index)), effects.writes)
-    foreach(position -> access!(flow.reads, targets(position), false, definite(index)), effects.reads)
+    foreach(position -> access!(writes, targets(position), false, definite(index), EffectKind.memory), effects.writes)
+    foreach(position -> access!(flow.reads, targets(position), false, definite(index), EffectKind.memory), effects.reads)
     for (destination, source) in effects.copies
         store!(flow, targets(destination), Step.Element(), load(flow, targets(source), Step.Element()))
     end
@@ -127,7 +127,7 @@ function contract!(flow::Flow, writes::OriginAccesses, index::Int, effects::Call
     table!(flow, writes, index, effects, arguments)
     for position in breached
         holders = arguments[role(effects, position, length(arguments))]
-        access!(writes, union_targets(operand_targets(flow, holder) for holder in holders), false, Effect(open_doubt(flow, holders), index, ""))
+        access!(writes, union_targets(operand_targets(flow, holder) for holder in holders), false, Effect(open_doubt(flow, holders), index, ""), EffectKind.memory)
     end
     return nothing
 end
@@ -186,15 +186,18 @@ function builtin!(flow::Flow, writes::OriginAccesses, index::Int, builtin::Any, 
     if builtin === Core.getfield
         binding = module_global(flow, operands)
         if isnothing(binding)
-            access!(flow.reads, targets(1), false, definite(index))
-            assign!(flow, index, load_field(flow, operands[1], operand_constant(flow, operands[2])))
+            # Own name: closure of field write branch captures `field`; second assignment boxes it.
+            read_field = operand_constant(flow, operands[2])
+            access!(flow.reads, targets(1), false, definite(index), field_kind(operand_type(flow.ir, operands[1]), read_field))
+            assign!(flow, index, load_field(flow, operands[1], read_field))
         else
             read_global!(flow, index, something(binding))
         end
     elseif haskey(FIELD_WRITES, builtin)
         field = operand_constant(flow, operands[2])
         slot = slot_type(operand_type(flow.ir, operands[1]), field)
-        write!(flow, writes, index, FIELD_WRITES[builtin], operands, targets(1), load_field(flow, operands[1], field), values -> store_field!(flow, operands[1], field, values), slot)
+        kind = field_kind(operand_type(flow.ir, operands[1]), field)
+        write!(flow, writes, index, FIELD_WRITES[builtin], operands, targets(1), load_field(flow, operands[1], field), values -> store_field!(flow, operands[1], field, values), slot, kind)
     elseif builtin === Core.getglobal
         binding = module_global(flow, operands)
         isnothing(binding) ? assign!(flow, index, unknown(CODE_DOUBT)) : read_global!(flow, index, something(binding))
@@ -203,10 +206,10 @@ function builtin!(flow::Flow, writes::OriginAccesses, index::Int, builtin::Any, 
     elseif haskey(ELEMENT_WRITES, builtin)
         element_write!(flow, writes, index, ELEMENT_WRITES[builtin], operands)
     elseif builtin === Core.memoryrefget
-        access!(flow.reads, targets(1), false, definite(index))
+        access!(flow.reads, targets(1), false, definite(index), EffectKind.memory)
         assign!(flow, index, load(flow, targets(1), Step.Element()))
     elseif builtin === Core.memoryref_isassigned
-        access!(flow.reads, targets(1), false, definite(index))
+        access!(flow.reads, targets(1), false, definite(index), EffectKind.memory)
     elseif builtin === Core.memorynew
         allocate!(flow, index)
     elseif builtin === Core.tuple || builtin === Core.svec
@@ -227,6 +230,7 @@ function builtin!(flow::Flow, writes::OriginAccesses, index::Int, builtin::Any, 
     elseif builtin === Core._svec_ref
         assign!(flow, index, load_any(flow, targets(1)))
     elseif builtin === Core.current_scope
+        access!(flow.reads, unknown(NO_DOUBT), false, definite(index), EffectKind.scoped_read)
         assign!(flow, index, unknown(CODE_DOUBT))
     elseif !(builtin in INERT_BUILTINS)
         # Definition builtins (`_structtype`, `declare_global`) change global state; outside call resolution they stay open.
@@ -240,7 +244,7 @@ global_place(binding::GlobalRef)::Targets = Targets(Origin.Caller(Place.At(Root.
 
 """Read of global `binding` at statement `index`: mutable binding counts as read."""
 function read_global!(flow::Flow, index::Int, binding::GlobalRef)::Nothing
-    isconst(binding) || access!(flow.reads, global_place(binding), false, definite(index))
+    isconst(binding) || access!(flow.reads, global_place(binding), false, definite(index), EffectKind.memory)
     assign!(flow, index, global_targets(flow, binding))
     return nothing
 end
@@ -257,11 +261,11 @@ end
 """
 Transfer write of slot of `objects` with `shape` and call `operands`: record write, store value, and set result.
 `old` holds slot content before write; `store` puts targets into slot of declared type `slot`. Slot of type that
-points to no object holds no targets. `modify` operator call stays open. Writes go into `writes`.
+points to no object holds no targets. `modify` operator call stays open. Writes of `kind` go into `writes`.
 """
-function write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Shape, operands::Vector{Operand.Type}, objects::Targets, old::Targets, store::Function, slot::Any)::Nothing
-    access!(writes, objects, false, definite(index))
-    shape.returns in (Returns.stored, Returns.object) || access!(flow.reads, objects, false, definite(index))
+function write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Shape, operands::Vector{Operand.Type}, objects::Targets, old::Targets, store::Function, slot::Any, kind::EffectKind.T)::Nothing
+    access!(writes, objects, false, definite(index), kind)
+    shape.returns in (Returns.stored, Returns.object) || access!(flow.reads, objects, false, definite(index), kind)
     holds = points(flow, slot)
     old = holds ? old : Targets()
     given = holds ? operand_targets(flow, operands[shape.stored]) : Targets()
@@ -290,12 +294,12 @@ Transfer write of global binding `operands` name, into `writes`; binding that is
 function global_write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Shape, operands::Vector{Operand.Type})::Nothing
     found = module_global(flow, operands)
     if isnothing(found)
-        write!(flow, writes, index, shape, operands, unknown(CODE_DOUBT), unknown(CODE_DOUBT), values -> store!(flow, unknown(CODE_DOUBT), nothing, values), Any)
+        write!(flow, writes, index, shape, operands, unknown(CODE_DOUBT), unknown(CODE_DOUBT), values -> store!(flow, unknown(CODE_DOUBT), nothing, values), Any, EffectKind.memory)
         return nothing
     end
     binding = something(found)
     slot = Core.get_binding_type(binding.mod, binding.name)
-    write!(flow, writes, index, shape, operands, global_place(binding), global_targets(flow, binding), values -> bind!(flow, binding, values), slot)
+    write!(flow, writes, index, shape, operands, global_place(binding), global_targets(flow, binding), values -> bind!(flow, binding, values), slot, EffectKind.memory)
     return nothing
 end
 
@@ -310,7 +314,7 @@ end
 function element_write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Shape, operands::Vector{Operand.Type})::Nothing
     objects = operand_targets(flow, operands[1])
     slot = element_type(operand_type(flow.ir, operands[1]))
-    write!(flow, writes, index, shape, operands, objects, load(flow, objects, Step.Element()), values -> store!(flow, objects, Step.Element(), values), slot)
+    write!(flow, writes, index, shape, operands, objects, load(flow, objects, Step.Element()), values -> store!(flow, objects, Step.Element(), values), slot, EffectKind.memory)
     return nothing
 end
 
@@ -373,7 +377,7 @@ function intrinsic!(flow::Flow, writes::OriginAccesses, index::Int, intrinsic::A
         element_write!(flow, writes, index, ELEMENT_WRITES[intrinsic], operands)
     elseif intrinsic === intrinsics.pointerref || intrinsic === intrinsics.atomic_pointerref
         pointers = operand_targets(flow, operands[1])
-        access!(flow.reads, pointers, false, definite(index))
+        access!(flow.reads, pointers, false, definite(index), EffectKind.memory)
         assign!(flow, index, load(flow, pointers, Step.Element()))
     elseif intrinsic === intrinsics.llvmcall
         open!(flow, writes, index, operands, CODE_DOUBT)
@@ -391,8 +395,8 @@ Write into `writes` and read with `doubt` below every origin of `objects` that o
 """
 function open_effects!(flow::Flow, writes::OriginAccesses, index::Int, objects::Targets, doubt::Doubt)::Nothing
     effect, reached = Effect(doubt, index, ""), beneath(flow, objects)
-    access!(writes, reached, true, effect)
-    access!(flow.reads, reached, true, effect)
+    access!(writes, reached, true, effect, EffectKind.memory)
+    access!(flow.reads, reached, true, effect, EffectKind.memory)
     return nothing
 end
 
@@ -598,9 +602,9 @@ Accesses of callee `summary` at `site` into `writes` and `reads`, and its callba
 record resolved makes it, since most calls have none.
 """
 function apply_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::Union{Nothing, Set{Deferred}})::Nothing
-    for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below), effect) in effects
+    for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below, kind), effect) in effects
         objects = site_place(flow, site, place)
-        access!(table, below ? beneath(flow, objects) : objects, below, Effect(caller_doubt(flow, site, effect.doubt), site.index, effect.reason))
+        access!(table, below ? beneath(flow, objects) : objects, below, Effect(caller_doubt(flow, site, effect.doubt), site.index, effect.reason), kind)
     end
     for callback in summary.callbacks
         record = (callback.variant, Targets[map_nodes(flow, nodes, site) for nodes in callback.parameters])

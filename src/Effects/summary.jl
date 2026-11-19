@@ -7,13 +7,16 @@ function access_place(origin::Origin.Type)::Union{Nothing, Place.Type}
     end
 end
 
-"""Accesses of `table` on places caller can see, strongest effect per place."""
-function exported_effects(table::OriginAccesses)::Accesses
+"""
+Accesses of `table` on places caller can see, strongest effect per place and kind. Memory access takes kind of
+audited `method` or of its path in instance with IR `ir` (`place_kind`).
+"""
+function exported_effects(ir::CC.IRCode, method::Method, table::OriginAccesses)::Accesses
     found = Accesses()
-    for ((origin, below), effect) in table
+    for ((origin, below, kind), effect) in table
         place = access_place(origin)
         isnothing(place) && continue
-        key = (place, below)
+        key = (place, below, place_kind(ir, method, place, kind))
         found[key] = haskey(found, key) ? stronger(found[key], effect) : effect
     end
     return found
@@ -49,8 +52,11 @@ function escaping(flow::Flow)::Set{Origin.Type}
     return found
 end
 
-"""Summary of instance from `flow` at fixpoint: caller-visible accesses, stores of exported objects, and result."""
-function summarize(flow::Flow)::Summary
+"""
+Summary of instance of `method` from `flow` at fixpoint: caller-visible accesses, stores of exported objects, and
+result.
+"""
+function summarize(flow::Flow, method::Method)::Summary
     exported = escaping(flow)
     shown(origin::Origin.Type)::Bool = !fresh_origin(origin) || origin in exported
     edges = Dict((node_of(holder), step) => nodes_of(targets) for (holder, slots) in flow.heap if shown(holder) for (step, targets) in slots if !isempty(targets))
@@ -59,5 +65,5 @@ function summarize(flow::Flow)::Summary
     bound = Dict(binding => nodes_of(targets) for (binding, targets) in flow.bound if !isempty(targets))
     # Records hold no fresh object (`deferred`), so they add no escaping object.
     callbacks = Set{Callback}((variant = variant, parameters = map(nodes_of, arguments)) for records in values(flow.callbacks) for (variant, arguments) in records)
-    return Summary(exported_effects(flow.writes), exported_effects(flow.reads), edges, backing, spread, bound, callbacks, nodes_of(flow.result), length(exported), flow.closed_world, flow.cut)
+    return Summary(exported_effects(flow.ir, method, flow.writes), exported_effects(flow.ir, method, flow.reads), edges, backing, spread, bound, callbacks, nodes_of(flow.result), length(exported), flow.closed_world, flow.cut)
 end
