@@ -1588,6 +1588,16 @@ end
     @test merge_callees(Callee.Foreign(), first_fact.callee) == Callee.Open()
 end
 
+@testset "iteration starts" begin
+    definite = Confidence.definite
+    starts(name::Symbol)::Vector{Tuple{Place.Type, Bool, Confidence.T}} = shape(filter(access -> access.kind == EffectKind.iteration, named(name).reads))
+    @test starts(:loop_sum) == [(parameter(2), false, definite)]
+    @test strip(line_text(only(filter(access -> access.kind == EffectKind.iteration, named(:loop_sum).reads)).cause)) == "for item in items"
+    @test starts(:holder_sum) == [(parameter(2, Step.Field(:items)), false, definite)]
+    @test starts(:first_any) == starts(:pair_head) == [(parameter(2), false, definite)]
+    @test isempty(starts(:next_item)) && isempty(starts(:no_items)) && isempty(starts(:dead_start))
+end
+
 @testset "soundness" begin
     for (method, arguments) in CALLS
         @check max_examples = 20 db = false function observed_writes_covered(drawn = arguments)

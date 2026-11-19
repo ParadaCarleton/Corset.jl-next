@@ -435,4 +435,32 @@ end
 # Only method of `no_text_method`: `String` argument matches none.
 no_text_method(value::Int)::Int = value
 
+# Iteration starts: loop starts its argument.
+function loop_sum(items::Vector{Int})::Int
+    total = 0
+    for item in items
+        total += item
+    end
+    return total
+end
+
+# Holder of iterated vector.
+struct ItemHolder
+    items::Vector{Int}
+end
+
+# Start through callee summary.
+holder_sum(holder::ItemHolder)::Int = loop_sum(holder.items)
+
+# Start through Base contract: `first` and destructuring on open type.
+first_any(itr::Any) = first(itr)
+pair_head(itr::Any) = ((head, _) = itr; head)
+
+# No start: `iterate` with state, and own `isempty` method of `Vector`.
+next_item(items::Vector{Int}) = iterate(items, 2)
+no_items(items::Vector{Int})::Bool = isempty(items)
+
+# Call that no method matches starts nothing.
+dead_start(flag::Bool) = flag ? iterate(nothing) : nothing
+
 end

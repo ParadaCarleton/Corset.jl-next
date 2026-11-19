@@ -180,7 +180,7 @@ Resolution of each call statement, first match wins:
 
 Summary keeps every effect with its kind. Rules apply exemptions; engine filters nothing.
 
-- Kinds: memory write, IO, default RNG, RNG argument, task-local state, `ScopedValue` read, lock and other synchronization, lazy init, audited internal state.
+- Kinds: memory write, IO, default RNG, RNG argument, task-local state, `ScopedValue` read, lock and other synchronization, lazy init, audited internal state, iteration start.
 - `bang-convention` exempts IO, RNG, lazy init and audited internal state. `unused-call` counts every kind. `hidden-input` reads default RNG, task-local state, `ScopedValue` and mutable globals.
 - Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.
 - Kind comes from types along place path, root first: first `IO` gives IO, `AbstractRNG` gives RNG argument.
@@ -250,6 +250,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 
 - Per package method: writes and reads by place with certainty and cause span; blind writes and reads with blind spot; result aliases.
 - Iteration starts by place: `iterate` without state, directly or through callee. Summary joins and widens them like reads.
+- Start is read of kind `iteration`. Base contract of `first`, `only`, generic `isempty` and destructuring starts too.
 - Fact of incomplete method has `complete` false: it gets no definite none.
 - Per unit, for `lifecycle` and statement rules (F48, F50, F51): allocation sites, read, write and iteration-start events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.
 - Element event carries index operand: constant or SSA value. `lifecycle` decides which elements writes cover (F33, F34).

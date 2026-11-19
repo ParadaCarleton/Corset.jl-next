@@ -44,9 +44,10 @@ container, or `intermediate` only.
 @enumx Exit returned stored intermediate
 """
 Kind of access (`effects.md`, Effect kinds): plain `memory`, `io`, `default_rng`, `rng_argument`, `task_local` state,
-`scoped_read` of `ScopedValue`, `synchronization`, `lazy_init` or `audited` internal state. Rules apply exemptions.
+`scoped_read` of `ScopedValue`, `synchronization`, `lazy_init` or `audited` internal state. Read of kind `iteration`
+starts iteration (`effects.md`, Facts). Rules apply exemptions.
 """
-@enumx EffectKind memory io default_rng rng_argument task_local scoped_read synchronization lazy_init audited
+@enumx EffectKind memory io default_rng rng_argument task_local scoped_read synchronization lazy_init audited iteration
 
 """Byte range `first_byte:last_byte` of `file`, 1-based and inclusive."""
 struct Span
