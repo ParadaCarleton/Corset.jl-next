@@ -212,9 +212,12 @@ function extend(place::Place.Type, step::Step.Type)::Tuple{Place.Type, Doubt}
     end
 end
 
+"""Step of pointer to memory data: object that owns memory shares it with the memory's other owners (`Memory` field `ptr`)."""
+const MEMORY_POINTER = Step.Field(:ptr)
+
 """
-Targets of `step` slot of `origin`: place below caller object, stored targets, and element of memory backing not in
-`seen`.
+Targets of `step` slot of `origin`: place below caller object, stored targets, and element or data pointer of memory
+backing not in `seen`.
 """
 function trace(flow::Flow, origin::Origin.Type, step::Step.Type, seen::Set{Origin.Type})::Targets
     found = Targets()
@@ -227,7 +230,7 @@ function trace(flow::Flow, origin::Origin.Type, step::Step.Type, seen::Set{Origi
     for source in (slot(flow, origin, step), get(flow.spread, origin, Targets())), (target, doubt) in source
         add!(found, target, doubt)
     end
-    step == Step.Element() || return found
+    step == Step.Element() || step == MEMORY_POINTER || return found
     for (memory, doubt) in get(flow.backing, origin, Targets())
         memory in seen && continue
         for (target, flag) in trace(flow, memory, step, seen)

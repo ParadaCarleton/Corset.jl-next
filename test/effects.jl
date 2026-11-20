@@ -521,6 +521,7 @@ mpfr_compare(x::BigFloat, y::BigFloat) = ccall((:mpfr_less_p, Base.MPFR.libmpfr)
 mpfr_flag() = ccall((:mpfr_nanflag_p, Base.MPFR.libmpfr), Cint, ())
 mpfr_clear_unknown!() = ccall((:mpfr_clear_flags, Base.MPFR.libmpfr), Cvoid, ())
 mpfr_set_unknown!(x::Any) = ccall((:mpfr_corset_unknown, Base.MPFR.libmpfr), Cvoid, (Any,), x)
+mpfr_add!(z::BigFloat, a::BigFloat, b::BigFloat) = ccall((:mpfr_add, Base.MPFR.libmpfr), Int32, (Ref{BigFloat}, Ref{BigFloat}, Ref{BigFloat}, Base.MPFR.MPFRRoundingMode), z, a, b, Base.MPFR.ROUNDING_MODE[])
 mpfr_airy(x::BigFloat) = (z = BigFloat(); ccall((:mpfr_ai, Base.MPFR.libmpfr), Int32, (Ref{BigFloat}, Ref{BigFloat}, Int32), z, x, 0); z)
 mpfr_airy_unknown(x::BigFloat) = (z = BigFloat(); ccall((:mpfr_corset_unknown, Base.MPFR.libmpfr), Int32, (Ref{BigFloat}, Ref{BigFloat}, Int32), z, x, 0); z)
 mpfr_lgamma_sign!(z::BigFloat, sign::Base.RefValue{Int32}, x::BigFloat) = ccall((:mpfr_lgamma, Base.MPFR.libmpfr), Int32, (Ref{BigFloat}, Ref{Int32}, Ref{BigFloat}, Int32), z, sign, x, 0)
@@ -674,7 +675,8 @@ end
 @testset "MPFR and GMP foreign calls" begin
     none = NO_DOUBT
     effects(name::Symbol)::Tuple = (f = FOREIGN_EFFECTS[name]; (f.writes, f.reads, f.result))
-    written(f::Any, types::Type...)::Set{Int} = Set(position for position in 1:8 if any(((place, _, _),) -> root_of(place) == Root.Parameter(position), keys(summary_of(f, types...).writes)))
+    # Audited writes (repair of `BigFloat` limb pointer) touch every operand; only memory writes count.
+    written(f::Any, types::Type...)::Set{Int} = Set(position for position in 1:8 if any(((place, _, kind),) -> kind == EffectKind.memory && root_of(place) == Root.Parameter(position), keys(summary_of(f, types...).writes)))
     for (name, positions) in HANDWRITTEN
         @test FOREIGN_EFFECTS[name].writes == positions
     end
@@ -703,13 +705,17 @@ end
     @test written(Base.GMP.MPZ.setbit!, BigInt, Int) == Set([2])
     @test written(Base.GMP.MPZ.cmp, BigInt, BigInt) == written(Base.GMP.MPZ.popcount, BigInt) == Set{Int}()
     @test doubts(summary_of(mpfr_lgamma_sign!, BigFloat, Base.RefValue{Int32}, BigFloat).writes)[(parameter(3), false)] == none
-    @test written(mpfr_exponent!, Base.RefValue{Clong}, BigFloat, BigFloat) == Set([2])
+    @test written(mpfr_exponent!, Base.RefValue{Clong}, BigFloat, BigFloat) == Set([2, 3])
     @test written(mpfr_text, BigFloat, String, Base.RefValue{Ptr{UInt8}}) == Set([4])
     # Negative: `BigFloat` input stays unwritten, as in SpecialFunctions `airyai`; unknown MPFR function writes it possibly.
-    for (f, types) in ((mpfr_airy, (BigFloat,)), (mpfr_next!, (BigFloat,)), (mpfr_compare, (BigFloat, BigFloat)), (mpfr_flag, ()), (+, (BigFloat, BigFloat)), (sin, (BigFloat,)))
+    for (f, types) in ((mpfr_airy, (BigFloat,)), (mpfr_compare, (BigFloat, BigFloat)), (mpfr_flag, ()), (+, (BigFloat, BigFloat)), (sin, (BigFloat,)))
         @test isempty(written(f, types...))
     end
     @test written(mpfr_airy_unknown, BigFloat) == Set([2])
+    # Output operand `BigFloat` gets the write: wrapper `x.d` stands for memory of `x`.
+    @test written(mpfr_add!, BigFloat, BigFloat, BigFloat) == Set([2])
+    @test summary_of(mpfr_add!, BigFloat, BigFloat, BigFloat).writes[(parameter(2, Step.Field(:ptr)), false, EffectKind.memory)].doubt == none
+    @test written(mpfr_next!, BigFloat) == Set([2])
     @test written(mpfr_clear_unknown!) == Set{Int}()
     @test written(mpfr_set_unknown!, Any) == Set([2])
 end
