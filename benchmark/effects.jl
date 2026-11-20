@@ -1,6 +1,7 @@
 # Effects engine cost and precision on registered packages (docs/design/phase5.md, Measure).
 # Usage: julia benchmark/effects.jl <corset-root> <work-directory> [Name@version ...]
-# Each package runs in fresh Julia process: library inference is cold and no summary cache exists.
+# Each package runs in fresh Julia process: library inference is cold. Set `CORSET_EFFECTS_CACHE` to cache directory
+# to serve and store library summaries there (`effects.md`, Solve and cache); unset, no summary cache exists.
 
 using Pkg: Pkg
 
@@ -36,12 +37,23 @@ function solved(units)
     solve!(run, roots)
     return run
 end
+const CACHE = get(ENV, "CORSET_EFFECTS_CACHE", "")
+# Facts and spots as `Engine.effects_facts` gives them, with library entries read, hits and new entries.
+function effects_run()
+    isempty(CACHE) && return (Effects.effects_facts(loaded.facts, units, nothing)..., 0, 0, 0)
+    directory, partition = Corset.Cache.library_directory(CACHE), Corset.Cache.partition_key(string(VERSION), DEPOT_PATH)
+    library = Effects.Library(Corset.Cache.read_library(directory, partition))
+    facts, spots, _, found, hits = Effects.cached_effects(loaded.facts, units, nothing, library)
+    Corset.Cache.keep_library!(directory, partition, found.entries, hits, Corset.Cache.LIBRARY_BYTES)
+    return facts, spots, length(library.entries), length(hits), length(found.entries)
+end
 # Effects first, so its time includes cold native inference of library instances.
 GC.gc()
-effects = @timed Effects.effects_facts(loaded.facts, units, nothing)
+effects = @timed effects_run()
 GC.gc()
 solve = @timed solved(units)
-facts, spots = effects.value
+facts, spots, read_entries, hits, new_entries = effects.value
+isempty(CACHE) || println("library_read=", read_entries, " library_hits=", hits, " library_new=", new_entries)
 methods = facts.methods
 possible = count(found -> any(access -> access.confidence == Confidence.possible, found.writes), methods)
 definite = count(found -> any(access -> access.confidence == Confidence.definite, found.writes), methods)
