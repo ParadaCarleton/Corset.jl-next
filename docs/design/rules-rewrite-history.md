@@ -1119,3 +1119,34 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Group composability: package-internal callers often pass only `Vector`. Library preset warns; outside callers hit `MethodError` deep inside method.
 - F15 is mirror rule: it widens `::Vector`. Resized argument keeps `Vector`, so fixes of F15 and F111 never loop.
 - Fix `manual`: caller-allocated output written by index works for every mutable array and avoids growth cost.
+
+### Call site cache and joins
+
+- #265: call site maps callee place with origins below it once per round. Facts same on 5 packages.
+- Job 753 (winwsl, second job on box), warm solve seconds: JSON 49.2 to 31.9, DataStructures 9.1 to 5.8, StatsFuns 2.2 to 1.2.
+- Rejected: summary keeps blind access on root only. SpecialFunctions `alias` spots rose 32 to 57.
+- Root key collided with exact key in dispatch join: possible write lost (JSON 84 to 83).
+- #266: blind access of one member and exact access of other member join to `possible`.
+- #267: `Methods` callee sorts by module, file, line and signature. Call facts kept hash order before.
+
+### Path certainty
+
+- Place says where access lands; certainty says whether it happens. Coarse place adds no doubt (#268).
+- Old cap of 2 steps gave blind spot: `w.chain.next.box.value = v` wrote nothing Corset reported.
+- Path follows declared field types. It collapses at recursive concrete type, third abstract step in a row, or past 8 steps.
+- Constant global root takes type of its value: binding type of constant is `Any`.
+- Callee `deep` write keeps doubt on caller argument. Caller object inside fresh argument stays blind.
+- Rejected: blind when declared fields of root reach `IO` or RNG. `n.next.next = n` cannot land in `IO`, yet went silent.
+- Rejected: lock in that check. Lock write is write unless release balance proves use balanced.
+- Chosen: exempt kind needs proof: written object type, callee kind or root type. Raw write into `IO` memory below collapsed path gives false finding.
+- Jobs 772 and 802 (winwsl, serial arms), main against branch:
+
+| Package | `alias` spots | `blind_write` | `possible` | warm solve MB |
+|---|---|---|---|---|
+| JSON 1.13.4 | 140 to 73 | 93 to 82 | 84 to 84 | 6685 to 8630 |
+| DataStructures 0.18.22 | 396 to 161 | 270 to 184 | 225 to 238 | 1147 to 1252 |
+| Distances 0.10.12 | 67 to 60 | 64 to 62 | 58 to 58 | 472 to 473 |
+| SpecialFunctions 2.9.2 | 32 to 25 | 41 to 39 | 69 to 69 | 654 to 655 |
+| StatsFuns 2.3.1 | 38 to 38 | 50 to 50 | 58 to 58 | 392 to 392 |
+
+- Depth 4 arm allocates same as depth 8 (JSON 8610 MB): cap does not drive cost. DataStructures `alias` 168 at depth 4.
