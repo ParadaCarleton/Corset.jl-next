@@ -229,7 +229,7 @@ of its root. Collapse adds no doubt: object stays below same root (`effects.md`,
 """
 function extend(ir::CC.IRCode, place::Place.Type, step::Step.Type)::Place.Type
     return @match place begin
-        Place.At(root, steps) => exact_path(ir, root, [steps; step]) ? Place.At(root, [steps; step]) : Place.Deep(root)
+        Place.At(root, steps) => (extended = [steps; step]; exact_path(ir, root, extended) ? Place.At(root, extended) : Place.Deep(root))
         Place.Deep(root) => place
     end
 end
