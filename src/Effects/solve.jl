@@ -72,7 +72,7 @@ end
 
 """
 State of one effects run: world of dispatch and native inference, crash journal, package modules, referent cache; per
-instance its body, shortcut or blind spot cause, caller that first reached it, and parameters it uses as field names;
+instance its body, shortcut or blind spot cause, caller that first reached it, and its variant parameters (`variant_parameters!`);
 per method whether it claims effects and whether it catches; throw-helper verdict per callee (`throw_helper`); per
 instance whether stand-ins cut its own code; instances whose reach compiler effects describe on model types too
 (`reaches_untrusted!`); per variant its code and summary; summary cache state (`Lookup`).
@@ -85,7 +85,7 @@ struct Run  # corset: allow wide-struct -- one memo per analysis; summary cache 
     referent::IdDict{Any, Bool}
     bodies::IdDict{Core.MethodInstance, Union{Body, Shortcut, String}}
     callers::IdDict{Core.MethodInstance, Core.MethodInstance}
-    fields::IdDict{Core.MethodInstance, Set{Int}}
+    parameters::IdDict{Core.MethodInstance, Set{Int}}
     claims::IdDict{Method, Bool}
     catches::IdDict{Method, Bool}
     helpers::IdDict{Any, Tuple{Bool, Vector{Any}}}
@@ -100,10 +100,10 @@ end
 function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module}, library::Library)::Run
     world = Base.get_world_counter()
     bodies, callers = IdDict{Core.MethodInstance, Union{Body, Shortcut, String}}(), IdDict{Core.MethodInstance, Core.MethodInstance}()
-    fields, claims, catches = IdDict{Core.MethodInstance, Set{Int}}(), IdDict{Method, Bool}(), IdDict{Method, Bool}()
+    parameters, claims, catches = IdDict{Core.MethodInstance, Set{Int}}(), IdDict{Method, Bool}(), IdDict{Method, Bool}()
     helpers, cuts, trusted = IdDict{Any, Tuple{Bool, Vector{Any}}}(), IdDict{Core.MethodInstance, Bool}(), Base.IdSet{Core.MethodInstance}()
     return Run(
-        world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, fields, claims, catches, helpers, cuts, trusted, Dict{Variant, Code}(), Dict{Variant, Summary}(),
+        world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, parameters, claims, catches, helpers, cuts, trusted, Dict{Variant, Code}(), Dict{Variant, Summary}(),
         Lookup(
             library, IdDict{Core.MethodInstance, String}(), IdDict{Any, Tuple{String, Vector{Module}}}(), IdDict{Module, Union{Nothing, Vector{String}}}(),
             IdDict{Module, Union{Nothing, String}}(), IdDict{Any, Tuple{String, Vector{Any}}}(), Closure(Base.IdSet{Core.MethodInstance}()), IdDict{Any, Bool}(), IdDict{Core.MethodInstance, Vector{Any}}(),
@@ -406,8 +406,8 @@ function parameter_of(operand::Operand.Type)::Union{Nothing, Int}
     end
 end
 
-"""Slot-name parameters of instance in progress, its calls as operands and callee, and position of next call."""
-mutable struct FieldsFrame
+"""Variant parameters of instance in progress, its calls as operands and callee, and position of next call."""
+mutable struct ParametersFrame
     const found::Set{Int}
     const calls::Vector{Pair{Vector{Operand.Type}, Core.MethodInstance}}
     next::Int
@@ -420,16 +420,20 @@ function append_calls!(calls::Vector{Pair{Vector{Operand.Type}, Core.MethodInsta
 end
 
 """
-Frame of `instance`, recorded in progress: operands of naming builtins added now, calls wait for callee. Library cache
-entry gives parameters at once, without code.
+Frame of `instance`, recorded in progress: branch conditions and operands of naming builtins added now, calls wait for
+callee. Library cache entry gives parameters at once, without code.
 """
-function fields_frame!(run::Run, instance::Core.MethodInstance)::FieldsFrame
-    stored = stored_fields(run, instance)
-    found = run.fields[instance] = isnothing(stored) ? Set{Int}() : copy(stored)
-    frame = FieldsFrame(found, Pair{Vector{Operand.Type}, Core.MethodInstance}[], 1)
+function parameters_frame!(run::Run, instance::Core.MethodInstance)::ParametersFrame
+    stored = stored_parameters(run, instance)
+    found = run.parameters[instance] = isnothing(stored) ? Set{Int}() : copy(stored)
+    frame = ParametersFrame(found, Pair{Vector{Operand.Type}, Core.MethodInstance}[], 1)
     isnothing(stored) || return frame
     body = body!(run, instance)
     body isa Body || return frame
+    for index in 1:length(body.ir.stmts)
+        statement = body.ir.stmts[index][:stmt]
+        statement isa Core.GotoIfNot && statement.cond isa Core.Argument && push!(found, statement.cond.n)
+    end
     for outcome in body.outcomes
         isnothing(outcome) && continue
         @match something(outcome) begin
@@ -443,35 +447,35 @@ function fields_frame!(run::Run, instance::Core.MethodInstance)::FieldsFrame
 end
 
 """
-Parameters `instance` uses as slot name: first two operands of naming builtin, or parameter it passes to such
-parameter of callee. Cycle member in progress counts as found so far. Explicit stack: deep call chains need no deep
-recursion.
+Variant parameters of `instance` (`effects.md`, Calls): branch condition, first two operands of naming builtin (slot
+name), or parameter it passes to variant parameter of callee. Cycle member in progress counts as found so far. Explicit
+stack: deep call chains need no deep recursion.
 """
-function field_parameters!(run::Run, instance::Core.MethodInstance)::Set{Int}
-    haskey(run.fields, instance) && return run.fields[instance]
-    stack = [fields_frame!(run, instance)]
+function variant_parameters!(run::Run, instance::Core.MethodInstance)::Set{Int}
+    haskey(run.parameters, instance) && return run.parameters[instance]
+    stack = [parameters_frame!(run, instance)]
     while !isempty(stack)
         frame = stack[end]
         frame.next > length(frame.calls) && (pop!(stack); continue)
         operands, callee = frame.calls[frame.next]
-        haskey(run.fields, callee) || (push!(stack, fields_frame!(run, callee)); continue)
-        add_parameters!(frame.found, operands, run.fields[callee])
+        haskey(run.parameters, callee) || (push!(stack, parameters_frame!(run, callee)); continue)
+        add_parameters!(frame.found, operands, run.parameters[callee])
         frame.next += 1
     end
-    return run.fields[instance]
+    return run.parameters[instance]
 end
 
-"""Variant that static call of `callee` with `operands` in `ir` reaches: constant slot names it passes."""
+"""Variant that static call of `callee` with `operands` in `ir` reaches: constants it passes to variant parameters."""
 function callee_variant(run::Run, ir::CC.IRCode, callee::Core.MethodInstance, operands::Vector{Operand.Type})::Variant
     constants = Pair{Int, Any}[]
     method = callee.def::Method
-    for position in sort!(collect(field_parameters!(run, callee)))
+    for position in sort!(collect(variant_parameters!(run, callee)))
         position <= length(operands) && (position < method.nargs || !method.isva) || continue
         value = @match operands[position] begin
             Operand.Value(value) => constant(ir, value)
             _ => nothing
         end
-        !isnothing(value) && something(value) isa Union{Symbol, Int, Module} && push!(constants, position => something(value))
+        !isnothing(value) && something(value) isa VariantConstant && push!(constants, position => something(value))
     end
     return (callee, constants)
 end
@@ -479,18 +483,28 @@ end
 """Variants that call with `operands` in `ir` reaches through each of `instances`."""
 callee_variants(run::Run, ir::CC.IRCode, instances::Vector{Core.MethodInstance}, operands::Vector{Operand.Type})::Vector{Variant} = [callee_variant(run, ir, instance, operands) for instance in instances]
 
-"""Code of `variant` with body `body`: IR specialized to its constants, and variants each call reaches."""
+"""
+Code of `variant` with body `body`: IR specialized to its constants, and variants each call reaches. Comprehension
+lives in `kept_outcomes`: `@match` here would box its captures.
+"""
 function variant_code(run::Run, variant::Variant, body::Body)::Code
     ir = specialize(body.ir, last(variant))
-    callees = [Variant[] for _ in body.outcomes]
-    for (index, outcome) in enumerate(body.outcomes)
+    outcomes = kept_outcomes(ir, body)
+    callees = [Variant[] for _ in outcomes]
+    for (index, outcome) in enumerate(outcomes)
         isnothing(outcome) && continue
         @match something(outcome) begin
             Outcome.Dispatch(instances, operands) => (callees[index] = callee_variants(run, ir, instances, operands))
             _ => nothing
         end
     end
-    return Code(ir, body.lines, body.outcomes, body.message, body.used, callees, body.cut, body.shortcut)
+    return Code(ir, body.lines, outcomes, body.message, body.used, callees, body.cut, body.shortcut)
+end
+
+"""Outcomes of `body` that specialized `ir` keeps: statement that specialization drops (`drop_unreached`) has none."""
+function kept_outcomes(ir::CC.IRCode, body::Body)::Vector{Union{Nothing, Outcome.Type}}
+    ir.stmts === body.ir.stmts && return body.outcomes
+    return Union{Nothing, Outcome.Type}[isnothing(ir.stmts[index][:stmt]) ? nothing : outcome for (index, outcome) in enumerate(body.outcomes)]
 end
 
 """

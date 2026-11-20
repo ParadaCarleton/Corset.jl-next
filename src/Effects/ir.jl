@@ -41,12 +41,44 @@ function source_used(ir::CC.IRCode, count::Int)::Vector{Bool}
     return used
 end
 
-"""IR `ir` with argument types of `constants` (position and value) set to constant; statements stay shared."""
+"""
+IR `ir` with argument types of `constants` (position and value) set to constant. Statements stay shared, unless
+constant `Bool` argument fixes branch on it (`drop_unreached`).
+"""
 function specialize(ir::CC.IRCode, constants::Vector{Pair{Int, Any}})::CC.IRCode
     isempty(constants) && return ir
     argtypes = copy(ir.argtypes)
     foreach(((position, value),) -> argtypes[position] = Core.Const(value), constants)
-    return CC.IRCode(ir.stmts, ir.cfg, ir.debuginfo, argtypes, ir.meta, ir.sptypes, ir.valid_worlds)
+    flags = Dict{Int, Bool}(position => value for (position, value) in constants if value isa Bool)
+    stmts = isempty(flags) ? ir.stmts : drop_unreached(ir, flags)
+    return CC.IRCode(stmts, ir.cfg, ir.debuginfo, argtypes, ir.meta, ir.sptypes, ir.valid_worlds)
+end
+
+"""Statements that move no value: flow skips them, and release balance walks blocks through them."""
+const CONTROL = Union{Core.GotoNode, Core.GotoIfNot, Core.EnterNode, Core.UpsilonNode}
+
+"""
+Statements of `ir` where branch on argument with constant in `flags` (position and `Bool`) takes that constant. Each
+statement of block no path from entry reaches becomes `nothing`, control statement excepted.
+"""
+function drop_unreached(ir::CC.IRCode, flags::Dict{Int, Bool})::CC.InstructionStream
+    stmts, blocks = copy(ir.stmts), ir.cfg.blocks
+    reached, pending = falses(length(blocks)), [1]
+    while !isempty(pending)
+        block = pop!(pending)
+        reached[block] && continue
+        reached[block] = true
+        index = last(blocks[block].stmts)
+        terminator = stmts[index][:stmt]
+        flag = terminator isa Core.GotoIfNot && terminator.cond isa Core.Argument ? get(flags, terminator.cond.n, nothing) : nothing
+        isnothing(flag) && (append!(pending, blocks[block].succs); continue)
+        stmts[index][:stmt] = Core.GotoIfNot(flag, terminator.dest)
+        push!(pending, flag ? block + 1 : terminator.dest)
+    end
+    for block in findall(!, reached), index in blocks[block].stmts
+        stmts[index][:stmt] isa CONTROL || (stmts[index][:stmt] = nothing)
+    end
+    return stmts
 end
 
 """Types whose values point to no object Corset tracks: type objects, modules, symbols and strings."""
