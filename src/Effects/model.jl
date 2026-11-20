@@ -251,23 +251,32 @@ function widen_holds(old::HoldCounts, new::HoldCounts)::HoldCounts
 end
 
 """
-Library summary cache (`effects.md`, Solve and cache), by key of library instance (`instance_key!`): parameters it uses
-as slot name, whether stand-ins cut its code, and summary per variant constants. Summary holds no callback record.
+Library summary cache (`effects.md`, Solve and cache): serialized `LibraryEntry` by entry key (`variant_key!`,
+`instance_entry_key!`), and instance keys of entries (`instance_key!`). Entry deserializes on hit only, since it can
+name modules that other environments lack.
 """
 struct Library
-    fields::Dict{String, Set{Int}}
-    cuts::Dict{String, Bool}
-    summaries::Dict{Tuple{String, Vector{Pair{Int, Any}}}, Summary}
+    entries::Dict{String, Cache.Stamped}
+    instances::Set{String}
 end
 
-"""Library cache without entries."""
-Library()::Library = Library(Dict{String, Set{Int}}(), Dict{String, Bool}(), Dict{Tuple{String, Vector{Pair{Int, Any}}}, Summary}())
+"""Library cache of `entries`."""
+Library(entries::Dict{String, Cache.Stamped})::Library = Library(entries, Set{String}(stamped.instance for stamped in values(entries)))
 
-"""Entries of `old` and `new` library caches; `new` wins on same key."""
-merged(old::Library, new::Library)::Library = Library(merge(old.fields, new.fields), merge(old.cuts, new.cuts), merge(old.summaries, new.summaries))
+"""Library cache without entries."""
+Library()::Library = Library(Dict{String, Cache.Stamped}())
 
 """Whether `library` holds no entry."""
-Base.isempty(library::Library)::Bool = isempty(library.fields) && isempty(library.cuts) && isempty(library.summaries)
+Base.isempty(library::Library)::Bool = isempty(library.entries)
+
+"""
+Library cache entry: summary of variant (no callback record), parameters instance uses as slot name, or whether
+stand-ins cut its code; and throw helper verdict of each callee whose verdict solve read (`helper!`).
+"""
+struct LibraryEntry
+    value::Union{Summary, Set{Int}, Bool}
+    helpers::Vector{Pair{Any, Bool}}
+end
 
 """
 Summary of instance with `count` parameters engine cannot analyze, for blind spot `cause`: blind write and read below

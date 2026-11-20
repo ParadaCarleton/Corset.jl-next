@@ -124,17 +124,17 @@ end
 
 """
 Effects facts of `package` from inference `units`, their blind spots, and effects record of each typed unit
-(`Effects.cached_effects`). Cache directory `cache` serves and stores library summaries under key of loaded packages
-outside `package` (`Cache.library_key`); `nothing` turns them off. Crash journal `directory` records native inference
-of library instances.
+(`Effects.cached_effects`). Cache directory `cache` serves and stores library summaries in library file of partition
+(`Cache.partition_key`); `nothing` turns them off. Crash journal `directory` records native inference of library
+instances.
 """
 function effects_facts(package::PackageFacts, units::Inference.Units, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, Effects.UnitEffects}}}
     library_directory = isnothing(cache) ? "" : Cache.library_directory(cache)
-    key = isnothing(cache) ? "" : Cache.library_key(string(VERSION), Cache.loaded_packages(package.modules), DEPOT_PATH)
-    stored = isnothing(cache) ? Effects.Library() : something(Cache.lookup(Effects.Library, library_directory, key, key), Effects.Library())
-    solve(journal::Union{Nothing, Inference.Journal}) = Effects.cached_effects(package, units, journal, stored)
-    facts, spots, records, found = isnothing(directory) ? solve(nothing) : journaled(solve, directory)
-    isnothing(cache) || Cache.keep_library!(library_directory, key, isempty(found) ? nothing : Effects.merged(stored, found))
+    partition = isnothing(cache) ? "" : Cache.partition_key(string(VERSION), DEPOT_PATH)
+    library = Effects.Library(isnothing(cache) ? Dict{String, Cache.Stamped}() : Cache.read_library(library_directory, partition))
+    solve(journal::Union{Nothing, Inference.Journal}) = Effects.cached_effects(package, units, journal, library)
+    facts, spots, records, found, hits = isnothing(directory) ? solve(nothing) : journaled(solve, directory)
+    isnothing(cache) || Cache.keep_library!(library_directory, partition, found.entries, hits, Cache.LIBRARY_BYTES)
     return facts, spots, records
 end
 

@@ -1,7 +1,7 @@
 """
 Disk cache of analyses: one entry per checked path, holding key and stored analysis. Key hashes every analysis input,
-so changed input misses and run analyzes again. Library summaries of `effects` stage keep one entry per environment of
-loaded packages (`library_key`), which every checked path shares.
+so changed input misses and run analyzes again. Library summaries of `effects` stage share one library file per
+partition (`partition_key`), whose entries every checked path and environment shares.
 """
 module Cache
 
@@ -41,7 +41,11 @@ function path_entries(environment::String)::Vector{String}
 end
 
 """Add `text` to `context` with its length first, so neighboring parts cannot run together."""
-update_part!(context::SHA.SHA256_CTX, text::String)::Nothing = (SHA.update!(context, codeunits("$(sizeof(text)):$text")); nothing)
+function update_part!(context::SHA.SHA256_CTX, text::String)::Nothing
+    SHA.update!(context, codeunits(string(sizeof(text), ':')))
+    SHA.update!(context, codeunits(text))
+    return nothing
+end
 
 """
 Text parts and files that key of analysis of checked `path` with `flags` text hashes. Parts: Julia version, cache flags,
@@ -110,58 +114,114 @@ key(path::String, flags::String, root::Union{Nothing, String}, files::Vector{Str
     digest(inputs(path, flags, root, files, load_path, cache)...)
 
 """
-Content text of package `id` at `root` for library key: name, UUID and `root` for package in standard library or in
-`packages` directory of one of `depots`, whose slug Pkg derives from Manifest tree hash. Path or developed package
-gives digest of its code files instead: project file, `src`, `ext` and `deps`.
+Content text of package `id` at `root` for library entry key: name, UUID, then `root` for package in standard library
+or in `packages` directory of one of `depots`, whose slug Pkg derives from Manifest tree hash. Path or developed package
+gives digest of its code files instead: project file, `src`, `ext` and `deps`. Preferences of package count too.
 """
 function package_content(id::Base.PkgId, root::String, depots::Vector{String})::String
     stores = [Sys.STDLIB; [joinpath(depot, "packages") for depot in depots]]
     fixed = any(store -> startswith(root, joinpath(store, "")), stores)
     content = fixed ? root : digest(String[], found_files([joinpath(root, "Project.toml")], joinpath.(root, ["src", "ext", "deps"]), ""))
-    return "$(id.name) $(id.uuid) $content"
+    preferences = Base.get_preferences(id.uuid)
+    return "$(id.name) $(id.uuid) $content" * (isempty(preferences) ? "" : "\n" * sprint(io -> TOML.print(io, preferences; sorted = true)))
 end
 
 """
-Key of library summaries (`effects.md`, Solve and cache): Julia version `julia`, cache flags, and content of each of
-loaded `packages` (`package_content`) with their roots, under `depots`.
+Content texts that inference of code in module `mod` depends on (`effects.md`, Solve and cache): none for Base and
+Core, as Julia version covers them; else content of its package (`package_content`) and texts of each loaded package
+it depends on. Corset gives texts of its dependencies only, as partition key holds its content. Extension depends on its
+parent and triggers. `nothing` for module without package root on disk, such as `Main`. `texts` caches answers by root
+module.
 """
-function library_key(julia::String, packages::Vector{Pair{Base.PkgId, String}}, depots::Vector{String})::String
-    return digest([julia; repr(Base.CacheFlags()); sort!([package_content(id, root, depots) for (id, root) in packages])], String[])
-end
-
-"""
-Loaded packages outside target package `modules`, extensions included, each with its root directory. Library summary
-reaches no target method, so target edit keeps key. Base and Core have no package root: Julia version covers them.
-"""
-function loaded_packages(modules::Vector{Module})::Vector{Pair{Base.PkgId, String}}
-    target = Set(Base.PkgId(Base.moduleroot(mod)) for mod in modules)
-    found = Pair{Base.PkgId, String}[]
-    for mod in Base.loaded_modules_array()
-        id, root = Base.PkgId(mod), pkgdir(mod)
-        id in target || isnothing(root) || push!(found, id => root)
+function owner_texts!(texts::IdDict{Module, Union{Nothing, Vector{String}}}, mod::Module, depots::Vector{String})::Union{Nothing, Vector{String}}
+    root = Base.moduleroot(mod)
+    (root === Base || root === Core) && return String[]
+    haskey(texts, root) && return texts[root]
+    # Placeholder answers cycle, which package loading forbids.
+    texts[root] = nothing
+    id = Base.PkgId(root)
+    extension = haskey(Base.EXT_PRIMED, id)
+    directory = pkgdir(root)
+    (isnothing(id.uuid) || !extension && (isnothing(directory) || !isdir(directory))) && return nothing
+    dependencies = extension ? Base.EXT_PRIMED[id] : dependency_ids(something(directory))
+    isnothing(dependencies) && return nothing
+    found = extension || root === Base.moduleroot(@__MODULE__) ? String[] : [package_content(id, something(directory), depots)]
+    for dependency in dependencies
+        # Dependency that is not loaded cannot change loaded code.
+        Base.root_module_exists(dependency) || continue
+        inherited = owner_texts!(texts, Base.root_module(dependency), depots)
+        isnothing(inherited) && return nothing
+        append!(found, inherited)
     end
-    return found
+    return texts[root] = sort!(unique!(found))
 end
 
-"""Library summary directory of cache `directory`: one entry per library key."""
+"""Packages in `deps` of project file at package `root`; `nothing` without project file."""
+function dependency_ids(root::String)::Union{Nothing, Vector{Base.PkgId}}
+    project = findfirst(isfile, joinpath.(root, Base.project_names))
+    isnothing(project) && return nothing
+    deps = get(TOML.parsefile(joinpath(root, Base.project_names[project])), "deps", Dict{String, Any}())
+    return [Base.PkgId(Base.UUID(uuid), name) for (name, uuid) in deps]
+end
+
+"""Library directory of cache `directory`: one library file per partition (`partition_key`)."""
 library_directory(directory::String)::String = joinpath(directory, "library")
 
-"""Library entries that library directory keeps, newest first: entries of other environments drop out."""
-const LIBRARY_ENTRIES = 4
+"""
+Partition key of library file: Julia version `julia`, cache flags and content of Corset (`package_content`) under
+`depots`. Entry keys hold all else.
+"""
+function partition_key(julia::String, depots::Vector{String})::String
+    corset = Base.moduleroot(@__MODULE__)
+    return digest([julia, repr(Base.CacheFlags()), package_content(Base.PkgId(corset), corset_root(), depots)], String[])
+end
 
 """
-Keep library summaries of `key` in library `directory`: store `library`, or mark stored entry as used when `nothing`.
-Then delete all but newest `LIBRARY_ENTRIES` entries; staging files of other processes stay.
+Library cache entry: instance key of instance it describes (`Effects.instance_key!`), serialized value, and time of
+last write or hit, which prune order reads.
 """
-function keep_library!(directory::String, key::String, library::Any)::Nothing
-    if isnothing(library)
-        isfile(entry(directory, key)) || return nothing
-        touch(entry(directory, key))
+struct Stamped
+    instance::String
+    bytes::Vector{UInt8}
+    used::Float64
+end
+
+"""Library files that library directory keeps, newest first: files of other Julia or Corset versions drop out."""
+const LIBRARY_FILES = 4
+
+"""Entry bytes that library file keeps at most (`keep_library!`)."""
+const LIBRARY_BYTES = 128 * 2^20
+
+"""Entries of library file of `partition` in library `directory`; none when file is missing or has other key."""
+read_library(directory::String, partition::String)::Dict{String, Stamped} = something(lookup(Dict{String, Stamped}, directory, partition, partition), Dict{String, Stamped}())
+
+"""
+Merge `found` entries into library file of `partition` in library `directory`, read again just before write. Found
+entries and `hits` take time now. Then entries go newest first while their bytes stay within `limit`. Run without found
+entries writes no entries: it marks file as used. Directory keeps newest `LIBRARY_FILES` files; staging files of other
+processes stay. Concurrent writer can lose entries of other, but file changes in one step.
+"""
+function keep_library!(directory::String, partition::String, found::Dict{String, Stamped}, hits::Set{String}, limit::Int)::Nothing
+    file = entry(directory, partition)
+    if isempty(found)
+        isfile(file) || return nothing
+        touch(file)
     else
-        store!(directory, key, key, library)
+        entries, now = read_library(directory, partition), time()
+        restamp(stamped::Stamped)::Stamped = Stamped(stamped.instance, stamped.bytes, now)
+        foreach(key -> haskey(entries, key) && (entries[key] = restamp(entries[key])), hits)
+        foreach(((key, stamped),) -> entries[key] = restamp(stamped), found)
+        kept, total = Dict{String, Stamped}(), 0
+        # Key breaks ties of time, so processes agree on kept entries.
+        for (key, stamped) in sort!(collect(entries); by = ((key, stamped),) -> (-stamped.used, key))
+            total += length(stamped.bytes)
+            total > limit && break
+            kept[key] = stamped
+        end
+        store!(directory, partition, partition, kept)
     end
-    entries = filter(file -> length(basename(file)) == 32 && all(isxdigit, basename(file)), readdir(directory; join = true))
-    foreach(file -> rm(file; force = true), sort!(entries; by = mtime, rev = true)[(LIBRARY_ENTRIES + 1):end])
+    files = filter(path -> length(basename(path)) == 32 && all(isxdigit, basename(path)), readdir(directory; join = true))
+    foreach(path -> rm(path; force = true), sort!(files; by = mtime, rev = true)[(LIBRARY_FILES + 1):end])
     return nothing
 end
 

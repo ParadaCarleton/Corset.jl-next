@@ -191,10 +191,10 @@ effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Journ
 """
 `effects` stage facts of `package` from inference `units` and blind spots, with `library` cache (`effects.md`, Solve and
 cache). Also effects record of each typed unit for method store, `nothing` for unit whose instance earlier unit holds,
-and new library cache entries. Run that skipped crashed instance gives no entries: its blind spot holds here only.
-Crash `journal` records native inference of instances outside units.
+new library cache entries, and keys of entries that hit. Run that skipped crashed instance gives no entries: its blind
+spot holds here only. Crash `journal` records native inference of instances outside units.
 """
-function cached_effects(package::PackageFacts, units::Units, journal::Union{Nothing, Journal}, library::Library)::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}, Library}
+function cached_effects(package::PackageFacts, units::Units, journal::Union{Nothing, Journal}, library::Library)::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}, Library, Set{String}}
     run = start_run(journal, package.modules, library)
     typed_of = IdDict{Core.MethodInstance, TypedCode}()
     for typed in units.typed
@@ -218,7 +218,7 @@ function cached_effects(package::PackageFacts, units::Units, journal::Union{Noth
     fresh = Union{Nothing, UnitEffects}[typed_of[typed.frame.linfo] === typed ? unit_effects(run, typed, (typed.frame.linfo, Pair{Int, Any}[])) : nothing for typed in units.typed]
     facts, spots = method_facts(package, units.incomplete, ordered_records(units, fresh, stored))
     crashed = !isnothing(journal) && !isempty(journal.crashed)
-    return facts, spots, fresh, crashed ? Library() : library_entries(run)
+    return facts, spots, fresh, crashed ? Library() : library_entries(run), run.cache.hits
 end
 
 """
