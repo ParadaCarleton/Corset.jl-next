@@ -1,6 +1,6 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
-using Corset.Facts: Facts, MethodEffects, Callee, CallFact, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind
+using Corset.Facts: Facts, MethodEffects, Callee, methods_callee, CallFact, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind
 using Corset.Inference: infer_package, open_journal, records, explicit_any, cuts!, dead_calls
 using Corset.StandIns: FunctionStandIn, ArrayStandIn, DenseStandIn, FloatStandIn
 using Corset.Signatures: Provenance
@@ -1768,7 +1768,10 @@ end
     first_fact = CallFact(span, Callee.Methods([only(methods(CASES.no_text_method))]), [EffectKind.io], false, true, false)
     second_fact = CallFact(span, Callee.Methods([only(methods(CASES.take_lock!))]), [memory_kind], true, false, true)
     merged = merge_calls(first_fact, second_fact)
-    @test merged.callee == Callee.Methods([only(methods(CASES.no_text_method)), only(methods(CASES.take_lock!))])
+    # Callee methods keep source order whatever order units merge in.
+    @test merged.callee == Callee.Methods([only(methods(CASES.take_lock!)), only(methods(CASES.no_text_method))])
+    @test merge_calls(second_fact, first_fact).callee == merged.callee
+    @test methods_callee([only(methods(CASES.no_text_method)), only(methods(CASES.take_lock!)), only(methods(CASES.no_text_method))]) == merged.callee
     @test merged.kinds == [memory_kind, EffectKind.io] && merged.throws && !merged.terminates && merged.used
     @test merge_callees(Callee.Foreign(), Callee.Foreign()) == Callee.Foreign()
     @test merge_callees(Callee.Foreign(), first_fact.callee) == Callee.Open()

@@ -149,7 +149,7 @@ function outcome_callee(statement::Expr, outcome::Outcome.Type)::Callee.Type
     return @match outcome begin
         Outcome.Builtin(builtin, _) => Callee.Builtin(builtin)
         Outcome.Intrinsic(intrinsic, _) => Callee.Builtin(intrinsic)
-        Outcome.Dispatch(instances, _) => Callee.Methods(unique!(Method[instance.def for instance in instances]))
+        Outcome.Dispatch(instances, _) => methods_callee(Method[instance.def for instance in instances])
         Outcome.Dead() => Callee.Methods(Method[])
         _ => Callee.Open()
     end

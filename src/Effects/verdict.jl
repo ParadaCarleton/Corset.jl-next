@@ -162,7 +162,7 @@ end
 function merge_callees(first::Callee.Type, second::Callee.Type)::Callee.Type
     first == second && return first
     left, right = callee_methods(first), callee_methods(second)
-    return isnothing(left) || isnothing(right) ? Callee.Open() : Callee.Methods(union(left, right))
+    return isnothing(left) || isnothing(right) ? Callee.Open() : methods_callee([left; right])
 end
 
 """Fact of call statement over two units of method (`CallFact`)."""
