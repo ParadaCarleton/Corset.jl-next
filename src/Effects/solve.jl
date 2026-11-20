@@ -312,7 +312,11 @@ function stand_in_cut(run::Run, frame::CC.InferenceState)::Bool
     instance, code = frame.linfo, frame.src
     holds_stand_in(instance.specTypes) || return false
     method = instance.def::Method
-    failing = [index for (index, _, callee) in never_returning(code, CC.sptypes_from_meth_instance(instance)) if !helper!(run, instance, callee)]
+    # Loop keeps `callee` typed `Any`: filter closure would compile once per callee type.
+    failing = Int[]
+    for (index, _, callee) in never_returning(code, CC.sptypes_from_meth_instance(instance))
+        helper!(run, instance, callee) || push!(failing, index)
+    end
     dead = keeps_contracts(method) ? Int[] : dead_calls(code)
     isempty(failing) && isempty(dead) && return false
     # Generated code differs per signature, so statement index of stand-in code names no statement of model code.
@@ -382,7 +386,7 @@ stored_body(run::Run, instance::Core.MethodInstance)::Union{Body, String} = (inf
 const NAMING_BUILTINS = (Core.getfield, Core.getglobal, keys(FIELD_WRITES)..., keys(GLOBAL_WRITES)...)
 
 """Whether `builtin` names slot with its first two operands (`NAMING_BUILTINS`)."""
-naming(builtin::Any)::Bool = any(candidate -> candidate === builtin, NAMING_BUILTINS)
+naming(@nospecialize(builtin::Any))::Bool = any(candidate -> candidate === builtin, NAMING_BUILTINS)
 
 """Add parameter position of each of `operands` at `positions` that is argument of instance."""
 function add_parameters!(found::Set{Int}, operands::Vector{Operand.Type}, positions::Any)::Nothing

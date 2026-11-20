@@ -225,7 +225,7 @@ function flow_into!(entries::Vector{Vector{Path}}, pending::BitSet, block::Int, 
 end
 
 """Value of branch `condition` on path with `conditions`: constant, condition path took, else `nothing`."""
-function condition_value(conditions::Dict{Any, Bool}, condition::Any)::Union{Nothing, Bool}
+function condition_value(conditions::Dict{Any, Bool}, @nospecialize(condition::Any))::Union{Nothing, Bool}
     condition isa Bool && return condition
     return get(conditions, condition, nothing)
 end

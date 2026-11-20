@@ -16,6 +16,7 @@ end
     isolated("guesses.jl")
     isolated("narrowing.jl")
     isolated("boxes.jl")
+    isolated("specialize.jl")
     isolated("effects.jl")
     isolated("summary_cache.jl")
     isolated("registry.jl")

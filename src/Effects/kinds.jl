@@ -29,7 +29,7 @@ const AUDITED_METHODS = Dict{Method, Pair{Root.Type, EffectKind.T}}(
 )
 
 """Kind of access to object of `type` itself: `IO`, RNG or synchronization object; `nothing` for other types."""
-function special_kind(type::Any)::Union{Nothing, EffectKind.T}
+function special_kind(@nospecialize(type::Any))::Union{Nothing, EffectKind.T}
     type isa Type && type !== Union{} || return nothing
     type <: IO && return EffectKind.io
     type <: AbstractRNG && return EffectKind.rng_argument
@@ -41,7 +41,7 @@ end
 Kind of access to `field` of object of type `holder` at access statement (`effects.md`, Effect kinds): audited field,
 `Task` state (RNG, scope, other), else kind of holder type itself. `nothing` field: access to whole object or memory.
 """
-function site_kind(holder::Any, field::Union{Nothing, Symbol})::EffectKind.T
+function site_kind(@nospecialize(holder::Any), field::Union{Nothing, Symbol})::EffectKind.T
     holder isa DataType && !isnothing(field) && haskey(AUDITED_FIELDS, (holder, field)) && return AUDITED_FIELDS[(holder, field)]
     if holder isa Type && holder !== Union{} && holder <: Task
         field in RNG_FIELDS && return EffectKind.default_rng
@@ -51,7 +51,7 @@ function site_kind(holder::Any, field::Union{Nothing, Symbol})::EffectKind.T
 end
 
 """Kind of access to `field` (constant operand: name or index) of object of type `holder` (`site_kind`)."""
-function field_kind(holder::Any, field::Union{Nothing, Some{Any}})::EffectKind.T
+function field_kind(@nospecialize(holder::Any), field::Union{Nothing, Some{Any}})::EffectKind.T
     name = isnothing(field) ? nothing : something(field)
     name isa Int && isconcretetype(holder) && !(holder <: Tuple) && 1 <= name <= fieldcount(holder) && return site_kind(holder, fieldname(holder, name))
     return site_kind(holder, name isa Symbol ? name : nothing)
@@ -65,7 +65,7 @@ root_type(ir::CC.IRCode, root::Root.Type)::Any = @match root begin
 end
 
 """Type in `step` slot of object of `type`; `Any` when type has no such slot."""
-function step_type(type::Any, step::Step.Type)::Any
+function step_type(@nospecialize(type::Any), step::Step.Type)::Any
     type isa DataType || return Any
     return @match step begin
         Step.Field(name) => hasfield(type, name) ? fieldtype(type, name) : Any

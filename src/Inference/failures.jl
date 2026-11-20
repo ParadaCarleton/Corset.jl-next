@@ -3,7 +3,7 @@ Throw helper verdict on `callee`, with compiler edges of inferences it ran. Help
 methods throws for every argument type it declares (`error`, `rethrow`, `Base.Enums.enum_argument_error`). Fallback
 method that throws for one missing interface does not make function helper.
 """
-function throw_helper(callee::Any)::Tuple{Bool, Vector{Any}}
+function throw_helper(@nospecialize(callee::Any))::Tuple{Bool, Vector{Any}}
     callee === throw && return true, Any[]
     found, edges = methods(callee), Any[]
     isempty(found) && return false, edges
@@ -20,7 +20,7 @@ end
 Callable value of inferred `type`: its singleton, or type name of constructor with unknown parameters
 (`Type{Point{T}} where T` gives `Point`); else `nothing`.
 """
-function callable(type::Any)::Any
+function callable(@nospecialize(type::Any))::Any
     singleton = CC.singleton_type(type)
     !isnothing(singleton) && return singleton
     bare = Base.unwrap_unionall(CC.widenconst(type))
@@ -61,7 +61,7 @@ function statement_type!(edges::Vector{Any}, method::Method, own::Type, signatur
 end
 
 """Name of called function; called type as `scope` prints it (`Vector{Float64}`); text of other callable value."""
-callee_text(callee::Any, scope::Module)::String = callee isa Function ? string(nameof(callee)) : callee isa Type ? sprint(show, callee; context = :module => scope) : repr(callee)
+callee_text(@nospecialize(callee::Any), scope::Module)::String = callee isa Function ? string(nameof(callee)) : callee isa Type ? sprint(show, callee; context = :module => scope) : repr(callee)
 
 """
 Reached call statements of typed `code` that never return, with callee that inference knows (`called`): statement
@@ -109,7 +109,7 @@ function failures!(edges::Vector{Any}, helpers::IdDict{Any, Tuple{Bool, Vector{A
 end
 
 """Whether typed `statement` calls function or C code, assigned or not; stores are calls (`setfield!`, `setglobal!`)."""
-effect_statement(statement::Any)::Bool = (value = Widening.assigned(statement); value isa Expr && value.head in (:call, :foreigncall, :invoke))
+effect_statement(@nospecialize(statement::Any))::Bool = (value = Widening.assigned(statement); value isa Expr && value.head in (:call, :foreigncall, :invoke))
 
 """Indexes of call statements typed `code` never reaches: inference wraps unreached statement in `Core.Const`."""
 dead_calls(code::Core.CodeInfo)::Vector{Int} = [index for (index, statement) in enumerate(code.code) if statement isa Core.Const && effect_statement(statement.val)]
