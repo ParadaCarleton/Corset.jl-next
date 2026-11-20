@@ -110,6 +110,27 @@ call_nest!()::Nothing = bump_nest!()
 
 call_deeper!(wrapper::Wrapper)::Nothing = set_deeper!(wrapper, 1)
 
+"""Recursive list node: path into `next` repeats its type, so it collapses to `deep`."""
+mutable struct Link
+    value::Int
+    next::Link
+end
+
+relink!(link::Link)::Nothing = (link.next.next = link; nothing)
+
+"""Recursive node that holds `IO`: kind below collapsed path comes from written object type."""
+mutable struct IOLink
+    io::IOBuffer
+    next::IOLink
+end
+
+relink_io!(link::IOLink)::Nothing = (link.next.next = link; nothing)
+
+rewind_io!(link::IOLink)::Nothing = (seekstart(link.next.io); nothing)
+
+"""Raw write into `IO` memory below collapsed path: exempt kind lacks proof, so write counts as memory write."""
+clear_io!(link::IOLink)::Nothing = (fill!(link.next.io.data, 0x00); nothing)
+
 read_module()::Int = getproperty(EffectsCases, :total)
 
 stamp!(cell::Base.RefValue{Int})::Nothing = (cell[] = 1; nothing)

@@ -57,11 +57,20 @@ function field_kind(@nospecialize(holder::Any), field::Union{Nothing, Some{Any}}
     return site_kind(holder, name isa Symbol ? name : nothing)
 end
 
-"""Type of root of place in instance with IR `ir`: parameter type, or declared type of global binding."""
+"""
+Type of root of place in instance with IR `ir`: parameter type, type of constant global value (compiler uses it too),
+or declared type of other global binding.
+"""
 root_type(ir::CC.IRCode, root::Root.Type)::Any = @match root begin
     Root.Parameter(position) => position <= length(ir.argtypes) ? CC.widenconst(ir.argtypes[position]) : Any
-    Root.Global(binding) => isdefinedglobal(binding.mod, binding.name) ? Core.get_binding_type(binding.mod, binding.name) : Any
+    Root.Global(binding) => global_type(binding)
     Root.Elsewhere() => Any
+end
+
+"""Type of constant global `binding` value, else declared type of binding; `Any` when undefined."""
+function global_type(binding::GlobalRef)::Any
+    isdefinedglobal(binding.mod, binding.name) || return Any
+    return isconst(binding) ? typeof(getglobal(binding.mod, binding.name)) : Core.get_binding_type(binding.mod, binding.name)
 end
 
 """Type in `step` slot of object of `type`; `Any` when type has no such slot."""
