@@ -1,0 +1,32 @@
+error[addlogprob]: `@addlogprob!` adds density term outside `~`
+ --> positive.jl:4:5
+  |
+4 |     @addlogprob! sum(logpdf.(Laplace(0, σ), x))
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ term has no variable
+  |
+  = why: `Prior()` sampling, `rand`, `predict` and pointwise likelihoods skip or misfile it
+  = fix: state term with `~`; for new density, define `Distribution` subtype with `logpdf` and `rand`   [manual]
+  = docs: corset explain addlogprob
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow addlogprob -- <reason>`
+
+error[addlogprob]: `@addlogprob!` adds density term outside `~`
+ --> positive.jl:9:5
+  |
+9 |     Turing.@addlogprob!(logpdf(Gamma(2, 1), abs(μ)))
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ term has no variable
+  |
+  = why: `Prior()` sampling, `rand`, `predict` and pointwise likelihoods skip or misfile it
+  = fix: state term with `~`; for new density, define `Distribution` subtype with `logpdf` and `rand`   [manual]
+  = docs: corset explain addlogprob
+
+error[addlogprob]: `@addlogprob!` adds density term outside `~`
+  --> positive.jl:16:9
+   |
+16 |         DynamicPPL.@addlogprob! (; loglikelihood = -Inf)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ term has no variable
+   |
+   = why: `Prior()` sampling, `rand`, `predict` and pointwise likelihoods skip or misfile it
+   = fix: state term with `~`; for new density, define `Distribution` subtype with `logpdf` and `rand`   [manual]
+   = docs: corset explain addlogprob
+

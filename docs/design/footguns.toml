@@ -900,3 +900,12 @@ example = "`f(v::AbstractVector) = push!(v, 0)` throws on `1:3`, `view(a, 1:2)` 
 group = "composability"
 stage = "inference"
 note = "Calls: `push!`, `pushfirst!`, `append!`, `prepend!`, `insert!`, `pop!`, `popfirst!`, `popat!`, `deleteat!`, `keepat!`, `splice!`, `resize!`, `empty!`, `filter!`, `unique!`. Annotation: Base abstract array type (`AbstractVector`, `DenseVector`, `StridedVector` and others), bound of type parameter, or union member. Type test or `ArrayInterface.can_change_size` guard before call narrows it. Unannotated argument and package abstract types pass. Definite. Direct call only; resize through callee waits for effect kinds. Fix `manual`: write into caller-allocated output by index (faster than growth); narrow to `Vector`; or return new array."
+
+[[footgun]]
+id = 112
+area = "statistics"
+text = "`@addlogprob!` hides density term from model queries"
+example = "`@addlogprob! logpdf(Gamma(2, 1), σ)` → `σ ~ Gamma(2, 1)`"
+group = "correctness"
+stage = "syntax"
+note = "DynamicPPL adds number to log likelihood, so prior term written so is lost under `Prior()` sampling and counted by maximum likelihood. Term has no variable: `rand`, `predict` and `pointwise_loglikelihoods` skip it, so predictive checks and PSIS-LOO miss it. `NamedTuple` form splits prior from likelihood but stays hidden from those queries. Rejection by `-Inf` counts too: support of distribution states constraint. Prefixes `Turing.` and `DynamicPPL.` match too. Definite. Fix `manual`: `Distribution` subtype with `logpdf`, `rand` when term can be simulated, and support bounds; then `x ~ D(θ)`."

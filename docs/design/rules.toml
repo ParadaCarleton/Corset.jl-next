@@ -386,6 +386,11 @@ name = "nan-compare"
 footguns = [95]
 
 [[rule]]
+name = "addlogprob"
+footguns = [112]
+note = "Syntax-stage Argus pattern."
+
+[[rule]]
 name = "unstable-formula"
 footguns = [110]
 note = "Inference-stage rule added after phase 4: own PR. Fixture per pattern."
