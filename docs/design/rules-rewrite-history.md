@@ -1178,9 +1178,13 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - `trace` and `load_any` kept doubt of first chain to reach origin. Chain with less doubt found later got lost: access stayed blind.
 - Fix: walk origin again when chain lowers its doubt. Test builds both visit orders over two origins; old walks fail one.
 - Corpus facts do not change (job 863, winwsl). JSON warm solve allocation drops from 8483 to 7632 MB.
-- Open: Distributions facts take one of two sets, 24523 or 24777 lines. Set holds for one Corset build and can change with rebuild.
-- Main and fix each gave both sets (jobs 858, 861, 863, 881, 882). Lines differ in `test_mvnormal` only, at accesses mapped from `rand` summaries.
-- Call facts agree; widening never fires (job 861). Likely cause: type hash holds module build id, so `Dict` order changes per build.
+- Open: Distributions facts take one of two sets, 24523 or 24777 lines. Lines differ in `test_mvnormal` only.
+- Ten Corset rebuilds kept one set on each of two boxes (jobs 900, 902). Distributions rebuild changed set (job 910).
+- Equal native IR gave equal summary for every variant (job 911). Corset steps do not cause the change.
+- Native inference narrows `g` to `Union{MvNormal, MvNormalCanon}` after `cov(g)` in some builds only. Narrowing followed `cov(::MvNormal)` result in cache.
+- Distributions loaded from source gave both results over three processes (job 931). Julia inference order decides.
+- Corset infers with `NativeInterpreter`, so it shares global cache with package images. Other IR changes rename type variables only.
+- Open choice: inference with own cache makes facts independent of package images. Cost: every callee infers again in each run.
 
 ### Deep walk
 
