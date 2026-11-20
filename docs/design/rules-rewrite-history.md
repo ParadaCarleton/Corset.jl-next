@@ -1001,6 +1001,31 @@ Job 706 on ssh-dev, table arm without `MEMORY_POINTER` against branch:
 
 - Blind writes: DataStructures 272 to 270, JSON unchanged at 93.
 
+### Branch constants
+
+- `ScopedValue` read calls `HAMT.path(trie, key, h, false)`. Generic variant runs copy-on-write branch, so each read wrote `trie.data`.
+- Fix (#263): constant `Bool` argument that callee uses as branch condition makes variant. Variant code drops unreached blocks.
+- Doubt test: Julia inference resolves same constant, so Corset resolves it too.
+
+Job 727 on winwsl, main 81aa574c against branch:
+
+| Package | `possible` | `blind_write` | warm solve s |
+|---|---|---|---|
+| SpecialFunctions 2.9.2 | 90 to 69 | 73 to 41 | 2.37 to 2.79 |
+| StatsFuns 2.3.1 | 58 to 58 | 58 to 50 | 1.35 to 1.26 |
+| Distances 0.10.12 | 58 to 58 | 64 to 64 | 1.70 to 1.67 |
+| DataStructures 0.18.22 | 224 to 224 | 270 to 270 | 4.83 to 3.91 |
+| JSON 1.13.4 | 84 to 84 | 93 to 93 | 51.67 to 35.46 |
+
+- Job 728 ran on same box during base arm, so base times are high. Compare facts only.
+
+### Element stores
+
+- Base contract store into collection whose `eltype` points to no object stores nothing (#264): Julia converts stored value.
+- Corpus facts unchanged (job 728 against base arm of job 727).
+- JSON `json!` ESCAPECHARS paths have other source. `collect` over dict generator gives blind `Deep(ESCAPECHARS)`; blind loads then merge heap slots (job 731).
+- `json!(::Any, ...)` summary: 605 of 639 writes and 799 of 877 reads are blind. Its self-cycle reruns 3 times, 4.3 s (job 733).
+
 ### Lock writes
 
 - `lock(q.lk)` writes lock state inside argument `q`, so `bang-convention` would demand `!` on every thread-safe container method.
