@@ -1563,6 +1563,9 @@ end
     @test any(call -> call.callee == Callee.Open() && !call.used, odd)
     dead = only(call for call in odd if call.callee == Callee.Methods(Method[]))
     @test dead.throws && !dead.used
+    # Compaction turns use of constant result into literal; use before compaction counts.
+    converts = [call for call in named(:constant_calls).calls if call.callee == Callee.Methods([which(UInt8, Tuple{Char})])]
+    @test [(strip(line_text(call.span)), call.used) for call in converts] == [("UInt8('a')", false), ("return byte == UInt8('\\t')", true)]
     # Lock primitive, and callee that leaves lock held: synchronization.
     @test only(calls_to(:grab_guard!, :lock)).kinds == [lock_kind]
     @test only(calls_to(:grab_then_set!, :grab_guard!)).kinds == [lock_kind]

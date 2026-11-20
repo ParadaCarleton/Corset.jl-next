@@ -889,6 +889,7 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <li>Claim: <code>@assume_effects</code> on method or on block in it. Generated method and method without source count as claim.</li>
 <li>Native inference edges tell reach. Callee without cached code counts as claim. Corset, Moshi and Compiler carry claims, so each run checks reach of claims.</li>
 <li>Compaction deletes unused call when compiler effects allow. Call that reaches claim or cut stays, and so does statement under block claim of claiming method.</li>
+<li>Unit keeps every call: call facts need discarded calls (Facts). Unit with shortcut keeps code too; its summary stays empty.</li>
 <li>Own analysis runs on every method with claim outside Base. <code>false-effects</code> compares claims of package methods.</li>
 </ul>
 <h4>Stand-in cuts</h4>
@@ -910,7 +911,7 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <h4>Effect kinds</h4>
 <p>Summary keeps every effect with its kind. Rules apply exemptions; engine filters nothing.</p>
 <ul>
-<li>Kinds: memory write, IO, default RNG, RNG argument, task-local state, <code>ScopedValue</code> read, lock and other synchronization, lazy init, audited internal state.</li>
+<li>Kinds: memory write, IO, default RNG, RNG argument, task-local state, <code>ScopedValue</code> read, lock and other synchronization, lazy init, audited internal state, iteration start.</li>
 <li><code>bang-convention</code> exempts IO, RNG, lazy init and audited internal state. <code>unused-call</code> counts every kind. <code>hidden-input</code> reads default RNG, task-local state, <code>ScopedValue</code> and mutable globals.</li>
 <li>Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.</li>
 <li>Kind comes from types along place path, root first: first <code>IO</code> gives IO, <code>AbstractRNG</code> gives RNG argument.</li>
@@ -982,10 +983,14 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <ul>
 <li>Per package method: writes and reads by place with certainty and cause span; blind writes and reads with blind spot; result aliases.</li>
 <li>Iteration starts by place: <code>iterate</code> without state, directly or through callee. Summary joins and widens them like reads.</li>
+<li>Start is read of kind <code>iteration</code>. Base contract of <code>first</code>, <code>only</code>, generic <code>isempty</code> and destructuring starts too.</li>
 <li>Fact of incomplete method has <code>complete</code> false: it gets no definite none.</li>
 <li>Per unit, for <code>lifecycle</code> and statement rules (F48, F50, F51): allocation sites, read, write and iteration-start events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.</li>
 <li>Element event carries index operand: constant or SSA value. <code>lifecycle</code> decides which elements writes cover (F33, F34).</li>
-<li>Per call statement: callee, effect kinds, may throw, result used or discarded (F54, F86).</li>
+<li>Per call statement: callee, kinds of its writes at any certainty, may throw, terminates, result used or discarded (F54, F86).</li>
+<li>Callee holds that call leaves count as writes: lock gives synchronization, file gives IO.</li>
+<li>Use counts before compaction: compaction turns each use of constant result into literal (<code>b == UInt8('\t')</code>).</li>
+<li>Units of method merge by source statement: unit that may throw, writes or uses result decides.</li>
 <li><code>unused-call</code> needs no effect of any kind, no throw and termination: discarded <code>parse(Int, text)</code> validates input.</li>
 <li>Join of two allocations at branch (<code>y = flag ? a : b</code>) makes fact <code>possible</code>.</li>
 <li>Callee content reads come from summaries: <code>sum</code> reads, <code>fill!</code> does not.</li>

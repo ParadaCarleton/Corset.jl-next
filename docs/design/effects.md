@@ -256,6 +256,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Element event carries index operand: constant or SSA value. `lifecycle` decides which elements writes cover (F33, F34).
 - Per call statement: callee, kinds of its writes at any certainty, may throw, terminates, result used or discarded (F54, F86).
 - Callee holds that call leaves count as writes: lock gives synchronization, file gives IO.
+- Use counts before compaction: compaction turns each use of constant result into literal (`b == UInt8('\t')`).
 - Units of method merge by source statement: unit that may throw, writes or uses result decides.
 - `unused-call` needs no effect of any kind, no throw and termination: discarded `parse(Int, text)` validates input.
 - Join of two allocations at branch (`y = flag ? a : b`) makes fact `possible`.
