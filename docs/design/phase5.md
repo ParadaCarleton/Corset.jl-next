@@ -117,6 +117,7 @@ Run engine on each corpus package (`plan.md`, Corpus). Every item holds per pack
 
 - `possible` write on at most 30% of package methods with verdict; closures and keyword bodies count.
 - Coverage line counts methods without verdict.
+- Facts stay same over Corset rebuilds. Distributions fails now: two fact sets (history, "Visit order").
 - Hand audit of 20 contract and join verdicts finds no false definite.
 - With warm library cache, `effects` stage takes at most `inference` stage time.
 - Full cold run with library cache from other corpus package stays inside speed budget.

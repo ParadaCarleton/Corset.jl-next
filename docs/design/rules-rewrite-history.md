@@ -1172,3 +1172,12 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 
 - Warm `effects` stays at most `inference` on all five. Box ran other jobs, so ratios near 1 carry noise.
 - `possible` limit 30% fails on Distances and Distributions.
+
+### Visit order
+
+- `trace` and `load_any` kept doubt of first chain to reach origin. Chain with less doubt found later got lost: access stayed blind.
+- Fix: walk origin again when chain lowers its doubt. Test builds both visit orders over two origins; old walks fail one.
+- Corpus facts do not change (job 863, winwsl). JSON warm solve allocation drops from 8483 to 7632 MB.
+- Open: Distributions facts take one of two sets, 24523 or 24777 lines. Set holds for one Corset build and can change with rebuild.
+- Main and fix each gave both sets (jobs 858, 861, 863, 881, 882). Lines differ in `test_mvnormal` only, at accesses mapped from `rand` summaries.
+- Call facts agree; widening never fires (job 861). Likely cause: type hash holds module build id, so `Dict` order changes per build.

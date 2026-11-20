@@ -259,23 +259,28 @@ end
 const MEMORY_POINTER = Step.Field(:ptr)
 
 """
-Targets of `step` slot of `origin`: place below caller object, stored targets, and element or data pointer of memory
-backing not in `seen`.
+Targets of `step` slot of `origin`: place below caller object, stored targets, and element or data pointer of each
+memory backing chain reaches, with doubt of chain.
 """
-function trace(flow::Flow, origin::Origin.Type, step::Step.Type, seen::Set{Origin.Type})::Targets
-    found = Targets()
-    push!(seen, origin)
-    @match origin begin
-        Origin.Caller(place) => add!(found, Origin.Caller(extend(flow.ir, place, step)), NO_DOUBT)
-        Origin.Unknown() => add!(found, origin, NO_DOUBT)
-        Origin.Allocation(_) => nothing
-    end
-    add_all!(found, slot(flow, origin, step), NO_DOUBT)
-    add_all!(found, get(flow.spread, origin, nothing), NO_DOUBT)
-    backing = get(flow.backing, origin, nothing)
-    ((step == Step.Element() || step == MEMORY_POINTER) && !isnothing(backing)) || return found
-    for (memory, doubt) in backing
-        memory in seen || add_all!(found, trace(flow, memory, step, seen), doubt)
+function trace(flow::Flow, origin::Origin.Type, step::Step.Type)::Targets
+    found, reached, pending = Targets(), Targets(), [origin => NO_DOUBT]
+    while !isempty(pending)
+        current, chain = pop!(pending)
+        # Walk origin again only when chain lowers its doubt: result does not depend on visit order.
+        add!(reached, current, chain) || continue
+        doubt = reached[current]
+        @match current begin
+            Origin.Caller(place) => add!(found, Origin.Caller(extend(flow.ir, place, step)), doubt)
+            Origin.Unknown() => add!(found, current, doubt)
+            Origin.Allocation(_) => nothing
+        end
+        add_all!(found, slot(flow, current, step), doubt)
+        add_all!(found, get(flow.spread, current, nothing), doubt)
+        backing = get(flow.backing, current, nothing)
+        ((step == Step.Element() || step == MEMORY_POINTER) && !isnothing(backing)) || continue
+        for (memory, flag) in backing
+            push!(pending, memory => most(flag, doubt))
+        end
     end
     return found
 end
@@ -287,7 +292,7 @@ state: calls map same places at each call statement and round, and memory backin
 function load(flow::Flow, objects::Targets, step::Step.Type)::Targets
     flow.stale && (empty!(flow.follows); flow.stale = false)
     found = Targets()
-    for (origin, doubt) in objects, (target, flag) in get!(() -> trace(flow, origin, step, Set{Origin.Type}()), flow.follows, (origin, step))
+    for (origin, doubt) in objects, (target, flag) in get!(() -> trace(flow, origin, step), flow.follows, (origin, step))
         add!(found, target, most(flag, doubt))
     end
     return found
@@ -298,11 +303,12 @@ Targets of any slot of `objects`: caller objects collapse to `Deep`, doubt kept;
 backing too. Serves loads whose slot is not constant. Merged callee objects can back themselves, so walk keeps `seen`.
 """
 function load_any(flow::Flow, objects::Targets)::Targets
-    found, pending, seen = Targets(), collect(objects), Set{Origin.Type}()
+    found, reached, pending = Targets(), Targets(), collect(objects)
     while !isempty(pending)
-        origin, doubt = pop!(pending)
-        origin in seen && continue
-        push!(seen, origin)
+        origin, chain = pop!(pending)
+        # Walk origin again only when chain lowers its doubt: result does not depend on visit order.
+        add!(reached, origin, chain) || continue
+        doubt = reached[origin]
         @match origin begin
             Origin.Caller(place) => add!(found, Origin.Caller(Place.Deep(root_of(place))), doubt)
             Origin.Unknown() => add!(found, origin, doubt)
