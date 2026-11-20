@@ -573,8 +573,8 @@ end
 
 """
 Call statement `index` that applies callee summary: targets and derived type sources of each callee parameter, targets
-of every callee fresh node (`nothing`: callee makes none), callee places mapped so far, and type sources of arguments so
-far. Stores of later edges miss cached places until next round, so fixpoint stays same.
+of every callee fresh node (`nothing`: callee makes none), callee places mapped so far with and without origins below
+(`beneath`), and type sources of arguments so far. Stores of later edges miss cached places until next round.
 """
 struct CallSite
     arguments::Vector{Targets}
@@ -582,17 +582,21 @@ struct CallSite
     index::Int
     fresh::Union{Nothing, Targets}
     places::Dict{Place.Type, Targets}
+    below::Dict{Place.Type, Targets}
     sources::Dict{Int, Sources}
 end
 
 """Call site at statement `index` of callee with `fresh` fresh nodes: they merge into allocation at `index`."""
 function CallSite(arguments::Vector{Targets}, derived::Vector{Sources}, index::Int, fresh::Int)::CallSite
     merged = fresh == 0 ? nothing : Targets(Origin.Allocation(index) => fresh == 1 ? NO_DOUBT : BLIND_DOUBT)
-    return CallSite(arguments, derived, index, merged, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
+    return CallSite(arguments, derived, index, merged, Dict{Place.Type, Targets}(), Dict{Place.Type, Targets}(), Dict{Int, Sources}())
 end
 
 """Targets of callee `place` at `site`, mapped once per call statement and round."""
 site_place(flow::Flow, site::CallSite, place::Place.Type)::Targets = get!(() -> map_place(flow, place, site.arguments), site.places, place)
+
+"""Targets of callee `place` at `site` with origins below them (`beneath`), found once per call statement and round."""
+site_below(flow::Flow, site::CallSite, place::Place.Type)::Targets = get!(() -> beneath(flow, site_place(flow, site, place)), site.below, place)
 
 """
 Targets of callee `node` at `site`; every fresh node of callee merges into allocation at call statement. Result is
@@ -715,8 +719,8 @@ end
 """Writes and reads of callee `summary` at `site` into `writes` and `reads`, each mapped onto caller objects."""
 function map_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary)::Nothing
     for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below, kind), effect) in effects
-        objects = site_place(flow, site, place)
-        access!(table, below ? beneath(flow, objects) : objects, below, Effect(caller_doubt(flow, site, effect.doubt), site.index, effect.reason), kind)
+        objects = below ? site_below(flow, site, place) : site_place(flow, site, place)
+        access!(table, objects, below, Effect(caller_doubt(flow, site, effect.doubt), site.index, effect.reason), kind)
     end
     return nothing
 end
