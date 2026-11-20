@@ -139,30 +139,47 @@ function slot!(table::Dict{K, Targets}, key::K)::Targets where {K}
     return get!(Targets, table, key)
 end
 
-"""Targets stored in `step` slot of `origin`."""
-function slot(flow::Flow, origin::Origin.Type, step::Step.Type)::Targets
+"""Targets stored in `step` slot of `origin`; `nothing` for slot without store."""
+function slot(flow::Flow, origin::Origin.Type, step::Step.Type)::Union{Nothing, Targets}
     slots = get(flow.heap, origin, nothing)
-    return isnothing(slots) ? Targets() : get(slots, step, Targets())
+    return isnothing(slots) ? nothing : get(slots, step, nothing)
 end
 
-"""Targets in every slot of `origin`: fields, memory backing and unknown slot."""
-function contents(flow::Flow, origin::Origin.Type)::Vector{Targets}
+"""Add each origin of `source` with its doubt raised to at least `doubt` to `found`; `nothing` adds none."""
+function add_all!(found::Targets, source::Union{Nothing, Targets}, doubt::Doubt)::Nothing
+    isnothing(source) && return nothing
+    for (origin, flag) in source
+        add!(found, origin, most(flag, doubt))
+    end
+    return nothing
+end
+
+"""Call `visit` on targets of every slot of `origin`: fields, memory backing, then unknown slot."""
+function foreach_content(visit::F, flow::Flow, origin::Origin.Type)::Nothing where {F}
     slots = get(flow.heap, origin, nothing)
-    return [isnothing(slots) ? Targets[] : collect(values(slots)); get(flow.backing, origin, Targets()); get(flow.spread, origin, Targets())]
+    isnothing(slots) || foreach(visit, values(slots))
+    backing = get(flow.backing, origin, nothing)
+    isnothing(backing) || visit(backing)
+    spread = get(flow.spread, origin, nothing)
+    isnothing(spread) || visit(spread)
+    return nothing
 end
 
 """
 Origins `objects` hold, through slots of fresh objects: access below fresh object (open call operand, vararg tuple)
-reaches caller objects inside it.
+reaches caller objects inside it. Without fresh object, result is `objects` itself: callers only read it.
 """
 function beneath(flow::Flow, objects::Targets)::Targets
+    any(fresh_origin, keys(objects)) || return objects
     found, pending = copy(objects), filter(fresh_origin, collect(keys(objects)))
     seen = Set(pending)
     while !isempty(pending)
         origin = pop!(pending)
-        for targets in contents(flow, origin), (target, doubt) in targets
-            add!(found, target, most(doubt, found[origin]))
-            fresh_origin(target) && !(target in seen) && (push!(seen, target); push!(pending, target))
+        foreach_content(flow, origin) do targets
+            for (target, doubt) in targets
+                add!(found, target, most(doubt, found[origin]))
+                fresh_origin(target) && !(target in seen) && (push!(seen, target); push!(pending, target))
+            end
         end
     end
     return found
@@ -177,7 +194,9 @@ null_pointer(binding::GlobalRef)::Bool = isconst(binding) && (pointer = getgloba
 """Targets of global `binding`: object caller sees there, and objects instance binds to it. Null pointer has none."""
 function global_targets(flow::Flow, binding::GlobalRef)::Targets
     null_pointer(binding) && return Targets()
-    return union_targets((Targets(Origin.Caller(Place.At(Root.Global(binding), Step.Type[])) => NO_DOUBT), get(flow.bound, binding, Targets())))
+    found = Targets(Origin.Caller(Place.At(Root.Global(binding), Step.Type[])) => NO_DOUBT)
+    add_all!(found, get(flow.bound, binding, nothing), NO_DOUBT)
+    return found
 end
 
 """Targets of IR `value`: SSA value, argument, global binding, or constant object (unknown)."""
@@ -227,15 +246,12 @@ function trace(flow::Flow, origin::Origin.Type, step::Step.Type, seen::Set{Origi
         Origin.Unknown() => add!(found, origin, NO_DOUBT)
         Origin.Allocation(_) => nothing
     end
-    for source in (slot(flow, origin, step), get(flow.spread, origin, Targets())), (target, doubt) in source
-        add!(found, target, doubt)
-    end
-    step == Step.Element() || step == MEMORY_POINTER || return found
-    for (memory, doubt) in get(flow.backing, origin, Targets())
-        memory in seen && continue
-        for (target, flag) in trace(flow, memory, step, seen)
-            add!(found, target, most(flag, doubt))
-        end
+    add_all!(found, slot(flow, origin, step), NO_DOUBT)
+    add_all!(found, get(flow.spread, origin, nothing), NO_DOUBT)
+    backing = get(flow.backing, origin, nothing)
+    ((step == Step.Element() || step == MEMORY_POINTER) && !isnothing(backing)) || return found
+    for (memory, doubt) in backing
+        memory in seen || add_all!(found, trace(flow, memory, step, seen), doubt)
     end
     return found
 end
@@ -268,12 +284,18 @@ function load_any(flow::Flow, objects::Targets)::Targets
             Origin.Unknown() => add!(found, origin, doubt)
             Origin.Allocation(_) => nothing
         end
-        slots = get(flow.heap, origin, Dict{Step.Type, Targets}())
-        for targets in [collect(values(slots)); get(flow.spread, origin, Targets())], (target, flag) in targets
-            add!(found, target, most(flag, doubt))
+        slots = get(flow.heap, origin, nothing)
+        if !isnothing(slots)
+            for targets in values(slots)
+                add_all!(found, targets, doubt)
+            end
         end
-        for (memory, flag) in get(flow.backing, origin, Targets())
-            push!(pending, memory => most(flag, doubt))
+        add_all!(found, get(flow.spread, origin, nothing), doubt)
+        backing = get(flow.backing, origin, nothing)
+        if !isnothing(backing)
+            for (memory, flag) in backing
+                push!(pending, memory => most(flag, doubt))
+            end
         end
     end
     return found

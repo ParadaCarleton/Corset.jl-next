@@ -551,40 +551,49 @@ function deep(flow::Flow, objects::Targets)::Targets
     found, pending = Targets(), collect(keys(objects))
     while !isempty(pending)
         origin = pop!(pending)
-        reached = @match origin begin
-            Origin.Caller(place) => Origin.Caller(Place.Deep(root_of(place)))
-            _ => origin
-        end
-        add!(found, reached, BLIND_DOUBT) || continue
-        for targets in contents(flow, origin)
-            append!(pending, keys(targets))
-        end
+        add!(found, collapsed(origin), BLIND_DOUBT) || continue
+        foreach_content(targets -> append!(pending, keys(targets)), flow, origin)
     end
     return found
 end
 
+"""Caller object `origin` collapsed to `Deep` of its root; other origin stays."""
+collapsed(origin::Origin.Type)::Origin.Type = @match origin begin
+    Origin.Caller(place) => Origin.Caller(Place.Deep(root_of(place)))
+    _ => origin
+end
+
 """
-Call statement `index` that applies callee summary: targets and derived type sources of each callee parameter, callee
-fresh node count, callee places mapped so far, and type sources of arguments so far. Stores of later edges miss cached
-places until next round, so fixpoint stays same.
+Call statement `index` that applies callee summary: targets and derived type sources of each callee parameter, targets
+of every callee fresh node (`nothing`: callee makes none), callee places mapped so far, and type sources of arguments so
+far. Stores of later edges miss cached places until next round, so fixpoint stays same.
 """
 struct CallSite
     arguments::Vector{Targets}
     derived::Vector{Sources}
     index::Int
-    fresh::Int
+    fresh::Union{Nothing, Targets}
     places::Dict{Place.Type, Targets}
     sources::Dict{Int, Sources}
+end
+
+"""Call site at statement `index` of callee with `fresh` fresh nodes: they merge into allocation at `index`."""
+function CallSite(arguments::Vector{Targets}, derived::Vector{Sources}, index::Int, fresh::Int)::CallSite
+    merged = fresh == 0 ? nothing : Targets(Origin.Allocation(index) => fresh == 1 ? NO_DOUBT : BLIND_DOUBT)
+    return CallSite(arguments, derived, index, merged, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
 end
 
 """Targets of callee `place` at `site`, mapped once per call statement and round."""
 site_place(flow::Flow, site::CallSite, place::Place.Type)::Targets = get!(() -> map_place(flow, place, site.arguments), site.places, place)
 
-"""Targets of callee `node` at `site`; every fresh node of callee merges into allocation at call statement."""
+"""
+Targets of callee `node` at `site`; every fresh node of callee merges into allocation at call statement. Result is
+shared by later calls at `site`: callers only read it.
+"""
 function map_node(flow::Flow, node::Node.Type, site::CallSite)::Targets
     return @match node begin
         Node.Placed(place) => site_place(flow, site, place)
-        Node.Fresh(_) => Targets(Origin.Allocation(site.index) => site.fresh == 1 ? NO_DOUBT : BLIND_DOUBT)
+        Node.Fresh(_) => something(site.fresh)
         Node.Outside() => unknown(NO_DOUBT)
     end
 end
@@ -620,8 +629,14 @@ end
 """Union of targets of callee `nodes` at `site`, each raised to its node doubt (`caller_doubt`)."""
 function map_nodes(flow::Flow, nodes::Nodes, site::CallSite)::Targets
     found = Targets()
-    for (node, doubt) in nodes, (origin, flag) in map_node(flow, node, site)
-        add!(found, origin, most(flag, caller_doubt(flow, site, doubt)))
+    for (node, doubt) in nodes
+        if node == Node.Outside()
+            add!(found, Origin.Unknown(), caller_doubt(flow, site, doubt))
+            continue
+        end
+        mapped = map_node(flow, node, site)
+        # Flow stays same over node, so its doubt maps once.
+        isempty(mapped) || add_all!(found, mapped, caller_doubt(flow, site, doubt))
     end
     return found
 end
@@ -657,7 +672,7 @@ change nothing there.
 function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, summary::Summary, variant::Variant, operands::Vector{Operand.Type}, defers::Bool, callees::Callees)::Nothing
     method = first(variant).def::Method
     arguments = parameter_targets(flow, index, method, operands)
-    site = CallSite(arguments, parameter_derived(flow, method, operands), index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
+    site = CallSite(arguments, parameter_derived(flow, method, operands), index, summary.fresh)
     summary.closed_world && (flow.closed_world = true)
     summary.cut && (flow.cut = true)
     flow.settled || apply_stores!(flow, site, summary)
@@ -708,7 +723,7 @@ function resolve!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, ind
     push!(seen, record)
     variant, arguments = record
     summary = summary!(callees, variant)
-    site = CallSite(arguments, zeros(Sources, length(arguments)), index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
+    site = CallSite(arguments, zeros(Sources, length(arguments)), index, summary.fresh)
     apply_accesses!(flow, writes, reads, site, summary, defers, callees, seen)
     return nothing
 end

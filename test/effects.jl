@@ -11,7 +11,8 @@ using Corset.Effects:
     components, foreign_name, FOREIGN_EFFECTS, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
-    unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees, load, store!, store_backing!
+    unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees, load, store!, store_backing!,
+    beneath, map_nodes
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
@@ -960,7 +961,15 @@ four_way(x::Symbol) = x
     flow = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false)
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
-    @test map_node(flow, Node.Fresh(4), CallSite(Targets[], Sources[], 7, 2, Dict{Place.Type, Targets}(), Dict{Int, Sources}())) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
+    @test map_node(flow, Node.Fresh(4), CallSite(Targets[], Sources[], 7, 2)) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
+    # Site maps every fresh node to one shared allocation; outside node maps to unknown object at node doubt.
+    fresh_site = CallSite(Targets[], Sources[], 7, 1)
+    @test map_node(flow, Node.Fresh(1), fresh_site) === map_node(flow, Node.Fresh(2), fresh_site)
+    @test map_nodes(flow, Nodes(Node.Outside() => BLIND_DOUBT, Node.Fresh(1) => NO_DOUBT), fresh_site) == Targets(Origin.Unknown() => BLIND_DOUBT, Origin.Allocation(7) => NO_DOUBT)
+    @test_throws ArgumentError map_node(flow, Node.Fresh(1), CallSite(Targets[], Sources[], 7, 0))
+    # Objects without fresh origin hold nothing beneath them: result is same table.
+    plain = Targets(Origin.Caller(parameter(2)) => NO_DOUBT)
+    @test beneath(flow, plain) === plain
     @test deep(flow, Targets(Origin.Caller(parameter(2)) => NO_DOUBT)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => BLIND_DOUBT)
     # Slot targets found before heap grows go stale: load after store sees new slot and backing contents.
     box, backed = Targets(Origin.Allocation(5) => NO_DOUBT), Targets(Origin.Allocation(6) => NO_DOUBT)
@@ -993,7 +1002,7 @@ four_way(x::Symbol) = x
     @test static_sources(only(methods(static_both))) == [parameter_source(2) | parameter_source(3)]
     @test static_sources(only(methods(static_pair))) == [parameter_source(2), parameter_source(3)] && isempty(static_sources(only(methods(fill_one!))))
     # Callee parameter source becomes type sources of argument, derived ones too; parameter without argument is doubt in code.
-    site = CallSite([Targets(), Targets(Origin.Caller(parameter(4)) => NO_DOUBT), Targets()], Sources[none, none, parameter_source(5)], 7, 0, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
+    site = CallSite([Targets(), Targets(Origin.Caller(parameter(4)) => NO_DOUBT), Targets()], Sources[none, none, parameter_source(5)], 7, 0)
     @test caller_doubt(flow, site, sourced(1)) == CODE_DOUBT && caller_doubt(flow, site, sourced(2)) == sourced(4)
     @test caller_doubt(flow, site, sourced(3)) == sourced(5) && caller_doubt(flow, site, sourced(4)) == CODE_DOUBT
     # Source past unit arguments is doubt in code.
