@@ -310,7 +310,7 @@ function variant_key!(run::Run, state::Closure, variant::Variant)::Union{Nothing
     isnothing(closure) && return nothing
     modules, constants = Module[], String[]
     for (position, constant) in last(variant)
-        push!(constants, "$position " * structure_text!(run, constant::Union{Symbol, Int, Module}, TypeVar[], modules))
+        push!(constants, "$position " * structure_text!(run, constant::VariantConstant, TypeVar[], modules))
     end
     owners = owners!(run, modules)
     isnothing(owners) && return nothing
@@ -318,7 +318,7 @@ function variant_key!(run::Run, state::Closure, variant::Variant)::Union{Nothing
     return Cache.digest(["summary", something(closure), string(length(constants)), constants..., owners...], String[])
 end
 
-"""Entry key of `kind` (`fields` or `cut`) of `instance` (`Library`): its closure key; `nothing` without one."""
+"""Entry key of `kind` (`parameters` or `cut`) of `instance` (`Library`): its closure key; `nothing` without one."""
 function instance_entry_key!(run::Run, state::Closure, kind::String, instance::Core.MethodInstance)::Union{Nothing, String}
     closure = closure_key!(run, state, instance)
     return isnothing(closure) ? nothing : Cache.digest([kind, something(closure)], String[])
@@ -345,8 +345,8 @@ listed(run::Run, instance::Core.MethodInstance)::Bool = !isempty(run.cache.libra
 """Stored summary of library cache for `variant` (`stored_value!`)."""
 stored_summary(run::Run, variant::Variant)::Union{Nothing, Summary} = listed(run, first(variant)) ? stored_value!(run, Summary, variant_key!(run, run.cache.closure, variant), first(variant)) : nothing
 
-"""Slot-name parameters of library cache for `instance` (`stored_value!`)."""
-stored_fields(run::Run, instance::Core.MethodInstance)::Union{Nothing, Set{Int}} = listed(run, instance) ? stored_value!(run, Set{Int}, instance_entry_key!(run, run.cache.closure, "fields", instance), instance) : nothing
+"""Variant parameters of library cache for `instance` (`stored_value!`)."""
+stored_parameters(run::Run, instance::Core.MethodInstance)::Union{Nothing, Set{Int}} = listed(run, instance) ? stored_value!(run, Set{Int}, instance_entry_key!(run, run.cache.closure, "parameters", instance), instance) : nothing
 
 """Whether stand-ins cut `instance`, as library cache holds (`stored_value!`)."""
 stored_cut(run::Run, instance::Core.MethodInstance)::Union{Nothing, Bool} = listed(run, instance) ? stored_value!(run, Bool, instance_entry_key!(run, run.cache.closure, "cut", instance), instance) : nothing
@@ -449,11 +449,11 @@ function add_entry!(entries::Library, run::Run, state::Closure, key::Union{Nothi
 end
 
 """
-New library cache entries of solved `run` (`effects.md`, Solve and cache): summaries, slot-name parameters and cuts of
+New library cache entries of solved `run` (`effects.md`, Solve and cache): summaries, variant parameters and cuts of
 library instances, under keys of store phase. Store phase `Closure` rejects instances whose cut check inferred model
 types (`stand_in_cut`): that inference reads methods outside native edges. Summary of variant that cache cannot share
 (`unshared`), or with callback record, stays out: caller of hit would need summaries of record variants too. Library
-variant with code proves slot-name parameters of its instance with body, since its callees are callees of that body.
+variant with code proves variant parameters of its instance with body, since its callees are callees of that body.
 """
 function library_entries(run::Run)::Library
     state = Closure(copy(run.cache.modeled))
@@ -463,10 +463,10 @@ function library_entries(run::Run)::Library
         add_entry!(entries, run, state, variant_key!(run, state, variant), first(variant), summary)
     end
     proven = Base.IdSet{Core.MethodInstance}(first(variant) for variant in keys(run.codes) if !(variant in inside))
-    for (instance, fields) in run.fields
+    for (instance, parameters) in run.parameters
         # Shortcut or blind spot calls nothing, so its parameters need no proof.
         get(run.bodies, instance, nothing) isa Body && !(instance in proven) && continue
-        add_entry!(entries, run, state, instance_entry_key!(run, state, "fields", instance), instance, fields)
+        add_entry!(entries, run, state, instance_entry_key!(run, state, "parameters", instance), instance, parameters)
     end
     for (instance, cut) in run.cuts
         add_entry!(entries, run, state, instance_entry_key!(run, state, "cut", instance), instance, cut)

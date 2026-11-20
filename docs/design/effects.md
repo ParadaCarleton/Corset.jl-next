@@ -119,6 +119,8 @@ Resolution of each call statement, first match wins:
    - CI lacks the headers. The generator does not run there; committed file is the source of truth. Test compares it with hand classification.
 3. Static call (one method matches, or `Core.invoke` with constant selector): callee summary. No method matches: call throws, so code after it is dead.
    Summary per variant: instance plus constant arguments callee uses as field name. `getproperty(x, :a)` keeps field `a`.
+   Constant `Bool` argument that callee uses as branch condition also makes variant. Variant code drops blocks branch never reaches.
+   `HAMT.path(trie, key, h, false)` skips copy-on-write store, so `ScopedValue` read writes nothing. Julia inference resolves the same constant.
 4. Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.
 5. Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: `possible`.
    Access that some members lack takes sources of open operands, as open dispatch does: operand types pick member.
@@ -249,7 +251,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Call chain: caller that first reached each instance. Join limits hard, against method signature.
 - Library instance: method outside package, and signature names no package type.
 - Library summary: variant of library instance. Disk cache keeps it; cache hit skips native inference and passes.
-- Cache also keeps slot-name parameters and stand-in cut of library instances.
+- Cache also keeps variant parameters and stand-in cut of library instances.
 - Partition: Julia version, cache flags and Corset content. One library file per partition serves every checked path and environment.
 - Entry key: kind, closure key of instance, and constants of variant. Module constant adds its owner text.
 - Closure key: digest over strongly connected components of native edge graph, callees first. Walk order cannot change it.

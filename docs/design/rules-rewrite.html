@@ -854,7 +854,9 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 </ul>
 </li>
 <li>Static call (one method matches, or <code>Core.invoke</code> with constant selector): callee summary. No method matches: call throws, so code after it is dead.
-Summary per variant: instance plus constant arguments callee uses as field name. <code>getproperty(x, :a)</code> keeps field <code>a</code>.</li>
+Summary per variant: instance plus constant arguments callee uses as field name. <code>getproperty(x, :a)</code> keeps field <code>a</code>.
+Constant <code>Bool</code> argument that callee uses as branch condition also makes variant. Variant code drops blocks branch never reaches.
+<code>HAMT.path(trie, key, h, false)</code> skips copy-on-write store, so <code>ScopedValue</code> read writes nothing. Julia inference resolves the same constant.</li>
 <li>Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.</li>
 <li>Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.
 Access that some members lack takes sources of open operands, as open dispatch does: operand types pick member.</li>
@@ -987,7 +989,7 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <li>Call chain: caller that first reached each instance. Join limits hard, against method signature.</li>
 <li>Library instance: method outside package, and signature names no package type.</li>
 <li>Library summary: variant of library instance. Disk cache keeps it; cache hit skips native inference and passes.</li>
-<li>Cache also keeps slot-name parameters and stand-in cut of library instances.</li>
+<li>Cache also keeps variant parameters and stand-in cut of library instances.</li>
 <li>Partition: Julia version, cache flags and Corset content. One library file per partition serves every checked path and environment.</li>
 <li>Entry key: kind, closure key of instance, and constants of variant. Module constant adds its owner text.</li>
 <li>Closure key: digest over strongly connected components of native edge graph, callees first. Walk order cannot change it.</li>

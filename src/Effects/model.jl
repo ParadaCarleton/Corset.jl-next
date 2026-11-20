@@ -205,10 +205,14 @@ const HoldCounts = Dict{Tuple{Node.Type, Resource.T}, HoldCount}
 const Unguarded = @NamedTuple{hold::HoldCount, throws::Int}
 
 """
-Instance with constant arguments its callee uses as field name, by position (`effects.md`, Calls): `getproperty(x,
-:a)` summary loads field `a`. Pre-inlining IR keeps such wrapper calls, so summary without constant loses field.
+Instance with constant arguments its callee uses as field name or branch condition, by position (`effects.md`, Calls):
+`getproperty(x, :a)` summary loads field `a`. Pre-inlining IR keeps such wrapper calls, so summary without constant
+loses field.
 """
 const Variant = Tuple{Core.MethodInstance, Vector{Pair{Int, Any}}}
+
+"""Constant that makes variant: slot name (`Symbol`, `Int`, `Module`) or branch condition (`Bool`)."""
+const VariantConstant = Union{Symbol, Int, Module, Bool}
 
 """
 Callback record (`effects.md`, Calls, step 4): static call of callable that holds caller object. Caller applies accesses
@@ -306,7 +310,7 @@ Library()::Library = Library(Dict{String, Cache.Stamped}())
 Base.isempty(library::Library)::Bool = isempty(library.entries)
 
 """
-Library cache entry: summary of variant (no callback record), parameters instance uses as slot name, or whether
+Library cache entry: summary of variant (no callback record), variant parameters of instance, or whether
 stand-ins cut its code; and throw helper verdict of each callee whose verdict solve read (`helper!`).
 """
 struct LibraryEntry

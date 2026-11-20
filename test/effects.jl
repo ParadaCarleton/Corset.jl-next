@@ -8,7 +8,7 @@ using Corset.Effects:
     Effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, value_type, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
-    components, foreign_name, FOREIGN_EFFECTS, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
+    components, foreign_name, FOREIGN_EFFECTS, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees, load, store!, store_backing!,
@@ -1141,7 +1141,12 @@ end
 """Link of synthetic call chain: each specialization stands for one instance."""
 chain_link(x::Any) = x
 
-@testset "slot-name parameters" begin
+"""Store that flag argument guards; callers pass constant flag, as `HAMT.path` copy-on-write flag."""
+flag_store!(x::Vector{Int}, store::Bool) = (store && (x[1] = 0); x)
+flag_off(x::Vector{Int}) = flag_store!(x, false)
+flag_on(x::Vector{Int}) = flag_store!(x, true)
+
+@testset "variant parameters" begin
     run = start_run(nothing, Module[])
     instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world, 1)))
     solve!(run, [(instance, Pair{Int, Any}[])])
@@ -1153,7 +1158,14 @@ chain_link(x::Any) = x
         outcome = position == length(links) ? Outcome.Builtin(Core.getfield, [argument, Operand.Value(QuoteNode(:a))]) : Outcome.Dispatch([links[position + 1]], [Operand.Value(chain_link), argument])
         run.bodies[link] = Body(ir, Int[], Union{Nothing, Outcome.Type}[outcome], [false], [false], false, false)
     end
-    @test field_parameters!(run, first(links)) == Set([2])
+    @test variant_parameters!(run, first(links)) == Set([2])
+    # Branch condition: constant flag drops unreached store, as Julia inference does; unknown flag keeps it.
+    flagged = only(something(dispatch(Any[typeof(flag_store!), Vector{Int}, Bool], run.world, 1)))
+    # Position 2 reaches object operand of `getfield` in `setindex!`.
+    @test variant_parameters!(run, flagged) == Set([2, 3])
+    @test isempty(summary_of(flag_off, Vector{Int}).writes)
+    @test doubts(summary_of(flag_on, Vector{Int}).writes) == Dict(top(2) => NO_DOUBT)
+    @test haskey(doubts(summary_of(flag_store!, Vector{Int}, Bool).writes), top(2))
 end
 
 """Wrapper whose type grows at each recursion step."""
@@ -1437,6 +1449,8 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     # Audited method covers its root only: global read inside it keeps own kind.
     @test all(kind != EffectKind.task_local for (place, _, kind) in keys(remembered.reads) if root_of(place) != elsewhere)
     @test (Place.At(elsewhere, Step.Type[]), false, EffectKind.scoped_read) in keys(summary_of(level).reads)
+    # Lookup passes constant `false` to copy-on-write flag of `HAMT.path`, so read writes nothing.
+    @test isempty(summary_of(level).writes)
     # Audited table: lazy compile, lazy text, PCRE contexts, logging state, `BigFloat` pointer repair.
     matched = summary_of(matches, Regex, String).writes
     @test matched[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT
