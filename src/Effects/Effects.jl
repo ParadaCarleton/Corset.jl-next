@@ -9,7 +9,7 @@ module Effects
 using EnumX: @enumx
 using Moshi.Data: @data
 using Moshi.Match: @match
-using ..Facts: PackageFacts, EffectsFacts, MethodEffects, Access, BlindAccess, UnguardedHold, Callee, CallFact, Step, Root, Place, PATH_DEPTH, BlindSpot, Confidence, Span, EffectKind
+using ..Facts: PackageFacts, EffectsFacts, MethodEffects, Access, BlindAccess, UnguardedHold, Callee, methods_callee, CallFact, Step, Root, Place, PATH_DEPTH, BlindSpot, Confidence, Span, EffectKind
 using ..Inference: Inference, TypedCode, Units, Journal, Record, record!, method_label, holds_stand_in, never_returning, throw_helper, called, dead_calls
 using ..Inference: names_package!, edge_instance, serialized
 using ..StandIns: StandIns, FunctionStandIn, model_type, array_stand_in

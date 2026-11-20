@@ -72,7 +72,7 @@ function stored_callee(callee::Callee.Type)::Any
 end
 
 """Callee that `stored_callee` keeps as `stored`, methods found in `world`."""
-loaded_callee(@nospecialize(stored::Any), world::UInt)::Callee.Type = stored isa Symbol ? Callee.Builtin(getfield(Core.Intrinsics, stored)) : stored isa Vector{Type} ? Callee.Methods(map(signature -> method_of(signature, world), stored)) : stored::Callee.Type
+loaded_callee(@nospecialize(stored::Any), world::UInt)::Callee.Type = stored isa Symbol ? Callee.Builtin(getfield(Core.Intrinsics, stored)) : stored isa Vector{Type} ? methods_callee(Method[method_of(signature, world) for signature in stored]) : stored::Callee.Type
 
 """Method of `world` whose signature is `signature`; other method or none throws."""
 function method_of(signature::Type, world::UInt)::Method

@@ -136,6 +136,12 @@ end
 @derive Callee[Hash, Eq, Show]
 
 """
+Callee `Methods` of `methods`, each once, in source order: module, file, line, signature. Dispatch and unit merge give
+methods in varying order, so facts and their equality depend on none.
+"""
+methods_callee(methods::Vector{Method})::Callee.Type = Callee.Methods(sort!(unique(methods); by = method -> (string(method.module), string(method.file), method.line, string(method.sig))))
+
+"""
 Call statement of package method (`effects` stage fact, F54, F86): span, callee, and kinds of writes call makes at any
 certainty, holds it leaves included. Compiler effects give `throws` (may throw) and `terminates`. `used`: code reads
 result. Units of method merge: any unit that may throw, writes or uses result decides.
