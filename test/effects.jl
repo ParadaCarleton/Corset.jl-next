@@ -825,6 +825,19 @@ four_way(x::Symbol) = x
     @test element_type(Ptr{Int}) == Int && element_type(Vector{Int}) == Any && element_type(Union{Int, Ptr{Int}}) == Any
     @test element_type(MemoryRef{Vector{Int}}) == Vector{Int}
     @test root_of(Place.Deep(Root.Elsewhere())) == Root.Elsewhere()
+    # Equality by matching: each variant equals copy of itself and no other value; `isequal` agrees with `==`.
+    at = Place.At(Root.Parameter(2), Step.Type[Step.Field(:a)])
+    groups = (
+        [Step.Field(:a), Step.Field(:b), Step.Position(1), Step.Element()],
+        [Root.Parameter(2), Root.Global(GlobalRef(Base, :stdout)), Root.Elsewhere()],
+        [at, Place.At(Root.Parameter(2), Step.Type[Step.Element()]), Place.At(Root.Parameter(3), Step.Type[Step.Field(:a)]), Place.Deep(Root.Parameter(2))],
+        [Origin.Caller(at), Origin.Allocation(3), Origin.Allocation(4), Origin.Unknown()],
+        [Node.Placed(at), Node.Fresh(3), Node.Outside()],
+    )
+    for group in groups
+        @test [first == deepcopy(second) for first in group, second in group] == [i == j for i in eachindex(group), j in eachindex(group)]
+        @test [isequal(first, deepcopy(second)) for first in group, second in group] == [i == j for i in eachindex(group), j in eachindex(group)]
+    end
     targets = Targets(Origin.Unknown() => CODE_DOUBT)
     @test !add!(targets, Origin.Unknown(), BLIND_DOUBT) && add!(targets, Origin.Unknown(), NO_DOUBT)
     table = Dict{Tuple{Origin.Type, Bool, EffectKind.T}, Effect}()

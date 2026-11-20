@@ -9,7 +9,18 @@ IR statement makes (call statement for all fresh objects of callee), or `Unknown
     Allocation(Int)
     Unknown()
 end
-@derive Origin[Hash, Eq, Show]
+@derive Origin[Hash, Show]
+
+"""
+Whether origins `first` and `second` are equal. Hash tables test key equality on every hit; derived `Eq` finds variant
+by subtype test, many times slower than matching.
+"""
+Base.:(==)(first::Origin.Type, second::Origin.Type)::Bool = @match (first, second) begin
+    (Origin.Caller(one), Origin.Caller(other)) => one == other
+    (Origin.Allocation(one), Origin.Allocation(other)) => one == other
+    (Origin.Unknown(), Origin.Unknown()) => true
+    _ => false
+end
 
 """Whether `origin` is object instance makes: caller cannot see it before call."""
 fresh_origin(origin::Origin.Type)::Bool = @match origin begin
@@ -126,7 +137,18 @@ object `Outside` every place.
     Fresh(Int)
     Outside()
 end
-@derive Node[Hash, Eq, Show]
+@derive Node[Hash, Show]
+
+"""Whether nodes `first` and `second` are equal."""
+Base.:(==)(first::Node.Type, second::Node.Type)::Bool = @match (first, second) begin
+    (Node.Placed(one), Node.Placed(other)) => one == other
+    (Node.Fresh(one), Node.Fresh(other)) => one == other
+    (Node.Outside(), Node.Outside()) => true
+    _ => false
+end
+
+"""Equality of origins and nodes: their fields hold no floating-point or `missing` value."""
+(Base.isequal(first::T, second::T)::Bool) where {T <: Union{Origin.Type, Node.Type}} = first == second
 
 """Nodes value may point to, each with doubt as in `Targets`."""
 const Nodes = Dict{Node.Type, Doubt}

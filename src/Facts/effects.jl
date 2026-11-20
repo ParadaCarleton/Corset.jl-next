@@ -1,5 +1,6 @@
 using Moshi.Data: @data
 using Moshi.Derive: @derive
+using Moshi.Match: @match
 
 """Step of access path: named `Field`, tuple `Position`, or `Element` of array memory."""
 @data Step begin
@@ -7,7 +8,7 @@ using Moshi.Derive: @derive
     Position(Int)
     Element()
 end
-@derive Step[Hash, Eq, Show]
+@derive Step[Hash, Show]
 
 """
 Object access starts from: `Parameter` by argument position (1 is called function), `Global` binding, or `Elsewhere`:
@@ -18,14 +19,42 @@ object open call returns, global included.
     Global(GlobalRef)
     Elsewhere()
 end
-@derive Root[Hash, Eq, Show]
+@derive Root[Hash, Show]
 
 """Object reached from root: `At` path of at most `PATH_DEPTH` steps, or `Deep` past them."""
 @data Place begin
     At(Root.Type, Vector{Step.Type})
     Deep(Root.Type)
 end
-@derive Place[Hash, Eq, Show]
+@derive Place[Hash, Show]
+
+# Hash tables test key equality on every hit. Derived `Eq` finds variant by subtype test; matching is many times faster.
+
+"""Whether steps `first` and `second` are equal."""
+Base.:(==)(first::Step.Type, second::Step.Type)::Bool = @match (first, second) begin
+    (Step.Field(one), Step.Field(other)) => one === other
+    (Step.Position(one), Step.Position(other)) => one == other
+    (Step.Element(), Step.Element()) => true
+    _ => false
+end
+
+"""Whether roots `first` and `second` are equal."""
+Base.:(==)(first::Root.Type, second::Root.Type)::Bool = @match (first, second) begin
+    (Root.Parameter(one), Root.Parameter(other)) => one == other
+    (Root.Global(one), Root.Global(other)) => one == other
+    (Root.Elsewhere(), Root.Elsewhere()) => true
+    _ => false
+end
+
+"""Whether places `first` and `second` are equal: same root and steps."""
+Base.:(==)(first::Place.Type, second::Place.Type)::Bool = @match (first, second) begin
+    (Place.At(one, steps), Place.At(other, others)) => one == other && steps == others
+    (Place.Deep(one), Place.Deep(other)) => one == other
+    _ => false
+end
+
+"""Equality of steps, roots and places: their fields hold no floating-point or `missing` value."""
+(Base.isequal(first::T, second::T)::Bool) where {T <: Union{Step.Type, Root.Type, Place.Type}} = first == second
 
 """Steps of longest exact path; longer paths collapse to `Place.Deep`."""
 const PATH_DEPTH = 2
