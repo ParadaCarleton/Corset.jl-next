@@ -17,6 +17,7 @@ end
     isolated("narrowing.jl")
     isolated("boxes.jl")
     isolated("effects.jl")
+    isolated("summary_cache.jl")
     isolated("registry.jl")
     isolated("ui.jl")
     isolated("properties.jl")

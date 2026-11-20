@@ -233,16 +233,16 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         # Method whose code changed invalidates callers that read it, through `map` too.
         function stale(name::String)::Store
             id = method_id(only(methods(getglobal(MODULE, Symbol(name)))))
-            return Store(key => Entry(entry.file, [read => (read == id ? "stale" : code) for (read, code) in entry.methods], entry.staged, entry.inferred) for (key, entry) in used)
+            return Store(key => Entry(entry.file, [read => (read == id ? "stale" : code) for (read, code) in entry.methods], entry.staged, entry.inferred, entry.effects) for (key, entry) in used)
         end
         @test refreshed(FILES, stale("increment")) == ["increment", "stepped"] && refreshed(FILES, stale("step_of")) == ["mapped", "step_of"]
         # Generator that gives other code invalidates entries that read its output.
-        regenerated = Store(key => Entry(entry.file, entry.methods, [Staged(staged.method, staged.signature, staged.key, "stale") for staged in entry.staged], entry.inferred) for (key, entry) in used)
+        regenerated = Store(key => Entry(entry.file, entry.methods, [Staged(staged.method, staged.signature, staged.key, "stale") for staged in entry.staged], entry.inferred, entry.effects) for (key, entry) in used)
         @test refreshed(FILES, regenerated) == ["doubled", "redoubled"]
         # Method gone from table: entries that read it, or its generated code, infer again.
-        gone = Store(key => Entry(entry.file, [entry.methods; "gone" => "code"], entry.staged, entry.inferred) for (key, entry) in used)
+        gone = Store(key => Entry(entry.file, [entry.methods; "gone" => "code"], entry.staged, entry.inferred, entry.effects) for (key, entry) in used)
         signature = Corset.Inference.serialized(Tuple{Int})
-        gone_staged = Store(key => Entry(entry.file, entry.methods, [entry.staged; Staged("gone", signature, "gone", "code")], entry.inferred) for (key, entry) in used)
+        gone_staged = Store(key => Entry(entry.file, entry.methods, [entry.staged; Staged("gone", signature, "gone", "code")], entry.inferred, entry.effects) for (key, entry) in used)
         @test length(infer_package(PACKAGE, FILES, gone, nothing)[3].typed) == length(infer_package(PACKAGE, FILES, gone_staged, nothing)[3].typed) == length(fresh)
         # Redefined method keeps its id, so stored entry finds it; its code digest changes.
         before = only(methods(Redefined.f))
@@ -291,7 +291,7 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         end
         # Stderr of inference goes to crash log; normal end copies it to stderr.
         mktempdir() do directory
-            empty = (Corset.Facts.InferenceFacts(FailingCall[], Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.AnnotationGuess[]), Corset.Facts.BlindSpot[], Corset.Inference.Units(TypedCode[], Set{Method}()), nothing)
+            empty = (Corset.Facts.InferenceFacts(FailingCall[], Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.AnnotationGuess[]), Corset.Facts.BlindSpot[], Corset.Inference.Units(TypedCode[], Set{Method}(), Corset.Inference.StoredUnit[]), nothing)
             text = mktemp() do path, io
                 result = redirect_stderr(io) do
                     Corset.Engine.journaled(journal -> (println(stderr, "inner note"); empty), directory)

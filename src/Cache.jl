@@ -1,6 +1,7 @@
 """
 Disk cache of analyses: one entry per checked path, holding key and stored analysis. Key hashes every analysis input,
-so changed input misses and run analyzes again.
+so changed input misses and run analyzes again. Library summaries of `effects` stage keep one entry per environment of
+loaded packages (`library_key`), which every checked path shares.
 """
 module Cache
 
@@ -107,6 +108,62 @@ end
 """Key of analysis: digest of `inputs`."""
 key(path::String, flags::String, root::Union{Nothing, String}, files::Vector{String}, load_path::Vector{String}, cache::String)::String =
     digest(inputs(path, flags, root, files, load_path, cache)...)
+
+"""
+Content text of package `id` at `root` for library key: name, UUID and `root` for package in standard library or in
+`packages` directory of one of `depots`, whose slug Pkg derives from Manifest tree hash. Path or developed package
+gives digest of its code files instead: project file, `src`, `ext` and `deps`.
+"""
+function package_content(id::Base.PkgId, root::String, depots::Vector{String})::String
+    stores = [Sys.STDLIB; [joinpath(depot, "packages") for depot in depots]]
+    fixed = any(store -> startswith(root, joinpath(store, "")), stores)
+    content = fixed ? root : digest(String[], found_files([joinpath(root, "Project.toml")], joinpath.(root, ["src", "ext", "deps"]), ""))
+    return "$(id.name) $(id.uuid) $content"
+end
+
+"""
+Key of library summaries (`effects.md`, Solve and cache): Julia version `julia`, cache flags, and content of each of
+loaded `packages` (`package_content`) with their roots, under `depots`.
+"""
+function library_key(julia::String, packages::Vector{Pair{Base.PkgId, String}}, depots::Vector{String})::String
+    return digest([julia; repr(Base.CacheFlags()); sort!([package_content(id, root, depots) for (id, root) in packages])], String[])
+end
+
+"""
+Loaded packages outside target package `modules`, extensions included, each with its root directory. Library summary
+reaches no target method, so target edit keeps key. Base and Core have no package root: Julia version covers them.
+"""
+function loaded_packages(modules::Vector{Module})::Vector{Pair{Base.PkgId, String}}
+    target = Set(Base.PkgId(Base.moduleroot(mod)) for mod in modules)
+    found = Pair{Base.PkgId, String}[]
+    for mod in Base.loaded_modules_array()
+        id, root = Base.PkgId(mod), pkgdir(mod)
+        id in target || isnothing(root) || push!(found, id => root)
+    end
+    return found
+end
+
+"""Library summary directory of cache `directory`: one entry per library key."""
+library_directory(directory::String)::String = joinpath(directory, "library")
+
+"""Library entries that library directory keeps, newest first: entries of other environments drop out."""
+const LIBRARY_ENTRIES = 4
+
+"""
+Keep library summaries of `key` in library `directory`: store `library`, or mark stored entry as used when `nothing`.
+Then delete all but newest `LIBRARY_ENTRIES` entries; staging files of other processes stay.
+"""
+function keep_library!(directory::String, key::String, library::Any)::Nothing
+    if isnothing(library)
+        isfile(entry(directory, key)) || return nothing
+        touch(entry(directory, key))
+    else
+        store!(directory, key, key, library)
+    end
+    entries = filter(file -> length(basename(file)) == 32 && all(isxdigit, basename(file)), readdir(directory; join = true))
+    foreach(file -> rm(file; force = true), sort!(entries; by = mtime, rev = true)[(LIBRARY_ENTRIES + 1):end])
+    return nothing
+end
 
 """Entry file of checked `path` in cache `directory`."""
 entry(directory::String, path::String)::String = joinpath(directory, bytes2hex(sha256(path))[1:32])

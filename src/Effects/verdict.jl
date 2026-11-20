@@ -171,12 +171,9 @@ function merge_calls(first::CallFact, second::CallFact)::CallFact
     return CallFact(first.span, merge_callees(first.callee, second.callee), kinds, first.throws || second.throws, first.terminates && second.terminates, first.used || second.used)
 end
 
-"""Add call facts of `root` to `calls` of its method, with spans from `span_of`: units of method merge (`merge_calls`)."""
-function add_calls!(calls::Calls, run::Run, root::Variant, span_of::Function)::Nothing
-    lines = run.codes[root].lines
-    for (index, record) in root_calls(run, root)
-        fact = CallFact(span_of(index), record...)
-        key = (lines[index], fact.span)
+"""Add call facts `found` of unit to `calls` of its method: units of method merge (`merge_calls`)."""
+function add_calls!(calls::Calls, found::UnitCalls)::Nothing
+    for (key, fact) in found
         calls[key] = haskey(calls, key) ? merge_calls(calls[key], fact) : fact
     end
     return nothing
@@ -186,17 +183,31 @@ end
 call_order(calls::Calls)::Vector{CallFact} = [fact for (_, fact) in sort!(collect(calls); by = (((line, span), _),) -> (span.file, span.first_byte, span.last_byte, line))]
 
 """
-`effects` stage facts of `package` from inference `units`, and blind spots: summary per package method over its units
-(`effects.md`, Units and Facts). Method that stand-ins cut is incomplete; verdict none with cut gives blind spot `CUT`.
+`effects` stage facts of `package` from inference `units`, and blind spots, without library cache (`cached_effects`).
 Crash `journal` records native inference of instances outside units.
 """
-function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Journal})::Tuple{EffectsFacts, Vector{BlindSpot}}
-    run = start_run(journal, package.modules)
+effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Journal})::Tuple{EffectsFacts, Vector{BlindSpot}} = cached_effects(package, units, journal, Library())[1:2]
+
+"""
+`effects` stage facts of `package` from inference `units` and blind spots, with `library` cache (`effects.md`, Solve and
+cache). Also effects record of each typed unit for method store, `nothing` for unit whose instance earlier unit holds,
+and new library cache entries. Run that skipped crashed instance gives no entries: its blind spot holds here only.
+Crash `journal` records native inference of instances outside units.
+"""
+function cached_effects(package::PackageFacts, units::Units, journal::Union{Nothing, Journal}, library::Library)::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}, Library}
+    run = start_run(journal, package.modules, library)
     typed_of = IdDict{Core.MethodInstance, TypedCode}()
     for typed in units.typed
         haskey(typed_of, typed.frame.linfo) && continue
         typed_of[typed.frame.linfo] = typed
         run.cuts[typed.frame.linfo] = !isempty(typed.cuts)
+    end
+    stored = Union{Nothing, UnitEffects}[unit_record(unit.effects, run.world) for unit in units.stored]
+    # Stored unit keeps cut of own code and unit body, so callers solve as in run that inferred it.
+    for (unit, record) in zip(units.stored, stored)
+        isnothing(record) && continue
+        instance = something(Inference.instance(unit.site.method, unit.signature))
+        haskey(typed_of, instance) || (run.cuts[instance] = record.own_cut; push!(run.cache.stored, instance))
     end
     roots = Variant[(typed.frame.linfo, Pair{Int, Any}[]) for typed in units.typed if typed_of[typed.frame.linfo] === typed]
     # Every unit cut is known before first shortcut check walks callees; unit order keeps first callers fixed.
@@ -204,38 +215,40 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
         run.bodies[instance] = unit_body(run, typed_of[instance].frame, run.cuts[instance])
     end
     solve!(run, roots)
+    fresh = Union{Nothing, UnitEffects}[typed_of[typed.frame.linfo] === typed ? unit_effects(run, typed, (typed.frame.linfo, Pair{Int, Any}[])) : nothing for typed in units.typed]
+    facts, spots = method_facts(package, units.incomplete, ordered_records(units, fresh, stored))
+    crashed = !isnothing(journal) && !isempty(journal.crashed)
+    return facts, spots, fresh, crashed ? Library() : library_entries(run)
+end
+
+"""
+Facts of methods of `package` from effects `records` of units in inference order, and blind spots: worst over units of
+method (`effects.md`, Units and Facts). Method in `incomplete`, or that stand-ins cut, is incomplete; verdict none with
+cut gives blind spot `CUT`.
+"""
+function method_facts(package::PackageFacts, incomplete::Set{Method}, records::Vector{Pair{Method, Union{Nothing, UnitEffects}}})::Tuple{EffectsFacts, Vector{BlindSpot}}
     spots = BlindSpot[]
     found, closed, cuts = IdDict{Method, Collected}(), IdDict{Method, Bool}(), IdDict{Method, Span}()
-    for root in roots
-        typed = typed_of[first(root)]
-        # Unit that always throws on stand-ins shows no behavior of declared signature.
-        typed.result === Union{} && (push!(spots, BlindSpot("always throws on stand-ins", typed.site.span)); continue)
-        summary = root_summary(run, root)
-        span_of(cause::Int)::Span = cause_span(typed, run.codes[root], cause)
-        kind_of(place::Place.Type)::EffectKind.T = path_kind(run.codes[root].ir, place)
-        writes, reads, blind_writes, blind_reads, aliases, unguarded, calls = get!(() -> (Access[], Access[], BlindAccess[], BlindAccess[], Place.Type[], UnguardedHold[], Calls()), found, typed.site.method)
-        unit_writes, unit_blind_writes = unit_accesses(summary.writes, span_of, typed.provenance)
-        held_writes, held_blind = lock_writes(summary, span_of, kind_of)
-        append!(unit_writes, held_writes)
-        append!(unit_blind_writes, held_blind)
-        unit_unguarded, unguarded_spots = unguarded_holds(summary, span_of)
-        append!(unguarded, unit_unguarded)
-        append!(spots, unguarded_spots)
-        unit_reads, unit_blind_reads = unit_accesses(summary.reads, span_of, typed.provenance)
-        append!(writes, unit_writes)
-        append!(reads, unit_reads)
-        append!(blind_writes, unit_blind_writes)
-        append!(blind_reads, unit_blind_reads)
-        append!(aliases, result_aliases(summary))
-        add_calls!(calls, run, root, span_of)
-        closed[typed.site.method] = get(closed, typed.site.method, false) || summary.closed_world
-        summary.cut && !haskey(cuts, typed.site.method) && (cuts[typed.site.method] = cut_span(run, typed, root))
+    for (method, record) in records
+        isnothing(record) && continue
+        append!(spots, record.spots)
+        record.verdict || continue
+        writes, reads, blind_writes, blind_reads, aliases, unguarded, calls = get!(() -> (Access[], Access[], BlindAccess[], BlindAccess[], Place.Type[], UnguardedHold[], Calls()), found, method)
+        append!(writes, record.writes)
+        append!(reads, record.reads)
+        append!(blind_writes, record.blind_writes)
+        append!(blind_reads, record.blind_reads)
+        append!(aliases, record.aliases)
+        append!(unguarded, record.unguarded)
+        add_calls!(calls, record.calls)
+        closed[method] = get(closed, method, false) || record.closed_world
+        isnothing(record.cut) || haskey(cuts, method) || (cuts[method] = something(record.cut))
     end
     methods = MethodEffects[]
     for site in package.methods
         haskey(found, site.method) || continue
         writes, reads, blind_writes, blind_reads, aliases, unguarded, calls = found[site.method]
-        complete = !(site.method in units.incomplete) && !haskey(cuts, site.method)
+        complete = !(site.method in incomplete) && !haskey(cuts, site.method)
         effects = MethodEffects(
             site, worst(writes), worst(reads), blind_order(blind_writes), blind_order(blind_reads), sort!(unique!(aliases); by = repr), sort!(unique!(unguarded); by = repr),
             call_order(calls), complete, closed[site.method],

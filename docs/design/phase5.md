@@ -33,7 +33,7 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 Sound summaries for package units through builtins and static calls. Other calls stay open (step 7) until PR 2.
 
 - `inference` stage keeps `TypedCode` of units it infers this run; `inference_facts` returns them to `Engine`.
-- Until PR 4, `effects` run bypasses method store: stored unit has no typed code.
+- From PR 4, method store entry keeps effects record of unit, so stored unit needs no typed code.
 - `Engine` runs `effects` after `inference` when enabled rule reads `effects`. `FactSet` gains `effects` field.
 - `src/Effects/`: units, IR, origins, points-to, builtins (call step 1), static calls (call step 3), solve.
 - IR: copy unit code, then run passes until `CC: COMPACT_1`. Instance outside package: native inference first.

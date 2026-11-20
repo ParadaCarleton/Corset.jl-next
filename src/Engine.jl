@@ -91,37 +91,51 @@ end
 method_entry(path::String)::String = "$path\nmethod store"
 
 """
-Inference facts of `package` in analyzed `files`, their blind spots, and units for `effects` stage, when `settings` enable
-rule that needs them (`needs_inference`); else none. Cache directory `cache` keeps method store of checked `path`
-(`architecture.md`); `nothing` turns store off. Store keeps no effect summaries yet, so `effects` run skips it.
+Inference and effects facts of `package` in analyzed `files`, each with its blind spots: inference facts when
+`inference` holds, effects facts when `effects` holds too; else none. Cache directory `cache` keeps method store of
+checked `path` and library summaries (`architecture.md`; `effects.md`, Solve and cache); `nothing` turns both off.
 Crash journal `directory` of relaunched process records each inference (`journaled`); `nothing` records none.
 """
-function inference_facts(path::String, package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, settings::Settings, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}, Union{Nothing, Inference.Units}}
-    (isnothing(package) || !needs_inference(settings)) && return nothing, BlindSpot[], nothing
-    # Stored unit gives no typed code, so `effects` run infers every unit.
-    effects = needs_effects(settings)
-    cache = effects ? nothing : cache
+function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, inference::Bool, effects::Bool, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}, Union{Nothing, EffectsFacts}, Vector{BlindSpot}}
+    (isnothing(package) || !inference) && return nothing, BlindSpot[], nothing, BlindSpot[]
     key = isnothing(cache) ? "" : Cache.method_key(path, something(project_root(path)), [file.path for file in files], Inference.shape(package), Base.load_path(), cache)
     cached = isnothing(cache) ? nothing : something(Cache.lookup(Inference.Store, cache, method_entry(path), key), Inference.Store())
-    facts, spots, units, used = if isnothing(directory)
-        Inference.infer_package(package, files, cached, nothing)
-    else
-        # Entries of runs that crashed serve as store, so finished work stays done.
-        store = effects ? Inference.Store() : merge(something(cached, Inference.Store()), Inference.finished_store(Inference.records(directory)))
-        journaled(journal -> Inference.infer_package(package, files, store, journal), directory)
-    end
-    isnothing(cache) || Cache.store!(cache, method_entry(path), key, something(used))
-    return facts, spots, units
+    # Entries of runs that crashed serve as store, so finished work stays done.
+    store = isnothing(directory) ? cached : merge(something(cached, Inference.Store()), Inference.finished_store(Inference.records(directory)))
+    # Effects run reads effects record of each stored unit, so entry without one infers again.
+    effects && !isnothing(store) && filter!(pair -> !isempty(last(pair).effects), store)
+    infer(journal::Union{Nothing, Inference.Journal}) = Inference.infer_package(package, files, store, journal)
+    facts, spots, units, used = isnothing(directory) ? infer(nothing) : journaled(infer, directory)
+    effects_found, effects_spots, records = effects ? effects_facts(package, units, cache, directory) : (nothing, BlindSpot[], nothing)
+    isnothing(cache) || Cache.store!(cache, method_entry(path), key, isnothing(records) ? something(used) : with_records(something(used), units, records))
+    return facts, spots, effects_found, effects_spots
 end
 
 """
-Effects facts of `package` from inference `units` and their blind spots, when enabled rule `needs` them
-(`needs_effects`); else none. Crash journal `directory` records native inference of library instances.
+Store `used` where each entry without effects record takes one: typed unit of `units` its record in `records`, other
+unit (no code) `nothing`. Stored entries keep theirs.
 """
-function effects_facts(package::Union{Nothing, PackageFacts}, units::Union{Nothing, Inference.Units}, needs::Bool, directory::Union{Nothing, String})::Tuple{Union{Nothing, EffectsFacts}, Vector{BlindSpot}}
-    (isnothing(package) || isnothing(units) || !needs) && return nothing, BlindSpot[]
-    isnothing(directory) && return Effects.effects_facts(package, units, nothing)
-    return journaled(journal -> Effects.effects_facts(package, units, journal), directory)
+function with_records(used::Inference.Store, units::Inference.Units, records::Vector{Union{Nothing, Effects.UnitEffects}})::Inference.Store
+    bytes = Dict(Inference.entry_key(typed.site.method, typed.signature) => Effects.record_bytes(record) for (typed, record) in zip(units.typed, records))
+    none = Effects.record_bytes(nothing)
+    filled(key::String, entry::Inference.Entry)::Inference.Entry = Inference.Entry(entry.file, entry.methods, entry.staged, entry.inferred, get(bytes, key, none))
+    return Inference.Store(key => isempty(entry.effects) ? filled(key, entry) : entry for (key, entry) in used)
+end
+
+"""
+Effects facts of `package` from inference `units`, their blind spots, and effects record of each typed unit
+(`Effects.cached_effects`). Cache directory `cache` serves and stores library summaries under key of loaded packages
+outside `package` (`Cache.library_key`); `nothing` turns them off. Crash journal `directory` records native inference
+of library instances.
+"""
+function effects_facts(package::PackageFacts, units::Inference.Units, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, Effects.UnitEffects}}}
+    library_directory = isnothing(cache) ? "" : Cache.library_directory(cache)
+    key = isnothing(cache) ? "" : Cache.library_key(string(VERSION), Cache.loaded_packages(package.modules), DEPOT_PATH)
+    stored = isnothing(cache) ? Effects.Library() : something(Cache.lookup(Effects.Library, library_directory, key, key), Effects.Library())
+    solve(journal::Union{Nothing, Inference.Journal}) = Effects.cached_effects(package, units, journal, stored)
+    facts, spots, records, found = isnothing(directory) ? solve(nothing) : journaled(solve, directory)
+    isnothing(cache) || Cache.keep_library!(library_directory, key, isempty(found) ? nothing : Effects.merged(stored, found))
+    return facts, spots, records
 end
 
 """
@@ -170,7 +184,7 @@ end
 
 """
 Facts and analysis of real `path` with discovered `sources` under `settings`. Opt-outs apply before levels. Cache
-directory `cache` keeps method store unless `nothing`; crash `journal` directory as in `inference_facts`.
+directory `cache` keeps method store and library summaries unless `nothing`; crash `journal` directory as in `stage_facts`.
 """
 function analyze(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, journal::Union{Nothing, String})::Tuple{FactSet, Analysis}
     loaded = load_package(sources.project, settings, sources.files)
@@ -180,8 +194,7 @@ end
 
 """Facts and analysis of `analyze` once package of `sources` is `loaded`; runs in world that sees package methods."""
 function analyze_loaded(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, journal::Union{Nothing, String}, loaded::Package.Loaded)::Tuple{FactSet, Analysis}
-    inference, inference_spots, units = inference_facts(path, loaded.facts, sources.files, settings, cache, journal)
-    effects, effects_spots = effects_facts(loaded.facts, units, needs_effects(settings), journal)
+    inference, inference_spots, effects, effects_spots = stage_facts(path, loaded.facts, sources.files, needs_inference(settings), needs_effects(settings), cache, journal)
     facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, inference, effects, external_facts(sources.project, loaded.facts, sources.files, settings))
     kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
     leveled = diagnostics(kept, settings)
@@ -217,7 +230,7 @@ end
 
 """
 Settings and analysis of `path` with `flags`; cache directory `cache` serves and stores analysis unless `nothing`.
-Crash `journal` directory of relaunched process records inferences (`inference_facts`); `nothing` records none.
+Crash `journal` directory of relaunched process records inferences (`stage_facts`); `nothing` records none.
 """
 function analysis(path::String, flags::Flags, cache::Union{Nothing, String}, journal::Union{Nothing, String})::Tuple{Settings, Analysis}
     path, settings, sources = inputs(path, flags)

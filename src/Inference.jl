@@ -41,12 +41,25 @@ struct TypedCode
 end
 
 """
-Units `inference` stage inferred this run, for `effects` stage: typed code of each, and methods whose results miss some
-argument types (`incomplete`): signatures over limit, crash, no code, or type test.
+Unit that method store served (`Entry`): method site, signature, serialized `effects` stage record (empty when entry
+keeps none), and count of typed units inferred before it, so `effects` stage keeps unit order.
+"""
+struct StoredUnit
+    site::MethodSite
+    signature::Type
+    effects::Vector{UInt8}
+    position::Int
+end
+
+"""
+Units of `inference` stage run, for `effects` stage: typed code of each unit inferred this run, methods whose results
+miss some argument types (`incomplete`): signatures over limit, crash, no code, or type test; and units method store
+served (`stored`), which need no typed code.
 """
 struct Units
     typed::Vector{TypedCode}
     incomplete::Set{Method}
+    stored::Vector{StoredUnit}
 end
 
 """
@@ -80,7 +93,8 @@ end
 
 """
 Method store entry: content hash of file of method, since spans hold byte offsets; `code_digest` of each package method
-inference read, by `method_id`; generated code it read; and serialized `Inferred` result. Result stays bytes until entry
+inference read, by `method_id`; generated code it read; serialized `Inferred` result; and serialized `effects` stage
+record of unit (`effects.md`, Solve and cache), empty until `effects` run gives one. Result stays bytes until entry
 proves valid: it can name closure type that edit removed.
 """
 struct Entry
@@ -88,6 +102,7 @@ struct Entry
     methods::Vector{Pair{String, String}}
     staged::Vector{Staged}
     inferred::Vector{UInt8}
+    effects::Vector{UInt8}
 end
 
 """Method store: entries by `entry_key` of method and signature."""
@@ -699,7 +714,7 @@ function entry!(named::IdDict{Any, Bool}, ids::IdDict{Method, String}, codes::Di
         method, key = specialized.def::Method, entry_key(specialized.def::Method, specialized.specTypes)
         push!(records, Staged(get!(() -> method_id(method), ids, method), serialized(specialized.specTypes), key, get!(() -> staged_digest(specialized), codes, key)))
     end
-    return Entry(site.file.path => hashes[site.file.path], digests, records, serialized(inferred))
+    return Entry(site.file.path => hashes[site.file.path], digests, records, serialized(inferred), UInt8[])
 end
 
 """Serialized bytes of `data`, as store entry holds it."""
@@ -776,7 +791,8 @@ function shape(package::PackageFacts)::Vector{String}
 end
 
 """
-Run of inference stage: facts, blind spots, typed code of signatures it inferred, and store of entries it used.
+Run of inference stage: facts, blind spots, units (typed code of signatures it inferred, and units store served), and
+store of entries it used.
 Signatures: stand-in signatures of package methods in `files`, then those their calls reach. Blind spots: signatures over
 `LIMIT`, argument without stand-in, inference that gives no code, untyped method no call reaches, call that fails on
 stand-in only. `store` serves entries whose files are unchanged; `nothing` turns store off and gives no store.
@@ -805,7 +821,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     used, modules, named, helpers = isnothing(store) ? nothing : Store(), Set(package.modules), IdDict{Any, Bool}(), IdDict{Any, Tuple{Bool, Vector{Any}}}()
     index, ids = isnothing(store) ? (Dict{String, Method}(), IdDict{Method, String}()) : method_index(by_path)
     codes = Dict{String, String}()
-    typed, seen, counts, coded = TypedCode[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
+    typed, stored, seen, counts, coded = TypedCode[], StoredUnit[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
     failing, gaps, settled, disrupting, narrowing = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[], NarrowingLoss[]
     hard, observed, declared = HardArray[], IdDict{Method, Vector{Tuple{Type, Type}}}(), IdDict{Method, Union{Nothing, Core.CodeInfo}}()
     while !isempty(pending)
@@ -847,6 +863,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
             isnothing(journal) || record!(journal, Record(key, "", true, entry))
         else
             inferred = deserialize(IOBuffer(entry.inferred))::Inferred
+            push!(stored, StoredUnit(site, call_signature, entry.effects, length(typed)))
         end
         isnothing(used) || isnothing(entry) || (used[key] = entry)
         inferred.coded || (push!(spots, BlindSpot("inference gave no code", site.span)); push!(incomplete, site.method); continue)
@@ -877,7 +894,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     sort!(disrupting; by = disruption -> (disruption.exit == Exit.intermediate, disruption.confidence == Confidence.possible))
     sort!(hard; by = array -> (array.exit == Exit.intermediate, array.confidence == Confidence.possible))
     facts = InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting), unique!(array -> array.span, hard), unique!(lost -> lost.test, narrowing), annotation_guesses(package, observed, incomplete))
-    return facts, unique!(append!(spots, gaps)), Units(typed, incomplete), used
+    return facts, unique!(append!(spots, gaps)), Units(typed, incomplete, stored), used
 end
 
 """

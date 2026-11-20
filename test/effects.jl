@@ -342,12 +342,10 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
 end
 
 @testset "engine stage" begin
-    @test Corset.Engine.effects_facts(PACKAGE, UNITS, false, nothing) == (nothing, BlindSpot[])
-    @test Corset.Engine.effects_facts(nothing, UNITS, true, nothing) == (nothing, BlindSpot[])
-    facts, spots = Corset.Engine.effects_facts(PACKAGE, UNITS, true, nothing)
-    @test [found.site for found in facts.methods] == [found.site for found in FACTS.methods] && spots == SPOTS
+    facts, spots, unit_records = Corset.Engine.effects_facts(PACKAGE, UNITS, nothing, nothing)
+    @test [found.site for found in facts.methods] == [found.site for found in FACTS.methods] && spots == SPOTS && length(unit_records) == length(UNITS.typed)
     mktempdir(@__DIR__) do directory
-        journaled, _ = Corset.Engine.effects_facts(PACKAGE, UNITS, true, directory)
+        journaled, _ = Corset.Engine.effects_facts(PACKAGE, UNITS, nothing, directory)
         @test length(journaled.methods) == length(FACTS.methods)
         @test any(record -> startswith(record.key, "effects\n") && !record.finished, records(directory))
     end

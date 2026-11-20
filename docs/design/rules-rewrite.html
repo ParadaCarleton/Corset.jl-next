@@ -775,7 +775,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 </ul>
 <h4>IR</h4>
 <ul>
-<li><code>inference</code> stage hands typed code of units it inferred this run to effects. Method store keeps facts only; stored unit keeps its stored summary.</li>
+<li><code>inference</code> stage hands typed code of units it inferred this run to effects. Stored unit needs no typed code: its entry keeps effects record (see <strong>Solve and cache</strong>).</li>
 <li>Typed SSA IR before inlining: copy unit's unoptimized code; run compiler passes until <code>CC: COMPACT_1</code>. Package units need no second inference.</li>
 <li>Calls stay call statements, so allocations and consumers map to source through <code>inference</code> stage spans.</li>
 <li>Passes renumber statements. Before passes, line of each statement gets its source index; passes carry line to IR.</li>
@@ -973,9 +973,23 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <li>Callee signature can grow along call chain without end: <code>_any(f ∘ transpose, parent(A), :)</code> adds <code>ComposedFunction</code> layer per step.</li>
 <li>Engine limits callee like native inference (<code>abstract_call_method</code>): method that recurs on call chain gets <code>limit_type_size</code> signature.</li>
 <li>Call chain: caller that first reached each instance. Join limits hard, against method signature.</li>
-<li>Library summary: instance whose signature names no package type and whose edges reach no package method. Targets share its disk cache.</li>
-<li>Key: Julia version, Corset version, loaded extensions, and content digest of each loaded package: Manifest tree hash, or source digest for path and developed packages.</li>
-<li>Package summary: method store entry beside <code>Inferred</code>, same invalidation.</li>
+<li>Library instance: method outside package, signature names no package type, and so does each instance its native inference edges reach.</li>
+<li>Edges come from cached code, else from inference in this run. Instance without either counts as package.</li>
+<li>Package method that changes dispatch of library call removes cached code of caller, so edge walk sees it.</li>
+<li>Library summary: variant of library instance whose solve reaches no package code. Disk cache keeps it; cache hit skips native inference and passes.</li>
+<li>Cache also keeps slot-name parameters and stand-in cut of library instances.</li>
+<li>Summary with callback record stays out: its caller needs record variants too. Variant with package module constant stays out.</li>
+<li>Run that skipped crashed instance stores nothing: its blind spot holds for that run only.</li>
+<li>Key: Julia version, cache flags, and content of each loaded package except target. Corset and extensions are loaded packages too.</li>
+<li>Package content: path in depot <code>packages</code> or standard library, since depot slug derives from tree hash. Else digest of project file, <code>src</code>, <code>ext</code> and <code>deps</code>.</li>
+<li>Target stays out of key: library summary reaches no target method, so target edit keeps key.</li>
+<li>Key covers every loaded package, so cache entry serves one environment. Directory keeps newest 4.</li>
+<li>Gap: target with other dependencies shares no entry. Per-entry package set would let corpus packages share Base summaries.</li>
+<li>Package summary: method store entry keeps effects record of unit beside <code>Inferred</code>, with same invalidation.</li>
+<li>Record: accesses with spans, holds, call facts, blind spots and cuts. Call fact names callee methods by signature, since deserialized <code>Method</code> is new object.</li>
+<li>Effects run infers again each unit whose entry has no record. Inference run keeps records of stored entries.</li>
+<li>Stored unit that fresh unit calls gets unit body from native inference and no first caller, as in cold run.</li>
+<li>Stored units start no walk, so first caller of library instance can differ from cold run. Only recursion limit reads call chain.</li>
 <li>Budget: with warm library cache, effects stage takes at most <code>inference</code> stage time.</li>
 <li>Solver cost and accuracy are unmeasured. Engine PR measures both on corpus before rule PRs.</li>
 </ul>
@@ -1201,6 +1215,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li>Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.</li>
 <li>Later: <code>syntax</code> stage findings per file, keyed by file content hash.</li>
 <li><code>inference</code> stage keeps method store per checked path beside analysis entry. Store holds one entry per inferred method and signature: reached signatures, stage facts and blind spots.</li>
+<li><code>effects</code> run adds effects record of unit to each entry (<code>effects.md</code>, Solve and cache). Library summaries keep own directory <code>library</code> per environment.</li>
 <li>Entry holds plain data: spans, names, call signatures. Typed code stays inside stage, so no rule reads data that store leaves out.</li>
 <li>Entry depends on content hash of file of its method, since spans hold byte offsets.</li>
 <li>Entry also depends on lowered code of each package method that inference read through compiler edges, transitively. Lowered code holds macro output and <code>@eval</code> code.</li>
@@ -1494,7 +1509,7 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <p>Sound summaries for package units through builtins and static calls. Other calls stay open (step 7) until PR 2.</p>
 <ul>
 <li><code>inference</code> stage keeps <code>TypedCode</code> of units it infers this run; <code>inference_facts</code> returns them to <code>Engine</code>.</li>
-<li>Until PR 4, <code>effects</code> run bypasses method store: stored unit has no typed code.</li>
+<li>From PR 4, method store entry keeps effects record of unit, so stored unit needs no typed code.</li>
 <li><code>Engine</code> runs <code>effects</code> after <code>inference</code> when enabled rule reads <code>effects</code>. <code>FactSet</code> gains <code>effects</code> field.</li>
 <li><code>src/Effects/</code>: units, IR, origins, points-to, builtins (call step 1), static calls (call step 3), solve.</li>
 <li>IR: copy unit code, then run passes until <code>CC: COMPACT_1</code>. Instance outside package: native inference first.</li>

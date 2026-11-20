@@ -251,6 +251,25 @@ function widen_holds(old::HoldCounts, new::HoldCounts)::HoldCounts
 end
 
 """
+Library summary cache (`effects.md`, Solve and cache), by key of library instance (`instance_key!`): parameters it uses
+as slot name, whether stand-ins cut its code, and summary per variant constants. Summary holds no callback record.
+"""
+struct Library
+    fields::Dict{String, Set{Int}}
+    cuts::Dict{String, Bool}
+    summaries::Dict{Tuple{String, Vector{Pair{Int, Any}}}, Summary}
+end
+
+"""Library cache without entries."""
+Library()::Library = Library(Dict{String, Set{Int}}(), Dict{String, Bool}(), Dict{Tuple{String, Vector{Pair{Int, Any}}}, Summary}())
+
+"""Entries of `old` and `new` library caches; `new` wins on same key."""
+merged(old::Library, new::Library)::Library = Library(merge(old.fields, new.fields), merge(old.cuts, new.cuts), merge(old.summaries, new.summaries))
+
+"""Whether `library` holds no entry."""
+Base.isempty(library::Library)::Bool = isempty(library.fields) && isempty(library.cuts) && isempty(library.summaries)
+
+"""
 Summary of instance with `count` parameters engine cannot analyze, for blind spot `cause`: blind write and read below
 every parameter, result anywhere.
 """

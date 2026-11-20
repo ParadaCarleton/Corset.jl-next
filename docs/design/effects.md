@@ -44,7 +44,7 @@ Engine code lives in `src/Effects/`.
 
 #### IR
 
-- `inference` stage hands typed code of units it inferred this run to effects. Method store keeps facts only; stored unit keeps its stored summary.
+- `inference` stage hands typed code of units it inferred this run to effects. Stored unit needs no typed code: its entry keeps effects record (see **Solve and cache**).
 - Typed SSA IR before inlining: copy unit's unoptimized code; run compiler passes until `CC: COMPACT_1`. Package units need no second inference.
 - Calls stay call statements, so allocations and consumers map to source through `inference` stage spans.
 - Passes renumber statements. Before passes, line of each statement gets its source index; passes carry line to IR.
@@ -240,9 +240,23 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Callee signature can grow along call chain without end: `_any(f ∘ transpose, parent(A), :)` adds `ComposedFunction` layer per step.
 - Engine limits callee like native inference (`abstract_call_method`): method that recurs on call chain gets `limit_type_size` signature.
 - Call chain: caller that first reached each instance. Join limits hard, against method signature.
-- Library summary: instance whose signature names no package type and whose edges reach no package method. Targets share its disk cache.
-- Key: Julia version, Corset version, loaded extensions, and content digest of each loaded package: Manifest tree hash, or source digest for path and developed packages.
-- Package summary: method store entry beside `Inferred`, same invalidation.
+- Library instance: method outside package, signature names no package type, and so does each instance its native inference edges reach.
+- Edges come from cached code, else from inference in this run. Instance without either counts as package.
+- Package method that changes dispatch of library call removes cached code of caller, so edge walk sees it.
+- Library summary: variant of library instance whose solve reaches no package code. Disk cache keeps it; cache hit skips native inference and passes.
+- Cache also keeps slot-name parameters and stand-in cut of library instances.
+- Summary with callback record stays out: its caller needs record variants too. Variant with package module constant stays out.
+- Run that skipped crashed instance stores nothing: its blind spot holds for that run only.
+- Key: Julia version, cache flags, and content of each loaded package except target. Corset and extensions are loaded packages too.
+- Package content: path in depot `packages` or standard library, since depot slug derives from tree hash. Else digest of project file, `src`, `ext` and `deps`.
+- Target stays out of key: library summary reaches no target method, so target edit keeps key.
+- Key covers every loaded package, so cache entry serves one environment. Directory keeps newest 4.
+- Gap: target with other dependencies shares no entry. Per-entry package set would let corpus packages share Base summaries.
+- Package summary: method store entry keeps effects record of unit beside `Inferred`, with same invalidation.
+- Record: accesses with spans, holds, call facts, blind spots and cuts. Call fact names callee methods by signature, since deserialized `Method` is new object.
+- Effects run infers again each unit whose entry has no record. Inference run keeps records of stored entries.
+- Stored unit that fresh unit calls gets unit body from native inference and no first caller, as in cold run.
+- Stored units start no walk, so first caller of library instance can differ from cold run. Only recursion limit reads call chain.
 - Budget: with warm library cache, effects stage takes at most `inference` stage time.
 - Solver cost and accuracy are unmeasured. Engine PR measures both on corpus before rule PRs.
 
