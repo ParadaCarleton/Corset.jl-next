@@ -589,6 +589,8 @@ first_of_vector(x::AbstractVector) = first(x)
 merged_any!(d::Any, e::Any) = merge!(d, e)
 merged!(d::AbstractDict, e::AbstractDict) = merge!(d, e)
 push_many!(c::Any, a::Vector{Int}, b::Vector{Int}) = push!(c, a, b)
+"""Open store into `buf`: byte buffer converts value to `UInt8`, so it holds no object (JSON `_string`)."""
+stored_into!(buf::AbstractVector, x::Any, i::Any) = (buf[i] = x; buf)
 converted(T::Type, x::Any) = convert(T, x)
 converted_fresh(T::Type, x::Vector{Int}) = convert(T, Any[x])
 indexed(A::Any, mask::Vector{Int}) = A[mask]
@@ -818,6 +820,10 @@ end
     end
     many = summary_of(push_many!, Any, Vector{Int}, Vector{Int})
     @test many.edges[(Node.Placed(parameter(2)), Step.Element())] == Nodes(Node.Placed(parameter(3)) => none, Node.Placed(parameter(4)) => none)
+    # Element type that points to no object takes no store; write stays.
+    bytes, objects = summary_of(stored_into!, AbstractVector{UInt8}, Any, Any), summary_of(stored_into!, AbstractVector{Any}, Any, Any)
+    @test !haskey(bytes.edges, (Node.Placed(parameter(2)), Step.Element())) && haskey(doubts(bytes.writes), top(2))
+    @test objects.edges[(Node.Placed(parameter(2)), Step.Element())] == Nodes(Node.Placed(parameter(3)) => none)
     # Queries write nothing; result may alias argument (`convert`) or be element (`get`); `similar` result is fresh.
     for (query, types) in ((measured, (Any,)), (first_of_vector, (AbstractVector,)), (similar_of, (Any,)), (got_dict, (AbstractDict, Int)))
         @test isempty(summary_of(query, types...).writes) && summary_of(query, types...).closed_world

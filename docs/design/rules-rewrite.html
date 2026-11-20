@@ -880,6 +880,7 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <li>Element query (<code>getindex</code>) result is element of collection or lies beneath it, never in indices.</li>
 <li>Iteration (<code>iterate</code>, <code>first</code>, <code>only</code>, <code>isempty</code>, <code>in</code>) reads like element query. <code>Iterators.Stateful</code>, <code>Channel</code> and <code>EachLine</code> get <code>possible</code> write.</li>
 <li>Write contract (<code>setindex!</code>, <code>push!</code>, <code>append!</code>, <code>resize!</code>, <code>pop!</code>, <code>copyto!</code>, <code>merge!</code>) writes first argument and stores or copies elements into it.</li>
+<li>Collection whose <code>eltype</code> points to no object (<code>Vector{UInt8}</code>) takes no stored object: Julia converts value at store. Foreign call table keeps every store: C pointers are untyped.</li>
 <li>Function with callable-first form (<code>get</code>, <code>get!</code>, <code>merge!</code>): contract holds only when first argument cannot be callable. Else call stays open.</li>
 <li>Query result that may alias every argument tripled JSON <code>effects</code> time and changed no verdict.</li>
 <li>Open call (step 7) whose open operands come from opaque and opt-out arguments only: no finding (Provenance). Opaque argument counts on coverage line: <code>open dispatch on opaque data</code>.</li>
