@@ -6,7 +6,7 @@
 using Pkg: Pkg
 
 """Packages phase 5 measures; numbers go to history, "Phase 5 call resolution"."""
-const CORPUS = ["Distances@0.10.12", "DataStructures@0.18.22", "JSON@1.13.4"]
+const CORPUS = ["Distances@0.10.12", "DataStructures@0.18.22", "SpecialFunctions@2.9.2", "StatsFuns@2.3.1", "Distributions@0.25.135"]
 
 """Child process: load target `ARGS[1]`, then time `effects` stage on its copy `ARGS[2]` and count its run."""
 const CHILD = raw"""

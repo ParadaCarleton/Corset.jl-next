@@ -5,7 +5,7 @@
 using Pkg: Pkg
 
 """Packages legacy baseline in docs/design/plan.md measures."""
-const CORPUS = ["Distances@0.10.12", "DataStructures@0.18.22", "JSON@1.13.4"]
+const CORPUS = ["Distances@0.10.12", "DataStructures@0.18.22", "SpecialFunctions@2.9.2", "StatsFuns@2.3.1", "Distributions@0.25.135"]
 
 """Child process: load target `ARGS[1]`, then time `corset check` on its copy `ARGS[2]`."""
 const CHILD = raw"""
