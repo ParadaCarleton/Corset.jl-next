@@ -169,7 +169,7 @@ function beneath(flow::Flow, objects::Targets)::Targets
 end
 
 """Whether `flow` value of `type` can point to object."""
-points(flow::Flow, type::Any)::Bool = referent!(flow.referent, CC.widenconst(type))
+points(flow::Flow, @nospecialize(type::Any))::Bool = referent!(flow.referent, CC.widenconst(type))
 
 """Whether global `binding` is constant null pointer (`C_NULL`): pointer into no object."""
 null_pointer(binding::GlobalRef)::Bool = isconst(binding) && (pointer = getglobal(binding.mod, binding.name); pointer isa Ptr && pointer == C_NULL)
@@ -181,7 +181,7 @@ function global_targets(flow::Flow, binding::GlobalRef)::Targets
 end
 
 """Targets of IR `value`: SSA value, argument, global binding, or constant object (unknown)."""
-function value_targets(flow::Flow, value::Any)::Targets
+function value_targets(flow::Flow, @nospecialize(value::Any))::Targets
     value isa Core.SSAValue && return flow.values[value.id]
     value isa Core.Argument && return flow.arguments[value.n]
     points(flow, CC.argextype(value, flow.ir)) || return Targets()
@@ -199,7 +199,7 @@ function operand_targets(flow::Flow, operand::Operand.Type)::Targets
 end
 
 """Targets of every element of spread tuple or array `value`: tuple position is unknown, so any slot (`load_any`)."""
-function spread_elements(flow::Flow, value::Any)::Targets
+function spread_elements(flow::Flow, @nospecialize(value::Any))::Targets
     objects = value_targets(flow, value)
     return value_type(flow.ir, value) <: Tuple ? load_any(flow, objects) : load(flow, objects, Step.Element())
 end
@@ -344,7 +344,7 @@ const INERT = (
 )
 
 """Transfer statement `index` of `flow` (`effects.md`, Calls)."""
-function statement!(flow::Flow, index::Int, statement::Any, callees::Callees)::Nothing
+function statement!(flow::Flow, index::Int, @nospecialize(statement::Any), callees::Callees)::Nothing
     if statement isa Expr
         head = statement.head
         if head in (:call, :foreigncall)
@@ -393,7 +393,7 @@ function statement!(flow::Flow, index::Int, statement::Any, callees::Callees)::N
 end
 
 """Pass IR `value` to statement `index` (phi or pi node): its targets and derived type sources."""
-function pass!(flow::Flow, index::Int, value::Any)::Nothing
+function pass!(flow::Flow, index::Int, @nospecialize(value::Any))::Nothing
     assign!(flow, index, value_targets(flow, value))
     derive!(flow, index, value_derived(flow, value))
     return nothing
@@ -411,7 +411,7 @@ end
 Type sources IR `value` derives without object (`effects.md`, Provenance): sources of call or phi that made SSA value;
 parameter source of argument, since caller chose its type.
 """
-function value_derived(flow::Flow, value::Any)::Sources
+function value_derived(flow::Flow, @nospecialize(value::Any))::Sources
     value isa Core.SSAValue && return flow.derived[value.id]
     value isa Core.Argument && return parameter_source(value.n)
     return Sources(0)
@@ -448,7 +448,7 @@ function allocate!(flow::Flow, index::Int)::Nothing
 end
 
 """Allocation of `%new(type, operands...)` at `index`: each operand goes into its field, memory fields into backing."""
-function new!(flow::Flow, index::Int, type_value::Any, operands::Vector{Operand.Type})::Nothing
+function new!(flow::Flow, index::Int, @nospecialize(type_value::Any), operands::Vector{Operand.Type})::Nothing
     allocate!(flow, index)
     type = CC.instanceof_tfunc(CC.argextype(type_value, flow.ir))[1]
     object = flow.values[index]
@@ -469,7 +469,7 @@ Struct type that gives fields of object of `type`: concrete `type`, or body of a
 (`ArrayStandIn{<:Any, 1}` and its `Vector` data). `nothing` for other type.
 Code struct family keeps `Position` steps: its field paths multiply places to map at each call.
 """
-function layout(type::Any)::Union{Nothing, DataType}
+function layout(@nospecialize(type::Any))::Union{Nothing, DataType}
     isconcretetype(type) && return type
     type isa UnionAll || return nothing
     array_stand_in(type) || type <: Array || return nothing
@@ -478,7 +478,7 @@ function layout(type::Any)::Union{Nothing, DataType}
 end
 
 """Whether field `field` of `type` holds memory backing (`GenericMemory` or `GenericMemoryRef`): it adds no path step."""
-function backing_field(type::Any, field::Union{Symbol, Int})::Bool
+function backing_field(@nospecialize(type::Any), field::Union{Symbol, Int})::Bool
     type = layout(type)
     isnothing(type) && return false
     type <: Tuple && return false
@@ -491,7 +491,7 @@ end
 Step for constant field `field` of object of `type`: tuple `Position`, else named `Field` (index becomes name when type
 is concrete). `nothing` for field that is not constant.
 """
-function field_step(type::Any, field::Any)::Union{Nothing, Step.Type}
+function field_step(@nospecialize(type::Any), @nospecialize(field::Any))::Union{Nothing, Step.Type}
     if type isa DataType && type <: Tuple
         return field isa Int ? Step.Position(field) : nothing
     end

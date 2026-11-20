@@ -60,7 +60,7 @@ struct Change
 end
 
 """Whether `type` holds float stand-in, parameters, variable bounds and union members included."""
-function holds_float(type::Any)::Bool
+function holds_float(@nospecialize(type::Any))::Bool
     type === FloatStandIn && return true
     type isa TypeVar && return holds_float(type.ub)
     type isa Union && return holds_float(type.a) || holds_float(type.b)
@@ -72,10 +72,10 @@ end
 `type` with float stand-in replaced by `Float64`, parameters, variable bounds and union members included (as
 `holds_float` reads them); `nothing` when parameter bound rejects `Float64`. Meeting test swaps input to it.
 """
-swapped(type::Any)::Any = swapped(type, IdDict{TypeVar, TypeVar}())
+swapped(@nospecialize(type::Any))::Any = swapped(type, IdDict{TypeVar, TypeVar}())
 
 """`swapped` of `type`; `variables` maps each type variable to one with swapped bounds."""
-function swapped(type::Any, variables::IdDict{TypeVar, TypeVar})::Any
+function swapped(@nospecialize(type::Any), variables::IdDict{TypeVar, TypeVar})::Any
     type === FloatStandIn && return Float64
     type isa TypeVar && return get(variables, type, type)
     if type isa Union
@@ -103,7 +103,7 @@ function swapped(type::Any, variables::IdDict{TypeVar, TypeVar})::Any
 end
 
 """Argument after hoisted reads: lowering reads globals and variables into statements (`%3 = Main.HALF`)."""
-function resolved(code::Core.CodeInfo, argument::Any)::Any
+function resolved(code::Core.CodeInfo, @nospecialize(argument::Any))::Any
     while argument isa Core.SSAValue
         statement = code.code[argument.id]
         statement isa Union{GlobalRef, Core.SlotNumber} || break
@@ -116,7 +116,7 @@ end
 Whether `value` is weak data: number, or tuple of numbers (`evalpoly` coefficients). `Bool` promotes to any number type,
 so it never widens; leaving it out saves meeting tests.
 """
-function weak_data(value::Any)::Bool
+function weak_data(@nospecialize(value::Any))::Bool
     value isa Number && return !(value isa Bool)
     value isa Tuple || return false
     isempty(value) && return false
@@ -130,7 +130,7 @@ end
 Weak value `argument` of `code` holds, with its kind: number literal, constant, or call of weak values that inference
 folds (`sqrt(2)`, `2π`, `(1.0, 2.0)`); concrete Base number type for name. `nothing` for other argument.
 """
-function weak(code::Core.CodeInfo, argument::Any)::Union{Nothing, Tuple{Any, Weak.T}}
+function weak(code::Core.CodeInfo, @nospecialize(argument::Any))::Union{Nothing, Tuple{Any, Weak.T}}
     argument = resolved(code, argument)
     argument isa Number && !(argument isa Bool) && return argument, Weak.literal
     if argument isa GlobalRef
@@ -155,13 +155,13 @@ function weak(code::Core.CodeInfo, argument::Any)::Union{Nothing, Tuple{Any, Wea
 end
 
 """Right side of assignment `statement`; statement itself otherwise."""
-assigned(statement::Any)::Any = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
+assigned(@nospecialize(statement::Any))::Any = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
 
 """
 Call expression of `statement`, through slot assignment (`_4 = f(x)`); `nothing` for other statement. Inference drops
 `isa` narrowing after `(x isa Expr && …) || continue`; `isnothing` test on this result keeps it.
 """
-function statement_call(statement::Any)::Union{Nothing, Expr}
+function statement_call(@nospecialize(statement::Any))::Union{Nothing, Expr}
     call = assigned(statement)
     return call isa Expr && call.head === :call ? call : nothing
 end
@@ -192,7 +192,7 @@ end
 Value that replaces weak `value`: real number converted to float stand-in, tuple element-wise; `nothing` for other
 value and for number without conversion.
 """
-function replacement(value::Any)::Union{Nothing, Some{Any}}
+function replacement(@nospecialize(value::Any))::Union{Nothing, Some{Any}}
     if value isa Tuple
         elements = Any[]
         for element in value
@@ -222,7 +222,7 @@ function renames(name::Type)::Bool
 end
 
 """Whether position `position` of call to `callee` takes type name that converts: callee, `convert(T, x)`, `T.(x)`."""
-conversion(callee::Any, position::Int)::Bool = position == 1 || (position == 2 && (callee === convert || callee === Base.Broadcast.broadcasted))
+conversion(@nospecialize(callee::Any), position::Int)::Bool = position == 1 || (position == 2 && (callee === convert || callee === Base.Broadcast.broadcasted))
 
 """
 Result type of call with argument types `types`, callee first, over at most `MATCHES` methods; `Any` when unknown.
@@ -360,13 +360,13 @@ breaks(changed::Core.CodeInfo, code::Core.CodeInfo)::Bool = any(eachindex(code.c
 end
 
 """Type of `argument` in typed `code`, widened."""
-argument_type(code::Core.CodeInfo, argument::Any, parameters::Vector{CC.VarState})::Type = CC.widenconst(code_argextype(argument, code, parameters))
+argument_type(code::Core.CodeInfo, @nospecialize(argument::Any), parameters::Vector{CC.VarState})::Type = CC.widenconst(code_argextype(argument, code, parameters))
 
 """
 Type of call `argument` in typed `code` or IR (`CC.argextype`). Library tuple of `cglobal` stays nested `Core.tuple`
 call, which `CC.argextype` rejects: it gives tuple of element types. Other nested call fails loud.
 """
-function code_argextype(argument::Any, code::Union{Core.CodeInfo, CC.IRCode}, parameters::Vector{CC.VarState})::Any
+function code_argextype(@nospecialize(argument::Any), code::Union{Core.CodeInfo, CC.IRCode}, parameters::Vector{CC.VarState})::Any
     if argument isa Expr && argument.head === :call
         CC.argextype(argument.args[1], code, parameters) == Core.Const(Core.tuple) || error("nested call in argument position: $argument")
         return Tuple{(CC.widenconst(code_argextype(element, code, parameters)) for element in argument.args[2:end])...}
@@ -392,7 +392,7 @@ Value statement of typed `code` returns or stores in argument, global or returne
 target type, store); target `nothing` for return, store `callee => call` for container and `nothing` for global.
 `nothing` for other statement.
 """
-function exit_value(code::Core.CodeInfo, statement::Any, parameters::Vector{CC.VarState}, arguments::Int)::Union{Nothing, Tuple{Any, Any, Any}}
+function exit_value(code::Core.CodeInfo, @nospecialize(statement::Any), parameters::Vector{CC.VarState}, arguments::Int)::Union{Nothing, Tuple{Any, Any, Any}}
     statement isa Core.ReturnNode && return isdefined(statement, :val) ? (statement.val, nothing, nothing) : nothing
     call = statement_call(statement)
     isnothing(call) && return nothing
@@ -414,7 +414,7 @@ function exit_value(code::Core.CodeInfo, statement::Any, parameters::Vector{CC.V
 end
 
 """Whether store of `exit_value` converts value: concrete global, field, dictionary value or element type."""
-function converts(code::Core.CodeInfo, target::Any, store::Any, parameters::Vector{CC.VarState})::Bool
+function converts(code::Core.CodeInfo, @nospecialize(target::Any), @nospecialize(store::Any), parameters::Vector{CC.VarState})::Bool
     isnothing(store) && return isconcretetype(target)
     callee, call = store
     # Identity test: `in` compares with `==`, which gives `missing` for `missing` callee.
@@ -469,10 +469,10 @@ function widened_statement(left::Core.CodeInfo, baseline::Core.CodeInfo, paramet
 end
 
 """`statement` of typed code without `Core.Const` inference wraps around unreached statement."""
-unwrapped(statement::Any)::Any = statement isa Core.Const ? statement.val : statement
+unwrapped(@nospecialize(statement::Any))::Any = statement isa Core.Const ? statement.val : statement
 
 """Whether `statement` calls function `callee` (`GlobalRef`)."""
-calls(statement::Any, callee::GlobalRef)::Bool = statement isa Expr && statement.head === :call && statement.args[1] == callee
+calls(@nospecialize(statement::Any), callee::GlobalRef)::Bool = statement isa Expr && statement.head === :call && statement.args[1] == callee
 
 """
 Whether `isa` test `call` of `code` is conversion lowering adds for declared result or local type: `v isa T` guards
@@ -493,7 +493,7 @@ function declared_conversion(code::Core.CodeInfo, call::Expr)::Bool
 end
 
 """Whether `argument` of `code` is result of `Core.get_binding_type`: declared type of global."""
-function binding_type(code::Core.CodeInfo, argument::Any, parameters::Vector{CC.VarState})::Bool
+function binding_type(code::Core.CodeInfo, @nospecialize(argument::Any), parameters::Vector{CC.VarState})::Bool
     argument isa Core.SSAValue || return false
     call = statement_call(code.code[argument.id])
     return !isnothing(call) && code_argextype(call.args[1], code, parameters) == Core.Const(Core.get_binding_type)

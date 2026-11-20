@@ -56,7 +56,7 @@ const PLAIN = Union{Type, Core.TypeName, Module, Symbol, String, Core.MethodInst
 Whether value of `type` can point to object effects can reach: mutable, abstract, `Ptr`, or holds such field. `cache`
 keeps answers; recursive struct counts as pointing.
 """
-function referent!(cache::IdDict{Any, Bool}, type::Any)::Bool
+function referent!(cache::IdDict{Any, Bool}, @nospecialize(type::Any))::Bool
     haskey(cache, type) && return cache[type]
     cache[type] = true
     answer = if type === Union{}
@@ -70,7 +70,7 @@ function referent!(cache::IdDict{Any, Bool}, type::Any)::Bool
     elseif type <: Ptr || ismutabletype(type)
         true
     else
-        any(field -> referent!(cache, field), fieldtypes(type))
+        any(index -> referent!(cache, fieldtype(type, index)), 1:fieldcount(type))
     end
     cache[type] = answer
     return answer
@@ -80,13 +80,13 @@ end
 Type of IR value `value` in `ir`, widened to plain type. Library tuple of `cglobal` stays nested `Core.tuple` call,
 which `argextype` rejects: it gives tuple of its element types.
 """
-function value_type(ir::CC.IRCode, value::Any)::Any
+function value_type(ir::CC.IRCode, @nospecialize(value::Any))::Any
     nested_tuple(ir, value) && return Tuple{(value_type(ir, element) for element in value.args[2:end])...}
     return CC.widenconst(CC.argextype(value, ir))
 end
 
 """Whether `value` is nested `Core.tuple` call expression inside statement of `ir`."""
-function nested_tuple(ir::CC.IRCode, value::Any)::Bool
+function nested_tuple(ir::CC.IRCode, @nospecialize(value::Any))::Bool
     value isa Expr || return false
     value.head === :call || return false
     callee = constant(ir, value.args[1])
@@ -94,11 +94,11 @@ function nested_tuple(ir::CC.IRCode, value::Any)::Bool
 end
 
 """Constant `value` holds in `ir`: literal, constant global or singleton type instance; `nothing` when not constant."""
-function constant(ir::CC.IRCode, value::Any)::Union{Nothing, Some{Any}}
+function constant(ir::CC.IRCode, @nospecialize(value::Any))::Union{Nothing, Some{Any}}
     type = CC.argextype(value, ir)
-    type isa Core.Const && return Some(type.val)
+    type isa Core.Const && return Some{Any}(type.val)
     widened = CC.widenconst(type)
-    widened isa DataType && isdefined(widened, :instance) && return Some(widened.instance)
+    widened isa DataType && isdefined(widened, :instance) && return Some{Any}(widened.instance)
     return nothing
 end
 
@@ -113,7 +113,7 @@ function statement_users(ir::CC.IRCode)::Vector{Vector{Int}}
 end
 
 """Whether lowered `statement` calls function, directly or as value of slot assignment (`_4 = f(x)`)."""
-function call_statement(statement::Any)::Bool
+function call_statement(@nospecialize(statement::Any))::Bool
     statement isa Expr && statement.head === :(=) && (statement = statement.args[2])
     return statement isa Expr && statement.head in (:call, :invoke, :foreigncall)
 end
@@ -136,4 +136,4 @@ function message_statements(users::Vector{Vector{Int}}, sinks::Vector{Bool})::Ve
 end
 
 """Whether `type` is tuple type with definite field count: no `Vararg` parameter."""
-definite_tuple(type::Any)::Bool = type isa DataType && type <: Tuple && (isempty(type.parameters) || !Base.isvarargtype(type.parameters[end]))
+definite_tuple(@nospecialize(type::Any))::Bool = type isa DataType && type <: Tuple && (isempty(type.parameters) || !Base.isvarargtype(type.parameters[end]))

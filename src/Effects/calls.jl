@@ -265,7 +265,7 @@ function contract_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operand
     isnothing(spread) || 0 < contract.effects.rest <= spread || return Outcome.Unresolved(operands)
     types = Any[operand_type(ir, argument) for argument in arguments]
     contract.callback && !isempty(types) && typeintersect(first(types), Base.Callable) !== Union{} && return Outcome.Open(operands)
-    admits(position::Int, type::Any)::Bool = any(index -> typeintersect(types[index], type) !== Union{}, role(contract.effects, position, length(types)))
+    admits(position::Int, @nospecialize(type::Any))::Bool = any(index -> typeintersect(types[index], type) !== Union{}, role(contract.effects, position, length(types)))
     return Outcome.Contract(contract.effects, arguments, Int[position for (position, type) in contract.breaches if admits(position, type)])
 end
 
@@ -286,7 +286,7 @@ function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt
         end
         type = value_type(ir, value)
         if definite_tuple(type) && !any(is_rest, operands)
-            append!(operands, (Operand.Part(value, position) for position in 1:fieldcount(type)))
+            append!(operands, Operand.Type[Operand.Part(value, position) for position in 1:fieldcount(type)])
         elseif type isa DataType && type <: Union{Tuple, Array}
             push!(operands, Operand.Rest(value))
         else
@@ -313,7 +313,7 @@ function invoke_call(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt)
 end
 
 """Name of C function that foreign call `target` names: symbol or string, alone or first of library tuple."""
-function foreign_name(target::Any)::Union{Nothing, Symbol}
+function foreign_name(@nospecialize(target::Any))::Union{Nothing, Symbol}
     target isa QuoteNode && return foreign_name(target.value)
     target isa Expr && target.head === :tuple && !isempty(target.args) && return foreign_name(first(target.args))
     target isa Tuple && !isempty(target) && return foreign_name(first(target))
@@ -338,7 +338,7 @@ end
 Resolution of statement `statement` of `ir`: call or foreign call outcome; `nothing` for other statements. IR before
 inlining holds no `:invoke` statement.
 """
-function statement_outcome(ir::CC.IRCode, statement::Any, world::UInt, limit::Int)::Union{Nothing, Outcome.Type}
+function statement_outcome(ir::CC.IRCode, @nospecialize(statement::Any), world::UInt, limit::Int)::Union{Nothing, Outcome.Type}
     statement isa Expr || return nothing
     statement.head === :call && return resolve(ir, Operand.Type[Operand.Value(value) for value in statement.args], world, limit)
     statement.head === :foreigncall && return foreign_outcome(statement)
@@ -368,7 +368,7 @@ Primitive that call with `operands` (callee first) and result of `type` makes in
 (`Core.kwcall`) names callee third. Argument types pick resource: lock, `Semaphore`, `Condition`, `IOStream`.
 `wait(::Condition)` releases lock and takes it again.
 """
-function primitive(ir::CC.IRCode, operands::Vector{Operand.Type}, type::Any)::Union{Nothing, Primitive}
+function primitive(ir::CC.IRCode, operands::Vector{Operand.Type}, @nospecialize(type::Any))::Union{Nothing, Primitive}
     callee, first_argument = operand_constant(ir, operands[1]), 2
     if !isnothing(callee) && something(callee) === Core.kwcall && length(operands) >= 3
         callee, first_argument = operand_constant(ir, operands[3]), 4

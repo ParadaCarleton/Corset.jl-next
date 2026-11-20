@@ -520,7 +520,7 @@ end
 Whether `type` is stand-in type or holds one as parameter or variable bound: `ArrayStandIn{<:Any, 1}`,
 `Circle{IntStandIn}`, view of open stand-in (`SubArray{T, 1, P} where {T, P <: ArrayStandIn{<:Any, 2}}`).
 """
-function holds_stand_in(type::Any)::Bool
+function holds_stand_in(@nospecialize(type::Any))::Bool
     type isa TypeVar && return holds_stand_in(type.ub)
     type = Base.unwrap_unionall(type)
     return type isa DataType && (parentmodule(type) === StandIns || any(holds_stand_in, type.parameters))
@@ -530,7 +530,7 @@ end
 Whether every value of `type` has concrete type: concrete type, or struct family (`ArrayStandIn{<:Any, 1}`, its views).
 Struct type is concrete whatever its parameters; tuple is concrete only when its members are.
 """
-function settled(type::Any)::Bool
+function settled(@nospecialize(type::Any))::Bool
     type isa UnionAll || return isconcretetype(type)
     body = Base.unwrap_unionall(type)
     return body isa DataType && isstructtype(body) && !(body <: Tuple)
@@ -580,21 +580,21 @@ dispatched(signature::Type)::Method = only(Base._methods_by_ftype(signature, 1, 
 include("Inference/failures.jl")
 
 """Method instance compiler edge `edge` stands for; `nothing` for other edge (binding, method-table lookup)."""
-function edge_instance(edge::Any)::Union{Nothing, Core.MethodInstance}
+function edge_instance(@nospecialize(edge::Any))::Union{Nothing, Core.MethodInstance}
     edge isa Core.CodeInstance && (edge = edge.def)
     edge isa Core.ABIOverride && (edge = edge.def)
     return edge isa Core.MethodInstance ? edge : nothing
 end
 
 """Compiler edges of inference behind `edge`: those of code instance, or of first cached code instance of method instance."""
-function edges_of(edge::Any)::Core.SimpleVector
+function edges_of(@nospecialize(edge::Any))::Core.SimpleVector
     edge isa Core.CodeInstance && return edge.edges
     instance = edge_instance(edge)
     return isnothing(instance) || !isdefined(instance, :cache) ? Core.svec() : instance.cache.edges
 end
 
 """Whether `type` names type or function of package `modules`, parameters included; `named` caches answers."""
-function names_package!(named::IdDict{Any, Bool}, type::Any, modules::Set{Module})::Bool
+function names_package!(named::IdDict{Any, Bool}, @nospecialize(type::Any), modules::Set{Module})::Bool
     haskey(named, type) && return named[type]
     # Guard for type that names itself through parameter.
     named[type] = false
@@ -607,7 +607,7 @@ function names_package!(named::IdDict{Any, Bool}, type::Any, modules::Set{Module
     elseif type isa Core.TypeofVararg
         isdefined(type, :T) && names_package!(named, type.T, modules)
     elseif type isa DataType
-        parentmodule(type) in modules || any(parameter -> names_package!(named, parameter, modules), type.parameters)
+        parentmodule(type) in modules || any(index -> names_package!(named, type.parameters[index], modules), 1:length(type.parameters))
     else
         false
     end
@@ -644,7 +644,7 @@ end
 Whether `type` names type lowering names, parameters included: closure (`#g##0#g##1`) or keyword body (`#f#1`). Edit can
 remove name, and then serialized type cannot load. Function `f` has type `#f`, but its `singletonname` is `f`.
 """
-function holds_gensym(type::Any)::Bool
+function holds_gensym(@nospecialize(type::Any))::Bool
     type isa Union && return holds_gensym(type.a) || holds_gensym(type.b)
     type isa UnionAll && return holds_gensym(type.body)
     type isa DataType || return false
@@ -730,7 +730,7 @@ digest(@nospecialize(data::Any))::String = bytes2hex(sha256(sprint(serialize, An
 Whether `value` is number, character, string, symbol, or immutable struct of those, tuples included: data that inference
 or `@eval` loops of other files read.
 """
-function plain(value::Any)::Bool
+function plain(@nospecialize(value::Any))::Bool
     value isa Union{Number, AbstractChar, String, Symbol} && return true
     (isstructtype(typeof(value)) && !ismutable(value)) || return false
     # Loop, since `all` over tuple compiles once per tuple type. Serializer writes undefined field too.
@@ -759,7 +759,7 @@ end
 Shape text of constant `value`: layout for type (`type_layout`), name for function or module, code for enum value,
 serialized value for `plain` value, else type. Inference reads constants (`const op = +`). Serializer throws for `@enum` value.
 """
-function constant_text(value::Any)::String
+function constant_text(@nospecialize(value::Any))::String
     # Closure value would serialize its methods with their lines; name is stable.
     value isa Union{Function, Module} && return "$(parentmodule(value)).$(nameof(value))"
     value isa Type && return type_layout(value)

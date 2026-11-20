@@ -59,10 +59,10 @@ model(::Type{IntStandIn})::Type{Int32} = Int32
 gives `Vector{Float32}`.
 Function stand-in has no model and stays.
 """
-model_type(type::Any)::Any = modeled(type, IdDict{TypeVar, TypeVar}())
+model_type(@nospecialize(type::Any))::Any = modeled(type, IdDict{TypeVar, TypeVar}())
 
 """`model_type` of `type`; `variables` maps each type variable to one with modeled bounds (`P <: ArrayStandIn` of view)."""
-function modeled(type::Any, variables::IdDict{TypeVar, TypeVar})::Any
+function modeled(@nospecialize(type::Any), variables::IdDict{TypeVar, TypeVar})::Any
     type isa TypeVar && return get(variables, type, type)
     type in NUMBERS && return model(type)
     type isa Union && return Union{modeled(type.a, variables), modeled(type.b, variables)}
@@ -78,7 +78,7 @@ function modeled(type::Any, variables::IdDict{TypeVar, TypeVar})::Any
 end
 
 """Whether `type` is array stand-in, element open or not: `ArrayStandIn{<:Any, 1}`, `DenseStandIn{FloatStandIn, 2}`."""
-array_stand_in(type::Any)::Bool = (type isa DataType || type isa UnionAll) && type <: Union{ArrayStandIn, DenseStandIn}
+array_stand_in(@nospecialize(type::Any))::Bool = (type isa DataType || type isa UnionAll) && type <: Union{ArrayStandIn, DenseStandIn}
 
 """Base number types stand-ins convert to and promote with."""
 const PARTNERS = (Bool, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, Float16, Float32, Float64, BigInt, BigFloat)
@@ -102,7 +102,7 @@ const BINARY = (
 rewrap(result::Float32)::FloatStandIn = FloatStandIn(result)
 rewrap(result::Int32)::IntStandIn = IntStandIn(result)
 rewrap(result::Tuple)::Tuple = map(rewrap, result)
-rewrap(result::Any)::Any = result
+rewrap(@nospecialize(result::Any))::Any = result
 
 for stand_in in NUMBERS
     model_type = model(stand_in)

@@ -100,7 +100,7 @@ function started(ir::CC.IRCode, index::Int, outcome::Outcome.Type)::Union{Nothin
         Outcome.Dead() => return nothing
         _ => false
     end
-    return contract || something(callee) === iterate ? Some(statement.args[2]) : nothing
+    return contract || something(callee) === iterate ? Some{Any}(statement.args[2]) : nothing
 end
 
 """Add effects of `scratch` to `table`; `only_definite` skips effects with doubt."""
@@ -253,7 +253,7 @@ function join_accesses!(table::OriginAccesses, members::Vector{OriginAccesses}, 
 end
 
 """Transfer builtin call (`effects.md`, Calls, step 1); writes go into `writes`."""
-function builtin!(flow::Flow, writes::OriginAccesses, index::Int, builtin::Any, operands::Vector{Operand.Type})::Nothing
+function builtin!(flow::Flow, writes::OriginAccesses, index::Int, @nospecialize(builtin::Any), operands::Vector{Operand.Type})::Nothing
     targets(position::Int)::Targets = operand_targets(flow, operands[position])
     if builtin === Core.getfield
         binding = module_global(flow, operands)
@@ -335,7 +335,7 @@ Transfer write of slot of `objects` with `shape` and call `operands`: record wri
 `old` holds slot content before write; `store` puts targets into slot of declared type `slot`. Slot of type that
 points to no object holds no targets. `modify` operator call stays open. Writes of `kind` go into `writes`.
 """
-function write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Shape, operands::Vector{Operand.Type}, objects::Targets, old::Targets, store::Function, slot::Any, kind::EffectKind.T)::Nothing
+function write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Shape, operands::Vector{Operand.Type}, objects::Targets, old::Targets, store::Function, @nospecialize(slot::Any), kind::EffectKind.T)::Nothing
     access!(writes, objects, false, definite(index), kind)
     shape.returns in (Returns.stored, Returns.object) || access!(flow.reads, objects, false, definite(index), kind)
     holds = points(flow, slot)
@@ -391,7 +391,7 @@ function element_write!(flow::Flow, writes::OriginAccesses, index::Int, shape::S
 end
 
 """Declared type of constant `field` (`Some`; `nothing` when not constant) of object of `type`; `Any` when unknown."""
-function slot_type(type::Any, field::Union{Nothing, Some{Any}})::Any
+function slot_type(@nospecialize(type::Any), field::Union{Nothing, Some{Any}})::Any
     isnothing(field) && return Any
     name, fields = something(field), layout(type)
     isnothing(fields) && return Any
@@ -401,7 +401,7 @@ function slot_type(type::Any, field::Union{Nothing, Some{Any}})::Any
 end
 
 """Element type of memory reference or pointer `type`; `Any` when unknown."""
-function element_type(type::Any)::Any
+function element_type(@nospecialize(type::Any))::Any
     type isa DataType || return Any
     type <: GenericMemoryRef && return type.parameters[2]
     type <: Ptr && return type.parameters[1]
@@ -443,7 +443,7 @@ end
 """
 Transfer intrinsic call: pointer writes into `writes`, and reads; other intrinsics pass pointer operands to result.
 """
-function intrinsic!(flow::Flow, writes::OriginAccesses, index::Int, intrinsic::Any, operands::Vector{Operand.Type})::Nothing
+function intrinsic!(flow::Flow, writes::OriginAccesses, index::Int, @nospecialize(intrinsic::Any), operands::Vector{Operand.Type})::Nothing
     intrinsics = Core.Intrinsics
     if haskey(ELEMENT_WRITES, intrinsic)
         element_write!(flow, writes, index, ELEMENT_WRITES[intrinsic], operands)

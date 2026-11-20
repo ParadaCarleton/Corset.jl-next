@@ -14,14 +14,25 @@ end
 """Whether `variant` is package code by itself (`package_instance!`), or constant of variant is package module."""
 package_variant!(run::Run, variant::Variant)::Bool = package_instance!(run, first(variant)) || any(constant -> last(constant) in run.modules, last(variant))
 
+"""Whether `list` holds `item` itself (`===`)."""
+function identical_in(@nospecialize(item::Any), list::Vector{Any})::Bool
+    for known in list
+        known === item && return true
+    end
+    return false
+end
+
 """
 Throw helper verdict on `callee` (`throw_helper`), once per run. Records that `instance` read it: library cache entry
 keeps verdicts its closure read, and hits only while each holds (`stored_value!`).
 """
-function helper!(run::Run, instance::Core.MethodInstance, callee::Any)::Bool
+function helper!(run::Run, instance::Core.MethodInstance, @nospecialize(callee::Any))::Bool
     read = get!(Vector{Any}, run.cache.helpers, instance)
-    any(known -> known === callee, read) || push!(read, callee)
-    return first(get!(() -> throw_helper(callee), run.helpers, callee))
+    # Closures over `callee` would compile `any` and `get!` once per callee type.
+    identical_in(callee, read) || push!(read, callee)
+    verdict = get(run.helpers, callee, nothing)
+    isnothing(verdict) && (verdict = run.helpers[callee] = throw_helper(callee))
+    return first(verdict)
 end
 
 """
@@ -35,15 +46,15 @@ function instance_node(run::Run, instance::Core.MethodInstance)::Any
 end
 
 """Native inference edges of `node` (`instance_node`, or code instance that edge names)."""
-node_edges(run::Run, node::Any)::Union{Core.SimpleVector, Vector{Any}} = node isa Core.CodeInstance ? node.edges : run.cache.edges[node::Core.MethodInstance]
+node_edges(run::Run, @nospecialize(node::Any))::Union{Core.SimpleVector, Vector{Any}} = node isa Core.CodeInstance ? node.edges : run.cache.edges[node::Core.MethodInstance]
 
 """
 Canonical text of `type` inside type variables `bound` (innermost last); adds root modules it names to `modules`. Type counts
 by module path, name and parameters; union by members; variable of `bound` by binding depth, so renamed variables agree.
 Composite text is digest of its parts (`Cache.digest`); part without free variable takes its run text (`typed!`).
 """
-function structure_text!(run::Run, type::Any, bound::Vector{TypeVar}, modules::Vector{Module})::String
-    part(inner::Any)::String = Base.has_free_typevars(inner) ? structure_text!(run, inner, bound, modules) : typed!(run, inner, modules)
+function structure_text!(run::Run, @nospecialize(type::Any), bound::Vector{TypeVar}, modules::Vector{Module})::String
+    part(@nospecialize(inner::Any))::String = Base.has_free_typevars(inner) ? structure_text!(run, inner, bound, modules) : typed!(run, inner, modules)
     parts = if type isa TypeVar
         depth = findlast(variable -> variable === type, bound)
         isnothing(depth) || return "bound $(length(bound) - something(depth))"
@@ -60,14 +71,19 @@ function structure_text!(run::Run, type::Any, bound::Vector{TypeVar}, modules::V
         String["vararg", isdefined(type, :T) ? part(type.T) : "", isdefined(type, :N) ? part(type.N) : ""]
     elseif type isa DataType
         push!(modules, Base.moduleroot(type.name.module))
-        String["type", join(fullname(type.name.module), '.'), string(type.name.name), (part(parameter) for parameter in type.parameters)...]
+        String["type", join(fullname(type.name.module), '.'), string(type.name.name), String[part(type.parameters[index]) for index in 1:length(type.parameters)]...]
     elseif type isa Module
         push!(modules, Base.moduleroot(type))
         return "module " * join(fullname(type), '.')
     elseif type isa Union{Int, Symbol, Bool}
         return "$(typeof(type)) $type"
     elseif type isa Tuple
-        String["tuple", (part(item) for item in type)...]
+        # Loop: closure over tuple value would compile once per tuple type.
+        items = String["tuple"]
+        for index in 1:nfields(type)
+            push!(items, part(getfield(type, index)))
+        end
+        items
     else
         # Other value parameter (`Val{1.0}`): serializer writes its bytes.
         String["value", part(typeof(type)), Inference.digest(type)]
@@ -76,7 +92,7 @@ function structure_text!(run::Run, type::Any, bound::Vector{TypeVar}, modules::V
 end
 
 """Canonical text of `type` (`structure_text!`) and root modules it names, once per run."""
-function type_text!(run::Run, type::Any)::Tuple{String, Vector{Module}}
+function type_text!(run::Run, @nospecialize(type::Any))::Tuple{String, Vector{Module}}
     haskey(run.cache.types, type) && return run.cache.types[type]
     modules = Module[]
     text = structure_text!(run, type, TypeVar[], modules)
@@ -84,7 +100,7 @@ function type_text!(run::Run, type::Any)::Tuple{String, Vector{Module}}
 end
 
 """Canonical text of `type` (`type_text!`); adds root modules it names to `modules`."""
-function typed!(run::Run, type::Any, modules::Vector{Module})::String
+function typed!(run::Run, @nospecialize(type::Any), modules::Vector{Module})::String
     text, named = type_text!(run, type)
     append!(modules, named)
     return text
@@ -119,7 +135,7 @@ Text of edge `target`, and its node added to `successors`: instance key of code 
 overrides it, or module and signature of method that inference gave no code. Adds modules it names to `modules`.
 `nothing` when instance has no node (`instance_node`) or target has other form.
 """
-function edge_text!(run::Run, target::Any, modules::Vector{Module}, successors::Vector{Any})::Union{Nothing, String}
+function edge_text!(run::Run, @nospecialize(target::Any), modules::Vector{Module}, successors::Vector{Any})::Union{Nothing, String}
     if target isa Method
         push!(modules, Base.moduleroot(target.module))
         return "method $(join(fullname(target.module), '.')) $(typed!(run, target.sig, modules))"
@@ -172,7 +188,7 @@ Own text of `node` for closure key, and its successor nodes: instance key, canon
 instance is package code, or for record, edge or module without text. Run keeps text it found: nodes and their edges
 stay fixed, while edge target without node can gain one.
 """
-function node_text!(run::Run, node::Any)::Union{Nothing, Tuple{String, Vector{Any}}}
+function node_text!(run::Run, @nospecialize(node::Any))::Union{Nothing, Tuple{String, Vector{Any}}}
     haskey(run.cache.texts, node) && return run.cache.texts[node]
     instance = edge_instance(node)::Core.MethodInstance
     package_instance!(run, instance) && return nothing
@@ -206,7 +222,7 @@ Pop component of `node` from `stack` (`walk_components!`). Each member gets key:
 keys of components members reach; `nothing` when one of them has none, or when `state` rejects member. Members share
 helper callees their closure read.
 """
-function finish_component!(run::Run, state::Closure, texts::IdDict{Any, Union{Nothing, Tuple{String, Vector{Any}}}}, stack::Vector{Any}, open::Base.IdSet{Any}, node::Any)::Nothing
+function finish_component!(run::Run, state::Closure, texts::IdDict{Any, Union{Nothing, Tuple{String, Vector{Any}}}}, stack::Vector{Any}, open::Base.IdSet{Any}, @nospecialize(node::Any))::Nothing
     members = Any[]
     while isempty(members) || last(members) !== node
         member = pop!(stack)
@@ -238,7 +254,7 @@ end
 Key of each component of native edge graph that `root` reaches and no earlier walk keyed (`closure_key!`), callees
 first: Tarjan's algorithm with explicit stack, so deep edge chains need no deep recursion.
 """
-function walk_components!(run::Run, state::Closure, root::Any)::Nothing
+function walk_components!(run::Run, state::Closure, @nospecialize(root::Any))::Nothing
     index, low, texts = IdDict{Any, Int}(), IdDict{Any, Int}(), IdDict{Any, Union{Nothing, Tuple{String, Vector{Any}}}}()
     stack, open, work, count = Any[], Base.IdSet{Any}(), Tuple{Any, Int}[(root, 0)], 0
     while !isempty(work)
