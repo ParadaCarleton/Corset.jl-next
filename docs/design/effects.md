@@ -143,6 +143,7 @@ Resolution of each call statement, first match wins:
 - Element query (`getindex`) result is element of collection or lies beneath it, never in indices.
 - Iteration (`iterate`, `first`, `only`, `isempty`, `in`) reads like element query. `Iterators.Stateful`, `Channel` and `EachLine` get `possible` write.
 - Write contract (`setindex!`, `push!`, `append!`, `resize!`, `pop!`, `copyto!`, `merge!`) writes first argument and stores or copies elements into it.
+- Collection whose `eltype` points to no object (`Vector{UInt8}`) takes no stored object: Julia converts value at store. Foreign call table keeps every store: C pointers are untyped.
 - Function with callable-first form (`get`, `get!`, `merge!`): contract holds only when first argument cannot be callable. Else call stays open.
 - Query result that may alias every argument tripled JSON `effects` time and changed no verdict.
 - Open call (step 7) whose open operands come from opaque and opt-out arguments only: no finding (Provenance). Opaque argument counts on coverage line: `open dispatch on opaque data`.

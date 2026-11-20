@@ -63,7 +63,7 @@ function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees):
     @match outcome begin
         Outcome.Builtin(builtin, operands) => builtin!(flow, writes, index, builtin, operands)
         Outcome.Intrinsic(intrinsic, operands) => intrinsic!(flow, writes, index, intrinsic, operands)
-        Outcome.Foreign(effects, operands) => table!(flow, writes, index, effects, operands)
+        Outcome.Foreign(effects, operands) => table!(flow, writes, index, effects, operands, false)
         Outcome.Dispatch(_, operands) => dispatch!(flow, writes, index, operands, callees, !flow.flush && !message)
         Outcome.Contract(effects, operands, breached) => contract!(flow, writes, index, effects, operands, breached)
         Outcome.Open(operands) => open!(flow, writes, index, operands, open_doubt(flow, operands))
@@ -179,16 +179,18 @@ end
 
 """
 Transfer call with table `effects` on `arguments` (`effects.md`, Calls, steps 2 and 6): foreign call of C function, or
-Base contract. Writes go into `writes`.
+Base contract. With `typed`, store or copy into argument whose `eltype` points to no object stores nothing: Julia
+converts stored value (`Vector{UInt8}`). C arguments are untyped pointers. Writes go into `writes`.
 """
-function table!(flow::Flow, writes::OriginAccesses, index::Int, effects::CallEffects, arguments::Vector{Operand.Type})::Nothing
+function table!(flow::Flow, writes::OriginAccesses, index::Int, effects::CallEffects, arguments::Vector{Operand.Type}, typed::Bool)::Nothing
     targets(position::Int)::Targets = union_targets(operand_targets(flow, arguments[at]) for at in role(effects, position, length(arguments)))
+    holders(position::Int)::Targets = union_targets(operand_targets(flow, arguments[at]) for at in role(effects, position, length(arguments)) if !typed || holds_objects(flow, operand_type(flow.ir, arguments[at])))
     foreach(position -> access!(writes, targets(position), false, definite(index), EffectKind.memory), effects.writes)
     foreach(position -> access!(flow.reads, targets(position), false, definite(index), EffectKind.memory), effects.reads)
     for (destination, source) in effects.copies
-        store!(flow, targets(destination), Step.Element(), load(flow, targets(source), Step.Element()))
+        store!(flow, holders(destination), Step.Element(), load(flow, targets(source), Step.Element()))
     end
-    foreach(((destination, source),) -> store!(flow, targets(destination), Step.Element(), targets(source)), effects.stores)
+    foreach(((destination, source),) -> store!(flow, holders(destination), Step.Element(), targets(source)), effects.stores)
     # Result that holds no reference (`==`, `length`) skips alias walks.
     points(flow, flow.ir.stmts[index][:type]) || return nothing
     foreach(position -> assign!(flow, index, targets(position)), effects.result)
@@ -197,6 +199,9 @@ function table!(flow::Flow, writes::OriginAccesses, index::Int, effects::CallEff
     return nothing
 end
 
+"""Whether element of collection of `type` can point to object; dead operand (`Union{}`) holds none."""
+holds_objects(flow::Flow, @nospecialize(type::Any))::Bool = type !== Union{} && points(flow, eltype(type))
+
 """
 Transfer call by Base contract `effects` on `arguments` (`effects.md`, Calls, step 6); `breached` positions hold type
 that writes where contract reads: `possible` write. Argument types decide breach, so write takes their dispatch doubt.
@@ -204,7 +209,7 @@ Contract holds for methods loaded now, so verdict is closed-world. Writes go int
 """
 function contract!(flow::Flow, writes::OriginAccesses, index::Int, effects::CallEffects, arguments::Vector{Operand.Type}, breached::Vector{Int})::Nothing
     flow.closed_world = true
-    table!(flow, writes, index, effects, arguments)
+    table!(flow, writes, index, effects, arguments, true)
     for position in breached
         holders = arguments[role(effects, position, length(arguments))]
         access!(writes, union_targets(operand_targets(flow, holder) for holder in holders), false, Effect(open_doubt(flow, holders), index, ""), EffectKind.memory)
