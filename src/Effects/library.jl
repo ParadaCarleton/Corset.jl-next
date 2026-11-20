@@ -270,10 +270,10 @@ function walk_components!(run::Run, state::Closure, root::Any)::Nothing
 end
 
 """
-Closure key of `instance` (`effects.md`, Solve and cache): digest of its instance key and key of component of its node
-in native edge graph. Component key digests own texts of members (`node_text!`) and keys of components they reach, so
-key depends on closure alone, whatever walk reaches node first. `nothing` for package instance, instance without node,
-or closure with node without text.
+Closure key of `instance` (`effects.md`, Solve and cache): digest of its instance key, key of component of its node in
+native edge graph, and alias methods outside Core (`alias_text`). Component key digests own texts of members
+(`node_text!`) and keys of components they reach, so key depends on closure alone, whatever walk reaches node first.
+`nothing` for package instance, instance without node, or closure with node without text.
 """
 function closure_key!(run::Run, state::Closure, instance::Core.MethodInstance)::Union{Nothing, String}
     package_instance!(run, instance) && return nothing
@@ -281,7 +281,7 @@ function closure_key!(run::Run, state::Closure, instance::Core.MethodInstance)::
     isnothing(root) && return nothing
     haskey(state.keys, root) || walk_components!(run, state, root)
     reached = state.keys[root]
-    return isnothing(reached) ? nothing : Cache.digest([instance_key!(run, instance), something(reached)], String[])
+    return isnothing(reached) ? nothing : Cache.digest([instance_key!(run, instance), something(reached), run.cache.aliases], String[])
 end
 
 """
@@ -338,10 +338,25 @@ stored_cut(run::Run, instance::Core.MethodInstance)::Union{Nothing, Bool} = list
 """Whether stand-ins cut `instance` with native inference `frame`: library cache answer, else `stand_in_cut`."""
 stored_or_cut(run::Run, instance::Core.MethodInstance, frame::CC.InferenceState)::Bool = (stored = stored_cut(run, instance); isnothing(stored) ? stand_in_cut(run, frame) : stored)
 
-"""Whether every instance in `instances` lies in `targets`."""
+"""
+Whether `instance` is Core method of alias function: inference reads `x !== y` as `x === y` and `x >: y` as `y <: x`,
+and records no native edge. Julia version fixes its code; closure key holds other methods of both (`alias_text`).
+"""
+aliased(instance::Core.MethodInstance)::Bool = (method = instance.def::Method; method.module === Core && method.name in (:!==, :>:))
+
+"""Text of methods of alias functions outside Core (`aliased`): method that takes dispatch from Core changes summary."""
+function alias_text()::String
+    found = String[]
+    for alias in (Core.:!==, Core.:>:), method in methods(alias)
+        method.module === Core || push!(found, "$(join(fullname(method.module), '.')) $(Inference.digest(method.sig))")
+    end
+    return join(sort!(found), '\n')
+end
+
+"""Whether every instance in `instances` lies in `targets` or is Core method of alias function (`aliased`)."""
 function all_in(instances::Vector{Core.MethodInstance}, targets::Base.IdSet{Core.MethodInstance})::Bool
     for instance in instances
-        instance in targets || return false
+        instance in targets || aliased(instance) || return false
     end
     return true
 end
@@ -377,11 +392,13 @@ end
 """
 Whether library cache cannot share `variant` of solved `run` by itself (`unshared`): package variant
 (`package_variant!`), variant with body that calls outside native edges (`contained`, once per instance in
-`checked`), or variant without code (hit, shortcut, blind spot) without closure key in `state`.
+`checked`), or variant without code (hit, shortcut, blind spot) without closure key in `state`. Core method of alias
+function counts as shared (`aliased`).
 """
 function unshared!(run::Run, state::Closure, checked::IdDict{Core.MethodInstance, Bool}, variant::Variant)::Bool
     package_variant!(run, variant) && return true
     instance = first(variant)
+    aliased(instance) && return false
     haskey(run.codes, variant) || return isnothing(closure_key!(run, state, instance))
     return !get!(() -> contained(run, instance, run.bodies[instance]::Body), checked, instance)
 end

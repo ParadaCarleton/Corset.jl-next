@@ -50,8 +50,8 @@ Summary cache state of one run (`library.jl`): library cache entries, instance k
 text and named root modules per type (`type_text!`), owner texts and their digest per root module (`owners!`), own text per node
 (`node_text!`), closure keys for lookup (`Closure`), answers of `names_package!`, native inference edges of each
 instance run inferred (`inferred!`), instances of units method store served (`stored`), callees whose throw helper
-verdict each instance read (`helper!`), instances whose cut read model-type inference (`stand_in_cut`), and keys of
-entries that hit.
+verdict each instance read (`helper!`), instances whose cut read model-type inference (`stand_in_cut`), keys of
+entries that hit, and text of alias methods outside Core (`alias_text`).
 """
 struct Lookup
     library::Library
@@ -67,6 +67,7 @@ struct Lookup
     helpers::IdDict{Core.MethodInstance, Vector{Any}}
     modeled::Base.IdSet{Core.MethodInstance}
     hits::Set{String}
+    aliases::String
 end
 
 """
@@ -106,7 +107,7 @@ function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module}, li
         Lookup(
             library, IdDict{Core.MethodInstance, String}(), IdDict{Any, Tuple{String, Vector{Module}}}(), IdDict{Module, Union{Nothing, Vector{String}}}(),
             IdDict{Module, Union{Nothing, String}}(), IdDict{Any, Tuple{String, Vector{Any}}}(), Closure(Base.IdSet{Core.MethodInstance}()), IdDict{Any, Bool}(), IdDict{Core.MethodInstance, Vector{Any}}(),
-            Base.IdSet{Core.MethodInstance}(), IdDict{Core.MethodInstance, Vector{Any}}(), Base.IdSet{Core.MethodInstance}(), Set{String}(),
+            Base.IdSet{Core.MethodInstance}(), IdDict{Core.MethodInstance, Vector{Any}}(), Base.IdSet{Core.MethodInstance}(), Set{String}(), alias_text(),
         ),
     )
 end
