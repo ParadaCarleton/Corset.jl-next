@@ -463,6 +463,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Blind spot: syntax-only rule cannot see that <code>a::Vector</code> is 1-based, because <code>inference</code> stage did not run.</li>
 <li>Blind spot: inference gave no code (generator threw); method has more signatures than limit; argument type has no stand-in.</li>
 <li>Blind spot: no call reaches untyped method; macro did not expand; <code>include</code> path is computed.</li>
+<li>Exemption needs proof: rule counts access Corset cannot prove exempt (balanced lock, <code>IO</code> or RNG write). Rare false finding takes <code># corset: allow</code>.</li>
 <li>Corset limits never fall below compiler limits (<code>max_methods</code>, union splitting). Corset resolves every call compiler resolves.</li>
 <li>Rules assume Base functions keep documented contracts: <code>==</code> has no side effects, and comparison with <code>NaN</code> is false. Method that breaks contract is out of scope, as for Clippy <code>ifs_same_cond</code>.</li>
 </ul>
@@ -802,8 +803,8 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Each origin in points-to set carries doubt: none, <code>code</code> or <code>blind</code>. Join keeps least doubt per origin.</li>
 <li>Open call on chain gives <code>code</code>. Call result merged from several fresh objects gives <code>blind</code>: they can hold different caller objects.</li>
 <li>Collapsed path and load of non-constant slot add no doubt: object they reach lies below same root.</li>
-<li>Memory access below <code>deep w</code> takes kind of <code>w</code> type. Declared field that reaches <code>IO</code> or RNG gives <code>blind</code>: exact path would tell exempt kind.</li>
-<li>Lock below <code>deep w</code> changes nothing: lock write is write unless Release balance proves use balanced.</li>
+<li>Access below <code>deep w</code> takes kind of written object type at access, of callee access, or of <code>w</code> type.</li>
+<li>Exempt kind needs proof, as balanced lock use does. Raw write into <code>IO</code> memory below <code>deep w</code> is memory write: <code># corset: allow</code> covers it.</li>
 <li>Access takes most doubt of effect and chain. None gives definite; <code>code</code> gives <code>possible</code>.</li>
 <li><code>blind</code> gives blind access with cause <code>alias</code>: blind spot, counted on coverage line only.</li>
 <li>Summary per parameter and global: read and write of top object, each path, and <code>deep</code>. Each has certainty and cause span.</li>

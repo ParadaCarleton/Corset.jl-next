@@ -68,8 +68,8 @@ Engine code lives in `src/Effects/`.
 - Each origin in points-to set carries doubt: none, `code` or `blind`. Join keeps least doubt per origin.
 - Open call on chain gives `code`. Call result merged from several fresh objects gives `blind`: they can hold different caller objects.
 - Collapsed path and load of non-constant slot add no doubt: object they reach lies below same root.
-- Memory access below `deep w` takes kind of `w` type. Declared field that reaches `IO` or RNG gives `blind`: exact path would tell exempt kind.
-- Lock below `deep w` changes nothing: lock write is write unless Release balance proves use balanced.
+- Access below `deep w` takes kind of written object type at access, of callee access, or of `w` type.
+- Exempt kind needs proof, as balanced lock use does. Raw write into `IO` memory below `deep w` is memory write: `# corset: allow` covers it.
 - Access takes most doubt of effect and chain. None gives definite; `code` gives `possible`.
 - `blind` gives blind access with cause `alias`: blind spot, counted on coverage line only.
 - Summary per parameter and global: read and write of top object, each path, and `deep`. Each has certainty and cause span.

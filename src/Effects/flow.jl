@@ -121,12 +121,6 @@ root_of(place::Place.Type)::Root.Type = @match place begin
     Place.Deep(root) => root
 end
 
-"""Whether `place` is `Deep` place past exact path (`extend`)."""
-is_deep(place::Place.Type)::Bool = @match place begin
-    Place.At(_, _) => false
-    Place.Deep(_) => true
-end
-
 """
 Join `source` into `target`, each doubt raised to at least `doubt`; mark `flow` changed when `target` changes. Return
 whether `target` changed.

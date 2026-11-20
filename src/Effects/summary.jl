@@ -9,8 +9,7 @@ end
 
 """
 Accesses of `table` on places caller can see, strongest effect per place and kind. Memory access takes kind of
-audited `method` or of its path in instance with IR `ir` (`place_kind`). Memory access below `Deep` place whose root
-reaches IO or RNG is blind (`deep_exempt`).
+audited `method` or of its path in instance with IR `ir` (`place_kind`).
 """
 function exported_effects(ir::CC.IRCode, method::Method, table::OriginAccesses)::Accesses
     found = Accesses()
@@ -18,7 +17,6 @@ function exported_effects(ir::CC.IRCode, method::Method, table::OriginAccesses):
         place = access_place(origin)
         isnothing(place) && continue
         key = (place, below, place_kind(ir, method, place, kind))
-        last(key) == EffectKind.memory && is_deep(place) && deep_exempt(ir, root_of(place)) && (effect = Effect(BLIND_DOUBT, effect.cause, DEEP_EXEMPT))
         found[key] = haskey(found, key) ? stronger(found[key], effect) : effect
     end
     return found

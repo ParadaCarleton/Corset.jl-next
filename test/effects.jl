@@ -12,7 +12,7 @@ using Corset.Effects:
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees, load, store!, store_backing!,
-    beneath, map_nodes, exact_path, extend, deep_exempt
+    beneath, map_nodes, exact_path, extend
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
@@ -80,8 +80,10 @@ end
     @test shape(effects(:call_deeper!, CASES.Wrapper).writes) == [deeper]
     # Recursive type collapses path to `deep`; write below it keeps certainty, unless root reaches `IO`.
     @test shape(effects(:relink!, CASES.Link).writes) == [(Place.Deep(Root.Parameter(2)), false, definite)]
-    @test isempty(effects(:relink_io!, CASES.IOLink).writes)
-    @test blind_shape(effects(:relink_io!, CASES.IOLink).blind_writes) == [(Place.Deep(Root.Parameter(2)), false, Effects.DEEP_EXEMPT)]
+    # Exempt kind needs proof: written object type at access, or callee kind. Unproven raw `IO` memory write is memory write.
+    @test shape(effects(:relink_io!, CASES.IOLink).writes) == [(Place.Deep(Root.Parameter(2)), false, definite)]
+    @test unique(access.kind for access in effects(:rewind_io!, CASES.IOLink).writes) == [EffectKind.io]
+    @test shape(effects(:clear_io!, CASES.IOLink).writes) == [(Place.Deep(Root.Parameter(2)), false, definite)]
     @test shape(effects(:fill_first!, Vector{Int}).writes) == [(parameter(2), false, definite)]
     @test shape(effects(:swap_first!, Vector{Int}, Int).writes) == [(parameter(2), false, definite)]
     for (name, types) in ((:first_value, (Vector{Int},)), (:read_box, (CASES.Box,)), (:copy_box, (CASES.Box,)), (:load_pointer, (Vector{Int},)))
@@ -379,8 +381,6 @@ top(position::Int)::Tuple{Place.Type, Bool} = (parameter(position), false)
 const ANY_REF = Ref{Any}(nothing)
 const HOLDER = Ref([1])
 const NESTED = CASES.Wrapper(CASES.Chain(CASES.Holder(CASES.Box(1))))
-const IO_HOLDER = Ref{Union{Nothing, Vector{IOBuffer}}}([IOBuffer()])
-const LOCK_HOLDER = Ref(ReentrantLock())
 const NESTED_TUPLE = foldl((inner, _) -> (inner,), 1:(PATH_DEPTH + 1); init = 1)
 
 """Node whose `next` field holds its own type."""
@@ -1008,9 +1008,6 @@ four_way(x::Symbol) = x
     @test exact_path(code.ir, at(:ANY_REF), Step.Type[field_x, Step.Field(:a)]) && !exact_path(code.ir, at(:ANY_REF), Step.Type[field_x, Step.Field(:a), Step.Field(:b)])
     @test exact_path(code.ir, at(:NESTED_TUPLE), fill(Step.Position(1), PATH_DEPTH)) && !exact_path(code.ir, at(:NESTED_TUPLE), fill(Step.Position(1), PATH_DEPTH + 1))
     @test extend(code.ir, Place.Deep(at(:LOOP)), link_next) == Place.Deep(at(:LOOP))
-    # `IO` below root: write below `deep` place may be exempt `IO` write. Lock write counts as write; abstract slot adds nothing.
-    @test deep_exempt(code.ir, at(:IO_HOLDER)) && !deep_exempt(code.ir, at(:NESTED)) && !deep_exempt(code.ir, at(:ANY_REF))
-    @test !deep_exempt(code.ir, at(:LOCK_HOLDER))
     # Slot targets found before heap grows go stale: load after store sees new slot and backing contents.
     box, backed = Targets(Origin.Allocation(5) => NO_DOUBT), Targets(Origin.Allocation(6) => NO_DOUBT)
     @test isempty(load(flow, box, Step.Field(:y))) && isempty(load(flow, box, Step.Element()))

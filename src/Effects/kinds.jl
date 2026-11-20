@@ -73,40 +73,6 @@ function global_type(binding::GlobalRef)::Any
     return isconst(binding) ? typeof(getglobal(binding.mod, binding.name)) : Core.get_binding_type(binding.mod, binding.name)
 end
 
-"""Blind spot cause of memory access below `Deep` place whose root reaches IO or RNG (`deep_exempt`)."""
-const DEEP_EXEMPT = "IO or RNG below collapsed path"
-
-"""Kinds that change `bang-convention` verdict of write: rule exempts them. Lock write counts as write."""
-const EXEMPT_KINDS = (EffectKind.io, EffectKind.rng_argument)
-
-"""
-Whether declared slot types below `root` in instance with IR `ir` reach IO or RNG type: memory access below `Deep`
-place of root may be exempt access, which exact path would tell (`effects.md`, Origins and points-to). Abstract slot
-type adds nothing, as on exact path.
-"""
-function deep_exempt(ir::CC.IRCode, root::Root.Type)::Bool
-    pending, seen = Any[root_type(ir, root)], Set{Any}()
-    while !isempty(pending)
-        type = pop!(pending)
-        type in seen && continue
-        push!(seen, type)
-        if type isa Union
-            append!(pending, Base.uniontypes(type))
-        elseif special_kind(type) in EXEMPT_KINDS
-            return true
-        elseif type isa DataType && isconcretetype(type) && !isbitstype(type) && !(type <: PLAIN)
-            append!(pending, slot_types(type))
-        end
-    end
-    return false
-end
-
-"""Declared types of every slot of concrete `type`: fields, or element type of array and memory."""
-function slot_types(type::DataType)::Vector{Any}
-    type <: Union{Array, GenericMemory} && return Any[eltype(type)]
-    return Any[fieldtype(type, index) for index in 1:something(Base.datatype_fieldcount(type), 0)]
-end
-
 """Type in `step` slot of object of `type`; `Any` when type has no such slot."""
 function step_type(@nospecialize(type::Any), step::Step.Type)::Any
     type isa DataType || return Any

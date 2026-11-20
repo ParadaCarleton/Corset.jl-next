@@ -118,13 +118,18 @@ end
 
 relink!(link::Link)::Nothing = (link.next.next = link; nothing)
 
-"""Recursive node that holds `IO`: write below collapsed path may be exempt `IO` write."""
+"""Recursive node that holds `IO`: kind below collapsed path comes from written object type."""
 mutable struct IOLink
     io::IOBuffer
     next::IOLink
 end
 
 relink_io!(link::IOLink)::Nothing = (link.next.next = link; nothing)
+
+rewind_io!(link::IOLink)::Nothing = (seekstart(link.next.io); nothing)
+
+"""Raw write into `IO` memory below collapsed path: exempt kind lacks proof, so write counts as memory write."""
+clear_io!(link::IOLink)::Nothing = (fill!(link.next.io.data, 0x00); nothing)
 
 read_module()::Int = getproperty(EffectsCases, :total)
 
