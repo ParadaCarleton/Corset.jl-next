@@ -6,6 +6,7 @@ using Corset: Corset
 using Corset.Cache: Cache
 using Corset.Config: Flags
 using Test: @test, @testset, @test_throws
+using Random: RandomDevice
 
 """Write `files` (path => text) under `root`."""
 function write_files(root::String, files::Pair{String, String}...)::Nothing
@@ -111,7 +112,7 @@ end
             registered = joinpath(depot, "packages", "Registered", "slug")
             write_files(registered, "Project.toml" => "", "src/Registered.jl" => "module Registered end\n")
             write_files(developed, "Project.toml" => "", "src/Developed.jl" => "module Developed end\n", "test/runtests.jl" => "")
-            ids = Base.PkgId(Base.UUID(rand(UInt128)), "Registered"), Base.PkgId(Base.UUID(rand(UInt128)), "Developed")
+            ids = Base.PkgId(Base.UUID(rand(RandomDevice(), UInt128)), "Registered"), Base.PkgId(Base.UUID(rand(RandomDevice(), UInt128)), "Developed")
             contents()::Vector{String} = [Cache.package_content(id, root, [depot]) for (id, root) in zip(ids, (registered, developed))]
             original = contents()
             # Depot slug derives from tree hash, so depot package counts by path; tests of path package never load.
@@ -140,7 +141,7 @@ end
         own = something(texts(Corset))
         @test !any(startswith("Corset "), own) && any(startswith("Moshi "), own)
         mktempdir(@__DIR__) do scratch
-            uuids = Dict(name => Base.UUID(rand(UInt128)) for name in ["Lib", "User", "Host", "Trigger", "Absent"])
+            uuids = Dict(name => Base.UUID(rand(RandomDevice(), UInt128)) for name in ["Lib", "User", "Host", "Trigger", "Absent"])
             project(name::String, sections::String = "")::String = "name = \"$name\"\nuuid = \"$(uuids[name])\"\n$sections"
             roots = Dict(name => joinpath(scratch, name) for name in keys(uuids))
             write_files(roots["Lib"], "Project.toml" => project("Lib"), "src/Lib.jl" => "module Lib\nf(x) = x\nend\n")
