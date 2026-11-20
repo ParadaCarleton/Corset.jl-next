@@ -15,6 +15,8 @@ backing, unknown-slot stores and global bindings; result targets; accesses by or
 below; callback records by call statement. `changed` records growth of targets in current round; `closed_world` records
 join over methods loaded now, and `cut` path stand-ins cut (`Summary`). `flush` resolves every callback record here:
 root unit has no caller to resolve them. `record` keeps kinds of writes each call statement makes (`call_kinds`).
+`follows` keeps slot targets by origin and step (`load`); `stale` marks heap growth since they were found.
+`settled`: round after one that changed nothing, so it applies callee accesses and skips callee stores (`apply!`).
 """
 mutable struct Flow
     const ir::CC.IRCode
@@ -37,7 +39,10 @@ mutable struct Flow
     const flush::Bool
     const record::Bool
     const call_kinds::Dict{Int, Set{EffectKind.T}}
+    const follows::Dict{Tuple{Origin.Type, Step.Type}, Targets}
     changed::Bool
+    stale::Bool
+    settled::Bool
     closed_world::Bool
     cut::Bool
 end
@@ -55,7 +60,7 @@ function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     callbacks = Dict{Int, Vector{Deferred}}()
     primitives = Union{Nothing, Primitive}[statement_primitive(ir, index, outcomes[index]) for index in 1:length(ir.stmts)]
-    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, Dict{Int, Set{EffectKind.T}}(), false, false, cut)
+    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, Dict{Int, Set{EffectKind.T}}(), Dict{Tuple{Origin.Type, Step.Type}, Targets}(), false, false, false, false, cut)
 end
 
 """Release balance primitive of statement `index` of `ir` with call `outcome`: dispatched call only (`primitive`)."""
@@ -106,7 +111,7 @@ raised(targets::Targets, doubt::Doubt)::Targets = Targets(origin => most(flag, d
 
 """
 Unknown object with chain `doubt`. Engine reaches it with `code` doubt or more: steps from it and callee nodes for it
-add none (`follow`, `map_node`), so sources of chain stay.
+add none (`trace`, `map_node`), so sources of chain stay.
 """
 unknown(doubt::Doubt)::Targets = Targets(Origin.Unknown() => doubt)
 
@@ -116,12 +121,17 @@ root_of(place::Place.Type)::Root.Type = @match place begin
     Place.Deep(root) => root
 end
 
-"""Join `source` into `target`, each doubt raised to at least `doubt`; mark `flow` changed when `target` changes."""
-function join!(flow::Flow, target::Targets, source::Targets, doubt::Doubt = NO_DOUBT)::Nothing
+"""
+Join `source` into `target`, each doubt raised to at least `doubt`; mark `flow` changed when `target` changes. Return
+whether `target` changed.
+"""
+function join!(flow::Flow, target::Targets, source::Targets, doubt::Doubt = NO_DOUBT)::Bool
+    grew = false
     for (origin, flag) in source
-        add!(target, origin, most(flag, doubt)) && (flow.changed = true)
+        add!(target, origin, most(flag, doubt)) && (grew = true)
     end
-    return nothing
+    grew && (flow.changed = true)
+    return grew
 end
 
 """Targets stored under `key` of `table`, created empty on first use."""
@@ -202,8 +212,11 @@ function extend(place::Place.Type, step::Step.Type)::Tuple{Place.Type, Doubt}
     end
 end
 
-"""Targets of `step` slot of `origin`: place below caller object, stored targets, and element of memory backing."""
-function follow(flow::Flow, origin::Origin.Type, step::Step.Type, seen::Set{Origin.Type} = Set{Origin.Type}())::Targets
+"""
+Targets of `step` slot of `origin`: place below caller object, stored targets, and element of memory backing not in
+`seen`.
+"""
+function trace(flow::Flow, origin::Origin.Type, step::Step.Type, seen::Set{Origin.Type})::Targets
     found = Targets()
     push!(seen, origin)
     @match origin begin
@@ -217,17 +230,21 @@ function follow(flow::Flow, origin::Origin.Type, step::Step.Type, seen::Set{Orig
     step == Step.Element() || return found
     for (memory, doubt) in get(flow.backing, origin, Targets())
         memory in seen && continue
-        for (target, flag) in follow(flow, memory, step, seen)
+        for (target, flag) in trace(flow, memory, step, seen)
             add!(found, target, most(flag, doubt))
         end
     end
     return found
 end
 
-"""Targets of `step` slot over every origin of `objects`."""
+"""
+Targets of `step` slot over every origin of `objects`. Slot targets of each origin come from `trace` once per heap
+state: calls map same places at each call statement and round, and memory backing chains grow long.
+"""
 function load(flow::Flow, objects::Targets, step::Step.Type)::Targets
+    flow.stale && (empty!(flow.follows); flow.stale = false)
     found = Targets()
-    for (origin, doubt) in objects, (target, flag) in follow(flow, origin, step)
+    for (origin, doubt) in objects, (target, flag) in get!(() -> trace(flow, origin, step, Set{Origin.Type}()), flow.follows, (origin, step))
         add!(found, target, most(flag, doubt))
     end
     return found
@@ -273,22 +290,31 @@ function access!(table::OriginAccesses, objects::Targets, below::Bool, effect::E
     return nothing
 end
 
-"""Store `values` into `step` slot of every origin of `objects`; `nothing` step stores into unknown slot."""
+"""
+Store `values` into `step` slot of every origin of `objects`; `nothing` step stores into unknown slot. Growth makes
+slot targets `load` found stale.
+"""
 function store!(flow::Flow, objects::Targets, step::Union{Nothing, Step.Type}, values::Targets)::Nothing
     for (origin, doubt) in objects
-        join!(flow, isnothing(step) ? slot!(flow.spread, origin) : slot!(get!(Dict{Step.Type, Targets}, flow.heap, origin), step), values, doubt)
+        target = isnothing(step) ? slot!(flow.spread, origin) : slot!(get!(Dict{Step.Type, Targets}, flow.heap, origin), step)
+        join!(flow, target, values, doubt) && (flow.stale = true)
     end
     return nothing
 end
 
-"""Store `values` into memory backing of every origin of `objects`."""
+"""Store `values` into memory backing of every origin of `objects`; growth makes slot targets `load` found stale."""
 function store_backing!(flow::Flow, objects::Targets, values::Targets)::Nothing
-    foreach(((origin, doubt),) -> join!(flow, slot!(flow.backing, origin), values, doubt), objects)
+    for (origin, doubt) in objects
+        join!(flow, slot!(flow.backing, origin), values, doubt) && (flow.stale = true)
+    end
     return nothing
 end
 
 """Bind `values` to global `binding`."""
-bind!(flow::Flow, binding::GlobalRef, values::Targets)::Nothing = join!(flow, slot!(flow.bound, binding), values)
+function bind!(flow::Flow, binding::GlobalRef, values::Targets)::Nothing
+    join!(flow, slot!(flow.bound, binding), values)
+    return nothing
+end
 
 """Set targets of statement `index` to include `targets`, raised to `doubt`, when its type can point to object."""
 function assign!(flow::Flow, index::Int, targets::Targets, doubt::Doubt = NO_DOUBT)::Nothing

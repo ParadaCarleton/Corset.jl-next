@@ -512,8 +512,8 @@ end
 
 """
 Flow of `variant` with code at fixpoint, from current callee summaries of `run`: rounds over its IR until targets
-settle. Also gives its callees, with variants whose summaries rounds read. `flush` resolves callback records here;
-`record` keeps write kinds of each call (`Flow`).
+settle, then one settled round for callee accesses (`Flow`). Also gives its callees, with variants whose summaries
+rounds read. `flush` resolves callback records here; `record` keeps write kinds of each call (`Flow`).
 """
 function variant_flow(run::Run, variant::Variant, flush::Bool, record::Bool)::Tuple{Flow, Callees}
     code = run.codes[variant]
@@ -522,7 +522,9 @@ function variant_flow(run::Run, variant::Variant, flush::Bool, record::Bool)::Tu
     while true
         flow.changed = false
         round!(flow, callees)
-        flow.changed || break
+        # Settled round repeats state of round before it; growth there is engine bug.
+        flow.settled && (flow.changed ? error("settled round of $(first(variant)) changed targets") : break)
+        flow.changed || (flow.settled = true)
     end
     return flow, callees
 end

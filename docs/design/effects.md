@@ -234,6 +234,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 
 - Call graph over variants; strongly connected components from iterative Tarjan; solve bottom-up.
 - Inside component: worklist. Member reads summaries of callees and of callback record variants it resolves. Member reruns when read summary changes.
+- Inside instance: rounds over IR until targets settle. These rounds apply callee stores only. One settled round then applies callee accesses.
 - Join of methods (Calls, step 5) is not monotone, so summaries in cycle can oscillate.
 - After 8 reruns, member summary widens: union with previous summary. Access that still changes becomes blind (`unsettled call cycle`).
 - Widened summaries only grow through finite values, so fixpoint ends.

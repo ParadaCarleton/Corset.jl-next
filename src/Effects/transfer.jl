@@ -651,7 +651,8 @@ end
 """
 Apply callee `summary` of `variant` at call statement `index` with `operands` (`effects.md`, Calls, steps 3 and 4):
 stores and result now. Accesses go into `writes` and `reads`, or into callback record when `defers` and callable holds
-caller object (`deferred`). Vararg tuple becomes allocation at `index`.
+caller object (`deferred`). Vararg tuple becomes allocation at `index`. Settled round (`Flow`) skips stores: they
+change nothing there.
 """
 function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, summary::Summary, variant::Variant, operands::Vector{Operand.Type}, defers::Bool, callees::Callees)::Nothing
     method = first(variant).def::Method
@@ -659,7 +660,7 @@ function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index
     site = CallSite(arguments, parameter_derived(flow, method, operands), index, summary.fresh, Dict{Place.Type, Targets}(), Dict{Int, Sources}())
     summary.closed_world && (flow.closed_world = true)
     summary.cut && (flow.cut = true)
-    apply_stores!(flow, site, summary)
+    flow.settled || apply_stores!(flow, site, summary)
     if defers && deferred(arguments)
         defer!(flow, index, (variant, arguments))
     else
@@ -671,13 +672,11 @@ end
 """
 Accesses of callee `summary` at `site` into `writes` and `reads`, and its callback records: record waits again when
 `defers` and callable still holds caller object, else resolves here. `seen` holds records resolved at site; first
-record resolved makes it, since most calls have none.
+record resolved makes it, since most calls have none. Only settled round (`Flow`) maps accesses: round empties them
+first. Every round resolves records, so variants of records count as read (`summary!`).
 """
 function apply_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::Union{Nothing, Set{Deferred}})::Nothing
-    for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below, kind), effect) in effects
-        objects = site_place(flow, site, place)
-        access!(table, below ? beneath(flow, objects) : objects, below, Effect(caller_doubt(flow, site, effect.doubt), site.index, effect.reason), kind)
-    end
+    flow.settled && map_accesses!(flow, writes, reads, site, summary)
     for callback in summary.callbacks
         record = (callback.variant, Targets[map_nodes(flow, nodes, site) for nodes in callback.parameters])
         if defers && deferred(last(record))
@@ -686,6 +685,15 @@ function apply_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccess
             isnothing(seen) && (seen = Set{Deferred}())
             resolve!(flow, writes, reads, site.index, record, defers, callees, seen)
         end
+    end
+    return nothing
+end
+
+"""Writes and reads of callee `summary` at `site` into `writes` and `reads`, each mapped onto caller objects."""
+function map_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary)::Nothing
+    for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below, kind), effect) in effects
+        objects = site_place(flow, site, place)
+        access!(table, below ? beneath(flow, objects) : objects, below, Effect(caller_doubt(flow, site, effect.doubt), site.index, effect.reason), kind)
     end
     return nothing
 end

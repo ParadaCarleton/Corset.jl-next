@@ -985,6 +985,29 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - JSON blind places fall: `json` 781 to 304, `WriteClosure` 388 to 117, `deserialize` 150 to 5.
 - Effect kinds against throw paths: JSON allocation 145435 to 149789 MB, on other box and load; no claim.
 
+### Engine cost
+
+- Profile of JSON warm solve: 96% applies callee summaries (`site_place`, `load` through memory backing, `Origin` hash).
+- JSON counts: 1.2 flows per variant, 2.1 rounds per flow, 36.5 statements per flow.
+- Each round applies whole callee summary: `json!` summary holds 1188 accesses and 489 edges.
+- Slot targets: 82% of lookups repeat on unchanged heap; backing chains reach depth 59. Memo per heap state.
+- Rounds apply callee stores until targets settle. One settled round then maps callee accesses.
+- Origins, nodes and places compare by variant match. Derived Moshi `Eq` finds variant by subtype test: 66 to 124 ns against 4.6 ns.
+- Job 632 (winwsl, arms serial), warm solve seconds and MB:
+
+| Arm | JSON | Distances | DataStructures |
+|---|---|---|---|
+| Main | 98.3, 33535 | 1.80, 564 | 3.76, 1472 |
+| Memo | 78.7, 14335 | 2.11, 550 | 3.48, 1368 |
+| Settled round | 45.9, 10175 | 2.39, 568 | 3.47, 1418 |
+| Variant equality | 43.6, 9621 | 2.36, 568 | 4.99, 1416 |
+
+- Every arm gives same fact lines on every package. Small-package times stay inside box noise.
+- Rejected: callee accesses from second round on, without settled round. JSON 53.1 s, 11336 MB.
+- Rejected: hand copy of derived hash. Same values, same speed (16 ns per origin).
+- Gate stays far: JSON `effects` 50.8 s against `inference` 10.3 s.
+- Left: access mapping about 30% of solve, store mapping 28%, `Place` hash with table lookup 20%, table memory 15%.
+
 ### Stateful iterators
 
 - Trigger "every `iterate` on iterator not proven stateless" rejected: single pass is safe for both kinds, so it flags nearly all generic code.
