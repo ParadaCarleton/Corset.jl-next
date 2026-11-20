@@ -1,6 +1,6 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
-using Corset.Facts: Facts, MethodEffects, Callee, methods_callee, CallFact, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind
+using Corset.Facts: Facts, MethodEffects, Callee, methods_callee, CallFact, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind, PATH_DEPTH
 using Corset.Inference: infer_package, open_journal, records, explicit_any, cuts!, dead_calls
 using Corset.StandIns: FunctionStandIn, ArrayStandIn, DenseStandIn, FloatStandIn
 using Corset.Signatures: Provenance
@@ -12,7 +12,7 @@ using Corset.Effects:
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees, load, store!, store_backing!,
-    beneath, map_nodes
+    beneath, map_nodes, exact_path, extend, deep_exempt
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
@@ -74,9 +74,14 @@ end
     @test line_text(only(effects(:set_value!, CASES.Box, Int).writes).cause) == "set_value!(box::Box, value::Int)::Nothing = (box.value = value; nothing)"
     @test shape(effects(:set_inner!, CASES.Holder, Int).writes) == [(parameter(2, box), false, definite)]
     @test shape(effects(:set_deep!, CASES.Chain, Int).writes) == [(parameter(2, next, box), false, definite)]
-    @test isempty(effects(:set_deeper!, CASES.Wrapper, Int).writes)
-    @test blind_shape(effects(:set_deeper!, CASES.Wrapper, Int).blind_writes) == [(Place.Deep(Root.Parameter(2)), false, "alias")]
-    @test blind_shape(effects(:call_deeper!, CASES.Wrapper).blind_writes) == [(Place.Deep(Root.Parameter(2)), false, "alias")]
+    # Path follows declared field types: concrete nesting stays exact.
+    deeper = (parameter(2, Step.Field(:chain), next, box), false, definite)
+    @test shape(effects(:set_deeper!, CASES.Wrapper, Int).writes) == [deeper] && isempty(effects(:set_deeper!, CASES.Wrapper, Int).blind_writes)
+    @test shape(effects(:call_deeper!, CASES.Wrapper).writes) == [deeper]
+    # Recursive type collapses path to `deep`; write below it keeps certainty, unless root reaches `IO`.
+    @test shape(effects(:relink!, CASES.Link).writes) == [(Place.Deep(Root.Parameter(2)), false, definite)]
+    @test isempty(effects(:relink_io!, CASES.IOLink).writes)
+    @test blind_shape(effects(:relink_io!, CASES.IOLink).blind_writes) == [(Place.Deep(Root.Parameter(2)), false, Effects.DEEP_EXEMPT)]
     @test shape(effects(:fill_first!, Vector{Int}).writes) == [(parameter(2), false, definite)]
     @test shape(effects(:swap_first!, Vector{Int}, Int).writes) == [(parameter(2), false, definite)]
     for (name, types) in ((:first_value, (Vector{Int},)), (:read_box, (CASES.Box,)), (:copy_box, (CASES.Box,)), (:load_pointer, (Vector{Int},)))
@@ -114,8 +119,9 @@ end
     @test (parameter(3, Step.Element()), false, definite) in shape(effects(:copy_boxes!, Vector{CASES.Box}, Vector{CASES.Box}).writes)
     @test (parameter(3), false, definite) in shape(effects(:remember!, IdDict{Int, CASES.Box}, CASES.Box).writes)
     @test shape(effects(:store_pointer!, Vector{Int}).writes) == [(parameter(2), false, definite)]
-    @test blind_shape(effects(:bump_nest!).blind_writes) == [(Place.Deep(Root.Global(GlobalRef(CASES, :NEST))), false, "alias")]
-    @test blind_shape(effects(:call_nest!).blind_writes) == [(Place.Deep(Root.Global(GlobalRef(CASES, :NEST))), false, "alias")]
+    # Constant global takes type of its value: nested `Ref` path stays exact.
+    nest = (Place.At(Root.Global(GlobalRef(CASES, :NEST)), Step.Type[Step.Field(:x), Step.Field(:x), Step.Field(:x)]), false, definite)
+    @test shape(effects(:bump_nest!).writes) == [nest] && shape(effects(:call_nest!).writes) == [nest]
     @test all(found -> found.site.method.name != :fail, FACTS.methods)
     @test BlindSpot("always throws on stand-ins", only(site for site in UNITS.typed if site.site.method.name == :fail).site.span) in SPOTS
     @test any(spot -> spot.cause == "alias", SPOTS)
@@ -372,6 +378,18 @@ top(position::Int)::Tuple{Place.Type, Bool} = (parameter(position), false)
 
 const ANY_REF = Ref{Any}(nothing)
 const HOLDER = Ref([1])
+const NESTED = CASES.Wrapper(CASES.Chain(CASES.Holder(CASES.Box(1))))
+const IO_HOLDER = Ref{Union{Nothing, Vector{IOBuffer}}}([IOBuffer()])
+const LOCK_HOLDER = Ref(ReentrantLock())
+const NESTED_TUPLE = foldl((inner, _) -> (inner,), 1:(PATH_DEPTH + 1); init = 1)
+
+"""Node whose `next` field holds its own type."""
+mutable struct Loop
+    next::Loop
+    Loop() = (loop = new(); loop.next = loop; loop)
+end
+
+const LOOP = Loop()
 global slot::Vector{Int} = [1]
 global tally::Int = 0
 global loose::Any = nothing
@@ -617,7 +635,8 @@ got_dict(d::AbstractDict, k::Int) = get(d, k, 0)
     @test doubts(summary_of(once_field!, Base.RefValue{Vector{Int}}, Vector{Int}).writes) == Dict(top(2) => none)
     named = summary_of(named_field!, Base.RefValue{Vector{Int}}, Symbol, Vector{Int})
     @test named.spread == Dict(Node.Placed(parameter(2)) => Nodes(Node.Placed(parameter(4)) => none))
-    @test named.result[Node.Placed(Place.Deep(Root.Parameter(2)))] == blind
+    # Load of non-constant slot lies below same root: no doubt.
+    @test named.result[Node.Placed(Place.Deep(Root.Parameter(2)))] == none
     here = @__MODULE__
     rebound = summary_of(rebind!, Vector{Int})
     @test doubts(rebound.writes) == Dict((global_place(here, :slot), false) => none, top(2) => none)
@@ -729,7 +748,7 @@ end
     @test fresh_spread(summary_of(call_quoted, Vector{Int})) == Nodes(Node.Placed(parameter(2)) => none)
     @test any(nodes -> haskey(nodes, Node.Placed(parameter(2))), values(summary_of(opaque, Vector{Int}).spread))
     @test Node.Placed(parameter(2)) in keys(only(values(summary_of(splat, Vector{Int}).edges)))
-    @test fresh_spread(summary_of(splat_vararg, Tuple{Vararg{Vector{Int}}})) == Nodes(Node.Placed(Place.Deep(Root.Parameter(2))) => blind)
+    @test fresh_spread(summary_of(splat_vararg, Tuple{Vararg{Vector{Int}}})) == Nodes(Node.Placed(Place.Deep(Root.Parameter(2))) => none)
     caught_summary = summary_of(caught, Vector{Int})
     @test any(nodes -> haskey(nodes, Node.Outside()), values(caught_summary.edges))
     for (pusher, types) in ((latest!, (Vector{Int},)), (world!, (Vector{Int},)), (invoked!, (Vector{Int},)), (spread!, (Vector{Int}, Tuple{Int, Int})), (nested_spread!, (Vector{Int}, Tuple{Tuple{Int}})))
@@ -870,8 +889,8 @@ spread_set_max(s::Set{Vector{Int}}) = max(s...)
     @test doubts(summary_of(spread_rest_first!, Vector{Int}, Vector{Vector{Int}}).writes) == Dict(top(2) => none, (parameter(3, Step.Element()), false) => none)
     # Operand after spread of unknown length has unknown position too.
     @test doubts(summary_of(spread_then!, Vector{Vector{Int}}, Vector{Int}).writes) == Dict((parameter(2, Step.Element()), false) => none, top(3) => none)
-    # Caller tuple slot of unknown position collapses: blind.
-    @test doubts(summary_of(spread_tuple!, Tuple{Vararg{Vector{Int}}}).writes) == Dict((Place.Deep(Root.Parameter(2)), false) => blind)
+    # Caller tuple slot of unknown position collapses; write below it keeps certainty.
+    @test doubts(summary_of(spread_tuple!, Tuple{Vararg{Vector{Int}}}).writes) == Dict((Place.Deep(Root.Parameter(2)), false) => none)
     # Spread callee stays open: method table matches builtin method `setfield!(...)` for `Vararg` callee.
     @test doubts(summary_of(spread_builtin_callee, Vector{typeof(setfield!)}).writes) == Dict((parameter(2, Step.Element()), true) => code)
     @test fresh_spread(summary_of(spread_packed, Vector{Vector{Int}})) == Nodes(Node.Placed(parameter(2, Step.Element())) => none)
@@ -976,7 +995,22 @@ four_way(x::Symbol) = x
     # Objects without fresh origin hold nothing beneath them: result is same table.
     plain = Targets(Origin.Caller(parameter(2)) => NO_DOUBT)
     @test beneath(flow, plain) === plain
-    @test deep(flow, Targets(Origin.Caller(parameter(2)) => NO_DOUBT)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => BLIND_DOUBT)
+    # Callee `deep` write changes argument; object in slot of fresh argument may stay unchanged: blind.
+    @test deep(flow, Targets(Origin.Caller(parameter(2)) => NO_DOUBT)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => NO_DOUBT)
+    wrapper = Targets(Origin.Allocation(9) => NO_DOUBT)
+    store!(flow, wrapper, Step.Field(:x), Targets(Origin.Caller(parameter(3)) => NO_DOUBT))
+    @test deep(flow, wrapper) == Targets(Origin.Allocation(9) => NO_DOUBT, Origin.Caller(Place.Deep(Root.Parameter(3))) => BLIND_DOUBT)
+    # Path follows declared field types: recursive type, third abstract step in a row, and step cap collapse it.
+    at(name::Symbol)::Root.Type = Root.Global(GlobalRef(@__MODULE__, name))
+    field_x, link_next = Step.Field(:x), Step.Field(:next)
+    @test exact_path(code.ir, at(:NESTED), Step.Type[Step.Field(:chain), link_next, Step.Field(:box), Step.Field(:value)])
+    @test !exact_path(code.ir, at(:LOOP), Step.Type[link_next]) && extend(code.ir, Place.At(at(:LOOP), Step.Type[]), link_next) == Place.Deep(at(:LOOP))
+    @test exact_path(code.ir, at(:ANY_REF), Step.Type[field_x, Step.Field(:a)]) && !exact_path(code.ir, at(:ANY_REF), Step.Type[field_x, Step.Field(:a), Step.Field(:b)])
+    @test exact_path(code.ir, at(:NESTED_TUPLE), fill(Step.Position(1), PATH_DEPTH)) && !exact_path(code.ir, at(:NESTED_TUPLE), fill(Step.Position(1), PATH_DEPTH + 1))
+    @test extend(code.ir, Place.Deep(at(:LOOP)), link_next) == Place.Deep(at(:LOOP))
+    # `IO` below root: write below `deep` place may be exempt `IO` write. Lock write counts as write; abstract slot adds nothing.
+    @test deep_exempt(code.ir, at(:IO_HOLDER)) && !deep_exempt(code.ir, at(:NESTED)) && !deep_exempt(code.ir, at(:ANY_REF))
+    @test !deep_exempt(code.ir, at(:LOCK_HOLDER))
     # Slot targets found before heap grows go stale: load after store sees new slot and backing contents.
     box, backed = Targets(Origin.Allocation(5) => NO_DOUBT), Targets(Origin.Allocation(6) => NO_DOUBT)
     @test isempty(load(flow, box, Step.Field(:y))) && isempty(load(flow, box, Step.Element()))

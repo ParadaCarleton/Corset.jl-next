@@ -790,7 +790,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Constant object in code counts as <code>unknown</code>. Fresh objects of callee merge into one allocation at call statement.</li>
 <li><code>unknown</code>: object open call can return that no operand names, global included. Write to it is <code>possible</code> global write.</li>
 <li>Path: field name or element. Path follows declared field types.</li>
-<li>Path collapses to <code>deep</code> at step into type it already passed (recursive type), or at third step below abstract type.</li>
+<li>Path collapses to <code>deep</code> at step into concrete type it already passed (recursive type), at third abstract step in a row, or past 8 steps.</li>
 <li>Place says where access lands; certainty says whether it happens. <code>deep w</code> is coarse place: write below it still changes <code>w</code>.</li>
 <li>Field name comes from concrete type, array stand-in family or <code>Array</code> family. Other struct family (<code>Object{K, V} where …</code>) gives field position.</li>
 <li>Memory backing belongs to its owner: field of type <code>GenericMemory</code> or <code>GenericMemoryRef</code> adds no step. Write to <code>Vector</code> elements writes <code>Vector</code>.</li>
@@ -802,8 +802,8 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Each origin in points-to set carries doubt: none, <code>code</code> or <code>blind</code>. Join keeps least doubt per origin.</li>
 <li>Open call on chain gives <code>code</code>. Call result merged from several fresh objects gives <code>blind</code>: they can hold different caller objects.</li>
 <li>Collapsed path and load of non-constant slot add no doubt: object they reach lies below same root.</li>
-<li>Memory access below <code>deep w</code> takes kind of <code>w</code> type when its declared fields reach no special type (<code>IO</code>, lock, RNG).
-Abstract field on the way adds <code>code</code> doubt: compiler cannot tell either. Field that reaches special type gives <code>blind</code>.</li>
+<li>Memory access below <code>deep w</code> takes kind of <code>w</code> type. Declared field that reaches <code>IO</code> or RNG gives <code>blind</code>: exact path would tell exempt kind.</li>
+<li>Lock below <code>deep w</code> changes nothing: lock write is write unless Release balance proves use balanced.</li>
 <li>Access takes most doubt of effect and chain. None gives definite; <code>code</code> gives <code>possible</code>.</li>
 <li><code>blind</code> gives blind access with cause <code>alias</code>: blind spot, counted on coverage line only.</li>
 <li>Summary per parameter and global: read and write of top object, each path, and <code>deep</code>. Each has certainty and cause span.</li>
@@ -937,7 +937,7 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li>Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.</li>
 <li>Kind comes from types along place path, root first: first <code>IO</code> gives IO, <code>AbstractRNG</code> gives RNG argument.</li>
 <li>Lock, <code>Condition</code> and <code>Semaphore</code> on path give synchronization. Path without such type gives memory write.</li>
-<li>Path types: instance parameter type or global binding type, then field type or element type per step. Abstract type without field ends walk.</li>
+<li>Path types: instance parameter type, constant global value type or global binding type, then field type or element type per step. Abstract type without field ends walk.</li>
 <li>Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.</li>
 <li>Write to RNG fields of <code>Task</code> (<code>rngState0</code> to <code>rngState4</code>): default RNG. Other write to <code>Task</code>, <code>task_local_storage</code> included: task-local state.</li>
 <li><code>ScopedValue</code> read: read of <code>ScopedValue</code> object or of current task scope.</li>

@@ -554,13 +554,19 @@ function map_place(flow::Flow, place::Place.Type, arguments::Vector{Targets})::T
     end
 end
 
-"""Every origin `objects` reach through any slot, all blind; caller objects collapse to `Deep` of their root."""
+"""
+Every origin `objects` reach through any slot; caller objects collapse to `Deep` of their root (`effects.md`, Calls).
+Origins of `objects` keep their doubt: write below callee `Deep` place changes them. Origins in their slots are blind:
+callee may leave them unchanged.
+"""
 function deep(flow::Flow, objects::Targets)::Targets
-    found, pending = Targets(), collect(keys(objects))
+    found, seen, pending = Targets(), Set{Origin.Type}(), collect(objects)
     while !isempty(pending)
-        origin = pop!(pending)
-        add!(found, collapsed(origin), BLIND_DOUBT) || continue
-        foreach_content(targets -> append!(pending, keys(targets)), flow, origin)
+        origin, doubt = pop!(pending)
+        add!(found, collapsed(origin), doubt)
+        origin in seen && continue
+        push!(seen, origin)
+        foreach_content(targets -> append!(pending, (target => BLIND_DOUBT for target in keys(targets))), flow, origin)
     end
     return found
 end

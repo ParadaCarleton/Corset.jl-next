@@ -21,7 +21,7 @@ object open call returns, global included.
 end
 @derive Root[Show]
 
-"""Object reached from root: `At` path of at most `PATH_DEPTH` steps, or `Deep` past them."""
+"""Object reached from root: exact `At` path, or `Deep`: some object below root past exact path."""
 @data Place begin
     At(Root.Type, Vector{Step.Type})
     Deep(Root.Type)
@@ -86,13 +86,13 @@ function steps_hash(steps::Vector{Step.Type}, seed::UInt)::UInt
     return seed
 end
 
-"""Steps of longest exact path; longer paths collapse to `Place.Deep`."""
-const PATH_DEPTH = 2
+"""Steps of longest exact path; declared field types collapse most paths earlier (`effects.md`, Origins and points-to)."""
+const PATH_DEPTH = 8
 
 """
 Access to caller-visible object (`effects` stage fact): place, whether it covers every place below it too, kind,
-confidence, and cause span in package code. `possible` access from open call is doubt in code; collapsed path gives
-blind spot.
+confidence, and cause span in package code. `possible` access from open call is doubt in code. `Deep` place keeps
+certainty: object lies below its root.
 """
 struct Access
     place::Place.Type

@@ -56,7 +56,7 @@ Engine code lives in `src/Effects/`.
 - Constant object in code counts as `unknown`. Fresh objects of callee merge into one allocation at call statement.
 - `unknown`: object open call can return that no operand names, global included. Write to it is `possible` global write.
 - Path: field name or element. Path follows declared field types.
-- Path collapses to `deep` at step into type it already passed (recursive type), or at third step below abstract type.
+- Path collapses to `deep` at step into concrete type it already passed (recursive type), at third abstract step in a row, or past 8 steps.
 - Place says where access lands; certainty says whether it happens. `deep w` is coarse place: write below it still changes `w`.
 - Field name comes from concrete type, array stand-in family or `Array` family. Other struct family (`Object{K, V} where …`) gives field position.
 - Memory backing belongs to its owner: field of type `GenericMemory` or `GenericMemoryRef` adds no step. Write to `Vector` elements writes `Vector`.
@@ -68,8 +68,8 @@ Engine code lives in `src/Effects/`.
 - Each origin in points-to set carries doubt: none, `code` or `blind`. Join keeps least doubt per origin.
 - Open call on chain gives `code`. Call result merged from several fresh objects gives `blind`: they can hold different caller objects.
 - Collapsed path and load of non-constant slot add no doubt: object they reach lies below same root.
-- Memory access below `deep w` takes kind of `w` type when its declared fields reach no special type (`IO`, lock, RNG).
-  Abstract field on the way adds `code` doubt: compiler cannot tell either. Field that reaches special type gives `blind`.
+- Memory access below `deep w` takes kind of `w` type. Declared field that reaches `IO` or RNG gives `blind`: exact path would tell exempt kind.
+- Lock below `deep w` changes nothing: lock write is write unless Release balance proves use balanced.
 - Access takes most doubt of effect and chain. None gives definite; `code` gives `possible`.
 - `blind` gives blind access with cause `alias`: blind spot, counted on coverage line only.
 - Summary per parameter and global: read and write of top object, each path, and `deep`. Each has certainty and cause span.
@@ -200,7 +200,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.
 - Kind comes from types along place path, root first: first `IO` gives IO, `AbstractRNG` gives RNG argument.
 - Lock, `Condition` and `Semaphore` on path give synchronization. Path without such type gives memory write.
-- Path types: instance parameter type or global binding type, then field type or element type per step. Abstract type without field ends walk.
+- Path types: instance parameter type, constant global value type or global binding type, then field type or element type per step. Abstract type without field ends walk.
 - Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.
 - Write to RNG fields of `Task` (`rngState0` to `rngState4`): default RNG. Other write to `Task`, `task_local_storage` included: task-local state.
 - `ScopedValue` read: read of `ScopedValue` object or of current task scope.

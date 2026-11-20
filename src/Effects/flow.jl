@@ -121,6 +121,12 @@ root_of(place::Place.Type)::Root.Type = @match place begin
     Place.Deep(root) => root
 end
 
+"""Whether `place` is `Deep` place past exact path (`extend`)."""
+is_deep(place::Place.Type)::Bool = @match place begin
+    Place.At(_, _) => false
+    Place.Deep(_) => true
+end
+
 """
 Join `source` into `target`, each doubt raised to at least `doubt`; mark `flow` changed when `target` changes. Return
 whether `target` changed.
@@ -223,12 +229,36 @@ function spread_elements(flow::Flow, @nospecialize(value::Any))::Targets
     return value_type(flow.ir, value) <: Tuple ? load_any(flow, objects) : load(flow, objects, Step.Element())
 end
 
-"""Place one `step` below `place`, and doubt step adds: past `PATH_DEPTH` steps path collapses to `Deep` (blind)."""
-function extend(place::Place.Type, step::Step.Type)::Tuple{Place.Type, Doubt}
+"""
+Place one `step` below `place` in instance with IR `ir`: exact path while it stays exact (`exact_path`), else `Deep`
+of its root. Collapse adds no doubt: object stays below same root (`effects.md`, Origins and points-to).
+"""
+function extend(ir::CC.IRCode, place::Place.Type, step::Step.Type)::Place.Type
     return @match place begin
-        Place.At(root, steps) => length(steps) < PATH_DEPTH ? (Place.At(root, [steps; step]), NO_DOUBT) : (Place.Deep(root), BLIND_DOUBT)
-        Place.Deep(root) => (Place.Deep(root), BLIND_DOUBT)
+        Place.At(root, steps) => exact_path(ir, root, [steps; step]) ? Place.At(root, [steps; step]) : Place.Deep(root)
+        Place.Deep(root) => place
     end
+end
+
+"""Abstract steps in a row that path keeps: next one collapses it."""
+const ABSTRACT_STEPS = 2
+
+"""
+Whether path `steps` below `root` in instance with IR `ir` stays exact: path follows declared field types; it collapses
+at step into concrete type it already passed (recursive type), at abstract step past `ABSTRACT_STEPS` in a row, or past
+`PATH_DEPTH` steps.
+"""
+function exact_path(ir::CC.IRCode, root::Root.Type, steps::Vector{Step.Type})::Bool
+    length(steps) <= PATH_DEPTH || return false
+    type, passed, run = root_type(ir, root), Any[], 0
+    for step in steps
+        isconcretetype(type) && push!(passed, type)
+        type = step_type(type, step)
+        run = isconcretetype(type) ? 0 : run + 1
+        run > ABSTRACT_STEPS && return false
+        isconcretetype(type) && type in passed && return false
+    end
+    return true
 end
 
 """Step of pointer to memory data: object that owns memory shares it with the memory's other owners (`Memory` field `ptr`)."""
@@ -242,7 +272,7 @@ function trace(flow::Flow, origin::Origin.Type, step::Step.Type, seen::Set{Origi
     found = Targets()
     push!(seen, origin)
     @match origin begin
-        Origin.Caller(place) => add!(found, Origin.Caller(first(extend(place, step))), last(extend(place, step)))
+        Origin.Caller(place) => add!(found, Origin.Caller(extend(flow.ir, place, step)), NO_DOUBT)
         Origin.Unknown() => add!(found, origin, NO_DOUBT)
         Origin.Allocation(_) => nothing
     end
@@ -270,7 +300,7 @@ function load(flow::Flow, objects::Targets, step::Step.Type)::Targets
 end
 
 """
-Targets of any slot of `objects`: caller objects collapse to `Deep`; allocations give every stored slot, through memory
+Targets of any slot of `objects`: caller objects collapse to `Deep`, doubt kept; allocations give every stored slot, through memory
 backing too. Serves loads whose slot is not constant. Merged callee objects can back themselves, so walk keeps `seen`.
 """
 function load_any(flow::Flow, objects::Targets)::Targets
@@ -280,7 +310,7 @@ function load_any(flow::Flow, objects::Targets)::Targets
         origin in seen && continue
         push!(seen, origin)
         @match origin begin
-            Origin.Caller(place) => add!(found, Origin.Caller(Place.Deep(root_of(place))), BLIND_DOUBT)
+            Origin.Caller(place) => add!(found, Origin.Caller(Place.Deep(root_of(place))), doubt)
             Origin.Unknown() => add!(found, origin, doubt)
             Origin.Allocation(_) => nothing
         end
