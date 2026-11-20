@@ -68,34 +68,38 @@ function workload(directory::String)::Nothing
     return nothing
 end
 
-"""Run `external` stage and every rule on `package` and `inference` facts of analyzed `files`, their `entries`, module file `entry` and `project`."""
-function package_rules(package::Facts.PackageFacts, inference::Union{Nothing, Facts.InferenceFacts}, files::Vector{Facts.SyntaxFile}, entries::Vector{String}, entry::String, project::Union{Nothing, Facts.ProjectFacts})::Nothing
-    Engine.run_rules(Facts.FactSet(files, entries, Facts.Ban[], project, package, inference, nothing, External.external_facts(package, entry, files)))
+"""
+Run `external` stage and every rule on `package`, `inference` and `effects` facts of analyzed `files`, their `entries`,
+module file `entry` and `project`.
+"""
+function package_rules(package::Facts.PackageFacts, inference::Union{Nothing, Facts.InferenceFacts}, effects::Union{Nothing, Facts.EffectsFacts}, files::Vector{Facts.SyntaxFile}, entries::Vector{String}, entry::String, project::Union{Nothing, Facts.ProjectFacts})::Nothing
+    Engine.run_rules(Facts.FactSet(files, entries, Facts.Ban[], project, package, inference, effects, External.external_facts(package, entry, files)))
     return nothing
 end
 
 """
-Run package stages and every rule on Corset itself, then on `PackageSample` with `inference` stage. Own source covers
-wide range of syntax and project shape; sample covers interfaces and inference of Base callees on stand-in types.
-Own project also keys temporary environment, as relaunching process does before cache lookup.
+Run package stages and every rule on Corset itself, then on `PackageSample` with `inference` and `effects` stages. Own
+source covers wide range of syntax and project shape; sample covers interfaces and inference of Base callees on stand-in
+types. Own project also keys temporary environment, as relaunching process does before cache lookup.
 """
 function package_workload()::Nothing
     root = dirname(@__DIR__)
     own = Discovery.discover(root; environment = joinpath(root, "Project.toml"))
-    package_rules(Package.package_facts(Package.module_tree(Corset), own.files), nothing, own.files, own.entries, own.project.entry, own.project)
+    package_rules(Package.package_facts(Package.module_tree(Corset), own.files), nothing, nothing, own.files, own.entries, own.project.entry, own.project)
     Launch.cache_key(own.project)
     path = joinpath(@__DIR__, "PackageSample.jl")
     files = [Syntax.parse_file(path, read(path, String), Facts.Role.package)]
     package = Package.package_facts([PackageSample], files)
-    Inference.shape(package)
-    facts, _, store = Inference.inference_facts(package, files, Inference.Store(), nothing)
-    isempty(something(store)) && error("precompile workload: inference stage stored no sample method")
-    # Second run takes every entry from store, as rerun after edit of other file does.
-    mktempdir() do directory
-        Cache.store!(directory, path, "sample", something(store))
-        Inference.inference_facts(package, files, something(Cache.lookup(Inference.Store, directory, path, "sample")), nothing)
+    # Second run takes method store and library summaries from first, as rerun of `corset check` does.
+    mktempdir() do cache
+        Engine.stage_facts(path, package, files, true, true, cache, nothing)
+        store = Cache.lookup(Inference.Store, cache, Engine.method_entry(path), Engine.store_key(path, package, files, cache))
+        isempty(something(store, Inference.Store())) && error("precompile workload: inference stage stored no sample method")
+        library = Cache.read_library(Cache.library_directory(cache), Cache.partition_key(string(VERSION), DEPOT_PATH))
+        isempty(library) && error("precompile workload: effects stage stored no library summary")
+        inference, _, effects, _ = Engine.stage_facts(path, package, files, true, true, cache, nothing)
+        package_rules(package, inference, effects, files, [path], path, nothing)
     end
-    package_rules(package, facts, files, [path], path, nothing)
     return nothing
 end
 
