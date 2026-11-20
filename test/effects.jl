@@ -12,7 +12,7 @@ using Corset.Effects:
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees, load, store!, store_backing!,
-    beneath, map_nodes, exact_path, extend
+    beneath, map_nodes, exact_path, extend, load_any
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
@@ -1016,6 +1016,16 @@ four_way(x::Symbol) = x
     store_backing!(flow, box, Targets(Origin.Allocation(6) => CODE_DOUBT))
     store!(flow, backed, Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
     @test load(flow, box, Step.Element()) == Targets(Origin.Unknown() => CODE_DOUBT)
+    # Blind chain and exact chain reach one memory; roles swap, so one case visits blind chain first. Least doubt wins.
+    holder, element = Origin.Allocation(33), Targets(Origin.Allocation(32) => NO_DOUBT)
+    for (detour, memory) in ((Origin.Allocation(30), Origin.Allocation(31)), (Origin.Allocation(31), Origin.Allocation(30)))
+        flow.backing[holder] = Targets(detour => BLIND_DOUBT, memory => NO_DOUBT)
+        flow.backing[detour], flow.backing[memory] = Targets(memory => NO_DOUBT), Targets()
+        flow.heap[detour], flow.heap[memory] = Dict{Step.Type, Targets}(), Dict{Step.Type, Targets}(Step.Element() => element)
+        flow.stale = true
+        @test load(flow, Targets(holder => NO_DOUBT), Step.Element()) == element
+        @test load_any(flow, Targets(detour => BLIND_DOUBT, memory => NO_DOUBT)) == element
+    end
     # Type sources: parameter of caller place, sources of chain; global and merge of fresh objects are doubt in code.
     held_global = Origin.Caller(global_place(@__MODULE__, :HOLDER))
     none = Sources(0)
