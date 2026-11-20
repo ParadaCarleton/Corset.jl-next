@@ -1580,6 +1580,12 @@ end
     @test same(root_summary(run, root), empty_summary()) && haskey(run.codes, root)
     added = only(last.(root_calls(run, root)))
     @test added.callee == Callee.Builtin(Core.Intrinsics.add_int) && added.used && !added.throws && added.terminates
+    # Passes empty unreachable set of their state; frame keeps own set, so second body drops dead `convert` too.
+    frame = Core.Compiler.typeinf_frame(run.interpreter, Base.method_instance(CASES.add, (Int, Int)), false)
+    unreachable = copy(frame.unreachable)
+    bodies = [unit_body(start_run(nothing, Module[]), frame, false) for _ in 1:2]
+    @test !isempty(unreachable) && frame.unreachable == unreachable
+    @test length(bodies[1].ir.stmts) == length(bodies[2].ir.stmts) && bodies[1].used == bodies[2].used
     # Units of method merge: methods join; other callee pair gives open dispatch.
     span = named(:drop_calls!).site.span
     first_fact = CallFact(span, Callee.Methods([only(methods(CASES.no_text_method))]), [EffectKind.io], false, true, false)
