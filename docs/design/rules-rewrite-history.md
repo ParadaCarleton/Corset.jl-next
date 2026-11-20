@@ -1157,3 +1157,18 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Corset targets numeric code first, so JSON measured outlier cost. SpecialFunctions 2.9.2, StatsFuns 2.3.1 and Distributions 0.25.135 replace it.
 - Distributions is large generic numeric code: survey warm solve 57.7 s, `inference` 48.4 s.
 - Last JSON numbers: warm solve 32 s against `inference` 9–11 s (job 753). Benchmarks still take JSON by argument as stress case.
+
+### Corpus speed check
+
+- Job 838 (winwsl), main ed05f71b, one library cache dir across corpus. First run fills cache; warm run reads it.
+
+| Package | `inference` s | `effects` s first, warm | Warm solve s | `possible` |
+|---|---|---|---|---|
+| Distances 0.10.12 | 7.29 | 7.28, 6.32 | 3.80 | 30.9% |
+| DataStructures 0.18.22 | 12.59 | 14.52, 11.78 | 7.60 | 25.1% |
+| SpecialFunctions 2.9.2 | 20.28 | 9.16, 6.89 | 4.27 | 13.8% |
+| StatsFuns 2.3.1 | 6.21 | 2.88, 1.51 | 1.12 | 20.1% |
+| Distributions 0.25.135 | 31.23 | 32.60, 28.15 | 18.52 | 32.8% |
+
+- Warm `effects` stays at most `inference` on all five. Box ran other jobs, so ratios near 1 carry noise.
+- `possible` limit 30% fails on Distances and Distributions.
