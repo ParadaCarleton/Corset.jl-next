@@ -34,6 +34,7 @@ Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and meth
 
 - Finding: untyped argument reaches methods that disagree on writing it. Compiler dispatches at run time: `bang-convention` reports `possible`, and `runtime-dispatch` reports call.
 - Finding: public function returns union from dependency. Unknown callers decide: `possible`.
+- Finding: write lands below argument `w` past place Corset names. Doubt is only where it lands: `w` changes, so `bang-convention` keeps certainty of write.
 - Blind spot: syntax-only rule cannot see that `a::Vector` is 1-based, because `inference` stage did not run.
 - Blind spot: inference gave no code (generator threw); method has more signatures than limit; argument type has no stand-in.
 - Blind spot: no call reaches untyped method; macro did not expand; `include` path is computed.

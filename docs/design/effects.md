@@ -55,7 +55,9 @@ Engine code lives in `src/Effects/`.
 - Origin: abstract object. Kinds: caller place (parameter or global path), allocation statement, `unknown`.
 - Constant object in code counts as `unknown`. Fresh objects of callee merge into one allocation at call statement.
 - `unknown`: object open call can return that no operand names, global included. Write to it is `possible` global write.
-- Path: field name or element, at most 2 steps. Longer path collapses to `deep`.
+- Path: field name or element. Path follows declared field types.
+- Path collapses to `deep` at step into type it already passed (recursive type), or at third step below abstract type.
+- Place says where access lands; certainty says whether it happens. `deep w` is coarse place: write below it still changes `w`.
 - Field name comes from concrete type, array stand-in family or `Array` family. Other struct family (`Object{K, V} where …`) gives field position.
 - Memory backing belongs to its owner: field of type `GenericMemory` or `GenericMemoryRef` adds no step. Write to `Vector` elements writes `Vector`.
 - `Ptr` value holds origins of object it points into, so foreign call through pointer writes that object.
@@ -64,12 +66,16 @@ Engine code lives in `src/Effects/`.
 - Unification is rejected: it merges unrelated objects at each unknown call.
 - Write: statement that stores into origin content, or callee summary write mapped through call operands.
 - Each origin in points-to set carries doubt: none, `code` or `blind`. Join keeps least doubt per origin.
-- Open call on chain gives `code`. Collapsed path, or call result merged from several fresh objects, gives `blind`.
+- Open call on chain gives `code`. Call result merged from several fresh objects gives `blind`: they can hold different caller objects.
+- Collapsed path and load of non-constant slot add no doubt: object they reach lies below same root.
+- Memory access below `deep w` takes kind of `w` type when its declared fields reach no special type (`IO`, lock, RNG).
+  Abstract field on the way adds `code` doubt: compiler cannot tell either. Field that reaches special type gives `blind`.
 - Access takes most doubt of effect and chain. None gives definite; `code` gives `possible`.
 - `blind` gives blind access with cause `alias`: blind spot, counted on coverage line only.
-- Summary per parameter and global: read and write of top object, each path of depth 1 and 2, and `deep`. Each has certainty and cause span.
+- Summary per parameter and global: read and write of top object, each path, and `deep`. Each has certainty and cause span.
 - Access says whether it covers every place below too. Open call covers whole object graph below each operand.
 - Access below fresh object covers caller objects in its slots: open call on `(x,)` writes below `x`.
+- Caller maps callee `deep` place: caller place below argument keeps access certainty. Caller object inside fresh argument gives `blind`: callee may leave it unchanged.
 - Summary also gives result origins as parameter and global paths: result aliases. Fresh result keeps its fields: `view(A, 1:2)` result holds `A`.
 - Summary gives stores callee makes between caller objects: `push!(v, x)` puts `x` into `v`, so caller write through `v[1]` writes `x`.
 - Caller maps writes through result onto those paths, so write through result that aliases global is global write.
