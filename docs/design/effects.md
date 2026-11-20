@@ -112,6 +112,11 @@ Resolution of each call statement, first match wins:
 
 1. Builtin or intrinsic: transfer function (`setfield!`, `memoryrefset!`, `setglobal!`, `swapfield!`, `modifyfield!`, `replacefield!`; `_apply_iterate` unpacked).
 2. Foreign call: table of known C functions (`memmove` writes destination; runtime type queries read only). Unknown: `possible` write on pointer and object operands, doubt in code.
+   - MPFR and GMP entries come from C headers: pointer to non-const is written, pointer to const is read (`mpfr_srcptr`, `const char *`). Generator: `gen/foreign/generate.jl`; output: `src/Effects/foreign_gmp_mpfr.jl`.
+   - Symbols: every MPFR and GMP function that Base and SpecialFunctions call, plus five numeric extras. The whole header holds about 800 functions; each one needs vetting for global state.
+   - Hand entries (`calls.jl`) cover variadic functions and pointer results. Left open: functions that write C global state (`mpfr_set_emax`, `mpfr_set_emin`, `mpfr_clear_flags`, GMP allocator hooks).
+   - No prefix rule: unknown `mpfr_` or `__gmp` name stays open, because wrong entry gives false definite write.
+   - CI lacks the headers. The generator does not run there; committed file is the source of truth. Test compares it with hand classification.
 3. Static call (one method matches, or `Core.invoke` with constant selector): callee summary. No method matches: call throws, so code after it is dead.
    Summary per variant: instance plus constant arguments callee uses as field name. `getproperty(x, :a)` keeps field `a`.
 4. Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.

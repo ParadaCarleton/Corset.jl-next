@@ -961,6 +961,33 @@ Main and throw paths back to back on macdev:
 - `@debug` in SpecialFunctions `beta_inc` adds writes to `_global_logstate`, path regex globals and PCRE contexts; StatsFuns inherits them.
 - ForwardDiff blind writes sit in `@eval` methods of `dual.jl`: stand-ins leave value type and partials count of `Dual` open.
 
+### MPFR and GMP foreign calls
+
+- Foreign table had no `mpfr_*` or `__gmp*` name, so each `Ref{BigFloat}` argument stayed open.
+- Table entries come from C headers (`mpfr.h` 4.2.2, `gmp.h` 6.3.0): `mpfr_ptr` writes, `mpfr_srcptr` reads. Generator: `gen/foreign/generate.jl`, using Clang.jl.
+- Rejected: handwritten table. Roughly 200 entries, and one wrong role gives false definite write.
+- Rejected: all 800 header functions. Each needs vetting for global state; corpus calls 213 of them.
+- Symbol list holds 218 names: 213 Base 1.13 and SpecialFunctions 2.9.2 calls, and five extras (`mpfr_get_d`, `mpfr_cmp`, `mpfr_swap`, `mpfr_remquo`, `mpfr_strtofr`). Generated table: 208 entries.
+- Hand entries: `mpfr_asprintf` (variadic), `mpfr_free_str`, `__gmpz_limbs_write`, `__gmpz_get_str`, `__gmpz_export` (pointer results).
+- Left open: `mpfr_set_emin`, `mpfr_set_emax`, `mpfr_clear_flags`, `__gmp_set_memory_functions`, `__gmp_set_alloc_overflow_function` write C global state.
+- Rejected: prefix rule. Unknown `mpfr_` name would get a guessed role.
+- Test compares the table with a handwritten classification from the manuals.
+
+Job 675 on ssh-dev, both arms in one job (main 51b8b5e3 table against branch table):
+
+| Package | `possible` main | `possible` branch | `bang_definite` |
+|---|---|---|---|
+| SpecialFunctions 2.9.2 | 90 of 499 | 90 of 499 | 0 to 0 |
+| StatsFuns 2.3.1 | 58 of 289 | 58 of 289 | 0 to 0 |
+| Distances 0.10.12 | 58 of 188 | 58 of 188 | 29 to 29 |
+| DataStructures 0.18.22 | 224 of 947 | 224 of 947 | 203 to 203 |
+| JSON 1.13.4 | 85 of 291 | 84 of 291 | 63 to 63 |
+
+- Table alone does not clear SpecialFunctions and StatsFuns. Other sources remain.
+- `BigFloat()` reads `CURRENT_PRECISION` (`ScopedValue`). That read gives a code-doubt write to unknown object and a blind write to the global. Each method that makes a `BigFloat` keeps it.
+- `airyai(::Complex)` keeps writes to `z.re` and `z.im`: Amos functions (`zairy_`, `zbes*_`) stay open.
+- `x.d` of `BigFloat` builds a fresh `BigFloatData` wrapper. The engine drops the link to `x`, so MPFR writes to a `BigFloat` parameter show no origin. Input `x` stays unwritten, as wanted.
+
 ### Lock writes
 
 - `lock(q.lk)` writes lock state inside argument `q`, so `bang-convention` would demand `!` on every thread-safe container method.
