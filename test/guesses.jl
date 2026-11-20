@@ -1,7 +1,10 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
-using Corset.Guesses: annotation_text, family_text
+using Corset.Guesses: annotation_text, family_text, array_shape, array_dimensions
 using Corset.StandIns: FloatStandIn, IntStandIn, ArrayStandIn
+
+"""Array struct that leaves count parameter free, as `Interpolations.GriddedInterpolation` does."""
+struct OddArray{T, N} <: AbstractArray{T, N} end
 
 """Scope guesses name types in: abstract type with one struct, and struct without abstract parent."""
 module GuessScope
@@ -15,6 +18,14 @@ module Shadowing
 end
 """Struct outside `GuessScope`: its name is unbound there."""
 struct Hidden end
+
+@testset "array count parameter" begin
+    # `ndims` threw on count `Any` (Interpolations corpus run).
+    @test array_shape(OddArray{Any, Any}) == (nothing, Any) && array_shape(OddArray{Int, 2}) == (2, Int)
+    @test array_shape(OddArray{Int, N} where {N}) == (nothing, Any) && array_shape(SubArray{T, 2} where {T}) == (2, Any)
+    @test array_shape(Union{Vector{Int}, Matrix{Int}}) == (nothing, Any) && family_text(OddArray{Any, Any}, GuessScope) == "AbstractArray"
+    @test_throws ArgumentError array_dimensions(Int)
+end
 
 @testset "annotation guesses" begin
     scope = GuessScope

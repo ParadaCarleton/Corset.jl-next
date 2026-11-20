@@ -53,13 +53,26 @@ Dimension count of array `type` and element bound; count `nothing` when open. Op
 whose type variables are element and count (`Array{T, 1} where T <: AbstractString`).
 """
 function array_shape(type::Type)::Tuple{Union{Nothing, Int}, Any}
-    type isa DataType && return ndims(type), eltype(type)
+    type isa DataType && return array_dimensions(type), eltype(type)
     body = Base.unwrap_unionall(type)
     if body isa DataType && body <: Array
         element, dimensions = body.parameters
         return dimensions isa Int ? dimensions : nothing, element isa TypeVar ? element.ub : element
     end
-    return (applicable(ndims, type) ? ndims(type) : nothing), Any
+    return body isa DataType ? array_dimensions(body) : nothing, Any
+end
+
+"""
+Count parameter of `AbstractArray` supertype of array `type`; `nothing` when it is no count. Struct can bind it to any
+value (`Interpolations.GriddedInterpolation{Any, Any, …}`), where `ndims` throws.
+"""
+function array_dimensions(type::DataType)::Union{Nothing, Int}
+    type <: AbstractArray || throw(ArgumentError("$type is no array type"))
+    while type.name !== Base.typename(AbstractArray)
+        type = supertype(type)
+    end
+    dimensions = last(type.parameters)
+    return dimensions isa Int ? dimensions : nothing
 end
 
 """Family text of array `type`: `AbstractVector`, `AbstractMatrix` or `AbstractArray`, with element family and count."""
