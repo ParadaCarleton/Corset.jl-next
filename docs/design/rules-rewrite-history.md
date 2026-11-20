@@ -886,6 +886,56 @@ PR 3b (stand-in cuts, #241) on corpus, winwsl, main and PR 3b back to back:
 - JSON `possible` share fell from 32.6% to 29.9%; effects allocation rose 1%.
 - Early fixpoint rounds see sources still unknown. Accesses come from last round only, so their `INHERENT` stays out.
 
+### Throw paths
+
+- Message call builds thrown value only: `string(x)` in `throw(ArgumentError(string(x)))`. Its writes counted as writes of method.
+- Rejected: drop all writes of message call. Message can pop argument (`pop!(stack)` in error text); caller that catches sees it.
+- Chosen: message call adds definite writes only. Its `possible` writes and blind spots stay out.
+- Sink: `throw` or throw helper call of type `Union{}`. Other call that never returns fails on stand-in; stand-in cuts handle it.
+- Statement without use is no message: `all` over no uses holds, so `x[i] = v` result would drop its write.
+- Least fixpoint runs reverse passes. Phi at loop header uses statement later in body, so it needs second pass.
+
+Main and throw paths back to back on macdev:
+
+| Arm | Distances | DataStructures | JSON |
+|---|---|---|---|
+| `possible` share | 30.9% to 30.9% | 23.7% to 23.7% | 29.9% to 29.2% |
+| Blind writes | 65 to 64 | 277 to 272 | 96 to 93 |
+| `effects` allocation MB | 976 to 998 | 1781 to 1811 | 144693 to 145435 |
+| Warm solve allocation MB | 498 to 502 | 1285 to 1300 | 143748 to 144437 |
+
+- Blind writes count methods. Distances and DataStructures verdicts lose blind `alias` places only.
+- Distances loses 23 places in `_evaluate`, 1 in `RenyiDivergence`. DataStructures loses 14 in `fenwick`, `trie`, `avl_tree`, `RobinDict`.
+- JSON `liftkey` loses `possible` writes to string argument: `parse` error text calls `repr(x)`. `unknownmember` error text shows key.
+- `liftkey` write becomes blind (opaque dispatch): message write had hidden it, since `stronger` keeps least doubt.
+- JSON `_makecontainer` and `make` lose 18 blind places each: MPFR precision globals in `BigFloat` error text.
+- 3a shortcut already removed most message writes: compiler proves `LazyString` message effect-free.
+- Mutation: 15 mutants. First run killed 4; 6 survived; 5 timed out with control. Tests cover each survivor; recheck skipped.
+
+### Call facts
+
+- F54 needs discarded calls. `COMPACT_1` deletes discarded call when compiler effects say removable: exactly F54 candidates.
+- Chosen: unit keeps every call statement. Library instances keep compaction.
+- Unit with shortcut keeps code for call facts. Its summary stays empty, so shortcut precision stays.
+- Root rerun with record flag sends writes of each call through scratch table. Other instances pay nothing.
+- Callee lock or file held at exit counts as effect: discarded `hold!(q)` is no unused call.
+- Units of method merge by source statement and span: lowered statement index is same in every unit.
+- Corpus arm 605 (ssh-dev, loaded): verdicts and blind spots equal release-balance arm 578 on Distances, DataStructures, JSON.
+- Calls, discarded, F54 candidates: Distances 1874, 414, 335; DataStructures 6699, 1403, 642; JSON 2648, 668, 511.
+- Effects allocation: Distances +14%, DataStructures +11%, JSON flat. Kept calls add statements to units.
+- Bug: `used` came from IR after `COMPACT_1`. Compaction turns each use of constant result into literal.
+- So `b == UInt8('\t')` gave unused call; most F54 candidates were constant calls. Fix #252: count uses before compaction.
+
+### Iteration starts
+
+- Row 3 listed iteration starts; split 3a to 3e left it out. Found while closing row 3.
+- Start is read of kind `iteration`: callee mapping, join, widening and callback records reuse read paths.
+- Rejected: own start table. Every apply and join signature would carry third table.
+- `iterate(x)` starts at every resolution. `iterate` method with one argument continues with state, so its summary shows no start.
+- `first`, `only`, `isempty` and destructuring start through contract only. Static call shows start through callee summary.
+- Own method of type starts nothing: `isempty(::Vector)` reads length.
+- Splat of collection runs `iterate` too. It stays unresolved and gives no start yet.
+
 ### Lock writes
 
 - `lock(q.lk)` writes lock state inside argument `q`, so `bang-convention` would demand `!` on every thread-safe container method.
@@ -896,6 +946,19 @@ PR 3b (stand-in cuts, #241) on corpus, winwsl, main and PR 3b back to back:
 - Exception edges, needed for `finally`, also give hold count at throw exits.
 - Throw-exit count is F98 fact. Syntax F98 sees same block only and reports code that cannot throw, so F98 moves to effects stage.
 - File pair joins: fresh `open` result is exact place. Distances, DataStructures and JSON have no lock call; fixtures carry tests.
+
+Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so counts only):
+
+| Arm | Distances | DataStructures | JSON |
+|---|---|---|---|
+| Warm solve allocation MB | 503 to 558 | 1304 to 1441 | 148713 to 32410 |
+| `effects` allocation MB | 1005 to 1072 | 1816 to 1968 | 149789 to 33408 |
+
+- JSON allocation falls 4.6 times. Lock, semaphore and `wait` bodies no longer run, so IO under `@_lock_ios` applies no scheduler stores.
+- Distances and DataStructures rise about 10%: balance dataflow runs in each unit.
+- Method verdict counts stay. Distances `bang_definite` 35 to 29: six `Mahalanobis` methods that call `@warn` lose one definite write each.
+- JSON blind places fall: `json` 781 to 304, `WriteClosure` 388 to 117, `deserialize` 150 to 5.
+- Effect kinds against throw paths: JSON allocation 145435 to 149789 MB, on other box and load; no claim.
 
 ### Stateful iterators
 

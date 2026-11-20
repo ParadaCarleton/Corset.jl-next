@@ -1,9 +1,10 @@
 """
-IR of inference `frame` before inlining, and source statement index of each IR statement (`effects.md`, IR). Passes run
-on copies, so frame stays as `inference` stage left it. Line of each statement carries its index through passes.
-Compaction keeps statements `kept` marks, though compiler effects let it delete them.
+IR of inference `frame` before inlining, source statement index of each IR statement (0: compiler inserted it), and
+whether value of each source statement has use (`effects.md`, IR). Passes run on copies, so frame stays as `inference`
+stage left it. Line of each statement carries its index through passes. Compaction keeps statements `kept` marks,
+though compiler effects let it delete them.
 """
-function frame_ir(frame::CC.InferenceState, interpreter::CC.NativeInterpreter, kept::Vector{Bool})::Tuple{CC.IRCode, Vector{Int}}
+function frame_ir(frame::CC.InferenceState, interpreter::CC.NativeInterpreter, kept::Vector{Bool})::Tuple{CC.IRCode, Vector{Int}, Vector{Bool}}
     source = copy(frame.src)
     count = length(source.code)
     for index in findall(kept)
@@ -12,13 +13,32 @@ function frame_ir(frame::CC.InferenceState, interpreter::CC.NativeInterpreter, k
     stream = CC.DebugInfoStream(Int32[part for index in 1:count for part in (index, 0, 0)])
     stream.def = frame.linfo
     source.debuginfo = Core.DebugInfo(stream, count)
-    # Conversion edits control flow and statement info in place; `slot2reg` truncates slot types.
+    # Conversion edits control flow and statement info in place and empties unreachable set; `slot2reg` truncates slot types.
     optimization = CC.OptimizationState(
         frame.linfo, source, nothing, copy(frame.stmt_info), frame.mod, frame.sptypes, copy(frame.slottypes),
-        CC.InliningState(frame, interpreter), deepcopy(frame.cfg), frame.unreachable, frame.bb_vartables, frame.insert_coverage,
+        CC.InliningState(frame, interpreter), deepcopy(frame.cfg), copy(frame.unreachable), frame.bb_vartables, frame.insert_coverage,
     )
-    ir = CC.run_passes_ipo_safe(source, optimization, "CC: COMPACT_1")
-    return ir, [Int(ir.stmts[index][:line][1]) for index in 1:length(ir.stmts)]
+    renamed = CC.run_passes_ipo_safe(source, optimization, "CC: SLOT2REG")
+    # Compaction turns each use of constant result into literal (`Compiler` `ssair/ir.jl`), so uses come first.
+    used = source_used(renamed, count)
+    ir = CC.compact!(renamed)
+    return ir, [statement_line(ir, index) for index in 1:length(ir.stmts)], used
+end
+
+"""Source statement index of statement `index` of `ir` (`frame_ir`)."""
+statement_line(ir::CC.IRCode, index::Int)::Int = Int(ir.stmts[index][:line][1])
+
+"""Whether value of each of `count` source statements has use in `ir` before compaction: in statement or in new node."""
+function source_used(ir::CC.IRCode, count::Int)::Vector{Bool}
+    used = fill(false, count)
+    for statement in Iterators.flatten((ir.stmts.stmt, ir.new_nodes.stmts.stmt)), reference in CC.userefs(statement)
+        value = reference[]
+        value isa Core.SSAValue || continue
+        value.id <= length(ir.stmts) || continue
+        line = statement_line(ir, value.id)
+        iszero(line) || (used[line] = true)
+    end
+    return used
 end
 
 """IR `ir` with argument types of `constants` (position and value) set to constant; statements stay shared."""

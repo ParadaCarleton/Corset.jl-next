@@ -1003,6 +1003,7 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <li>Element event carries index operand: constant or SSA value. <code>lifecycle</code> decides which elements writes cover (F33, F34).</li>
 <li>Per call statement: callee, kinds of its writes at any certainty, may throw, terminates, result used or discarded (F54, F86).</li>
 <li>Callee holds that call leaves count as writes: lock gives synchronization, file gives IO.</li>
+<li>Use counts before compaction: compaction turns each use of constant result into literal (<code>b == UInt8('\t')</code>).</li>
 <li>Units of method merge by source statement: unit that may throw, writes or uses result decides.</li>
 <li><code>unused-call</code> needs no effect of any kind, no throw and termination: discarded <code>parse(Int, text)</code> validates input.</li>
 <li>Join of two allocations at branch (<code>y = flag ? a : b</code>) makes fact <code>possible</code>.</li>
@@ -1439,7 +1440,7 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <td>Engine limits</td>
 <td>Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance</td>
 <td>2</td>
-<td>3a #240, 3b #241, throw paths #246, 3c #247, 3e #248</td>
+<td>3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249, iteration starts #250</td>
 </tr>
 <tr>
 <td>4</td>
@@ -1549,7 +1550,7 @@ Open-call census after 2b set this order; callback records cover least. Ablation
 <p>Measure: <code>possible</code> share per corpus package; methods per join; contract hits. Join limit 3 since 2a; keep it at least compiler <code>max_methods</code>.</p>
 </div><div class="decision"><h3>3 Engine limits</h3>
 <p>Compiler effects for speed; stand-in cuts and effect kinds for correct verdicts.
-Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effect kinds; 3d throw paths and call facts; 3e release balance. Before 3c: derived provenance (Provenance in <code>effects.md</code>). Throw paths land before 3c; call facts read effect kinds, so they follow 3c.</p>
+Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effect kinds; 3d throw paths and call facts; 3e release balance; iteration starts last. Before 3c: derived provenance (Provenance in <code>effects.md</code>). Throw paths land before 3c; call facts read effect kinds, so they follow 3c.</p>
 <ul>
 <li>Shortcut: empty summary for instance with <code>effect_free</code>, <code>inaccessiblememonly</code>, <code>notaskstate</code> and result without reference.</li>
 <li>Skip shortcut when reached method outside Base carries effects override.</li>

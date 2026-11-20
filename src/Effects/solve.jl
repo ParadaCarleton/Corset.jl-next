@@ -248,11 +248,13 @@ function frame_body(run::Run, frame::CC.InferenceState, cut::Bool, unit::Bool, s
         (unit && call_statement(frame.src.code[index])) || (own && overrides(frame.src.ssaflags[index])) || reaches_untrusted!(run, call_edges(info))
             for (index, info) in enumerate(frame.stmt_info)
     ]
-    ir, lines = frame_ir(frame, run.interpreter, kept)
+    ir, lines, before = frame_ir(frame, run.interpreter, kept)
     chain, limit = call_chain(run, frame.linfo), join_limit(run, frame.linfo)
     outcomes = [limited_outcome(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world, limit)) for index in 1:length(ir.stmts)]
     users = statement_users(ir)
-    return Body(ir, lines, outcomes, message_statements(users, throw_sinks(run, ir)), map(!isempty, users), cut, shortcut)
+    # Statement compiler inserted has no source statement: its uses after compaction count.
+    used = [iszero(line) ? !isempty(users[index]) : before[line] for (index, line) in enumerate(lines)]
+    return Body(ir, lines, outcomes, message_statements(users, throw_sinks(run, ir)), used, cut, shortcut)
 end
 
 """

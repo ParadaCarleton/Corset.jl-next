@@ -432,6 +432,12 @@ function odd_calls(f::Any, flag::Bool, text::String)::Nothing
     return nothing
 end
 
+# Call facts: constant call result in comparison, and discarded constant call.
+function constant_calls(byte::UInt8)::Bool
+    UInt8('a')
+    return byte == UInt8('\t')
+end
+
 # Only method of `no_text_method`: `String` argument matches none.
 no_text_method(value::Int)::Int = value
 

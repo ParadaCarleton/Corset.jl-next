@@ -8,7 +8,7 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 |---|---|---|---|---|
 | 1 | Engine core | Units, IR, origins, points-to, builtins, static calls, solve, soundness property | — | #232 |
 | 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | 2a #234; 2b #235; 2c #237; 2d #238; 2e #239 |
-| 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance | 2 | 3a #240, 3b #241, throw paths #246, 3c #247, 3e #248 |
+| 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance | 2 | 3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249, iteration starts #250 |
 | 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | — |
 | 5 | Corpus go/no-go | Gate below; no rule PR before it passes | 4 | — |
 | 6 | `bang-convention` | F53, F86 | 5 | — |
@@ -78,7 +78,7 @@ Measure: `possible` share per corpus package; methods per join; contract hits. J
 ### 3 Engine limits
 
 Compiler effects for speed; stand-in cuts and effect kinds for correct verdicts.
-Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effect kinds; 3d throw paths and call facts; 3e release balance. Before 3c: derived provenance (Provenance in `effects.md`). Throw paths land before 3c; call facts read effect kinds, so they follow 3c.
+Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effect kinds; 3d throw paths and call facts; 3e release balance; iteration starts last. Before 3c: derived provenance (Provenance in `effects.md`). Throw paths land before 3c; call facts read effect kinds, so they follow 3c.
 
 - Shortcut: empty summary for instance with `effect_free`, `inaccessiblememonly`, `notaskstate` and result without reference.
 - Skip shortcut when reached method outside Base carries effects override.
