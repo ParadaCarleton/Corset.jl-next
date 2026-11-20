@@ -90,6 +90,10 @@ end
 """Name of method store entry of checked `path` in cache directory, beside analysis entry of `path`."""
 method_entry(path::String)::String = "$path\nmethod store"
 
+"""Key of method store entry of checked `path` with `package` in analyzed `files` in cache directory `cache`."""
+store_key(path::String, package::PackageFacts, files::Vector{Facts.SyntaxFile}, cache::String)::String =
+    Cache.method_key(path, something(project_root(path)), [file.path for file in files], Inference.shape(package), Base.load_path(), cache)
+
 """
 Inference and effects facts of `package` in analyzed `files`, each with its blind spots: inference facts when
 `inference` holds, effects facts when `effects` holds too; else none. Cache directory `cache` keeps method store of
@@ -98,7 +102,7 @@ Crash journal `directory` of relaunched process records each inference (`journal
 """
 function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, inference::Bool, effects::Bool, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}, Union{Nothing, EffectsFacts}, Vector{BlindSpot}}
     (isnothing(package) || !inference) && return nothing, BlindSpot[], nothing, BlindSpot[]
-    key = isnothing(cache) ? "" : Cache.method_key(path, something(project_root(path)), [file.path for file in files], Inference.shape(package), Base.load_path(), cache)
+    key = isnothing(cache) ? "" : store_key(path, package, files, cache)
     cached = isnothing(cache) ? nothing : something(Cache.lookup(Inference.Store, cache, method_entry(path), key), Inference.Store())
     # Entries of runs that crashed serve as store, so finished work stays done.
     store = isnothing(directory) ? cached : merge(something(cached, Inference.Store()), Inference.finished_store(Inference.records(directory)))
