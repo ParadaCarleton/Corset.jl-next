@@ -1183,6 +1183,8 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Equal native IR gave equal summary for every variant (job 911). Corset steps do not cause the change.
 - Native inference narrows `g` to `Union{MvNormal, MvNormalCanon}` after `cov(g)` in some builds only. Narrowing followed `cov(::MvNormal)` result in cache.
 - Distributions loaded from source gave both results over three processes (job 931). Julia inference order decides.
+- Cause in Julia match loop: it stops once return type is `Any`, and narrowing needs every match seen (job 959).
+- So narrowing depends on callee return types, which depend on inference order and cache. Julia master has same logic.
 - Corset infers with `NativeInterpreter`, so it shares global cache with package images. Other IR changes rename type variables only.
 - Open choice: inference with own cache makes facts independent of package images. Cost: every callee infers again in each run.
 
