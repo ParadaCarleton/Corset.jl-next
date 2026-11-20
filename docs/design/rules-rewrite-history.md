@@ -1186,7 +1186,9 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Cause in Julia match loop: it stops once return type is `Any`, and narrowing needs every match seen (job 959).
 - So narrowing depends on callee return types, which depend on inference order and cache. Julia master has same logic.
 - Corset infers with `NativeInterpreter`, so it shares global cache with package images. Other IR changes rename type variables only.
-- Open choice: inference with own cache makes facts independent of package images. Cost: every callee infers again in each run.
+- Fix: Julia PR #65131 refines arguments from all match signatures, also after early stop.
+- Julia 1.13.4 with fix narrowed in all 8 processes: 3 package-image loads, 5 source loads (job 1049).
+- Stock 1.13.4 in same job: package-image loads never narrowed; source loads narrowed in 4 of 5.
 
 ### Deep walk
 
