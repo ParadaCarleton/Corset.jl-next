@@ -3,6 +3,7 @@ module Rules
 
 using ..Facts: RuleEntry
 
+include("rules/addlogprob.jl")
 include("rules/ambiguous_concat.jl")
 include("rules/and_or_precedence.jl")
 include("rules/annotation.jl")
@@ -57,6 +58,7 @@ include("rules/world_age.jl")
 
 """Every rule, in name order (test enforces order)."""
 const REGISTRY = RuleEntry[
+    Addlogprob.ENTRY,
     AmbiguousConcat.ENTRY,
     AndOrPrecedence.ENTRY,
     Annotation.ENTRY,
