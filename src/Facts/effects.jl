@@ -8,7 +8,7 @@ using Moshi.Match: @match
     Position(Int)
     Element()
 end
-@derive Step[Hash, Show]
+@derive Step[Show]
 
 """
 Object access starts from: `Parameter` by argument position (1 is called function), `Global` binding, or `Elsewhere`:
@@ -19,14 +19,14 @@ object open call returns, global included.
     Global(GlobalRef)
     Elsewhere()
 end
-@derive Root[Hash, Show]
+@derive Root[Show]
 
 """Object reached from root: `At` path of at most `PATH_DEPTH` steps, or `Deep` past them."""
 @data Place begin
     At(Root.Type, Vector{Step.Type})
     Deep(Root.Type)
 end
-@derive Place[Hash, Show]
+@derive Place[Show]
 
 # Hash tables test key equality on every hit. Derived `Eq` finds variant by subtype test; matching is many times faster.
 
@@ -55,6 +55,36 @@ end
 
 """Equality of steps, roots and places: their fields hold no floating-point or `missing` value."""
 (Base.isequal(first::T, second::T)::Bool) where {T <: Union{Step.Type, Root.Type, Place.Type}} = first == second
+
+# Derived `Hash` hashes steps through generic array hash and module by object id; tags and loops are faster.
+
+"""Hash of `step`: variant tag, then its field."""
+Base.hash(step::Step.Type, seed::UInt)::UInt = @match step begin
+    Step.Field(name) => hash(name, hash(0x01, seed))
+    Step.Position(index) => hash(index, hash(0x02, seed))
+    Step.Element() => hash(0x03, seed)
+end
+
+"""Hash of `root`: variant tag, then its field; global by module name and binding name."""
+Base.hash(root::Root.Type, seed::UInt)::UInt = @match root begin
+    Root.Parameter(position) => hash(position, hash(0x11, seed))
+    Root.Global(binding) => hash(binding.name, hash(nameof(binding.mod), hash(0x12, seed)))
+    Root.Elsewhere() => hash(0x13, seed)
+end
+
+"""Hash of `place`: variant tag, root, then each step."""
+Base.hash(place::Place.Type, seed::UInt)::UInt = @match place begin
+    Place.At(root, steps) => steps_hash(steps, hash(root, hash(0x21, seed)))
+    Place.Deep(root) => hash(root, hash(0x22, seed))
+end
+
+"""Hash of `steps` after `seed`, one step at a time."""
+function steps_hash(steps::Vector{Step.Type}, seed::UInt)::UInt
+    for step in steps
+        seed = hash(step, seed)
+    end
+    return seed
+end
 
 """Steps of longest exact path; longer paths collapse to `Place.Deep`."""
 const PATH_DEPTH = 2

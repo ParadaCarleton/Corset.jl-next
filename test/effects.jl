@@ -1245,6 +1245,24 @@ end
     end
 end
 
+const STEP_DRAWS = Data.OneOf(map(Step.Field, Data.SampledFrom([:x, :y])), map(Step.Position, Data.Integers(1, 2)), Data.Just(Step.Element()))
+const ROOT_DRAWS = Data.OneOf(map(Root.Parameter, Data.Integers(1, 2)), map(name -> Root.Global(GlobalRef(Main, name)), Data.SampledFrom([:a, :b])), Data.Just(Root.Elsewhere()))
+const PLACE_DRAWS = Data.OneOf(map(((root, steps),) -> Place.At(root, steps), Data.Pairs(ROOT_DRAWS, Data.Vectors(STEP_DRAWS; max_size = 2))), map(Place.Deep, ROOT_DRAWS))
+const ORIGIN_DRAWS = Data.OneOf(map(Origin.Caller, PLACE_DRAWS), map(Origin.Allocation, Data.Integers(1, 2)), Data.Just(Origin.Unknown()))
+const NODE_DRAWS = Data.OneOf(map(Node.Placed, PLACE_DRAWS), map(Node.Fresh, Data.Integers(1, 2)), Data.Just(Node.Outside()))
+
+@testset "hash agrees with equality" begin
+    # Each draw builds its own step vector and binding, so equal values share no object.
+    for (name, draws) in (("steps", STEP_DRAWS), ("roots", ROOT_DRAWS), ("places", PLACE_DRAWS), ("origins", ORIGIN_DRAWS), ("nodes", NODE_DRAWS))
+        @testset "$name" begin
+            @check max_examples = 300 db = false function equal_iff_same_hash(drawn = Data.Pairs(draws, draws))
+                one, other = drawn
+                isequal(one, other) == (hash(one) == hash(other)) && hash(one, UInt(1)) != hash(one, UInt(2))
+            end
+        end
+    end
+end
+
 """Builds thrown value: open `print` on `x` writes nothing caller sees (`effects.md`, Effect kinds)."""
 message_write(x::Any, flag::Bool) = flag ? throw(ArgumentError(string("bad ", x))) : nothing
 
