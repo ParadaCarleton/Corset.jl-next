@@ -926,6 +926,7 @@ Main and throw paths back to back on macdev:
 - Bug: `used` came from IR after `COMPACT_1`. Compaction turns each use of constant result into literal.
 - So `b == UInt8('\t')` gave unused call; most F54 candidates were constant calls. Fix #252: count uses before compaction.
 - After #252 (job 623): discarded and F54 candidates Distances 112, 34; DataStructures 793, 85; JSON 202, 62.
+- Job 626: three Distances and two DataStructures processes give same facts. Blind-spot change between arms comes from code.
 
 ### Iteration starts
 
