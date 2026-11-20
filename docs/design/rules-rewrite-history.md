@@ -986,7 +986,20 @@ Job 675 on ssh-dev, both arms in one job (main 51b8b5e3 table against branch tab
 - Table alone does not clear SpecialFunctions and StatsFuns. Other sources remain.
 - `BigFloat()` reads `CURRENT_PRECISION` (`ScopedValue`). That read gives a code-doubt write to unknown object and a blind write to the global. Each method that makes a `BigFloat` keeps it.
 - `airyai(::Complex)` keeps writes to `z.re` and `z.im`: Amos functions (`zairy_`, `zbes*_`) stay open.
-- `x.d` of `BigFloat` builds a fresh `BigFloatData` wrapper. The engine drops the link to `x`, so MPFR writes to a `BigFloat` parameter show no origin. Input `x` stays unwritten, as wanted.
+- `x.d` of `BigFloat` builds a fresh `BigFloatData` wrapper over the limb memory of `x`. Trace followed memory backing only for element steps, so the table's write on the wrapper reached no parameter.
+- Fix: trace also follows backing at `Step.Field(:ptr)` (`MEMORY_POINTER`, `flow.jl`). Write through the wrapper lands on `x`; input operands stay unwritten.
+
+Job 706 on ssh-dev, table arm without `MEMORY_POINTER` against branch:
+
+| Package | `possible` | `definite` | `bang_definite` |
+|---|---|---|---|
+| SpecialFunctions 2.9.2 | 90 to 90 | 19 to 50 | 0 to 0 |
+| StatsFuns 2.3.1 | 58 to 58 | 50 to 51 | 0 to 0 |
+| Distances 0.10.12 | 58 to 58 | 35 to 35 | 29 to 29 |
+| DataStructures 0.18.22 | 224 to 224 | 203 to 203 | 203 to 203 |
+| JSON 1.13.4 | 85 to 84 | 63 to 64 | 63 to 63 |
+
+- Blind writes: DataStructures 272 to 270, JSON unchanged at 93.
 
 ### Lock writes
 
