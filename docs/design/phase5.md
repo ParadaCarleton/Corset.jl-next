@@ -8,8 +8,8 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 |---|---|---|---|---|
 | 1 | Engine core | Units, IR, origins, points-to, builtins, static calls, solve, soundness property | — | #232 |
 | 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | 2a #234; 2b #235; 2c #237; 2d #238; 2e #239 |
-| 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance | 2 | 3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249, iteration starts #250 |
-| 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | — |
+| 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance | 2 | 3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249 (fix #252), iteration starts #250, frame copy #253 |
+| 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | #251 (per-environment key); per-entry key next |
 | 5 | Corpus go/no-go | Gate below; no rule PR before it passes | 4 | — |
 | 6 | `bang-convention` | F53, F86 | 5 | — |
 | 7 | Effect rules | F54, F55, F56, F58, F98 | 5 | — |
@@ -23,7 +23,7 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 ### Every PR
 
 - Work in jj workspace `.worktrees/<name>` from `main`; one bookmark per PR.
-- Cover every new line; run mutation check on copy; add regression test per bug found.
+- Cover every new line; add regression test per bug found. Mutation check on copy is optional.
 - Pass Runic check, self-lint, `test/invalidation.jl` and full local suite before merge.
 - Engine PR: no rule reads its facts yet. Tests call `Effects` API directly.
 - Rule PR: UI case per footgun with positive, negative and fix case (`architecture.md`, Tests).

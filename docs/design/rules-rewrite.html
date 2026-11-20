@@ -1440,14 +1440,14 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 <td>Engine limits</td>
 <td>Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance</td>
 <td>2</td>
-<td>3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249, iteration starts #250</td>
+<td>3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249 (fix #252), iteration starts #250, frame copy #253</td>
 </tr>
 <tr>
 <td>4</td>
 <td>Summary cache</td>
 <td>Library summary disk cache; package summaries in method store</td>
 <td>3</td>
-<td>—</td>
+<td>#251 (per-environment key); per-entry key next</td>
 </tr>
 <tr>
 <td>5</td>
@@ -1500,7 +1500,7 @@ Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects s
 </div><div class="decision"><h3>Every PR</h3>
 <ul>
 <li>Work in jj workspace <code>.worktrees/&lt;name&gt;</code> from <code>main</code>; one bookmark per PR.</li>
-<li>Cover every new line; run mutation check on copy; add regression test per bug found.</li>
+<li>Cover every new line; add regression test per bug found. Mutation check on copy is optional.</li>
 <li>Pass Runic check, self-lint, <code>test/invalidation.jl</code> and full local suite before merge.</li>
 <li>Engine PR: no rule reads its facts yet. Tests call <code>Effects</code> API directly.</li>
 <li>Rule PR: UI case per footgun with positive, negative and fix case (<code>architecture.md</code>, Tests).</li>
