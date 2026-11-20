@@ -8,7 +8,7 @@ using Corset.Effects:
     Effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, value_type, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
-    components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
+    components, foreign_name, FOREIGN_EFFECTS, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees, load, store!, store_backing!
@@ -516,8 +516,67 @@ end
 object_at(pointer::Ptr{Cvoid}) = unsafe_pointer_to_objref(pointer)
 unknown_foreign!(pointer::Ptr{Int}) = ccall(:corset_unknown_function, Cvoid, (Ptr{Int},), pointer)
 unknown_foreign_object!(x::Any) = ccall(:corset_unknown_function, Cvoid, (Any,), x)
+mpfr_next!(x::BigFloat) = ccall((:mpfr_nextabove, Base.MPFR.libmpfr), Int32, (Ref{BigFloat},), x)
+mpfr_compare(x::BigFloat, y::BigFloat) = ccall((:mpfr_less_p, Base.MPFR.libmpfr), Int32, (Ref{BigFloat}, Ref{BigFloat}), x, y)
+mpfr_flag() = ccall((:mpfr_nanflag_p, Base.MPFR.libmpfr), Cint, ())
+mpfr_clear_unknown!() = ccall((:mpfr_clear_flags, Base.MPFR.libmpfr), Cvoid, ())
+mpfr_set_unknown!(x::Any) = ccall((:mpfr_corset_unknown, Base.MPFR.libmpfr), Cvoid, (Any,), x)
+mpfr_add!(z::BigFloat, a::BigFloat, b::BigFloat) = ccall((:mpfr_add, Base.MPFR.libmpfr), Int32, (Ref{BigFloat}, Ref{BigFloat}, Ref{BigFloat}, Base.MPFR.MPFRRoundingMode), z, a, b, Base.MPFR.ROUNDING_MODE[])
+mpfr_airy(x::BigFloat) = (z = BigFloat(); ccall((:mpfr_ai, Base.MPFR.libmpfr), Int32, (Ref{BigFloat}, Ref{BigFloat}, Int32), z, x, 0); z)
+mpfr_airy_unknown(x::BigFloat) = (z = BigFloat(); ccall((:mpfr_corset_unknown, Base.MPFR.libmpfr), Int32, (Ref{BigFloat}, Ref{BigFloat}, Int32), z, x, 0); z)
+mpfr_lgamma_sign!(z::BigFloat, sign::Base.RefValue{Int32}, x::BigFloat) = ccall((:mpfr_lgamma, Base.MPFR.libmpfr), Int32, (Ref{BigFloat}, Ref{Int32}, Ref{BigFloat}, Int32), z, sign, x, 0)
+mpfr_text(x::BigFloat, template::String, pointer::Base.RefValue{Ptr{UInt8}}) = ccall((:mpfr_asprintf, Base.MPFR.libmpfr), Cint, (Ptr{Ptr{UInt8}}, Ptr{UInt8}, Ref{BigFloat}...), pointer, template, x)
+mpfr_exponent!(exponent::Base.RefValue{Clong}, y::BigFloat, x::BigFloat) = ccall((:mpfr_frexp, Base.MPFR.libmpfr), Int32, (Ptr{Clong}, Ref{BigFloat}, Ref{BigFloat}, Int32), exponent, y, x, 0)
 popped(table::IdDict{Int, Vector{Int}}) = pop!(table, 1)
 no_method(values::Vector{Int}) = sin(values)
+
+"""
+Written argument positions of MPFR and GMP functions, classified by hand from the manuals, independent of headers.
+Left open: `mpfr_set_emin`, `mpfr_set_emax`, `mpfr_clear_flags`, `__gmp_set_memory_functions`, `__gmp_set_alloc_overflow_function`.
+"""
+const HANDWRITTEN = Dict{Symbol, Vector{Int}}(
+    name => positions for (positions, names) in (
+            # Output first, then inputs: MPFR 5.1 to 5.7, 5.11 to 5.12; GMP integer, rational functions.
+            [1] => (
+                :mpfr_set, :mpfr_set_d, :mpfr_set_si, :mpfr_set_ui, :mpfr_set_z, :mpfr_set_str, :mpfr_get_z,
+                :mpfr_add, :mpfr_add_d, :mpfr_add_si, :mpfr_add_ui, :mpfr_add_z,
+                :mpfr_sub, :mpfr_sub_d, :mpfr_sub_si, :mpfr_sub_ui, :mpfr_sub_z, :mpfr_d_sub, :mpfr_si_sub, :mpfr_ui_sub, :mpfr_z_sub,
+                :mpfr_mul, :mpfr_mul_d, :mpfr_mul_si, :mpfr_mul_ui, :mpfr_mul_z, :mpfr_mul_2si, :mpfr_mul_2ui,
+                :mpfr_div, :mpfr_div_d, :mpfr_div_si, :mpfr_div_ui, :mpfr_div_z, :mpfr_d_div, :mpfr_si_div, :mpfr_ui_div,
+                :mpfr_fma, :mpfr_sqrt, :mpfr_cbrt, :mpfr_hypot, :mpfr_pow, :mpfr_pow_si, :mpfr_pow_ui, :mpfr_pow_z, :mpfr_neg, :mpfr_fac_ui,
+                :mpfr_acos, :mpfr_acosh, :mpfr_asin, :mpfr_asinh, :mpfr_atan, :mpfr_atan2, :mpfr_atanh,
+                :mpfr_cos, :mpfr_cosh, :mpfr_cospi, :mpfr_csc, :mpfr_csch, :mpfr_coth, :mpfr_sec, :mpfr_sech,
+                :mpfr_sin, :mpfr_sinh, :mpfr_sinpi, :mpfr_tan, :mpfr_tanh, :mpfr_tanpi,
+                :mpfr_acosu, :mpfr_asinu, :mpfr_atanu, :mpfr_atan2u, :mpfr_cosu, :mpfr_sinu, :mpfr_tanu,
+                :mpfr_exp, :mpfr_exp10, :mpfr_exp2, :mpfr_expm1, :mpfr_log, :mpfr_log10, :mpfr_log2, :mpfr_log1p,
+                :mpfr_eint, :mpfr_digamma, :mpfr_erf, :mpfr_erfc, :mpfr_gamma, :mpfr_gamma_inc, :mpfr_lngamma, :mpfr_zeta, :mpfr_beta,
+                :mpfr_ai, :mpfr_j0, :mpfr_j1, :mpfr_jn, :mpfr_y0, :mpfr_y1, :mpfr_yn,
+                :mpfr_ceil, :mpfr_floor, :mpfr_round, :mpfr_roundeven, :mpfr_trunc, :mpfr_fmod, :mpfr_remainder, :mpfr_copysign,
+                :mpfr_const_log2, :mpfr_nextabove, :mpfr_nextbelow, :mpfr_asprintf,
+                :__gmpz_set, :__gmpz_set_d, :__gmpz_set_si, :__gmpz_set_ui, :__gmpz_set_str,
+                :__gmpz_add, :__gmpz_add_ui, :__gmpz_sub, :__gmpz_sub_ui, :__gmpz_ui_sub, :__gmpz_neg,
+                :__gmpz_mul, :__gmpz_mul_si, :__gmpz_mul_ui, :__gmpz_mul_2exp,
+                :__gmpz_cdiv_q, :__gmpz_cdiv_r, :__gmpz_fdiv_q, :__gmpz_fdiv_q_2exp, :__gmpz_fdiv_r, :__gmpz_tdiv_q, :__gmpz_tdiv_r,
+                :__gmpz_pow_ui, :__gmpz_powm, :__gmpz_sqrt, :__gmpz_fac_ui, :__gmpz_bin_ui,
+                :__gmpz_gcd, :__gmpz_lcm, :__gmpz_invert, :__gmpz_and, :__gmpz_ior, :__gmpz_xor, :__gmpz_com,
+                :__gmpq_set, :__gmpq_set_z, :__gmpq_set_si, :__gmpq_set_ui, :__gmpq_add, :__gmpq_sub, :__gmpq_mul, :__gmpq_div,
+                :__gmpz_init, :__gmpz_init2, :__gmpz_realloc2, :__gmpz_setbit, :__gmpz_limbs_finish, :__gmpq_canonicalize,
+                :__gmpz_limbs_write, :__gmpz_get_str,
+            ),
+            [1, 2] => (:mpfr_sin_cos, :mpfr_modf, :mpfr_frexp, :mpfr_lgamma, :__gmpz_tdiv_qr, :__gmpz_export),
+            [1, 2, 3] => (:__gmpz_gcdext,),
+            # Comparisons, getters, predicates, flag getters, and freeing of C heap string.
+            Int[] => (
+                :mpfr_cmp_d, :mpfr_cmp_si, :mpfr_cmp_ui, :mpfr_cmp_z, :mpfr_equal_p, :mpfr_less_p, :mpfr_lessequal_p, :mpfr_integer_p,
+                :mpfr_get_exp, :mpfr_get_prec, :__gmpfr_mpfr_get_sj, :__gmpfr_mpfr_get_uj, :mpfr_custom_get_size, :mpfr_get_version,
+                :mpfr_get_patches, :mpfr_free_str, :mpfr_get_emax, :mpfr_get_emax_min, :mpfr_get_emax_max, :mpfr_get_emin,
+                :mpfr_get_emin_min, :mpfr_get_emin_max, :mpfr_divby0_p, :mpfr_erangeflag_p, :mpfr_inexflag_p, :mpfr_nanflag_p,
+                :mpfr_overflow_p, :mpfr_underflow_p, :__gmpz_cmp, :__gmpz_cmp_d, :__gmpz_cmp_si, :__gmpz_cmp_ui, :__gmpz_get_d,
+                :__gmpz_popcount, :__gmpz_scan0, :__gmpz_scan1, :__gmpz_sizeinbase, :__gmpz_tstbit, :__gmpn_cmp, :__gmpn_popcount, :__gmpq_cmp,
+            ),
+        ) for name in names
+)
+
 
 """Mutable cell that contract fixtures write through element."""
 mutable struct Cell
@@ -611,6 +670,54 @@ end
     for (target, name) in ((QuoteNode(:strlen), :strlen), (Expr(:tuple, QuoteNode(:f), "lib"), :f), ((:f, "lib"), :f), ("f", :f), (Expr(:tuple), nothing), ((), nothing), (1, nothing))
         @test foreign_name(target) === name
     end
+end
+
+@testset "MPFR and GMP foreign calls" begin
+    none = NO_DOUBT
+    effects(name::Symbol)::Tuple = (f = FOREIGN_EFFECTS[name]; (f.writes, f.reads, f.result))
+    # Audited writes (repair of `BigFloat` limb pointer) touch every operand; only memory writes count.
+    written(f::Any, types::Type...)::Set{Int} = Set(position for position in 1:8 if any(((place, _, kind),) -> kind == EffectKind.memory && root_of(place) == Root.Parameter(position), keys(summary_of(f, types...).writes)))
+    for (name, positions) in HANDWRITTEN
+        @test FOREIGN_EFFECTS[name].writes == positions
+    end
+    # Header roles: `mpfr_ptr` writes, `mpfr_srcptr` and scalars read or skip.
+    @test effects(:mpfr_add) == ([1], [2, 3], Int[])
+    @test effects(:mpfr_sin_cos) == ([1, 2], [3], Int[])
+    @test effects(:mpfr_get_d) == (Int[], [1], Int[])
+    @test effects(:__gmpz_add) == ([1], [2, 3], Int[])
+    @test effects(:mpfr_strtofr) == ([1, 3], [2], Int[])
+    @test effects(:__gmpz_export)[3] == [1] && effects(:__gmpz_limbs_write)[3] == [1]
+    open_names = Set([:mpfr_set_emin, :mpfr_set_emax, :mpfr_clear_flags, :__gmp_set_memory_functions, :__gmp_set_alloc_overflow_function])
+    @test isdisjoint(open_names, keys(FOREIGN_EFFECTS))
+    # Every MPFR and GMP function that Base calls has an entry or stays open on purpose.
+    called = Set{Symbol}()
+    Base.visit(Core.methodtable) do method
+        method.module in (Base.MPFR, Base.GMP, Base.GMP.MPZ, Base.GMP.MPQ) || return nothing
+        foreach(statement -> statement isa Expr && statement.head === :foreigncall && push!(called, foreign_name(statement.args[1])), Base.uncompressed_ast(method).code)
+    end
+    mine = filter(name -> startswith(string(name), r"mpfr_|__gmp"), called)
+    @test isempty(setdiff(mine, keys(FOREIGN_EFFECTS), open_names))
+    @test isempty(setdiff(mine, keys(HANDWRITTEN), open_names))
+    # Positive: output arguments take definite writes, inputs stay unwritten.
+    @test doubts(summary_of(Base.GMP.MPZ.add!, BigInt, BigInt, BigInt).writes) == Dict(top(2) => none)
+    @test doubts(summary_of(Base.GMP.MPZ.tdiv_qr!, BigInt, BigInt, BigInt, BigInt).writes) == Dict(top(2) => none, top(3) => none)
+    @test written(Base.GMP.MPZ.gcdext!, BigInt, BigInt, BigInt, BigInt, BigInt) == Set([2, 3, 4])
+    @test written(Base.GMP.MPZ.setbit!, BigInt, Int) == Set([2])
+    @test written(Base.GMP.MPZ.cmp, BigInt, BigInt) == written(Base.GMP.MPZ.popcount, BigInt) == Set{Int}()
+    @test doubts(summary_of(mpfr_lgamma_sign!, BigFloat, Base.RefValue{Int32}, BigFloat).writes)[(parameter(3), false)] == none
+    @test written(mpfr_exponent!, Base.RefValue{Clong}, BigFloat, BigFloat) == Set([2, 3])
+    @test written(mpfr_text, BigFloat, String, Base.RefValue{Ptr{UInt8}}) == Set([4])
+    # Negative: `BigFloat` input stays unwritten, as in SpecialFunctions `airyai`; unknown MPFR function writes it possibly.
+    for (f, types) in ((mpfr_airy, (BigFloat,)), (mpfr_compare, (BigFloat, BigFloat)), (mpfr_flag, ()), (+, (BigFloat, BigFloat)), (sin, (BigFloat,)))
+        @test isempty(written(f, types...))
+    end
+    @test written(mpfr_airy_unknown, BigFloat) == Set([2])
+    # Output operand `BigFloat` gets the write: wrapper `x.d` stands for memory of `x`.
+    @test written(mpfr_add!, BigFloat, BigFloat, BigFloat) == Set([2])
+    @test summary_of(mpfr_add!, BigFloat, BigFloat, BigFloat).writes[(parameter(2, Step.Field(:ptr)), false, EffectKind.memory)].doubt == none
+    @test written(mpfr_next!, BigFloat) == Set([2])
+    @test written(mpfr_clear_unknown!) == Set{Int}()
+    @test written(mpfr_set_unknown!, Any) == Set([2])
 end
 
 @testset "statements and calls" begin

@@ -844,7 +844,15 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <p>Resolution of each call statement, first match wins:</p>
 <ol>
 <li>Builtin or intrinsic: transfer function (<code>setfield!</code>, <code>memoryrefset!</code>, <code>setglobal!</code>, <code>swapfield!</code>, <code>modifyfield!</code>, <code>replacefield!</code>; <code>_apply_iterate</code> unpacked).</li>
-<li>Foreign call: table of known C functions (<code>memmove</code> writes destination; runtime type queries read only). Unknown: <code>possible</code> write on pointer and object operands, doubt in code.</li>
+<li>Foreign call: table of known C functions (<code>memmove</code> writes destination; runtime type queries read only). Unknown: <code>possible</code> write on pointer and object operands, doubt in code.
+<ul>
+<li>MPFR and GMP entries come from C headers: pointer to non-const is written, pointer to const is read (<code>mpfr_srcptr</code>, <code>const char *</code>). Generator: <code>gen/foreign/generate.jl</code>; output: <code>src/Effects/foreign_gmp_mpfr.jl</code>.</li>
+<li>Symbols: every MPFR and GMP function that Base and SpecialFunctions call, plus five numeric extras. The whole header holds about 800 functions; each one needs vetting for global state.</li>
+<li>Hand entries (<code>calls.jl</code>) cover variadic functions and pointer results. Left open: functions that write C global state (<code>mpfr_set_emax</code>, <code>mpfr_set_emin</code>, <code>mpfr_clear_flags</code>, GMP allocator hooks).</li>
+<li>No prefix rule: unknown <code>mpfr_</code> or <code>__gmp</code> name stays open, because wrong entry gives false definite write.</li>
+<li>CI lacks the headers. The generator does not run there; committed file is the source of truth. Test compares it with hand classification.</li>
+</ul>
+</li>
 <li>Static call (one method matches, or <code>Core.invoke</code> with constant selector): callee summary. No method matches: call throws, so code after it is dead.
 Summary per variant: instance plus constant arguments callee uses as field name. <code>getproperty(x, :a)</code> keeps field <code>a</code>.</li>
 <li>Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.</li>
