@@ -35,14 +35,14 @@ Function or type `call` in typed `code` (lowered or IR) calls, when inference kn
 (`Core._apply_iterate`) and keyword call (`Core.kwcall`); else `nothing`.
 """
 function called(code::Union{Core.CodeInfo, CC.IRCode}, call::Expr, parameters::Vector{CC.VarState})::Any
-    callee = callable(CC.argextype(call.args[1], code, parameters))
-    callee in (Core._apply_iterate, Core.kwcall) && length(call.args) >= 3 && return callable(CC.argextype(call.args[3], code, parameters))
+    callee = callable(code_argextype(call.args[1], code, parameters))
+    callee in (Core._apply_iterate, Core.kwcall) && length(call.args) >= 3 && return callable(code_argextype(call.args[3], code, parameters))
     return callee
 end
 
 """Whether `call` dispatches to one method that analyzed `files` define; its own frame reports failure inside it."""
 function package_call(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.VarState}, files::Dict{String, SyntaxFile})::Bool
-    types = Any[CC.widenconst(CC.argextype(argument, code, parameters)) for argument in call.args]
+    types = Any[CC.widenconst(code_argextype(argument, code, parameters)) for argument in call.args]
     matches = Base._methods_by_ftype(Tuple{types...}, 1, Base.get_world_counter())
     return matches isa Vector && length(matches) == 1 && haskey(files, string(only(matches).method.file))
 end

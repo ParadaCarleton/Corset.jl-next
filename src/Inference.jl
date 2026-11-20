@@ -15,7 +15,7 @@ using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, Har
 using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span, parent_of, ancestors, base_macro, resolve_type
 using ..Package: Package
 using ..StandIns: StandIns
-using ..Widening: Widening, statement_call, statement_type
+using ..Widening: Widening, statement_call, statement_type, code_argextype
 using ..Narrowing: Narrowing
 using ..HardArrays: HardArrays
 using ..Guesses: annotation_guesses
@@ -422,7 +422,7 @@ function rebuilt(typed::TypedCode, instance::Core.MethodInstance, construction::
     texts = [source(file, part) for part in parts]
     if callee === zeros || callee === ones
         call = something(statement_call(typed.code.code[construction.index]))
-        typed_first = CC.widenconst(CC.argextype(call.args[2], typed.code, CC.sptypes_from_meth_instance(instance))) <: Type
+        typed_first = CC.widenconst(code_argextype(call.args[2], typed.code, CC.sptypes_from_meth_instance(instance))) <: Type
         element = typed_first ? texts[1] : "Float64"
         value = typed_first ? "$(callee === zeros ? "zero" : "one")($element)" : callee === zeros ? "0.0" : "1.0"
         dimensions = typed_first ? texts[2:end] : texts
@@ -546,9 +546,9 @@ function package_calls(code::Core.CodeInfo, instance::Core.MethodInstance, modul
     for (index, statement) in enumerate(code.code)
         call = statement_call(statement)
         isnothing(call) && continue
-        callee = CC.widenconst(CC.argextype(call.args[1], code, parameters))
+        callee = CC.widenconst(code_argextype(call.args[1], code, parameters))
         (callee isa DataType && callee <: Function && parentmodule(callee) in modules) || continue
-        types = Any[CC.widenconst(CC.argextype(argument, code, parameters)) for argument in call.args]
+        types = Any[CC.widenconst(code_argextype(argument, code, parameters)) for argument in call.args]
         all(settled, types) || continue
         call_signature = Tuple{types...}
         matches = Base._methods_by_ftype(call_signature, 1, Base.get_world_counter())
@@ -565,7 +565,7 @@ function reached(code::Core.CodeInfo, instance::Core.MethodInstance)::Vector{Typ
     for statement in code.code
         call = statement_call(statement)
         isnothing(call) && continue
-        types = Any[CC.widenconst(CC.argextype(argument, code, parameters)) for argument in call.args]
+        types = Any[CC.widenconst(code_argextype(argument, code, parameters)) for argument in call.args]
         call_signature = Tuple{types...}
         all(settled, types) && any(holds_stand_in, types) || continue
         matches = Base._methods_by_ftype(call_signature, 1, Base.get_world_counter())

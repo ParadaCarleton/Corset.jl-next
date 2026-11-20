@@ -7,13 +7,17 @@ using Corset.Signatures: LIMIT
 using Corset.Inference:
     TypedCode, infer_package, infer, mappings, statement_nodes, broadcast_node, callee_name, spells, untyped, throw_helper, callable, callee_text,
     settled, holds_stand_in
-using Corset.Widening: statement_call
+using Corset.Widening: statement_call, code_argextype
+using Corset.Inference: reached
 using Base.Broadcast: broadcasted
 using Corset.Inference:
     Store, Entry, Staged, entry_key, method_id, code_digest, staged_digest, method_index, instance, shape, constant_text, digest, names_package!, holds_gensym
 using Corset.Inference: Record, records, crashed, last_crash, finished_store, open_journal, record!, method_label, log_file, journal_file
 
 const CASE = joinpath(@__DIR__, "inference", "InferenceCases")
+
+"""C symbol address and length: `cglobal` keeps library tuple as nested call in typed code."""
+symbol_and_length(x::AbstractVector) = (cglobal((:strlen, "libc"), Cint), length(x))
 
 """Inference facts, blind spots and typed code of `InferenceCases` fixture package, loaded with case directory on load path."""
 function case_facts()::Tuple{Module, Vector{SyntaxFile}, PackageFacts, InferenceFacts, Vector{BlindSpot}, Vector{TypedCode}}
@@ -376,5 +380,19 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test settled(ArrayStandIn{<:Any, 1}) && settled(view_type) && settled(Int) && settled(Vector{<:Real})
         @test !settled(AbstractVector) && !settled(NTuple{N, Int} where {N}) && !settled(Any) && !settled(Tuple{T} where {T})
         @test settled(NamedTuple{names, T} where {names, T <: Tuple}) && !settled(Type{T} where {T}) && !settled(Union{Int, String})
+    end
+    @testset "nested library tuple" begin
+        # `argextype` asserted on nested library tuple of `cglobal` (FFTW corpus run).
+        code = only(code_typed(symbol_and_length, (Vector{Int},); optimize = false))[1]
+        instance = Base.method_instance(symbol_and_length, (Vector{Int},))
+        parameters = Core.Compiler.sptypes_from_meth_instance(instance)
+        call = only(call for call in statement_call.(code.code) if !isnothing(call) && any(argument -> argument isa Expr, call.args))
+        @test isempty(reached(code, instance)) && code_argextype(call.args[2], code, parameters) == Tuple{Symbol, String}
+        @test_throws ErrorException code_argextype(Expr(:call, GlobalRef(Base, :identity), 1), code, parameters)
+        # Raw `argextype` outside `Widening` would assert again; effects stage reads IR through its own `value_type`.
+        root = joinpath(pkgdir(Corset), "src")
+        files = [joinpath(directory, file) for (directory, _, names) in walkdir(root) for file in names if endswith(file, ".jl")]
+        raw = [file for file in files if !startswith(file, joinpath(root, "Effects")) && file != joinpath(root, "Widening.jl") && occursin("CC.argextype(", read(file, String))]
+        @test isempty(raw)
     end
 end

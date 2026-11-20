@@ -8,7 +8,7 @@ also carries what each stored condition proves. Read where scan proves narrower 
 module Narrowing
 
 using ..Facts: SyntaxFile, SyntaxNode, kind_name, children_of, parent_of, identifier_name, source, span, discarded, owned_lines, comments_in, line_start
-using ..Widening: resolved, statement_call
+using ..Widening: resolved, statement_call, code_argextype
 
 const CC = Core.Compiler
 
@@ -78,7 +78,7 @@ Variable, narrowed type and test result that narrows, for type test `call`: `x i
 means test never gives that result here: lowering reads `x === nothing` again on its own true branch.
 """
 function type_test(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.VarState}, table::Vector{CC.VarState}, assigned::Dict{Int, <:Type})::Union{Nothing, Tuple{Int, Type, Bool}}
-    callee = CC.argextype(call.args[1], code, parameters)
+    callee = code_argextype(call.args[1], code, parameters)
     callee isa Core.Const || return nothing
     arguments = Any[resolved(code, argument) for argument in call.args[2:end]]
     test, slots = callee.val, findall(argument -> argument isa Core.SlotNumber, arguments)
@@ -86,12 +86,12 @@ function type_test(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.VarSta
     slot = arguments[only(slots)].id
     current = slot_type(table, assigned, slot)
     if test === isa && length(arguments) == 2 && only(slots) == 1
-        tested = CC.argextype(call.args[3], code, parameters)
+        tested = code_argextype(call.args[3], code, parameters)
         tested isa Core.Const || return nothing
         tested.val isa Type || return nothing
         type, holds = typeintersect(current, tested.val), true
     elseif (test === (===) || test === (!==)) && length(arguments) == 2
-        CC.argextype(call.args[1 + (3 - only(slots))], code, parameters) == Core.Const(nothing) || return nothing
+        code_argextype(call.args[1 + (3 - only(slots))], code, parameters) == Core.Const(nothing) || return nothing
         type, holds = Base.nonnothingtype(current), test === (!==)
     elseif test === isnothing && length(arguments) == 1
         type, holds = Base.nonnothingtype(current), false
@@ -115,7 +115,7 @@ function outcomes(code::Core.CodeInfo, condition::Any, index::Int, state::State,
     condition === false && return (nothing, state.proven)
     call = statement_call(condition)
     isnothing(call) && return unchanged
-    if CC.argextype(call.args[1], code, parameters) == Core.Const(!) && length(call.args) == 2
+    if code_argextype(call.args[1], code, parameters) == Core.Const(!) && length(call.args) == 2
         yes, no = outcomes(code, call.args[2], index, state, parameters, table, assigned)
         return no, yes
     end
