@@ -269,10 +269,10 @@ function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int,
     for (index, statement) in enumerate(code.code)
         call = statement_call(statement)
         isnothing(call) && continue
-        callee = CC.argextype(call.args[1], code, parameters)
+        callee = code_argextype(call.args[1], code, parameters)
         callee = callee isa Core.Const ? callee.val : nothing
         callee isa Core.Builtin && continue
-        types = Any[CC.widenconst(CC.argextype(argument, code, parameters)) for argument in call.args]
+        types = Any[CC.widenconst(code_argextype(argument, code, parameters)) for argument in call.args]
         values = Union{Nothing, Tuple{Any, Weak.T}}[weak(code, argument) for argument in call.args]
         held = Union{Nothing, Vector{Tuple{Int, Any, Weak.T}}}[(read = resolved(code, argument); read isa Core.SlotNumber ? get(variables, read.id, nothing) : nothing) for argument in call.args]
         any(position -> isnothing(values[position]) && isnothing(held[position]) && holds_float(types[position]), eachindex(types)) || continue
@@ -360,7 +360,19 @@ breaks(changed::Core.CodeInfo, code::Core.CodeInfo)::Bool = any(eachindex(code.c
 end
 
 """Type of `argument` in typed `code`, widened."""
-argument_type(code::Core.CodeInfo, argument::Any, parameters::Vector{CC.VarState})::Type = CC.widenconst(CC.argextype(argument, code, parameters))
+argument_type(code::Core.CodeInfo, argument::Any, parameters::Vector{CC.VarState})::Type = CC.widenconst(code_argextype(argument, code, parameters))
+
+"""
+Type of call `argument` in typed `code` or IR (`CC.argextype`). Library tuple of `cglobal` stays nested `Core.tuple`
+call, which `CC.argextype` rejects: it gives tuple of element types. Other nested call fails loud.
+"""
+function code_argextype(argument::Any, code::Union{Core.CodeInfo, CC.IRCode}, parameters::Vector{CC.VarState})::Any
+    if argument isa Expr && argument.head === :call
+        CC.argextype(argument.args[1], code, parameters) == Core.Const(Core.tuple) || error("nested call in argument position: $argument")
+        return Tuple{(CC.widenconst(code_argextype(element, code, parameters)) for element in argument.args[2:end])...}
+    end
+    return CC.argextype(argument, code, parameters)
+end
 
 """
 Store callees with position of stored value; target converts value when its element or field type is concrete.
@@ -384,11 +396,11 @@ function exit_value(code::Core.CodeInfo, statement::Any, parameters::Vector{CC.V
     statement isa Core.ReturnNode && return isdefined(statement, :val) ? (statement.val, nothing, nothing) : nothing
     call = statement_call(statement)
     isnothing(call) && return nothing
-    callee = CC.argextype(call.args[1], code, parameters)
+    callee = code_argextype(call.args[1], code, parameters)
     callee isa Core.Const || return nothing
     # Lowering turns `global g = v` into `setglobal!(module, :g, v)`.
     if callee.val === Core.setglobal! && length(call.args) == 4
-        owner, name = CC.argextype(call.args[2], code, parameters), CC.argextype(call.args[3], code, parameters)
+        owner, name = code_argextype(call.args[2], code, parameters), code_argextype(call.args[3], code, parameters)
         owner isa Core.Const || return nothing
         name isa Core.Const || return nothing
         return call.args[4], Core.get_binding_type(owner.val, name.val), nothing
@@ -407,7 +419,7 @@ function converts(code::Core.CodeInfo, target::Any, store::Any, parameters::Vect
     callee, call = store
     # Identity test: `in` compares with `==`, which gives `missing` for `missing` callee.
     callee === setfield! || callee === setproperty! || return isconcretetype(target <: AbstractDict ? valtype(target) : eltype(target))
-    field = CC.argextype(call.args[3], code, parameters)
+    field = code_argextype(call.args[3], code, parameters)
     field isa Core.Const || return false
     target isa DataType || return false
     (isconcretetype(target) && hasfield(target, field.val)) || return false
@@ -484,7 +496,7 @@ end
 function binding_type(code::Core.CodeInfo, argument::Any, parameters::Vector{CC.VarState})::Bool
     argument isa Core.SSAValue || return false
     call = statement_call(code.code[argument.id])
-    return !isnothing(call) && CC.argextype(call.args[1], code, parameters) == Core.Const(Core.get_binding_type)
+    return !isnothing(call) && code_argextype(call.args[1], code, parameters) == Core.Const(Core.get_binding_type)
 end
 
 """Type tests that make findings `possible`: branch on type can pick other code for other input type."""
@@ -498,7 +510,7 @@ function type_branch(code::Core.CodeInfo, parameters::Vector{CC.VarState})::Bool
     for statement in code.code
         call = statement_call(statement)
         isnothing(call) && continue
-        callee = CC.argextype(call.args[1], code, parameters)
+        callee = code_argextype(call.args[1], code, parameters)
         callee isa Core.Const || continue
         callee.val in TYPE_TESTS || continue
         any(argument -> binding_type(code, argument, parameters), call.args[2:end]) && continue

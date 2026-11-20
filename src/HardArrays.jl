@@ -11,7 +11,7 @@ module HardArrays
 
 using ..Facts: Exit, tuple_parameters
 using ..StandIns: Templated, array_stand_in
-using ..Widening: Swap, converted!, breaks, exit_statement, type_branch, statement_call, argument_type, statement_type, resolved
+using ..Widening: Swap, converted!, breaks, exit_statement, type_branch, statement_call, argument_type, statement_type, resolved, code_argextype
 
 const CC = Core.Compiler
 
@@ -56,11 +56,11 @@ end
 
 """Whether `call` of typed `code` builds hard-coded `Array`: constructor in `FILLS`, `similar(Vector{T}, n)` or `Vector{T}(undef, n)`."""
 function constructs(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.VarState})::Bool
-    callee = CC.argextype(call.args[1], code, parameters)
+    callee = code_argextype(call.args[1], code, parameters)
     callee isa Core.Const || return false
     callee.val in FILLS && return true
     length(call.args) >= 2 || return false
-    first = CC.argextype(call.args[2], code, parameters)
+    first = code_argextype(call.args[2], code, parameters)
     callee.val === similar && return first isa Core.Const && first.val isa Type && first.val !== Union{} && first.val <: Array
     return callee.val isa Type && callee.val !== Union{} && callee.val <: Array && CC.widenconst(first) === UndefInitializer
 end
@@ -91,7 +91,7 @@ function constructions(code::Core.CodeInfo, parameters::Vector{CC.VarState}, slo
         constructs(code, call, parameters) || continue
         array = statement_type(code, index)
         (array !== Union{} && array <: Array) || continue
-        push!(found, Construction(index, (CC.argextype(call.args[1], code, parameters)::Core.Const).val, template_of(code, call, slots), array))
+        push!(found, Construction(index, (code_argextype(call.args[1], code, parameters)::Core.Const).val, template_of(code, call, slots), array))
     end
     return found
 end
@@ -112,7 +112,7 @@ function meeting(left::Core.CodeInfo, baseline::Core.CodeInfo, code::Core.CodeIn
     for (index, statement) in enumerate(left.code)
         call = statement_call(statement)
         isnothing(call) && continue
-        callee = CC.argextype(call.args[1], left, parameters)
+        callee = code_argextype(call.args[1], left, parameters)
         callee isa Core.Const && callee.val isa Core.Builtin && continue
         arguments = call.args[2:end]
         any(argument -> argument_type(left, argument, parameters) != argument_type(baseline, argument, parameters), arguments) || continue
