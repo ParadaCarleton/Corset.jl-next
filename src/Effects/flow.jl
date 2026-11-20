@@ -15,7 +15,7 @@ backing, unknown-slot stores and global bindings; result targets; accesses by or
 below; callback records by call statement. `changed` records growth of targets in current round; `closed_world` records
 join over methods loaded now, and `cut` path stand-ins cut (`Summary`). `flush` resolves every callback record here:
 root unit has no caller to resolve them. `record` keeps kinds of writes each call statement makes (`call_kinds`).
-`follows` keeps slot targets by origin and step (`follow`); `stale` marks heap growth since they were found.
+`follows` keeps slot targets by origin and step (`load`); `stale` marks heap growth since they were found.
 `settled`: round after one that changed nothing, so it applies callee accesses and skips callee stores (`apply!`).
 """
 mutable struct Flow
@@ -111,7 +111,7 @@ raised(targets::Targets, doubt::Doubt)::Targets = Targets(origin => most(flag, d
 
 """
 Unknown object with chain `doubt`. Engine reaches it with `code` doubt or more: steps from it and callee nodes for it
-add none (`follow`, `map_node`), so sources of chain stay.
+add none (`trace`, `map_node`), so sources of chain stay.
 """
 unknown(doubt::Doubt)::Targets = Targets(Origin.Unknown() => doubt)
 
@@ -213,15 +213,6 @@ function extend(place::Place.Type, step::Step.Type)::Tuple{Place.Type, Doubt}
 end
 
 """
-Targets of `step` slot of `origin` (`trace`), found once per heap state: calls map same places at each call statement
-and round, and memory backing chains grow long. Callers must not change result.
-"""
-function follow(flow::Flow, origin::Origin.Type, step::Step.Type)::Targets
-    flow.stale && (empty!(flow.follows); flow.stale = false)
-    return get!(() -> trace(flow, origin, step, Set{Origin.Type}()), flow.follows, (origin, step))
-end
-
-"""
 Targets of `step` slot of `origin`: place below caller object, stored targets, and element of memory backing not in
 `seen`.
 """
@@ -246,10 +237,14 @@ function trace(flow::Flow, origin::Origin.Type, step::Step.Type, seen::Set{Origi
     return found
 end
 
-"""Targets of `step` slot over every origin of `objects`."""
+"""
+Targets of `step` slot over every origin of `objects`. Slot targets of each origin come from `trace` once per heap
+state: calls map same places at each call statement and round, and memory backing chains grow long.
+"""
 function load(flow::Flow, objects::Targets, step::Step.Type)::Targets
+    flow.stale && (empty!(flow.follows); flow.stale = false)
     found = Targets()
-    for (origin, doubt) in objects, (target, flag) in follow(flow, origin, step)
+    for (origin, doubt) in objects, (target, flag) in get!(() -> trace(flow, origin, step, Set{Origin.Type}()), flow.follows, (origin, step))
         add!(found, target, most(flag, doubt))
     end
     return found
@@ -297,7 +292,7 @@ end
 
 """
 Store `values` into `step` slot of every origin of `objects`; `nothing` step stores into unknown slot. Growth makes
-slot targets `follow` found stale.
+slot targets `load` found stale.
 """
 function store!(flow::Flow, objects::Targets, step::Union{Nothing, Step.Type}, values::Targets)::Nothing
     for (origin, doubt) in objects
@@ -307,7 +302,7 @@ function store!(flow::Flow, objects::Targets, step::Union{Nothing, Step.Type}, v
     return nothing
 end
 
-"""Store `values` into memory backing of every origin of `objects`; growth makes slot targets `follow` found stale."""
+"""Store `values` into memory backing of every origin of `objects`; growth makes slot targets `load` found stale."""
 function store_backing!(flow::Flow, objects::Targets, values::Targets)::Nothing
     for (origin, doubt) in objects
         join!(flow, slot!(flow.backing, origin), values, doubt) && (flow.stale = true)
