@@ -938,6 +938,29 @@ Main and throw paths back to back on macdev:
 - Own method of type starts nothing: `isempty(::Vector)` reads length.
 - Splat of collection runs `iterate` too. It stays unresolved and gives no start yet.
 
+### Numerics survey
+
+- Corpus had one numeric package (Distances). Survey ran 12 numeric packages on main 65d54fbb, empty cache (jobs 659, 660).
+
+| Package | `inference` s | `effects` s | Warm solve s | `possible` | Blind write |
+|---|---|---|---|---|---|
+| SpecialFunctions 2.9.2 | 15.1 | 16.5 | 3.5 | 18.0% | 15% |
+| StatsFuns 2.3.1 | 7.3 | 11.2 | 1.8 | 20.1% | 20% |
+| QuadGK 2.11.3 | 5.8 | 13.6 | 3.4 | 57.6% | 32% |
+| Roots 3.0.14 | 3.4 | 13.8 | 2.9 | 10.1% | 10% |
+| Polynomials 4.1.6 | 21.7 | 69.7 | 38.0 | 52.3% | 50% |
+| ForwardDiff 1.5.0 | 7.9 | 17.6 | 5.3 | 26.7% | 84% |
+| StaticArrays 1.9.25 | 13.6 | 24.6 | 4.6 | 29.7% | 35% |
+| Optim 2.3.2 | 26.3 | 80.2 | 18.1 | 15.8% | 21% |
+| Distributions 0.25.135 | 48.4 | 111.8 | 57.7 | 32.8% | 49% |
+| IterativeSolvers 0.9.4 | 7.5 | 22.3 | 5.1 | 27.2% | 29% |
+
+- Interpolations 0.16.3 and FFTW 1.10.0 crashed in `inference` stage. Fix #256.
+- Cold native inference of library code takes most of `effects` time; warm solve passes inference except Polynomials and Distributions.
+- Pure math methods get `possible` writes from MPFR calls: foreign table lacks `mpfr_*`, so each `Ref{BigFloat}` argument stays open.
+- `@debug` in SpecialFunctions `beta_inc` adds writes to `_global_logstate`, path regex globals and PCRE contexts; StatsFuns inherits them.
+- ForwardDiff blind writes sit in `@eval` methods of `dual.jl`: stand-ins leave value type and partials count of `Dual` open.
+
 ### Lock writes
 
 - `lock(q.lk)` writes lock state inside argument `q`, so `bang-convention` would demand `!` on every thread-safe container method.
