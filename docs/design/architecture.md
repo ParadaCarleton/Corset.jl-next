@@ -127,7 +127,7 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 - Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.
 - Later: `syntax` stage findings per file, keyed by file content hash.
 - `inference` stage keeps method store per checked path beside analysis entry. Store holds one entry per inferred method and signature: reached signatures, stage facts and blind spots.
-- `effects` run adds effects record of unit to each entry (`effects.md`, Solve and cache). Library summaries keep own directory `library` per environment.
+- `effects` run adds effects record of unit to each entry (`effects.md`, Solve and cache). Library summaries keep one file per partition in directory `library`; every environment shares it (`effects.md`, Solve and cache).
 - Entry holds plain data: spans, names, call signatures. Typed code stays inside stage, so no rule reads data that store leaves out.
 - Entry depends on content hash of file of its method, since spans hold byte offsets.
 - Entry also depends on lowered code of each package method that inference read through compiler edges, transitively. Lowered code holds macro output and `@eval` code.

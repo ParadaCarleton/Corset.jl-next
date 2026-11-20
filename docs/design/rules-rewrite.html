@@ -973,18 +973,32 @@ Access that some members lack takes sources of open operands, as open dispatch d
 <li>Callee signature can grow along call chain without end: <code>_any(f ∘ transpose, parent(A), :)</code> adds <code>ComposedFunction</code> layer per step.</li>
 <li>Engine limits callee like native inference (<code>abstract_call_method</code>): method that recurs on call chain gets <code>limit_type_size</code> signature.</li>
 <li>Call chain: caller that first reached each instance. Join limits hard, against method signature.</li>
-<li>Library instance: method outside package, signature names no package type, and so does each instance its native inference edges reach.</li>
-<li>Edges come from cached code, else from inference in this run. Instance without either counts as package.</li>
-<li>Package method that changes dispatch of library call removes cached code of caller, so edge walk sees it.</li>
-<li>Library summary: variant of library instance whose solve reaches no package code. Disk cache keeps it; cache hit skips native inference and passes.</li>
+<li>Library instance: method outside package, and signature names no package type.</li>
+<li>Library summary: variant of library instance. Disk cache keeps it; cache hit skips native inference and passes.</li>
 <li>Cache also keeps slot-name parameters and stand-in cut of library instances.</li>
-<li>Summary with callback record stays out: its caller needs record variants too. Variant with package module constant stays out.</li>
-<li>Run that skipped crashed instance stores nothing: its blind spot holds for that run only.</li>
-<li>Key: Julia version, cache flags, and content of each loaded package except target. Corset and extensions are loaded packages too.</li>
+<li>Partition: Julia version, cache flags and Corset content. One library file per partition serves every checked path and environment.</li>
+<li>Entry key: kind, closure key of instance, and constants of variant. Module constant adds its owner text.</li>
+<li>Closure key: digest over strongly connected components of native edge graph, callees first. Walk order cannot change it.</li>
+<li>Node: cached code instance, else instance that run inferred. Lookup before native inference needs cached code; instance without it misses.</li>
+<li>Node text: instance key, text of each edge record, and owner digest of each root module that instance or records name.</li>
+<li>Instance key: canonical text of method signature and of specialization. Type text: module path, name, parameters; variables by binding depth.</li>
+<li>Edge records of Julia 1.13: lookup with match count, single match, binding, call type with method table, call type with <code>invoke</code> target.</li>
+<li>Lookup count is negative when matches do not cover call. Too many matches give no record, so push past method limit changes key.</li>
+<li>Package method that changes dispatch of library call removes cached code of caller. New code gives other edge records.</li>
+<li>Owner text: package content and texts of its loaded dependencies. Extension: texts of parent and triggers. Base and Core: none.</li>
+<li>Corset gives texts of its dependencies only: partition holds its content.</li>
 <li>Package content: path in depot <code>packages</code> or standard library, since depot slug derives from tree hash. Else digest of project file, <code>src</code>, <code>ext</code> and <code>deps</code>.</li>
-<li>Target stays out of key: library summary reaches no target method, so target edit keeps key.</li>
-<li>Key covers every loaded package, so cache entry serves one environment. Directory keeps newest 4.</li>
-<li>Gap: target with other dependencies shares no entry. Per-entry package set would let corpus packages share Base summaries.</li>
+<li>Package content adds preferences of package. Edit of unrelated package keeps key.</li>
+<li>No key: package code, <code>Main</code> code, root without project file, unknown edge form, or edge target without node.</li>
+<li>Solve of shared variant stays inside native edges of its node. Union split, folded call and callee limit can leave them.</li>
+<li>Core methods of <code>!==</code> and <code>&gt;:</code> count as inside: inference reads them as <code>===</code> and <code>&lt;:</code>. Closure key holds their other methods.</li>
+<li>Variant whose solve reaches package code or unshared variant stays out. Summary with callback record stays out: caller needs record variants too.</li>
+<li>Throw helper verdict reads every method of callee. Entry keeps each verdict its closure read; hit checks each again.</li>
+<li>Stand-in cut that inferred model types reads methods outside native edges. Store gives no key to closure that holds its instance.</li>
+<li>Library file lists instance key of each entry. Lookup walks closure only for listed instance.</li>
+<li>Write reads file again, merges new entries, and stamps hits. Entries go newest first within 128 MiB.</li>
+<li>Write goes to staging file, then rename. Concurrent writer can lose entries; file stays whole. Directory keeps newest 4 library files.</li>
+<li>Run that skipped crashed instance stores nothing: its blind spot holds for that run only.</li>
 <li>Package summary: method store entry keeps effects record of unit beside <code>Inferred</code>, with same invalidation.</li>
 <li>Record: accesses with spans, holds, call facts, blind spots and cuts. Call fact names callee methods by signature, since deserialized <code>Method</code> is new object.</li>
 <li>Effects run infers again each unit whose entry has no record. Inference run keeps records of stored entries.</li>
@@ -1215,7 +1229,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li>Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.</li>
 <li>Later: <code>syntax</code> stage findings per file, keyed by file content hash.</li>
 <li><code>inference</code> stage keeps method store per checked path beside analysis entry. Store holds one entry per inferred method and signature: reached signatures, stage facts and blind spots.</li>
-<li><code>effects</code> run adds effects record of unit to each entry (<code>effects.md</code>, Solve and cache). Library summaries keep own directory <code>library</code> per environment.</li>
+<li><code>effects</code> run adds effects record of unit to each entry (<code>effects.md</code>, Solve and cache). Library summaries keep one file per partition in directory <code>library</code>; every environment shares it (<code>effects.md</code>, Solve and cache).</li>
 <li>Entry holds plain data: spans, names, call signatures. Typed code stays inside stage, so no rule reads data that store leaves out.</li>
 <li>Entry depends on content hash of file of its method, since spans hold byte offsets.</li>
 <li>Entry also depends on lowered code of each package method that inference read through compiler edges, transitively. Lowered code holds macro output and <code>@eval</code> code.</li>
@@ -1575,9 +1589,11 @@ Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effec
 </div><div class="decision"><h3>4 Summary cache</h3>
 <ul>
 <li>Library summaries: disk cache in Corset scratch space. Key: <code>effects.md</code>, Solve and cache.</li>
+<li>Entry key holds native edge closure and owner packages of entry, so entries serve every environment.</li>
 <li>Package unit summaries: method store entry beside <code>Inferred</code>, same invalidation.</li>
 </ul>
-<p>Tests: cache hit gives same summaries as cold run. Edit of path dependency, or other Julia version, changes key.
+<p>Tests: cache hit gives same summaries as cold run, also with other package loaded. Other process gives same closure key.
+Edit of reached package, method that changes dispatch, or push past method limit misses. Edit of unrelated package hits.
 Measure: cold run with empty cache; cold run with cache from other corpus package; warm rerun.</p>
 </div><div class="decision"><h3>5 Corpus go/no-go</h3>
 <p>Run engine on each corpus package (<code>plan.md</code>, Corpus). Every item holds per package:</p>
