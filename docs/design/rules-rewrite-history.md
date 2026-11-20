@@ -1008,6 +1008,23 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Gate stays far: JSON `effects` 50.8 s against `inference` 10.3 s.
 - Left: access mapping about 30% of solve, store mapping 28%, `Place` hash with table lookup 20%, table memory 15%.
 
+### Summary cache
+
+- #251 keyed library file by every loaded package: corpus packages shared no entry. #254 keys each entry by its native edge closure.
+- Job 656 (macdev under other load, main 65d54fbb before #255), `effects` seconds, hits in brackets:
+
+| Package | No cache | Empty cache | Other package cache | Warm | `inference` |
+|---|---|---|---|---|---|
+| Distances | 15.8 | 18.6 | — | 12.0 (2245) | 5.2 |
+| DataStructures | 23.9 | — | 19.8 (757) | 16.0 (3685) | 9.2 |
+| JSON | 188.0 | — | 218.8 (1701) | 176.3 (4476) | 11.4 |
+
+- Every arm gives same fact lines on every package.
+- Warm cache saves 24% to 33% on Distances and DataStructures. JSON solve of own units dominates, so cache saves little.
+- Empty cache costs about 17%: key walk and store of 6306 entries.
+- File holds 24051 entries in 15 MB. Each run reads it, reads it again to merge, and writes it to stamp hits.
+- Gate fails with warm cache: Distances 2.3 times `inference`, DataStructures 1.7 times.
+
 ### Stateful iterators
 
 - Trigger "every `iterate` on iterator not proven stateless" rejected: single pass is safe for both kinds, so it flags nearly all generic code.
