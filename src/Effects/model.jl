@@ -9,7 +9,7 @@ IR statement makes (call statement for all fresh objects of callee), or `Unknown
     Allocation(Int)
     Unknown()
 end
-@derive Origin[Hash, Show]
+@derive Origin[Show]
 
 """
 Whether origins `first` and `second` are equal. Hash tables test key equality on every hit; derived `Eq` finds variant
@@ -20,6 +20,13 @@ Base.:(==)(first::Origin.Type, second::Origin.Type)::Bool = @match (first, secon
     (Origin.Allocation(one), Origin.Allocation(other)) => one == other
     (Origin.Unknown(), Origin.Unknown()) => true
     _ => false
+end
+
+"""Hash of `origin`: variant tag, then its field (`Place` hash)."""
+Base.hash(origin::Origin.Type, seed::UInt)::UInt = @match origin begin
+    Origin.Caller(place) => hash(place, hash(0x31, seed))
+    Origin.Allocation(index) => hash(index, hash(0x32, seed))
+    Origin.Unknown() => hash(0x33, seed)
 end
 
 """Whether `origin` is object instance makes: caller cannot see it before call."""
@@ -137,7 +144,7 @@ object `Outside` every place.
     Fresh(Int)
     Outside()
 end
-@derive Node[Hash, Show]
+@derive Node[Show]
 
 """Whether nodes `first` and `second` are equal."""
 Base.:(==)(first::Node.Type, second::Node.Type)::Bool = @match (first, second) begin
@@ -145,6 +152,13 @@ Base.:(==)(first::Node.Type, second::Node.Type)::Bool = @match (first, second) b
     (Node.Fresh(one), Node.Fresh(other)) => one == other
     (Node.Outside(), Node.Outside()) => true
     _ => false
+end
+
+"""Hash of `node`: variant tag, then its field (`Place` hash)."""
+Base.hash(node::Node.Type, seed::UInt)::UInt = @match node begin
+    Node.Placed(place) => hash(place, hash(0x41, seed))
+    Node.Fresh(index) => hash(index, hash(0x42, seed))
+    Node.Outside() => hash(0x43, seed)
 end
 
 """Equality of origins and nodes: their fields hold no floating-point or `missing` value."""

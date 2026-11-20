@@ -39,7 +39,7 @@ fresh objects so reached.
 function escaping(flow::Flow)::Set{Origin.Type}
     pending = collect(keys(flow.result))
     for holder in union(keys(flow.heap), keys(flow.backing), keys(flow.spread))
-        fresh_origin(holder) || foreach(targets -> append!(pending, keys(targets)), contents(flow, holder))
+        fresh_origin(holder) || foreach_content(targets -> append!(pending, keys(targets)), flow, holder)
     end
     foreach(targets -> append!(pending, keys(targets)), values(flow.bound))
     found = Set{Origin.Type}()
@@ -47,7 +47,7 @@ function escaping(flow::Flow)::Set{Origin.Type}
         origin = pop!(pending)
         fresh_origin(origin) && !(origin in found) || continue
         push!(found, origin)
-        foreach(targets -> append!(pending, keys(targets)), contents(flow, origin))
+        foreach_content(targets -> append!(pending, keys(targets)), flow, origin)
     end
     return found
 end
