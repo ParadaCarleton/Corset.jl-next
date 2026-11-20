@@ -36,7 +36,6 @@ Cold run, same scope (target loaded first, default threads):
 |---|---|---|---|---|
 | Distances 0.10.12 | 12.0–12.8 s | 3.5 s | 3.5× | 2.5 s |
 | DataStructures 0.18.22 | 19.8–20.6 s | 6.8–7.1 s | 2.9× | 4.0 s |
-| JSON 1.13.4 | 42.5–43.6 s | 6.4 s | 6.7× | 8.6 s |
 
 `benchmark/cold.jl` measures Corset. Cold run misses budget on Distances and DataStructures.
 Nearly all of `inference` stage is Julia inference of target methods at declared or stand-in signatures; Corset machinery and Base callees on stand-ins add about 0.1 s. Package image holds neither Corset's signatures nor target's: target's own precompile workload caches concrete calls only (JSON ships one). So method store keeps facts per method: later runs infer only methods that edit touched.
@@ -53,7 +52,7 @@ Rerun after edit of one file: `inference` stage with method store, seconds; stor
 Distances loads ChainRulesCore.jl, whose `promote_rule` invalidates JuliaSyntax.jl line lookup; stage recompiles about 1 s of Corset code.
 Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects skip and library cache must keep it inside budget; engine PR measures solver before rule PRs.
 
-Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).
+Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus registered packages Distances, SpecialFunctions, StatsFuns, Distributions (numeric) and DataStructures (data).
 
 ### Design reviews
 

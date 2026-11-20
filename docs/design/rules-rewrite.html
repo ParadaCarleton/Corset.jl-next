@@ -1380,13 +1380,6 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <td>2.9×</td>
 <td>4.0 s</td>
 </tr>
-<tr>
-<td>JSON 1.13.4</td>
-<td>42.5–43.6 s</td>
-<td>6.4 s</td>
-<td>6.7×</td>
-<td>8.6 s</td>
-</tr>
 </tbody>
 </table></div>
 <p><code>benchmark/cold.jl</code> measures Corset. Cold run misses budget on Distances and DataStructures.
@@ -1429,7 +1422,7 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 </table></div>
 <p>Distances loads ChainRulesCore.jl, whose <code>promote_rule</code> invalidates JuliaSyntax.jl line lookup; stage recompiles about 1 s of Corset code.
 Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects skip and library cache must keep it inside budget; engine PR measures solver before rule PRs.</p>
-<p>Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus three registered packages of different style (numeric, data, IO).</p>
+<p>Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus registered packages Distances, SpecialFunctions, StatsFuns, Distributions (numeric) and DataStructures (data).</p>
 </div><div class="decision"><h3>Design reviews</h3>
 <p>Design is draft until code proves it. Revisit at each checkpoint:</p>
 <ul>

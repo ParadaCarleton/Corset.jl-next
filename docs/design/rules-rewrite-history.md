@@ -1150,3 +1150,10 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 | StatsFuns 2.3.1 | 38 to 38 | 50 to 50 | 58 to 58 | 392 to 392 |
 
 - Depth 4 arm allocates same as depth 8 (JSON 8610 MB): cap does not drive cost. DataStructures `alias` 168 at depth 4.
+
+### Numeric corpus
+
+- JSON leaves corpus. One generic self-recursive method, `json!(::Any, …)`, holds most of its solve time. Most of its writes are blind.
+- Corset targets numeric code first, so JSON measured outlier cost. SpecialFunctions 2.9.2, StatsFuns 2.3.1 and Distributions 0.25.135 replace it.
+- Distributions is large generic numeric code: survey warm solve 57.7 s, `inference` 48.4 s.
+- Last JSON numbers: warm solve 32 s against `inference` 9–11 s (job 753). Benchmarks still take JSON by argument as stress case.
