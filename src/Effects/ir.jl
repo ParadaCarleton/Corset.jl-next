@@ -13,10 +13,10 @@ function frame_ir(frame::CC.InferenceState, interpreter::CC.NativeInterpreter, k
     stream = CC.DebugInfoStream(Int32[part for index in 1:count for part in (index, 0, 0)])
     stream.def = frame.linfo
     source.debuginfo = Core.DebugInfo(stream, count)
-    # Conversion edits control flow and statement info in place; `slot2reg` truncates slot types.
+    # Conversion edits control flow and statement info in place and empties unreachable set; `slot2reg` truncates slot types.
     optimization = CC.OptimizationState(
         frame.linfo, source, nothing, copy(frame.stmt_info), frame.mod, frame.sptypes, copy(frame.slottypes),
-        CC.InliningState(frame, interpreter), deepcopy(frame.cfg), frame.unreachable, frame.bb_vartables, frame.insert_coverage,
+        CC.InliningState(frame, interpreter), deepcopy(frame.cfg), copy(frame.unreachable), frame.bb_vartables, frame.insert_coverage,
     )
     renamed = CC.run_passes_ipo_safe(source, optimization, "CC: SLOT2REG")
     # Compaction turns each use of constant result into literal (`Compiler` `ssair/ir.jl`), so uses come first.
