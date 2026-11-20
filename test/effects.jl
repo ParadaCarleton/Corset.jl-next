@@ -11,7 +11,7 @@ using Corset.Effects:
     components, foreign_name, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, field_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
-    unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees
+    unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees, load, store!, store_backing!
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
@@ -842,6 +842,14 @@ four_way(x::Symbol) = x
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test map_node(flow, Node.Fresh(4), CallSite(Targets[], Sources[], 7, 2, Dict{Place.Type, Targets}(), Dict{Int, Sources}())) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
     @test deep(flow, Targets(Origin.Caller(parameter(2)) => NO_DOUBT)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => BLIND_DOUBT)
+    # Slot targets found before heap grows go stale: load after store sees new slot and backing contents.
+    box, backed = Targets(Origin.Allocation(5) => NO_DOUBT), Targets(Origin.Allocation(6) => NO_DOUBT)
+    @test isempty(load(flow, box, Step.Field(:y))) && isempty(load(flow, box, Step.Element()))
+    store!(flow, box, Step.Field(:y), Targets(Origin.Caller(parameter(2)) => NO_DOUBT))
+    @test load(flow, box, Step.Field(:y)) == Targets(Origin.Caller(parameter(2)) => NO_DOUBT)
+    store_backing!(flow, box, Targets(Origin.Allocation(6) => CODE_DOUBT))
+    store!(flow, backed, Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
+    @test load(flow, box, Step.Element()) == Targets(Origin.Unknown() => CODE_DOUBT)
     # Type sources: parameter of caller place, sources of chain; global and merge of fresh objects are doubt in code.
     held_global = Origin.Caller(global_place(@__MODULE__, :HOLDER))
     none = Sources(0)
