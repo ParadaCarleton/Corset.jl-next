@@ -1181,3 +1181,12 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Open: Distributions facts take one of two sets, 24523 or 24777 lines. Set holds for one Corset build and can change with rebuild.
 - Main and fix each gave both sets (jobs 858, 861, 863, 881, 882). Lines differ in `test_mvnormal` only, at accesses mapped from `rand` summaries.
 - Call facts agree; widening never fires (job 861). Likely cause: type hash holds module build id, so `Dict` order changes per build.
+
+### Deep walk
+
+- `deep` pushed each content target once per reference, so shared objects got walked many times. Walk now visits each origin once.
+- `extend` builds extended path once.
+- Warm solve allocation, main to branch (jobs 858 and 899, winwsl): JSON 8481 to 7288 MB, DataStructures 1257 to 1238, Distributions 4426 to 4358.
+- Facts: JSON and DataStructures same as main; Distributions gives one of two sets that change per build ("Visit order").
+- Rejected: walk in old push order (7808 MB on JSON). Per-build fact sets explained earlier fact change; order gave nothing.
+- Rejected: size hint in `add_all!` (job 854). Hint grew small tables early: JSON 7287 to 8669 MB.

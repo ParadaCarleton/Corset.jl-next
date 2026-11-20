@@ -560,20 +560,24 @@ Origins of `objects` keep their doubt: write below callee `Deep` place changes t
 callee may leave them unchanged.
 """
 function deep(flow::Flow, objects::Targets)::Targets
-    found, seen, pending = Targets(), Set{Origin.Type}(), collect(objects)
+    found, seen, pending = Targets(), Set{Origin.Type}(keys(objects)), collect(keys(objects))
+    foreach(((origin, doubt),) -> add!(found, collapsed(origin), doubt), objects)
     while !isempty(pending)
-        origin, doubt = pop!(pending)
-        add!(found, collapsed(origin), doubt)
-        origin in seen && continue
-        push!(seen, origin)
-        foreach_content(targets -> append!(pending, (target => BLIND_DOUBT for target in keys(targets))), flow, origin)
+        foreach_content(flow, pop!(pending)) do targets
+            for target in keys(targets)
+                target in seen && continue
+                push!(seen, target)
+                add!(found, collapsed(target), BLIND_DOUBT)
+                push!(pending, target)
+            end
+        end
     end
     return found
 end
 
-"""Caller object `origin` collapsed to `Deep` of its root; other origin stays."""
+"""Caller object `origin` collapsed to `Deep` of its root; other origin, `Deep` one included, stays."""
 collapsed(origin::Origin.Type)::Origin.Type = @match origin begin
-    Origin.Caller(place) => Origin.Caller(Place.Deep(root_of(place)))
+    Origin.Caller(Place.At(root, _)) => Origin.Caller(Place.Deep(root))
     _ => origin
 end
 

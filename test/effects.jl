@@ -1000,6 +1000,9 @@ four_way(x::Symbol) = x
     wrapper = Targets(Origin.Allocation(9) => NO_DOUBT)
     store!(flow, wrapper, Step.Field(:x), Targets(Origin.Caller(parameter(3)) => NO_DOUBT))
     @test deep(flow, wrapper) == Targets(Origin.Allocation(9) => NO_DOUBT, Origin.Caller(Place.Deep(Root.Parameter(3))) => BLIND_DOUBT)
+    # Argument inside other argument keeps its own doubt: callee writes it through its own place.
+    both = Targets(Origin.Allocation(9) => NO_DOUBT, Origin.Caller(parameter(3)) => NO_DOUBT)
+    @test deep(flow, both) == Targets(Origin.Allocation(9) => NO_DOUBT, Origin.Caller(Place.Deep(Root.Parameter(3))) => NO_DOUBT)
     # Path follows declared field types: recursive type, third abstract step in a row, and step cap collapse it.
     at(name::Symbol)::Root.Type = Root.Global(GlobalRef(@__MODULE__, name))
     field_x, link_next = Step.Field(:x), Step.Field(:next)
