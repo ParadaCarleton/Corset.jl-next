@@ -124,6 +124,7 @@ Resolution of each call statement, first match wins:
 4. Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.
 5. Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: `possible`.
    Access that some members lack takes sources of open operands, as open dispatch does: operand types pick member.
+   Blind access of one member and exact access of another disagree: join gives `possible`.
 6. Base interface function with documented contract (`setindex!` writes collection; `length` reads only; `view` result lies within array). Breach in package method is finding.
 7. Else open: `possible` write on operands; result may point into operands, one direction, and to `unknown`.
 

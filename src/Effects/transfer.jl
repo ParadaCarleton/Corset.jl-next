@@ -244,10 +244,13 @@ end
 """
 Record in `table` join of accesses of each member in `members`: most doubt among members, cause of first member with
 most doubtful level. Access absent from some member is at least `partial`: operand types decide which member runs.
+Blind access counts as absent beside exact one: blind spot of one member leaves write of other `possible`.
 """
 function join_accesses!(table::OriginAccesses, members::Vector{OriginAccesses}, partial::Doubt)::Nothing
     for key in union(keys.(members)...)
-        found = [member[key] for member in members if haskey(member, key)]
+        present = [member[key] for member in members if haskey(member, key)]
+        exact = [effect for effect in present if level_of(effect.doubt) != Level.blind]
+        found = isempty(exact) ? present : exact
         first_worst = reduce((first, second) -> level_of(second.doubt) > level_of(first.doubt) ? second : first, found)
         doubt = reduce(most, (effect.doubt for effect in found))
         length(found) == length(members) || (doubt = most(doubt, partial))
