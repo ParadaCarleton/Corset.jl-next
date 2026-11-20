@@ -31,11 +31,12 @@ Base.@kwdef struct CallEffects
     rest::Int = 0
 end
 
+include("foreign_gmp_mpfr.jl")
+
 """
-Foreign call table: C functions corpus reaches, from Base call sites and Julia runtime source. Pointer argument stands
-for object it points into. Missing name stays open.
+Table of libc and Julia runtime functions that Base call sites reach. Pointer argument stands for object it points into.
 """
-const FOREIGN_EFFECTS = Dict{Symbol, CallEffects}(
+const RUNTIME_EFFECTS = Dict{Symbol, CallEffects}(
     :memmove => CallEffects(writes = [1], reads = [2], copies = [1 => 2], result = [1]),
     :memcpy => CallEffects(writes = [1], reads = [2], copies = [1 => 2], result = [1]),
     :memset => CallEffects(writes = [1], result = [1]),
@@ -78,6 +79,30 @@ const FOREIGN_EFFECTS = Dict{Symbol, CallEffects}(
     Symbol("llvm.prefetch") => CallEffects(),
     :uv_cwd => CallEffects(writes = [1, 2], reads = [2]),
 )
+
+"""
+MPFR and GMP functions that generated table leaves out (`gen/foreign/generate.jl`): variadic, or result points into
+argument. Left open: `mpfr_set_emin`, `mpfr_set_emax`, `mpfr_clear_flags` (MPFR manual 5.13) and
+`__gmp_set_memory_functions`, `__gmp_set_alloc_overflow_function` (GMP manual 4.7) write C global state.
+"""
+const HAND_EFFECTS = Dict{Symbol, CallEffects}(
+    # Output pointer, template, formatted argument (MPFR manual 5.9). Output holds C heap string.
+    :mpfr_asprintf => CallEffects(writes = [1], reads = [2, 3], rest = 3),
+    # Frees C heap string, which no Julia object holds (MPFR manual 5.4).
+    :mpfr_free_str => CallEffects(),
+    # Limbs of `x` for writing; result points into `x` (GMP manual 5.16).
+    :__gmpz_limbs_write => CallEffects(writes = [1], result = [1]),
+    # Buffer, base, integer; result is buffer (GMP manual 5.4).
+    :__gmpz_get_str => CallEffects(writes = [1], reads = [3], result = [1]),
+    # Buffer, word count, order, size, endian, nails, integer; result is buffer (GMP manual 5.14).
+    :__gmpz_export => CallEffects(writes = [1, 2], reads = [7], result = [1]),
+)
+
+"""
+Foreign call table: C functions corpus reaches, from Base call sites, Julia runtime source, MPFR and GMP. Missing
+name stays open. No prefix rule: unknown `mpfr_` name stays open, since wrong entry gives false definite write.
+"""
+const FOREIGN_EFFECTS = merge(RUNTIME_EFFECTS, GENERATED_EFFECTS, HAND_EFFECTS)
 
 """
 Documented behavior of Base function (`effects.md`, Calls, step 6): `effects` on arguments; `callback` when function
