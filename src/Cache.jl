@@ -142,7 +142,8 @@ function owner_texts!(texts::IdDict{Module, Union{Nothing, Vector{String}}}, mod
     id = Base.PkgId(root)
     extension = haskey(Base.EXT_PRIMED, id)
     directory = pkgdir(root)
-    (isnothing(id.uuid) || !extension && (isnothing(directory) || !isdir(directory))) && return nothing
+    isnothing(id.uuid) && return nothing
+    extension || (!isnothing(directory) && isdir(directory)) || return nothing
     dependencies = extension ? Base.EXT_PRIMED[id] : dependency_ids(something(directory))
     isnothing(dependencies) && return nothing
     found = extension || root === Base.moduleroot(@__MODULE__) ? String[] : [package_content(id, something(directory), depots)]
