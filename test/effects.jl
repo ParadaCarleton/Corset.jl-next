@@ -1019,8 +1019,12 @@ four_way(x::Symbol) = x
     @test cause_span(typed, code, 0) == typed.site.span
     shared, partial = (Origin.Allocation(1), false, EffectKind.memory), (Origin.Allocation(2), false, EffectKind.memory)
     joined = Dict(partial => Effect(NO_DOUBT, 1, ""))
-    join_accesses!(joined, [Dict(shared => Effect(NO_DOUBT, 5, ""), partial => Effect(CODE_DOUBT, 5, "")), Dict(shared => Effect(BLIND_DOUBT, 5, "alias"))], CODE_DOUBT)
-    @test joined == Dict(shared => Effect(BLIND_DOUBT, 5, "alias"), partial => Effect(NO_DOUBT, 1, ""))
+    # Blind spot of one member leaves exact write of other `possible`; blind in every member stays blind.
+    join_accesses!(joined, [Dict(shared => Effect(NO_DOUBT, 5, ""), partial => Effect(CODE_DOUBT, 5, "")), Dict(shared => Effect(BLIND_DOUBT, 4, "alias"))], CODE_DOUBT)
+    @test joined == Dict(shared => Effect(CODE_DOUBT, 5, ""), partial => Effect(NO_DOUBT, 1, ""))
+    joined = Dict{Tuple{Origin.Type, Bool, EffectKind.T}, Effect}()
+    join_accesses!(joined, [Dict(shared => Effect(BLIND_DOUBT, 5, "alias")), Dict(shared => Effect(BLIND_DOUBT, 4, "alias")), Dict{Tuple{Origin.Type, Bool, EffectKind.T}, Effect}()], CODE_DOUBT)
+    @test joined == Dict(shared => Effect(BLIND_DOUBT, 5, "alias"))
     joined = Dict{Tuple{Origin.Type, Bool, EffectKind.T}, Effect}()
     join_accesses!(joined, [Dict(partial => Effect(NO_DOUBT, 5, "")), Dict{Tuple{Origin.Type, Bool, EffectKind.T}, Effect}()], sourced(4))
     @test joined == Dict(partial => Effect(sourced(4), 5, ""))

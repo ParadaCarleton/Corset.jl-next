@@ -859,7 +859,8 @@ Constant <code>Bool</code> argument that callee uses as branch condition also ma
 <code>HAMT.path(trie, key, h, false)</code> skips copy-on-write store, so <code>ScopedValue</code> read writes nothing. Julia inference resolves the same constant.</li>
 <li>Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.</li>
 <li>Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.
-Access that some members lack takes sources of open operands, as open dispatch does: operand types pick member.</li>
+Access that some members lack takes sources of open operands, as open dispatch does: operand types pick member.
+Blind access of one member and exact access of another disagree: join gives <code>possible</code>.</li>
 <li>Base interface function with documented contract (<code>setindex!</code> writes collection; <code>length</code> reads only; <code>view</code> result lies within array). Breach in package method is finding.</li>
 <li>Else open: <code>possible</code> write on operands; result may point into operands, one direction, and to <code>unknown</code>.</li>
 </ol>
