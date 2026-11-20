@@ -33,17 +33,41 @@ end
 struct Shortcut end
 
 """
-Summary cache state of one run (`library.jl`): library cache entries, key and library verdict per instance
-(`outside!`), answers of `names_package!`, native inference edges of each instance run inferred (`inferred!`), and
-instances of units method store served (`stored`).
+Closure key state of one phase (`closure_key!`): component key per node of native edge graph (`nothing` when closure
+has no key), throw helper callees each node's closure read, and instances store phase rejects (`library_entries`).
+"""
+struct Closure
+    keys::IdDict{Any, Union{Nothing, String}}
+    helpers::IdDict{Any, Vector{Any}}
+    rejected::Base.IdSet{Core.MethodInstance}
+end
+
+"""Closure key state before any walk, with `rejected` instances."""
+Closure(rejected::Base.IdSet{Core.MethodInstance})::Closure = Closure(IdDict{Any, Union{Nothing, String}}(), IdDict{Any, Vector{Any}}(), rejected)
+
+"""
+Summary cache state of one run (`library.jl`): library cache entries, instance key per instance (`instance_key!`),
+text and named root modules per type (`type_text!`), owner texts and their digest per root module (`owners!`), own text per node
+(`node_text!`), closure keys for lookup (`Closure`), answers of `names_package!`, native inference edges of each
+instance run inferred (`inferred!`), instances of units method store served (`stored`), callees whose throw helper
+verdict each instance read (`helper!`), instances whose cut read model-type inference (`stand_in_cut`), keys of
+entries that hit, and text of alias methods outside Core (`alias_text`).
 """
 struct Lookup
     library::Library
     keys::IdDict{Core.MethodInstance, String}
-    outside::IdDict{Core.MethodInstance, Bool}
+    types::IdDict{Any, Tuple{String, Vector{Module}}}
+    owners::IdDict{Module, Union{Nothing, Vector{String}}}
+    owned::IdDict{Module, Union{Nothing, String}}
+    texts::IdDict{Any, Tuple{String, Vector{Any}}}
+    closure::Closure
     named::IdDict{Any, Bool}
     edges::IdDict{Core.MethodInstance, Vector{Any}}
     stored::Base.IdSet{Core.MethodInstance}
+    helpers::IdDict{Core.MethodInstance, Vector{Any}}
+    modeled::Base.IdSet{Core.MethodInstance}
+    hits::Set{String}
+    aliases::String
 end
 
 """
@@ -80,7 +104,11 @@ function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module}, li
     helpers, cuts, trusted = IdDict{Any, Tuple{Bool, Vector{Any}}}(), IdDict{Core.MethodInstance, Bool}(), Base.IdSet{Core.MethodInstance}()
     return Run(
         world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, fields, claims, catches, helpers, cuts, trusted, Dict{Variant, Code}(), Dict{Variant, Summary}(),
-        Lookup(library, IdDict{Core.MethodInstance, String}(), IdDict{Core.MethodInstance, Bool}(), IdDict{Any, Bool}(), IdDict{Core.MethodInstance, Vector{Any}}(), Base.IdSet{Core.MethodInstance}()),
+        Lookup(
+            library, IdDict{Core.MethodInstance, String}(), IdDict{Any, Tuple{String, Vector{Module}}}(), IdDict{Module, Union{Nothing, Vector{String}}}(),
+            IdDict{Module, Union{Nothing, String}}(), IdDict{Any, Tuple{String, Vector{Any}}}(), Closure(Base.IdSet{Core.MethodInstance}()), IdDict{Any, Bool}(), IdDict{Core.MethodInstance, Vector{Any}}(),
+            Base.IdSet{Core.MethodInstance}(), IdDict{Core.MethodInstance, Vector{Any}}(), Base.IdSet{Core.MethodInstance}(), Set{String}(), alias_text(),
+        ),
     )
 end
 
@@ -254,21 +282,21 @@ function frame_body(run::Run, frame::CC.InferenceState, cut::Bool, unit::Bool, s
     users = statement_users(ir)
     # Statement compiler inserted has no source statement: its uses after compaction count.
     used = [iszero(line) ? !isempty(users[index]) : before[line] for (index, line) in enumerate(lines)]
-    return Body(ir, lines, outcomes, message_statements(users, throw_sinks(run, ir)), used, cut, shortcut)
+    return Body(ir, lines, outcomes, message_statements(users, throw_sinks(run, frame.linfo, ir)), used, cut, shortcut)
 end
 
 """
-Whether each statement of `ir` throws: call of `throw` or throw helper (`throw_helper`). Other call that never returns
-fails on stand-in: no sink, since stand-ins cut it.
+Whether each statement of `ir` of `instance` throws: call of `throw` or throw helper (`helper!`). Other call that never
+returns fails on stand-in: no sink, since stand-ins cut it.
 """
-function throw_sinks(run::Run, ir::CC.IRCode)::Vector{Bool}
+function throw_sinks(run::Run, instance::Core.MethodInstance, ir::CC.IRCode)::Vector{Bool}
     sinks = fill(false, length(ir.stmts))
     for index in 1:length(ir.stmts)
         statement = ir.stmts[index][:stmt]
         statement isa Expr || continue
         (statement.head === :call && ir.stmts[index][:type] === Union{}) || continue
         callee = called(ir, statement, ir.sptypes)
-        sinks[index] = !isnothing(callee) && first(get!(() -> throw_helper(callee), run.helpers, callee))
+        sinks[index] = !isnothing(callee) && helper!(run, instance, callee)
     end
     return sinks
 end
@@ -277,18 +305,20 @@ end
 Whether stand-ins cut path of library instance `frame` (`effects.md`, Stand-in cuts): reached call never returns, or
 call statement is dead, though model types reach it. Methods that keep contracts count failing calls only
 (`keeps_contracts`); throw helpers fail on every signature. Method of stand-in only, generated method, or instance on
-model types without code, cannot clear call, so it counts as cut.
+model types without code, cannot clear call, so it counts as cut. Instance whose check infers model types joins
+`modeled`: that inference reads methods outside its native edges.
 """
 function stand_in_cut(run::Run, frame::CC.InferenceState)::Bool
     instance, code = frame.linfo, frame.src
     holds_stand_in(instance.specTypes) || return false
     method = instance.def::Method
-    failing = [index for (index, _, callee) in never_returning(code, CC.sptypes_from_meth_instance(instance)) if !first(get!(() -> throw_helper(callee), run.helpers, callee))]
+    failing = [index for (index, _, callee) in never_returning(code, CC.sptypes_from_meth_instance(instance)) if !helper!(run, instance, callee)]
     dead = keeps_contracts(method) ? Int[] : dead_calls(code)
     isempty(failing) && isempty(dead) && return false
     # Generated code differs per signature, so statement index of stand-in code names no statement of model code.
     Base.hasgenerator(method) && return true
     modeled = Inference.instance(method, model_type(instance.specTypes))
+    isnothing(modeled) || push!(run.cache.modeled, instance)
     reference = isnothing(modeled) ? nothing : CC.typeinf_frame(run.interpreter, modeled, false)
     isnothing(reference) && return true
     return any(index -> reference.src.ssavaluetypes[index] !== Union{}, failing) || any(index -> !(reference.src.code[index] isa Core.Const), dead)

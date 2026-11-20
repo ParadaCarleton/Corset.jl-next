@@ -104,9 +104,11 @@ Measure: share of instances shortcut skips; time it saves.
 ### 4 Summary cache
 
 - Library summaries: disk cache in Corset scratch space. Key: `effects.md`, Solve and cache.
+- Entry key holds native edge closure and owner packages of entry, so entries serve every environment.
 - Package unit summaries: method store entry beside `Inferred`, same invalidation.
 
-Tests: cache hit gives same summaries as cold run. Edit of path dependency, or other Julia version, changes key.
+Tests: cache hit gives same summaries as cold run, also with other package loaded. Other process gives same closure key.
+Edit of reached package, method that changes dispatch, or push past method limit misses. Edit of unrelated package hits.
 Measure: cold run with empty cache; cold run with cache from other corpus package; warm rerun.
 
 ### 5 Corpus go/no-go

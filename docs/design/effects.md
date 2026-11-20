@@ -240,18 +240,32 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Callee signature can grow along call chain without end: `_any(f ∘ transpose, parent(A), :)` adds `ComposedFunction` layer per step.
 - Engine limits callee like native inference (`abstract_call_method`): method that recurs on call chain gets `limit_type_size` signature.
 - Call chain: caller that first reached each instance. Join limits hard, against method signature.
-- Library instance: method outside package, signature names no package type, and so does each instance its native inference edges reach.
-- Edges come from cached code, else from inference in this run. Instance without either counts as package.
-- Package method that changes dispatch of library call removes cached code of caller, so edge walk sees it.
-- Library summary: variant of library instance whose solve reaches no package code. Disk cache keeps it; cache hit skips native inference and passes.
+- Library instance: method outside package, and signature names no package type.
+- Library summary: variant of library instance. Disk cache keeps it; cache hit skips native inference and passes.
 - Cache also keeps slot-name parameters and stand-in cut of library instances.
-- Summary with callback record stays out: its caller needs record variants too. Variant with package module constant stays out.
-- Run that skipped crashed instance stores nothing: its blind spot holds for that run only.
-- Key: Julia version, cache flags, and content of each loaded package except target. Corset and extensions are loaded packages too.
+- Partition: Julia version, cache flags and Corset content. One library file per partition serves every checked path and environment.
+- Entry key: kind, closure key of instance, and constants of variant. Module constant adds its owner text.
+- Closure key: digest over strongly connected components of native edge graph, callees first. Walk order cannot change it.
+- Node: cached code instance, else instance that run inferred. Lookup before native inference needs cached code; instance without it misses.
+- Node text: instance key, text of each edge record, and owner digest of each root module that instance or records name.
+- Instance key: canonical text of method signature and of specialization. Type text: module path, name, parameters; variables by binding depth.
+- Edge records of Julia 1.13: lookup with match count, single match, binding, call type with method table, call type with `invoke` target.
+- Lookup count is negative when matches do not cover call. Too many matches give no record, so push past method limit changes key.
+- Package method that changes dispatch of library call removes cached code of caller. New code gives other edge records.
+- Owner text: package content and texts of its loaded dependencies. Extension: texts of parent and triggers. Base and Core: none.
+- Corset gives texts of its dependencies only: partition holds its content.
 - Package content: path in depot `packages` or standard library, since depot slug derives from tree hash. Else digest of project file, `src`, `ext` and `deps`.
-- Target stays out of key: library summary reaches no target method, so target edit keeps key.
-- Key covers every loaded package, so cache entry serves one environment. Directory keeps newest 4.
-- Gap: target with other dependencies shares no entry. Per-entry package set would let corpus packages share Base summaries.
+- Package content adds preferences of package. Edit of unrelated package keeps key.
+- No key: package code, `Main` code, root without project file, unknown edge form, or edge target without node.
+- Solve of shared variant stays inside native edges of its node. Union split, folded call and callee limit can leave them.
+- Core methods of `!==` and `>:` count as inside: inference reads them as `===` and `<:`. Closure key holds their other methods.
+- Variant whose solve reaches package code or unshared variant stays out. Summary with callback record stays out: caller needs record variants too.
+- Throw helper verdict reads every method of callee. Entry keeps each verdict its closure read; hit checks each again.
+- Stand-in cut that inferred model types reads methods outside native edges. Store gives no key to closure that holds its instance.
+- Library file lists instance key of each entry. Lookup walks closure only for listed instance.
+- Write reads file again, merges new entries, and stamps hits. Entries go newest first within 128 MiB.
+- Write goes to staging file, then rename. Concurrent writer can lose entries; file stays whole. Directory keeps newest 4 library files.
+- Run that skipped crashed instance stores nothing: its blind spot holds for that run only.
 - Package summary: method store entry keeps effects record of unit beside `Inferred`, with same invalidation.
 - Record: accesses with spans, holds, call facts, blind spots and cuts. Call fact names callee methods by signature, since deserialized `Method` is new object.
 - Effects run infers again each unit whose entry has no record. Inference run keeps records of stored entries.
