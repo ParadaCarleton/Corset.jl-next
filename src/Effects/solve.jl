@@ -90,6 +90,7 @@ struct Run  # corset: allow wide-struct -- one memo per analysis; summary cache 
     catches::IdDict{Method, Bool}
     helpers::IdDict{Any, Tuple{Bool, Vector{Any}}}
     cuts::IdDict{Core.MethodInstance, Bool}
+    frames::IdDict{Core.MethodInstance, Tuple{CC.InferenceState, Bool}}
     trusted::Base.IdSet{Core.MethodInstance}
     codes::Dict{Variant, Code}
     summaries::Dict{Variant, Summary}
@@ -114,7 +115,7 @@ function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module}, li
     parameters, claims, catches = IdDict{Core.MethodInstance, Set{Int}}(), IdDict{Method, Bool}(), IdDict{Method, Bool}()
     helpers, cuts, trusted = IdDict{Any, Tuple{Bool, Vector{Any}}}(), IdDict{Core.MethodInstance, Bool}(), Base.IdSet{Core.MethodInstance}()
     return Run(
-        world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, parameters, claims, catches, helpers, cuts, trusted, Dict{Variant, Code}(), Dict{Variant, Summary}(),
+        world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, parameters, claims, catches, helpers, cuts, IdDict{Core.MethodInstance, Tuple{CC.InferenceState, Bool}}(), trusted, Dict{Variant, Code}(), Dict{Variant, Summary}(),
         Lookup(
             library, IdDict{Core.MethodInstance, String}(), IdDict{Any, Tuple{String, Vector{Module}}}(), IdDict{Module, Union{Nothing, Vector{String}}}(),
             IdDict{Module, Union{Nothing, String}}(), IdDict{Any, Tuple{String, Vector{Any}}}(), Closure(Base.IdSet{Core.MethodInstance}()), IdDict{Any, Bool}(), IdDict{Core.MethodInstance, Vector{Any}}(),
@@ -166,7 +167,10 @@ function cut!(run::Run, instance::Core.MethodInstance, effects::CC.Effects)::Boo
     isnothing(stored) || return (run.cuts[instance] = stored)
     # Instance without code counts as cut: its effects on model types are unknown.
     inferred = inferred!(run, instance)
-    return inferred isa String ? (run.cuts[instance] = true) : last(inferred)
+    inferred isa String && return (run.cuts[instance] = true)
+    # Reach walk often builds body of checked callee next; frame spares second inference.
+    run.frames[instance] = inferred
+    return last(inferred)
 end
 
 """
@@ -382,8 +386,11 @@ function inferred!(run::Run, instance::Core.MethodInstance)::Union{Tuple{CC.Infe
     return isnothing(frame) ? "inference gave no code" : (frame, cut)
 end
 
-"""Body of instance outside units: native inference (`inferred!`), then shortcut or passes; else blind spot cause."""
-library_body(run::Run, instance::Core.MethodInstance)::Union{Body, Shortcut, String} = (inferred = inferred!(run, instance); inferred isa String ? inferred : instance_body(run, inferred...))
+"""Frame and cut of `instance` that cut check kept (`cut!`), released on use; else native inference (`inferred!`)."""
+frame!(run::Run, instance::Core.MethodInstance)::Union{Tuple{CC.InferenceState, Bool}, String} = (kept = pop!(run.frames, instance, nothing); isnothing(kept) ? inferred!(run, instance) : kept)
+
+"""Body of instance outside units: native inference (`frame!`), then shortcut or passes; else blind spot cause."""
+library_body(run::Run, instance::Core.MethodInstance)::Union{Body, Shortcut, String} = (inferred = frame!(run, instance); inferred isa String ? inferred : instance_body(run, inferred...))
 
 """
 Body of `instance`, inferred on first use. Instance of stored unit (`Run`) takes unit body (`unit_body`) of native
@@ -391,8 +398,8 @@ inference, as run that infers unit gives it.
 """
 body!(run::Run, instance::Core.MethodInstance)::Union{Body, Shortcut, String} = get!(() -> instance in run.cache.stored ? stored_body(run, instance) : library_body(run, instance), run.bodies, instance)
 
-"""Unit body of stored unit `instance` from native inference (`inferred!`); else blind spot cause."""
-stored_body(run::Run, instance::Core.MethodInstance)::Union{Body, String} = (inferred = inferred!(run, instance); inferred isa String ? inferred : unit_body(run, inferred...))
+"""Unit body of stored unit `instance` from native inference (`frame!`); else blind spot cause."""
+stored_body(run::Run, instance::Core.MethodInstance)::Union{Body, String} = (inferred = frame!(run, instance); inferred isa String ? inferred : unit_body(run, inferred...))
 
 """Builtins whose first two operands name slot: module and global name, or object and field."""
 const NAMING_BUILTINS = (Core.getfield, Core.getglobal, keys(FIELD_WRITES)..., keys(GLOBAL_WRITES)...)
@@ -697,6 +704,8 @@ no code, so it forms component alone and keeps its stored summary.
 """
 function solve!(run::Run, roots::Vector{Variant})::Nothing
     order = reach!(run, roots)
+    # Frames left are of callees no body needs.
+    empty!(run.frames)
     for component in components(call_graph(run, order))
         members = order[component]
         # Only hit has summary before its component solves.
