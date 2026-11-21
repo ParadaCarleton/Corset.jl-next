@@ -10,6 +10,7 @@ julia benchmark/effects.jl . <work> Distributions@0.25.135   # makes <work>/env-
 
 | Script | Use when |
 |---|---|
+| `audit.jl` | Gate hand audit (`phase5.md`, row 5). Lists definite writes that Base contract or join starts, with chain and source. |
 | `census.jl` | `possible` share is high. Traces each `possible` write to statement that starts it; groups by source. |
 | `dump_facts.jl` | Two runs may differ (rebuild, Julia version, branch). Writes facts as sorted text; optional summary dump. |
 | `summary_leaves.jl` | Two summary dumps differ. Finds variants where difference starts. |
