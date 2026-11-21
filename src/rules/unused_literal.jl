@@ -47,16 +47,6 @@ function defines(node::SyntaxNode)::Bool
     return kind_name(node) == "=" && !isnothing(identifier_name(definition_name(node)))
 end
 
-"""Whether top-level statement `node` gives file value, which `include` returns: last statement, through `;` lines."""
-function file_value(node::SyntaxNode)::Bool
-    parent = parent_of(node)
-    while !isnothing(parent) && kind_name(parent) == "toplevel"
-        children_of(parent)[end] === node || return false
-        node, parent = parent, parent_of(parent)
-    end
-    return isnothing(parent)
-end
-
 """Whether `node` sits inside macro call, which may give literal meaning."""
 in_macro(node::SyntaxNode)::Bool = any(ancestor -> kind_name(ancestor) == "macrocall", ancestors(node))
 
@@ -113,7 +103,7 @@ function findings(facts::FactSet)::Vector{Finding}
             lost = index < length(statements) ? detached(file, statement, statements[index + 1]) : nothing
             if !isnothing(lost)
                 push!(found, lost)
-            elseif literal(statement) && discarded(statement) && !file_value(statement)
+            elseif literal(statement) && discarded(statement)
                 push!(
                     found, finding(
                         NAME, file, statement; kind = :no_effect, confidence = Confidence.definite,
