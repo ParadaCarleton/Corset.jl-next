@@ -21,6 +21,9 @@ end
     @test Corset.Fixes.apply_edits(text, [edit(5, 7, "xyz"), edit(1, 1, "A")]) == "Abc xyz"
     @test_throws ArgumentError Corset.Fixes.apply_edits(text, [edit(1, 3, "x"), edit(3, 4, "y")])
     @test Corset.Fixes.apply_edits(text, [edit(1, 4, ""), edit(1, 0, "new ")]) == "new def"
+    # Check after fix keeps every option but `--tier`, which `check` rejects.
+    @test Corset.CLI.recheck_arguments(["fix", "src", "--tier", "safe", "-A", "x"]) == ["check", "src", "-A", "x"]
+    @test Corset.CLI.recheck_arguments(["fix", "--tier=likely", "src"]) == ["check", "src"]
     findings = [
         sample_finding(1:1; fix = Fix("t", [edit(1, 1, "A")], Tier.safe)),
         sample_finding(5:7; fix = Fix("t", [edit(5, 7, "xyz")], Tier.breaking)),
@@ -341,6 +344,8 @@ level(settings::Settings, name::String)::Level.T = first(Config.level_of(setting
     @test Config.preset_level(Kind.application, Group.composability) == Level.allow
     # Safety is `warn` in every kind; only correctness denies.
     @test all(Config.preset_level(kind, Group.safety) == Level.warn for kind in instances(Kind.T))
+    # Restriction rules are opt-in in every kind.
+    @test all(Config.preset_level(kind, Group.restriction) == Level.allow for kind in instances(Kind.T))
     @test level(library, "broad-catch") == Level.warn
     @test Config.project_root(joinpath(CONFIG, "library", "a.jl")) == joinpath(CONFIG, "library")
     @test Config.project_root("/") === nothing

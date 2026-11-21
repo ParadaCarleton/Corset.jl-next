@@ -62,7 +62,11 @@ function level_flags(args::Vector{String})::Tuple{Vector{Pair{String, Level.T}},
         end
         index < length(args) || throw(ArgParseError("$(args[index]) needs group or rule name"))
         name = args[index + 1]
-        level == Level.deny && name == "warnings" ? (deny_warnings = true) : push!(levels, name => level)
+        if level == Level.deny && name == "warnings"
+            deny_warnings = true
+        else
+            push!(levels, name => level)
+        end
         index += 2
     end
     return levels, deny_warnings, rest
@@ -156,6 +160,17 @@ function write_report(out::IO, report::Report, format::String)::Nothing
     return nothing
 end
 
+"""
+Arguments of `check` that runs after `fix` with `args`: command name changes, and `--tier` drops, since `check` rejects it.
+Command name comes before path, and no option value is `fix`.
+"""
+function recheck_arguments(args::Vector{String})::Vector{String}
+    checked = replace(args, "fix" => "check"; count = 1)
+    at = findfirst(==("--tier"), checked)
+    isnothing(at) || deleteat!(checked, at:(at + 1))
+    return filter!(arg -> !startswith(arg, "--tier="), checked)
+end
+
 """Exit code of finished relaunched `process`; signal that ended it is internal error."""
 exit_code(process::Base.Process)::Int = process.termsignal == 0 ? process.exitcode : EXIT_INTERNAL
 
@@ -199,16 +214,17 @@ function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err
             isnothing(stored) || return finish(command, stored..., out, err, options["format"])
             code = exit_code(Launch.supervise(env, args, cache, out, err, Launch.CRASHES))
             code == EXIT_RECHECK || return code
-            # Command name comes before path, and no option value is `fix`.
-            checked = replace(args, "fix" => "check"; count = 1)
-            return exit_code(Launch.supervise(env, checked, cache, out, err, Launch.CRASHES))
+            return exit_code(Launch.supervise(env, recheck_arguments(args), cache, out, err, Launch.CRASHES))
         end
         isnothing(cache) || !Cache.cold(cache, realpath(path)) || println(err, "corset: no cached analysis of ", path, "; first run can be slow, later runs reuse it")
         if command == "fix"
             count, stale = Engine.fix!(path; flags, cache, journal)
             println(err, "corset: applied ", count, " edits")
             # Process loaded package before edits, so its methods are stale; only relaunched child gets here.
-            stale && (launch ? error("fix loaded package without relaunch") : return EXIT_RECHECK)
+            if stale
+                launch && error("fix loaded package without relaunch")
+                return EXIT_RECHECK
+            end
         end
         return finish(command, Engine.analysis(path, flags, cache, journal)..., out, err, options["format"])
     catch error

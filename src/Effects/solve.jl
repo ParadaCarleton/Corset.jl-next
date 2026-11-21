@@ -538,7 +538,10 @@ function variant_flow(run::Run, variant::Variant, flush::Bool, record::Bool)::Tu
         flow.changed = false
         round!(flow, callees)
         # Settled round repeats state of round before it; growth there is engine bug.
-        flow.settled && (flow.changed ? error("settled round of $(first(variant)) changed targets") : break)
+        if flow.settled
+            flow.changed && error("settled round of $(first(variant)) changed targets")
+            break
+        end
         flow.changed || (flow.settled = true)
     end
     return flow, callees

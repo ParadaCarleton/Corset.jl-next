@@ -339,7 +339,11 @@ function converted!(edges::Vector{Any}, instance::Core.MethodInstance, swaps::Ve
     for swap in swaps
         statement = source.code[swap.index]::Expr
         # Assignment `s = 0` holds value at argument 2.
-        swap.position == 0 ? (statement.args[2] = swap.value) : ((assigned(statement)::Expr).args[swap.position] = swap.value)
+        if swap.position == 0
+            statement.args[2] = swap.value
+        else
+            (assigned(statement)::Expr).args[swap.position] = swap.value
+        end
     end
     frame = CC.InferenceState(CC.InferenceResult(instance, CC.typeinf_lattice(interpreter)), source, #=cache_mode=# :no, interpreter)
     isnothing(frame) && return nothing

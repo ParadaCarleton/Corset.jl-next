@@ -123,7 +123,11 @@ function apply(facts::FactSet, findings::Vector{Finding}, known::Set{Symbol})::T
     for finding in findings
         span = finding.primary.span
         cover = findfirst(optout -> finding.rule in optout.rules && span.first_byte in optout.scope, optouts[span.file])
-        isnothing(cover) ? push!(kept, finding) : push!(used, (span.file, optouts[span.file][cover].comment, finding.rule))
+        if isnothing(cover)
+            push!(kept, finding)
+        else
+            push!(used, (span.file, optouts[span.file][cover].comment, finding.rule))
+        end
     end
     for file in facts.files, optout in optouts[file.path], rule in optout.rules
         (file.path, optout.comment, rule) in used || push!(

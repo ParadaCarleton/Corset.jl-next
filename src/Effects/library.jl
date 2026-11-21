@@ -238,7 +238,11 @@ function finish_component!(run::Run, state::Closure, texts::IdDict{Any, Union{No
         for child in last(found)
             child in inside && continue
             key = state.keys[child]
-            isnothing(key) ? (valid = false) : push!(reached, key)
+            if isnothing(key)
+                valid = false
+            else
+                push!(reached, key)
+            end
             add_callees!(helpers, state.helpers[child])
         end
     end
