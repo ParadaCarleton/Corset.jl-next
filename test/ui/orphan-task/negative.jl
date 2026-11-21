@@ -19,3 +19,6 @@ Mine.@spawn run(job)
 Base.@sync for job in jobs
     @async run(job)
 end
+
+# Chain tail is function result, so caller holds task.
+launch_ready(job) = ready(job) && @async run(job)

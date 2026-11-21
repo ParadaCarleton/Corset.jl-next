@@ -12,3 +12,10 @@ function background()
     @async log_forever()
     return 1
 end
+
+function start_ready(jobs)
+    for job in jobs
+        ready(job) && @async run(job)
+    end
+    return nothing
+end

@@ -818,20 +818,28 @@ end
 """Kinds whose body block drops value of every statement."""
 const DISCARDING = ("for", "while", "module", "finally")
 
+"""Kinds whose value is value of a later child; first child is condition or binding block."""
+const PASSING = ("if", "elseif", "?", "&&", "||", "let")
+
 """
-Whether value of statement `node` goes unused: any top-level statement, any statement of loop, module or `finally` body,
-or non-last statement of other block. Struct body and `let` bindings hold no statements.
+Whether value of `node` goes unused: top-level statement, any statement of loop, module or `finally` body, or non-last
+statement of other block. Value of branch, chain tail, `let` or `begin` body goes unused with its construct.
+Last top-level statement, through `;` lines, is file value: `include` returns it. Struct body and `let` bindings
+hold no statements. Condition, function result and macro argument count as used.
 """
 function discarded(node::SyntaxNode)::Bool
     parent = parent_of(node)
     isnothing(parent) && return false
-    kind_name(parent) == "toplevel" && return true
-    kind_name(parent) == "block" || return false
+    kind = kind_name(parent)
+    kind == "toplevel" && return children_of(parent)[end] !== node || discarded(parent)
+    kind in PASSING && return children_of(parent)[1] !== node && discarded(parent)
+    kind == "block" || return false
     owner = parent_of(parent)
     kind_name(owner) == "struct" && return false
     kind_name(owner) == "let" && children_of(owner)[1] === parent && return false
+    children_of(parent)[end] === node || return true
     kind_name(owner) in DISCARDING && children_of(owner)[end] === parent && return true
-    return children_of(parent)[end] !== node
+    return kind_name(owner) in (PASSING..., "block", "toplevel") && discarded(parent)
 end
 
 """Leaf kinds of number and boolean literals."""

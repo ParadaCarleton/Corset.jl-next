@@ -153,6 +153,36 @@ end
     # Normalized source: layout run becomes one space; comments drop; string contents and significant spaces stay.
     shapes = Corset.Syntax.parse_file("n.jl", "a = [1 -2]\nb = [1 - 2]\nc = x == \"a  b\" #= c =#  &&  y\n", Role.package)
     @test [Facts.normalized_source(shapes, node) for node in Facts.forms(shapes, "=")] == ["a = [1 -2]", "b = [1 - 2]", "c = x == \"a  b\" && y"]
+    # Discarded value: branch, chain tail, `let` and `begin` body follow their construct; conditions and results stay used.
+    flow = Corset.Syntax.parse_file(
+        "d.jl", """
+        for t in ts
+            ready(t) && @async run(t)
+            if a
+                b ? c() : d()
+            elseif e
+                let g = 1
+                    begin
+                        h()
+                    end
+                end
+            end
+        end
+        f(x) = x > 0 || k()
+        y = p ? q() : r()
+        if s() || u()
+            v()
+        end
+        w = let
+            m()
+        end
+        """, Role.package,
+    )
+    gone = [Facts.source(flow, node) for kind in ("call", "macrocall") for node in Facts.forms(flow, kind) if Facts.discarded(node)]
+    @test sort(gone) == ["@async run(t)", "c()", "d()", "h()", "v()"]
+    # File value: `include` returns last top-level statement, also from inside `begin`.
+    tail = Corset.Syntax.parse_file("t.jl", "f() || g()\nbegin\n    h()\nend\n", Role.package)
+    @test [Facts.source(tail, node) => Facts.discarded(node) for node in Facts.forms(tail, "call")] == ["f()" => false, "g()" => true, "h()" => false]
 end
 
 @testset "engine" begin
