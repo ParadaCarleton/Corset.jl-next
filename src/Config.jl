@@ -58,9 +58,9 @@ struct Settings
     bans::Vector{Ban}
 end
 
-"""Groups each kind enables, and highest fix tier it applies."""
+"""Groups each kind enables, and highest fix tier it applies. No kind enables `restriction`: its rules are opt-in."""
 const PRESETS = Dict(
-    Kind.library => (Set(instances(Group.T)), Tier.likely),
+    Kind.library => (Set([Group.correctness, Group.safety, Group.performance, Group.composability, Group.readability]), Tier.likely),
     Kind.application => (Set([Group.correctness, Group.safety, Group.performance, Group.readability]), Tier.breaking),
     Kind.script => (Set([Group.correctness, Group.safety, Group.readability]), Tier.breaking),
 )

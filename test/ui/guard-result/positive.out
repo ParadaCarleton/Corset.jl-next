@@ -1,0 +1,38 @@
+warning[guard-result]: function returns `true` when guard passes
+ --> positive.jl:2:12
+  |
+2 | check(x) = x > 0 || throw(DomainError(x))
+  | ----- function
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ guard value is function result
+  |
+  = why: reader cannot tell whether `Bool` result is API
+  = fix: add `nothing` after guard when callers ignore result; `return true` when they use it   [manual]
+  = docs: corset explain guard-result
+  = note: warn from readability group, library preset
+  = note: opt out with `# corset: allow guard-result -- <reason>`
+
+warning[guard-result]: function returns `false` when guard passes
+ --> positive.jl:5:5
+  |
+4 | function validate(x)
+  |          -------- function
+5 |     isnothing(x) && return
+  |     ^^^^^^^^^^^^^^^^^^^^^^ guard value is function result
+  |
+  = why: reader cannot tell whether `Bool` result is API
+  = fix: add `nothing` after guard when callers ignore result; `return false` when they use it   [manual]
+  = docs: corset explain guard-result
+
+warning[guard-result]: function returns `true` when guard passes
+  --> positive.jl:10:9
+   |
+ 8 | function ensure(x)
+   |          ------ function
+ 9 |     if x > 0
+10 |         x < 10 || error("too large")
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ guard value is function result
+   |
+   = why: reader cannot tell whether `Bool` result is API
+   = fix: add `nothing` after guard when callers ignore result; `return true` when they use it   [manual]
+   = docs: corset explain guard-result
+

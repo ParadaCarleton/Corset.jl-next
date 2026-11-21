@@ -14,6 +14,7 @@ Findings in the `correctness` group have level `deny`. Findings in the other gro
 The `correctness` group holds code that misbehaves now.
 The `safety` group holds code that works now but lets a later mistake pass silently.
 Groups outside the kind have level `allow`.
+The `restriction` group holds rules against forms that Julia itself uses as idioms. No kind turns it on: set the level of each rule you want.
 
 Corset finds the kind as follows:
 

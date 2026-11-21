@@ -19,6 +19,7 @@ include("rules/double_include.jl")
 include("rules/duplicate_statement.jl")
 include("rules/field_prefix.jl")
 include("rules/file_length.jl")
+include("rules/guard_result.jl")
 include("rules/implicit_import.jl")
 include("rules/inference_dependent.jl")
 include("rules/intermediate_widening.jl")
@@ -44,6 +45,8 @@ include("rules/piracy.jl")
 include("rules/process_state.jl")
 include("rules/repeated_concat.jl")
 include("rules/shadowed_base.jl")
+include("rules/short_circuit_statement.jl")
+include("rules/ternary_statement.jl")
 include("rules/threadid_buffer.jl")
 include("rules/type_disruption.jl")
 include("rules/unguarded_release.jl")
@@ -74,6 +77,7 @@ const REGISTRY = RuleEntry[
     DuplicateStatement.ENTRY,
     FieldPrefix.ENTRY,
     FileLength.ENTRY,
+    GuardResult.ENTRY,
     ImplicitImport.ENTRY,
     InferenceDependent.ENTRY,
     IntermediateWidening.ENTRY,
@@ -99,6 +103,8 @@ const REGISTRY = RuleEntry[
     ProcessState.ENTRY,
     RepeatedConcat.ENTRY,
     ShadowedBase.ENTRY,
+    ShortCircuitStatement.ENTRY,
+    TernaryStatement.ENTRY,
     ThreadidBuffer.ENTRY,
     TypeDisruption.ENTRY,
     UnguardedRelease.ENTRY,

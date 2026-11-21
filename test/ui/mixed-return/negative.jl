@@ -20,3 +20,9 @@ function checked(x)
     x > 0 && return x
     throw(ArgumentError("x must be positive"))
 end
+
+# Guard as last value belongs to `guard-result`.
+function bounded(x)
+    x < 0 && return 0
+    x > 10 || throw(DomainError(x))
+end

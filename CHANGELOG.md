@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- New group `restriction`: rules against idiomatic forms, off in every project kind. Turn each rule on by its level.
+- New rule `ternary-statement`: a ternary whose value goes unused runs code as a statement. The fix writes an `if` statement.
+- New rule `guard-result`: a guard such as `x > 0 || throw(...)` is the last value of a function, so the function returns `true`.
+- New rule `short-circuit-statement` (restriction): an `&&` or `||` chain runs code as a statement. The fix writes an `if` statement.
+- `orphan-task`, `unused-literal` and the `lost-narrowing` fix see unused values in `if` branches, ternary branches, chain tails and `let` bodies.
 - Corset loads a package to check it. The `corset` command builds a temporary environment and runs again inside it.
 - The temporary environment starts from the package Manifest and adds the test dependencies. A version change is a configuration error.
 - A package that throws while loading gets a `load-error` finding. Rules that read the loaded package do not run.

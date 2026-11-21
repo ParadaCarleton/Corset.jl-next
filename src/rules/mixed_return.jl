@@ -24,7 +24,7 @@ end
 ```
 
 ## Limitations
-Rule stays narrow: function ending in `if`, loop, `try`, macro call or `throw` passes. Requiring `return` everywhere would force `return nothing` and fight formatters.
+Rule stays narrow: function ending in `if`, loop, `try`, macro call, `throw` or guard (`guard-result`) passes. Requiring `return` everywhere would force `return nothing` and fight formatters.
 """
 module MixedReturn
 
@@ -58,6 +58,7 @@ function findings(facts::FactSet)::Vector{Finding}
         last_statement = statements[end]
         kind_name(last_statement) in CONTROL && continue
         call_head(last_statement) in NO_RETURN && continue
+        exit_guard(last_statement) && continue  # `guard-result` reports guard value.
         returns = own_returns(parts[2])
         isempty(returns) && continue
         push!(
