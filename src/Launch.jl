@@ -150,13 +150,19 @@ function build!(env::String, project::ProjectFacts, tiers::Vector{Set{Base.UUID}
     throw(ConfigError("cannot build environment for $(project.name) from its Manifest, even with Corset dependencies moved: $(sprint(showerror, last(failures)))"))
 end
 
+"""
+Seconds before lock on environment build gives way after its holder died. Live holder refreshes lock every half; one
+whose refresh stalls keeps lock 5 times longer.
+"""
+const LOCK_STALE_SECONDS = 30
+
 """Cached temporary environment for package of `project`; build it first when missing, with note to `err`."""
 function environment(project::ProjectFacts, err::IO)::String
     # Pkg cannot develop package without uuid: fail before build with clear error.
     id = package_id(project)
     cache = get_scratch!(Base.moduleroot(@__MODULE__), "environments")
     env = joinpath(cache, cache_key(project))
-    mkpidlock("$env.pid") do
+    mkpidlock("$env.pid"; stale_age = LOCK_STALE_SECONDS) do
         isdir(env) && return
         println(err, "corset: building environment for $(id.name); later runs reuse it")
         # Relaunched process writes to same stream; note must come first.
