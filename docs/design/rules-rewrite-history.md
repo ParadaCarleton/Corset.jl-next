@@ -1189,6 +1189,9 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Fix: Julia PR #65131 refines arguments from all match signatures, also after early stop.
 - Julia 1.13.4 with fix narrowed in all 8 processes: 3 package-image loads, 5 source loads (job 1049).
 - Stock 1.13.4 in same job: package-image loads never narrowed; source loads narrowed in 4 of 5.
+- Corset facts over Distributions rebuilds (jobs 1064, 1071): stock gave two sets (5 and 7 of 12), fix gave one set (14 of 14).
+- Stock sets differ in `test_mvnormal` only. Fix set equals narrowed stock set there.
+- Fix also resolves write in `ProductDistribution` constructor (`product.jl:1004`) in every rebuild. Stock counts it on summary line.
 
 ### Deep walk
 

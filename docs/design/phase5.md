@@ -119,7 +119,7 @@ Run engine on each corpus package (`plan.md`, Corpus). Every item holds per pack
 - Coverage line counts methods without verdict.
 - Facts stay same when Corset or target package compiles again. Corset rebuild passes (jobs 900, 902).
   Distributions rebuild fails: Julia skips one narrowing when match loop stops early (history, "Visit order").
-  Julia PR #65131 fixes it (job 1049). Gate passes on first Julia release with fix.
+  Julia PR #65131 fixes it: one fact set over 14 rebuilds, stock gives two (job 1071). Gate passes on first Julia release with fix.
 - Hand audit of 20 contract and join verdicts finds no false definite.
 - With warm library cache, `effects` stage takes at most `inference` stage time.
 - Full cold run with library cache from other corpus package stays inside speed budget.

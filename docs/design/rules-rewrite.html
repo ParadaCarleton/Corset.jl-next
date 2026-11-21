@@ -1618,7 +1618,7 @@ Measure: cold run with empty cache; cold run with cache from other corpus packag
 <li>Coverage line counts methods without verdict.</li>
 <li>Facts stay same when Corset or target package compiles again. Corset rebuild passes (jobs 900, 902).
 Distributions rebuild fails: Julia skips one narrowing when match loop stops early (history, &quot;Visit order&quot;).
-Julia PR #65131 fixes it (job 1049). Gate passes on first Julia release with fix.</li>
+Julia PR #65131 fixes it: one fact set over 14 rebuilds, stock gives two (job 1071). Gate passes on first Julia release with fix.</li>
 <li>Hand audit of 20 contract and join verdicts finds no false definite.</li>
 <li>With warm library cache, <code>effects</code> stage takes at most <code>inference</code> stage time.</li>
 <li>Full cold run with library cache from other corpus package stays inside speed budget.</li>
