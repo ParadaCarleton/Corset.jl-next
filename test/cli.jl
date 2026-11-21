@@ -4,7 +4,7 @@ using Corset: Corset
 using JSON: JSON
 using JSONSchema: JSONSchema
 using Scratch: Scratch
-using Test: @test, @testset, @test_throws
+using Test: @test, @test_logs, @testset, @test_throws
 
 include("helpers.jl")
 
@@ -516,15 +516,26 @@ end
                 @test occursin("inference crashed process: 1", out) && !occursin("signal", err)
                 report = last(split(only(filter(contains("Report: "), split(err, '\n'))), "Report: "))
                 @test occursin("signal", read(report, String))
-                # Lock that crashed build left gives way after `LOCK_STALE_SECONDS`: later runs do not wait forever.
+                # Stale lock of dead run clears at once, well before waiting attempt checks staleness.
+                # Age between stale age and 5 times it: dead pid alone makes lock stale.
                 target = something(Corset.Engine.load_target(root, Corset.Config.Flags()))
-                lock = Corset.Launch.environment(target, IOBuffer()) * ".pid"
-                write(lock, "$(typemax(Int32)) $(gethostname())")
-                run(`touch -t 200001010000 $lock`)
+                env = Corset.Launch.environment(target, IOBuffer())
+                write("$env.pid", "$(typemax(Int32)) $(gethostname())")
+                run(`touch -d @$(round(Int, time()) - 2 * Corset.Launch.LOCK_STALE_SECONDS) $env.pid`)
+                @test_logs (:warn, r"stale pidfile") begin
+                    waiting = @async Corset.Launch.environment(target, IOBuffer())
+                    @test timedwait(() -> istaskdone(waiting), Corset.Launch.LOCK_STALE_SECONDS / 3) === :ok && fetch(waiting) == env && !isfile("$env.pid")
+                end
+                # Lock of live run holds until its holder releases it.
+                release = Channel{Nothing}(1)
+                holder = @async Corset.Launch.locked(() -> take!(release), "$env.pid")
+                @test timedwait(() -> isfile("$env.pid"), 10) === :ok
                 waiting = @async Corset.Launch.environment(target, IOBuffer())
-                @test timedwait(() -> istaskdone(waiting), 4 * Corset.Launch.LOCK_STALE_SECONDS) === :ok
+                sleep(1)
+                @test !istaskdone(waiting)
+                put!(release, nothing)
+                @test timedwait(() -> istaskdone(waiting), 30) === :ok && fetch(waiting) == env && istaskdone(holder)
                 # Crash past limit throws.
-                env = fetch(waiting)
                 @test_throws "over limit 0" Corset.Launch.supervise(env, ["check", root], nothing, IOBuffer(), IOBuffer(), 0)
             end
             # Manifest pins TextWrap 0.3; Corset needs ArgParse 1, which needs TextWrap 1. Compat bound blocks move.
