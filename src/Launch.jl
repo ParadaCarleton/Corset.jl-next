@@ -8,7 +8,7 @@ Relaunched process loads only from that environment and `@stdlib`, so default en
 """
 module Launch
 
-using FileWatching.Pidfile: mkpidlock
+using FileWatching.Pidfile: PidlockedError, mkpidlock
 using Base.ScopedValues: @with
 using Pkg: Pkg
 using Scratch: get_scratch!
@@ -151,10 +151,27 @@ function build!(env::String, project::ProjectFacts, tiers::Vector{Set{Base.UUID}
 end
 
 """
-Seconds before lock on environment build gives way after its holder died. Live holder refreshes lock every half; one
-whose refresh stalls keeps lock 5 times longer.
+Seconds after which lock of dead process on this host counts as stale. Live holder refreshes lock every half of this;
+lock of live or other-host process goes stale only after 5 times this.
 """
 const LOCK_STALE_SECONDS = 30
+
+"""Run `body` under pidfile lock at `path`. Stale lock clears at once; lock of live run is waited for."""
+function locked(body::Function, path::String)::Nothing
+    pidlock = try
+        mkpidlock(path; stale_age = LOCK_STALE_SECONDS, wait = false)
+    catch error
+        error isa PidlockedError || rethrow()
+        # Waiting attempt checks staleness only after it waits `stale_age` seconds.
+        mkpidlock(path; stale_age = LOCK_STALE_SECONDS)
+    end
+    try
+        body()
+    finally
+        close(pidlock)
+    end
+    return nothing
+end
 
 """Cached temporary environment for package of `project`; build it first when missing, with note to `err`."""
 function environment(project::ProjectFacts, err::IO)::String
@@ -162,7 +179,7 @@ function environment(project::ProjectFacts, err::IO)::String
     id = package_id(project)
     cache = get_scratch!(Base.moduleroot(@__MODULE__), "environments")
     env = joinpath(cache, cache_key(project))
-    mkpidlock("$env.pid"; stale_age = LOCK_STALE_SECONDS) do
+    locked("$env.pid") do
         isdir(env) && return
         println(err, "corset: building environment for $(id.name); later runs reuse it")
         # Relaunched process writes to same stream; note must come first.
