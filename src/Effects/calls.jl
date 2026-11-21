@@ -268,18 +268,38 @@ end
 
 """
 Most methods run-time dispatch in package code joins (`effects.md`, Calls, step 5): compiler `max_methods`, never below.
-Limit 8 reached 20 times more instances on Distances. Library code joins none (`join_limit`).
+Limit 8 reached 20 times more instances on Distances. Library code joins union splits only (`join_limit`).
 """
 const JOIN_LIMIT = 3
 
+"""Most union split cost (`effects.md`, Calls): compiler `max_union_splitting`."""
+const UNION_SPLIT_LIMIT = CC.InferenceParams().max_union_splitting
+
 """
 Instances of methods call with argument `types` can reach in `world`, each specialized to call; `nothing` past
-`limit` methods.
+`limit` methods. Past limit, union split (`union_split`) can still resolve call.
 """
 function dispatch(types::Vector{Any}, world::UInt, limit::Int)::Union{Nothing, Vector{Core.MethodInstance}}
     matches = Base._methods_by_ftype(Tuple{types...}, limit, world)
-    matches isa Vector || return nothing
+    matches isa Vector || return union_split(types, world, limit)
     return Core.MethodInstance[CC.specialize_method(match::Core.MethodMatch) for match in matches]
+end
+
+"""
+Instances that call with union argument `types` reaches, as compiler splits it: compiler cost check, then each
+combination of union members dispatches within `limit`. `nothing` when compiler splits none or one combination stays open.
+"""
+function union_split(types::Vector{Any}, world::UInt, limit::Int)::Union{Nothing, Vector{Core.MethodInstance}}
+    lattice = CC.JLTypeLattice()
+    # Cost counts longest union as 2: `(Union{A, B}, Union{C, D, E})` costs 4 and splits into 6 combinations.
+    CC.is_union_split_eligible(lattice, types, UNION_SPLIT_LIMIT) || return nothing
+    instances = Core.MethodInstance[]
+    for combination in CC.switchtupleunion(lattice, types)
+        found = dispatch(combination::Vector{Any}, world, limit)
+        isnothing(found) && return nothing
+        union!(instances, found)
+    end
+    return instances
 end
 
 """
