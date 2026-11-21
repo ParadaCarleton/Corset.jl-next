@@ -909,3 +909,30 @@ example = "`@addlogprob! logpdf(Gamma(2, 1), σ)` → `σ ~ Gamma(2, 1)`"
 group = "correctness"
 stage = "syntax"
 note = "DynamicPPL adds number to log likelihood, so prior term written so is lost under `Prior()` sampling and counted by maximum likelihood. Term has no variable: `rand`, `predict` and `pointwise_loglikelihoods` skip it, so predictive checks and PSIS-LOO miss it. `NamedTuple` form splits prior from likelihood but stays hidden from those queries. Rejection by `-Inf` counts too: support of distribution states constraint. Prefixes `Turing.` and `DynamicPPL.` match too. Definite. Fix `manual`: `Distribution` subtype with `logpdf`, `rand` when term can be simulated, and support bounds; then `x ~ D(θ)`."
+
+[[footgun]]
+id = 113
+area = "readability"
+text = "Ternary runs code as statement; value it picks is dropped"
+example = "`x > 0 ? push!(xs, x) : nothing`"
+group = "readability"
+stage = "syntax"
+note = "Julia manual: `?:` picks between values; `if` runs code. Statement position comes from `discarded` fact: branch, chain tail and `let` body follow their construct. Ternary whose value is used passes. Definite. Fix `safe`: `if x > 0; push!(xs, x); end`; literal branch drops, nested ternary in `else` branch becomes `elseif`."
+
+[[footgun]]
+id = 114
+area = "readability"
+text = "Function result is value of `&&` or `||` guard"
+example = "`check(x) = x > 0 || throw(DomainError(x))` returns `true`"
+group = "readability"
+stage = "syntax"
+note = "Guard: chain whose last term exits (`return`, `throw`, `error`, `rethrow`). As last value of named function, `||` guard returns `true` and `&&` guard returns `false`. Reader cannot tell whether `Bool` result is API. Closure and `do` block pass: caller picks use. Ternary with exit branch returns other branch: passes. Definite. Fix `manual`: `nothing` after guard when result is unused; `return true` when result is API."
+
+[[footgun]]
+id = 115
+area = "readability"
+text = "`&&` or `||` runs code as statement"
+example = "`n >= 0 || error(\"n must be non-negative\")`"
+group = "restriction"
+stage = "syntax"
+note = "Julia manual endorses form for short `if`, so rule is restriction. Clippy `short_circuit_statement` (complexity). Statement position as F113. Chain in condition or used value passes. Definite. Fix `safe`: `if !(n >= 0); error(...); end`. `!` wraps term in parentheses unless term is call, name or `!` call (`!!x` becomes `x`); comparison never inverts, since `NaN` breaks `!(a >= b) == (a < b)`. Chain tail that is chain becomes nested `if`."

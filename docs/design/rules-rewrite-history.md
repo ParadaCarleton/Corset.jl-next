@@ -1201,3 +1201,15 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Facts: JSON and DataStructures same as main; Distributions gives one of two sets that change per build ("Visit order").
 - Rejected: walk in old push order (7808 MB on JSON). Per-build fact sets explained earlier fact change; order gave nothing.
 - Rejected: size hint in `add_all!` (job 854). Hint grew small tables early: JSON 7287 to 8669 MB.
+
+### Restriction group
+
+- Unused value of `&&`, `||` or `?:` is syntax fact. Lowering drops unused value, so `x || error()` and `if` give same branches.
+- `discarded` stopped at nearest block, so branch, chain tail and `let` body counted as used inside loop. PR #274 follows value through them.
+- Julia manual endorses `&&` and `||` for short `if` (control-flow.md, "Short-Circuit Evaluation"). Base writes `x || throw(...)` throughout.
+- So default rule against form fights language: F115 goes to new `restriction` group, off in every preset. Clippy groups its taste lints so.
+- Manual says `?:` picks between values. Ternary as statement goes against manual: F113, readability.
+- Guard as last value of named function returns constant `Bool` nobody asked for: F114, readability.
+- `pedantic` (see "Groups (decided)") held strict, noisy rules; confidence now handles noise. Restriction holds taste only.
+- `wildcard-arm` was dropped for want of per-rule default levels. Restriction group now fits it; not re-added.
+- Library preset enabled `instances(Group.T)`, so new group would turn on by default. Preset lists groups by name.

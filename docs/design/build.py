@@ -15,7 +15,7 @@ from pathlib import Path
 from markdown_it import MarkdownIt
 
 DESIGN = Path(__file__).resolve().parent
-GROUPS = ("correctness", "safety", "performance", "composability", "readability")
+GROUPS = ("correctness", "safety", "performance", "composability", "readability", "restriction")
 # (file or generated table, section id) in page order
 ORDER = [("principles.md", "principles"), ("footguns", "footguns"), ("pipeline.md", "pipeline"), ("stages", "stages"),
          ("rules", "rules"), ("findings.md", "findings"), ("types.md", "types"), ("effects.md", "effects"),

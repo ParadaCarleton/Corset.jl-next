@@ -437,3 +437,17 @@ footguns = [102]
 name = "unused-binding"
 footguns = [103]
 note = "Kinds: local, argument, `where` parameter."
+
+[[rule]]
+name = "ternary-statement"
+footguns = [113]
+
+[[rule]]
+name = "guard-result"
+footguns = [114]
+note = "Named functions only: long form and short form."
+
+[[rule]]
+name = "short-circuit-statement"
+footguns = [115]
+note = "Restriction: off in every preset."

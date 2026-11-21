@@ -2,7 +2,7 @@
 
 How findings are graded, filtered, configured, shown and fixed.
 
-Five groups: `correctness`, `safety`, `performance`, `composability`, `readability`. Correctness holds code that misbehaves now: input, path or broken contract. Safety holds code that works now but lets later mistake pass silently; its fix makes Julia catch mistake. Readability holds house style: anything that makes code hard to read. Composability holds code that must work with other types and future Julia versions.
+Six groups: `correctness`, `safety`, `performance`, `composability`, `readability`, `restriction`. Correctness holds code that misbehaves now: input, path or broken contract. Safety holds code that works now but lets later mistake pass silently; its fix makes Julia catch mistake. Readability holds house style: anything that makes code hard to read. Composability holds code that must work with other types and future Julia versions. Restriction holds opinionated rules: each forbids form that Julia manual or Base uses as idiom.
 
 Noise is no longer reason for group. Each finding says how sure analysis is. One setting picks what to report:
 
@@ -16,7 +16,9 @@ Note: Rules with both kinds: `bang-convention` (dispatch candidates disagree on 
 
 ### Groups
 
-`correctness`, `safety`, `performance`, `composability`, `readability`. One group per rule, `banned` included.
+`correctness`, `safety`, `performance`, `composability`, `readability`, `restriction`. One group per rule, `banned` included.
+
+Restriction test: does Julia manual or Base use form as idiom? Then rule against form is taste: `restriction`. No preset enables restriction; project turns its rules on one by one, as Clippy `restriction` lints.
 
 Safety test: does fix turn silent mistake into error, failed check or failed test? `broad-catch` fix rethrows unexpected errors; `unchecked-enum` fix gets exhaustiveness check.
 
@@ -75,12 +77,12 @@ Preset over groups and fix tier. Answers "who uses this code?"
 
 | Kind | Groups | Fix tier |
 |---|---|---|
-| `library` | all five | `likely` |
+| `library` | all but restriction | `likely` |
 | `application` | correctness, safety, performance, readability | `breaking` |
 | `script` | correctness, safety, readability | `breaking` |
 
 - Infer `script` for file with no Project.toml; `application` for Project.toml with no `name`. Otherwise setting is required.
-- Preset sets levels: correctness `deny`, other listed groups `warn`, unlisted groups `allow`. Levels and tier stay overridable per project.
+- Preset sets levels: correctness `deny`, other listed groups `warn`, unlisted groups `allow`. Restriction is `allow` in every preset. Levels and tier stay overridable per project.
 
 ### Fix tiers
 

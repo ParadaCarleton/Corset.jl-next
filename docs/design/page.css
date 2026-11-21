@@ -46,6 +46,7 @@ header { display: grid; gap: 12px; }
 .g-performance { color: var(--g-perf); background: var(--tint-perf); }
 .g-composability { color: var(--g-compose); background: var(--tint-compose); }
 .g-readability { color: var(--g-read); background: var(--tint-read); }
+.g-restriction { color: var(--g-ext); background: var(--tint-ext); }
 .g-external { color: var(--g-ext); background: var(--tint-ext); }
 .chip.pr { border: 1px dashed currentColor; background: none; }
 .status { font-family: var(--mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); white-space: nowrap; }
