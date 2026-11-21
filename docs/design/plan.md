@@ -32,7 +32,7 @@ Speed budget (draft): time from Corset ready to findings out; Julia startup and 
 - `effects` stage: at most 2.5× `inference` stage time with empty library cache or cache from other package.
 - `effects` stage with warm library cache: at most `inference` stage time.
 - Legacy runs no effects analysis, so ratio to legacy leaves `effects` stage out.
-- Distributions 0.25.135 with empty cache: `inference` 48 s, `effects` 112 s, ratio 2.3 (numerics survey).
+- Corpus on main 725b59a0 (history, "Gate speed check"): cold `effects` at most 1.55 times `inference`; warm cache at most 1.0 except Distributions, 0.96 to 1.16.
 
 Syntax stage: 21 rules take 15–40 ms per 10,000 lines; rule time grows linearly with rule count.
 

@@ -1232,6 +1232,25 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - StatsFuns has no logging call; its methods reach `@warn` in SpecialFunctions `beta_inc`.
 - Count of all kinds fails 30% on Distances and Distributions. Count of kinds `bang-convention` judges passes on all five.
 
+### Gate speed check
+
+- Jobs 1493 to 1497 (winwsl under other load, main 725b59a0). Cell: `effects` seconds over `inference` seconds of same run.
+
+| Package | Cache from other package (seed) | Empty cache | Warm cache |
+|---|---|---|---|
+| Distances 0.10.12 | 7.96 / 5.14 = 1.55 (DataStructures) | 7.39 / 6.33 = 1.17 | 6.39 / 6.75 = 0.95 |
+| DataStructures 0.18.22 | 9.56 / 9.18 = 1.04 (Distances) | 11.55 / 7.79 = 1.48 | 7.42 / 8.10 = 0.92 |
+| SpecialFunctions 2.9.2 | 6.74 / 18.40 = 0.37 (StatsFuns) | 7.35 / 17.41 = 0.42 | 5.34 / 17.17 = 0.31 |
+| StatsFuns 2.3.1 | 2.31 / 8.46 = 0.27 (SpecialFunctions) | 2.56 / 8.25 = 0.31 | 2.22 / 9.42 = 0.24 |
+| Distributions 0.25.135 | 43.71 / 42.87 = 1.02 (StatsFuns) | 47.79 / 46.15 = 1.04 | 42.04 / 36.09 = 1.16 |
+
+- Cold run, empty cache or cache from other package: at most 1.55 times `inference`. Budget 2.5 holds on all five.
+- Warm cache holds `inference` time on four packages. Distributions repeat (job 1532, main 11d32bd7): warm 1.03, 0.96, 1.03; empty 1.12.
+- Distributions warm cache sits at `inference` time within load noise. Job 838 (ed05f71b) gave 0.90.
+- Warm solve allocation of Distributions: 4358 MB after #271 (job 899), 4659 MB now. Box load explains most of time growth.
+- Empty cache stores entries: Distances 6435, DataStructures 12328, SpecialFunctions 11050, StatsFuns 6495, Distributions 28592.
+- Benchmark warm arm warms library cache only. Real rerun also reads unit records from method store, so unchanged units skip solve.
+
 ### Visit order
 
 - `trace` and `load_any` kept doubt of first chain to reach origin. Chain with less doubt found later got lost: access stayed blind.
