@@ -1899,7 +1899,7 @@ end
     @test only(calls_to(:stand_in_calls, :require_one_based_indexing)).stand_in && !dropped.stand_in
     @test strip(line_text(dropped.span)) == "abs(length(values))"
     pushed = only(calls_to(:drop_calls!, :push!))
-    @test !pushed.used && pushed.kinds == [memory_kind]
+    @test !pushed.used && pushed.kinds == pushed.definite == [memory_kind]
     @test only(calls_to(:drop_calls!, :parse)).throws
     @test [call.used for call in calls_to(:drop_calls!, :length)] == [true, true]
     foreign = only(call for call in named(:drop_calls!).calls if call.callee == Callee.Foreign())
@@ -1907,14 +1907,15 @@ end
     # Builtin, open call, and call that no method matches: it throws.
     odd = named(:odd_calls).calls
     @test any(call -> call.callee == Callee.Builtin(Core.ifelse) && !call.used && isempty(call.kinds) && !call.throws, odd)
-    @test any(call -> call.callee == Callee.Open() && !call.used, odd)
+    # Open call may write: its write kind has doubt, so it is not definite.
+    @test any(call -> call.callee == Callee.Open() && !call.used && memory_kind in call.kinds && isempty(call.definite), odd)
     dead = only(call for call in odd if call.callee == Callee.Methods(Method[]))
     @test dead.throws && !dead.used
     # Compaction turns use of constant result into literal; use before compaction counts.
     converts = [call for call in named(:constant_calls).calls if call.callee == Callee.Methods([which(UInt8, Tuple{Char})])]
     @test [(strip(line_text(call.span)), call.used) for call in converts] == [("UInt8('a')", false), ("return byte == UInt8('\\t')", true)]
     # Lock primitive, and callee that leaves lock held: synchronization.
-    @test only(calls_to(:grab_guard!, :lock)).kinds == [lock_kind]
+    @test only(calls_to(:grab_guard!, :lock)).kinds == only(calls_to(:grab_guard!, :lock)).definite == [lock_kind]
     @test only(calls_to(:grab_then_set!, :grab_guard!)).kinds == [lock_kind]
     # Shortcut unit keeps code for call facts; its summary stays empty.
     run = start_run(nothing, Module[])
@@ -1935,14 +1936,14 @@ end
     @test length(bodies[1].ir.stmts) == length(bodies[2].ir.stmts) && bodies[1].used == bodies[2].used
     # Units of method merge: methods join; other callee pair gives open dispatch.
     span = named(:drop_calls!).site.span
-    first_fact = CallFact(span, Callee.Methods([only(methods(CASES.no_text_method))]), [EffectKind.io], false, true, false, false, true)
-    second_fact = CallFact(span, Callee.Methods([only(methods(CASES.take_lock!))]), [memory_kind], true, false, true, true, false)
+    first_fact = CallFact(span, Callee.Methods([only(methods(CASES.no_text_method))]), [EffectKind.io], EffectKind.T[], false, true, false, false, true)
+    second_fact = CallFact(span, Callee.Methods([only(methods(CASES.take_lock!))]), [memory_kind], [memory_kind], true, false, true, true, false)
     merged = merge_calls(first_fact, second_fact)
     # Callee methods keep source order whatever order units merge in.
     @test merged.callee == Callee.Methods([only(methods(CASES.take_lock!)), only(methods(CASES.no_text_method))])
     @test merge_calls(second_fact, first_fact).callee == merged.callee
     @test methods_callee([only(methods(CASES.no_text_method)), only(methods(CASES.take_lock!)), only(methods(CASES.no_text_method))]) == merged.callee
-    @test merged.kinds == [memory_kind, EffectKind.io] && merged.throws && !merged.terminates && merged.used && merged.closed_world && merged.stand_in
+    @test merged.kinds == [memory_kind, EffectKind.io] && merged.definite == [memory_kind] && merged.throws && !merged.terminates && merged.used && merged.closed_world && merged.stand_in
     @test merge_callees(Callee.Foreign(), Callee.Foreign()) == Callee.Foreign()
     @test merge_callees(Callee.Foreign(), first_fact.callee) == Callee.Open()
     # Callee name needs one function: two names give none.

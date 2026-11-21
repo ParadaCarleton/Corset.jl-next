@@ -163,7 +163,8 @@ end
 """Fact of call statement over two units of method (`CallFact`)."""
 function merge_calls(first::CallFact, second::CallFact)::CallFact
     kinds = sort!(union(first.kinds, second.kinds))
-    return CallFact(first.span, merge_callees(first.callee, second.callee), kinds, first.throws || second.throws, first.terminates && second.terminates, first.used || second.used, first.closed_world || second.closed_world, first.stand_in || second.stand_in)
+    definite = sort!(union(first.definite, second.definite))
+    return CallFact(first.span, merge_callees(first.callee, second.callee), kinds, definite, first.throws || second.throws, first.terminates && second.terminates, first.used || second.used, first.closed_world || second.closed_world, first.stand_in || second.stand_in)
 end
 
 """Add call facts `found` of unit to `calls` of its method: units of method merge (`merge_calls`)."""

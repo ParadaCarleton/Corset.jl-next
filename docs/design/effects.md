@@ -316,7 +316,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Fact of incomplete method has `complete` false: it gets no definite none.
 - Per unit, for `lifecycle` and statement rules (F48, F50, F51): allocation sites, read, write and iteration-start events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.
 - Element event carries index operand: constant or SSA value. `lifecycle` decides which elements writes cover (F33, F34).
-- Per call statement: callee, kinds of its writes at any certainty, may throw, terminates, result used or discarded (F54, F86).
+- Per call statement: callee, kinds of its writes at any certainty and of definite ones, may throw, terminates, result used or discarded (F54, F56, F86).
 - Call fact is closed-world when its verdict joins methods loaded now: Base contract, dispatch to several methods, or such callee. Its none is at most `possible`.
 - Call with stand-in operand type: compiler flags and writes hold for stand-in only. Its none is at most `possible`.
 - TypedSyntax.jl maps no statement whose value code drops. Lone discarded call statement on its line that spells call gives exact span.

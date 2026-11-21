@@ -187,17 +187,18 @@ callee_methods(callee::Callee.Type)::Union{Nothing, Vector{Method}} = @match cal
 end
 
 """
-Call statement of package method (`effects` stage fact, F54, F86): span, callee, and kinds of writes call makes at any
-certainty, holds it leaves included. Compiler effects give `throws` (may throw) and `terminates`. `used`: code reads
-result. `closed_world`: call verdict joins methods loaded now (Base contract, dispatch to several methods, or callee
-that joins). `stand_in`: operand type holds stand-in, so compiler flags and writes hold for stand-in type only. Either
-makes its none at most `possible`. Units of method merge: any unit that may throw, writes, uses result, joins or has
-stand-in operand decides.
+Call statement of package method (`effects` stage fact, F54, F56, F86): span, callee, and kinds of writes call makes
+at any certainty, holds it leaves included; `definite` keeps kinds of writes without doubt. Compiler effects give
+`throws` (may throw) and `terminates`. `used`: code reads result. `closed_world`: call verdict joins methods loaded now
+(Base contract, dispatch to several methods, or callee that joins). `stand_in`: operand type holds stand-in, so
+compiler flags and writes hold for stand-in type only. Either makes its none at most `possible`. Units of method
+merge: any unit that may throw, writes, uses result, joins or has stand-in operand decides.
 """
 struct CallFact
     span::Span
     callee::Callee.Type
     kinds::Vector{EffectKind.T}
+    definite::Vector{EffectKind.T}
     throws::Bool
     terminates::Bool
     used::Bool

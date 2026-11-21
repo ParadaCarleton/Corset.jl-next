@@ -54,7 +54,7 @@ function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees):
     derive_call!(flow, index, outcome_operands(outcome))
     skipped = flow.primitives[index]
     if !isnothing(skipped) && skipped.skips
-        flow.record && (flow.call_kinds[index] = Set([EffectKind.synchronization]))
+        flow.record && (flow.call_kinds[index] = flow.call_definite[index] = Set([EffectKind.synchronization]))
         # Lock body moves scheduler state only; release balance counts its hold.
         return assign!(flow, index, unknown(CODE_DOUBT))
     end
@@ -73,6 +73,7 @@ function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees):
     start = started(flow.ir, index, outcome)
     isnothing(start) || access!(flow.reads, value_targets(flow, something(start)), false, definite(index), EffectKind.iteration)
     flow.record && (flow.call_kinds[index] = call_kinds(outcome, writes, callees, index))
+    flow.record && (flow.call_definite[index] = Set{EffectKind.T}(kind for ((_, _, kind), effect) in writes if level_of(effect.doubt) == Level.none))
     flow.record && closed_call(outcome, callees, index) && push!(flow.call_closed, index)
     (message || flow.record) && merge_accesses!(flow.writes, writes, message)
     return nothing
@@ -142,14 +143,14 @@ closed_call(outcome::Outcome.Type, callees::Callees, index::Int)::Bool = @match 
 end
 
 """
-Call statement facts before span (`CallFact`): callee, write kinds, may throw, terminates, result used, closed world,
-stand-in operand.
+Call statement facts before span (`CallFact`): callee, write kinds, kinds of definite writes, may throw, terminates,
+result used, closed world, stand-in operand.
 """
-const CallRecord = @NamedTuple{callee::Callee.Type, kinds::Vector{EffectKind.T}, throws::Bool, terminates::Bool, used::Bool, closed_world::Bool, stand_in::Bool}
+const CallRecord = @NamedTuple{callee::Callee.Type, kinds::Vector{EffectKind.T}, definite::Vector{EffectKind.T}, throws::Bool, terminates::Bool, used::Bool, closed_world::Bool, stand_in::Bool}
 
 """
-Facts of call statement `index` of `flow` that records call kinds, whose result code `used`: callee, write kinds,
-compiler `nothrow` and `terminates` flags, whether verdict joins methods loaded now (`closed_call`), and whether
+Facts of call statement `index` of `flow` that records call kinds, whose result code `used`: callee, write kinds and
+kinds of definite writes, compiler `nothrow` and `terminates` flags, whether verdict joins methods loaded now (`closed_call`), and whether
 operand type holds stand-in (`holds_stand_in`).
 """
 function call_record(flow::Flow, index::Int, used::Bool)::CallRecord
@@ -158,7 +159,8 @@ function call_record(flow::Flow, index::Int, used::Bool)::CallRecord
     outcome = something(flow.outcomes[index])
     stand_in = any(operand -> holds_stand_in(operand_type(flow.ir, operand)), outcome_operands(outcome))
     return (
-        callee = outcome_callee(flow.ir.stmts[index][:stmt], outcome), kinds = kinds, throws = may_throw(flow.ir, index),
+        callee = outcome_callee(flow.ir.stmts[index][:stmt], outcome), kinds = kinds,
+        definite = sort!(collect(get(flow.call_definite, index, Set{EffectKind.T}()))), throws = may_throw(flow.ir, index),
         terminates = terminates, used = used, closed_world = index in flow.call_closed, stand_in = stand_in,
     )
 end
