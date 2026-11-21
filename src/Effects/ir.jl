@@ -57,9 +57,12 @@ end
 """Statements that move no value: flow skips them, and release balance walks blocks through them."""
 const CONTROL = Union{Core.GotoNode, Core.GotoIfNot, Core.EnterNode, Core.UpsilonNode}
 
+"""Whether `statement` is control statement, or `leave` or `pop_exception`: try region needs each to meet its `enter`."""
+structural(@nospecialize(statement::Any))::Bool = statement isa CONTROL || (statement isa Expr && statement.head in (:leave, :pop_exception))
+
 """
 Statements of `ir` where branch on argument with constant in `flags` (position and `Bool`) takes that constant. Each
-statement of block no path from entry reaches becomes `nothing`, control statement excepted.
+statement of block no path from entry reaches becomes `nothing`, structural statement excepted (`structural`).
 """
 function drop_unreached(ir::CC.IRCode, flags::Dict{Int, Bool})::CC.InstructionStream
     stmts, blocks = copy(ir.stmts), ir.cfg.blocks
@@ -76,7 +79,7 @@ function drop_unreached(ir::CC.IRCode, flags::Dict{Int, Bool})::CC.InstructionSt
         push!(pending, flag ? block + 1 : terminator.dest)
     end
     for block in findall(!, reached), index in blocks[block].stmts
-        stmts[index][:stmt] isa CONTROL || (stmts[index][:stmt] = nothing)
+        structural(stmts[index][:stmt]) || (stmts[index][:stmt] = nothing)
     end
     return stmts
 end

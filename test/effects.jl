@@ -1269,6 +1269,20 @@ flag_store!(x::Vector{Int}, store::Bool) = (store && (x[1] = 0); x)
 flag_off(x::Vector{Int}) = flag_store!(x, false)
 flag_on(x::Vector{Int}) = flag_store!(x, true)
 
+"""Branch that constant flag drops holds `try`: `leave` in dropped block must stay."""
+function flag_try!(x::Vector{Int}, careful::Bool)
+    if careful
+        try
+            x[1] = 0
+            return x
+        catch
+            return x
+        end
+    end
+    return x
+end
+flag_try_off(x::Vector{Int}) = flag_try!(x, false)
+
 @testset "variant parameters" begin
     run = start_run(nothing, Module[])
     instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world, 1)))
@@ -1289,6 +1303,8 @@ flag_on(x::Vector{Int}) = flag_store!(x, true)
     @test isempty(summary_of(flag_off, Vector{Int}).writes)
     @test doubts(summary_of(flag_on, Vector{Int}).writes) == Dict(top(2) => NO_DOUBT)
     @test haskey(doubts(summary_of(flag_store!, Vector{Int}, Bool).writes), top(2))
+    # Dropped branch keeps its try region balanced (`Base.rm` with `recursive = false` crashed release balance).
+    @test isempty(summary_of(flag_try_off, Vector{Int}).writes)
 end
 
 """Wrapper whose type grows at each recursion step."""
