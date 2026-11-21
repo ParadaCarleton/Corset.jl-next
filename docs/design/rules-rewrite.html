@@ -877,6 +877,7 @@ Constant <code>Bool</code> argument that callee uses as branch condition also ma
 <code>HAMT.path(trie, key, h, false)</code> skips copy-on-write store, so <code>ScopedValue</code> read writes nothing. Julia inference resolves the same constant.</li>
 <li>Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.</li>
 <li>Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.
+Past 3, call whose matching methods all belong to target package joins them all: Corset analyzes package methods anyway.
 Access that some members lack takes sources of open operands, as open dispatch does: operand types pick member.
 Blind access of one member and exact access of another disagree: join gives <code>possible</code>.</li>
 <li>Base interface function with documented contract (<code>setindex!</code> writes collection; <code>length</code> reads only; <code>view</code> result lies within array). Breach in package method is finding.</li>
@@ -914,6 +915,8 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li>Open call (step 7) whose open operands come from opaque and opt-out arguments only: no finding (Provenance). Opaque argument counts on coverage line: <code>open dispatch on opaque data</code>.</li>
 <li>Other open call: doubt in code, <code>possible</code> finding.</li>
 <li>Limit 3 is compiler <code>max_methods</code>, never below. Limit 8 reached 20 times more instances on Distances.</li>
+<li>Own join goes past compiler: Distances <code>_evaluate</code> matches about 20 metric methods, so compiler gives up.</li>
+<li>Method of other package or Base in match list keeps call open: its methods are no units.</li>
 <li>Library code joins union splits only: its other run-time dispatch stays open (step 7). Joins there raised <code>possible</code> share and cost most time.</li>
 <li>Union split: past limit, call on union arguments splits as compiler splits it. Limit: compiler split cost at most 4 (<code>max_union_splitting</code>).</li>
 <li>Split cost counts longest union as 2: <code>(Union{A, B}, Union{C, D, E})</code> costs 4 and splits into 6 combinations.</li>
