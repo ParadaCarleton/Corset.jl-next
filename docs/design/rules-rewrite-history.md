@@ -1173,6 +1173,46 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Warm `effects` stays at most `inference` on all five. Box ran other jobs, so ratios near 1 carry noise.
 - `possible` limit 30% fails on Distances and Distributions.
 
+### Contract and join audit
+
+- Gate row 5 needs hand audit of 20 contract and join verdicts. `diagnostics/audit.jl` lists definite writes whose trace reaches either.
+- Jobs 1468 to 1473 (winwsl, main 1d943276), rows (method, place, origin): Distributions 71, Distances 538, DataStructures 241.
+- SpecialFunctions and StatsFuns have no such row.
+- Audit took 25 methods: 15 contract, 10 join. Each written argument has write on some path of source. No false definite.
+
+| Package | Method | Argument written | Origin | Write |
+|---|---|---|---|---|
+| Distributions | `_lkj_cholesky_onion_tri!` | `A` | contract | `lkjcholesky.jl:239` |
+| Distributions | `rand!(d, R::Cholesky)` | `R.factors` | contract, 3 calls down | `lkjcholesky.jl:239` |
+| Distributions | `rand!(rng, d, Rs, allocate)` | `Rs`, `Rs[i].factors` | contract | `lkjcholesky.jl:189`, `197` |
+| Distributions | `rand!(rng, d, Rs)` | `Rs` | contract | `lkjcholesky.jl:189` |
+| Distributions | `insupport!(r, d, X)` | `r` | contract | `multivariates.jl:41` |
+| Distributions | `_rand!(rng, d::ArrayOfUnivariateDistribution, x)` | `x` | contract | `product.jl:127` |
+| Distributions | `componentwise_pdf!(r, d, x)` | `r` | contract | `mixturemodel.jl:387` |
+| Distributions | `rand!(s, X)` | `X` | join of 3 `rand!` | `univariates.jl:146` and others |
+| Distances | `sqrt!(a)` | `a` | contract | `common.jl:82` |
+| Distances | `dot_percol!(r, a, b)` | `r` | contract | `common.jl:121` |
+| Distances | `_pairwise!(::Mahalanobis, r, a, b)` | `r` | contract | `mahalanobis.jl:137` |
+| Distances | deprecated `pairwise!(r, dist, a)` | `r` | contract | `metrics.jl`, through `_pairwise!` |
+| DataStructures | `inc!(ft, ind, val)` | `ft.bi_tree` | contract | `fenwick.jl:44` |
+| DataStructures | `initializeTree!(tree)` | `tree` | contract (`resize!`) | `balanced_tree.jl:76` |
+| DataStructures | `rh_insert!(h, key, val)` | `h.vals`, `h.keys`, `h.hashes` | contract | `robin_dict.jl:115` to `117` |
+| DataStructures | `push!(d::DefaultDict, p, q, r...)` | `d` | contract (splat) | `default_dict.jl:141` |
+| DataStructures | `delete!(t::BalancedTree23, it)` | `t.deletionleftkey` | join of 2 `setindex!` | `balanced_tree.jl:685` |
+| DataStructures | `push!(s::DisjointSets, x)` | `s.intmap`, `s.revmap` | joins of 2 `setindex!`, 2 `push!` | `disjoint_set.jl:232`, `233` |
+| DataStructures | `percolate_down!(xs, i, x, o, len)` | `xs` | join of stand-in and Base `setindex!` | `arrays_as_heaps.jl:29` |
+| DataStructures | `percolate_down!(pq, i)` | `pq.xs` | join of 2 `setindex!` | `priorityqueue.jl:141` |
+| DataStructures | `enqueue!(pq, pair)` | `pq.index`, `pq.xs` | join of 2 `setindex!`; contract | `priorityqueue.jl:233`, `234` |
+| DataStructures | `mergetwo!(m::SortedDict, m2)` | `m.bt.data` | join of 2 `setindex!` | `sorted_dict.jl:533` |
+| DataStructures | `merge!(d::SortedDict, other::PriorityQueue)` | `d.bt.data` | join of 2 `setindex!` | `priorityqueue.jl:364` |
+| DataStructures | `pop!(a::DefaultDict, args...)` | `a.d.d` | join of 3 `Dict` `pop!` | `delegate.jl:21` |
+| DataStructures | `setindex!(a::DefaultOrderedDict, args...)` | `a.d.d` | join of `OrderedDict` and `AbstractDict` `setindex!` | `delegate.jl:37` |
+
+- Contract on nested collection gives coarse place: `push!(d::DefaultDict, p, q, r...)` writes `d` itself, and code writes `d.d.d`. Argument is right.
+- Join on stand-in argument has stand-in method as member: `percolate_down!` joins `StandIns.setindex!` and `Base.setindex!`. Members agree.
+- Script follows every definite write of static callee, so origin label can over-approximate. `depwarn` lazy-init writes show contract origin.
+- Audit judged memory writes only. Lazy init and audited internal state come from audited table.
+
 ### Visit order
 
 - `trace` and `load_any` kept doubt of first chain to reach origin. Chain with less doubt found later got lost: access stayed blind.
