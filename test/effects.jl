@@ -1543,6 +1543,7 @@ hold!(l::ReentrantLock) = lock(l)
 matches(r::Regex, s::String) = occursin(r, s)
 text_of(s::LazyString) = String(s)
 note(x::Int) = @info "note" x
+warn_old(x::Int) = (Base.depwarn("old", :warn_old); x)
 
 """Kinds of accesses in `table` on places with `root`."""
 kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.Type)::Set{EffectKind.T} = Set(kind for (place, _, kind) in keys(table) if root_of(place) == root)
@@ -1578,6 +1579,10 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     @test summary_of(text_of, LazyString).writes[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT
     @test EffectKind.audited in kinds_at(summary_of(note, Int).reads, Root.Global(GlobalRef(Base.CoreLogging, :_global_logstate)))
     @test kinds_at(summary_of(Base.unsafe_convert, Type{Ref{BigFloat}}, Base.MPFR.BigFloatData).writes, Root.Parameter(3)) == Set([EffectKind.audited])
+    # `JULIA_DEBUG` cache and frame lookup of deprecation write unknown objects as audited state only.
+    for logs in (note, warn_old)
+        @test !any(kind == EffectKind.memory && root_of(place) == elsewhere && level_of(effect.doubt) == Level.code for ((place, _, kind), effect) in summary_of(logs, Int).writes)
+    end
     # Helpers: special types, `Task` fields, field index, step types.
     @test special_kind(IOBuffer) == io && isnothing(special_kind(Union{})) && isnothing(special_kind(1)) && special_kind(Base.Semaphore) == EffectKind.synchronization
     @test (site_kind(Task, :rngState0), site_kind(Task, :scope), site_kind(Task, :storage)) == (EffectKind.default_rng, EffectKind.scoped_read, EffectKind.task_local)

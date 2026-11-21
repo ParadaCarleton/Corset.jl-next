@@ -22,10 +22,13 @@ const AUDITED_GLOBALS = Dict{GlobalRef, EffectKind.T}(
 """
 Audited state by method: its memory accesses below listed root take listed kind. `unsafe_convert(Ref{BigFloat},
 ::BigFloatData)` rewrites stale MPFR limb pointer of its argument; `task_local_storage` writes storage of current task.
+Logging: `env_override_minlevel` caches parsed `JULIA_DEBUG` in captured boxes; `_depwarn` reads frames of backtrace.
 """
 const AUDITED_METHODS = Dict{Method, Pair{Root.Type, EffectKind.T}}(
     which(Base.unsafe_convert, (Type{Ref{BigFloat}}, Base.MPFR.BigFloatData)) => (Root.Parameter(3) => EffectKind.audited),
     (method => (Root.Elsewhere() => EffectKind.task_local) for method in methods(task_local_storage))...,
+    which(Base.CoreLogging.env_override_minlevel, (Any, Any)) => (Root.Elsewhere() => EffectKind.audited),
+    which(Base._depwarn, (Any, Any, Bool)) => (Root.Elsewhere() => EffectKind.audited),
 )
 
 """Kind of access to object of `type` itself: `IO`, RNG or synchronization object; `nothing` for other types."""
