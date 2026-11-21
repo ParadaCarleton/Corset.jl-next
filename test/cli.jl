@@ -516,8 +516,15 @@ end
                 @test occursin("inference crashed process: 1", out) && !occursin("signal", err)
                 report = last(split(only(filter(contains("Report: "), split(err, '\n'))), "Report: "))
                 @test occursin("signal", read(report, String))
+                # Lock that crashed build left gives way after `LOCK_STALE_SECONDS`: later runs do not wait forever.
+                target = something(Corset.Engine.load_target(root, Corset.Config.Flags()))
+                lock = Corset.Launch.environment(target, IOBuffer()) * ".pid"
+                write(lock, "$(typemax(Int32)) $(gethostname())")
+                run(`touch -t 200001010000 $lock`)
+                waiting = @async Corset.Launch.environment(target, IOBuffer())
+                @test timedwait(() -> istaskdone(waiting), 4 * Corset.Launch.LOCK_STALE_SECONDS) === :ok
                 # Crash past limit throws.
-                env = Corset.Launch.environment(something(Corset.Engine.load_target(root, Corset.Config.Flags())), IOBuffer())
+                env = fetch(waiting)
                 @test_throws "over limit 0" Corset.Launch.supervise(env, ["check", root], nothing, IOBuffer(), IOBuffer(), 0)
             end
             # Manifest pins TextWrap 0.3; Corset needs ArgParse 1, which needs TextWrap 1. Compat bound blocks move.
