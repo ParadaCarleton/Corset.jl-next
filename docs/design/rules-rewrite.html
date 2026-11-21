@@ -1352,7 +1352,14 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li>Message shows cause span and concrete fix; reviewed on corpus sample.</li>
 <li>Run time stays inside budget in CI perf test. Same test checks each rule, parse and whole run for cost linear in function size.</li>
 </ul>
-<p>Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.</p>
+<p>Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.</p>
+<ul>
+<li><code>check</code> and <code>inference</code> stages: full cold run at least 5× faster than legacy on same package.</li>
+<li><code>effects</code> stage: at most 2.5× <code>inference</code> stage time with empty library cache or cache from other package.</li>
+<li><code>effects</code> stage with warm library cache: at most <code>inference</code> stage time.</li>
+<li>Legacy runs no effects analysis, so ratio to legacy leaves <code>effects</code> stage out.</li>
+<li>Distributions 0.25.135 with empty cache: <code>inference</code> 48 s, <code>effects</code> 112 s, ratio 2.3 (numerics survey).</li>
+</ul>
 <p>Syntax stage: 21 rules take 15–40 ms per 10,000 lines; rule time grows linearly with rule count.</p>
 <p>Cold run, same scope (target loaded first, default threads):</p>
 <div class="scroll"><table>
@@ -1621,7 +1628,7 @@ Distributions rebuild fails: Julia skips one narrowing when match loop stops ear
 Julia PR #65131 fixes it: one fact set over 14 rebuilds, stock gives two (job 1071). Gate passes on first Julia release with fix.</li>
 <li>Hand audit of 20 contract and join verdicts finds no false definite.</li>
 <li>With warm library cache, <code>effects</code> stage takes at most <code>inference</code> stage time.</li>
-<li>Full cold run with library cache from other corpus package stays inside speed budget.</li>
+<li>Full cold run with library cache from other corpus package stays inside speed budget (<code>plan.md</code>): <code>effects</code> at most 2.5× <code>inference</code>.</li>
 <li>First run with empty library cache and cold Base cache build are measured.</li>
 </ul>
 <p>Fail: revise call resolution, then run gate again. Log result in history; put timings in <code>plan.md</code> speed budget.</p>

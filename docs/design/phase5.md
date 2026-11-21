@@ -122,7 +122,7 @@ Run engine on each corpus package (`plan.md`, Corpus). Every item holds per pack
   Julia PR #65131 fixes it: one fact set over 14 rebuilds, stock gives two (job 1071). Gate passes on first Julia release with fix.
 - Hand audit of 20 contract and join verdicts finds no false definite.
 - With warm library cache, `effects` stage takes at most `inference` stage time.
-- Full cold run with library cache from other corpus package stays inside speed budget.
+- Full cold run with library cache from other corpus package stays inside speed budget (`plan.md`): `effects` at most 2.5× `inference`.
 - First run with empty library cache and cold Base cache build are measured.
 
 Fail: revise call resolution, then run gate again. Log result in history; put timings in `plan.md` speed budget.

@@ -26,7 +26,13 @@ Rule is on by default only when all hold:
 - Message shows cause span and concrete fix; reviewed on corpus sample.
 - Run time stays inside budget in CI perf test. Same test checks each rule, parse and whole run for cost linear in function size.
 
-Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Full cold run at least 5× faster than legacy on same package; syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.
+Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.
+
+- `check` and `inference` stages: full cold run at least 5× faster than legacy on same package.
+- `effects` stage: at most 2.5× `inference` stage time with empty library cache or cache from other package.
+- `effects` stage with warm library cache: at most `inference` stage time.
+- Legacy runs no effects analysis, so ratio to legacy leaves `effects` stage out.
+- Distributions 0.25.135 with empty cache: `inference` 48 s, `effects` 112 s, ratio 2.3 (numerics survey).
 
 Syntax stage: 21 rules take 15–40 ms per 10,000 lines; rule time grows linearly with rule count.
 
