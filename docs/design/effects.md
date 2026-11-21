@@ -267,6 +267,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Widened summaries only grow through finite values, so fixpoint ends.
 - Flow work: targets that loads trace and joins read, over every round of one variant.
 - Flow past work limit stops. Variant gets open summary: blind access on each parameter, blind spot `effects budget`.
+- Work counts origins each trace walks. Load past limit returns nothing, so one call statement stops too.
 - Root past limit keeps no call facts: its rounds stopped early.
 - Limit: 10 million, 10 times largest flow on corpus (Distributions, 0.95 million).
 - Callee signature can grow along call chain without end: `_any(f ∘ transpose, parent(A), :)` adds `ComposedFunction` layer per step.

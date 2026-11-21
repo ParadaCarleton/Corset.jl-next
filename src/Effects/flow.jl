@@ -263,7 +263,7 @@ const MEMORY_POINTER = Step.Field(:ptr)
 
 """
 Targets of `step` slot of `origin`: place below caller object, stored targets, and element or data pointer of each
-memory backing chain reaches, with doubt of chain.
+memory backing chain reaches, with doubt of chain. Each origin walk counts as work.
 """
 function trace(flow::Flow, origin::Origin.Type, step::Step.Type)::Targets
     found, reached, pending = Targets(), Targets(), [origin => NO_DOUBT]
@@ -285,17 +285,20 @@ function trace(flow::Flow, origin::Origin.Type, step::Step.Type)::Targets
             push!(pending, memory => most(flag, doubt))
         end
     end
+    flow.work += length(reached)
     return found
 end
 
 """
 Targets of `step` slot over every origin of `objects`. Slot targets of each origin come from `trace` once per heap
-state: calls map same places at each call statement and round, and memory backing chains grow long.
+state: calls map same places at each call statement and round, and memory backing chains grow long. Flow past budget
+loads nothing: one call statement maps callee stores through many loads, and heap growth between them empties traces.
 """
 function load(flow::Flow, objects::Targets, step::Step.Type)::Targets
     flow.stale && (empty!(flow.follows); flow.stale = false)
     found = Targets()
     for (origin, doubt) in objects
+        over_budget(flow) && break
         traced = get!(() -> trace(flow, origin, step), flow.follows, (origin, step))
         flow.work += length(traced)
         for (target, flag) in traced

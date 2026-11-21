@@ -12,7 +12,7 @@ using Corset.Effects:
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees, load, store!, store_backing!,
-    beneath, map_nodes, exact_path, extend, load_any, keyword_types
+    beneath, map_nodes, exact_path, extend, load_any, keyword_types, over_budget
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
@@ -1412,6 +1412,12 @@ end
     roomy = start_run(nothing, Module[])
     solve!(roomy, [root])
     @test isempty(roomy.over_budget) && !same(root_summary(roomy, root), open_summary(2, Effects.BUDGET))
+    # Trace counts origins it walks, and load past budget stops: one call statement cannot run past limit.
+    code = roomy.codes[root]
+    spent = start_flow(code.ir, code.outcomes, code.message, roomy.referent, false, false, Sources[], false, 1)
+    holder = Targets(Origin.Allocation(30) => NO_DOUBT)
+    store!(spent, holder, Step.Field(:z), Targets(Origin.Caller(parameter(2)) => NO_DOUBT))
+    @test !isempty(load(spent, holder, Step.Field(:z))) && over_budget(spent) && isempty(load(spent, holder, Step.Field(:z)))
     # Package unit past budget: blind access with budget cause goes to coverage line.
     _, spots = Effects.cached_effects(PACKAGE, UNITS, nothing, Effects.Library(); work_limit = 0)
     @test any(spot -> spot.cause == Effects.BUDGET, spots) && !any(spot -> spot.cause == Effects.BUDGET, SPOTS)
