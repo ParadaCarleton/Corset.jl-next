@@ -171,18 +171,17 @@ end
 
 """
 Origins `objects` hold, through slots of fresh objects: access below fresh object (open call operand, vararg tuple)
-reaches caller objects inside it. Without fresh object, result is `objects` itself: callers only read it.
+reaches caller objects inside it. Without fresh object, result is `objects` itself: callers only read it. Fresh object
+whose doubt changes is visited again; each change lowers level or adds source, so walk ends.
 """
 function beneath(flow::Flow, objects::Targets)::Targets
     any(fresh_origin, keys(objects)) || return objects
     found, pending = copy(objects), filter(fresh_origin, collect(keys(objects)))
-    seen = Set(pending)
     while !isempty(pending)
         origin = pop!(pending)
         foreach_content(flow, origin) do targets
             for (target, doubt) in targets
-                add!(found, target, most(doubt, found[origin]))
-                fresh_origin(target) && !(target in seen) && (push!(seen, target); push!(pending, target))
+                add!(found, target, most(doubt, found[origin])) && fresh_origin(target) && push!(pending, target)
             end
         end
     end

@@ -1049,6 +1049,21 @@ four_way(x::Symbol) = x
     # Objects without fresh origin hold nothing beneath them: result is same table.
     plain = Targets(Origin.Caller(parameter(2)) => NO_DOUBT)
     @test beneath(flow, plain) === plain
+    # Chain through fresh object raises doubt; direct chain with less doubt wins (`least`), also for type sources.
+    holder = Targets(Origin.Allocation(12) => CODE_DOUBT)
+    store!(flow, Targets(Origin.Allocation(12) => NO_DOUBT), Step.Field(:x), Targets(Origin.Caller(parameter(3)) => NO_DOUBT, Origin.Unknown() => sourced(4)))
+    @test beneath(flow, holder) == Targets(Origin.Allocation(12) => CODE_DOUBT, Origin.Caller(parameter(3)) => CODE_DOUBT, Origin.Unknown() => Doubt(Level.code, INHERENT | parameter_source(4)))
+    direct = Targets(Origin.Allocation(12) => NO_DOUBT, Origin.Unknown() => NO_DOUBT)
+    @test beneath(flow, direct) == Targets(Origin.Allocation(12) => NO_DOUBT, Origin.Caller(parameter(3)) => NO_DOUBT, Origin.Unknown() => NO_DOUBT)
+    @test type_sources(flow, direct, Sources(0)) == parameter_source(3)
+    @test type_sources(flow, holder, Sources(0)) == INHERENT | parameter_source(3) | parameter_source(4)
+    # Chain with less doubt found after visit of fresh object still reaches its contents: every visit order agrees.
+    for (late, early) in ((20, 21), (21, 20))
+        chained = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
+        store!(chained, Targets(Origin.Allocation(early) => NO_DOUBT), Step.Field(:y), Targets(Origin.Allocation(late) => NO_DOUBT))
+        store!(chained, Targets(Origin.Allocation(late) => NO_DOUBT), Step.Field(:y), Targets(Origin.Caller(parameter(5)) => NO_DOUBT))
+        @test beneath(chained, Targets(Origin.Allocation(late) => CODE_DOUBT, Origin.Allocation(early) => NO_DOUBT))[Origin.Caller(parameter(5))] == NO_DOUBT
+    end
     # Callee `deep` write changes argument; object in slot of fresh argument may stay unchanged: blind.
     @test deep(flow, Targets(Origin.Caller(parameter(2)) => NO_DOUBT)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => NO_DOUBT)
     wrapper = Targets(Origin.Allocation(9) => NO_DOUBT)
