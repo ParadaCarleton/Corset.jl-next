@@ -453,6 +453,18 @@ function odd_calls(f::Any, flag::Bool, text::String)::Nothing
     return nothing
 end
 
+# Call facts: discarded call that dispatches to two methods joins methods loaded now.
+function split_calls(value::Union{Int, Float64})::Nothing
+    abs(value)
+    return nothing
+end
+
+# Call facts: check on stand-in operand passes for stand-in only.
+function stand_in_calls(values::AbstractVector)::Nothing
+    Base.require_one_based_indexing(values)
+    return nothing
+end
+
 # Call facts: constant call result in comparison, and discarded constant call.
 function constant_calls(byte::UInt8)::Bool
     UInt8('a')

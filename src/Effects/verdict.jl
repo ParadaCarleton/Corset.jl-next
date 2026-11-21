@@ -104,11 +104,12 @@ Release pattern Corset cannot count gives blind spot.
 """
 function unguarded_holds(summary::Summary, span_of::Function)::Tuple{Vector{UnguardedHold}, Vector{BlindSpot}}
     holds, spots = UnguardedHold[], BlindSpot[]
-    for (; hold, throws) in values(summary.unguarded)
+    for ((_, resource), (; hold, throws)) in summary.unguarded
         if hold.level == Level.blind
             push!(spots, BlindSpot(hold.reason, span_of(hold.cause)))
         else
-            push!(holds, UnguardedHold(span_of(hold.cause), span_of(throws), hold.level == Level.none ? Confidence.definite : Confidence.possible))
+            kind = resource == Resource.lock ? EffectKind.synchronization : EffectKind.io
+            push!(holds, UnguardedHold(span_of(hold.cause), span_of(throws), kind, hold.level == Level.none ? Confidence.definite : Confidence.possible))
         end
     end
     return holds, spots
@@ -168,7 +169,7 @@ end
 """Fact of call statement over two units of method (`CallFact`)."""
 function merge_calls(first::CallFact, second::CallFact)::CallFact
     kinds = sort!(union(first.kinds, second.kinds))
-    return CallFact(first.span, merge_callees(first.callee, second.callee), kinds, first.throws || second.throws, first.terminates && second.terminates, first.used || second.used)
+    return CallFact(first.span, merge_callees(first.callee, second.callee), kinds, first.throws || second.throws, first.terminates && second.terminates, first.used || second.used, first.closed_world || second.closed_world, first.stand_in || second.stand_in)
 end
 
 """Add call facts `found` of unit to `calls` of its method: units of method merge (`merge_calls`)."""
@@ -222,6 +223,9 @@ function cached_effects(package::PackageFacts, units::Units, journal::Union{Noth
     return facts, spots, fresh, crashed ? Library() : library_entries(run), run.cache.hits
 end
 
+"""Effects `@assume_effects` on `method` claims, as `Base.EffectsOverride` field names in field order; block claims excluded."""
+claimed_effects(method::Method)::Vector{Symbol} = (claim = CC.decode_effects_override(method.purity); Symbol[name for name in fieldnames(CC.EffectsOverride) if getfield(claim, name) === true])
+
 """
 Facts of methods of `package` from effects `records` of units in inference order, and blind spots: worst over units of
 method (`effects.md`, Units and Facts). Method in `incomplete`, or that stand-ins cut, is incomplete; verdict none with
@@ -252,7 +256,7 @@ function method_facts(package::PackageFacts, incomplete::Set{Method}, records::V
         complete = !(site.method in incomplete) && !haskey(cuts, site.method)
         effects = MethodEffects(
             site, worst(writes), worst(reads), blind_order(blind_writes), blind_order(blind_reads), sort!(unique!(aliases); by = repr), sort!(unique!(unguarded); by = repr),
-            call_order(calls), complete, closed[site.method],
+            call_order(calls), complete, closed[site.method], claimed_effects(site.method),
         )
         push!(methods, effects)
         append!(spots, (access.spot for access in [effects.blind_writes; effects.blind_reads]))

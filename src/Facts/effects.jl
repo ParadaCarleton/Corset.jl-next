@@ -89,6 +89,36 @@ end
 """Steps of longest exact path; declared field types collapse most paths earlier (`effects.md`, Origins and points-to)."""
 const PATH_DEPTH = 8
 
+"""Source text of `step` after its object: `.field`, `[position]` or `[…]` for array element."""
+step_text(step::Step.Type)::String = @match step begin
+    Step.Field(name) => "." * string(name)
+    Step.Position(position) => "[$position]"
+    Step.Element() => "[…]"
+end
+
+"""
+Source text of `root` in `method`: argument name (closure itself for argument 1 of anonymous function), qualified
+global name, or open call result.
+"""
+root_text(method::Method, root::Root.Type)::String = @match root begin
+    Root.Parameter(position) => (name = Base.method_argnames(method)[position]; name === Symbol("#self#") ? "closure" : string(name))
+    Root.Global(binding) => string(binding.mod, ".", binding.name)
+    Root.Elsewhere() => "result of open call"
+end
+
+"""Source text of `place` in `method`, as code writes path to it: `items.data[…]`; `Deep` place adds `or below`."""
+place_text(method::Method, place::Place.Type)::String = @match place begin
+    Place.At(root, steps) => root_text(method, root) * join(step_text.(steps))
+    Place.Deep(root) => root_text(method, root) * " or below"
+end
+
+"""Whether `place` starts at global binding."""
+global_place(place::Place.Type)::Bool = @match place begin
+    Place.At(Root.Global(_), _) => true
+    Place.Deep(Root.Global(_)) => true
+    _ => false
+end
+
 """
 Access to caller-visible object (`effects` stage fact): place, whether it covers every place below it too, kind,
 confidence, and cause span in package code. `possible` access from open call is doubt in code. `Deep` place keeps
@@ -115,11 +145,13 @@ end
 
 """
 Resource hold that throw skips release of (`effects` stage fact, F98): span of acquire, span of statement that may
-throw while method holds resource, and confidence: definite count, or `possible` from join of different counts.
+throw while method holds resource, resource kind (`synchronization`: lock or semaphore slot; `io`: file), and
+confidence: definite count, or `possible` from join of different counts.
 """
 struct UnguardedHold
     acquire::Span
     throws::Span
+    kind::EffectKind.T
     confidence::Confidence.T
 end
 
@@ -141,10 +173,20 @@ methods in varying order, so facts and their equality depend on none.
 """
 methods_callee(methods::Vector{Method})::Callee.Type = Callee.Methods(sort!(unique(methods); by = method -> (string(method.module), string(method.file), method.line, string(method.sig))))
 
+"""Name of function `callee` calls: method name shared by every method, or builtin name; else `nothing`."""
+callee_name(callee::Callee.Type)::Union{Nothing, String} = @match callee begin
+    Callee.Methods(methods) => (names = unique(method.name for method in methods); length(names) == 1 ? string(only(names)) : nothing)
+    Callee.Builtin(builtin) => string(nameof(builtin))
+    _ => nothing
+end
+
 """
 Call statement of package method (`effects` stage fact, F54, F86): span, callee, and kinds of writes call makes at any
 certainty, holds it leaves included. Compiler effects give `throws` (may throw) and `terminates`. `used`: code reads
-result. Units of method merge: any unit that may throw, writes or uses result decides.
+result. `closed_world`: call verdict joins methods loaded now (Base contract, dispatch to several methods, or callee
+that joins). `stand_in`: operand type holds stand-in, so compiler flags and writes hold for stand-in type only. Either
+makes its none at most `possible`. Units of method merge: any unit that may throw, writes, uses result, joins or has
+stand-in operand decides.
 """
 struct CallFact
     span::Span
@@ -153,13 +195,16 @@ struct CallFact
     throws::Bool
     terminates::Bool
     used::Bool
+    closed_world::Bool
+    stand_in::Bool
 end
 
 """
 Effect summary of package method (`effects` stage fact): writes and reads over its units, blind writes and reads,
-places its result aliases, holds throws skip (`unguarded`), call statements (`calls`, by span), `complete`, and
-`closed_world`. Method with blind access, or incomplete method (inference skipped some argument types, or stand-ins cut
-path), has no definite none. Closed-world method joins methods loaded now: its none is at most `possible`.
+places its result aliases, holds throws skip (`unguarded`), call statements (`calls`, by span), `complete`,
+`closed_world`, and effects `@assume_effects` on method claims (`claims`, `Base.EffectsOverride` field names). Method
+with blind access, or incomplete method (inference skipped some argument types, or stand-ins cut path), has no definite
+none. Closed-world method joins methods loaded now: its none is at most `possible`.
 """
 struct MethodEffects
     site::MethodSite
@@ -172,6 +217,7 @@ struct MethodEffects
     calls::Vector{CallFact}
     complete::Bool
     closed_world::Bool
+    claims::Vector{Symbol}
 end
 
 """`effects` stage facts: summary per package method with verdict (`effects.md`, Effects engine)."""

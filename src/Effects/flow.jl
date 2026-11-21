@@ -14,7 +14,8 @@ values that made it (`derived_of`) and of each static parameter; flow-insensitiv
 backing, unknown-slot stores and global bindings; result targets; accesses by origin and whether they cover places
 below; callback records by call statement. `changed` records growth of targets in current round; `closed_world` records
 join over methods loaded now, and `cut` path stand-ins cut (`Summary`). `flush` resolves every callback record here:
-root unit has no caller to resolve them. `record` keeps kinds of writes each call statement makes (`call_kinds`).
+root unit has no caller to resolve them. `record` keeps kinds of writes each call statement makes (`call_kinds`), and
+call statements whose verdict joins methods loaded now (`call_closed`).
 `follows` keeps slot targets by origin and step (`load`); `stale` marks heap growth since they were found.
 `settled`: round after one that changed nothing, so it applies callee accesses and skips callee stores (`apply!`).
 """
@@ -39,6 +40,7 @@ mutable struct Flow
     const flush::Bool
     const record::Bool
     const call_kinds::Dict{Int, Set{EffectKind.T}}
+    const call_closed::Set{Int}
     const follows::Dict{Tuple{Origin.Type, Step.Type}, Targets}
     changed::Bool
     stale::Bool
@@ -63,7 +65,7 @@ function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     callbacks = Dict{Int, Vector{Deferred}}()
     primitives = Union{Nothing, Primitive}[statement_primitive(ir, index, outcomes[index]) for index in 1:length(ir.stmts)]
-    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, Dict{Int, Set{EffectKind.T}}(), Dict{Tuple{Origin.Type, Step.Type}, Targets}(), false, false, false, false, cut, limit, 0)
+    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, Dict{Int, Set{EffectKind.T}}(), Set{Int}(), Dict{Tuple{Origin.Type, Step.Type}, Targets}(), false, false, false, false, cut, limit, 0)
 end
 
 """Release balance primitive of statement `index` of `ir` with call `outcome`: dispatched call only (`primitive`)."""
@@ -395,6 +397,7 @@ function round!(flow::Flow, callees::Callees)::Nothing
     empty!(flow.writes)
     empty!(flow.reads)
     empty!(flow.call_kinds)
+    empty!(flow.call_closed)
     for index in 1:length(flow.ir.stmts)
         statement!(flow, index, flow.ir.stmts[index][:stmt], callees)
         over_budget(flow) && return nothing

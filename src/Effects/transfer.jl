@@ -73,6 +73,7 @@ function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees):
     start = started(flow.ir, index, outcome)
     isnothing(start) || access!(flow.reads, value_targets(flow, something(start)), false, definite(index), EffectKind.iteration)
     flow.record && (flow.call_kinds[index] = call_kinds(outcome, writes, callees, index))
+    flow.record && closed_call(outcome, callees, index) && push!(flow.call_closed, index)
     (message || flow.record) && merge_accesses!(flow.writes, writes, message)
     return nothing
 end
@@ -130,17 +131,36 @@ function call_kinds(outcome::Outcome.Type, writes::OriginAccesses, callees::Call
     return kinds
 end
 
-"""Call statement facts before span (`CallFact`): callee, write kinds, may throw, terminates, result used."""
-const CallRecord = @NamedTuple{callee::Callee.Type, kinds::Vector{EffectKind.T}, throws::Bool, terminates::Bool, used::Bool}
+"""
+Whether verdict of call statement `index` with `outcome` joins methods loaded now: Base contract, dispatch to more
+than one variant of `callees`, or callee summary that joins them.
+"""
+closed_call(outcome::Outcome.Type, callees::Callees, index::Int)::Bool = @match outcome begin
+    Outcome.Contract(_, _, _) => true
+    Outcome.Dispatch(_, _) => length(callees.variants[index]) > 1 || any(variant -> callees.summaries[variant].closed_world, callees.variants[index])
+    _ => false
+end
 
 """
-Facts of call statement `index` of `flow` that records call kinds, whose result code `used`: callee, write kinds, and
-compiler `nothrow` and `terminates` flags.
+Call statement facts before span (`CallFact`): callee, write kinds, may throw, terminates, result used, closed world,
+stand-in operand.
+"""
+const CallRecord = @NamedTuple{callee::Callee.Type, kinds::Vector{EffectKind.T}, throws::Bool, terminates::Bool, used::Bool, closed_world::Bool, stand_in::Bool}
+
+"""
+Facts of call statement `index` of `flow` that records call kinds, whose result code `used`: callee, write kinds,
+compiler `nothrow` and `terminates` flags, whether verdict joins methods loaded now (`closed_call`), and whether
+operand type holds stand-in (`holds_stand_in`).
 """
 function call_record(flow::Flow, index::Int, used::Bool)::CallRecord
     kinds = sort!(collect(get(flow.call_kinds, index, Set{EffectKind.T}())))
     terminates = flow.ir.stmts[index][:flag] & CC.IR_FLAG_TERMINATES != 0
-    return (callee = outcome_callee(flow.ir.stmts[index][:stmt], something(flow.outcomes[index])), kinds = kinds, throws = may_throw(flow.ir, index), terminates = terminates, used = used)
+    outcome = something(flow.outcomes[index])
+    stand_in = any(operand -> holds_stand_in(operand_type(flow.ir, operand)), outcome_operands(outcome))
+    return (
+        callee = outcome_callee(flow.ir.stmts[index][:stmt], outcome), kinds = kinds, throws = may_throw(flow.ir, index),
+        terminates = terminates, used = used, closed_world = index in flow.call_closed, stand_in = stand_in,
+    )
 end
 
 """Callee of call `statement` with `outcome` (`Callee`): foreign call names C function."""

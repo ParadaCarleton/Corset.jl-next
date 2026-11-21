@@ -1,6 +1,6 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
-using Corset.Facts: Facts, MethodEffects, Callee, methods_callee, CallFact, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind, PATH_DEPTH
+using Corset.Facts: Facts, MethodEffects, Callee, methods_callee, callee_name, place_text, global_place, CallFact, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind, PATH_DEPTH
 using Corset.Inference: infer_package, open_journal, records, explicit_any, cuts!, dead_calls
 using Corset.StandIns: FunctionStandIn, ArrayStandIn, DenseStandIn, FloatStandIn
 using Corset.Signatures: Provenance
@@ -1890,7 +1890,11 @@ end
     calls_to(name::Symbol, callee::Symbol)::Vector{CallFact} = [call for call in named(name).calls if any(method -> method.name === callee, something(callee_methods(call.callee), Method[]))]
     # Unit keeps discarded call that compaction deletes: no effect, no throw, terminates.
     dropped = only(calls_to(:drop_calls!, :abs))
-    @test !dropped.used && isempty(dropped.kinds) && !dropped.throws && dropped.terminates
+    @test !dropped.used && isempty(dropped.kinds) && !dropped.throws && dropped.terminates && !dropped.closed_world
+    # Dispatch to two methods joins methods loaded now.
+    @test only(calls_to(:split_calls, :abs)).closed_world
+    # Stand-in operand: compiler flags hold for stand-in type only.
+    @test only(calls_to(:stand_in_calls, :require_one_based_indexing)).stand_in && !dropped.stand_in
     @test strip(line_text(dropped.span)) == "abs(length(values))"
     pushed = only(calls_to(:drop_calls!, :push!))
     @test !pushed.used && pushed.kinds == [memory_kind]
@@ -1929,16 +1933,35 @@ end
     @test length(bodies[1].ir.stmts) == length(bodies[2].ir.stmts) && bodies[1].used == bodies[2].used
     # Units of method merge: methods join; other callee pair gives open dispatch.
     span = named(:drop_calls!).site.span
-    first_fact = CallFact(span, Callee.Methods([only(methods(CASES.no_text_method))]), [EffectKind.io], false, true, false)
-    second_fact = CallFact(span, Callee.Methods([only(methods(CASES.take_lock!))]), [memory_kind], true, false, true)
+    first_fact = CallFact(span, Callee.Methods([only(methods(CASES.no_text_method))]), [EffectKind.io], false, true, false, false, true)
+    second_fact = CallFact(span, Callee.Methods([only(methods(CASES.take_lock!))]), [memory_kind], true, false, true, true, false)
     merged = merge_calls(first_fact, second_fact)
     # Callee methods keep source order whatever order units merge in.
     @test merged.callee == Callee.Methods([only(methods(CASES.take_lock!)), only(methods(CASES.no_text_method))])
     @test merge_calls(second_fact, first_fact).callee == merged.callee
     @test methods_callee([only(methods(CASES.no_text_method)), only(methods(CASES.take_lock!)), only(methods(CASES.no_text_method))]) == merged.callee
-    @test merged.kinds == [memory_kind, EffectKind.io] && merged.throws && !merged.terminates && merged.used
+    @test merged.kinds == [memory_kind, EffectKind.io] && merged.throws && !merged.terminates && merged.used && merged.closed_world && merged.stand_in
     @test merge_callees(Callee.Foreign(), Callee.Foreign()) == Callee.Foreign()
     @test merge_callees(Callee.Foreign(), first_fact.callee) == Callee.Open()
+    # Callee name needs one function: two names give none.
+    @test callee_name(dropped.callee) == "abs" && callee_name(Callee.Builtin(Core.ifelse)) == "ifelse"
+    @test isnothing(callee_name(merged.callee)) && isnothing(callee_name(Callee.Foreign()))
+end
+
+"""Method that claims effects, for `claimed_effects`."""
+Base.@assume_effects :effect_free :notaskstate claimed_double(x::Int) = 2x
+
+@testset "place text and claims" begin
+    method = only(methods(CASES.set_inner!))
+    @test place_text(method, Place.At(Root.Parameter(2), [Step.Field(:box), Step.Position(1), Step.Element()])) == "holder.box[1][…]"
+    @test place_text(method, Place.Deep(Root.Parameter(2))) == "holder or below"
+    @test place_text(method, Place.At(Root.Global(GlobalRef(CASES, :COUNTER)), Step.Type[])) == "EffectsCases.COUNTER"
+    @test place_text(method, Place.At(Root.Elsewhere(), Step.Type[])) == "result of open call"
+    # Argument 1 of anonymous function is closure itself; field names captured variable.
+    @test place_text(only(methods(x -> x)), Place.At(Root.Parameter(1), [Step.Field(:seen)])) == "closure.seen"
+    @test global_place(Place.Deep(Root.Global(GlobalRef(CASES, :COUNTER)))) && !global_place(Place.At(Root.Elsewhere(), Step.Type[]))
+    @test Effects.claimed_effects(only(methods(claimed_double))) == [:effect_free, :notaskstate]
+    @test isempty(Effects.claimed_effects(only(methods(CASES.add))))
 end
 
 @testset "iteration starts" begin
