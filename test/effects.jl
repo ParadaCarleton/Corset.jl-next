@@ -971,6 +971,23 @@ four_way(x::Float64) = x
 four_way(x::String) = x
 four_way(x::Symbol) = x
 
+"""Union split fixtures: one method per member of `Union{Vector{Int}, Dict{Int, Int}}`; abstract member reaches two."""
+poke!(v::Vector{Int}) = (v[1] = 0; nothing)
+poke!(d::Dict{Int, Int}) = nothing
+poke!(d::IdDict{Int, Int}) = nothing
+pair_poke!(a::Vector{Int}, b::Any) = nothing
+pair_poke!(a::Dict{Int, Int}, b::Any) = nothing
+"""Compiler splits `something` on `Union{Nothing, Some}` (`Base.CoreLogging.current_logstate`)."""
+something_split(x::Union{Nothing, Some{Vector{Int}}}, d::Vector{Int}) = something(x, d)
+split_poke!(x::Union{Vector{Int}, Dict{Int, Int}}) = poke!(x)
+split_abstract!(x::Union{Vector{Int}, AbstractDict}) = poke!(x)
+"""Four methods on `(Union{Vector{Int}, Vector{Float64}, Dict{Int, Int}}, Union{Int, Float64, String})`: past `max_methods`, split cost 6."""
+cross!(a::Vector{Int}, b::Any) = nothing
+cross!(a::Vector{Float64}, b::Any) = nothing
+cross!(a::Dict{Int, Int}, b::Int) = nothing
+cross!(a::Dict{Int, Int}, b::Any) = nothing
+split_wide!(a::Union{Vector{Int}, Vector{Float64}, Dict{Int, Int}}, b::Union{Int, Float64, String}) = cross!(a, b)
+
 @testset "model and helpers" begin
     @test most(most(NO_DOUBT, CODE_DOUBT), BLIND_DOUBT) == BLIND_DOUBT
     # Two `code` doubts join sources, both along chain and across chains.
@@ -1137,6 +1154,16 @@ four_way(x::Symbol) = x
     @test isnothing(dispatch(Any[typeof(four_way), Any], world, JOIN_LIMIT))
     # Package code joins; library code keeps run-time dispatch open.
     @test isnothing(dispatch(Any[typeof(three_way), Any], world, 1))
+    # Union split, as compiler does it: every member resolves within limit; split cost counts longest union as 2.
+    @test isempty(summary_of(something_split, Union{Nothing, Some{Vector{Int}}}, Vector{Int}).writes)
+    @test doubts(summary_of(split_poke!, Union{Vector{Int}, Dict{Int, Int}}).writes) == Dict(top(2) => sourced(2))
+    @test length(something(dispatch(Any[typeof(three_way), Union{Int, Float64, String}], world, 1))) == 3
+    @test isnothing(dispatch(Any[typeof(poke!), Union{Vector{Int}, AbstractDict}], world, 1))
+    @test length(something(dispatch(Any[typeof(pair_poke!), Union{Vector{Int}, Dict{Int, Int}}, Union{Int, Float64, String}], world, 1))) == 6
+    @test isnothing(dispatch(Any[typeof(cross!), Union{Vector{Int}, Vector{Float64}, Dict{Int, Int}}, Union{Int, Float64, String}], world, 1))
+    @test doubts(summary_of(split_abstract!, Union{Vector{Int}, AbstractDict}).writes) == Dict((parameter(2), true) => sourced(2))
+    # Open call writes mutable argument only: `Int`, `Float64` and `String` hold no state.
+    @test haskey(doubts(summary_of(split_wide!, Union{Vector{Int}, Vector{Float64}, Dict{Int, Int}}, Union{Int, Float64, String}).writes), (parameter(2), true))
     package_run = start_run(nothing, [@__MODULE__])
     @test join_limit(package_run, only(something(dispatch(Any[typeof(three_way), Int], world, 1)))) == JOIN_LIMIT
     @test join_limit(package_run, only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], world, 1)))) == 1

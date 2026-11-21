@@ -167,7 +167,10 @@ Resolution of each call statement, first match wins:
 - Open call (step 7) whose open operands come from opaque and opt-out arguments only: no finding (Provenance). Opaque argument counts on coverage line: `open dispatch on opaque data`.
 - Other open call: doubt in code, `possible` finding.
 - Limit 3 is compiler `max_methods`, never below. Limit 8 reached 20 times more instances on Distances.
-- Library code joins nothing: its run-time dispatch stays open (step 7). Joins there raised `possible` share and cost most time.
+- Library code joins union splits only: its other run-time dispatch stays open (step 7). Joins there raised `possible` share and cost most time.
+- Union split: past limit, call on union arguments splits as compiler splits it. Limit: compiler split cost at most 4 (`max_union_splitting`).
+- Split cost counts longest union as 2: `(Union{A, B}, Union{C, D, E})` costs 4 and splits into 6 combinations.
+- Each combination dispatches within limit; members join. `something(::Union{Nothing, Some}, x)` in Base logging resolves.
 
 #### Compiler effects
 

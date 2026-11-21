@@ -914,7 +914,10 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li>Open call (step 7) whose open operands come from opaque and opt-out arguments only: no finding (Provenance). Opaque argument counts on coverage line: <code>open dispatch on opaque data</code>.</li>
 <li>Other open call: doubt in code, <code>possible</code> finding.</li>
 <li>Limit 3 is compiler <code>max_methods</code>, never below. Limit 8 reached 20 times more instances on Distances.</li>
-<li>Library code joins nothing: its run-time dispatch stays open (step 7). Joins there raised <code>possible</code> share and cost most time.</li>
+<li>Library code joins union splits only: its other run-time dispatch stays open (step 7). Joins there raised <code>possible</code> share and cost most time.</li>
+<li>Union split: past limit, call on union arguments splits as compiler splits it. Limit: compiler split cost at most 4 (<code>max_union_splitting</code>).</li>
+<li>Split cost counts longest union as 2: <code>(Union{A, B}, Union{C, D, E})</code> costs 4 and splits into 6 combinations.</li>
+<li>Each combination dispatches within limit; members join. <code>something(::Union{Nothing, Some}, x)</code> in Base logging resolves.</li>
 </ul>
 <h4>Compiler effects</h4>
 <ul>

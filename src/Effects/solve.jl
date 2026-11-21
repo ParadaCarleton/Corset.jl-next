@@ -256,8 +256,8 @@ function limited_outcome(run::Run, chain::Vector{Core.MethodInstance}, outcome::
 end
 
 """
-Most methods call in `instance` joins: `JOIN_LIMIT` in package module, else 1. Joins in library code raised `possible`
-share on corpus, and JSON `effects` time went past 30 min.
+Most methods call in `instance` joins: `JOIN_LIMIT` in package module, else 1, so library code joins union splits only
+(`union_split`). Joins in library code raised `possible` share on corpus, and JSON `effects` time went past 30 min.
 """
 join_limit(run::Run, instance::Core.MethodInstance)::Int = (instance.def::Method).module in run.modules ? JOIN_LIMIT : 1
 
