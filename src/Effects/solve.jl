@@ -256,10 +256,10 @@ function limited_outcome(run::Run, chain::Vector{Core.MethodInstance}, outcome::
 end
 
 """
-Most methods call in `instance` joins: `JOIN_LIMIT` in package module, else 1, so library code joins union splits only
-(`union_split`). Joins in library code raised `possible` share on corpus, and JSON `effects` time went past 30 min.
+Join reach of calls in `instance`: `JOIN_LIMIT` and own methods in package module; else `LIBRARY_REACH`, so library code
+joins union splits only. Joins in library code raised `possible` share on corpus, and JSON `effects` time passed 30 min.
 """
-join_limit(run::Run, instance::Core.MethodInstance)::Int = (instance.def::Method).module in run.modules ? JOIN_LIMIT : 1
+join_reach(run::Run, instance::Core.MethodInstance)::Reach = (instance.def::Method).module in run.modules ? Reach(JOIN_LIMIT, run.modules) : LIBRARY_REACH
 
 """Whether statement `flag` carries block `@assume_effects` override."""
 overrides(flag::UInt32)::Bool = CC.decode_statement_effects_override(flag) != CC.EffectsOverride()
@@ -277,8 +277,8 @@ function frame_body(run::Run, frame::CC.InferenceState, cut::Bool, unit::Bool, s
             for (index, info) in enumerate(frame.stmt_info)
     ]
     ir, lines, before = frame_ir(frame, run.interpreter, kept)
-    chain, limit = call_chain(run, frame.linfo), join_limit(run, frame.linfo)
-    outcomes = [limited_outcome(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world, limit)) for index in 1:length(ir.stmts)]
+    chain, reach = call_chain(run, frame.linfo), join_reach(run, frame.linfo)
+    outcomes = [limited_outcome(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world, reach)) for index in 1:length(ir.stmts)]
     users = statement_users(ir)
     # Statement compiler inserted has no source statement: its uses after compaction count.
     used = [iszero(line) ? !isempty(users[index]) : before[line] for (index, line) in enumerate(lines)]

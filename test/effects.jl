@@ -8,7 +8,7 @@ using Corset.Effects:
     Effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, value_type, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
-    components, foreign_name, FOREIGN_EFFECTS, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
+    components, foreign_name, FOREIGN_EFFECTS, CallEffects, join_accesses!, JOIN_LIMIT, join_reach, Reach, LIBRARY_REACH, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees, load, store!, store_backing!,
@@ -21,8 +21,21 @@ using Base.ScopedValues: ScopedValue
 const CASE = joinpath(@__DIR__, "effects", "EffectsCases")
 
 """
+Method outside fixture package on each provenance callee (`reset!`, `send!`, `peer`): own join stops at it, so calls on
+opaque and opt-out data stay open (`effects.md`, Calls). Own join closes them otherwise, with joined writes.
+"""
+function extend_callees!(cases::Module)::Nothing
+    @eval begin
+        $cases.reset!(::Matrix{Int}) = nothing
+        $cases.send!(::IOContext, ::Any) = nothing
+        $cases.peer(io::IOContext) = io
+    end
+    return nothing
+end
+
+"""
 Fixture module, files, package facts, inference units, effects facts and blind spots of `EffectsCases`, loaded with
-case on load path.
+case on load path; provenance callees get method outside package (`extend_callees!`).
 """
 function case_facts()::Tuple{Module, Vector{Facts.SyntaxFile}, Facts.PackageFacts, Corset.Inference.Units, Facts.EffectsFacts, Vector{BlindSpot}}
     sources = Corset.Discovery.discover(CASE; environment = nothing)
@@ -32,6 +45,7 @@ function case_facts()::Tuple{Module, Vector{Facts.SyntaxFile}, Facts.PackageFact
     finally
         pop!(LOAD_PATH)
     end
+    extend_callees!(first(loaded.facts.modules))
     _, _, units, _ = infer_package(loaded.facts, sources.files, nothing, nothing)
     facts, spots = Effects.effects_facts(loaded.facts, units, nothing)
     return first(loaded.facts.modules), sources.files, loaded.facts, units, facts, spots
@@ -171,7 +185,7 @@ doubts(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect})::Dict{Tuple, 
 """Summary of fixture method `f` on argument `types`, solved as package code, before root resolves its callback records."""
 function raw_summary(f::Any, types::Type...)::Summary
     run = start_run(nothing, Module[CASES])
-    root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
+    root = (only(something(dispatch(Any[typeof(f), types...], run.world, LIBRARY_REACH))), Pair{Int, Any}[])
     solve!(run, [root])
     return run.summaries[root]
 end
@@ -207,7 +221,7 @@ end
     @test parameter_origin(Origin.Caller(parameter(3, box))) && !parameter_origin(Origin.Unknown())
     # Root without records keeps summary of solve.
     run = start_run(nothing, Module[])
-    root = (only(something(dispatch(Any[typeof(CASES.set_value!), CASES.Box, Int], run.world, 1))), Pair{Int, Any}[])
+    root = (only(something(dispatch(Any[typeof(CASES.set_value!), CASES.Box, Int], run.world, LIBRARY_REACH))), Pair{Int, Any}[])
     solve!(run, [root])
     @test root_summary(run, root) === run.summaries[root]
 end
@@ -221,7 +235,7 @@ sourceless(x::Int)::Int = x + 3
 @testset "compiler effects" begin
     definite = Confidence.definite
     run = start_run(nothing, Module[CASES])
-    instance_of(f::Any, types::Type...)::Core.MethodInstance = only(something(dispatch(Any[typeof(f), types...], run.world, 1)))
+    instance_of(f::Any, types::Type...)::Core.MethodInstance = only(something(dispatch(Any[typeof(f), types...], run.world, LIBRARY_REACH)))
     # Compiler proves `+` empty: shortcut, no code. Each other instance fails one condition, so engine analyzes it.
     # Base instances: coverage counters are effects, so instrumented fixture code never takes shortcut.
     @test body!(run, instance_of(+, Int, Int)) isa Shortcut
@@ -317,7 +331,7 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
     @test cuts!(IdDict{Method, Union{Nothing, Core.CodeInfo}}(), method, method.sig, unit(:maybe_bump!).code, Int[]) == Int[]
     # Library call fails on stand-in only: instance keeps own analysis, and its summary carries cut.
     run = start_run(nothing, Module[CASES])
-    instance_of(f::Any, types::Type...)::Core.MethodInstance = only(something(dispatch(Any[typeof(f), types...], run.world, 1)))
+    instance_of(f::Any, types::Type...)::Core.MethodInstance = only(something(dispatch(Any[typeof(f), types...], run.world, LIBRARY_REACH)))
     frame_of(instance::Core.MethodInstance)::Core.Compiler.InferenceState = Core.Compiler.typeinf_frame(run.interpreter, instance, false)
     stand_in = instance_of(pointer, ArrayStandIn{Int, 1})
     @test stand_in_cut(run, frame_of(stand_in)) && (body!(run, stand_in)::Body).cut
@@ -363,7 +377,7 @@ end
 """Summary of method `f` on argument `types`, solved with every instance it reaches."""
 function summary_of(f::Any, types::Type...)::Summary
     run = start_run(nothing, Module[])
-    root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
+    root = (only(something(dispatch(Any[typeof(f), types...], run.world, LIBRARY_REACH))), Pair{Int, Any}[])
     solve!(run, [root])
     return root_summary(run, root)
 end
@@ -800,7 +814,7 @@ end
     @test summary_of(field_global).result == Nodes(Node.Placed(global_place(@__MODULE__, :slot)) => none)
     @test summary_of(make_backed, Vector{Int}).result == Nodes(Node.Placed(parameter(2)) => none)
     run = start_run(nothing, Module[])
-    instance = only(something(dispatch(Any[typeof(broken), Int], run.world, 1)))
+    instance = only(something(dispatch(Any[typeof(broken), Int], run.world, LIBRARY_REACH)))
     @test library_body(run, instance) == "inference gave no code"
     @test summary_of(calls_broken, Vector{Int}).writes == Dict()
     broken_int = summary_of(x -> broken(x), Int)
@@ -828,7 +842,7 @@ end
     @test summary_of(derived_part!, Any, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
     @test summary_of(static_write!, Type, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
     joined_run = start_run(nothing, Module[@__MODULE__])
-    joined_root = (only(something(dispatch(Any[typeof(half_join!), Union{Vector{Int}, Vector{Float64}}], joined_run.world, 1))), Pair{Int, Any}[])
+    joined_root = (only(something(dispatch(Any[typeof(half_join!), Union{Vector{Int}, Vector{Float64}}], joined_run.world, LIBRARY_REACH))), Pair{Int, Any}[])
     solve!(joined_run, [joined_root])
     @test root_summary(joined_run, joined_root).writes[memory(top(2))].doubt == sourced(2)
     # `DataType` value dispatches on type it holds: `typeof(x)` keeps source of `x`.
@@ -843,15 +857,15 @@ end
     mktempdir(@__DIR__) do directory
         journal = open_journal(directory)
         try
-            target = only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], run.world, 1)))
+            target = only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], run.world, LIBRARY_REACH)))
             push!(journal.crashed, journal_key(target))
             crashed = start_run(journal, Module[])
-            root = (only(something(dispatch(Any[typeof(latest!), Vector{Int}], crashed.world, 1))), Pair{Int, Any}[])
+            root = (only(something(dispatch(Any[typeof(latest!), Vector{Int}], crashed.world, LIBRARY_REACH))), Pair{Int, Any}[])
             solve!(crashed, [root])
             effect = crashed.summaries[root].writes[memory((parameter(2), true))]
             @test effect.doubt == blind && effect.reason == "inference crashed process"
             fresh = start_run(journal, Module[])
-            other = (only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], fresh.world, 1))), Pair{Int, Any}[])
+            other = (only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], fresh.world, LIBRARY_REACH))), Pair{Int, Any}[])
             solve!(fresh, [other])
             @test any(record -> startswith(record.key, "effects\n") && record.finished, records(directory))
         finally
@@ -970,6 +984,14 @@ four_way(x::Int) = x
 four_way(x::Float64) = x
 four_way(x::String) = x
 four_way(x::Symbol) = x
+"""Call past `JOIN_LIMIT`: package code joins all four methods, library code leaves it open."""
+wide_call(x::Any) = four_way(x)
+"""Four methods past `JOIN_LIMIT`: each writes field `x`, one also writes element below it."""
+wipe!(r::Base.RefValue{Int}) = (r[] = 0; nothing)
+wipe!(r::Base.RefValue{Float64}) = (r[] = 0.0; nothing)
+wipe!(r::Base.RefValue{String}) = (r[] = ""; nothing)
+wipe!(r::Base.RefValue{Vector{Int}}) = (r[][1] = 0; r[] = Int[]; nothing)
+wipe_any!(x::Any) = wipe!(x)
 
 """Union split fixtures: one method per member of `Union{Vector{Int}, Dict{Int, Int}}`; abstract member reaches two."""
 poke!(v::Vector{Int}) = (v[1] = 0; nothing)
@@ -1048,7 +1070,7 @@ split_wide!(a::Union{Vector{Int}, Vector{Float64}, Dict{Int, Int}}, b::Union{Int
     access!(table, Targets(Origin.Allocation(1) => BLIND_DOUBT), false, Effect(BLIND_DOUBT, 4, "cause"), EffectKind.memory)
     @test table[(Origin.Allocation(1), false, EffectKind.memory)] == Effect(BLIND_DOUBT, 4, "cause")
     run = start_run(nothing, Module[])
-    instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world, 1)))
+    instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world, LIBRARY_REACH)))
     solve!(run, [(instance, Pair{Int, Any}[])])
     code = run.codes[(instance, Pair{Int, Any}[])]
     @test constant(code.ir, GlobalRef(Base, :nothing)) == Some(nothing)
@@ -1129,7 +1151,7 @@ split_wide!(a::Union{Vector{Int}, Vector{Float64}, Dict{Int, Int}}, b::Union{Int
     # Source past unit arguments is doubt in code.
     @test source_provenance(parameter_source(3), [Provenance.code, Provenance.opaque]) == Provenance.code
     # Spread part as callee: `MemoryRef` has no call method, so call throws.
-    @test isa_variant(resolve(code.ir, Operand.Type[Operand.Part(Core.Argument(2), 1)], run.world, 1), Outcome.Dead)
+    @test isa_variant(resolve(code.ir, Operand.Type[Operand.Part(Core.Argument(2), 1)], run.world, LIBRARY_REACH), Outcome.Dead)
     typed = only(unit for unit in UNITS.typed if unit.site.method.name == :add)
     @test cause_span(typed, code, 0) == typed.site.span
     shared, partial = (Origin.Allocation(1), false, EffectKind.memory), (Origin.Allocation(2), false, EffectKind.memory)
@@ -1150,23 +1172,36 @@ split_wide!(a::Union{Vector{Int}, Vector{Float64}, Dict{Int, Int}}, b::Union{Int
     # Join must reach every call native inference resolves.
     @test JOIN_LIMIT >= Effects.CC.InferenceParams().max_methods
     world = Base.get_world_counter()
-    @test length(something(dispatch(Any[typeof(three_way), Any], world, JOIN_LIMIT))) == JOIN_LIMIT
-    @test isnothing(dispatch(Any[typeof(four_way), Any], world, JOIN_LIMIT))
+    @test length(something(dispatch(Any[typeof(three_way), Any], world, Reach(JOIN_LIMIT, Set{Module}())))) == JOIN_LIMIT
+    @test isnothing(dispatch(Any[typeof(four_way), Any], world, Reach(JOIN_LIMIT, Set{Module}())))
     # Package code joins; library code keeps run-time dispatch open.
-    @test isnothing(dispatch(Any[typeof(three_way), Any], world, 1))
+    @test isnothing(dispatch(Any[typeof(three_way), Any], world, LIBRARY_REACH))
     # Union split, as compiler does it: every member resolves within limit; split cost counts longest union as 2.
     @test isempty(summary_of(something_split, Union{Nothing, Some{Vector{Int}}}, Vector{Int}).writes)
     @test doubts(summary_of(split_poke!, Union{Vector{Int}, Dict{Int, Int}}).writes) == Dict(top(2) => sourced(2))
-    @test length(something(dispatch(Any[typeof(three_way), Union{Int, Float64, String}], world, 1))) == 3
-    @test isnothing(dispatch(Any[typeof(poke!), Union{Vector{Int}, AbstractDict}], world, 1))
-    @test length(something(dispatch(Any[typeof(pair_poke!), Union{Vector{Int}, Dict{Int, Int}}, Union{Int, Float64, String}], world, 1))) == 6
-    @test isnothing(dispatch(Any[typeof(cross!), Union{Vector{Int}, Vector{Float64}, Dict{Int, Int}}, Union{Int, Float64, String}], world, 1))
+    @test length(something(dispatch(Any[typeof(three_way), Union{Int, Float64, String}], world, LIBRARY_REACH))) == 3
+    @test isnothing(dispatch(Any[typeof(poke!), Union{Vector{Int}, AbstractDict}], world, LIBRARY_REACH))
+    @test length(something(dispatch(Any[typeof(pair_poke!), Union{Vector{Int}, Dict{Int, Int}}, Union{Int, Float64, String}], world, LIBRARY_REACH))) == 6
+    @test isnothing(dispatch(Any[typeof(cross!), Union{Vector{Int}, Vector{Float64}, Dict{Int, Int}}, Union{Int, Float64, String}], world, LIBRARY_REACH))
     @test doubts(summary_of(split_abstract!, Union{Vector{Int}, AbstractDict}).writes) == Dict((parameter(2), true) => sourced(2))
     # Open call writes mutable argument only: `Int`, `Float64` and `String` hold no state.
     @test haskey(doubts(summary_of(split_wide!, Union{Vector{Int}, Vector{Float64}, Dict{Int, Int}}, Union{Int, Float64, String}).writes), (parameter(2), true))
     package_run = start_run(nothing, [@__MODULE__])
-    @test join_limit(package_run, only(something(dispatch(Any[typeof(three_way), Int], world, 1)))) == JOIN_LIMIT
-    @test join_limit(package_run, only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], world, 1)))) == 1
+    package_reach = join_reach(package_run, only(something(dispatch(Any[typeof(three_way), Int], world, LIBRARY_REACH))))
+    @test package_reach.limit == JOIN_LIMIT && package_reach.own == Set([@__MODULE__])
+    @test join_reach(package_run, only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], world, LIBRARY_REACH)))) === LIBRARY_REACH
+    # Past `max_methods`, package code joins every method when all belong to target package; Base method keeps call open.
+    @test length(something(dispatch(Any[typeof(four_way), Any], world, package_reach))) == 4
+    @test isnothing(dispatch(Any[typeof(length), Any], world, package_reach))
+    wide_run = start_run(nothing, [@__MODULE__])
+    wide_root = (only(something(dispatch(Any[typeof(wide_call), Any], wide_run.world, LIBRARY_REACH))), Pair{Int, Any}[])
+    solve!(wide_run, [wide_root])
+    @test isempty(root_summary(wide_run, wide_root).writes) && root_summary(wide_run, wide_root).closed_world
+    @test doubts(summary_of(wide_call, Any).writes) == Dict((parameter(2), true) => sourced(2))
+    wipe_root = (only(something(dispatch(Any[typeof(wipe_any!), Any], wide_run.world, LIBRARY_REACH))), Pair{Int, Any}[])
+    solve!(wide_run, [wipe_root])
+    # Joined write keeps certainty: every method writes argument; array below it depends on argument type.
+    @test doubts(root_summary(wide_run, wipe_root).writes) == Dict(top(2) => NO_DOUBT, (parameter(2, Step.Field(:x)), false) => sourced(2))
     possible_first = Access(parameter(2), false, EffectKind.memory, Confidence.possible, typed.site.span)
     @test worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, typed.site.span)])[1].confidence == Confidence.definite
     # Kinds stay apart: definite IO write never hides `possible` memory write.
@@ -1277,7 +1312,7 @@ flag_on(x::Vector{Int}) = flag_store!(x, true)
 
 @testset "variant parameters" begin
     run = start_run(nothing, Module[])
-    instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world, 1)))
+    instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world, LIBRARY_REACH)))
     solve!(run, [(instance, Pair{Int, Any}[])])
     ir = run.codes[(instance, Pair{Int, Any}[])].ir
     # Chain of 10^5 calls: explicit stack keeps deep call chains off native stack.
@@ -1289,7 +1324,7 @@ flag_on(x::Vector{Int}) = flag_store!(x, true)
     end
     @test variant_parameters!(run, first(links)) == Set([2])
     # Branch condition: constant flag drops unreached store, as Julia inference does; unknown flag keeps it.
-    flagged = only(something(dispatch(Any[typeof(flag_store!), Vector{Int}, Bool], run.world, 1)))
+    flagged = only(something(dispatch(Any[typeof(flag_store!), Vector{Int}, Bool], run.world, LIBRARY_REACH)))
     # Position 2 reaches object operand of `getfield` in `setindex!`.
     @test variant_parameters!(run, flagged) == Set([2, 3])
     @test isempty(summary_of(flag_off, Vector{Int}).writes)
@@ -1333,13 +1368,13 @@ peel(f::Any, shell::InnerShell) = (STEPS[] += 1; peel(f ∘ identity, shell.inne
     cases = ((deepen, (Int, Int), (:deepen,), 3, Tuple{typeof(deepen), Layer, Int}), (deepen_odd, (Int, Int), (:deepen_odd, :deepen_even), 5, Tuple{typeof(deepen_odd), Layer, Int}), (peel, (typeof(sin), OuterShell), (:peel,), 5, Tuple{typeof(peel), ComposedFunction, InnerShell}), (retag, (Layer{Int}, Int), (:retag,), 3, Tuple{typeof(retag), Layer{Float32}, Int}))
     for (f, types, names, total, expected) in cases
         run = start_run(nothing, [@__MODULE__])
-        root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
+        root = (only(something(dispatch(Any[typeof(f), types...], run.world, LIBRARY_REACH))), Pair{Int, Any}[])
         solve!(run, [root])
         reached = filter(instance -> instance.def.name in names, collect(keys(run.bodies)))
         @test length(reached) == total
         @test any(instance -> instance.specTypes == expected, reached)
     end
-    @test journal_key(only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], Base.get_world_counter(), 1)))) == "effects\nTuple{typeof(push!), Array{Int64, 1}, Int64}"
+    @test journal_key(only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], Base.get_world_counter(), LIBRARY_REACH)))) == "effects\nTuple{typeof(push!), Array{Int64, 1}, Int64}"
 end
 
 const DOUBTS = Data.SampledFrom([NO_DOUBT, CODE_DOUBT, sourced(2), sourced(3), BLIND_DOUBT])
@@ -1370,7 +1405,7 @@ end
     @test widened.unguarded == Dict(key => (hold = unsettled(single), throws = 4))
     @test widened.fresh == 1 && widened.closed_world && widened.cut
     # Callback records of both summaries stay.
-    instance = only(something(dispatch(Any[typeof(CASES.set_value!), CASES.Box, Int], Base.get_world_counter(), 1)))
+    instance = only(something(dispatch(Any[typeof(CASES.set_value!), CASES.Box, Int], Base.get_world_counter(), LIBRARY_REACH)))
     record = Callback((variant = (instance, Pair{Int, Any}[]), parameters = [Nodes(Node.Placed(parameter(2)) => NO_DOUBT)]))
     recorded = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set([record]), Nodes(), 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}())
     @test widen(recorded, new).callbacks == Set([record]) && widen(new, recorded).callbacks == Set([record])
@@ -1470,7 +1505,7 @@ pop_twice!(stack::Vector{Any}, flag::Bool) = (pop!(stack); flag ? throw(Argument
 """Run and root of `f` on argument `types`, solved with `modules` as package code."""
 function solved(f::Any, modules::Vector{Module}, types::Type...)::Tuple{Effects.Run, Variant}
     run = start_run(nothing, modules)
-    root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
+    root = (only(something(dispatch(Any[typeof(f), types...], run.world, LIBRARY_REACH))), Pair{Int, Any}[])
     solve!(run, [root])
     return run, root
 end

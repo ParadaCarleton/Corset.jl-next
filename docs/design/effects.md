@@ -131,6 +131,7 @@ Resolution of each call statement, first match wins:
    `HAMT.path(trie, key, h, false)` skips copy-on-write store, so `ScopedValue` read writes nothing. Julia inference resolves the same constant.
 4. Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.
 5. Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: `possible`.
+   Past 3, call whose matching methods all belong to target package joins them all: Corset analyzes package methods anyway.
    Access that some members lack takes sources of open operands, as open dispatch does: operand types pick member.
    Blind access of one member and exact access of another disagree: join gives `possible`.
 6. Base interface function with documented contract (`setindex!` writes collection; `length` reads only; `view` result lies within array). Breach in package method is finding.
@@ -167,6 +168,8 @@ Resolution of each call statement, first match wins:
 - Open call (step 7) whose open operands come from opaque and opt-out arguments only: no finding (Provenance). Opaque argument counts on coverage line: `open dispatch on opaque data`.
 - Other open call: doubt in code, `possible` finding.
 - Limit 3 is compiler `max_methods`, never below. Limit 8 reached 20 times more instances on Distances.
+- Own join goes past compiler: Distances `_evaluate` matches about 20 metric methods, so compiler gives up.
+- Method of other package or Base in match list keeps call open: its methods are no units.
 - Library code joins union splits only: its other run-time dispatch stays open (step 7). Joins there raised `possible` share and cost most time.
 - Union split: past limit, call on union arguments splits as compiler splits it. Limit: compiler split cost at most 4 (`max_union_splitting`).
 - Split cost counts longest union as 2: `(Union{A, B}, Union{C, D, E})` costs 4 and splits into 6 combinations.

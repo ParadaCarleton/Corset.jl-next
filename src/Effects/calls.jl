@@ -268,34 +268,63 @@ end
 
 """
 Most methods run-time dispatch in package code joins (`effects.md`, Calls, step 5): compiler `max_methods`, never below.
-Limit 8 reached 20 times more instances on Distances. Library code joins union splits only (`join_limit`).
+Limit 8 reached 20 times more instances on Distances. Library code joins union splits only (`join_reach`).
 """
 const JOIN_LIMIT = 3
+
+"""
+Join reach of call site (`effects.md`, Calls, step 5): most matching methods call joins, and modules whose methods call
+joins past `limit` (`own_join`). Package code: `JOIN_LIMIT` and target package; library code: `LIBRARY_REACH`.
+"""
+struct Reach
+    limit::Int
+    own::Set{Module}
+end
+
+"""Reach of library code: one method, so library code joins union splits only."""
+const LIBRARY_REACH = Reach(1, Set{Module}())
 
 """Most union split cost (`effects.md`, Calls): compiler `max_union_splitting`."""
 const UNION_SPLIT_LIMIT = CC.InferenceParams().max_union_splitting
 
 """
 Instances of methods call with argument `types` can reach in `world`, each specialized to call; `nothing` past
-`limit` methods. Past limit, union split (`union_split`) can still resolve call.
+limit of `reach`. Past limit, union split (`union_split`) or join of own methods (`own_join`) can still resolve call.
 """
-function dispatch(types::Vector{Any}, world::UInt, limit::Int)::Union{Nothing, Vector{Core.MethodInstance}}
-    matches = Base._methods_by_ftype(Tuple{types...}, limit, world)
-    matches isa Vector || return union_split(types, world, limit)
-    return Core.MethodInstance[CC.specialize_method(match::Core.MethodMatch) for match in matches]
+function dispatch(types::Vector{Any}, world::UInt, reach::Reach)::Union{Nothing, Vector{Core.MethodInstance}}
+    matches = Base._methods_by_ftype(Tuple{types...}, reach.limit, world)
+    matches isa Vector && return specialized(matches)
+    split = union_split(types, world, reach)
+    isnothing(split) || return split
+    return own_join(types, world, reach.own)
+end
+
+"""Instance of each method match, specialized to call."""
+specialized(matches::Vector)::Vector{Core.MethodInstance} = Core.MethodInstance[CC.specialize_method(match::Core.MethodMatch) for match in matches]
+
+"""
+Instances of every method that call with argument `types` reaches in `world`, when all belong to `own` modules (target
+package). Compiler stops at `max_methods`; Corset analyzes package methods anyway, so it joins them all.
+"""
+function own_join(types::Vector{Any}, world::UInt, own::Set{Module})::Union{Nothing, Vector{Core.MethodInstance}}
+    isempty(own) && return nothing
+    matches = Base._methods_by_ftype(Tuple{types...}, -1, world)
+    matches isa Vector || return nothing
+    all(match -> (match::Core.MethodMatch).method.module in own, matches) || return nothing
+    return specialized(matches)
 end
 
 """
 Instances that call with union argument `types` reaches, as compiler splits it: compiler cost check, then each
-combination of union members dispatches within `limit`. `nothing` when compiler splits none or one combination stays open.
+combination of union members dispatches within `reach`. `nothing` when compiler splits none or one combination stays open.
 """
-function union_split(types::Vector{Any}, world::UInt, limit::Int)::Union{Nothing, Vector{Core.MethodInstance}}
+function union_split(types::Vector{Any}, world::UInt, reach::Reach)::Union{Nothing, Vector{Core.MethodInstance}}
     lattice = CC.JLTypeLattice()
     # Cost counts longest union as 2: `(Union{A, B}, Union{C, D, E})` costs 4 and splits into 6 combinations.
     CC.is_union_split_eligible(lattice, types, UNION_SPLIT_LIMIT) || return nothing
     instances = Core.MethodInstance[]
     for combination in CC.switchtupleunion(lattice, types)
-        found = dispatch(combination::Vector{Any}, world, limit)
+        found = dispatch(combination::Vector{Any}, world, reach)
         isnothing(found) && return nothing
         union!(instances, found)
     end
@@ -303,13 +332,13 @@ function union_split(types::Vector{Any}, world::UInt, limit::Int)::Union{Nothing
 end
 
 """
-Resolution of call with `operands` (callee first) in `ir`: builtin, intrinsic, up to `limit` matching methods, else open.
+Resolution of call with `operands` (callee first) in `ir`: builtin, intrinsic, matching methods within `reach`, else open.
 Builtins that call operand (`invokelatest`, `_apply_iterate`, `finalizer`) resolve to call they make. Intrinsic operand
 can be nested constant expression (`cglobal((:name, library))`), so operand types wait until dispatch. Builtin other
 than `tuple` with `Rest` operands stays unresolved. Call of `FunctionStandIn` is open dispatch: it stands for any
 function.
 """
-function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt, limit::Int)::Outcome.Type
+function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt, reach::Reach)::Outcome.Type
     callee = @match first(operands) begin
         Operand.Value(value) => constant(ir, value)
         Operand.Rest(_) => return Outcome.Open(operands)
@@ -317,18 +346,18 @@ function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt, lim
     end
     if !isnothing(callee) && something(callee) isa Core.Builtin
         builtin = something(callee)
-        builtin in (Core.invokelatest, Core._call_latest, Core.finalizer) && return resolve(ir, operands[2:end], world, limit)
-        builtin in (Core.invoke_in_world, Core._call_in_world, Core._call_in_world_total) && return resolve(ir, operands[3:end], world, limit)
+        builtin in (Core.invokelatest, Core._call_latest, Core.finalizer) && return resolve(ir, operands[2:end], world, reach)
+        builtin in (Core.invoke_in_world, Core._call_in_world, Core._call_in_world_total) && return resolve(ir, operands[3:end], world, reach)
         builtin === Core.tuple || !any(is_rest, operands) || return Outcome.Unresolved(operands)
         builtin isa Core.IntrinsicFunction && return Outcome.Intrinsic(builtin, operands[2:end])
-        builtin === Core._apply_iterate && return spread_call(ir, operands[3:end], world, limit)
+        builtin === Core._apply_iterate && return spread_call(ir, operands[3:end], world, reach)
         builtin === Core.invoke && return invoke_call(ir, operands, world)
         return Outcome.Builtin(builtin, operands[2:end])
     end
     stand_in_call(ir, callee, operands) && return Outcome.Open(operands)
     latest = latest_call(ir, callee, operands)
-    isnothing(latest) || return resolve(ir, latest, world, limit)
-    instances = dispatch(call_types(ir, operands), world, limit)
+    isnothing(latest) || return resolve(ir, latest, world, reach)
+    instances = dispatch(call_types(ir, operands), world, reach)
     isnothing(instances) && return contract_call(ir, callee, operands)
     # No matching method: call throws `MethodError`.
     return isempty(instances) ? Outcome.Dead() : Outcome.Dispatch(instances, operands)
@@ -418,7 +447,7 @@ Resolution of `_apply_iterate` call: callee and spread `arguments` become operan
 per position until first `Rest`; tuple or array of unknown length gives `Rest`. Other collections run `iterate`
 methods, so call stays unresolved.
 """
-function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt, limit::Int)::Outcome.Type
+function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt, reach::Reach)::Outcome.Type
     operands = Operand.Type[first(arguments)]
     for argument in arguments[2:end]
         value = @match argument begin
@@ -434,7 +463,7 @@ function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt
             return Outcome.Unresolved(arguments)
         end
     end
-    return resolve(ir, operands, world, limit)
+    return resolve(ir, operands, world, reach)
 end
 
 """
@@ -483,9 +512,9 @@ end
 Resolution of statement `statement` of `ir`: call or foreign call outcome; `nothing` for other statements. IR before
 inlining holds no `:invoke` statement.
 """
-function statement_outcome(ir::CC.IRCode, @nospecialize(statement::Any), world::UInt, limit::Int)::Union{Nothing, Outcome.Type}
+function statement_outcome(ir::CC.IRCode, @nospecialize(statement::Any), world::UInt, reach::Reach)::Union{Nothing, Outcome.Type}
     statement isa Expr || return nothing
-    statement.head === :call && return resolve(ir, Operand.Type[Operand.Value(value) for value in statement.args], world, limit)
+    statement.head === :call && return resolve(ir, Operand.Type[Operand.Value(value) for value in statement.args], world, reach)
     statement.head === :foreigncall && return foreign_outcome(statement)
     return nothing
 end

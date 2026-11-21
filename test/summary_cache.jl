@@ -8,7 +8,7 @@ using Corset.Inference: Inference, infer_package, Store, entry_key, serialized, 
 using Corset.Effects:
     Effects, Library, LibraryEntry, Summary, Run, Variant, Closure, start_run, solve!, dispatch, root_summary, same, cached_effects,
     library_entries, unshared, closure_key!, variant_key!, instance_key!, instance_node, record_text!, stored_value!, type_text!, inferred!,
-    record_bytes, unit_record, callee_methods
+    record_bytes, unit_record, callee_methods, LIBRARY_REACH
 using Moshi.Data: isa_variant
 using Serialization: deserialize
 using Random: RandomDevice
@@ -45,7 +45,7 @@ fact_text(facts::Facts.EffectsFacts)::Vector{String} = [repr(Any[found.site.meth
 reread(data::T) where {T} = deserialize(IOBuffer(serialized(data)))::T
 
 """Instance of method of `f` on argument `types`."""
-instance_of(f::Any, types::Type...)::Core.MethodInstance = only(something(dispatch(Any[typeof(f), types...], Base.get_world_counter(), 1)))
+instance_of(f::Any, types::Type...)::Core.MethodInstance = only(something(dispatch(Any[typeof(f), types...], Base.get_world_counter(), LIBRARY_REACH)))
 
 """Run with library cache `library` for package `modules`, solved from instance of `f` on `types`, and its root."""
 function solved(library::Library, modules::Vector{Module}, f::Any, types::Type...)::Tuple{Run, Variant}
