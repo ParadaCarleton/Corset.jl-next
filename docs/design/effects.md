@@ -219,6 +219,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
   - Table keys holder type and field, or method. Listed entry sets kind before path types.
   - Audited field sets kind of every place below it: JIT compile writes code below `Regex` field.
   - `Regex` compile cache, `LazyString`; Base logging and PCRE contexts.
+  - Logging `JULIA_DEBUG` cache (`env_override_minlevel`) and frame lookup of deprecation (`_depwarn`): unknown objects they write.
   - Repair method `unsafe_convert(Ref{BigFloat}, ::BigFloatData)`: rewrites stale MPFR limb pointer before each call.
 - Package `setfieldonce!` and package caches follow memo-cache rule above: cheap proof or opt-out.
 - Write to other module's global outside audited table counts as global write; requirement propagates.
