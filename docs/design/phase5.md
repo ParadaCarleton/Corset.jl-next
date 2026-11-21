@@ -139,8 +139,15 @@ Fail: revise call resolution, then run gate again. Log result in history; put ti
 ### 7 Effect rules
 
 - `unused-call` (F54): discarded call without effect of any kind, without throw, and with termination.
-- `hidden-input` (F55): reads default RNG, task-local state, `ScopedValue` or mutable global.
-- `impure-lambda` (F56): anonymous function captures mutable state.
+- `hidden-input` (F55): reads default RNG, or package global that other package method writes.
+  - Global reads at first: Distributions 1184, nearly all Base tables (`powers_of_ten`, `base62digits`) that callees read.
+  - Task-local and `ScopedValue` reads come from logging state (`CURRENT_LOGSTATE`) and `@test`; rule passes both.
+  - Argument `rng::AbstractRNG` has no stand-in; convenience caller reaches it with default RNG. Caller controls RNG: no finding.
+- `impure-lambda` (F56): anonymous function writes state inside call of Base query function (`map`, `filter`, `sort`).
+  - Call fact of query call holds write kinds of its callback: closure needs no unit of its own.
+  - Read-only capture passes: `filter(x -> x in seen, xs)` reads set it does not change.
+  - `foreach`, functions with `!`, ordered folds and named functions pass.
+  - Call fact keeps kinds of definite writes; write with doubt gives `possible`.
 - `false-effects` (F58): own analysis contradicts package `@assume_effects` claim.
 - `unguarded-release` (F98): effects version reads throw-exit count; delete syntax version in same PR.
 

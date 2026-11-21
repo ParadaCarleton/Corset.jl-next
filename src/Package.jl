@@ -295,6 +295,7 @@ Extension with trigger environment cannot find or load becomes blind spot; exten
 function load_extensions(mod::Module, project::ProjectFacts, files::Vector{SyntaxFile})::Tuple{Vector{Finding}, Vector{BlindSpot}}
     errors, blind_spots = Finding[], BlindSpot[]
     for (; name, file, triggers) in project.extensions
+        # corset: allow impure-lambda -- `locate_package` fills Base load cache; early stop only skips fill
         if any(trigger -> isnothing(Base.locate_package(trigger)), triggers)
             push!(blind_spots, BlindSpot("extension trigger not installed", Span(file, 1, 1, Precision.line)))
             continue

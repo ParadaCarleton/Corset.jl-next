@@ -648,6 +648,7 @@ function names_package!(named::IdDict{Any, Bool}, @nospecialize(type::Any), modu
     elseif type isa Core.TypeofVararg
         isdefined(type, :T) && names_package!(named, type.T, modules)
     elseif type isa DataType
+        # corset: allow impure-lambda -- memo cache: early stop only skips cache fill
         parentmodule(type) in modules || any(index -> names_package!(named, type.parameters[index], modules), 1:length(type.parameters))
     else
         false

@@ -32,7 +32,7 @@ end
 
 """
 Facts of package directory `case` for rule of `stage`. Package loads, with case directory added to load path, for
-stage after `syntax`; fixture must load. Inference and external facts exist for their own stage only.
+stage after `syntax`; fixture must load. Inference, effects and external facts exist for their own stage only.
 """
 function package_facts(case::String, stage::Stage.T)::FactSet
     sources = Corset.Discovery.discover(case; environment = nothing)
@@ -45,8 +45,9 @@ function package_facts(case::String, stage::Stage.T)::FactSet
     end
     isempty(loaded.errors) || error("fixture $case does not load: $(first(loaded.errors).primary.text)")
     inference = stage == Stage.inference ? first(Corset.Inference.inference_facts(loaded.facts, sources.files, nothing, nothing)) : nothing
+    effects = stage == Stage.effects ? Corset.Engine.stage_facts(case, loaded.facts, sources.files, true, true, nothing, nothing)[3] : nothing
     external = stage == Stage.external ? Corset.External.external_facts(loaded.facts, sources.project.entry, sources.files) : nothing
-    return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, loaded.facts, inference, nothing, external)
+    return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, loaded.facts, inference, effects, external)
 end
 
 """Source file of `case` that must start with `# runic: off`: case file, or module file of package case."""

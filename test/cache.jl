@@ -56,7 +56,8 @@ end
                 joinpath(corset, "Project.toml"), joinpath(corset, "src", "Cache.jl"),
             ]
             @test issubset(listed, files) && issorted(files) && allunique(files)
-            @test !any(file -> occursin("hidden", file) || occursin("gone", file) || occursin("link", file), files)
+            # Corset source names files too (`hidden_input.jl`): check scratch files only.
+            @test !any(file -> startswith(file, scratch) && any(word -> occursin(word, relpath(file, scratch)), ("hidden", "gone", "link")), files)
             # Manifest format 1 keeps entries at top level.
             write_files(environment, "Manifest.toml" => "[[D]]\npath = \"../dependency\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n")
             @test Cache.path_entries(project) == [dependency]

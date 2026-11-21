@@ -1315,3 +1315,23 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 | StatsFuns | 417 | 427 |
 
 - Limit 10 million: flow past it gets open summary, blind spot `effects budget`.
+
+### Effect rules
+
+Corpus: Distributions, SpecialFunctions, StatsFuns, Distances, DataStructures (winwsl, 1 core per package).
+
+- F54 candidates (dropped, no write kind, nothrow, terminates): 137, 40, 55, 34, 85. Most are calls lowering inserts: `<:`, `isa`, `isdefined`.
+- TypedSyntax.jl maps no discarded statement, so candidate spans were line precision. Inference now maps lone discarded call on its line.
+- Rule keeps exact span whose discarded statement spells same callee. Left: Distances 8, all `require_one_based_indexing`, `possible`.
+- Stand-in array is one-based, so check cannot throw for it. Doubt is in code; `possible` stays off by default.
+- Qualified callee `Base.f` lowers to `getproperty` statement; span mapping reads its name now.
+- F55 global reads: 1184, 591, 558, 178, 173 method reads, nearly all Base tables (`powers_of_ten`, `base62digits`) through callees.
+- So F55 reads package globals only, and only those other package method writes.
+- Task-local and `ScopedValue` reads come from logging state (`CURRENT_LOGSTATE`) and `@test`. F55 passes both.
+- Default RNG read sat on result of `jl_get_current_task`, open foreign call: `possible`. Current task now has no doubt.
+- Then Distributions gave 2 RNG findings. `rand(d::UnivariateGMM)` has sibling `rand(rng, d)`; LKJ sampler takes `rng::AbstractRNG`.
+- `rng::AbstractRNG` has no stand-in; convenience caller reaches it with default RNG. Caller controls RNG in both: no finding.
+- F58: no package method of corpus claims effects. F98: no unguarded hold in corpus.
+- F56 needs no closure unit: call fact of `filter` holds write kinds of closure, since callback record resolves at call.
+- Constructor `Set{Int}()` merges several fresh objects; write into result has doubt. Local-set filter gives `possible`.
+- F56 corpus: no definite finding. Distributions gives 4 `possible`: closure calls `logpdf` or `size` on abstract element, open dispatch.

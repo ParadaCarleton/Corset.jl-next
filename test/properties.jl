@@ -267,8 +267,8 @@ const PROGRAMS = @composed function program(parts = PARTS, separator = SEPARATOR
     return body * "\n"
 end
 const TIERS = Data.SampledFrom(collect(instances(Tier.T)))
-"""Rules that compare code as text; fix that rewrites code into text of other code reveals real match, such as two equal lock targets."""
-const TEXT_MATCH_RULES = [Symbol("duplicate-statement"), Symbol("unguarded-release"), :unreachable]
+"""Rules that compare code as text; fix that rewrites code into text of other code reveals real match, such as two equal statements."""
+const TEXT_MATCH_RULES = [Symbol("duplicate-statement"), :unreachable]
 """Rules whose `safe` fix spells out what parser already reads: proven equivalent."""
 const EQUIVALENT = [
     Symbol("and-or-precedence"), :docstring, :juxtaposition, Symbol("mixed-return"), Symbol("short-circuit-statement"),

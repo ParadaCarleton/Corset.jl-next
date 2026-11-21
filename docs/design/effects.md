@@ -250,13 +250,13 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Block keeps at most 4 paths: counts and branch conditions taken. Fifth path joins all paths into one.
 - Branch on condition that path took before takes same side: `l && lock(x) … l && unlock(x)` balances (Base `@_lock_ios`).
 - Condition is forgotten when loop runs its statement again.
-- Primitive that throws: acquire takes nothing, release still counts. `unlock` throws only when lock is not held.
+- Primitive that throws: acquire takes nothing, release still counts. `unlock` throws only when lock is not held. Blind release stays blind at throw.
 - Join of different counts gives unknown; count that grows round a loop gives unknown.
 - Throw exit: statement that may throw outside every `try`. Its count joins into throw-exit count.
 - Call applies callee counts on caller places like writes: through join and callback record. Callee throw-exit count joins at call statement.
 - Normal-exit lock or semaphore count not 0 on argument or global: lock write. Exact count gives definite; unknown from join gives `possible`.
 - F98 (`unguarded-release`) fact: statement throws outside every `try` while method holds resource. Release is skipped. Fact names resource kind: lock or semaphore slot gives synchronization, file gives IO.
-- Hold comes from own acquire or callee normal exit. Callee throw-exit count alone gives none: finding goes to method that acquires.
+- Hold comes from own acquire or callee normal exit. Callee throw-exit count alone gives none, also after `catch` or `finally`: finding goes to method that acquires.
 
 #### Solve and cache
 

@@ -105,6 +105,7 @@ function referent!(cache::IdDict{Any, Bool}, @nospecialize(type::Any))::Bool
     elseif type <: Ptr || ismutabletype(type)
         true
     else
+        # corset: allow impure-lambda -- memo cache: early stop only skips cache fill
         any(index -> referent!(cache, fieldtype(type, index)), 1:fieldcount(type))
     end
     cache[type] = answer

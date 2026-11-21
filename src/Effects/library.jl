@@ -433,6 +433,7 @@ function unshared(run::Run, state::Closure)::Set{Variant}
     order, checked = collect(keys(run.summaries)), IdDict{Core.MethodInstance, Bool}()
     successors, inside = call_graph(run, order), falses(length(order))
     for component in components(successors)
+        # corset: allow impure-lambda -- memo cache: early stop only skips cache fill
         reaches = any(member -> unshared!(run, state, checked, order[member]) || any(callee -> inside[callee], successors[member]), component)
         inside[component] .= reaches
     end

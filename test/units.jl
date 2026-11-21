@@ -5,6 +5,7 @@ using Corset.Facts: Facts, Span, Label, Edit, Fix, Finding, Precision, Tier, Con
 using Corset.Config: Config, ConfigError, Flags, Kind, Level, Settings
 using Corset.Engine: Diagnostic, Report
 using Corset.Rules: REGISTRY, entry
+using Random: AbstractRNG
 using Test: @test, @testset, @test_throws
 
 """Finding in file `name` with primary span `bytes`, causes `causes` and fix `fix`."""
@@ -186,6 +187,12 @@ end
     # File value: `include` returns last top-level statement, also from inside `begin`.
     tail = Corset.Syntax.parse_file("t.jl", "f() || g()\nbegin\n    h()\nend\n", Role.package)
     @test [Facts.source(tail, node) => Facts.discarded(node) for node in Facts.forms(tail, "call")] == ["f()" => false, "g()" => true, "h()" => false]
+    # RNG positions: declared type, type variable bound and union hold RNG; `Any` and number do not.
+    draws(rng::AbstractRNG, scale::Real, seed) = nothing
+    picks(source::R, count::Int...) where {R <: Union{Nothing, AbstractRNG}} = nothing
+    counts(items::Vector{Int}, rest...) = nothing
+    @test Facts.rng_positions(only(methods(draws))) == [1] && Facts.rng_positions(only(methods(picks))) == [1]
+    @test isempty(Facts.rng_positions(only(methods(counts))))
 end
 
 @testset "engine" begin
@@ -455,4 +462,28 @@ end
         write(joinpath(directory, Corset.Baseline.FILE), "[[finding]]\nrule = 1\nfile = \"a.jl\"\ndefinition = \"\"\nsnippet = \"s\"\ncount = 1\n")
         @test_throws ConfigError Corset.check(directory)
     end
+end
+
+"""Package state for `hidden-input` certainty: one method may write `STATE`, other method writes it, third reads it."""
+module HiddenState
+    const STATE = Ref(0)
+    maybe_set!() = nothing
+    set!() = nothing
+    state() = nothing
+end
+
+@testset "hidden-input takes weaker certainty of read and write" begin
+    F, input = Corset.Facts, Corset.Rules.HiddenInput
+    span = Span("f.jl", 1, 1, Precision.exact)
+    file = Corset.Syntax.parse_file("f.jl", "x = 1\n", Role.package)
+    ref = GlobalRef(HiddenState, :STATE)
+    access(confidence::Confidence.T)::F.Access = F.Access(F.Place.At(F.Root.Global(ref), F.Step.Type[]), false, F.EffectKind.memory, confidence, span)
+    effects(f::Function, writes::Vector{F.Access}, reads::Vector{F.Access})::F.MethodEffects = F.MethodEffects(
+        F.MethodSite(only(methods(f)), file, nothing, span), writes, reads, F.BlindAccess[], F.BlindAccess[], F.Place.Type[], F.UnguardedHold[], F.CallFact[], true, false, Symbol[],
+    )
+    maybe, sure = effects(HiddenState.maybe_set!, [access(Confidence.possible)], F.Access[]), effects(HiddenState.set!, [access(Confidence.definite)], F.Access[])
+    reader = effects(HiddenState.state, F.Access[], [access(Confidence.definite)])
+    found(writers::Vector{F.MethodEffects})::Confidence.T = input.input_finding(reader, ref, only(reader.reads), input.writers(F.EffectsFacts([writers; reader]), [HiddenState])).confidence
+    # Write that open call may make gives `possible`; certain write elsewhere wins.
+    @test found([maybe]) == Confidence.possible && found([sure]) == Confidence.definite && found([maybe, sure]) == Confidence.definite
 end

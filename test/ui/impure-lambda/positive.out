@@ -1,0 +1,58 @@
+error[impure-lambda]: anonymous function passed to `filter` writes state
+ --> src/ImpureLambdaPositive.jl:9:12
+  |
+9 |     return filter(item -> item in seen ? false : (push!(seen, item); true), items)
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `filter` chooses order and number of calls
+  |                   -------------------------------------------------------- writes state
+  |
+  = why: write depends on Base internals, and call that reads as query changes state
+  = confidence: possible
+  = fix: write loop, or use `foreach`   [manual]
+  = docs: corset explain impure-lambda
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow impure-lambda -- <reason>`
+
+error[impure-lambda]: anonymous function passed to `map` writes state
+  --> src/ImpureLambdaPositive.jl:14:15
+   |
+14 |     doubled = map(item -> (calls[] += 1; 2item), items)
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `map` chooses order and number of calls
+   |                   ----------------------------- writes state
+   |
+   = why: write depends on Base internals, and call that reads as query changes state
+   = fix: write loop, or use `foreach`   [manual]
+   = docs: corset explain impure-lambda
+
+error[impure-lambda]: anonymous function passed to `sort` writes state
+  --> src/ImpureLambdaPositive.jl:18:55
+   |
+18 | sorted_logged(log::Vector{Int}, items::Vector{Int}) = sort(items; by = item -> (push!(log, item); item))
+   |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `sort` chooses order and number of calls
+   |                                                                        -------------------------------- writes state
+   |
+   = why: write depends on Base internals, and call that reads as query changes state
+   = fix: write loop, or use `foreach`   [manual]
+   = docs: corset explain impure-lambda
+
+error[impure-lambda]: anonymous function passed to `sum` writes state
+  --> src/ImpureLambdaPositive.jl:20:33
+   |
+20 | total(items::Vector{Float64}) = sum(item -> (CALLS[] += 1; item), items)
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `sum` chooses order and number of calls
+   |                                     ---------------------------- writes state
+   |
+   = why: write depends on Base internals, and call that reads as query changes state
+   = fix: write loop, or use `foreach`   [manual]
+   = docs: corset explain impure-lambda
+
+error[impure-lambda]: anonymous function passed to `any` writes state
+  --> src/ImpureLambdaPositive.jl:23:12
+   |
+23 |     return any(items) do item
+   |            ^^^^^^^^^^^^^^^^^^ `any` chooses order and number of calls
+   |                       ------- writes state
+   |
+   = why: write depends on Base internals, and call that reads as query changes state
+   = fix: write loop, or use `foreach`   [manual]
+   = docs: corset explain impure-lambda
+

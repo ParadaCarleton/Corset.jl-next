@@ -1762,6 +1762,8 @@ function scoped_sum(x::Int)
     end
 end
 lock_either!(flag::Bool, a::ReentrantLock, b::ReentrantLock) = (lock(flag ? a : b); nothing)
+"""Release through operand with two targets is blind, at normal exit and at its own throw."""
+unlock_either!(flag::Bool, a::ReentrantLock, b::ReentrantLock) = (lock(a); unlock(flag ? a : b); nothing)
 
 """Hold of `summary` by caller node and resource: count and level."""
 holds(table::HoldCounts)::Dict{Tuple{Node.Type, Resource.T}, Tuple{Int, Level.T}} = Dict(key => (hold.count, hold.level) for (key, hold) in table)
@@ -1820,6 +1822,8 @@ placed(position::Int, steps::Step.Type...)::Node.Type = Node.Placed(parameter(po
     merged = summary_of(lock_either!, Bool, ReentrantLock, ReentrantLock).held
     @test holds(merged) == Dict((placed(3), lock_) => (0, blind), (placed(4), lock_) => (0, blind)) && all(hold -> hold.reason == RELEASE_PATTERN, values(merged))
     @test holds(summary_of(lock_open!, Any).held) == Dict((placed(2), lock_) => (0, blind))
+    # Throw of blind release leaves blind hold, so no definite fact.
+    @test all(found -> found.hold.level == blind, values(summary_of(unlock_either!, Bool, ReentrantLock, ReentrantLock).unguarded))
     # Lock write counts lock resource only; file hold on caller place writes nothing.
     span = Span("fixture.jl", 1, 1, Precision.line)
     file_held = HoldCounts((placed(2), lock_) => HoldCount(1, none, 1, ""), (placed(3), file) => HoldCount(1, none, 1, ""))

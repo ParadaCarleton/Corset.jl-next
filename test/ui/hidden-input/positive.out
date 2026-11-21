@@ -1,0 +1,38 @@
+error[hidden-input]: method reads `HiddenInputPositive.SCALE`, which other method writes
+  --> src/HiddenInputPositive.jl:10:22
+   |
+ 8 | set_scale!(scale::Float64) = (SCALE[] = scale; nothing)
+   | ------------------------------------------------------- writes `HiddenInputPositive.SCALE`
+ 9 | 
+10 | scaled(x::Float64) = SCALE[] * x
+   |                      ^^^^^^^ reads `HiddenInputPositive.SCALE`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+   = note: deny from correctness group, library preset
+   = note: opt out with `# corset: allow hidden-input -- <reason>`
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:12:25
+   |
+12 | noisy(x::Float64) = x + randn()
+   | ------------------------------- takes no RNG argument
+   |                         ^^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:22:5
+   |
+21 | function jittered(points::Vector{Float64})
+   | ------------------------------------------ takes no RNG argument
+22 |     return [jitter(point) for point in points]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+   = docs: corset explain hidden-input
+

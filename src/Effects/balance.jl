@@ -153,7 +153,8 @@ function call_changes(flow::Flow, callees::Callees, index::Int)::Tuple{Counts, C
         change = isnothing(found.change) ? HoldCount(0, Level.blind, index, RELEASE_PATTERN) : HoldCount(found.change, Level.none, index, "")
         normal = Counts()
         balanced(change) || add_change!(normal, targets, found.resource, change)
-        return normal, Counts(key => hold for (key, hold) in normal if hold.level == Level.none && hold.count < 0)
+        # Release counts at throw too, blind release included: operand with two targets leaves each hold blind.
+        return normal, something(found.change, 0) < 0 ? copy(normal) : Counts()
     end
     variants = callees.variants[index]
     defers = !flow.flush && !flow.message[index] && length(variants) == 1
@@ -251,6 +252,15 @@ function path_successors(ir::CC.IRCode, block::Int, conditions::Dict{Any, Bool})
     return [successor => conditions for successor in successors if successor != skipped]
 end
 
+"""
+Whether cause statement of `hold` of `key` acquires at normal exit (`changes` by statement). Hold that callee throw exit
+leaves, and that reaches later statement through `catch` or `finally`, gives no fact (`effects.md`, Release balance).
+"""
+function acquired(changes::Dict{Int, Tuple{Counts, Counts}}, key::Tuple{Origin.Type, Resource.T}, hold::HoldCount)::Bool
+    done = first(get(changes, hold.cause, (Counts(), Counts())))
+    return holding(get(done, key, ZERO_HOLD))
+end
+
 """Record in `unguarded` hold of `key` that throw at `index` skips: definite before `possible` before blind, then first throw."""
 function unguard!(unguarded::Dict{Tuple{Origin.Type, Resource.T}, Unguarded}, key::Tuple{Origin.Type, Resource.T}, hold::HoldCount, index::Int)::Nothing
     old = get(unguarded, key, nothing)
@@ -288,7 +298,7 @@ function balance(flow::Flow, callees::Callees)::Tuple{Counts, Counts, Dict{Tuple
                     if destination == 0
                         thrown = join_into(thrown, exceptional)
                         for (key, hold) in exceptional
-                            holding(hold) && holding(get(state, key, ZERO_HOLD)) && unguard!(unguarded, key, hold, index)
+                            holding(hold) && holding(get(state, key, ZERO_HOLD)) && acquired(changes, key, hold) && unguard!(unguarded, key, hold, index)
                         end
                     else
                         flow_into!(entries, pending, destination, (exceptional, known))

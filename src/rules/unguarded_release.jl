@@ -2,10 +2,9 @@
 `unguarded-release` (F98): release skipped when code between acquire and release throws.
 
 ## Description
-Reports release statement after acquire statement on same target in same block, with code between them that can throw.
-Literals and literals assigned to plain names cannot throw, so they pass.
-Pairs: `lock`/`unlock`, `acquire`/`release`, `io = open(…)`/`close(io)`, plain or `Base.` qualified.
-Release in `finally` of `try` after acquire passes, since it sits in other block.
+Reports statement that may throw while method holds lock, semaphore slot or open file, outside every `try`.
+Hold counts come from release balance of `effects` stage: release in branch, loop or callee counts.
+Compiler `nothrow` decides which statements may throw. Finding points at first such statement per resource.
 
 ## Rationale
 Exception between acquire and release skips release. Held lock deadlocks next caller; held semaphore slot blocks later `acquire`; open file stays open.
@@ -25,8 +24,9 @@ end
 ```
 
 ## Limitations
-Rule sees release written as statement of same block. Release nested in `if` or loop passes.
-Finding is `definite` though code between acquire and release may never throw.
+Rule sees package methods inference reaches. Script code gets no finding.
+Finding is `possible` when paths join with different hold counts.
+`trylock` and release pattern Corset cannot count give blind spot.
 """
 module UnguardedRelease
 
@@ -34,68 +34,38 @@ using ...Facts
 
 const NAME = Symbol("unguarded-release")
 
-"""Acquire and release patterns of each pair, with finding kind, harm and manual fix text."""
-const PAIRS = (
-    (
-        kind = :lock, acquire = IndexedPattern(@pattern ~or(lock({target}), Base.lock({target}))),
-        release = IndexedPattern(@pattern ~or(unlock({target}), Base.unlock({target}))),
-        why = "exception between them leaves lock held; next `lock` call waits forever",
-        fix = (file::SyntaxFile, acquire::SyntaxNode, ::SyntaxNode) -> "use `$(source(file, acquire)) do … end`",
+"""Finding text of each resource kind: resource, its state while held, cause label, harm and manual fix."""
+const TEXTS = Dict(
+    EffectKind.synchronization => (
+        resource = "lock", state = "held", acquired = "acquired here",
+        why = "throw skips release; lock or semaphore slot stays held, so next caller waits forever",
+        fix = "hold with `lock(l) do … end` or `@lock l expr`, or release in `finally`",
     ),
-    (
-        kind = :semaphore, acquire = IndexedPattern(@pattern ~or(acquire({target}), Base.acquire({target}))),
-        release = IndexedPattern(@pattern ~or(release({target}), Base.release({target}))),
-        why = "exception between them keeps semaphore slot; later `acquire` calls wait for it forever",
-        fix = (file::SyntaxFile, acquire::SyntaxNode, release::SyntaxNode) -> "wrap code after `$(source(file, acquire))` in `try … finally $(source(file, release)) end`",
-    ),
-    (
-        kind = :file, acquire = IndexedPattern(@pattern ~or({target:::identifier} = open({_}...), {target:::identifier} = Base.open({_}...))),
-        release = IndexedPattern(@pattern ~or(close({target}), Base.close({target}))),
-        why = "exception between them leaves file open until garbage collector finalizes it",
-        fix = (file::SyntaxFile, acquire::SyntaxNode, release::SyntaxNode) -> "use `$(source(file, children_of(acquire)[2])) do $(source(file, children_of(release)[end])) … end`",
+    EffectKind.io => (
+        resource = "file", state = "open", acquired = "opened here",
+        why = "throw skips `close`; file stays open until garbage collector finalizes it",
+        fix = "use `open(path) do io … end`, or close in `finally`",
     ),
 )
 
-"""Pair index and normalized target source of each acquire or release statement in `file`, by node."""
-function sites(file::SyntaxFile, side::Symbol)::IdDict{SyntaxNode, Tuple{Int, String}}
-    found = IdDict{SyntaxNode, Tuple{Int, String}}()
-    for (index, pair) in enumerate(PAIRS), match in matches(file, pair[side])
-        found[match.node] = (index, normalized_source(file, binding(match, :target)))
-    end
-    return found
-end
-
-"""Whether statement `node` cannot throw: literal, or literal assigned to plain name."""
-cannot_throw(node::SyntaxNode)::Bool =
-    literal(node) || (kind_name(node) == "=" && kind_name(children_of(node)[1]) == "Identifier" && literal(children_of(node)[end]))
-
-"""Findings for release statements that run only when code since acquire statement on same target does not throw."""
+"""Findings for each statement that may throw while package method holds resource outside every `try`."""
 function findings(facts::FactSet)::Vector{Finding}
+    effects = facts.effects
+    isnothing(effects) && return Finding[]
     found = Finding[]
-    for file in facts.files
-        acquires, releases = sites(file, :acquire), sites(file, :release)
-        for block in [forms(file, "block"); forms(file, "toplevel")]
-            held = Dict{Tuple{Int, String}, Tuple{SyntaxNode, Int}}()
-            for (position, statement) in enumerate(children_of(block))
-                haskey(acquires, statement) && (held[acquires[statement]] = (statement, position))
-                haskey(releases, statement) && haskey(held, releases[statement]) || continue
-                acquire, start = pop!(held, releases[statement])
-                all(cannot_throw, children_of(block)[(start + 1):(position - 1)]) && continue
-                pair = PAIRS[first(releases[statement])]
-                push!(
-                    found, finding(
-                        NAME, file, statement; kind = pair.kind, confidence = Confidence.definite,
-                        message = "`$(source(file, statement))` is skipped when code before it throws",
-                        label = "skipped on exception", why = pair.why, fix = manual_fix(pair.fix(file, acquire, statement)),
-                        causes = [Label(span(file, acquire), "acquired here")],
-                    )
-                )
-            end
-        end
+    for method in effects.methods, hold in method.unguarded
+        text = TEXTS[hold.kind]
+        push!(
+            found, Finding(
+                NAME, Symbol(text.resource), hold.confidence, "$(text.resource) stays $(text.state) when this statement throws",
+                Label(hold.throws, "may throw while $(text.resource) is $(text.state)"), [Label(hold.acquire, text.acquired)], text.why,
+                manual_fix(text.fix),
+            )
+        )
     end
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [98], Stage.syntax, findings)
+const ENTRY = RuleEntry(NAME, Group.correctness, [98], Stage.effects, findings)
 
 end
