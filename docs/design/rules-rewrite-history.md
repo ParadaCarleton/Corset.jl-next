@@ -1213,6 +1213,25 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Script follows every definite write of static callee, so origin label can over-approximate. `depwarn` lazy-init writes show contract origin.
 - Audit judged memory writes only. Lazy init and audited internal state come from audited table.
 
+### Logging state
+
+- Each method that reaches `@info`, `@warn` or `depwarn` had `possible` memory write on unknown object.
+- `env_override_minlevel` keeps parsed `JULIA_DEBUG` in variables of enclosing `let`. It reassigns one, so all live in `Core.Box` of type `Any`.
+- `empty!` on them is open dispatch. `_depwarn` calls `firstcaller` with `@nospecialize` symbol; caller frame it returns is unknown object.
+- Both write Base logging state only. #282 lists both in audited table: unknown objects they write take `audited` kind.
+- Jobs 1505 to 1510 (ssh-dev, #282) against main control census (winwsl):
+
+| Package | Methods | `possible`, all kinds | `possible`, kinds `bang-convention` judges |
+|---|---|---|---|
+| Distances 0.10.12 | 188 | 58 (30.9%), same | 58 to 54 (28.7%) |
+| DataStructures 0.18.22 | 947 | 238 (25.1%), same | 234 to 232 (24.5%) |
+| SpecialFunctions 2.9.2 | 499 | 69 (13.8%), same | 69 to 31 (6.2%) |
+| StatsFuns 2.3.1 | 289 | 58 (20.1%), same | 58 to 11 (3.8%) |
+| Distributions 0.25.135 | 956 | 314 (32.8%), same | 305 to 250 (26.2%) |
+
+- StatsFuns has no logging call; its methods reach `@warn` in SpecialFunctions `beta_inc`.
+- Count of all kinds fails 30% on Distances and Distributions. Count of kinds `bang-convention` judges passes on all five.
+
 ### Visit order
 
 - `trace` and `load_any` kept doubt of first chain to reach origin. Chain with less doubt found later got lost: access stayed blind.
