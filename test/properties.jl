@@ -120,7 +120,8 @@ end
 
 """
 `expression` without line numbers, docstrings, dropped string statements, and `return` on last statement of method body.
-Julia drops value of string statement unless it is last of block; module, loop and `finally` bodies drop every value.
+Julia drops value of string statement unless it is last of block whose value counts; module, loop and `finally` bodies
+drop every value.
 Statement whose value Julia drops (`dropped`) takes `if` form (`statement`). File value is last top-level statement.
 """
 function normalized(expression::Any, dropped::Bool = false)::Any
@@ -130,7 +131,7 @@ function normalized(expression::Any, dropped::Bool = false)::Any
     arguments = Any[normalized(argument, flag) for (argument, flag) in zip(kept, dropped_arguments(expression.head, length(kept), dropped))]
     if expression.head in (:block, :toplevel)
         last_index = length(arguments)
-        arguments = Any[argument for (index, argument) in enumerate(arguments) if index == last_index || !is_string(argument)]
+        arguments = Any[argument for (index, argument) in enumerate(arguments) if index == last_index && !dropped || !is_string(argument)]
     end
     body = dropping_body(expression.head, arguments)
     checkbounds(Bool, arguments, body) && Meta.isexpr(arguments[body], :block) && (arguments[body] = Expr(:block, filter(!is_string, arguments[body].args)...))
@@ -291,6 +292,8 @@ end
     @test same("module M\n\"a\"\nend\n", "module M\nend\n") && same("for i in 1:2\n\"a\"\nend\n", "for i in 1:2\nend\n")
     @test same("while f()\n\"a\"\nend\n", "while f()\nend\n") && same("try\nf()\nfinally\n\"a\"\nend\n", "try\nf()\nfinally\nend\n")
     @test !same("f() = \"a\"\n", "f() = nothing\n") && !same("\"a\"\n", "")
+    # Block whose value module drops drops its last string too.
+    @test same("module M\nbegin\nf()\n\"a\"\nend\nend\n", "module M\nbegin\nf()\nend\nend\n") && !same("x = begin\nf()\n\"a\"\nend\n", "x = begin\nf()\nend\n")
     @test !same("function f(xs)\n\"\$(push!(xs, 1))\"\nnothing\nend\n", "function f(xs)\nnothing\nend\n")
     # Statement chain and ternary equal their `if` form; used value and file value keep their form.
     @test same("for i in 1:2\nx || f()\nend\n", "for i in 1:2\nif !x\nf()\nend\nend\n")
