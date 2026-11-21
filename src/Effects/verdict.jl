@@ -192,10 +192,11 @@ effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Journ
 `effects` stage facts of `package` from inference `units` and blind spots, with `library` cache (`effects.md`, Solve and
 cache). Also effects record of each typed unit for method store, `nothing` for unit whose instance earlier unit holds,
 new library cache entries, and keys of entries that hit. Run that skipped crashed instance gives no entries: its blind
-spot holds here only. Crash `journal` records native inference of instances outside units.
+spot holds here only. Crash `journal` records native inference of instances outside units. Flow past `work_limit`
+stops (`WORK_LIMIT`).
 """
-function cached_effects(package::PackageFacts, units::Units, journal::Union{Nothing, Journal}, library::Library)::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}, Library, Set{String}}
-    run = start_run(journal, package.modules, library)
+function cached_effects(package::PackageFacts, units::Units, journal::Union{Nothing, Journal}, library::Library; work_limit::Int = WORK_LIMIT)::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}, Library, Set{String}}
+    run = start_run(journal, package.modules, library; work_limit)
     typed_of = IdDict{Core.MethodInstance, TypedCode}()
     for typed in units.typed
         haskey(typed_of, typed.frame.linfo) && continue

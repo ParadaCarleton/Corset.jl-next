@@ -45,14 +45,17 @@ mutable struct Flow
     settled::Bool
     closed_world::Bool
     cut::Bool
+    const limit::Int
+    work::Int
 end
 
 """
 Flow of `ir` with call `outcomes` and `message` statements before first round: each referent argument points to its
 parameter. `flush` resolves callback records in this instance; `cut` marks instance whose own code stand-ins cut;
-`statics` holds sources of each static parameter (`static_sources`); `record` keeps write kinds of each call.
+`statics` holds sources of each static parameter (`static_sources`); `record` keeps write kinds of each call. Rounds
+stop once `work` passes `limit` (`over_budget`).
 """
-function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, message::Vector{Bool}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::Vector{Sources}, record::Bool)::Flow
+function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, message::Vector{Bool}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::Vector{Sources}, record::Bool, limit::Int)::Flow
     arguments = [
         referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), Step.Type[])) => NO_DOUBT) : Targets()
             for (position, type) in enumerate(ir.argtypes)
@@ -60,7 +63,7 @@ function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     callbacks = Dict{Int, Vector{Deferred}}()
     primitives = Union{Nothing, Primitive}[statement_primitive(ir, index, outcomes[index]) for index in 1:length(ir.stmts)]
-    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, Dict{Int, Set{EffectKind.T}}(), Dict{Tuple{Origin.Type, Step.Type}, Targets}(), false, false, false, false, cut)
+    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, Dict{Int, Set{EffectKind.T}}(), Dict{Tuple{Origin.Type, Step.Type}, Targets}(), false, false, false, false, cut, limit, 0)
 end
 
 """Release balance primitive of statement `index` of `ir` with call `outcome`: dispatched call only (`primitive`)."""
@@ -126,6 +129,7 @@ Join `source` into `target`, each doubt raised to at least `doubt`; mark `flow` 
 whether `target` changed.
 """
 function join!(flow::Flow, target::Targets, source::Targets, doubt::Doubt = NO_DOUBT)::Bool
+    flow.work += length(source)
     grew = false
     for (origin, flag) in source
         add!(target, origin, most(flag, doubt)) && (grew = true)
@@ -292,8 +296,12 @@ state: calls map same places at each call statement and round, and memory backin
 function load(flow::Flow, objects::Targets, step::Step.Type)::Targets
     flow.stale && (empty!(flow.follows); flow.stale = false)
     found = Targets()
-    for (origin, doubt) in objects, (target, flag) in get!(() -> trace(flow, origin, step), flow.follows, (origin, step))
-        add!(found, target, most(flag, doubt))
+    for (origin, doubt) in objects
+        traced = get!(() -> trace(flow, origin, step), flow.follows, (origin, step))
+        flow.work += length(traced)
+        for (target, flag) in traced
+            add!(found, target, most(flag, doubt))
+        end
     end
     return found
 end
@@ -387,9 +395,16 @@ function round!(flow::Flow, callees::Callees)::Nothing
     empty!(flow.call_kinds)
     for index in 1:length(flow.ir.stmts)
         statement!(flow, index, flow.ir.stmts[index][:stmt], callees)
+        over_budget(flow) && return nothing
     end
     return nothing
 end
+
+"""
+Whether `flow` did more work than its limit: targets that loads trace and joins read (`effects.md`, Solve and cache).
+Count grows with heap size times call count, so one large body with large callee summaries stops here.
+"""
+over_budget(flow::Flow)::Bool = flow.work > flow.limit
 
 """Expression heads that move no object: control, scope, metadata and coverage markers."""
 const INERT = (

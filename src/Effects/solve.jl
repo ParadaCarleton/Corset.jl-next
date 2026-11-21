@@ -94,10 +94,21 @@ struct Run  # corset: allow wide-struct -- one memo per analysis; summary cache 
     codes::Dict{Variant, Code}
     summaries::Dict{Variant, Summary}
     cache::Lookup
+    work_limit::Int
+    over_budget::Set{Variant}
 end
 
-"""Run in current world with crash `journal` for package `modules` and `library` cache, before any code."""
-function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module}, library::Library)::Run
+"""
+Flow work past which variant stops and gets open summary (`effects.md`, Solve and cache): targets that loads trace and
+joins read. Ten times largest flow on corpus.
+"""
+const WORK_LIMIT = 10_000_000
+
+"""
+Run in current world with crash `journal` for package `modules` and `library` cache, before any code. Flow past
+`work_limit` stops (`WORK_LIMIT`).
+"""
+function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module}, library::Library; work_limit::Int = WORK_LIMIT)::Run
     world = Base.get_world_counter()
     bodies, callers = IdDict{Core.MethodInstance, Union{Body, Shortcut, String}}(), IdDict{Core.MethodInstance, Core.MethodInstance}()
     parameters, claims, catches = IdDict{Core.MethodInstance, Set{Int}}(), IdDict{Method, Bool}(), IdDict{Method, Bool}()
@@ -109,11 +120,12 @@ function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module}, li
             IdDict{Module, Union{Nothing, String}}(), IdDict{Any, Tuple{String, Vector{Any}}}(), Closure(Base.IdSet{Core.MethodInstance}()), IdDict{Any, Bool}(), IdDict{Core.MethodInstance, Vector{Any}}(),
             Base.IdSet{Core.MethodInstance}(), IdDict{Core.MethodInstance, Vector{Any}}(), Base.IdSet{Core.MethodInstance}(), Set{String}(), alias_text(),
         ),
+        work_limit, Set{Variant}(),
     )
 end
 
 """Run of `start_run` without library cache: every instance gets native inference."""
-start_run(journal::Union{Nothing, Journal}, modules::Vector{Module})::Run = start_run(journal, modules, Library())
+start_run(journal::Union{Nothing, Journal}, modules::Vector{Module}; work_limit::Int = WORK_LIMIT)::Run = start_run(journal, modules, Library(); work_limit)
 
 """
 Whether `method` outside Base claims effects (`effects.md`, Compiler effects): `@assume_effects` on method or on block
@@ -532,11 +544,13 @@ rounds read. `flush` resolves callback records here; `record` keeps write kinds 
 """
 function variant_flow(run::Run, variant::Variant, flush::Bool, record::Bool)::Tuple{Flow, Callees}
     code = run.codes[variant]
-    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, flush, code.cut, static_sources(first(variant).def::Method), record)
+    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, flush, code.cut, static_sources(first(variant).def::Method), record, run.work_limit)
     callees = Callees(code.callees, run.summaries, Set{Variant}())
     while true
         flow.changed = false
         round!(flow, callees)
+        # Round past budget stopped early: its targets are partial.
+        over_budget(flow) && break
         # Settled round repeats state of round before it; growth there is engine bug.
         if flow.settled
             flow.changed && error("settled round of $(first(variant)) changed targets")
@@ -547,13 +561,19 @@ function variant_flow(run::Run, variant::Variant, flush::Bool, record::Bool)::Tu
     return flow, callees
 end
 
+"""Blind spot cause of variant whose flow passed `WORK_LIMIT`: it gets open summary."""
+const BUDGET = "effects budget"
+
 """
 Summary of `variant` with code, from current callee summaries of `run` (`variant_flow`), and variants whose summaries
-rounds read. `flush` resolves callback records here.
+rounds read. `flush` resolves callback records here. Flow past budget gives open summary with cause `BUDGET`.
 """
 function variant_summary(run::Run, variant::Variant, flush::Bool)::Tuple{Summary, Set{Variant}}
     flow, callees = variant_flow(run, variant, flush, false)
-    return summarize(flow, first(variant).def::Method, callees), callees.read
+    method = first(variant).def::Method
+    over_budget(flow) || return summarize(flow, method, callees), callees.read
+    push!(run.over_budget, variant)
+    return open_summary(Int(method.nargs), BUDGET), callees.read
 end
 
 """
@@ -568,10 +588,12 @@ end
 
 """
 Call statement facts of root `variant` with code (`effects.md`, Facts), by IR statement: rerun resolves callback records
-at call, as root has no caller, and records write kinds of each call.
+at call, as root has no caller, and records write kinds of each call. Root past budget has none: its flow is partial.
 """
 function root_calls(run::Run, variant::Variant)::Vector{Pair{Int, CallRecord}}
+    variant in run.over_budget && return Pair{Int, CallRecord}[]
     flow = first(variant_flow(run, variant, true, true))
+    over_budget(flow) && (push!(run.over_budget, variant); return Pair{Int, CallRecord}[])
     code = run.codes[variant]
     return [index => call_record(flow, index, code.used[index]) for index in 1:length(code.ir.stmts) if !isnothing(code.outcomes[index])]
 end

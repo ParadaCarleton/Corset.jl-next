@@ -264,6 +264,10 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Join of methods (Calls, step 5) is not monotone, so summaries in cycle can oscillate.
 - After 8 reruns, member summary widens: union with previous summary. Access that still changes becomes blind (`unsettled call cycle`).
 - Widened summaries only grow through finite values, so fixpoint ends.
+- Flow work: targets that loads trace and joins read, over every round of one variant.
+- Flow past work limit stops. Variant gets open summary: blind access on each parameter, blind spot `effects budget`.
+- Root past limit keeps no call facts: its rounds stopped early.
+- Limit: 10 million, 10 times largest flow on corpus (Distributions, 0.95 million).
 - Callee signature can grow along call chain without end: `_any(f ∘ transpose, parent(A), :)` adds `ComposedFunction` layer per step.
 - Engine limits callee like native inference (`abstract_call_method`): method that recurs on call chain gets `limit_type_size` signature.
 - Call chain: caller that first reached each instance. Join limits hard, against method signature.

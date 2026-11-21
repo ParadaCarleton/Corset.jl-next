@@ -1012,6 +1012,10 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li>Join of methods (Calls, step 5) is not monotone, so summaries in cycle can oscillate.</li>
 <li>After 8 reruns, member summary widens: union with previous summary. Access that still changes becomes blind (<code>unsettled call cycle</code>).</li>
 <li>Widened summaries only grow through finite values, so fixpoint ends.</li>
+<li>Flow work: targets that loads trace and joins read, over every round of one variant.</li>
+<li>Flow past work limit stops. Variant gets open summary: blind access on each parameter, blind spot <code>effects budget</code>.</li>
+<li>Root past limit keeps no call facts: its rounds stopped early.</li>
+<li>Limit: 10 million, 10 times largest flow on corpus (Distributions, 0.95 million).</li>
 <li>Callee signature can grow along call chain without end: <code>_any(f ∘ transpose, parent(A), :)</code> adds <code>ComposedFunction</code> layer per step.</li>
 <li>Engine limits callee like native inference (<code>abstract_call_method</code>): method that recurs on call chain gets <code>limit_type_size</code> signature.</li>
 <li>Call chain: caller that first reached each instance. Join limits hard, against method signature.</li>

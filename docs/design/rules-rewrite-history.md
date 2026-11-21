@@ -1213,3 +1213,22 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - `pedantic` (see "Groups (decided)") held strict, noisy rules; confidence now handles noise. Restriction holds taste only.
 - `wildcard-arm` was dropped for want of per-rule default levels. Restriction group now fits it; not re-added.
 - Library preset enabled `instances(Group.T)`, so new group would turn on by default. Preset lists groups by name.
+
+### Effects budget
+
+- Union split (PR #276) solve of Distributions passed 1800 s; main takes 47 s. Summaries grew 10%; largest call cycle 14 members.
+- Cost sits in one variant: `test_mvnormal` of Distributions test extension, 32 `@test` and `rng::Union{AbstractRNG, Nothing}`.
+- Split resolves calls in `Test` internals; their summaries grow from 19 to 2555 edge nodes. Round 1 maps them at 32 call sites.
+- After round 1: heap targets 341440 against 2665 on main; memory backing 145492 against 58. Round took 333 s.
+- Profile: `load` through backing chains and `Origin` hash take most time. Faster lookups alone cannot close 100 times.
+- Flow work per variant (targets loads trace plus targets joins read), jobs 1450 to 1459 (winwsl):
+
+| Package | Main max | Union max |
+|---|---|---|
+| Distributions | 945995 | past 5942885 (`test_mvnormal` unfinished) |
+| DataStructures | 407155 | 1542724 |
+| Distances | 1230 | 1230 |
+| SpecialFunctions | 1520 | 1520 |
+| StatsFuns | 417 | 427 |
+
+- Limit 10 million: flow past it gets open summary, blind spot `effects budget`.
