@@ -176,6 +176,11 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         twice = typed("bumped_twice", FloatStandIn)
         uses = twice.site.file
         @test call_span(twice, :+).precision == Precision.line && line(uses, call_span(twice, :+).first_byte) == 2
+        # TypedSyntax.jl maps no discarded call; lone discarded statement on its line that spells call gets exact span.
+        dropped = typed("dropped", FloatStandIn)
+        @test text(call_span(dropped, :abs)) == "abs(x)"
+        @test count(span -> span.precision == Precision.line && line(FILE, span.first_byte) == line_of("function dropped") + 2, dropped.spans) >= 2
+        @test text(call_span(typed("dropped_qualified", FloatStandIn), :abs)) == "Base.abs(x)"
     end
     @testset "calls of one callee map in evaluation order" begin
         code = typed("twice", FloatStandIn)
