@@ -1037,7 +1037,7 @@ four_way(x::Symbol) = x
     @test constant(code.ir, GlobalRef(Base, :nothing)) == Some(nothing)
     @test operand_type(code.ir, Operand.Part(Core.Argument(2), 1)) == MemoryRef{Int}
     @test value_type(code.ir, Expr(:call, GlobalRef(Core, :tuple), QuoteNode(:jl_n_threads), "libjulia-internal")) == Tuple{Symbol, String}
-    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false)
+    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test map_node(flow, Node.Fresh(4), CallSite(Targets[], Sources[], 7, 2)) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
@@ -1363,6 +1363,21 @@ end
             issorted(present) && count(position -> seen[position] != seen[position + 1], 1:(length(seen) - 1)) <= 1
         end
     end
+end
+
+@testset "effects budget" begin
+    # Flow past budget stops: variant gets open summary with budget cause, and root keeps no call facts.
+    tight = start_run(nothing, Module[]; work_limit = 0)
+    root = (only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], tight.world, 1))), Pair{Int, Any}[])
+    solve!(tight, [root])
+    @test root in tight.over_budget && same(root_summary(tight, root), open_summary(2, Effects.BUDGET)) && isempty(root_calls(tight, root))
+    # Default budget keeps same variant precise.
+    roomy = start_run(nothing, Module[])
+    solve!(roomy, [root])
+    @test isempty(roomy.over_budget) && !same(root_summary(roomy, root), open_summary(2, Effects.BUDGET))
+    # Package unit past budget: blind access with budget cause goes to coverage line.
+    _, spots = Effects.cached_effects(PACKAGE, UNITS, nothing, Effects.Library(); work_limit = 0)
+    @test any(spot -> spot.cause == Effects.BUDGET, spots) && !any(spot -> spot.cause == Effects.BUDGET, SPOTS)
 end
 
 const STEP_DRAWS = Data.OneOf(map(Step.Field, Data.SampledFrom([:x, :y])), map(Step.Position, Data.Integers(1, 2)), Data.Just(Step.Element()))
