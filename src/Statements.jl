@@ -62,7 +62,7 @@ bind tightest; block, tuple and other unknown kinds bind loosest, so they keep p
 function precedence(file::SyntaxFile, node::SyntaxNode)::Int
     kind = kind_name(node)
     kind in ATOMS && return TIGHTEST
-    kind == "macrocall" && return startswith(file.text[(macro_span(file, node).last_byte + 1):end], '(') ? TIGHTEST : 0
+    kind == "macrocall" && return get(codeunits(file.text), macro_span(file, node).last_byte + 1, 0x00) == UInt8('(') ? TIGHTEST : 0
     kind in ("call", "dotcall") && !JS.is_infix_op_call(node) && return TIGHTEST
     operator = kind in ("call", "dotcall") ? bare(file, children_of(node)[2]) : kind == "comparison" ? "<" : kind
     return Base.operator_precedence(Symbol(operator))
