@@ -1250,6 +1250,11 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Warm solve allocation of Distributions: 4358 MB after #271 (job 899), 4659 MB now. Box load explains most of time growth.
 - Empty cache stores entries: Distances 6435, DataStructures 12328, SpecialFunctions 11050, StatsFuns 6495, Distributions 28592.
 - Benchmark warm arm warms library cache only. Real rerun also reads unit records from method store, so unchanged units skip solve.
+- Warm Distributions solve builds 15691 bodies (macdev job 1562): 10533 library methods on package types, 2679 own methods outside units, 2479 library instances.
+- Library cache cannot hold instance whose signature names package type. Its inference and cut check take 21.5 of 50.7 s (job 1575).
+- #284 (main 7ec1c9d0): cut check keeps frame for body, so 5832 instances skip second inference. Warm `effects` 23.1 to 22.2 s, allocation −4.6% (job 1578).
+- Distributions repeat after #284 (job 1590): warm 1.03, 0.92, 0.95; empty 1.04.
+- Rejected: memo of model-type inference (3522 runs, 3512 distinct models); copy-free `type_sources` (0.26% of bytes).
 
 ### Visit order
 

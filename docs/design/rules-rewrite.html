@@ -1383,7 +1383,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li><code>effects</code> stage: at most 2.5× <code>inference</code> stage time with empty library cache or cache from other package.</li>
 <li><code>effects</code> stage with warm library cache: at most <code>inference</code> stage time.</li>
 <li>Legacy runs no effects analysis, so ratio to legacy leaves <code>effects</code> stage out.</li>
-<li>Corpus on main 725b59a0 (history, &quot;Gate speed check&quot;): cold <code>effects</code> at most 1.55 times <code>inference</code>; warm cache at most 1.0 except Distributions, 0.96 to 1.16.</li>
+<li>Corpus on main 725b59a0 (history, &quot;Gate speed check&quot;): cold <code>effects</code> at most 1.55 times <code>inference</code>; warm cache at most 1.0 except Distributions. Distributions warm after #284: 0.92 to 1.03.</li>
 </ul>
 <p>Syntax stage: 21 rules take 15–40 ms per 10,000 lines; rule time grows linearly with rule count.</p>
 <p>Cold run, same scope (target loaded first, default threads):</p>
