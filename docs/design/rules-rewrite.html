@@ -844,6 +844,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Two <code>code</code> doubts join sources, along chain and across chains. Callee summary maps parameter sources to sources of call arguments.</li>
 <li>Root unit resolves sources: code source gives <code>possible</code>. Else opaque source gives blind spot <code>open dispatch on opaque data</code>. Else no access.</li>
 <li>Unresolved call has doubt in code itself: unknown foreign call, builtin with splat, splat of other collection, splat that contract cannot place, <code>invoke</code> without constant method.</li>
+<li><code>invoke</code> without constant method on contract function takes contract: contract covers every method (<code>Tuple{typeof(x)}</code> in Base logging).</li>
 <li>Provenance covers argument and every place below it. Argument with open part is opaque, so open type that code declares below it gives blind spot.</li>
 <li>Contract write on argument that admits consumed iterator (<code>iterate(x::Any)</code>) takes sources of that argument: its type decides write.</li>
 <li>Provenance judges doubt from open dispatch only. Writes code performs, and resolved, joined or contract writes, keep certainty on every origin: <code>f(x::Any) = setfield!(x, :n, 0)</code> writes <code>x</code>.</li>
@@ -857,6 +858,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>MPFR and GMP entries come from C headers: pointer to non-const is written, pointer to const is read (<code>mpfr_srcptr</code>, <code>const char *</code>). Generator: <code>gen/foreign/generate.jl</code>; output: <code>src/Effects/foreign_gmp_mpfr.jl</code>.</li>
 <li>Symbols: every MPFR and GMP function that Base and SpecialFunctions call, plus five numeric extras. The whole header holds about 800 functions; each one needs vetting for global state.</li>
 <li>Hand entries (<code>calls.jl</code>) cover variadic functions and pointer results. Left open: functions that write C global state (<code>mpfr_set_emax</code>, <code>mpfr_set_emin</code>, <code>mpfr_clear_flags</code>, GMP allocator hooks).</li>
+<li>PCRE2 entries cover functions that Base regex code calls, by PCRE2 API manual. Match writes match data and JIT stack of match context.</li>
 <li>No prefix rule: unknown <code>mpfr_</code> or <code>__gmp</code> name stays open, because wrong entry gives false definite write.</li>
 <li>CI lacks the headers. The generator does not run there; committed file is the source of truth. Test compares it with hand classification.</li>
 </ul>
@@ -876,6 +878,8 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li>Splat of tuple or array with unknown length: dispatch on <code>Vararg</code> of element type. Callee parameters past fixed operands take any element.</li>
 <li>Splatted tuple slot has unknown position, so caller tuple collapses to <code>deep</code>. Splat of other collection stays open: its <code>iterate</code> runs.</li>
 <li>Instance specializes on call argument types. Callable type known to caller is concrete in callee too, so step 3 reaches its method.</li>
+<li><code>@invokelatest f(x)</code> with constant <code>GlobalRef</code> resolves as call <code>f(x)</code>, keywords included (<code>Base.invokelatest_gr</code>).</li>
+<li>Constant binding has its value in analysis world. IR world range can start before binding exists: <code>@invokelatest</code> reads binding in latest world.</li>
 <li>Callback record keeps write path short. Tuple <code>foreach</code> wraps closure in <code>foldl</code> reducers: closure writes lie three steps below reducer.</li>
 <li>Caller maps record to its own objects. Callable still holding object below caller parameter passes record to next caller.</li>
 <li>Root unit has no caller: its verdict resolves records left in its summary.</li>
@@ -893,6 +897,11 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li>Write contract (<code>setindex!</code>, <code>push!</code>, <code>append!</code>, <code>resize!</code>, <code>pop!</code>, <code>copyto!</code>, <code>merge!</code>) writes first argument and stores or copies elements into it.</li>
 <li>Collection whose <code>eltype</code> points to no object (<code>Vector{UInt8}</code>) takes no stored object: Julia converts value at store. Foreign call table keeps every store: C pointers are untyped.</li>
 <li>Function with callable-first form (<code>get</code>, <code>get!</code>, <code>merge!</code>): contract holds only when first argument cannot be callable. Else call stays open.</li>
+<li>Keyword call of contract function: keyword tuple takes rest role. Contract needs rest role that only reads.</li>
+<li>Keyword callable (<code>by</code>) runs as callback, so keyword call with callable value stays open.</li>
+<li>Logger interface (<code>AbstractLogger</code>): <code>shouldlog</code>, <code>min_enabled_level</code> and <code>catch_exceptions</code> are queries.</li>
+<li><code>handle_message</code> reads message and keywords. Logger takes IO write: message goes to its sink.</li>
+<li>Contract keeps no record of logged values: <code>Test.TestLogger</code> stores them, Base documents no store.</li>
 <li>Query result that may alias every argument tripled JSON <code>effects</code> time and changed no verdict.</li>
 <li>Open call (step 7) whose open operands come from opaque and opt-out arguments only: no finding (Provenance). Opaque argument counts on coverage line: <code>open dispatch on opaque data</code>.</li>
 <li>Other open call: doubt in code, <code>possible</code> finding.</li>
@@ -937,6 +946,7 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li><code>bang-convention</code> exempts IO, RNG, lazy init and audited internal state. <code>unused-call</code> counts every kind. <code>hidden-input</code> reads default RNG, task-local state, <code>ScopedValue</code> and mutable globals.</li>
 <li>Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.</li>
 <li>Kind comes from types along place path, root first: first <code>IO</code> gives IO, <code>AbstractRNG</code> gives RNG argument.</li>
+<li>Contract write can set own kind: <code>handle_message</code> writes logger as IO.</li>
 <li>Lock, <code>Condition</code> and <code>Semaphore</code> on path give synchronization. Path without such type gives memory write.</li>
 <li>Path types: instance parameter type, constant global value type or global binding type, then field type or element type per step. Abstract type without field ends walk.</li>
 <li>Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.</li>
@@ -946,6 +956,7 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li>Lazy init and audited internal state come from audited table of Base types and methods only:
 <ul>
 <li>Table keys holder type and field, or method. Listed entry sets kind before path types.</li>
+<li>Audited field sets kind of every place below it: JIT compile writes code below <code>Regex</code> field.</li>
 <li><code>Regex</code> compile cache, <code>LazyString</code>; Base logging and PCRE contexts.</li>
 <li>Repair method <code>unsafe_convert(Ref{BigFloat}, ::BigFloatData)</code>: rewrites stale MPFR limb pointer before each call.</li>
 </ul>

@@ -185,7 +185,7 @@ converts stored value (`Vector{UInt8}`). C arguments are untyped pointers. Write
 function table!(flow::Flow, writes::OriginAccesses, index::Int, effects::CallEffects, arguments::Vector{Operand.Type}, typed::Bool)::Nothing
     targets(position::Int)::Targets = union_targets(operand_targets(flow, arguments[at]) for at in role(effects, position, length(arguments)))
     holders(position::Int)::Targets = union_targets(operand_targets(flow, arguments[at]) for at in role(effects, position, length(arguments)) if !typed || holds_objects(flow, operand_type(flow.ir, arguments[at])))
-    foreach(position -> access!(writes, targets(position), false, definite(index), EffectKind.memory), effects.writes)
+    foreach(position -> access!(writes, targets(position), false, definite(index), effects.write_kind), effects.writes)
     foreach(position -> access!(flow.reads, targets(position), false, definite(index), EffectKind.memory), effects.reads)
     for (destination, source) in effects.copies
         store!(flow, holders(destination), Step.Element(), load(flow, targets(source), Step.Element()))

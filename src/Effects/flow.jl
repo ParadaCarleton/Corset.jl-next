@@ -203,7 +203,7 @@ end
 function value_targets(flow::Flow, @nospecialize(value::Any))::Targets
     value isa Core.SSAValue && return flow.values[value.id]
     value isa Core.Argument && return flow.arguments[value.n]
-    points(flow, CC.argextype(value, flow.ir)) || return Targets()
+    points(flow, value_lattice(flow.ir, value)) || return Targets()
     value isa GlobalRef && return global_targets(flow, value)
     return unknown(CODE_DOUBT)
 end
@@ -505,7 +505,7 @@ end
 """Allocation of `%new(type, operands...)` at `index`: each operand goes into its field, memory fields into backing."""
 function new!(flow::Flow, index::Int, @nospecialize(type_value::Any), operands::Vector{Operand.Type})::Nothing
     allocate!(flow, index)
-    type = CC.instanceof_tfunc(CC.argextype(type_value, flow.ir))[1]
+    type = CC.instanceof_tfunc(value_lattice(flow.ir, type_value))[1]
     object = flow.values[index]
     for (position, operand) in enumerate(operands)
         targets = operand_targets(flow, operand)

@@ -84,8 +84,8 @@ function step_type(@nospecialize(type::Any), step::Step.Type)::Any
 end
 
 """
-Kind of memory access to `place` in instance with IR `ir` (`effects.md`, Effect kinds): first special type along path,
-root first; audited global; else memory.
+Kind of memory access to `place` in instance with IR `ir` (`effects.md`, Effect kinds): audited global; else first
+special type or audited field along path, root first (JIT compile writes below `Regex` field); else memory.
 """
 function path_kind(ir::CC.IRCode, place::Place.Type)::EffectKind.T
     root, steps = @match place begin
@@ -101,6 +101,11 @@ function path_kind(ir::CC.IRCode, place::Place.Type)::EffectKind.T
     for step in steps
         found = special_kind(type)
         isnothing(found) || return found
+        audited = @match step begin
+            Step.Field(name) => type isa DataType ? get(AUDITED_FIELDS, (type, name), nothing) : nothing
+            _ => nothing
+        end
+        isnothing(audited) || return audited
         type = step_type(type, step)
     end
     return something(special_kind(type), EffectKind.memory)
