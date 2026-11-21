@@ -108,6 +108,7 @@ Sources carry provenance through engine. No separate taint pass.
 - Two `code` doubts join sources, along chain and across chains. Callee summary maps parameter sources to sources of call arguments.
 - Root unit resolves sources: code source gives `possible`. Else opaque source gives blind spot `open dispatch on opaque data`. Else no access.
 - Unresolved call has doubt in code itself: unknown foreign call, builtin with splat, splat of other collection, splat that contract cannot place, `invoke` without constant method.
+- `invoke` without constant method on contract function takes contract: contract covers every method (`Tuple{typeof(x)}` in Base logging).
 - Provenance covers argument and every place below it. Argument with open part is opaque, so open type that code declares below it gives blind spot.
 - Contract write on argument that admits consumed iterator (`iterate(x::Any)`) takes sources of that argument: its type decides write.
 - Provenance judges doubt from open dispatch only. Writes code performs, and resolved, joined or contract writes, keep certainty on every origin: `f(x::Any) = setfield!(x, :n, 0)` writes `x`.
@@ -121,6 +122,7 @@ Resolution of each call statement, first match wins:
    - MPFR and GMP entries come from C headers: pointer to non-const is written, pointer to const is read (`mpfr_srcptr`, `const char *`). Generator: `gen/foreign/generate.jl`; output: `src/Effects/foreign_gmp_mpfr.jl`.
    - Symbols: every MPFR and GMP function that Base and SpecialFunctions call, plus five numeric extras. The whole header holds about 800 functions; each one needs vetting for global state.
    - Hand entries (`calls.jl`) cover variadic functions and pointer results. Left open: functions that write C global state (`mpfr_set_emax`, `mpfr_set_emin`, `mpfr_clear_flags`, GMP allocator hooks).
+   - PCRE2 entries cover functions that Base regex code calls, by PCRE2 API manual. Match writes match data and JIT stack of match context.
    - No prefix rule: unknown `mpfr_` or `__gmp` name stays open, because wrong entry gives false definite write.
    - CI lacks the headers. The generator does not run there; committed file is the source of truth. Test compares it with hand classification.
 3. Static call (one method matches, or `Core.invoke` with constant selector): callee summary. No method matches: call throws, so code after it is dead.
@@ -137,6 +139,8 @@ Resolution of each call statement, first match wins:
 - Splat of tuple or array with unknown length: dispatch on `Vararg` of element type. Callee parameters past fixed operands take any element.
 - Splatted tuple slot has unknown position, so caller tuple collapses to `deep`. Splat of other collection stays open: its `iterate` runs.
 - Instance specializes on call argument types. Callable type known to caller is concrete in callee too, so step 3 reaches its method.
+- `@invokelatest f(x)` with constant `GlobalRef` resolves as call `f(x)`, keywords included (`Base.invokelatest_gr`).
+- Constant binding has its value in analysis world. IR world range can start before binding exists: `@invokelatest` reads binding in latest world.
 - Callback record keeps write path short. Tuple `foreach` wraps closure in `foldl` reducers: closure writes lie three steps below reducer.
 - Caller maps record to its own objects. Callable still holding object below caller parameter passes record to next caller.
 - Root unit has no caller: its verdict resolves records left in its summary.
@@ -154,6 +158,11 @@ Resolution of each call statement, first match wins:
 - Write contract (`setindex!`, `push!`, `append!`, `resize!`, `pop!`, `copyto!`, `merge!`) writes first argument and stores or copies elements into it.
 - Collection whose `eltype` points to no object (`Vector{UInt8}`) takes no stored object: Julia converts value at store. Foreign call table keeps every store: C pointers are untyped.
 - Function with callable-first form (`get`, `get!`, `merge!`): contract holds only when first argument cannot be callable. Else call stays open.
+- Keyword call of contract function: keyword tuple takes rest role. Contract needs rest role that only reads.
+- Keyword callable (`by`) runs as callback, so keyword call with callable value stays open.
+- Logger interface (`AbstractLogger`): `shouldlog`, `min_enabled_level` and `catch_exceptions` are queries.
+- `handle_message` reads message and keywords. Logger takes IO write: message goes to its sink.
+- Contract keeps no record of logged values: `Test.TestLogger` stores them, Base documents no store.
 - Query result that may alias every argument tripled JSON `effects` time and changed no verdict.
 - Open call (step 7) whose open operands come from opaque and opt-out arguments only: no finding (Provenance). Opaque argument counts on coverage line: `open dispatch on opaque data`.
 - Other open call: doubt in code, `possible` finding.
@@ -199,6 +208,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - `bang-convention` exempts IO, RNG, lazy init and audited internal state. `unused-call` counts every kind. `hidden-input` reads default RNG, task-local state, `ScopedValue` and mutable globals.
 - Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.
 - Kind comes from types along place path, root first: first `IO` gives IO, `AbstractRNG` gives RNG argument.
+- Contract write can set own kind: `handle_message` writes logger as IO.
 - Lock, `Condition` and `Semaphore` on path give synchronization. Path without such type gives memory write.
 - Path types: instance parameter type, constant global value type or global binding type, then field type or element type per step. Abstract type without field ends walk.
 - Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.
@@ -207,6 +217,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.
 - Lazy init and audited internal state come from audited table of Base types and methods only:
   - Table keys holder type and field, or method. Listed entry sets kind before path types.
+  - Audited field sets kind of every place below it: JIT compile writes code below `Regex` field.
   - `Regex` compile cache, `LazyString`; Base logging and PCRE contexts.
   - Repair method `unsafe_convert(Ref{BigFloat}, ::BigFloatData)`: rewrites stale MPFR limb pointer before each call.
 - Package `setfieldonce!` and package caches follow memo-cache rule above: cheap proof or opt-out.

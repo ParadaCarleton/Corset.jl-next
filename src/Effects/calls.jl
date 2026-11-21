@@ -18,7 +18,8 @@ end
 Effects of call that table knows (`effects.md`, Calls, steps 2 and 6), by argument position: arguments it writes and
 reads through; `copies` of source elements into destination elements; `stores` of argument into destination elements;
 arguments result points into; arguments whose elements result may be; and arguments result may point beneath
-(`aliases`, doubt in code). Every argument from position `rest` on takes role of `rest`; 0 means none.
+(`aliases`, doubt in code). Every argument from position `rest` on takes role of `rest`; 0 means none. Writes take
+`write_kind`; memory write takes kind of its path (`effects.md`, Effect kinds).
 """
 Base.@kwdef struct CallEffects
     writes::Vector{Int} = Int[]
@@ -29,6 +30,7 @@ Base.@kwdef struct CallEffects
     elements::Vector{Int} = Int[]
     aliases::Vector{Int} = Int[]
     rest::Int = 0
+    write_kind::EffectKind.T = EffectKind.memory
 end
 
 include("foreign_gmp_mpfr.jl")
@@ -73,6 +75,7 @@ const RUNTIME_EFFECTS = Dict{Symbol, CallEffects}(
     :jl_islayout_inline => CallEffects(writes = [2, 3]),
     :jl_get_world_counter => CallEffects(),
     :jl_get_tls_world_age => CallEffects(),
+    :jl_threadid => CallEffects(),
     :jl_rethrow => CallEffects(),
     :jl_rethrow_other => CallEffects(),
     :utf8proc_category => CallEffects(),
@@ -99,10 +102,41 @@ const HAND_EFFECTS = Dict{Symbol, CallEffects}(
 )
 
 """
-Foreign call table: C functions corpus reaches, from Base call sites, Julia runtime source, MPFR and GMP. Missing
-name stays open. No prefix rule: unknown `mpfr_` name stays open, since wrong entry gives false definite write.
+PCRE2 functions that Base regex code calls (`base/pcre.jl`), by PCRE2 API manual (`pcre2api`). Compile, match data,
+match context and JIT stack results are new C objects, which no Julia object holds.
 """
-const FOREIGN_EFFECTS = merge(RUNTIME_EFFECTS, GENERATED_EFFECTS, HAND_EFFECTS)
+const PCRE_EFFECTS = Dict{Symbol, CallEffects}(
+    # Pattern, length, options, error code, error offset, compile context.
+    :pcre2_compile_8 => CallEffects(writes = [4, 5], reads = [1]),
+    # JIT compile adds machine code to compiled pattern.
+    :pcre2_jit_compile_8 => CallEffects(writes = [1]),
+    # Code, subject, length, offset, options, match data, match context: match uses JIT stack of context.
+    :pcre2_match_8 => CallEffects(writes = [6, 7], reads = [1, 2]),
+    :pcre2_match_data_create_from_pattern_8 => CallEffects(reads = [1]),
+    :pcre2_get_ovector_count_8 => CallEffects(reads = [1]),
+    :pcre2_get_ovector_pointer_8 => CallEffects(result = [1]),
+    # Code, query, output.
+    :pcre2_pattern_info_8 => CallEffects(writes = [3], reads = [1]),
+    :pcre2_substring_number_from_name_8 => CallEffects(reads = [1, 2]),
+    # Match data, group number, length output; copy also takes buffer before length.
+    :pcre2_substring_length_bynumber_8 => CallEffects(writes = [3], reads = [1]),
+    :pcre2_substring_copy_bynumber_8 => CallEffects(writes = [3, 4], reads = [1]),
+    # Error code, buffer, buffer length.
+    :pcre2_get_error_message_8 => CallEffects(writes = [2]),
+    :pcre2_jit_stack_create_8 => CallEffects(),
+    :pcre2_match_context_create_8 => CallEffects(),
+    :pcre2_jit_stack_assign_8 => CallEffects(writes = [1]),
+    :pcre2_match_data_free_8 => CallEffects(writes = [1]),
+    :pcre2_code_free_8 => CallEffects(writes = [1]),
+    :pcre2_jit_stack_free_8 => CallEffects(writes = [1]),
+    :pcre2_match_context_free_8 => CallEffects(writes = [1]),
+)
+
+"""
+Foreign call table: C functions corpus reaches, from Base call sites, Julia runtime source, MPFR, GMP and PCRE2.
+Missing name stays open. No prefix rule: unknown `mpfr_` name stays open, since wrong entry gives false definite write.
+"""
+const FOREIGN_EFFECTS = merge(RUNTIME_EFFECTS, GENERATED_EFFECTS, HAND_EFFECTS, PCRE_EFFECTS)
 
 """
 Documented behavior of Base function (`effects.md`, Calls, step 6): `effects` on arguments; `callback` when function
@@ -159,6 +193,12 @@ const QUERIES = (
 """Base functions with `ALIAS_QUERY` contract: result can be argument, its field, or wrapper around it."""
 const ALIAS_QUERIES = (convert, getproperty, keys, values, pairs, eachindex, max, min, real, conj, float, adjoint, transpose)
 
+"""
+Log message (`AbstractLogger` interface, `handle_message`): message goes to logger sink, so logger takes IO write.
+Contract keeps no record that logger may hold (`Test.TestLogger`).
+"""
+const LOG_MESSAGE = BaseContract(CallEffects(writes = [1], reads = [1, 2], rest = 2, write_kind = EffectKind.io), false, Pair{Int, Any}[])
+
 """Copy of source elements into destination, which call returns; 5-argument form takes source third (`copyto!`)."""
 const RANGE_COPY = BaseContract(CallEffects(writes = [1], reads = [2, 3], copies = [1 => 2, 1 => 3], result = [1]), false, Pair{Int, Any}[2 => CONSUMED])
 
@@ -186,6 +226,9 @@ const BASE_CONTRACTS = IdDict{Any, BaseContract}(
     get => BaseContract(CallEffects(reads = [1, 2], elements = [1], aliases = [3]), true, Pair{Int, Any}[]),
     get! => BaseContract(CallEffects(writes = [1], reads = [1], stores = [1 => 2, 1 => 3], elements = [1], aliases = [3]), true, Pair{Int, Any}[]),
     merge! => BaseContract(CallEffects(writes = [1], reads = [2], copies = [1 => 2], result = [1], rest = 2), true, Pair{Int, Any}[]),
+    # Logger filters read; `@logmsg` calls them through `invokelatest` on logger of abstract type.
+    Base.CoreLogging.shouldlog => QUERY, Base.CoreLogging.min_enabled_level => QUERY, Base.CoreLogging.catch_exceptions => QUERY,
+    Base.CoreLogging.handle_message => LOG_MESSAGE,
 )
 
 """
@@ -263,10 +306,31 @@ function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt, lim
         return Outcome.Builtin(builtin, operands[2:end])
     end
     stand_in_call(ir, callee, operands) && return Outcome.Open(operands)
+    latest = latest_call(ir, callee, operands)
+    isnothing(latest) || return resolve(ir, latest, world, limit)
     instances = dispatch(call_types(ir, operands), world, limit)
     isnothing(instances) && return contract_call(ir, callee, operands)
     # No matching method: call throws `MethodError`.
     return isempty(instances) ? Outcome.Dead() : Outcome.Dispatch(instances, operands)
+end
+
+"""
+Operands of call that `Base.invokelatest_gr` with constant `GlobalRef` makes (`@invokelatest`), directly or with
+keywords (`Core.kwcall`): binding read takes place of reference. `nothing` for other calls.
+"""
+function latest_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operands::Vector{Operand.Type})::Union{Nothing, Vector{Operand.Type}}
+    isnothing(callee) && return nothing
+    head = something(callee) === Core.kwcall ? 3 : 1
+    length(operands) > head && is_constant(ir, operands[head], Base.invokelatest_gr) || return nothing
+    reference = operand_constant(ir, operands[head + 1])
+    (isnothing(reference) || !(something(reference) isa GlobalRef)) && return nothing
+    return Operand.Type[operands[1:(head - 1)]; Operand.Value(something(reference)); operands[(head + 2):end]]
+end
+
+"""Whether `operand` holds constant `expected` in `ir`."""
+function is_constant(ir::CC.IRCode, operand::Operand.Type, @nospecialize(expected::Any))::Bool
+    found = operand_constant(ir, operand)
+    return !isnothing(found) && something(found) === expected
 end
 
 """Whether call of constant `callee` with `operands` calls `FunctionStandIn`, directly or with keywords (`Core.kwcall`)."""
@@ -280,18 +344,50 @@ end
 """
 Resolution of call with `operands` (callee first) that dispatch leaves open: contract of constant `callee` (`Some`) in
 `BASE_CONTRACTS`, else open. Callable first argument of function with callback form stays open: positions shift.
-`Rest` operand needs vararg role at or before its position: any later role could take its elements.
+`Rest` operand needs vararg role at or before its position: any later role could take its elements. Keyword call
+(`Core.kwcall`) puts keyword tuple last, in rest role (`keyword_role`).
 """
 function contract_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operands::Vector{Operand.Type})::Outcome.Type
-    contract = isnothing(callee) ? nothing : get(BASE_CONTRACTS, something(callee), nothing)
+    keywords = !isnothing(callee) && something(callee) === Core.kwcall && length(operands) >= 3
+    called = keywords ? operand_constant(ir, operands[3]) : callee
+    contract = isnothing(called) ? nothing : get(BASE_CONTRACTS, something(called), nothing)
     isnothing(contract) && return Outcome.Open(operands)
-    arguments = operands[2:end]
+    arguments = keywords ? Operand.Type[operands[4:end]; operands[2]] : operands[2:end]
+    keywords && !keyword_role(ir, contract.effects, arguments) && return Outcome.Open(operands)
     spread = findfirst(is_rest, arguments)
     isnothing(spread) || 0 < contract.effects.rest <= spread || return Outcome.Unresolved(operands)
     types = Any[operand_type(ir, argument) for argument in arguments]
     contract.callback && !isempty(types) && typeintersect(first(types), Base.Callable) !== Union{} && return Outcome.Open(operands)
     admits(position::Int, @nospecialize(type::Any))::Bool = any(index -> typeintersect(types[index], type) !== Union{}, role(contract.effects, position, length(types)))
     return Outcome.Contract(contract.effects, arguments, Int[position for (position, type) in contract.breaches if admits(position, type)])
+end
+
+"""
+Whether keyword tuple, last of `arguments`, falls in rest role of `effects` that reads only, and holds no callable:
+keyword callable (`by`) runs as callback.
+"""
+function keyword_role(ir::CC.IRCode, effects::CallEffects, arguments::Vector{Operand.Type})::Bool
+    rest = effects.rest
+    0 < rest <= length(arguments) && rest in effects.reads || return false
+    any(roles -> rest in roles, (effects.writes, effects.result, effects.elements, effects.aliases)) && return false
+    any(pair -> rest in pair, [effects.stores; effects.copies]) && return false
+    values = keyword_types(operand_type(ir, last(arguments)))
+    return !isnothing(values) && all(value -> typeintersect(value, Base.Callable) === Union{}, values)
+end
+
+"""
+Types that values of keyword tuple of `type` can take: field types of upper bound of its value tuple
+(`NamedTuple{(:a,), <:Tuple{Tuple{Any}}}`); `nothing` when bound has no fixed fields.
+"""
+function keyword_types(@nospecialize(type::Any))::Union{Nothing, Vector{Any}}
+    body = Base.unwrap_unionall(type)
+    body isa DataType || return nothing
+    body.name === Base.typename(NamedTuple) || return nothing
+    values = last(body.parameters)
+    values isa TypeVar && (values = values.ub)
+    values isa DataType || return nothing
+    values <: Tuple && !Base.isvatuple(values) || return nothing
+    return collect(Any, fieldtypes(values))
 end
 
 """Positions among `count` arguments that take role of `position` in `effects`: from `rest` on, all; past end, none."""
@@ -321,15 +417,19 @@ function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt
     return resolve(ir, operands, world, limit)
 end
 
-"""Resolution of `Core.invoke(f, T, args...)`: method `T` selects, specialized to argument types; unresolved without it."""
+"""
+Resolution of `Core.invoke(f, T, args...)`: method `T` selects, specialized to argument types. Selector that is not
+constant (`Tuple{typeof(x)}`) can select any method of `f`: contract of `f` covers them all, else call is unresolved.
+"""
 function invoke_call(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt)::Outcome.Type
     called = Operand.Type[operands[2]; operands[4:end]]
     types = Any[operand_type(ir, operand) for operand in called]
-    selector = @match operands[3] begin
-        Operand.Value(value) => constant(ir, value)
-        _ => nothing
+    selector = operand_constant(ir, operands[3])
+    if isnothing(selector)
+        callee = operand_constant(ir, operands[2])
+        isnothing(callee) && return Outcome.Unresolved(called)
+        return haskey(BASE_CONTRACTS, something(callee)) ? contract_call(ir, callee, called) : Outcome.Unresolved(called)
     end
-    isnothing(selector) && return Outcome.Unresolved(called)
     match = Base._which(Tuple{types[1], something(selector).parameters...}; world, raise = false)
     isnothing(match) && return Outcome.Unresolved(called)
     signature = typeintersect(Tuple{types...}, match.method.sig)

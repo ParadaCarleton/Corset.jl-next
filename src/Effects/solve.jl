@@ -471,10 +471,7 @@ function callee_variant(run::Run, ir::CC.IRCode, callee::Core.MethodInstance, op
     method = callee.def::Method
     for position in sort!(collect(variant_parameters!(run, callee)))
         position <= length(operands) && (position < method.nargs || !method.isva) || continue
-        value = @match operands[position] begin
-            Operand.Value(value) => constant(ir, value)
-            _ => nothing
-        end
+        value = operand_constant(ir, operands[position])
         !isnothing(value) && something(value) isa VariantConstant && push!(constants, position => something(value))
     end
     return (callee, constants)

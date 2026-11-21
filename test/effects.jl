@@ -12,7 +12,7 @@ using Corset.Effects:
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees, load, store!, store_backing!,
-    beneath, map_nodes, exact_path, extend, load_any
+    beneath, map_nodes, exact_path, extend, load_any, keyword_types
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
@@ -460,7 +460,9 @@ world!(values::Vector{Int}) = Base.invoke_in_world(Base.get_world_counter(), pus
 invoked!(values::Vector{Int}) = invoke(push!, Tuple{Vector{Int}, Any}, values, 1)
 fill_one!(values::Vector{Int}) = (values[1] = 1; nothing)
 invoke_dead(text::String) = invoke(fill_one!, Tuple{Vector{Int}}, text)
-invoke_open(values::Vector{Int}, selector::Type) = invoke(push!, selector, values, 1)
+invoke_open(values::Vector{Int}, selector::Type) = invoke(fill_one!, selector, values)
+"""Selector that is not constant can select any method: `push!` contract covers them all."""
+invoke_contract!(values::Vector{Int}, selector::Type) = invoke(push!, selector, values, 1)
 # Writes first, so compiler cannot prove call that always throws empty; engine sees unresolved call.
 invoke_missing(values::Vector{Int}) = (values[1] = 0; invoke(push!, Tuple{Int}, values))
 spread!(values::Vector{Int}, more::Tuple{Int, Int}) = push!(values, more...)
@@ -620,6 +622,31 @@ similar_of(A::Any) = similar(A)
 contains_any(x::Any, c::Any) = x in c
 got(d::Any, k::Int) = get(d, k, 0)
 got_dict(d::AbstractDict, k::Int) = get(d, k, 0)
+"""Keyword query reads keywords; keyword that may be callable runs as callback, so call stays open."""
+rounded(x::Any) = round(x; digits = 2)
+rounded_any(x::Any, digits::Any) = round(x; digits)
+"""Keyword call of write contract with no rest role stays open."""
+hinted!(v::Any) = sizehint!(v, 10; shrink = false)
+"""Logger interface: `@warn` logs argument as keyword; `handle_message` writes logger only, as IO."""
+warned(v::Vector{Int}) = (@warn "bad" v; nothing)
+logged!(logger::Base.AbstractLogger, v::Vector{Int}) = Base.CoreLogging.handle_message(logger, Base.CoreLogging.Info, "m", @__MODULE__, :g, :id, "f", 1; v)
+"""Deprecation warning calls `_depwarn` through `@invokelatest`."""
+deprecated() = Base.depwarn("old", :deprecated)
+"""Base selects logger method by `invoke` on `Tuple{typeof(logger)}`, which is not constant."""
+catches(logger::Base.AbstractLogger) = Base.CoreLogging._invoked_catch_exceptions(logger)
+
+"""Callable that holds object: constant binding to it reads binding."""
+struct Adder
+    n::Int
+end
+(adder::Adder)(v::Vector{Int}) = push!(v, adder.n)
+const ADDER = Adder(1)
+"""Binding that code can rebind: callee type stays open."""
+rebound_callee::Any = push!
+latest_push!(v::Vector{Int}) = @invokelatest push!(v, 1)
+latest_round(x::Float64) = @invokelatest round(x; digits = 2)
+latest_adder!(v::Vector{Int}) = @invokelatest ADDER(v)
+latest_rebound!(v::Vector{Int}) = @invokelatest rebound_callee(v, 1)
 
 @testset "builtin transfer" begin
     none, code, blind = NO_DOUBT, CODE_DOUBT, BLIND_DOUBT
@@ -756,6 +783,7 @@ end
     end
     @test isempty(summary_of(invoke_dead, String).writes)
     @test summary_of(invoke_open, Vector{Int}, Type).writes[memory((parameter(2), true))].doubt == code
+    @test doubts(summary_of(invoke_contract!, Vector{Int}, Type).writes) == Dict(top(2) => none)
     @test summary_of(invoke_missing, Vector{Int}).writes[memory((parameter(2), true))].doubt == code
     # Tuple of unknown length dispatches on `Vararg`: `push!` contract writes `values` only.
     @test doubts(summary_of(spread_rest!, Vector{Int}, Tuple{Vararg{Int}}).writes) == Dict(top(2) => none)
@@ -865,6 +893,32 @@ end
     # First argument that may be callable selects callback form: call stays open.
     @test doubts(summary_of(merged_any!, Any, Any).writes) == Dict((parameter(2), true) => sourced(2, 3), (parameter(3), true) => sourced(2, 3))
     @test doubts(summary_of(got, Any, Int).writes) == Dict((parameter(2), true) => sourced(2))
+    # Keyword query reads keywords; callable keyword, or contract without rest role that only reads, keeps call open.
+    @test isempty(summary_of(rounded, Any).writes) && summary_of(rounded, Any).closed_world
+    @test doubts(summary_of(rounded_any, Any, Any).writes) == Dict((parameter(2), true) => sourced(2, 3), (parameter(3), true) => sourced(2, 3))
+    @test doubts(summary_of(hinted!, Any).writes) == Dict((parameter(2), true) => sourced(2))
+    # Keyword tuple with abstract value takes upper bound of its value tuple.
+    @test keyword_types(NamedTuple{(:a,), <:Tuple{Tuple{Any}}}) == [Tuple{Any}] && keyword_types(@NamedTuple{a::Int}) == [Int]
+    @test isnothing(keyword_types(Int)) && isnothing(keyword_types(NamedTuple))
+    # Logger interface: `handle_message` writes logger as IO; logged value takes no write. `@warn` uses global logger.
+    @test doubts(summary_of(logged!, Base.AbstractLogger, Vector{Int}).writes) == Dict((parameter(2), false, EffectKind.io) => none)
+    logger = (Place.At(Root.Global(GlobalRef(Base.CoreLogging, :_global_logstate)), Step.Type[Step.Field(:logger)]), false, EffectKind.io)
+    warned_writes = summary_of(warned, Vector{Int}).writes
+    @test haskey(warned_writes, logger) && all(((place, _, _),) -> root_of(place) != Root.Parameter(2), keys(warned_writes))
+    @test haskey(summary_of(deprecated).writes, logger)
+    @test isempty(summary_of(catches, Base.AbstractLogger).writes) && summary_of(catches, Base.AbstractLogger).closed_world
+end
+
+@testset "latest-world calls" begin
+    none = NO_DOUBT
+    # `@invokelatest` with constant `GlobalRef` resolves as direct call, with or without keywords.
+    @test doubts(summary_of(latest_push!, Vector{Int}).writes) == Dict(top(2) => none)
+    @test isempty(summary_of(latest_round, Float64).writes)
+    # Constant binding takes its value in analysis world: IR world range starts before `ADDER` exists.
+    @test doubts(summary_of(latest_adder!, Vector{Int}).writes) == Dict(top(2) => none)
+    # Binding that code can rebind leaves callee open: binding and argument take `possible` write.
+    rebound = doubts(summary_of(latest_rebound!, Vector{Int}).writes)
+    @test rebound == Dict((parameter(2), true) => CODE_DOUBT, (global_place(@__MODULE__, :rebound_callee), true) => CODE_DOUBT)
 end
 
 first_of!(x::Vector{Int}, rest::Vector{Int}...) = (x[1] = 0; nothing)
@@ -1502,6 +1556,9 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     # Audited table: lazy compile, lazy text, PCRE contexts, logging state, `BigFloat` pointer repair.
     matched = summary_of(matches, Regex, String).writes
     @test matched[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT
+    # PCRE table: JIT compile writes below audited `Regex` field; every write of match is definite.
+    @test matched[(parameter(2, Step.Field(:regex)), false, EffectKind.lazy_init)].doubt == NO_DOUBT
+    @test all(effect -> effect.doubt == NO_DOUBT, values(matched))
     @test EffectKind.audited in kinds_at(matched, Root.Global(GlobalRef(Base.PCRE, :THREAD_MATCH_CONTEXTS)))
     @test summary_of(text_of, LazyString).writes[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT
     @test EffectKind.audited in kinds_at(summary_of(note, Int).reads, Root.Global(GlobalRef(Base.CoreLogging, :_global_logstate)))

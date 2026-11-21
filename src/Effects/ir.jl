@@ -114,7 +114,16 @@ which `argextype` rejects: it gives tuple of its element types.
 """
 function value_type(ir::CC.IRCode, @nospecialize(value::Any))::Any
     nested_tuple(ir, value) && return Tuple{(value_type(ir, element) for element in value.args[2:end])...}
-    return CC.widenconst(CC.argextype(value, ir))
+    return CC.widenconst(value_lattice(ir, value))
+end
+
+"""
+Lattice type of IR `value` in `ir` (`argextype`). Constant binding takes its value in analysis world: `argextype` gives
+`Any` when IR world range starts before binding exists (`@invokelatest` reads binding in latest world).
+"""
+function value_lattice(ir::CC.IRCode, @nospecialize(value::Any))::Any
+    value isa GlobalRef && isconst(value) && return Core.Const(getglobal(value.mod, value.name))
+    return CC.argextype(value, ir)
 end
 
 """Whether `value` is nested `Core.tuple` call expression inside statement of `ir`."""
@@ -127,7 +136,7 @@ end
 
 """Constant `value` holds in `ir`: literal, constant global or singleton type instance; `nothing` when not constant."""
 function constant(ir::CC.IRCode, @nospecialize(value::Any))::Union{Nothing, Some{Any}}
-    type = CC.argextype(value, ir)
+    type = value_lattice(ir, value)
     type isa Core.Const && return Some{Any}(type.val)
     widened = CC.widenconst(type)
     widened isa DataType && isdefined(widened, :instance) && return Some{Any}(widened.instance)
