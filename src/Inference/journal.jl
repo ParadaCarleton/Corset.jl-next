@@ -42,7 +42,11 @@ can finish in one analysis and crash in next (`fix` checks again after edit).
 function crashed(records::Vector{Record})::Set{String}
     running = Set{String}()
     for record in records
-        record.finished ? delete!(running, record.key) : push!(running, record.key)
+        if record.finished
+            delete!(running, record.key)
+        else
+            push!(running, record.key)
+        end
     end
     return running
 end

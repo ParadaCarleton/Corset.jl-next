@@ -280,7 +280,11 @@ function builtin!(flow::Flow, writes::OriginAccesses, index::Int, @nospecialize(
         write!(flow, writes, index, FIELD_WRITES[builtin], operands, targets(1), load_field(flow, operands[1], field), values -> store_field!(flow, operands[1], field, values), slot, kind)
     elseif builtin === Core.getglobal
         binding = module_global(flow, operands)
-        isnothing(binding) ? assign!(flow, index, unknown(CODE_DOUBT)) : read_global!(flow, index, something(binding))
+        if isnothing(binding)
+            assign!(flow, index, unknown(CODE_DOUBT))
+        else
+            read_global!(flow, index, something(binding))
+        end
     elseif haskey(GLOBAL_WRITES, builtin)
         global_write!(flow, writes, index, GLOBAL_WRITES[builtin], operands)
     elseif haskey(ELEMENT_WRITES, builtin)

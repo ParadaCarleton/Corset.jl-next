@@ -488,7 +488,8 @@ end
                 rm(joinpath(root, Corset.Baseline.FILE))
                 # Fix writes files, so it relaunches even when cache holds analysis. Report comes from fresh process:
                 # process that fixed holds `Relaunched.length` from before edit.
-                code, out, err = launched("fix", root, "-A", "annotation")
+                # `--tier` belongs to `fix` only, so check that follows drops it.
+                code, out, err = launched("fix", root, "-A", "annotation", "--tier", "breaking")
                 @test startswith(err, "corset: applied 1 edits\n") && code == 0 && !occursin("shadowed-base", out)
                 code, out, err = launched("check", root, "-A", "shadowed-base")
                 @test code == 0 && !occursin("building environment", err)

@@ -38,7 +38,11 @@ end
 
 """Set hold of `key` in `state`; exact 0 leaves it absent."""
 function set_hold!(state::Counts, key::Tuple{Origin.Type, Resource.T}, hold::HoldCount)::Nothing
-    balanced(hold) ? delete!(state, key) : (state[key] = hold)
+    if balanced(hold)
+        delete!(state, key)
+    else
+        state[key] = hold
+    end
     return nothing
 end
 

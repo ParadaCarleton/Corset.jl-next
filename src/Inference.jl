@@ -631,7 +631,12 @@ function dependency_methods!(named::IdDict{Any, Bool}, edges::Vector{Any}, files
         method = instance.def
         method isa Method || continue
         if haskey(files, string(method.file))
-            Base.hasgenerator(method) ? (holds_gensym(instance.specTypes) && return nothing; push!(staged, instance)) : push!(found, method)
+            if Base.hasgenerator(method)
+                holds_gensym(instance.specTypes) && return nothing
+                push!(staged, instance)
+            else
+                push!(found, method)
+            end
         else
             names_package!(named, instance.specTypes, modules) || continue
         end
@@ -883,7 +888,12 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
         end
         for (index, failure) in inferred.failures
             (site.method, index) in settled && continue
-            failure isa BlindSpot ? push!(gaps, failure) : (push!(settled, (site.method, index)); push!(failing, failure))
+            if failure isa BlindSpot
+                push!(gaps, failure)
+            else
+                push!(settled, (site.method, index))
+                push!(failing, failure)
+            end
         end
         append!(disrupting, inferred.disruptions)
         append!(hard, inferred.hard_arrays)

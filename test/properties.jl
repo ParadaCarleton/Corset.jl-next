@@ -66,14 +66,68 @@ dropping_body(head::Symbol, arguments::Vector{Any})::Int = head in (:module, :fo
 """Whether `argument` is string literal; interpolated string may run code, so it stays."""
 is_string(argument::Any)::Bool = argument isa String
 
+"""Whether each of `count` arguments of `head` drops its value, given whether whole expression drops its value."""
+function dropped_arguments(head::Symbol, count::Int, dropped::Bool)::Vector{Bool}
+    head in (:block, :toplevel) && return [index < count || dropped for index in 1:count]
+    head in (:module, :for, :while) && return [index == count for index in 1:count]
+    head === :try && return [index == 4 for index in 1:count]
+    head in (:if, :elseif, :&&, :||, :let) && return [index > 1 && dropped for index in 1:count]
+    return fill(false, count)
+end
+
+"""Whether statement `value` is literal whose value Julia drops: number, string, character, symbol, `nothing`."""
+dropped_literal(value::Any)::Bool = value isa Union{Number, String, Char, QuoteNode} || value === :nothing
+
+"""Sole statement of one-statement block; other values stay."""
+unblocked(value::Any)::Any = Meta.isexpr(value, :block) && length(value.args) == 1 ? only(value.args) : value
+
+"""Rest of `&&` or `||` chain `value` after first term."""
+rest(value::Expr)::Any = length(value.args) == 2 ? value.args[2] : Expr(value.head, value.args[2:end]...)
+
+"""`&&` or `||` chain `value` with nested chain of same operator joined in: `a || (b || c)` gives `a || b || c`."""
+joined(value::Expr)::Expr = Expr(value.head, Iterators.flatten(Meta.isexpr(term, value.head) ? term.args : (term,) for term in value.args)...)
+
+"""`!` of condition `value`: double `!` drops, and `!` moves inside `&&` and `||`."""
+function negated(value::Any)::Any
+    Meta.isexpr(value, :call, 2) && value.args[1] === :! && return value.args[2]
+    Meta.isexpr(value, :&&) && return joined(Expr(:||, map(negated, value.args)...))
+    Meta.isexpr(value, :||) && return joined(Expr(:&&, map(negated, value.args)...))
+    return Expr(:call, :!, value)
+end
+
+"""Condition `value` with each `!` moved inward, as `negated` moves it, and each chain joined."""
+function condition(value::Any)::Any
+    Meta.isexpr(value, :call, 2) && value.args[1] === :! && return negated(condition(value.args[2]))
+    Meta.isexpr(value, (:&&, :||)) && return joined(Expr(value.head, map(condition, value.args)...))
+    return value
+end
+
+"""
+Statement `value` whose value Julia drops, in `if` form: `&&` and `||` chains and ternaries become `if`, `&&` test
+without `else` nests, literal `else` drops, and literal `then` negates test. Fixes that write `if` compare equal.
+"""
+function statement(value::Any)::Any
+    Meta.isexpr(value, :&&) && return statement(Expr(:if, value.args[1], rest(value)))
+    Meta.isexpr(value, :||) && return statement(Expr(:if, negated(value.args[1]), rest(value)))
+    Meta.isexpr(value, (:if, :elseif)) || return value
+    test = condition(unblocked(value.args[1]))
+    branches = Any[statement(unblocked(branch)) for branch in value.args[2:end]]
+    length(branches) == 2 && dropped_literal(branches[2]) && pop!(branches)
+    length(branches) == 2 && dropped_literal(branches[1]) && return statement(Expr(:if, negated(test), branches[2]))
+    length(branches) == 1 && Meta.isexpr(test, :&&) && return statement(Expr(:if, test.args[1], Expr(:if, rest(test), only(branches))))
+    return Expr(:if, test, branches...)
+end
+
 """
 `expression` without line numbers, docstrings, dropped string statements, and `return` on last statement of method body.
 Julia drops value of string statement unless it is last of block; module, loop and `finally` bodies drop every value.
+Statement whose value Julia drops (`dropped`) takes `if` form (`statement`). File value is last top-level statement.
 """
-function normalized(expression::Any)::Any
+function normalized(expression::Any, dropped::Bool = false)::Any
     expression isa Expr || return expression
-    expression.head === :macrocall && expression.args[1] == GlobalRef(Core, Symbol("@doc")) && return normalized(expression.args[end])
-    arguments = Any[normalized(argument) for argument in expression.args if !(argument isa LineNumberNode)]
+    expression.head === :macrocall && expression.args[1] == GlobalRef(Core, Symbol("@doc")) && return normalized(expression.args[end], dropped)
+    kept = Any[argument for argument in expression.args if !(argument isa LineNumberNode)]
+    arguments = Any[normalized(argument, flag) for (argument, flag) in zip(kept, dropped_arguments(expression.head, length(kept), dropped))]
     if expression.head in (:block, :toplevel)
         last_index = length(arguments)
         arguments = Any[argument for (index, argument) in enumerate(arguments) if index == last_index || !is_string(argument)]
@@ -85,7 +139,8 @@ function normalized(expression::Any)::Any
         tail = body isa Expr && body.head === :block && !isempty(body.args) ? body.args[end] : nothing
         tail isa Expr && tail.head === :return && (body.args[end] = only(tail.args))
     end
-    return Expr(expression.head, arguments...)
+    whole = Expr(expression.head, arguments...)
+    return dropped ? statement(whole) : whole
 end
 
 """`lines` without common leading spaces; blank lines become empty."""
@@ -214,7 +269,10 @@ const TIERS = Data.SampledFrom(collect(instances(Tier.T)))
 """Rules that compare code as text; fix that rewrites code into text of other code reveals real match, such as two equal lock targets."""
 const TEXT_MATCH_RULES = [Symbol("duplicate-statement"), Symbol("unguarded-release"), :unreachable]
 """Rules whose `safe` fix spells out what parser already reads: proven equivalent."""
-const EQUIVALENT = [Symbol("and-or-precedence"), :docstring, :juxtaposition, Symbol("mixed-return"), Symbol("unused-literal")]
+const EQUIVALENT = [
+    Symbol("and-or-precedence"), :docstring, :juxtaposition, Symbol("mixed-return"), Symbol("short-circuit-statement"),
+    Symbol("ternary-statement"), Symbol("unused-literal"),
+]
 """Rules whose `safe` fix changes meaning to fix definite bug inside method."""
 const BUG_FIXES = [Symbol("where-binding"), Symbol("world-age")]
 
@@ -234,6 +292,18 @@ end
     @test same("while f()\n\"a\"\nend\n", "while f()\nend\n") && same("try\nf()\nfinally\n\"a\"\nend\n", "try\nf()\nfinally\nend\n")
     @test !same("f() = \"a\"\n", "f() = nothing\n") && !same("\"a\"\n", "")
     @test !same("function f(xs)\n\"\$(push!(xs, 1))\"\nnothing\nend\n", "function f(xs)\nnothing\nend\n")
+    # Statement chain and ternary equal their `if` form; used value and file value keep their form.
+    @test same("for i in 1:2\nx || f()\nend\n", "for i in 1:2\nif !x\nf()\nend\nend\n")
+    @test same("for i in 1:2\n(a && b) || return\nend\n", "for i in 1:2\nif !a || !b\nreturn\nend\nend\n")
+    @test same("for i in 1:2\na || b || f()\nend\n", "for i in 1:2\nif !a && !b\nf()\nend\nend\n")
+    @test same("for i in 1:2\n((a && b) && c) || f()\nend\n", "for i in 1:2\nif !a || !b || !c\nf()\nend\nend\n")
+    @test same("for i in 1:2\nx ? nothing : c ? f() : g()\nend\n", "for i in 1:2\nif !x\nif c\nf()\nelse\ng()\nend\nend\nend\n")
+    @test !same("g(x) = x || f()\n", "g(x) = if !x\nf()\nend\n") && !same("x || f()\n", "if !x\nf()\nend\n")
+    # Fix keeps parentheses that `if` condition and `&&` operand need: assignment, `||` term, generator.
+    @test fixed_once("for i in 1:2\n    (y = f()) && return y\nend\n", Tier.safe) == "for i in 1:2\n    if (y = f())\n        return y\n    end\nend\n"
+    @test fixed_once("for i in 1:2\n    !(a || b) || c || f()\nend\n", Tier.safe) == "for i in 1:2\n    if (a || b) && !c\n        f()\n    end\nend\n"
+    @test accepted(fixed_once("for i in 1:2\n    c ? (x for x in y) : f()\nend\n", Tier.safe))
+    @test fixed_once("for i in 1:2\n    ==(a, b) || f()\nend\n", Tier.safe) == "for i in 1:2\n    if !(==(a, b))\n        f()\n    end\nend\n"
     wrapped = "module Wrapped\n    \"Shape types.\"\nend\n"
     @test Corset.Fixes.apply_edits(wrapped, edits_of(findings_of(wrapped), Tier.safe)) == "module Wrapped\n    # Shape types.\nend\n"
     # `mixed-return` fix wraps `pinned.sticky = false` in `return`; `pinned-task` opt-out still holds.

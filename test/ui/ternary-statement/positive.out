@@ -1,0 +1,102 @@
+warning[ternary-statement]: ternary runs code as statement
+ --> positive.jl:4:9
+  |
+4 |         x > 0 ? push!(positive, x) : nothing
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ picked value dropped
+  |
+  = why: `?:` picks between values and `if` runs code; reader looks for use of value that never comes
+  = fix: rewrite as `if` statement   [safe]
+  = docs: corset explain ternary-statement
+  = note: warn from readability group, library preset
+  = note: opt out with `# corset: allow ternary-statement -- <reason>`
+
+warning[ternary-statement]: ternary runs code as statement
+  --> positive.jl:11:9
+   |
+11 |         x < 0 ? push!(negative, x) : x > 0 ? push!(positive, x) : nothing
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ picked value dropped
+   |
+   = why: `?:` picks between values and `if` runs code; reader looks for use of value that never comes
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain ternary-statement
+
+warning[ternary-statement]: ternary runs code as statement
+  --> positive.jl:18:9
+   |
+18 |         isready(x) ? nothing : push!(waiting, x)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ picked value dropped
+   |
+   = why: `?:` picks between values and `if` runs code; reader looks for use of value that never comes
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain ternary-statement
+
+warning[ternary-statement]: ternary runs code as statement
+  --> positive.jl:24:5
+   |
+24 |     first ? (second ? push!(a, 1) : push!(b, 1)) : push!(c, 1)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ picked value dropped
+   |
+   = why: `?:` picks between values and `if` runs code; reader looks for use of value that never comes
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain ternary-statement
+
+warning[ternary-statement]: ternary runs code as statement
+  --> positive.jl:29:5
+   |
+29 |     flag ? push!(a, 1) : push!(a, 2); push!(a, 3)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ picked value dropped
+   |
+   = why: `?:` picks between values and `if` runs code; reader looks for use of value that never comes
+   = fix: rewrite as `if` statement   [manual]
+   = docs: corset explain ternary-statement
+
+warning[ternary-statement]: ternary runs code as statement
+  --> positive.jl:34:5
+   |
+34 |     flag ? 1 : 2
+   |     ^^^^^^^^^^^^ picked value dropped
+   |
+   = why: `?:` picks between values and `if` runs code; reader looks for use of value that never comes
+   = fix: rewrite as `if` statement   [manual]
+   = docs: corset explain ternary-statement
+
+warning[ternary-statement]: ternary runs code as statement
+  --> positive.jl:39:5
+   |
+39 |     balanced(hold) ? delete!(state, key) : (state[key] = hold)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ picked value dropped
+   |
+   = why: `?:` picks between values and `if` runs code; reader looks for use of value that never comes
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain ternary-statement
+
+warning[ternary-statement]: ternary runs code as statement
+  --> positive.jl:44:5
+   |
+44 |     (generated) ? (isempty(staged) && return nothing; push!(staged, method)) : push!(found, method)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ picked value dropped
+   |
+   = why: `?:` picks between values and `if` runs code; reader looks for use of value that never comes
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain ternary-statement
+
+warning[ternary-statement]: ternary runs code as statement
+  --> positive.jl:49:5
+   |
+49 |     (y = f()) ? push!(xs, y) : empty!(xs)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ picked value dropped
+   |
+   = why: `?:` picks between values and `if` runs code; reader looks for use of value that never comes
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain ternary-statement
+
+warning[ternary-statement]: ternary runs code as statement
+  --> positive.jl:50:5
+   |
+50 |     (a => b) ? nothing : push!(xs, (x for x in xs))
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ picked value dropped
+   |
+   = why: `?:` picks between values and `if` runs code; reader looks for use of value that never comes
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain ternary-statement
+

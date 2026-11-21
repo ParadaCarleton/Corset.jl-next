@@ -1,0 +1,112 @@
+warning[short-circuit-statement]: `||` chain runs code as statement
+ --> positive.jl:3:5
+  |
+3 |     n >= 0 || error("n must be non-negative")
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ hides `if`
+  |
+  = why: project prefers `if` for code that runs on condition; chain reads as `Bool` expression
+  = fix: rewrite as `if` statement   [safe]
+  = docs: corset explain short-circuit-statement
+  = note: warn from restriction group set in UI cases
+  = note: opt out with `# corset: allow short-circuit-statement -- <reason>`
+
+warning[short-circuit-statement]: `&&` chain runs code as statement
+ --> positive.jl:9:9
+  |
+9 |         isready(x) && return x
+  |         ^^^^^^^^^^^^^^^^^^^^^^ hides `if`
+  |
+  = why: project prefers `if` for code that runs on condition; chain reads as `Bool` expression
+  = fix: rewrite as `if` statement   [safe]
+  = docs: corset explain short-circuit-statement
+
+warning[short-circuit-statement]: `||` chain runs code as statement
+  --> positive.jl:15:5
+   |
+15 |     isempty(args) || verbose() || println("args: ", args)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ hides `if`
+   |
+   = why: project prefers `if` for code that runs on condition; chain reads as `Bool` expression
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain short-circuit-statement
+
+warning[short-circuit-statement]: `||` chain runs code as statement
+  --> positive.jl:16:5
+   |
+16 |     !isnothing(args) || return
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ hides `if`
+   |
+   = why: project prefers `if` for code that runs on condition; chain reads as `Bool` expression
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain short-circuit-statement
+
+warning[short-circuit-statement]: `||` chain runs code as statement
+  --> positive.jl:17:5
+   |
+17 |     (args isa Vector && length(args) > 1) || return
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ hides `if`
+   |
+   = why: project prefers `if` for code that runs on condition; chain reads as `Bool` expression
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain short-circuit-statement
+
+warning[short-circuit-statement]: `||` chain runs code as statement
+  --> positive.jl:22:5
+   |
+22 |     a || b && run(a)
+   |     ^^^^^^^^^^^^^^^^ hides `if`
+   |
+   = why: project prefers `if` for code that runs on condition; chain reads as `Bool` expression
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain short-circuit-statement
+
+warning[short-circuit-statement]: `&&` chain runs code as statement
+  --> positive.jl:27:5
+   |
+27 |     flag && run(flag); run(flag)
+   |     ^^^^^^^^^^^^^^^^^ hides `if`
+   |
+   = why: project prefers `if` for code that runs on condition; chain reads as `Bool` expression
+   = fix: rewrite as `if` statement   [manual]
+   = docs: corset explain short-circuit-statement
+
+warning[short-circuit-statement]: `&&` chain runs code as statement
+  --> positive.jl:32:5
+   |
+32 |     (task = fetch_later(url)) && return task
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ hides `if`
+   |
+   = why: project prefers `if` for code that runs on condition; chain reads as `Bool` expression
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain short-circuit-statement
+
+warning[short-circuit-statement]: `||` chain runs code as statement
+  --> positive.jl:33:5
+   |
+33 |     !(isempty(url) || isready(url)) || bad || return nothing
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ hides `if`
+   |
+   = why: project prefers `if` for code that runs on condition; chain reads as `Bool` expression
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain short-circuit-statement
+
+warning[short-circuit-statement]: `||` chain runs code as statement
+  --> positive.jl:34:5
+   |
+34 |     (bad ? url : nothing) || @isdefined(url) || error("no url")
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ hides `if`
+   |
+   = why: project prefers `if` for code that runs on condition; chain reads as `Bool` expression
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain short-circuit-statement
+
+warning[short-circuit-statement]: `&&` chain runs code as statement
+  --> positive.jl:35:5
+   |
+35 |     @isdefined(url) && return url
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ hides `if`
+   |
+   = why: project prefers `if` for code that runs on condition; chain reads as `Bool` expression
+   = fix: rewrite as `if` statement   [safe]
+   = docs: corset explain short-circuit-statement
+

@@ -18,6 +18,7 @@ export @pattern, matches, binding, span, source, all_nodes, forms, leaves, child
 export name_span, tuple_parameters, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal, line_start, owned_lines, line_deletion
+export negation, exits, terms, exit_guard, later_term, returning_function, CONDITION, operand, body_text, negated, none_text, Branch, if_text, statement_indent
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
 @enumx Precision exact line
@@ -26,7 +27,7 @@ export takes_docstring, comment_lines_above, comments_in, discarded, literal, li
 """`definite`: problem exists. `possible`: compiler cannot resolve doubt either."""
 @enumx Confidence definite possible
 """User-facing rule group."""
-@enumx Group correctness safety performance composability readability
+@enumx Group correctness safety performance composability readability restriction
 """Analysis stage that computes facts rule reads, in pipeline order."""
 @enumx Stage syntax package scope inference effects lifecycle external
 """File role: `package` module code precompiles; `script` code (tests, docs, scripts) runs each time it loads."""
@@ -974,5 +975,8 @@ function weak_causes(disruption::Disruption, exit_text::String)::Vector{Label}
     disruption.meeting == disruption.exit_span && return [Label(disruption.meeting, "$meeting and $exit_text")]
     return [Label(disruption.meeting, meeting), Label(disruption.exit_span, exit_text)]
 end
+
+
+include("Statements.jl")
 
 end

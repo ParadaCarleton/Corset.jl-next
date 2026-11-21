@@ -7,7 +7,7 @@ also carries what each stored condition proves. Read where scan proves narrower 
 """
 module Narrowing
 
-using ..Facts: SyntaxFile, SyntaxNode, kind_name, children_of, parent_of, identifier_name, source, span, discarded, owned_lines, comments_in, line_start
+using ..Facts: SyntaxFile, SyntaxNode, kind_name, children_of, parent_of, source, span, discarded, owned_lines, comments_in, line_start, negation, exits, terms
 using ..Widening: resolved, statement_call, code_argextype
 
 const CC = Core.Compiler
@@ -174,7 +174,11 @@ function transfer!(losses::Vector{Loss}, code::Core.CodeInfo, flow::Flow, parame
             for (other, (was_yes, was_no)) in stored
                 stored[other] = (forget(was_yes, slot), forget(was_no, slot))
             end
-            CC.widenconst(code.ssavaluetypes[index]) <: Bool ? (stored[slot] = (forget(yes, slot), forget(no, slot))) : delete!(stored, slot)
+            if CC.widenconst(code.ssavaluetypes[index]) <: Bool
+                stored[slot] = (forget(yes, slot), forget(no, slot))
+            else
+                delete!(stored, slot)
+            end
             assigned[slot] = CC.widenconst(code.ssavaluetypes[index])
         end
         statement isa Expr && code.ssavaluetypes[index] === Union{} && return Pair{Int, State}[]
@@ -207,23 +211,6 @@ function losses(code::Core.CodeInfo, flow::Flow, parameters::Vector{CC.VarState}
         isnothing(state) || isnothing(flow.tables[block]) || transfer!(found, code, flow, parameters, block, state)
     end
     return unique!(loss -> loss.test, sort!(found; by = loss -> loss.read))
-end
-
-"""Whether `node` is `!` call with one argument; root has no parent, so `nothing` is none."""
-negation(node::Union{Nothing, SyntaxNode})::Bool =
-    !isnothing(node) && kind_name(node) == "call" && length(children_of(node)) == 2 && identifier_name(children_of(node)[1]) == "!"
-
-"""Whether `node` leaves block: `return`, `continue`, `break`, or call of `throw`, `error` or `rethrow`."""
-exits(node::SyntaxNode)::Bool = kind_name(node) in ("return", "continue", "break") ||
-    (kind_name(node) == "call" && identifier_name(children_of(node)[1]) in ("throw", "error", "rethrow"))
-
-"""Terms of chain `node` of `&&` or `||`, left to right; nested chain of same operator joins."""
-function terms(node::SyntaxNode)::Vector{SyntaxNode}
-    found = SyntaxNode[]
-    for child in children_of(node)
-        kind_name(child) == kind_name(node) ? append!(found, terms(child)) : push!(found, child)
-    end
-    return found
 end
 
 """
