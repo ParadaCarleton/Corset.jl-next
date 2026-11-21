@@ -346,6 +346,12 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
     @test !haskey(run.cuts, assigned) && (cut!(run, assigned, total); haskey(run.cuts, assigned))
     broken = instance_of(stand_in_broken, ArrayStandIn{Int, 1})
     @test cut!(run, broken, total) && run.cuts[broken]
+    # Cut check keeps frame for body, which releases it; body matches one from fresh inference. Solve drops rest.
+    poked = instance_of(CASES.poke_caught_at!, ArrayStandIn{Int, 1}, Int)
+    @test haskey(run.frames, poked) && body!(run, poked) isa Body && !haskey(run.frames, poked)
+    fresh = body!(start_run(nothing, Module[]), poked)
+    @test (fresh.lines, fresh.used, fresh.cut) == (run.bodies[poked].lines, run.bodies[poked].used, run.bodies[poked].cut)
+    @test !isempty(run.frames) && (solve!(run, Variant[]); isempty(run.frames))
     @test catches!(run, only(methods(CASES.poke_caught_at!))) && catches!(run, only(methods(stand_in_broken)))
     @test !catches!(run, only(methods(CASES.poke_at!)))
 end
