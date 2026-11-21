@@ -188,12 +188,14 @@ function infer(method::Method, signature::Type)::Union{Nothing, Tuple{Core.Metho
 end
 
 """
-Name of function `call` calls: global, or global earlier statement reads, or parametric type `Vector{T}` that earlier
-statement applies; `nothing` for computed callee.
+Name of function `call` calls: global, global earlier statement reads, qualified name `Base.f` (`getproperty`), or
+parametric type `Vector{T}` that earlier statement applies; `nothing` for computed callee.
 """
 function callee_name(code::Core.CodeInfo, call::Expr)::Union{Nothing, Symbol}
     callee = call.args[1]
     callee isa Core.SSAValue && (callee = code.code[callee.id])
+    qualified = callee isa Expr && callee.head === :call && length(callee.args) == 3 && callee.args[1] == GlobalRef(Base, :getproperty)
+    qualified && callee.args[3] isa QuoteNode && return callee.args[3].value::Symbol
     if callee isa Expr && callee.head === :call && length(callee.args) >= 2 && callee.args[1] == GlobalRef(Core, :apply_type)
         callee = callee.args[2]
         callee isa Core.SSAValue && (callee = code.code[callee.id])
@@ -205,8 +207,10 @@ end
 Whether `node` spells call to `name` with `arguments` positional arguments; callee lowering inserts passes. Product
 `2x` spells call to `*`.
 """
-function spells(file::SyntaxFile, node::SyntaxNode, name::Symbol, arguments::Int)::Bool
-    name in LOWERED && return true
+spells(file::SyntaxFile, node::SyntaxNode, name::Symbol, arguments::Int)::Bool = name in LOWERED || spells_call(file, node, name, arguments)
+
+"""Whether `node` spells call to `name` with `arguments` positional arguments in source, lowered callee too."""
+function spells_call(file::SyntaxFile, node::SyntaxNode, name::Symbol, arguments::Int)::Bool
     kind_name(node) == "juxtapose" && return name === :* && length(children_of(node)) == arguments
     kind_name(node) == "call" || return false
     positional = count(part -> kind_name(part) != "parameters", call_arguments(node))
@@ -269,14 +273,48 @@ function broadcast_node(code::Core.CodeInfo, nodes::Vector{Union{Nothing, Syntax
     return nothing
 end
 
+"""Indexes of call statements of `code` whose value no statement reads: Julia runs them for effect only."""
+function unused_calls(code::Core.CodeInfo)::BitSet
+    used = BitSet()
+    foreach(statement -> CC.scan_ssa_use!(push!, used, statement), code.code)
+    return BitSet(index for (index, statement) in enumerate(code.code) if statement isa Expr && statement.head === :call && !(index in used))
+end
+
+"""Call statements of method of `site` whose value Julia drops (`Facts.discarded`), by line in file with line `starts`."""
+function discarded_calls(site::MethodSite, starts::Vector{Int})::Dict{Int, Vector{SyntaxNode}}
+    found = Dict{Int, Vector{SyntaxNode}}()
+    isnothing(site.node) && return found
+    for node in Facts.descendants(site.node)
+        kind_name(node) in ("call", "juxtapose") && Facts.discarded(node) || continue
+        push!(get!(Vector{SyntaxNode}, found, searchsortedlast(starts, first(Facts.trimmed_bytes(site.file.text, node)))), node)
+    end
+    return found
+end
+
 """
-Span of each statement of `code`: span of its node in `nodes` (`statement_nodes`); else start of debuginfo line, when
-that line lies in definition; else method site span. Statement without own line takes line of statement before it.
-Code from macro of same file carries line of macro body, outside definition, so it gets method site span.
+Node of unused call `statement` of `code` among discarded call statements `candidates` of its line: only one that
+spells its call and no other statement took. TypedSyntax.jl maps no statement whose value code drops.
+"""
+function discarded_node(file::SyntaxFile, code::Core.CodeInfo, statement::Expr, candidates::Vector{SyntaxNode}, taken::Base.IdSet{SyntaxNode})::Union{Nothing, SyntaxNode}
+    name = callee_name(code, statement)
+    isnothing(name) && return nothing
+    spelled = [node for node in candidates if !(node in taken) && spells_call(file, node, name, length(statement.args) - 1)]
+    length(spelled) == 1 || return nothing
+    push!(taken, only(spelled))
+    return only(spelled)
+end
+
+"""
+Span of each statement of `code`: span of its node in `nodes` (`statement_nodes`), or of discarded call statement
+(`discarded_node`); else start of debuginfo line, when that line lies in definition; else method site span. Statement
+without own line takes line of statement before it. Code from macro of same file carries line of macro body, outside
+definition, so it gets method site span.
 """
 function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodSite, starts::Vector{Int}, nodes::Vector{Union{Nothing, SyntaxNode}})::Vector{Span}
     path = site.file.path
     lines = isnothing(site.node) ? (1:length(starts)) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
+    unused, candidates = unused_calls(code), discarded_calls(site, starts)
+    taken = Base.IdSet{SyntaxNode}(node for node in nodes if !isnothing(node))
     found, line = Span[], 0
     # Lowering gives method for omitted defaults first body line, though definition line holds defaults and forwarding call.
     wrapper = forwards(site)
@@ -287,6 +325,9 @@ function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodS
             string(first(scopes).file) == path || error("debuginfo of $(site.method) starts outside its file: $(first(scopes).file)")
             scope_line = wrapper ? site.method.line : first(scopes).line
             line = scope_line in lines ? Int(scope_line) : 0
+        end
+        if isnothing(node) && line > 0 && index in unused
+            node = discarded_node(site.file, code, code.code[index]::Expr, get(candidates, line, SyntaxNode[]), taken)
         end
         push!(found, !isnothing(node) ? Facts.span(site.file, node) : line > 0 ? Span(path, starts[line], starts[line], Precision.line) : site.span)
     end

@@ -101,5 +101,16 @@ include("callees.jl")
 include("callers.jl")
 # Serializer has no method for enum value.
 @enum Mode fast slow
+# Discarded calls: one per line maps; two of one callee on one line map to neither.
+function dropped(x::Real)
+    abs(x)
+    abs(x) + 1; abs(x) + 1
+    return x
+end
+# Qualified callee lowers to `getproperty` statement.
+function dropped_qualified(x::Real)
+    Base.abs(x)
+    return x
+end
 
 end
