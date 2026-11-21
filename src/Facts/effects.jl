@@ -112,11 +112,11 @@ place_text(method::Method, place::Place.Type)::String = @match place begin
     Place.Deep(root) => root_text(method, root) * " or below"
 end
 
-"""Whether `place` starts at global binding."""
-global_place(place::Place.Type)::Bool = @match place begin
-    Place.At(Root.Global(_), _) => true
-    Place.Deep(Root.Global(_)) => true
-    _ => false
+"""Global binding `place` starts at; `nothing` for place at argument or elsewhere."""
+root_global(place::Place.Type)::Union{Nothing, GlobalRef} = @match place begin
+    Place.At(Root.Global(ref), _) => ref
+    Place.Deep(Root.Global(ref)) => ref
+    _ => nothing
 end
 
 """
@@ -177,6 +177,12 @@ methods_callee(methods::Vector{Method})::Callee.Type = Callee.Methods(sort!(uniq
 callee_name(callee::Callee.Type)::Union{Nothing, String} = @match callee begin
     Callee.Methods(methods) => (names = unique(method.name for method in methods); length(names) == 1 ? string(only(names)) : nothing)
     Callee.Builtin(builtin) => string(nameof(builtin))
+    _ => nothing
+end
+
+"""Methods of `callee` that dispatch reaches (none: call throws); `nothing` for builtin, foreign or open callee."""
+callee_methods(callee::Callee.Type)::Union{Nothing, Vector{Method}} = @match callee begin
+    Callee.Methods(methods) => methods
     _ => nothing
 end
 

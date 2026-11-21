@@ -3,12 +3,12 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
 using Corset.Cache: Cache
-using Corset.Facts: Facts, MethodEffects, Callee, BlindSpot
+using Corset.Facts: Facts, MethodEffects, Callee, BlindSpot, callee_methods
 using Corset.Inference: Inference, infer_package, Store, entry_key, serialized, edge_instance
 using Corset.Effects:
     Effects, Library, LibraryEntry, Summary, Run, Variant, Closure, start_run, solve!, dispatch, root_summary, same, cached_effects,
     library_entries, unshared, closure_key!, variant_key!, instance_key!, instance_node, record_text!, stored_value!, type_text!, inferred!,
-    record_bytes, unit_record, callee_methods
+    record_bytes, unit_record
 using Moshi.Data: isa_variant
 using Serialization: deserialize
 using Random: RandomDevice

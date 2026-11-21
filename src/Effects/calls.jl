@@ -19,7 +19,8 @@ Effects of call that table knows (`effects.md`, Calls, steps 2 and 6), by argume
 reads through; `copies` of source elements into destination elements; `stores` of argument into destination elements;
 arguments result points into; arguments whose elements result may be; and arguments result may point beneath
 (`aliases`, doubt in code). Every argument from position `rest` on takes role of `rest`; 0 means none. Writes take
-`write_kind`; memory write takes kind of its path (`effects.md`, Effect kinds).
+`write_kind`; memory write takes kind of its path (`effects.md`, Effect kinds). `current`: result is current task, an
+object outside every frame, without doubt.
 """
 Base.@kwdef struct CallEffects
     writes::Vector{Int} = Int[]
@@ -31,6 +32,7 @@ Base.@kwdef struct CallEffects
     aliases::Vector{Int} = Int[]
     rest::Int = 0
     write_kind::EffectKind.T = EffectKind.memory
+    current::Bool = false
 end
 
 include("foreign_gmp_mpfr.jl")
@@ -46,6 +48,8 @@ const RUNTIME_EFFECTS = Dict{Symbol, CallEffects}(
     :memchr => CallEffects(reads = [1], result = [1]),
     :memrchr => CallEffects(reads = [1], result = [1]),
     :strlen => CallEffects(reads = [1]),
+    # Current task holds default RNG and task-local state (`current_task`).
+    :jl_get_current_task => CallEffects(current = true),
     # Destination memory, its pointer, source memory, its pointer, count.
     :jl_genericmemory_copyto => CallEffects(writes = [1, 2], reads = [3, 4], copies = [1 => 3, 2 => 4]),
     :jl_object_id => CallEffects(reads = [1]),

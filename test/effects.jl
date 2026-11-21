@@ -1,6 +1,6 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
-using Corset.Facts: Facts, MethodEffects, Callee, methods_callee, callee_name, place_text, global_place, CallFact, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind, PATH_DEPTH
+using Corset.Facts: Facts, MethodEffects, Callee, methods_callee, callee_name, callee_methods, place_text, root_global, CallFact, Access, BlindAccess, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind, PATH_DEPTH
 using Corset.Inference: infer_package, open_journal, records, explicit_any, cuts!, dead_calls
 using Corset.StandIns: FunctionStandIn, ArrayStandIn, DenseStandIn, FloatStandIn
 using Corset.Signatures: Provenance
@@ -11,7 +11,7 @@ using Corset.Effects:
     components, foreign_name, FOREIGN_EFFECTS, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
     Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
-    unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, callee_methods, merge_calls, merge_callees, load, store!, store_backing!,
+    unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, merge_calls, merge_callees, load, store!, store_backing!,
     beneath, map_nodes, exact_path, extend, load_any, keyword_types, over_budget
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
@@ -1605,6 +1605,8 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     # RNG argument, default RNG in `Task` fields, task-local storage, scoped read.
     @test doubts(summary_of(roll, Xoshiro).writes) == Dict((parameter(2), false, EffectKind.rng_argument) => NO_DOUBT)
     @test EffectKind.default_rng in kinds_at(summary_of(roll_default).writes, elsewhere) && EffectKind.default_rng in kinds_at(summary_of(roll_default).reads, elsewhere)
+    # Current task is one object outside every frame: its RNG state access has no doubt.
+    @test all(effect -> effect.doubt == NO_DOUBT, (effect for (key, effect) in summary_of(roll_default).writes if key[3] == EffectKind.default_rng))
     remembered = summary_of(remember!, Int)
     @test kinds_at(remembered.writes, elsewhere) == Set([EffectKind.task_local])
     # Audited method covers its root only: global read inside it keeps own kind.
@@ -1946,6 +1948,8 @@ end
     # Callee name needs one function: two names give none.
     @test callee_name(dropped.callee) == "abs" && callee_name(Callee.Builtin(Core.ifelse)) == "ifelse"
     @test isnothing(callee_name(merged.callee)) && isnothing(callee_name(Callee.Foreign()))
+    # Call no method matches has no callee methods; other callee has `nothing`.
+    @test isempty(callee_methods(Callee.Methods(Method[]))) && isnothing(callee_methods(Callee.Builtin(Core.ifelse)))
 end
 
 """Method that claims effects, for `claimed_effects`."""
@@ -1959,7 +1963,8 @@ Base.@assume_effects :effect_free :notaskstate claimed_double(x::Int) = 2x
     @test place_text(method, Place.At(Root.Elsewhere(), Step.Type[])) == "result of open call"
     # Argument 1 of anonymous function is closure itself; field names captured variable.
     @test place_text(only(methods(x -> x)), Place.At(Root.Parameter(1), [Step.Field(:seen)])) == "closure.seen"
-    @test global_place(Place.Deep(Root.Global(GlobalRef(CASES, :COUNTER)))) && !global_place(Place.At(Root.Elsewhere(), Step.Type[]))
+    counter = GlobalRef(CASES, :COUNTER)
+    @test root_global(Place.Deep(Root.Global(counter))) == counter && isnothing(root_global(Place.At(Root.Elsewhere(), Step.Type[])))
     @test Effects.claimed_effects(only(methods(claimed_double))) == [:effect_free, :notaskstate]
     @test isempty(Effects.claimed_effects(only(methods(CASES.add))))
 end

@@ -205,7 +205,7 @@ Resolution of each call statement, first match wins:
 Summary keeps every effect with its kind. Rules apply exemptions; engine filters nothing.
 
 - Kinds: memory write, IO, default RNG, RNG argument, task-local state, `ScopedValue` read, lock and other synchronization, lazy init, audited internal state, iteration start.
-- `bang-convention` exempts IO, RNG, lazy init and audited internal state. `unused-call` counts every kind. `hidden-input` reads default RNG, task-local state, `ScopedValue` and mutable globals.
+- `bang-convention` exempts IO, RNG, lazy init and audited internal state. `unused-call` counts every kind. `hidden-input` reads default RNG and package globals that package code writes; Base tables and logging state pass.
 - Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.
 - Kind comes from types along place path, root first: first `IO` gives IO, `AbstractRNG` gives RNG argument.
 - Contract write can set own kind: `handle_message` writes logger as IO.
@@ -213,6 +213,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - Path types: instance parameter type, constant global value type or global binding type, then field type or element type per step. Abstract type without field ends walk.
 - Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.
 - Write to RNG fields of `Task` (`rngState0` to `rngState4`): default RNG. Other write to `Task`, `task_local_storage` included: task-local state.
+- `current_task` gives current task: object outside every frame, without doubt. Its default RNG and task-local accesses are definite.
 - `ScopedValue` read: read of `ScopedValue` object or of current task scope.
 - Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.
 - Lazy init and audited internal state come from audited table of Base types and methods only:
@@ -254,7 +255,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Throw exit: statement that may throw outside every `try`. Its count joins into throw-exit count.
 - Call applies callee counts on caller places like writes: through join and callback record. Callee throw-exit count joins at call statement.
 - Normal-exit lock or semaphore count not 0 on argument or global: lock write. Exact count gives definite; unknown from join gives `possible`.
-- F98 (`unguarded-release`) fact: statement throws outside every `try` while method holds resource. Release is skipped.
+- F98 (`unguarded-release`) fact: statement throws outside every `try` while method holds resource. Release is skipped. Fact names resource kind: lock or semaphore slot gives synchronization, file gives IO.
 - Hold comes from own acquire or callee normal exit. Callee throw-exit count alone gives none: finding goes to method that acquires.
 
 #### Solve and cache
@@ -316,10 +317,14 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Per unit, for `lifecycle` and statement rules (F48, F50, F51): allocation sites, read, write and iteration-start events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.
 - Element event carries index operand: constant or SSA value. `lifecycle` decides which elements writes cover (F33, F34).
 - Per call statement: callee, kinds of its writes at any certainty, may throw, terminates, result used or discarded (F54, F86).
+- Call fact is closed-world when its verdict joins methods loaded now: Base contract, dispatch to several methods, or such callee. Its none is at most `possible`.
+- Call with stand-in operand type: compiler flags and writes hold for stand-in only. Its none is at most `possible`.
+- TypedSyntax.jl maps no statement whose value code drops. Lone discarded call statement on its line that spells call gives exact span.
 - Callee holds that call leaves count as writes: lock gives synchronization, file gives IO.
 - Use counts before compaction: compaction turns each use of constant result into literal (`b == UInt8('\t')`).
 - Units of method merge by source statement: unit that may throw, writes or uses result decides.
 - `unused-call` needs no effect of any kind, no throw and termination: discarded `parse(Int, text)` validates input.
+- `unused-call` reports discarded statement in source only. Lowering gives inserted calls span of nearby statement, and inference drops use of folded condition.
 - Join of two allocations at branch (`y = flag ? a : b`) makes fact `possible`.
 - Callee content reads come from summaries: `sum` reads, `fill!` does not.
 - `possible` effect findings stay off until call resolution passes quality gate.

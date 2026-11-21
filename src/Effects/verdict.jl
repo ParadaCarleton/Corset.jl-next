@@ -153,12 +153,6 @@ facts.
 """
 const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{BlindAccess}, Vector{BlindAccess}, Vector{Place.Type}, Vector{UnguardedHold}, Calls}
 
-"""Methods of `callee` that dispatch reaches; `nothing` for other callee."""
-callee_methods(callee::Callee.Type)::Union{Nothing, Vector{Method}} = @match callee begin
-    Callee.Methods(methods) => methods
-    _ => nothing
-end
-
 """Callee of call statement over two units of method: methods of both; open when either is other callee."""
 function merge_callees(first::Callee.Type, second::Callee.Type)::Callee.Type
     first == second && return first
