@@ -7,6 +7,20 @@ const OriginHolds = Dict{Origin.Type, Targets}
 """Callback record during fixpoint: variant and targets of each callee parameter, callable first (`Callback`)."""
 const Deferred = Tuple{Variant, Vector{Targets}}
 
+"""Heap location read by a trace: origin, slot (`nothing` for unknown), and backing flag."""
+const TraceDependency = Tuple{Origin.Type, Union{Nothing, Step.Type}, Bool}
+
+"""Index at most 64 origins per trace; invalidate longer traces on any heap growth."""
+const TRACE_ORIGIN_LIMIT = 64
+
+"""Cached trace, its dependencies, and its work in the current cache generation."""
+mutable struct Follow
+    const targets::Targets
+    const dependencies::Vector{TraceDependency}
+    const work::Int
+    generation::Int
+end
+
 """
 Points-to state of one instance during its fixpoint (`effects.md`, Origins and points-to): call outcome, message flag
 (`message_statements`) and release balance primitive (`primitive`) per statement; targets per IR value and argument; type sources each IR value derives from
@@ -15,7 +29,10 @@ backing, unknown-slot stores and global bindings; result targets; accesses by or
 below; callback records by call statement. `changed` records growth of targets in current round; `closed_world` records
 join over methods loaded now, and `cut` path stand-ins cut (`Summary`). `flush` resolves every callback record here:
 root unit has no caller to resolve them. `record` keeps kinds of writes each call statement makes (`call_kinds`).
-`follows` keeps slot targets by origin and step (`load`); `stale` marks heap growth since they were found.
+`follows` keeps slot targets by origin and step (`load`); `dependents` indexes traces by origins they read.
+`coarse` holds traces beyond `TRACE_ORIGIN_LIMIT`; any heap growth invalidates them.
+`stale` and `generation` preserve work accounting after heap growth.
+`traces` counts trace executions.
 `settled`: round after one that changed nothing, so it applies callee accesses and skips callee stores (`apply!`).
 """
 mutable struct Flow
@@ -39,7 +56,10 @@ mutable struct Flow
     const flush::Bool
     const record::Bool
     const call_kinds::Dict{Int, Set{EffectKind.T}}
-    const follows::Dict{Tuple{Origin.Type, Step.Type}, Targets}
+    const follows::Dict{Tuple{Origin.Type, Step.Type}, Follow}
+    const dependents::Dict{TraceDependency, Set{Tuple{Origin.Type, Step.Type}}}
+    const coarse::Set{Tuple{Origin.Type, Step.Type}}
+    generation::Int
     changed::Bool
     stale::Bool
     settled::Bool
@@ -47,6 +67,7 @@ mutable struct Flow
     cut::Bool
     const limit::Int
     work::Int
+    traces::Int
 end
 
 """
@@ -63,7 +84,7 @@ function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     callbacks = Dict{Int, Vector{Deferred}}()
     primitives = Union{Nothing, Primitive}[statement_primitive(ir, index, outcomes[index]) for index in 1:length(ir.stmts)]
-    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, Dict{Int, Set{EffectKind.T}}(), Dict{Tuple{Origin.Type, Step.Type}, Targets}(), false, false, false, false, cut, limit, 0)
+    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, Dict{Int, Set{EffectKind.T}}(), Dict{Tuple{Origin.Type, Step.Type}, Follow}(), Dict{TraceDependency, Set{Tuple{Origin.Type, Step.Type}}}(), Set{Tuple{Origin.Type, Step.Type}}(), 0, false, false, false, false, cut, limit, 0, 0)
 end
 
 """Release balance primitive of statement `index` of `ir` with call `outcome`: dispatched call only (`primitive`)."""
@@ -265,7 +286,8 @@ const MEMORY_POINTER = Step.Field(:ptr)
 Targets of `step` slot of `origin`: place below caller object, stored targets, and element or data pointer of each
 memory backing chain reaches, with doubt of chain. Each origin walk counts as work.
 """
-function trace(flow::Flow, origin::Origin.Type, step::Step.Type)::Targets
+function trace(flow::Flow, origin::Origin.Type, step::Step.Type)::Follow
+    flow.traces += 1
     found, reached, pending = Targets(), Targets(), [origin => NO_DOUBT]
     while !isempty(pending)
         current, chain = pop!(pending)
@@ -286,26 +308,61 @@ function trace(flow::Flow, origin::Origin.Type, step::Step.Type)::Targets
         end
     end
     flow.work += length(reached)
-    return found
+    dependencies = TraceDependency[]
+    if length(reached) <= TRACE_ORIGIN_LIMIT
+        for current in keys(reached)
+            push!(dependencies, (current, step, false), (current, nothing, false))
+            (step == Step.Element() || step == MEMORY_POINTER) && push!(dependencies, (current, nothing, true))
+        end
+    end
+    return Follow(found, dependencies, length(reached), flow.generation)
 end
 
 """
-Targets of `step` slot over every origin of `objects`. Slot targets of each origin come from `trace` once per heap
-state: calls map same places at each call statement and round, and memory backing chains grow long. Flow past budget
-loads nothing: one call statement maps callee stores through many loads, and heap growth between them empties traces.
+Targets of `step` slot over every origin of `objects`. Reuse traces until a dependency changes. Charge work as if heap
+growth cleared all traces, so the work limit keeps its original behavior.
 """
 function load(flow::Flow, objects::Targets, step::Step.Type)::Targets
-    flow.stale && (empty!(flow.follows); flow.stale = false)
+    flow.stale && (flow.generation += 1; flow.stale = false)
     found = Targets()
     for (origin, doubt) in objects
         over_budget(flow) && break
-        traced = get!(() -> trace(flow, origin, step), flow.follows, (origin, step))
-        flow.work += length(traced)
-        for (target, flag) in traced
+        key = (origin, step)
+        followed = get(flow.follows, key, nothing)
+        if isnothing(followed)
+            followed = trace(flow, origin, step)
+            flow.follows[key] = followed
+            isempty(followed.dependencies) && push!(flow.coarse, key)
+            for dependency in followed.dependencies
+                push!(get!(Set{Tuple{Origin.Type, Step.Type}}, flow.dependents, dependency), key)
+            end
+        elseif followed.generation != flow.generation
+            flow.work += followed.work
+            followed.generation = flow.generation
+        end
+        flow.work += length(followed.targets)
+        for (target, flag) in followed.targets
             add!(found, target, most(flag, doubt))
         end
     end
     return found
+end
+
+"""Discard traces that read `dependency` after its heap contents grow."""
+function invalidate!(flow::Flow, dependency::TraceDependency)::Nothing
+    foreach(key -> delete!(flow.follows, key), flow.coarse)
+    empty!(flow.coarse)
+    for key in pop!(flow.dependents, dependency, Set{Tuple{Origin.Type, Step.Type}}())
+        followed = pop!(flow.follows, key)
+        for other in followed.dependencies
+            other == dependency && continue
+            dependents = flow.dependents[other]
+            delete!(dependents, key)
+            isempty(dependents) && delete!(flow.dependents, other)
+        end
+    end
+    flow.stale = true
+    return nothing
 end
 
 """
@@ -362,7 +419,7 @@ slot targets `load` found stale.
 function store!(flow::Flow, objects::Targets, step::Union{Nothing, Step.Type}, values::Targets)::Nothing
     for (origin, doubt) in objects
         target = isnothing(step) ? slot!(flow.spread, origin) : slot!(get!(Dict{Step.Type, Targets}, flow.heap, origin), step)
-        join!(flow, target, values, doubt) && (flow.stale = true)
+        join!(flow, target, values, doubt) && invalidate!(flow, (origin, step, false))
     end
     return nothing
 end
@@ -370,7 +427,7 @@ end
 """Store `values` into memory backing of every origin of `objects`; growth makes slot targets `load` found stale."""
 function store_backing!(flow::Flow, objects::Targets, values::Targets)::Nothing
     for (origin, doubt) in objects
-        join!(flow, slot!(flow.backing, origin), values, doubt) && (flow.stale = true)
+        join!(flow, slot!(flow.backing, origin), values, doubt) && invalidate!(flow, (origin, nothing, true))
     end
     return nothing
 end
