@@ -95,3 +95,15 @@ warning[docstring]: comment above definition is not docstring
    = fix: turn comment into docstring   [safe]
    = docs: corset explain docstring
 
+warning[docstring]: comment above definition is not docstring
+  --> positive.jl:39:1
+   |
+38 | # Comment line ends in multibyte character: Bessel order ν
+   | ---------------------------------------------------------- comment
+39 | bessel_order(ν) = ν
+   | ^^^^^^^^^^^^^^^^^^^ definition without docstring
+   |
+   = why: help mode, Documenter and language server show docstrings; comments stay invisible
+   = fix: turn comment into docstring   [safe]
+   = docs: corset explain docstring
+

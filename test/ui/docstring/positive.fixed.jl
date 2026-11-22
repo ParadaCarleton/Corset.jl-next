@@ -38,3 +38,6 @@ cost() = 5
 
 """Greets with "hi\""""
 greet() = "hi"
+
+"""Comment line ends in multibyte character: Bessel order ν"""
+bessel_order(ν) = ν

@@ -43,9 +43,12 @@ end
 """Comment text `line` as string source with same value: backslash, dollar sign and quote that could close string get escaped."""
 escaped(line::AbstractString)::String = replace(line, '\\' => "\\\\", '$' => "\\\$", r"\"(?=\"|$)" => "\\\"")
 
+"""Text of byte range `line` of `text`; range ends on last byte of character, which `thisind` turns into its index."""
+line_text(text::String, line::UnitRange{Int})::String = text[first(line):thisind(text, last(line))]
+
 """Docstring text built from comment lines `lines` of `text`, with indentation `indent`."""
 function as_docstring(text::String, lines::Vector{UnitRange{Int}}, indent::String)::String
-    body = [escaped(lstrip(chopprefix(lstrip(text[line]), "#"))) for line in lines]
+    body = [escaped(lstrip(chopprefix(lstrip(line_text(text, line)), "#"))) for line in lines]
     return length(body) == 1 ? "$indent\"\"\"$(body[1])\"\"\"" :
         "$indent\"\"\"\n" * join((indent * line for line in body), "\n") * "\n$indent\"\"\""
 end
@@ -58,7 +61,7 @@ function findings(facts::FactSet)::Vector{Finding}
             (documented(definition) || !takes_docstring(file, definition)) && continue
             lines = comment_lines_above(file.text, span(file, definition).first_byte)
             isempty(lines) && continue
-            indent = String(match(r"^[ \t]*", file.text[lines[1]]).match)
+            indent = String(match(r"^[ \t]*", line_text(file.text, lines[1])).match)
             block = Span(file.path, first(lines[1]), last(lines[end]), Precision.exact)
             # String statement right above new docstring would document it; blank line keeps them apart.
             docstring = (code_above(file.text, first(lines[1])) ? "\n" : "") * as_docstring(file.text, lines, indent)
