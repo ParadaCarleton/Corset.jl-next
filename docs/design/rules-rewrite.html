@@ -1647,7 +1647,8 @@ Measure: cold run with empty cache; cold run with cache from other corpus packag
 </div><div class="decision"><h3>5 Corpus go/no-go</h3>
 <p>Run engine on each corpus package (<code>plan.md</code>, Corpus). Every item holds per package:</p>
 <ul>
-<li><code>possible</code> write on at most 30% of package methods with verdict; closures and keyword bodies count.</li>
+<li><code>possible</code> write of kind that <code>bang-convention</code> reads on at most 30% of package methods with verdict; closures and keyword bodies count.
+Exempt kinds (IO, RNG, lazy init, audited) stay out: they lower recall of other effect rules, never precision.</li>
 <li>Coverage line counts methods without verdict.</li>
 <li>Facts stay same when Corset or target package compiles again. Corset rebuild passes (jobs 900, 902).
 Distributions rebuild fails: Julia skips one narrowing when match loop stops early (history, &quot;Visit order&quot;).
