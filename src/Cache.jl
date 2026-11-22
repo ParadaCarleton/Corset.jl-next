@@ -11,6 +11,7 @@ using Serialization: serialize, deserialize
 using SHA: SHA, sha256
 using Scratch: get_scratch!, delete_scratch!
 using TOML: TOML
+using Pkg.Artifacts: ensure_artifact_installed
 using ..Launch: corset_root
 
 """Cache directory of command line: scratch space of Corset in Julia depot. CI that saves depot keeps it."""
@@ -175,17 +176,25 @@ key(path::String, flags::String, root::Union{Nothing, String}, files::Vector{Str
     digest(inputs(path, flags, root, files, load_path, cache)...)
 
 """
-Content text of package `id` at `root` for library entry key: name, UUID, then `root` for package in standard library
-or in `packages` directory of one of `depots`, whose slug Pkg derives from Manifest tree hash. Path or developed package
-gives digest of its code files instead: project file, `src`, `ext` and `deps`, directory `skipped` left out. Preferences
-of package count too.
+Content text of package `id` at `root`: name, UUID, portable store path or relative code digest, and preferences.
 """
 function package_content(id::Base.PkgId, root::String, depots::Vector{String}, skipped::String)::String
     stores = [Sys.STDLIB; [joinpath(depot, "packages") for depot in depots]]
-    fixed = any(store -> startswith(root, joinpath(store, "")), stores)
-    content = fixed ? root : digest(String[], found_files([joinpath(root, "Project.toml")], joinpath.(root, ["src", "ext", "deps"]), skipped))
+    store = findfirst(store -> startswith(root, joinpath(store, "")), stores)
+    content = isnothing(store) ? package_digest(root, skipped) : relpath(root, stores[store])
     preferences = Base.get_preferences(id.uuid)
     return "$(id.name) $(id.uuid) $content" * (isempty(preferences) ? "" : "\n" * sprint(io -> TOML.print(io, preferences; sorted = true)))
+end
+
+"""Digest package code under `root` with portable relative file names, excluding `skipped`."""
+function package_digest(root::String, skipped::String)::String
+    root = realpath(root)
+    files = found_files([joinpath(root, "Project.toml")], joinpath.(root, ["src", "ext", "deps"]), skipped)
+    parts = String[]
+    for file in files
+        push!(parts, relpath(file, root), isfile(file) ? bytes2hex(sha256(read(file))) : "absent")
+    end
+    return digest(parts, String[])
 end
 
 """
@@ -238,7 +247,11 @@ Partition key of library summaries: Julia version `julia`, cache flags and conte
 partition_key(julia::String, depots::Vector{String})::String = digest([julia, repr(Base.CacheFlags()), engine_content(corset_root(), depots)], String[])
 
 """Content of Corset at `root` under `depots` (`package_content`), rule sources left out: stage facts depend on rest."""
-engine_content(root::String, depots::Vector{String})::String = package_content(Base.PkgId(Base.moduleroot(@__MODULE__)), root, depots, rule_sources(root))
+function engine_content(root::String, depots::Vector{String})::String
+    id = Base.PkgId(Base.moduleroot(@__MODULE__))
+    preferences = Base.get_preferences(id.uuid)
+    return "$(id.name) $(id.uuid) $(package_digest(root, rule_sources(root)))" * (isempty(preferences) ? "" : "\n" * sprint(io -> TOML.print(io, preferences; sorted = true)))
+end
 
 """
 Library cache entry: instance key of instance it describes (`Effects.instance_key!`), serialized value, and time of
@@ -358,14 +371,47 @@ struct Shelf
     db::SQLite.DB
     partition::String
     empty::Bool
+    shipped::Union{Nothing, SQLite.DB}
 end
 
-"""Shelf of `partition` in open cache database `db`."""
-Shelf(db::SQLite.DB, partition::String)::Shelf = Shelf(db, partition, isnothing(first_value(db, "SELECT 1 FROM library WHERE partition = ? LIMIT 1", (partition,))))
+"""Shelf of `partition` in open cache database `db`, with optional read-only `shipped` database."""
+function Shelf(db::SQLite.DB, partition::String, shipped::Union{Nothing, SQLite.DB} = nothing)::Shelf
+    empty = isnothing(first_value(db, "SELECT 1 FROM library WHERE partition = ? LIMIT 1", (partition,)))
+    if !isnothing(shipped)
+        matching = !isnothing(first_value(shipped, "SELECT 1 FROM library WHERE partition = ? LIMIT 1", (partition,)))
+        matching || println(stderr, "Corset: shipped library summaries have a different partition")
+        empty &= !matching
+        matching || (shipped = nothing)
+    end
+    return Shelf(db, partition, empty, shipped)
+end
+
+"""Use the declared summary artifact during `body`, and close its read-only database afterward."""
+function with_shipped(body::Function)::Any
+    manifest = joinpath(corset_root(), "Artifacts.toml")
+    (!isfile(manifest) || !haskey(TOML.parsefile(manifest), "library_summaries")) && return body(nothing)
+    artifact = ensure_artifact_installed("library_summaries", manifest)
+    path = joinpath(artifact, "library.sqlite")
+    isfile(path) || error("Shipped library summary database is missing: $path")
+    escaped = join((isascii(Char(byte)) && (isletter(Char(byte)) || isdigit(Char(byte)) || byte in codeunits("/-._~:")) ? string(Char(byte)) : "%" * uppercase(string(byte; base = 16, pad = 2)) for byte in codeunits(abspath(path))))
+    shipped = SQLite.DB("file:$escaped?mode=ro&immutable=1")
+    try
+        first_value(shipped, "PRAGMA user_version", ()) == LAYOUT || error("Shipped library summary database has an incompatible layout")
+        return body(shipped)
+    finally
+        close(shipped)
+    end
+end
 
 """Entry of `shelf` under `key`; `nothing` without one."""
 function shelf_entry(shelf::Shelf, key::String)::Union{Nothing, Stamped}
-    query = DBInterface.execute(shelf.db, "SELECT instance, bytes, used FROM library WHERE partition = ? AND key = ?", (shelf.partition, key))
+    local_entry = shelf_entry(shelf.db, shelf.partition, key)
+    return isnothing(local_entry) && !isnothing(shelf.shipped) ? shelf_entry(shelf.shipped, shelf.partition, key) : local_entry
+end
+
+"""Entry under `key` and `partition` in `db`; `nothing` when absent."""
+function shelf_entry(db::SQLite.DB, partition::String, key::String)::Union{Nothing, Stamped}
+    query = DBInterface.execute(db, "SELECT instance, bytes, used FROM library WHERE partition = ? AND key = ?", (partition, key))
     try
         for row in query
             return Stamped(row[1], row[2], row[3])
@@ -377,10 +423,10 @@ function shelf_entry(shelf::Shelf, key::String)::Union{Nothing, Stamped}
 end
 
 """Whether `shelf` holds entry under `key`."""
-shelf_holds(shelf::Shelf, key::String)::Bool = !isnothing(first_value(shelf.db, "SELECT 1 FROM library WHERE partition = ? AND key = ?", (shelf.partition, key)))
+shelf_holds(shelf::Shelf, key::String)::Bool = any(db -> !isnothing(first_value(db, "SELECT 1 FROM library WHERE partition = ? AND key = ?", (shelf.partition, key))), filter(!isnothing, (shelf.db, shelf.shipped)))
 
 """Whether `shelf` holds entry of instance key `instance`."""
-shelf_lists(shelf::Shelf, instance::String)::Bool = !isnothing(first_value(shelf.db, "SELECT 1 FROM library WHERE partition = ? AND instance = ? LIMIT 1", (shelf.partition, instance)))
+shelf_lists(shelf::Shelf, instance::String)::Bool = any(db -> !isnothing(first_value(db, "SELECT 1 FROM library WHERE partition = ? AND instance = ? LIMIT 1", (shelf.partition, instance))), filter(!isnothing, (shelf.db, shelf.shipped)))
 
 """
 Merge `found` entries into `partition` of open cache database `db`, in one transaction. Found entries and `hits` take

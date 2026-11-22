@@ -288,7 +288,9 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Package method that changes dispatch of library call removes cached code of caller. New code gives other edge records.
 - Owner text: package content and texts of its loaded dependencies. Extension: texts of parent and triggers. Base and Core: none.
 - Corset gives texts of its dependencies only: partition holds its content.
-- Package content: path in depot `packages` or standard library, since depot slug derives from tree hash. Else digest of project file, `src`, `ext` and `deps`.
+- Package content: path relative to depot `packages` or standard library. Depot slug derives from tree hash.
+- Other package content uses a relative-path digest of project file, `src`, `ext` and `deps`.
+- Corset engine content always uses a relative-path digest, including in an installed package.
 - Package content adds preferences of package. Edit of unrelated package keeps key.
 - No key: package code, `Main` code, root without project file, unknown edge form, or edge target without node.
 - Solve of shared variant stays inside native edges of its node. Union split, folded call and callee limit can leave them.

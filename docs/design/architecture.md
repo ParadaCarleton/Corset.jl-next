@@ -118,6 +118,23 @@ Method span: `package` stage pairs each method with definition node at its file 
 
 UI cases for rules after `syntax`: case directory holds package (Project.toml with `name` and `uuid`, `src/`). Harness loads it in test process under unique name. Fixture that extends function it does not own (`piracy`) adds only methods no other case calls, so later cases see same dispatch.
 
+### Shipped library summaries
+
+- Each release ships a Julia artifact with a read-only SQLite database.
+- The database holds library rows for one Julia version, cache flags, and Corset engine partition.
+- Base, Core, and standard library summaries are included.
+- Package summaries can be included when their content identities match.
+- Look up each entry in the local shelf first, then in the shipped shelf.
+- Write new entries and update hit times in the local database only.
+- Pruning removes local entries only and never changes the shipped database.
+- Ignore a shipped shelf with a different partition and print a note on stderr.
+- A development checkout without an artifact declaration uses the local shelf alone.
+- Fail when a declared artifact cannot be downloaded: an incomplete release needs an explicit error.
+- On a release branch, run the summary workload and export the current partition to a fresh database.
+- Package the database as an artifact, upload its tarball as a release asset, and commit the artifact binding.
+- Portable content identities give the same keys across installations.
+- This change invalidates existing library partitions once.
+
 ### Incremental runs and disk cache
 
 - Disk cache (`Cache`) is one SQLite database. It holds one entry per checked path: key and serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.

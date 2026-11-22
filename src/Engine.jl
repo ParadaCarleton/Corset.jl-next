@@ -139,9 +139,11 @@ function effects_facts(package::PackageFacts, units::Inference.Units, cache::Uni
     isnothing(cache) && return solved(Effects.Library())[1:3]
     partition = Cache.partition_key(string(VERSION), DEPOT_PATH)
     return Cache.with_database(cache) do db
-        facts, spots, records, found, hits = solved(Effects.Library(Cache.Shelf(db, partition)))
-        Cache.keep_library!(db, partition, found.entries, hits, Cache.LIBRARY_BYTES)
-        (facts, spots, records)
+        Cache.with_shipped() do shipped
+            facts, spots, records, found, hits = solved(Effects.Library(Cache.Shelf(db, partition, shipped)))
+            Cache.keep_library!(db, partition, found.entries, hits, Cache.LIBRARY_BYTES)
+            (facts, spots, records)
+        end
     end
 end
 

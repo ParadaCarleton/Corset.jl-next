@@ -163,7 +163,11 @@ end
             # Depot slug derives from tree hash, so depot package counts by path; tests of path package never load.
             write_files(registered, "src/Registered.jl" => "module Registered f() = 1 end\n")
             write_files(developed, "test/runtests.jl" => "x = 1\n")
-            @test contents() == original && startswith(first(original), "Registered $(ids[1].uuid) $registered")
+            @test contents() == original && startswith(first(original), "Registered $(ids[1].uuid) Registered/slug")
+            other_depot = joinpath(scratch, "other_depot")
+            other_registered = joinpath(other_depot, "packages", "Registered", "slug")
+            write_files(other_registered, "Project.toml" => "", "src/Registered.jl" => "module Registered end\n")
+            @test Cache.package_content(ids[1], other_registered, [other_depot], "") == original[1]
             write_files(developed, "src/Developed.jl" => "module Developed f() = 1 end\n")
             edited = contents()
             @test edited[1] == original[1] && edited[2] != original[2]
@@ -176,6 +180,10 @@ end
             @test skipping() == before && contents()[2] != edited[2]
             # Engine content skips rule sources the same way.
             engine = Cache.engine_content(developed, [depot])
+            installed_engine = joinpath(depot, "packages", "Corset", "slug")
+            mkpath(dirname(installed_engine))
+            cp(developed, installed_engine; force = true)
+            @test Cache.engine_content(installed_engine, [depot]) == engine
             write_files(developed, "src/rules/rule.jl" => "rule = 3\n")
             @test Cache.engine_content(developed, [depot]) == engine
             write_files(developed, "src/Engine.jl" => "engine = 1\n")
@@ -226,6 +234,33 @@ end
             @test isnothing(texts(loaded["Lib"])) && isnothing(texts(loaded["User"]))
             rm(roots["Lib"]; recursive = true)
             @test isnothing(texts(loaded["Lib"]))
+        end
+    end
+
+    @testset "shipped library shelf" begin
+        mktempdir(@__DIR__) do scratch
+            local_directory, shipped_directory = joinpath.(scratch, ["local", "shipped"])
+            partition = "partition"
+            entry = Cache.Stamped("instance", UInt8[1, 2], 0.0)
+            Cache.with_database(shipped_directory) do db
+                Cache.keep_library!(db, partition, Dict("key" => entry), Set{String}(), 100)
+            end
+            shipped_file = Cache.database_file(shipped_directory)
+            before = read(shipped_file)
+            Cache.with_database(shipped_directory) do shipped
+                Cache.with_database(local_directory) do db
+                    shelf = Cache.Shelf(db, partition, shipped)
+                    @test !shelf.empty && Cache.shelf_holds(shelf, "key") && Cache.shelf_lists(shelf, "instance")
+                    @test something(Cache.shelf_entry(shelf, "key")).bytes == entry.bytes
+                    Cache.keep_library!(db, partition, Dict("key" => Cache.Stamped("local", UInt8[3], 0.0)), Set(["key"]), 100)
+                    @test something(Cache.shelf_entry(shelf, "key")).bytes == UInt8[3]
+                    Cache.keep_library!(db, partition, Dict{String, Cache.Stamped}(), Set{String}(), 0)
+                    @test something(Cache.shelf_entry(shelf, "key")).bytes == entry.bytes
+                    other = Cache.Shelf(db, "other", shipped)
+                    @test other.empty && isnothing(Cache.shelf_entry(other, "key"))
+                end
+            end
+            @test read(shipped_file) == before
         end
     end
 

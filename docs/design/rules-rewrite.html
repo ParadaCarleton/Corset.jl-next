@@ -1036,7 +1036,9 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li>Package method that changes dispatch of library call removes cached code of caller. New code gives other edge records.</li>
 <li>Owner text: package content and texts of its loaded dependencies. Extension: texts of parent and triggers. Base and Core: none.</li>
 <li>Corset gives texts of its dependencies only: partition holds its content.</li>
-<li>Package content: path in depot <code>packages</code> or standard library, since depot slug derives from tree hash. Else digest of project file, <code>src</code>, <code>ext</code> and <code>deps</code>.</li>
+<li>Package content: path relative to depot <code>packages</code> or standard library. Depot slug derives from tree hash.</li>
+<li>Other package content uses a relative-path digest of project file, <code>src</code>, <code>ext</code> and <code>deps</code>.</li>
+<li>Corset engine content always uses a relative-path digest, including in an installed package.</li>
 <li>Package content adds preferences of package. Edit of unrelated package keeps key.</li>
 <li>No key: package code, <code>Main</code> code, root without project file, unknown edge form, or edge target without node.</li>
 <li>Solve of shared variant stays inside native edges of its node. Union split, folded call and callee limit can leave them.</li>
@@ -1270,6 +1272,23 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <p><code>package</code> facts hold live objects (<code>Module</code>, <code>Method</code>, <code>DataType</code>); findings stay plain data. Package code: methods and types whose module is package module (root, submodules, extensions) and whose file lies under package root. Code that other packages' macros write elsewhere is not package code.</p>
 <p>Method span: <code>package</code> stage pairs each method with definition node at its file and line. Exact span when one definition node of that name starts there; line precision otherwise (<code>@eval</code> loops, macro output).</p>
 <p>UI cases for rules after <code>syntax</code>: case directory holds package (Project.toml with <code>name</code> and <code>uuid</code>, <code>src/</code>). Harness loads it in test process under unique name. Fixture that extends function it does not own (<code>piracy</code>) adds only methods no other case calls, so later cases see same dispatch.</p>
+</div><div class="decision"><h3>Shipped library summaries</h3>
+<ul>
+<li>Each release ships a Julia artifact with a read-only SQLite database.</li>
+<li>The database holds library rows for one Julia version, cache flags, and Corset engine partition.</li>
+<li>Base, Core, and standard library summaries are included.</li>
+<li>Package summaries can be included when their content identities match.</li>
+<li>Look up each entry in the local shelf first, then in the shipped shelf.</li>
+<li>Write new entries and update hit times in the local database only.</li>
+<li>Pruning removes local entries only and never changes the shipped database.</li>
+<li>Ignore a shipped shelf with a different partition and print a note on stderr.</li>
+<li>A development checkout without an artifact declaration uses the local shelf alone.</li>
+<li>Fail when a declared artifact cannot be downloaded: an incomplete release needs an explicit error.</li>
+<li>On a release branch, run the summary workload and export the current partition to a fresh database.</li>
+<li>Package the database as an artifact, upload its tarball as a release asset, and commit the artifact binding.</li>
+<li>Portable content identities give the same keys across installations.</li>
+<li>This change invalidates existing library partitions once.</li>
+</ul>
 </div><div class="decision"><h3>Incremental runs and disk cache</h3>
 <ul>
 <li>Disk cache (<code>Cache</code>) is one SQLite database. It holds one entry per checked path: key and serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.</li>
