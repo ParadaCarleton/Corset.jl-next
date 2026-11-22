@@ -9,13 +9,14 @@ module Facts
 using Argus: Argus, @pattern, Pattern, BindingSet, syntax_match
 using EnumX: @enumx
 using JuliaSyntax: JuliaSyntax as JS, SyntaxNode, Kind
+using Random: AbstractRNG
 using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, Weak, Exit, EffectKind
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, StatefulIterate, InferenceFacts, Step, Root, Place, Access, BlindAccess, UnguardedHold, Callee, CallFact, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, StatefulIterate, InferenceFacts, Step, Root, Place, Access, UnguardedHold, Callee, callee_name, callee_methods, place_text, root_global, CallFact, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
-export name_span, tuple_parameters, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
+export name_span, tuple_parameters, argument_type, rng_positions, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal, line_start, owned_lines, line_deletion
 export negation, exits, terms, exit_guard, later_term, returning_function, CONDITION, operand, body_text, negated, none_text, Branch, if_text, statement_indent
@@ -760,6 +761,17 @@ function argument_type(method::Method, position::Int)::Union{Nothing, Type}
     length(parameters) > position || return nothing
     # Julia reduces `T where T <: Walk` to `Walk`, and drops type variables argument does not use.
     return Base.rewrap_unionall(Base.unwrapva(parameters[position + 1]), method.sig)
+end
+
+"""Positions of declared RNG arguments, excluding `Any`."""
+function rng_positions(method::Method)::Vector{Int}
+    parameters, found = tuple_parameters(method.sig), Int[]
+    for position in 1:(length(parameters) - 1)
+        declared = Base.unwrapva(parameters[position + 1])
+        declared isa TypeVar && (declared = declared.ub)
+        declared !== Any && typeintersect(declared, AbstractRNG) !== Union{} && push!(found, position)
+    end
+    return found
 end
 
 """Return type inference finds for `trait(x)` over values `x` of struct `type`: `Base.HasLength` for `Base.IteratorSize`."""

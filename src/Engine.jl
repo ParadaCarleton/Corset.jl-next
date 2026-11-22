@@ -1,7 +1,7 @@
 """Discover files, build facts, run registered rules; apply opt-outs, levels, confidence setting and baseline."""
 module Engine
 
-using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, ProjectFacts, PackageFacts, InferenceFacts, EffectsFacts, ExternalFacts
+using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, ProjectFacts, PackageFacts, InferenceFacts, EffectsFacts, MethodEffects, ExternalFacts
 using ..Rules: REGISTRY, entry
 using ..Config: Config, Flags, Settings, Level, level_of, project_root
 using ..OptOuts: OptOuts
@@ -97,7 +97,7 @@ store_key(path::String, package::PackageFacts, files::Vector{Facts.SyntaxFile}, 
 """
 Inference and effects facts of `package` in analyzed `files`, each with its blind spots: inference facts when
 `inference` holds, effects facts when `effects` holds too; else none. Cache directory `cache` keeps method store of
-checked `path` and library summaries (`architecture.md`; `effects.md`, Solve and cache); `nothing` turns both off.
+checked `path`; `nothing` turns it off.
 Crash journal `directory` of relaunched process records each inference (`journaled`); `nothing` records none.
 """
 function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, inference::Bool, effects::Bool, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}, Union{Nothing, EffectsFacts}, Vector{BlindSpot}}
@@ -126,20 +126,9 @@ function with_records(used::Inference.Store, units::Inference.Units, records::Ve
     return Inference.Store(key => isempty(entry.effects) ? filled(key, entry) : entry for (key, entry) in used)
 end
 
-"""
-Effects facts of `package` from inference `units`, their blind spots, and effects record of each typed unit
-(`Effects.cached_effects`). Cache directory `cache` serves and stores library summaries in library file of partition
-(`Cache.partition_key`); `nothing` turns them off. Crash journal `directory` records native inference of library
-instances.
-"""
+"""Return empty effects facts and one empty record per typed unit."""
 function effects_facts(package::PackageFacts, units::Inference.Units, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, Effects.UnitEffects}}}
-    library_directory = isnothing(cache) ? "" : Cache.library_directory(cache)
-    partition = isnothing(cache) ? "" : Cache.partition_key(string(VERSION), DEPOT_PATH)
-    library = Effects.Library(isnothing(cache) ? Dict{String, Cache.Stamped}() : Cache.read_library(library_directory, partition))
-    solve(journal::Union{Nothing, Inference.Journal}) = Effects.cached_effects(package, units, journal, library)
-    facts, spots, records, found, hits = isnothing(directory) ? solve(nothing) : journaled(solve, directory)
-    isnothing(cache) || Cache.keep_library!(library_directory, partition, found.entries, hits, Cache.LIBRARY_BYTES)
-    return facts, spots, records
+    return EffectsFacts(MethodEffects[]), BlindSpot[], Union{Nothing, Effects.UnitEffects}[nothing for _ in units.typed]
 end
 
 """
@@ -188,7 +177,7 @@ end
 
 """
 Facts and analysis of real `path` with discovered `sources` under `settings`. Opt-outs apply before levels. Cache
-directory `cache` keeps method store and library summaries unless `nothing`; crash `journal` directory as in `stage_facts`.
+directory `cache` keeps method store unless `nothing`; crash `journal` directory as in `stage_facts`.
 """
 function analyze(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, journal::Union{Nothing, String})::Tuple{FactSet, Analysis}
     loaded = load_package(sources.project, settings, sources.files)
