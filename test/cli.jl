@@ -13,6 +13,8 @@ const SARIF_SCHEMA = JSONSchema.Schema(JSON.parsefile(joinpath(@__DIR__, "fixtur
 @testset "cli check" begin
     parsed = Corset.CLI.parse_args(["check", LIBRARY, "--effects"], Corset.CLI.argument_settings())
     @test parsed["check"]["effects"]
+    parsed_kind = Corset.CLI.parse_args(["check", LIBRARY, "--kind", "library"], Corset.CLI.argument_settings())
+    @test parsed_kind["check"]["kind"] == "library"
     forced = Corset.Config.settings(nothing, Corset.Config.Flags(; effects = true), Corset.Rules.REGISTRY)
     @test Corset.Engine.needs_effects(forced) && Corset.Engine.needs_inference(forced) && Corset.Engine.needs_package(forced)
     code, out, _ = corset("check", LIBRARY)

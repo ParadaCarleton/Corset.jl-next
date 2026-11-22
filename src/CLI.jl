@@ -9,7 +9,7 @@ module CLI
 using ArgParse: ArgParseSettings, ArgParseError, @add_arg_table!, parse_args
 using JSON: JSON
 using ..Facts: Confidence, Tier
-using ..Config: ConfigError, Flags, Level
+using ..Config: ConfigError, Flags, Kind, Level
 using ..Rules: Rules
 using ..Engine: Engine, Report, Analysis
 using ..Config: Settings
@@ -100,6 +100,9 @@ function argument_settings()::ArgParseSettings
             "--confidence"
             help = "lowest confidence to report: definite or possible"
             range_tester = in(["definite", "possible"])
+            "--kind"
+            help = "project kind: library, application or script"
+            range_tester = in(["library", "application", "script"])
             "--format"
             help = "output format: text, json or sarif"
             default = "text"
@@ -208,7 +211,7 @@ function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err
         # Concrete type keeps string methods of other packages from invalidating this code.
         path = options["path"]::String
         ispath(path) || throw(UsageError("no such file or directory: $path"))
-        flags = Flags(; levels, deny_warnings, effects = options["effects"], confidence = enum_option(Confidence.T, options, "confidence"), tier = enum_option(Tier.T, options, "tier"))
+        flags = Flags(; levels, deny_warnings, effects = options["effects"], kind = enum_option(Kind.T, options, "kind"), confidence = enum_option(Confidence.T, options, "confidence"), tier = enum_option(Tier.T, options, "tier"))
         cache = options["no-cache"] ? nothing : cache
         target = launch ? Engine.load_target(path, flags) : nothing
         if !isnothing(target)

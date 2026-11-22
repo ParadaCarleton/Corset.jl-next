@@ -42,6 +42,7 @@ end
 
 """Command-line settings; each beats config file value."""
 @kwdef struct Flags
+    kind::Union{Nothing, Kind.T} = nothing
     levels::Vector{Pair{String, Level.T}} = Pair{String, Level.T}[]
     confidence::Union{Nothing, Confidence.T} = nothing
     tier::Union{Nothing, Tier.T} = nothing
@@ -172,7 +173,7 @@ project_table(root::String)::Table = overlay(
 function settings(root::Union{Nothing, String}, flags::Flags, rules::Vector{RuleEntry})::Settings
     project = isnothing(root) ? nothing : parse_toml(joinpath(root, "Project.toml"))
     table = isnothing(root) ? Table() : project_table(root)
-    kind = project_kind(table.kind, project)
+    kind = isnothing(flags.kind) ? project_kind(table.kind, project) : flags.kind
     names = Set([map(string, collect(instances(Group.T))); [string(entry.name) for entry in rules]])
     levels = Dict{String, Tuple{Level.T, String}}()
     written = [name => parse_enum(Level.T, level, "levels.$name") for (name, level) in table.levels]

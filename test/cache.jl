@@ -150,6 +150,11 @@ end
     end
 
     @testset "library key" begin
+        @test Cache.portable_path(raw"src\nested\file.jl") == "src/nested/file.jl"
+        @test Cache.portable_path(raw"Registered\slug") == Cache.portable_path("Registered/slug")
+        paths = ["src/a0.jl", "src/a/b.jl"]
+        windows_paths = replace.(paths, '/' => '\\')
+        @test Cache.portable_path.(sort(windows_paths; by = Cache.portable_path)) == sort(paths; by = Cache.portable_path)
         julia = string(VERSION)
         @test Cache.partition_key(julia, DEPOT_PATH) == Cache.partition_key(julia, DEPOT_PATH) != Cache.partition_key("$julia+other", DEPOT_PATH)
         mktempdir(@__DIR__) do scratch

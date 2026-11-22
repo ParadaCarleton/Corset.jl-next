@@ -9,9 +9,10 @@ include(joinpath(@__DIR__, "..", "gen", "summaries", "build.jl"))
     mktempdir(@__DIR__) do scratch
         fixture = joinpath(scratch, "SummaryFixture")
         mkpath(joinpath(fixture, "src"))
-        write(joinpath(fixture, "Project.toml"), "name = \"SummaryFixture\"\nuuid = \"ac050f5a-7a06-4f96-9db6-dcc4744c69e7\"\n[preferences.Corset]\nkind = \"library\"\n")
+        project = "name = \"SummaryFixture\"\nuuid = \"ac050f5a-7a06-4f96-9db6-dcc4744c69e7\"\n"
+        write(joinpath(fixture, "Project.toml"), project)
         write(joinpath(fixture, "src", "SummaryFixture.jl"), "module SummaryFixture\nappend_one(xs::Vector{Int}) = (push!(xs, 1); length(xs))\nend\n")
-        cache, manifest, tarball = joinpath.(scratch, ["cache", "Artifacts.toml", "summaries.tar.gz"])
+        cache, manifest, output = joinpath.(scratch, ["cache", "Artifacts.toml", "output"])
         original = "[library_summaries]\ngit-tree-sha1 = \"0000000000000000000000000000000000000000\"\n\n[other]\ngit-tree-sha1 = \"1111111111111111111111111111111111111111\"\n"
         write(manifest, original)
         SummaryArtifact.without_binding(manifest) do
@@ -22,12 +23,16 @@ include(joinpath(@__DIR__, "..", "gen", "summaries", "build.jl"))
         @test read(manifest, String) == original
         push!(LOAD_PATH, fixture)
         try
-            SummaryArtifact.build([fixture], cache, manifest, tarball, "https://example.org/summaries.tar.gz", false)
+            tarball = SummaryArtifact.build([fixture], cache, manifest, output, "https://example.org/releases", false)
+            @test isfile(tarball)
         finally
             pop!(LOAD_PATH)
         end
         meta = TOML.parsefile(manifest)["library_summaries"]
-        @test isfile(tarball) && meta["lazy"] && length(meta["git-tree-sha1"]) == 40
+        download = only(meta["download"])
+        @test download["url"] == "https://example.org/releases/library-summaries-$(download["sha256"]).tar.gz"
+        @test meta["lazy"] && length(meta["git-tree-sha1"]) == 40
+        @test read(joinpath(fixture, "Project.toml"), String) == project
         artifact = Pkg.Artifacts.ensure_artifact_installed("library_summaries", manifest)
         shipped_file = joinpath(artifact, "library.sqlite")
         before = read(shipped_file)
@@ -51,5 +56,33 @@ include(joinpath(@__DIR__, "..", "gen", "summaries", "build.jl"))
             close(shipped)
         end
         @test read(shipped_file) == before
+    end
+end
+
+@testset "summary workload rejects failed checks" begin
+    report = Dict("diagnostics" => [Dict("rule" => "ordinary")], "coverage" => Dict("files" => 1, "blind_spots" => []))
+    @test isnothing(SummaryArtifact.complete_report("package", 1, report))
+    report["diagnostics"] = [Dict("rule" => "load-error")]
+    @test_throws ErrorException SummaryArtifact.complete_report("package", 1, report)
+    report["diagnostics"] = [Dict("rule" => "parse-error")]
+    @test_throws ErrorException SummaryArtifact.complete_report("package", 1, report)
+    report["diagnostics"] = []
+    # Blind spot leaves summary out; user run computes it.
+    report["coverage"]["blind_spots"] = [Dict("cause" => "inference crashed process")]
+    @test isnothing(SummaryArtifact.complete_report("package", 0, report))
+    report["coverage"]["files"] = 0
+    @test_throws ErrorException SummaryArtifact.complete_report("package", 0, report)
+    @test_throws ErrorException SummaryArtifact.complete_report("package", 2, report)
+    mktempdir(@__DIR__) do scratch
+        fixture = joinpath(scratch, "BrokenFixture")
+        mkpath(joinpath(fixture, "src"))
+        write(joinpath(fixture, "Project.toml"), "name = \"BrokenFixture\"\nuuid = \"1b739cd4-84aa-4cd7-8b70-9ac84f15d54d\"\n")
+        write(joinpath(fixture, "src", "BrokenFixture.jl"), "module BrokenFixture\nerror(\"load fails\")\nend\n")
+        push!(LOAD_PATH, fixture)
+        try
+            @test_throws "load or parse errors" SummaryArtifact.check_workload([fixture], joinpath(scratch, "cache"), false)
+        finally
+            pop!(LOAD_PATH)
+        end
     end
 end

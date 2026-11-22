@@ -1250,6 +1250,7 @@ Build holds file lock. Next run removes lock of dead process at once when lock i
 <p>Flags <code>-A</code>, <code>-W</code>, and <code>-D &lt;rule or group&gt;</code> set levels in order, as in rustc.
 Flag <code>-D warnings</code> fails run on warnings.
 Flag <code>--confidence</code> accepts <code>definite</code> or <code>possible</code>.
+Flag <code>--kind</code> selects <code>library</code>, <code>application</code>, or <code>script</code>.
 Flag <code>--format</code> accepts <code>text</code>, <code>json</code>, or <code>sarif</code>.
 Flag <code>--tier</code> selects <code>safe</code>, <code>likely</code>, or <code>breaking</code> fixes.
 Flag <code>--no-cache</code> disables cache.
@@ -1291,7 +1292,11 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li>Failed artifact download stops run: release errors must be visible.</li>
 <li>Release branch workflow runs workload and exports current partition to fresh database.</li>
 <li>Workload uses <code>--effects</code> and removes shipped binding during collection.</li>
-<li>Workflow uploads artifact tarball as release asset and commits artifact binding.</li>
+<li>Workload uses <code>--kind library</code>. Load error, parse error or check without analyzed file fails build.</li>
+<li>Blind spot passes: missing summary only slows first run of user.</li>
+<li>Workflow uploads checksum-named tarball to fixed <code>library-summaries</code> prerelease.</li>
+<li>Workflow opens pull request with artifact binding against release branch.</li>
+<li>Create release tag after binding pull request merges.</li>
 <li>Portable content identities give same keys across installations.</li>
 <li>Portable identities invalidate existing library partitions once.</li>
 </ul>

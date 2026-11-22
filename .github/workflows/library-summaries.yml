@@ -1,16 +1,12 @@
 name: Build library summaries
 on:
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Existing release tag
-        required: true
-        type: string
 permissions:
   contents: write
+  pull-requests: write
 jobs:
   summaries:
-    if: startsWith(github.ref, 'refs/heads/')
+    if: startsWith(github.ref, 'refs/heads/') && github.ref_name != 'main' && github.ref_name != 'master'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
@@ -23,20 +19,28 @@ jobs:
         run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
       - name: Build artifact
         env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          url="https://github.com/${REPOSITORY}/releases/download/${RELEASE_TAG}/library-summaries.tar.gz"
-          julia --startup-file=no --project=. gen/summaries/build.jl "$url" library-summaries.tar.gz
-      - name: Upload release asset
+          url="https://github.com/${REPOSITORY}/releases/download/library-summaries"
+          julia --startup-file=no --project=. gen/summaries/build.jl "$url" summary-output
+      - name: Upload immutable asset
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: gh release upload "$RELEASE_TAG" library-summaries.tar.gz --clobber
-      - name: Commit artifact binding
         run: |
+          test "$(gh release view library-summaries --json isPrerelease --jq .isPrerelease)" = true
+          files=(summary-output/library-summaries-*.tar.gz)
+          test "${#files[@]}" = 1 && test -f "${files[0]}"
+          gh release upload library-summaries "${files[0]}"
+      - name: Open binding pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_BRANCH: ${{ github.ref_name }}
+        run: |
+          branch="library-summaries-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git config user.name github-actions\[bot\]
           git config user.email 41898282+github-actions\[bot\]@users.noreply.github.com
+          git switch -c "$branch"
           git add Artifacts.toml
           git commit -m 'Bind library summaries artifact'
-          git push
+          git push origin "$branch"
+          gh pr create --base "$BASE_BRANCH" --head "$branch" --title 'Bind library summaries artifact' --body 'Bind the library summaries before creating the release tag.'

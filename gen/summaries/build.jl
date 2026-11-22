@@ -8,11 +8,27 @@ module SummaryArtifact
     const Cache = Corset.Cache
     const Artifacts = Pkg.Artifacts
 
-    """Run checks of `paths` with shared `cache` and reject internal errors."""
+    """
+    Reject failed check `report` for `path`: bad exit code, load or parse error, or no analyzed file. Findings and blind
+    spots pass: missing summary only slows first user run.
+    """
+    function complete_report(path::String, code::Int, report::AbstractDict)::Nothing
+        code in (Corset.CLI.EXIT_PASS, Corset.CLI.EXIT_FAIL) || error("Check failed for $path with exit code $code")
+        failures = filter(diagnostic -> diagnostic["rule"] in ("load-error", "parse-error"), report["diagnostics"])
+        isempty(failures) || error("Check of $path has load or parse errors: $(repr(failures))")
+        coverage = report["coverage"]
+        coverage["files"] > 0 || error("Check of $path analyzed no files")
+        return nothing
+    end
+
+    """Run checks of `paths` with shared `cache` and reject incomplete analyses."""
     function check_workload(paths::Vector{String}, cache::String, launch::Bool)::Nothing
         for path in paths
-            code = Corset.CLI.execute(["check", path, "--effects"], stdout, stderr; launch, cache)
+            output = IOBuffer()
+            code = Corset.CLI.execute(["check", path, "--effects", "--kind", "library", "--format", "json"], output, stderr; launch, cache)
             code in (Corset.CLI.EXIT_PASS, Corset.CLI.EXIT_FAIL) || error("Check failed for $path with exit code $code")
+            complete_report(path, code, Corset.CLI.JSON.parse(String(take!(output))))
+            println("Checked $path")
         end
         return nothing
     end
@@ -52,8 +68,8 @@ module SummaryArtifact
         return nothing
     end
 
-    """Check `paths`, archive their summaries to `tarball`, and bind `url` in `manifest`."""
-    function build(paths::Vector{String}, cache::String, manifest::String, tarball::String, url::String, launch::Bool)::Nothing
+    """Check `paths`, archive summaries in `output`, and bind their URL under `url_prefix` in `manifest`."""
+    function build(paths::Vector{String}, cache::String, manifest::String, output::String, url_prefix::String, launch::Bool)::String
         isempty(paths) && error("Summary workload is empty")
         without_binding(joinpath(pkgdir(Corset), "Artifacts.toml")) do
             check_workload(paths, cache, launch)
@@ -62,9 +78,16 @@ module SummaryArtifact
         hash = Artifacts.create_artifact() do directory
             export_partition(cache, directory, partition)
         end
-        digest = Artifacts.archive_artifact(hash, tarball)
-        Artifacts.bind_artifact!(manifest, "library_summaries", hash; download_info = [(url, digest)], lazy = true, force = true)
-        return nothing
+        mkpath(output)
+        return mktempdir(output) do directory
+            temporary = joinpath(directory, "summary.tar.gz")
+            digest = Artifacts.archive_artifact(hash, temporary)
+            name = "library-summaries-$digest.tar.gz"
+            tarball = joinpath(output, name)
+            mv(temporary, tarball)
+            Artifacts.bind_artifact!(manifest, "library_summaries", hash; download_info = [("$url_prefix/$name", digest)], lazy = true, force = true)
+            return tarball
+        end
     end
 
     """Install workload packages in `environment` and return their source paths."""
@@ -85,13 +108,13 @@ module SummaryArtifact
 
     """Build release artifact from workload packages and command-line release asset URL."""
     function main(args::Vector{String})::Nothing
-        length(args) == 2 || error("Usage: build.jl RELEASE_ASSET_URL TARBALL_PATH")
-        url, tarball = args
+        length(args) == 2 || error("Usage: build.jl RELEASE_ASSET_URL_PREFIX OUTPUT_DIRECTORY")
+        url, output = args
         root = dirname(dirname(@__DIR__))
         mktempdir(@__DIR__) do temporary
             paths = workload(joinpath(temporary, "environment"))
             Pkg.activate(root)
-            build(paths, joinpath(temporary, "cache"), joinpath(root, "Artifacts.toml"), abspath(tarball), url, true)
+            println(build(paths, joinpath(temporary, "cache"), joinpath(root, "Artifacts.toml"), abspath(output), url, true))
         end
         return nothing
     end

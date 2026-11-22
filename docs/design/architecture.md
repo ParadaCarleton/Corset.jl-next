@@ -85,6 +85,7 @@ end
 Flags `-A`, `-W`, and `-D <rule or group>` set levels in order, as in rustc.
 Flag `-D warnings` fails run on warnings.
 Flag `--confidence` accepts `definite` or `possible`.
+Flag `--kind` selects `library`, `application`, or `script`.
 Flag `--format` accepts `text`, `json`, or `sarif`.
 Flag `--tier` selects `safe`, `likely`, or `breaking` fixes.
 Flag `--no-cache` disables cache.
@@ -136,7 +137,11 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 - Failed artifact download stops run: release errors must be visible.
 - Release branch workflow runs workload and exports current partition to fresh database.
 - Workload uses `--effects` and removes shipped binding during collection.
-- Workflow uploads artifact tarball as release asset and commits artifact binding.
+- Workload uses `--kind library`. Load error, parse error or check without analyzed file fails build.
+- Blind spot passes: missing summary only slows first run of user.
+- Workflow uploads checksum-named tarball to fixed `library-summaries` prerelease.
+- Workflow opens pull request with artifact binding against release branch.
+- Create release tag after binding pull request merges.
 - Portable content identities give same keys across installations.
 - Portable identities invalidate existing library partitions once.
 

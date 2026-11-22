@@ -182,18 +182,22 @@ Content text of package `id` at `root`: name, UUID, portable store path or relat
 function package_content(id::Base.PkgId, root::String, depots::Vector{String}, skipped::String)::String
     stores = [Sys.STDLIB; [joinpath(depot, "packages") for depot in depots]]
     store = findfirst(store -> startswith(root, joinpath(store, "")), stores)
-    content = isnothing(store) ? package_digest(root, skipped) : relpath(root, stores[store])
+    content = isnothing(store) ? package_digest(root, skipped) : portable_path(relpath(root, stores[store]))
     preferences = Base.get_preferences(id.uuid)
     return "$(id.name) $(id.uuid) $content" * (isempty(preferences) ? "" : "\n" * sprint(io -> TOML.print(io, preferences; sorted = true)))
 end
+
+"""Represent relative `path` with forward slashes on every platform."""
+portable_path(path::AbstractString)::String = replace(path, '\\' => '/')
 
 """Digest package code under `root` with portable relative file names, excluding `skipped`."""
 function package_digest(root::String, skipped::String)::String
     root = realpath(root)
     files = found_files([joinpath(root, "Project.toml")], joinpath.(root, ["src", "ext", "deps"]), skipped)
+    sort!(files; by = file -> portable_path(relpath(file, root)))
     parts = String[]
     for file in files
-        push!(parts, relpath(file, root), isfile(file) ? bytes2hex(sha256(read(file))) : "absent")
+        push!(parts, portable_path(relpath(file, root)), isfile(file) ? bytes2hex(sha256(read(file))) : "absent")
     end
     return digest(parts, String[])
 end
