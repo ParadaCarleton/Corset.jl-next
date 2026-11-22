@@ -11,7 +11,7 @@ module Inference
 using Serialization: serialize, deserialize
 using SHA: sha256
 using TypedSyntax: TypedSyntax
-using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, HardArray, NarrowingLoss, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence, Weak, Exit
+using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, HardArray, NarrowingLoss, StatefulIterate, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence, Weak, Exit
 using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span, parent_of, ancestors, base_macro, resolve_type
 using ..Package: Package
 using ..StandIns: StandIns
@@ -65,8 +65,8 @@ end
 """
 Result of inferring one method on one signature, as method store keeps it: call signatures of package methods its calls
 reach, call statements that never return by statement index (`failures!`), whether inference gave code and whether
-code tests type, weak values that change input type (`disruptions`), and type tests whose narrowing guard drops
-(`narrowings`).
+code tests type, weak values that change input type (`disruptions`), type tests whose narrowing guard drops
+(`narrowings`), and `iterate` calls on `Iterators.Stateful` (`stateful_iterates`).
 """
 struct Inferred
     returned::Type
@@ -78,6 +78,7 @@ struct Inferred
     disruptions::Vector{Disruption}
     hard_arrays::Vector{HardArray}
     narrowings::Vector{NarrowingLoss}
+    stateful_iterates::Vector{StatefulIterate}
 end
 
 """
@@ -189,7 +190,7 @@ end
 
 """
 Name of function `call` calls: global, or global earlier statement reads, or parametric type `Vector{T}` that earlier
-statement applies; `nothing` for computed callee.
+statement applies, or qualified name `Base.iterate`; `nothing` for computed callee.
 """
 function callee_name(code::Core.CodeInfo, call::Expr)::Union{Nothing, Symbol}
     callee = call.args[1]
@@ -198,7 +199,21 @@ function callee_name(code::Core.CodeInfo, call::Expr)::Union{Nothing, Symbol}
         callee = callee.args[2]
         callee isa Core.SSAValue && (callee = code.code[callee.id])
     end
-    return callee isa GlobalRef ? callee.name : nothing
+    return callee isa GlobalRef ? callee.name : qualified_name(code, callee)
+end
+
+"""
+Name that `statement` reads from module: `Base.iterate` lowers to `getproperty(Base, :iterate)`; inner module
+`Base.Iterators.peel` reads from earlier statement that inference types as module. `nothing` for field read.
+"""
+function qualified_name(code::Core.CodeInfo, @nospecialize(statement::Any))::Union{Nothing, Symbol}
+    statement isa Expr && statement.head === :call && length(statement.args) == 3 && statement.args[1] == GlobalRef(Base, :getproperty) || return nothing
+    quoted, owner = statement.args[3], statement.args[2]
+    quoted isa QuoteNode || return nothing
+    name = quoted.value
+    name isa Symbol || return nothing
+    owner isa Core.SSAValue && return (code.ssavaluetypes::Vector{Any})[owner.id] isa Core.Const && code.ssavaluetypes[owner.id].val isa Module ? name : nothing
+    return owner isa GlobalRef && isdefinedglobal(owner.mod, owner.name) && getglobal(owner.mod, owner.name) isa Module ? name : nothing
 end
 
 """
@@ -465,6 +480,23 @@ function hard_arrays(typed::TypedCode, instance::Core.MethodInstance, nodes::Vec
                 rebuilt(typed, instance, construction, node, template), definite ? Confidence.definite : Confidence.possible,
             )
         )
+    end
+    return found
+end
+
+"""
+`iterate` calls on `Iterators.Stateful` in `typed` code of `instance`; `nodes` are its statement nodes. Call needs node
+that spells `iterate`: `for` loop lowers to `iterate` too, and its node is loop.
+"""
+function stateful_iterates(typed::TypedCode, instance::Core.MethodInstance, nodes::Vector{Union{Nothing, SyntaxNode}})::Vector{StatefulIterate}
+    found, file, parameters = StatefulIterate[], typed.site.file, CC.sptypes_from_meth_instance(instance)
+    for (statement, node) in zip(typed.code.code, nodes)
+        call = statement_call(statement)
+        (isnothing(call) || isnothing(node) || length(call.args) ∉ (2, 3)) && continue
+        code_argextype(call.args[1], typed.code, parameters) == Core.Const(iterate) || continue
+        CC.widenconst(code_argextype(call.args[2], typed.code, parameters)) <: Iterators.Stateful || continue
+        kind_name(node) == "call" && Package.unqualified(source(file, callee_node(node))) == "iterate" || continue
+        push!(found, StatefulIterate(Facts.span(file, node), source(file, call_arguments(node)[1])))
     end
     return found
 end
@@ -831,7 +863,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     codes = Dict{String, String}()
     typed, stored, seen, counts, coded = TypedCode[], StoredUnit[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
     failing, gaps, settled, disrupting, narrowing = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[], NarrowingLoss[]
-    hard, observed, declared = HardArray[], IdDict{Method, Vector{Tuple{Type, Type}}}(), IdDict{Method, Union{Nothing, Core.CodeInfo}}()
+    hard, iterates, observed, declared = HardArray[], StatefulIterate[], IdDict{Method, Vector{Tuple{Type, Type}}}(), IdDict{Method, Union{Nothing, Core.CodeInfo}}()
     while !isempty(pending)
         site, call_signature, stand_in = popfirst!(pending)
         (site.method, call_signature) in seen && continue
@@ -847,7 +879,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
             edges = Any[]
             result = infer(site.method, call_signature)
             inferred = if isnothing(result)
-                Inferred(Union{}, Tuple{Type, Type}[], Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, false, Disruption[], HardArray[], NarrowingLoss[])
+                Inferred(Union{}, Tuple{Type, Type}[], Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, false, Disruption[], HardArray[], NarrowingLoss[], StatefulIterate[])
             else
                 instance, code, returned, frame_edges, flow, frame = result
                 append!(edges, frame_edges)
@@ -864,7 +896,7 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
                 Inferred(
                     returned, package_calls(code, instance, modules, by_path), reached(code, instance), failures, true,
                     Widening.type_branch(code, CC.sptypes_from_meth_instance(instance)), disruptions(last(typed), instance, nodes, changes, branch),
-                    hard_arrays(last(typed), instance, nodes, constructions, array_branch), lost,
+                    hard_arrays(last(typed), instance, nodes, constructions, array_branch), lost, stateful_iterates(last(typed), instance, nodes),
                 )
             end
             entry = isnothing(used) ? nothing : entry!(named, ids, codes, site, call_signature, inferred, edges, by_path, hashes, modules)
@@ -901,12 +933,13 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
         append!(disrupting, inferred.disruptions)
         append!(hard, inferred.hard_arrays)
         append!(narrowing, inferred.narrowings)
+        append!(iterates, inferred.stateful_iterates)
     end
     append!(spots, BlindSpot("untyped method no call reaches", site.span) for site in skipped if !(site.method in coded))
     # One finding per weak value: escape before intermediate, definite before possible.
     sort!(disrupting; by = disruption -> (disruption.exit == Exit.intermediate, disruption.confidence == Confidence.possible))
     sort!(hard; by = array -> (array.exit == Exit.intermediate, array.confidence == Confidence.possible))
-    facts = InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting), unique!(array -> array.span, hard), unique!(lost -> lost.test, narrowing), annotation_guesses(package, observed, incomplete))
+    facts = InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting), unique!(array -> array.span, hard), unique!(lost -> lost.test, narrowing), annotation_guesses(package, observed, incomplete), unique!(call -> call.span, iterates))
     return facts, unique!(append!(spots, gaps)), Units(typed, incomplete, stored), used
 end
 

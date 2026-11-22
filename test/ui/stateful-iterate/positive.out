@@ -1,0 +1,22 @@
+warning[stateful-iterate]: `iterate` on `Iterators.Stateful` hides write to `s`
+ --> src/StatefulIteratePositive.jl:5:12
+  |
+5 |     x, _ = iterate(s)
+  |            ^^^^^^^^^^ removes element from `s`
+  |
+  = why: name without `!` reads as query, but each call consumes element
+  = fix: use `popfirst!(s)`: it returns element without state, and throws `EOFError` where `iterate` returns `nothing`; check `isempty(s)` first   [manual]
+  = docs: corset explain stateful-iterate
+  = note: warn from readability group, library preset
+  = note: opt out with `# corset: allow stateful-iterate -- <reason>`
+
+warning[stateful-iterate]: `iterate` on `Iterators.Stateful` hides write to `s`
+ --> src/StatefulIteratePositive.jl:9:49
+  |
+9 | following(s::Iterators.Stateful{Vector{Int}}) = Base.iterate(s, nothing)
+  |                                                 ^^^^^^^^^^^^^^^^^^^^^^^^ removes element from `s`
+  |
+  = why: name without `!` reads as query, but each call consumes element
+  = fix: use `popfirst!(s)`: it returns element without state, and throws `EOFError` where `iterate` returns `nothing`; check `isempty(s)` first   [manual]
+  = docs: corset explain stateful-iterate
+

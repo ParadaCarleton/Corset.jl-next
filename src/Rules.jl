@@ -46,6 +46,7 @@ include("rules/process_state.jl")
 include("rules/repeated_concat.jl")
 include("rules/shadowed_base.jl")
 include("rules/short_circuit_statement.jl")
+include("rules/stateful_iterate.jl")
 include("rules/ternary_statement.jl")
 include("rules/threadid_buffer.jl")
 include("rules/type_disruption.jl")
@@ -104,6 +105,7 @@ const REGISTRY = RuleEntry[
     RepeatedConcat.ENTRY,
     ShadowedBase.ENTRY,
     ShortCircuitStatement.ENTRY,
+    StatefulIterate.ENTRY,
     TernaryStatement.ENTRY,
     ThreadidBuffer.ENTRY,
     TypeDisruption.ENTRY,
