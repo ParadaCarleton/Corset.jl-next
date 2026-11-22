@@ -114,6 +114,13 @@ function moves(pinned::Dict{String, Any}, used::Dict{String, Any})::Vector{Tuple
 end
 
 """
+Pkg preserve level of build attempt that frees `uuids` of target Manifest entries `deps`. Without Manifest nothing is
+pinned: resolver may move version that `develop` picked before test dependencies joined.
+"""
+preserve_level(deps::Dict{String, Any}, uuids::Set{Base.UUID})::Pkg.PreserveLevel =
+    isempty(deps) ? Pkg.PRESERVE_TIERED : isempty(uuids) ? Pkg.PRESERVE_ALL : Pkg.PRESERVE_DIRECT
+
+"""
 Build temporary environment for package of `project` in empty directory `env`; return Manifest versions it moved.
 Each set of `tiers` frees its packages; first set that resolves wins. Set that frees no new Manifest entry is skipped.
 """
@@ -132,7 +139,7 @@ function build!(env::String, project::ProjectFacts, tiers::Vector{Set{Base.UUID}
         uuids in tried && continue
         push!(tried, uuids)
         write_env!(env, preferences, deps, uuids)
-        preserve = isempty(uuids) ? Pkg.PRESERVE_ALL : Pkg.PRESERVE_DIRECT
+        preserve = preserve_level(deps, uuids)
         try
             # Relaunched process precompiles what it loads. Pkg's task-local switch leaves process environment alone.
             # Barriers: method that target adds (`promote_rule`) invalidates Pkg internals, and would take caller too.
