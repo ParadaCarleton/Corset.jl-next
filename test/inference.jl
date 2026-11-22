@@ -16,6 +16,14 @@ using Corset.Inference: Record, records, crashed, last_crash, finished_store, op
 
 const CASE = joinpath(@__DIR__, "inference", "InferenceCases")
 
+# Qualified callees: module chain gives name; field read and computed name give none.
+peeled(xs::Vector{Int}) = Base.Iterators.peel(xs)
+const HOLDER = Ref(sin)
+held_call(x::Float64) = HOLDER.x(x)
+boxed_call(x::Float64) = Ref(sin).x(x)
+argument_call(holder::Base.RefValue{typeof(sin)}, x::Float64) = holder.x(x)
+computed_call(name::Symbol, x::Float64) = getproperty(Base, name)(x)
+
 """C symbol address and length: `cglobal` keeps library tuple as nested call in typed code."""
 symbol_and_length(x::AbstractVector) = (cglobal((:strlen, "libc"), Cint), length(x))
 
@@ -185,6 +193,19 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         index = findfirst(statement -> (call = statement_call(statement); !isnothing(call) && callee_name(lazy, call) === :broadcasted), lazy.code)
         @test isnothing(broadcast_node(lazy, Union{Nothing, Corset.Facts.SyntaxNode}[nothing for _ in lazy.code], something(index)))
     end
+    @testset "qualified callee" begin
+        """Callee names of calls in typed code of `f` at `types`, in statement order."""
+        function names(f::Function, types::Tuple)::Vector{Union{Nothing, Symbol}}
+            code = first(only(code_typed(f, types; optimize = false)))
+            return [callee_name(code, call) for call in filter(!isnothing, map(statement_call, code.code)) if call.args[1] isa Core.SSAValue]
+        end
+        @test names(peeled, (Vector{Int},)) == [:peel]
+        # Last call is call of field or computed name; `Ref(sin)` and `getproperty` come first.
+        @test isnothing(last(names(held_call, (Float64,))))
+        @test names(boxed_call, (Float64,)) == [:Ref, nothing]
+        @test isnothing(last(names(argument_call, (Base.RefValue{typeof(sin)}, Float64))))
+        @test names(computed_call, (Symbol, Float64)) == [:getproperty, nothing]
+    end
     @testset "blind spots" begin
         # `tallied` gets call with family that holds no stand-in, and worklist follows stand-ins only.
         unreached = ["lonely", "splatted", "first_of", "unreached", "joined", "hk", "tallied"]
@@ -295,7 +316,7 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         end
         # Stderr of inference goes to crash log; normal end copies it to stderr.
         mktempdir() do directory
-            empty = (Corset.Facts.InferenceFacts(FailingCall[], Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.AnnotationGuess[]), Corset.Facts.BlindSpot[], Corset.Inference.Units(TypedCode[], Set{Method}(), Corset.Inference.StoredUnit[]), nothing)
+            empty = (Corset.Facts.InferenceFacts(FailingCall[], Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.AnnotationGuess[], Corset.Facts.StatefulIterate[]), Corset.Facts.BlindSpot[], Corset.Inference.Units(TypedCode[], Set{Method}(), Corset.Inference.StoredUnit[]), nothing)
             text = mktemp() do path, io
                 result = redirect_stderr(io) do
                     Corset.Engine.journaled(journal -> (println(stderr, "inner note"); empty), directory)
