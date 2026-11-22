@@ -593,11 +593,12 @@ function edges_of(@nospecialize(edge::Any))::Core.SimpleVector
     return isnothing(instance) || !isdefined(instance, :cache) ? Core.svec() : instance.cache.edges
 end
 
-"""Whether `type` names type or function of package `modules`, parameters included; `named` caches answers."""
+"""
+Whether `type` names type or function of package `modules`, parameters included; `named` caches answers. Parameters
+form no cycle: Julia rejects bound that names own type variable.
+"""
 function names_package!(named::IdDict{Any, Bool}, @nospecialize(type::Any), modules::Set{Module})::Bool
     haskey(named, type) && return named[type]
-    # Guard for type that names itself through parameter.
-    named[type] = false
     answer = if type isa Union
         names_package!(named, type.a, modules) || names_package!(named, type.b, modules)
     elseif type isa UnionAll
