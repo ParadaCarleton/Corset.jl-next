@@ -182,9 +182,9 @@ warning[type-disruption]: conversion to `Float64` turns `Float32` input into `Fl
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float64}`
-  --> src/TypeDisruptionPositive.jl:40:32
+  --> src/TypeDisruptionPositive.jl:42:32
    |
-40 | paired(x::AbstractFloat) = [x, 0.5]
+42 | paired(x::AbstractFloat) = [x, 0.5]
    |                            -------- meets `Float32` input here and returns `Vector{Float64}` instead of `Vector{Float32}`
    |                                ^^^ `Float64` for every input type
    |
@@ -193,9 +193,9 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Matrix{Float64}`
-  --> src/TypeDisruptionPositive.jl:42:1
+  --> src/TypeDisruptionPositive.jl:44:1
    |
-42 | grid(x::AbstractFloat) = [x 0.5; 1.0 2.0]
+44 | grid(x::AbstractFloat) = [x 0.5; 1.0 2.0]
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Float64` for every input type
    | ----------------------------------------- meets `Float32` input here and returns `Matrix{Float64}` instead of `Matrix{Float32}`
    |
@@ -205,9 +205,9 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Matrix{Float
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:44:51
+  --> src/TypeDisruptionPositive.jl:46:51
    |
-44 | typed_half(x::T) where {T <: AbstractFloat} = x * 0.5
+46 | typed_half(x::T) where {T <: AbstractFloat} = x * 0.5
    |                                               ------- meets `Float32` input here and returns `Float64` instead of `Float32`
    |                                                   ^^^ `Float64` for every input type
    |
@@ -216,9 +216,9 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:46:73
+  --> src/TypeDisruptionPositive.jl:48:73
    |
-46 | nth_half(n::N, x::T) where {N <: Integer, T <: AbstractFloat} = n * x * 0.5
+48 | nth_half(n::N, x::T) where {N <: Integer, T <: AbstractFloat} = n * x * 0.5
    |                                                                 ----------- meets `Float32` input here and returns `Float64` instead of `Float32`
    |                                                                         ^^^ `Float64` for every input type
    |
@@ -227,9 +227,9 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:47:26
+  --> src/TypeDisruptionPositive.jl:49:26
    |
-47 | real_half(x::Real) = x * 0.5
+49 | real_half(x::Real) = x * 0.5
    |                      ------- meets `Float32` input here and returns `Float64` instead of `Float32`
    |                          ^^^ `Float64` for every input type
    |
@@ -238,9 +238,9 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:48:47
+  --> src/TypeDisruptionPositive.jl:50:47
    |
-48 | real_typed_half(x::T) where {T <: Real} = x * 0.5
+50 | real_typed_half(x::T) where {T <: Real} = x * 0.5
    |                                           ------- meets `Float32` input here and returns `Float64` instead of `Float32`
    |                                               ^^^ `Float64` for every input type
    |
@@ -249,9 +249,9 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float64}`
-  --> src/TypeDisruptionPositive.jl:49:53
+  --> src/TypeDisruptionPositive.jl:51:53
    |
-49 | real_scaled_all(xs::AbstractVector{<:Real}) = xs .* 0.5
+51 | real_scaled_all(xs::AbstractVector{<:Real}) = xs .* 0.5
    |                                               --------- meets `Float32` input here and returns `Vector{Float64}` instead of `Vector{Float32}`
    |                                                     ^^^ `Float64` for every input type
    |
@@ -260,9 +260,9 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:50:46
+  --> src/TypeDisruptionPositive.jl:52:46
    |
-50 | @inline inlined_half(x::AbstractFloat) = x * 0.5
+52 | @inline inlined_half(x::AbstractFloat) = x * 0.5
    |                                          ------- meets `Float32` input here and returns `Float64` instead of `Float32`
    |                                              ^^^ `Float64` for every input type
    |
@@ -271,12 +271,12 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.9` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:53:13
+  --> src/TypeDisruptionPositive.jl:55:13
    |
-53 |     x = x * 0.9
+55 |     x = x * 0.9
    |         ------- meets `Float32` input here
    |             ^^^ `Float64` for every input type
-54 |     return x
+56 |     return x
    |     -------- returns `Float64` instead of `Float32`
    |
    = why: result takes weak value's type, so callers lose their number type
@@ -284,9 +284,9 @@ warning[type-disruption]: literal `0.9` turns `Float32` input into `Float64`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `2.0` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:56:29
+  --> src/TypeDisruptionPositive.jl:58:29
    |
-56 | doubled(x::AbstractFloat) = 2.0x
+58 | doubled(x::AbstractFloat) = 2.0x
    |                             ^^^ `Float64` for every input type
    |                             ---- meets `Float32` input here and returns `Float64` instead of `Float32`
    |
@@ -295,9 +295,9 @@ warning[type-disruption]: literal `2.0` turns `Float32` input into `Float64`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float64}`
-  --> src/TypeDisruptionPositive.jl:57:1
+  --> src/TypeDisruptionPositive.jl:59:1
    |
-57 | dotted(xs::AbstractVector{<:AbstractFloat}) = @. xs * 0.5
+59 | dotted(xs::AbstractVector{<:AbstractFloat}) = @. xs * 0.5
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Float64` for every input type
    | --------------------------------------------------------- meets `Float32` input here and returns `Vector{Float64}` instead of `Vector{Float32}`
    |
@@ -307,12 +307,12 @@ warning[type-disruption]: literal `0.5` turns `Float32` input into `Vector{Float
    = docs: corset explain type-disruption
 
 warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
-  --> src/TypeDisruptionPositive.jl:60:11
+  --> src/TypeDisruptionPositive.jl:62:11
    |
-60 |     out = zeros(length(xs))
+62 |     out = zeros(length(xs))
    |           ^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type
-61 |     out .= 2 .* xs
-62 |     return out
+63 |     out .= 2 .* xs
+64 |     return out
    |     ---------- returns it here
    |
    = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
@@ -320,9 +320,9 @@ warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
-  --> src/TypeDisruptionPositive.jl:64:39
+  --> src/TypeDisruptionPositive.jl:66:39
    |
-64 | counted(xs::AbstractVector, n::Int) = zeros(Int, n)
+66 | counted(xs::AbstractVector, n::Int) = zeros(Int, n)
    |                                       ^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
    |
    = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
@@ -330,9 +330,9 @@ warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: hard-coded `Matrix` drops array type of `xs`
-  --> src/TypeDisruptionPositive.jl:65:45
+  --> src/TypeDisruptionPositive.jl:67:45
    |
-65 | uninitialized(xs::AbstractMatrix{<:Real}) = Matrix{Float64}(undef, size(xs))
+67 | uninitialized(xs::AbstractMatrix{<:Real}) = Matrix{Float64}(undef, size(xs))
    |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ builds `Matrix` for every input array type and returns it
    |
    = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
@@ -340,9 +340,9 @@ warning[type-disruption]: hard-coded `Matrix` drops array type of `xs`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
-  --> src/TypeDisruptionPositive.jl:66:39
+  --> src/TypeDisruptionPositive.jl:68:39
    |
-66 | indexed(xs::AbstractVector{<:Real}) = similar(Vector{Int}, length(xs))
+68 | indexed(xs::AbstractVector{<:Real}) = similar(Vector{Int}, length(xs))
    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
    |
    = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
@@ -350,9 +350,9 @@ warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
-  --> src/TypeDisruptionPositive.jl:67:49
+  --> src/TypeDisruptionPositive.jl:69:49
    |
-67 | repeated(xs::AbstractVector{<:Real}, x::Real) = fill(x, length(xs))
+69 | repeated(xs::AbstractVector{<:Real}, x::Real) = fill(x, length(xs))
    |                                                 ^^^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
    |
    = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
@@ -360,9 +360,9 @@ warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
-  --> src/TypeDisruptionPositive.jl:68:38
+  --> src/TypeDisruptionPositive.jl:70:38
    |
-68 | halves(xs::AbstractVector{<:Real}) = fill(0.5, length(xs))
+70 | halves(xs::AbstractVector{<:Real}) = fill(0.5, length(xs))
    |                                      ^^^^^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
    |
    = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
@@ -370,9 +370,9 @@ warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
-  --> src/TypeDisruptionPositive.jl:70:16
+  --> src/TypeDisruptionPositive.jl:72:16
    |
-70 |     cache[1] = ones(length(xs))
+72 |     cache[1] = ones(length(xs))
    |                ^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and stores it
    |
    = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
@@ -380,11 +380,11 @@ warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
-  --> src/TypeDisruptionPositive.jl:75:14
+  --> src/TypeDisruptionPositive.jl:77:14
    |
-75 |     buffer = Vector{Float64}(undef, length(xs))
+77 |     buffer = Vector{Float64}(undef, length(xs))
    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type
-76 |     buffer .= xs .* 2
+78 |     buffer .= xs .* 2
    |     ----------------- mixes it with `xs` here
    |
    = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
@@ -393,9 +393,9 @@ warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
-  --> src/TypeDisruptionPositive.jl:80:34
+  --> src/TypeDisruptionPositive.jl:82:34
    |
-80 | randomized(xs::AbstractVector) = fill(rand(), length(xs))
+82 | randomized(xs::AbstractVector) = fill(rand(), length(xs))
    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
    |
    = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
@@ -403,9 +403,9 @@ warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
-  --> src/TypeDisruptionPositive.jl:81:31
+  --> src/TypeDisruptionPositive.jl:83:31
    |
-81 | untyped(xs::AbstractVector) = Vector(undef, length(xs))
+83 | untyped(xs::AbstractVector) = Vector(undef, length(xs))
    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
    |
    = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
@@ -413,9 +413,9 @@ warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: hard-coded `Array` drops array type of `xs`
-  --> src/TypeDisruptionPositive.jl:82:29
+  --> src/TypeDisruptionPositive.jl:84:29
    |
-82 | boxed(xs::AbstractVector) = zeros(Float64)
+84 | boxed(xs::AbstractVector) = zeros(Float64)
    |                             ^^^^^^^^^^^^^^ builds `Array` for every input array type and returns it
    |
    = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
@@ -423,9 +423,9 @@ warning[type-disruption]: hard-coded `Array` drops array type of `xs`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
-  --> src/TypeDisruptionPositive.jl:85:12
+  --> src/TypeDisruptionPositive.jl:87:12
    |
-85 |     return zeros(length(xs))
+87 |     return zeros(length(xs))
    |            ^^^^^^^^^^^^^^^^^ builds `Vector` for every input array type and returns it
    |
    = why: GPU, static and offset arrays turn into CPU `Array`, or fail when mixed with it
@@ -433,9 +433,9 @@ warning[type-disruption]: hard-coded `Vector` drops array type of `xs`
    = docs: corset explain type-disruption
 
 warning[type-disruption]: literal `0.5` turns `Float32` input into `Float64`
-  --> src/TypeDisruptionPositive.jl:88:54
+  --> src/TypeDisruptionPositive.jl:90:54
    |
-88 | adjusted(x::AbstractFloat) = x isa Float64 ? x : x * 0.5
+90 | adjusted(x::AbstractFloat) = x isa Float64 ? x : x * 0.5
    |                                                  ------- meets `Float32` input here and returns `Float64` instead of `Float32`
    |                                                      ^^^ `Float64` for every input type
    |

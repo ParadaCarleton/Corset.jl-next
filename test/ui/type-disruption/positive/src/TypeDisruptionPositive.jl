@@ -37,6 +37,8 @@ function fill_scaled!(out::Vector{Real}, xs::AbstractVector{<:AbstractFloat})
     return out
 end
 converted(x::AbstractFloat) = convert(Float64, x)
+# Declared result converts only once argument widens: second round meets statement first inference left unreached.
+ratio(total::Integer, bits::Real)::Float64 = -max(total - 4, 0) * Float64(bits) * log(2.0)
 paired(x::AbstractFloat) = [x, 0.5]
 # Matrix literal lowers to `hvcat` with row lengths first, so span cannot narrow to one element.
 grid(x::AbstractFloat) = [x 0.5; 1.0 2.0]
