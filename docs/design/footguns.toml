@@ -740,7 +740,7 @@ text = "Release skipped when code between acquire and release throws"
 example = "`lock(l); work(); unlock(l)`"
 group = "correctness"
 stage = "syntax"
-note = "Pairs: `lock`/`unlock`, `acquire`/`release`, `open`/`close`. Held lock deadlocks next caller. Moves to `effects` stage at phase 5 row 9: reads hold counts (`effects.md`, Release balance), sees release in branch or loop, and passes code that cannot throw. Syntax version ships until then. Fix: do-block form, or `try`/`finally`."
+note = "Pairs: `lock`/`unlock`, `acquire`/`release`, `open`/`close`. Held lock deadlocks next caller. Moves to `effects` stage at phase 5 row 8: reads hold counts (`effects.md`, Release balance), sees release in branch or loop, and passes code that cannot throw. Syntax version ships until then. Fix: do-block form, or `try`/`finally`."
 
 [[footgun]]
 id = 99

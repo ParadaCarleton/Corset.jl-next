@@ -259,7 +259,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tr data-group="correctness"><td>F68</td><td>concurrency</td><td>Buffer indexed by <code>threadid()</code></td><td><code>bufs[threadid()]</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td></td></tr>
 <tr data-group="correctness"><td>F69</td><td>concurrency</td><td>Unsynchronized update in threaded loop</td><td><code>acc += x</code> in <code>@threads</code></td><td><span class="chip g-correctness">correctness</span></td><td>scope</td><td></td></tr>
 <tr data-group="safety"><td>F70</td><td>concurrency</td><td>Task result never waited; errors vanish</td><td><code>@spawn work()</code></td><td><span class="chip g-safety">safety</span></td><td>syntax</td><td></td></tr>
-<tr data-group="correctness"><td>F98</td><td>concurrency</td><td>Release skipped when code between acquire and release throws</td><td><code>lock(l); work(); unlock(l)</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>Pairs: <code>lock</code>/<code>unlock</code>, <code>acquire</code>/<code>release</code>, <code>open</code>/<code>close</code>. Held lock deadlocks next caller. Moves to <code>effects</code> stage at phase 5 row 9: reads hold counts (<code>effects.md</code>, Release balance), sees release in branch or loop, and passes code that cannot throw. Syntax version ships until then. Fix: do-block form, or <code>try</code>/<code>finally</code>.</td></tr>
+<tr data-group="correctness"><td>F98</td><td>concurrency</td><td>Release skipped when code between acquire and release throws</td><td><code>lock(l); work(); unlock(l)</code></td><td><span class="chip g-correctness">correctness</span></td><td>syntax</td><td>Pairs: <code>lock</code>/<code>unlock</code>, <code>acquire</code>/<code>release</code>, <code>open</code>/<code>close</code>. Held lock deadlocks next caller. Moves to <code>effects</code> stage at phase 5 row 8: reads hold counts (<code>effects.md</code>, Release balance), sees release in branch or loop, and passes code that cannot throw. Syntax version ships until then. Fix: do-block form, or <code>try</code>/<code>finally</code>.</td></tr>
 <tr data-group="composability"><td>F99</td><td>concurrency</td><td>Task pinned to one thread</td><td><code>@async work()</code>, <code>@threads :static for …</code>, <code>Task(f)</code></td><td><span class="chip g-composability">composability</span></td><td>syntax</td><td><code>@async</code> and <code>Task</code> pin task and parent; Base docs favor <code>Threads.@spawn</code>. <code>:static</code> throws when nested or run from task. <code>t.sticky = false</code> opts out.</td></tr>
 <tr data-group="composability"><td>F101</td><td>concurrency</td><td>Package writes process-wide state</td><td><code>ENV["KEY"] = value</code>, <code>cd(dir)</code></td><td><span class="chip g-composability">composability</span></td><td>syntax</td><td>Writes race with threaded callers; Base docs call <code>ENV</code> writes thread-unsafe, Rust 2024 made <code>set_var</code> unsafe. Fix: pass setting to <code>Cmd</code> (<code>addenv</code>, <code>dir</code>).</td></tr>
 <tr data-group="readability"><td>F71</td><td>readability</td><td>Argument or result without type</td><td><code>f(x) = …</code></td><td><span class="chip g-readability">readability</span></td><td>syntax</td><td>With result-conversion rule, annotations act as type checks. Fixer fills result type from inference. <code>::Any</code> opts out.</td></tr>
@@ -1326,57 +1326,50 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 <tr>
 <td>5</td>
 <td>Name tier</td>
-<td><code>effects</code> stage on name trust and compiler effects; facts keep <code>MethodEffects</code> shape</td>
+<td><code>effects</code> stage on name trust and compiler effects replaces engine; engine and library summary cache leave</td>
 <td>—</td>
 <td>—</td>
 </tr>
 <tr>
 <td>6</td>
-<td>Engine removal</td>
-<td>Delete engine, library summary cache and their tests</td>
-<td>5</td>
-<td>—</td>
-</tr>
-<tr>
-<td>7</td>
 <td><code>stateful-iterate</code></td>
 <td>F109</td>
 <td>—</td>
-<td>—</td>
+<td>#297</td>
 </tr>
 <tr>
-<td>8</td>
+<td>7</td>
 <td>Alias rules</td>
 <td>F48, F50, F51</td>
 <td>5</td>
 <td>—</td>
 </tr>
 <tr>
-<td>9</td>
+<td>8</td>
 <td>Effect rules</td>
 <td>F54, F55, F56, F58, F98</td>
 <td>5</td>
 <td>—</td>
 </tr>
 <tr>
-<td>10</td>
+<td>9</td>
 <td><code>bang-convention</code></td>
 <td>F53, F86</td>
 <td>5</td>
 <td>—</td>
 </tr>
 <tr>
-<td>11</td>
+<td>10</td>
 <td>Lifecycle facts</td>
 <td><code>lifecycle</code> stage</td>
 <td>5</td>
 <td>—</td>
 </tr>
 <tr>
-<td>12</td>
+<td>11</td>
 <td>Lifecycle rules</td>
 <td>F32, F33, F34, F39, F40, F41</td>
-<td>11</td>
+<td>10</td>
 <td>—</td>
 </tr>
 </tbody>
@@ -1399,7 +1392,8 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 <ul>
 <li><code>Engine</code> runs <code>effects</code> after <code>inference</code> when enabled rule reads <code>effects</code>. Name tier replaces engine call in <code>effects_facts</code>.</li>
 <li>Facts keep <code>MethodEffects</code>, <code>Access</code>, <code>CallFact</code> and <code>UnguardedHold</code>, so rules of local effect-rules stack port.</li>
-<li>Fields name tier never fills (<code>blind_writes</code>, <code>blind_reads</code>, <code>closed_world</code>) leave in row 6.</li>
+<li>Facts drop fields name tier never fills: <code>blind_writes</code>, <code>blind_reads</code>, <code>closed_world</code>.</li>
+<li>Delete engine files, library summary cache, crash relaunch for library instances, engine diagnostics and their tests. Keep crash journal that <code>inference</code> stage reads.</li>
 <li>Tables: written operand position, alias, exception, consuming, release primitives. Each entry cites Base docstring or style guide.</li>
 <li>Method store keeps unit record; same record format as engine (<code>records.jl</code>).</li>
 </ul>
@@ -1410,17 +1404,11 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 </ul>
 <p>Done: every fixture gives expected facts; property passes; every-PR bar met.
 Measure on corpus: <code>effects</code> stage time against <code>inference</code> stage; methods with write fact; <code>possible</code> share.</p>
-</div><div class="decision"><h3>6 Engine removal</h3>
-<ul>
-<li>Delete engine files, library summary cache, crash relaunch for library instances, and their tests.</li>
-<li>Keep crash journal that <code>inference</code> stage reads.</li>
-<li>Tag <code>effects-engine</code> at last main commit with engine.</li>
-</ul>
-</div><div class="decision"><h3>7 <code>stateful-iterate</code></h3>
+</div><div class="decision"><h3>6 <code>stateful-iterate</code></h3>
 <ul>
 <li>F109: <code>iterate</code> on <code>Iterators.Stateful</code>; suggest <code>popfirst!</code>. Reads inference facts only.</li>
 </ul>
-</div><div class="decision"><h3>8 Alias rules</h3>
+</div><div class="decision"><h3>7 Alias rules</h3>
 <p>Rules read per-unit statement events and must-alias pairs.</p>
 <ul>
 <li><code>iteration-mutation</code> (F48): container written inside loop that iterates it. Alias-table result counts: <code>keys(d)</code> iterates <code>d</code>.</li>
@@ -1443,7 +1431,7 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 </ul>
 </li>
 </ul>
-</div><div class="decision"><h3>9 Effect rules</h3>
+</div><div class="decision"><h3>8 Effect rules</h3>
 <p>Port rules of local effect-rules stack onto name-tier facts.</p>
 <ul>
 <li><code>unused-call</code> (F54): discarded call that compiler proves <code>effect_free</code>, <code>nothrow</code> and terminating.</li>
@@ -1452,7 +1440,7 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 <li><code>false-effects</code> (F58): write and read events contradict package <code>@assume_effects</code> claim.</li>
 <li><code>unguarded-release</code> (F98): effects version reads hold counts; delete syntax version in same PR.</li>
 </ul>
-</div><div class="decision"><h3>10 <code>bang-convention</code></h3>
+</div><div class="decision"><h3>9 <code>bang-convention</code></h3>
 <ul>
 <li>F53 <code>missing</code>: method writes argument or global; name has no <code>!</code>. Decision flow: <code>effects.md</code>.</li>
 <li>F53 also reports library-function methods that write an argument without <code>!</code>: name trust depends on them.</li>
@@ -1463,14 +1451,14 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 <li>Definite write gives <code>definite</code> finding. <code>possible</code> findings stay off until quality gate passes.</li>
 <li>Fix: rename definition and package call sites.</li>
 </ul>
-</div><div class="decision"><h3>11 Lifecycle facts</h3>
+</div><div class="decision"><h3>10 Lifecycle facts</h3>
 <ul>
 <li><code>lifecycle</code> stage builds def-use per array from allocation sites, events, must-alias pairs and escapes of <code>effects</code>.</li>
 <li>Callee reads and writes come from names: <code>!</code> call writes its written operand; other call reads operands.</li>
 <li>Element events carry index operand; stage decides which elements writes cover.</li>
 <li>Definite facts need straight-line pattern. Branch join gives <code>possible</code>.</li>
 </ul>
-</div><div class="decision"><h3>12 Lifecycle rules</h3>
+</div><div class="decision"><h3>11 Lifecycle rules</h3>
 <p><code>temporary-array</code> (F32), <code>unwritten-element</code> (F33, F34), <code>constant-array</code> (F39), <code>slice-copy</code> (F40), <code>broadcast-rebind</code> (F41). Split by rule if PR grows large.</p>
 </div><div class="decision"><h3>Phase end</h3>
 <ul>
@@ -1481,7 +1469,7 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 </div><div class="decision"><h3>Open decisions</h3>
 <p>Owner decides before PR that names decision:</p>
 <ul>
-<li>Row 10: fix tier of rename. Proposal: <code>breaking</code> for public or exported name; <code>likely</code> for other names.</li>
+<li>Row 9: fix tier of rename. Proposal: <code>breaking</code> for public or exported name; <code>likely</code> for other names.</li>
 </ul>
 </div>
 </section>
