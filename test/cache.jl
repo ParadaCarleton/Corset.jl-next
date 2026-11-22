@@ -6,7 +6,7 @@ using Corset: Corset
 using Corset.Cache: Cache
 using Corset.Config: Flags
 using Test: @test, @testset, @test_throws
-using Random: RandomDevice
+using Random: Random, RandomDevice
 
 """Write `files` (path => text) under `root`."""
 function write_files(root::String, files::Pair{String, String}...)::Nothing
@@ -73,8 +73,8 @@ end
             manifest = "manifest_format = \"2.0\"\n\n[[deps.A]]\npath = \"../root\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n"
             write_files(environment, "Project.toml" => "", "Manifest.toml" => manifest)
             analyzed = [joinpath(root, "src", "A.jl")]
-            key(shape::Vector{String}, files::Vector{String})::String =
-                Cache.method_key(root, root, files, shape, [joinpath(environment, "Project.toml")], joinpath(root, "cache"))
+            key(shape::Vector{String}, files::Vector{String}, engine::String = "engine")::String =
+                Cache.method_key(root, root, files, shape, [joinpath(environment, "Project.toml")], engine, joinpath(root, "cache"))
             original = key(["shape"], analyzed)
             write_files(root, "src/A.jl" => "a = 2\n", "test/runtests.jl" => "b = 1\n")
             @test key(["shape"], analyzed) == original
@@ -83,6 +83,51 @@ end
             # File of `src` that run does not analyze can change package code.
             write_files(root, "src/b.jl" => "b = 1\n")
             @test key(["shape"], analyzed) != original
+            # Engine counts though analyzed files hold it: Corset that checks itself must not reuse facts of old engine.
+            corset = [joinpath(Corset.Launch.corset_root(), "src", "Corset.jl")]
+            @test key(["shape"], corset, "engine") != key(["shape"], corset, "edited engine")
+            # Manifest `path` entry of Corset leaves its tree out, so rule edits keep stored facts; package that reaches Corset keeps it.
+            home, other, real = Corset.Launch.corset_root(), joinpath(scratch, "environment"), realpath(root)
+            code = joinpath.(real, ["src", "ext", "deps"])
+            @test Cache.store_trees([home, joinpath(home, "src"), other, root], real, false) == [other; code]
+            @test Cache.store_trees([home, other, root], real, true) == [home, other, code...]
+        end
+    end
+
+    @testset "reaches Corset" begin
+        mktempdir(@__DIR__) do scratch
+            root, environment = joinpath.(scratch, ["root", "environment"])
+            corset, uuid = Corset.Launch.corset_root(), Base.UUID(rand(UInt128))
+            write_files(root, "Project.toml" => "[deps]\nCorset = \"$(Base.PkgId(Corset).uuid)\"\n")
+            entries(link::String) = """
+            manifest_format = "2.0"
+
+            [[deps.A]]
+            deps = ["B"]
+            path = "../root"
+            uuid = "$uuid"
+
+            [[deps.B]]
+            uuid = "$(Base.UUID(rand(UInt128)))"
+            $link
+
+            [[deps.Corset]]
+            path = $(repr(corset))
+            uuid = "$(Base.PkgId(Corset).uuid)"
+            """
+            project = joinpath(environment, "Project.toml")
+            write_files(environment, "Project.toml" => "", "Manifest.toml" => entries("[deps.B.deps]\nCorset = \"$(Base.PkgId(Corset).uuid)\""))
+            @test Cache.reaches_corset([project], realpath(root))
+            write_files(environment, "Manifest.toml" => entries("deps = []"))
+            @test !Cache.reaches_corset([project], realpath(root))
+            # Corset as weak dependency triggers extension that can call rules.
+            write_files(environment, "Manifest.toml" => entries("weakdeps = [\"Corset\"]"))
+            @test Cache.reaches_corset([project], realpath(root))
+            # Unknown reach counts as reach: package absent from load path, or project without Manifest.
+            @test Cache.reaches_corset(String[], realpath(root)) && Cache.reaches_corset([joinpath(root, "Project.toml")], realpath(root))
+            # Environment project at root starts from its own deps.
+            write_files(root, "Manifest.toml" => entries("deps = []"))
+            @test Cache.reaches_corset([joinpath(root, "Project.toml")], realpath(root))
         end
     end
 
@@ -113,7 +158,7 @@ end
             write_files(registered, "Project.toml" => "", "src/Registered.jl" => "module Registered end\n")
             write_files(developed, "Project.toml" => "", "src/Developed.jl" => "module Developed end\n", "test/runtests.jl" => "")
             ids = Base.PkgId(Base.UUID(rand(RandomDevice(), UInt128)), "Registered"), Base.PkgId(Base.UUID(rand(RandomDevice(), UInt128)), "Developed")
-            contents()::Vector{String} = [Cache.package_content(id, root, [depot]) for (id, root) in zip(ids, (registered, developed))]
+            contents()::Vector{String} = [Cache.package_content(id, root, [depot], "") for (id, root) in zip(ids, (registered, developed))]
             original = contents()
             # Depot slug derives from tree hash, so depot package counts by path; tests of path package never load.
             write_files(registered, "src/Registered.jl" => "module Registered f() = 1 end\n")
@@ -122,6 +167,19 @@ end
             write_files(developed, "src/Developed.jl" => "module Developed f() = 1 end\n")
             edited = contents()
             @test edited[1] == original[1] && edited[2] != original[2]
+            # Skipped directory changes no content: rule edit keeps partition of Corset.
+            rules = Cache.rule_sources(developed)
+            skipping()::String = Cache.package_content(ids[2], developed, [depot], rules)
+            write_files(developed, "src/rules/rule.jl" => "rule = 1\n")
+            before = skipping()
+            write_files(developed, "src/rules/rule.jl" => "rule = 2\n")
+            @test skipping() == before && contents()[2] != edited[2]
+            # Engine content skips rule sources the same way.
+            engine = Cache.engine_content(developed, [depot])
+            write_files(developed, "src/rules/rule.jl" => "rule = 3\n")
+            @test Cache.engine_content(developed, [depot]) == engine
+            write_files(developed, "src/Engine.jl" => "engine = 1\n")
+            @test Cache.engine_content(developed, [depot]) != engine
             # Preferences of package count too.
             write_files(environment, "Project.toml" => "[deps]\nDeveloped = \"$(ids[2].uuid)\"\n\n[preferences.Developed]\nmode = \"fast\"\n")
             push!(LOAD_PATH, environment)
@@ -171,56 +229,77 @@ end
         end
     end
 
-    @testset "library file" begin
+    @testset "library partitions" begin
         mktempdir(@__DIR__) do scratch
-            directory, partition = joinpath(scratch, "library"), "partition"
+            directory, partition = joinpath(scratch, "cache"), "partition"
             stamped(size::Int)::Cache.Stamped = Cache.Stamped("instance", fill(0x01, size), 0.0)
-            keep!(found::Dict{String, Cache.Stamped}, hits::Set{String}, limit::Int)::Nothing = Cache.keep_library!(directory, partition, found, hits, limit)
-            # Run without entries writes nothing.
-            keep!(Dict{String, Cache.Stamped}(), Set{String}(), 100)
-            @test !isdir(directory) && isempty(Cache.read_library(directory, partition))
+            keep!(found::Dict{String, Cache.Stamped}, hits::Set{String}, limit::Int, at::String)::Nothing = Cache.with_database(db -> Cache.keep_library!(db, at, found, hits, limit), directory)
+            held(at::String)::Vector{Any} = cache_column(directory, "SELECT key FROM library WHERE partition = ? ORDER BY key", (at,))
+            shelved(f::Function)::Any = Cache.with_database(db -> f(Cache.Shelf(db, partition)), directory)
+            @test shelved(shelf -> shelf.empty)
             before = time()
-            keep!(Dict("a" => stamped(10)), Set{String}(), 100)
-            first_read = Cache.read_library(directory, partition)
-            @test only(keys(first_read)) == "a" && first_read["a"].used >= before && first_read["a"].instance == "instance"
+            keep!(Dict("a" => stamped(10)), Set{String}(), 100, partition)
+            a = shelved(shelf -> Cache.shelf_entry(shelf, "a"))
+            @test held(partition) == ["a"] && a.used >= before && a.instance == "instance" && a.bytes == fill(0x01, 10)
+            @test shelved(shelf -> !shelf.empty && Cache.shelf_holds(shelf, "a") && !Cache.shelf_holds(shelf, "b") && isnothing(Cache.shelf_entry(shelf, "b")))
+            @test shelved(shelf -> Cache.shelf_lists(shelf, "instance") && !Cache.shelf_lists(shelf, "other"))
             # Entries go newest first within byte limit; hit makes entry new.
             sleep(0.05)
-            keep!(Dict("b" => stamped(10)), Set{String}(), 100)
+            keep!(Dict("b" => stamped(10)), Set{String}(), 100, partition)
             sleep(0.05)
-            keep!(Dict("c" => stamped(10)), Set(["a", "absent"]), 25)
-            @test Set(keys(Cache.read_library(directory, partition))) == Set(["a", "c"])
+            keep!(Dict("c" => stamped(10)), Set(["a", "absent"]), 25, partition)
+            @test held(partition) == ["a", "c"]
             # Key breaks ties of time.
-            keep!(Dict("e" => stamped(10), "d" => stamped(10)), Set{String}(), 15)
-            @test collect(keys(Cache.read_library(directory, partition))) == ["d"]
-            # Run without new entries marks file as used; other partition reads none.
-            file = Cache.entry(directory, partition)
-            mtime_before = mtime(file)
+            keep!(Dict("e" => stamped(10), "d" => stamped(10)), Set{String}(), 15, partition)
+            @test held(partition) == ["d"]
+            # Hit of run without new entries makes entry new too; other partition holds none.
+            used = shelved(shelf -> something(Cache.shelf_entry(shelf, "d")).used)
             sleep(0.05)
-            keep!(Dict{String, Cache.Stamped}(), Set(["d"]), 100)
-            @test mtime(file) > mtime_before && isempty(Cache.read_library(directory, "other"))
-            # Directory keeps newest library files; staging file of other process stays.
-            staging, io = mktemp(directory)
-            close(io)
-            for position in 1:Cache.LIBRARY_FILES
-                sleep(0.05)
-                Cache.keep_library!(directory, "partition $position", Dict("x" => stamped(1)), Set{String}(), 100)
+            keep!(Dict{String, Cache.Stamped}(), Set(["d"]), 100, partition)
+            @test shelved(shelf -> something(Cache.shelf_entry(shelf, "d")).used) > used && isempty(held("other"))
+            # Writer whose shelf opened before other write keeps entries of both.
+            Cache.with_database(directory) do db
+                shelf = Cache.Shelf(db, partition)
+                keep!(Dict("f" => stamped(1)), Set{String}(), 100, partition)
+                Cache.keep_library!(db, partition, Dict("g" => stamped(1)), Set{String}(), 100)
+                @test Cache.shelf_holds(shelf, "f")
             end
-            @test !isfile(file) && isfile(staging) && all(position -> isfile(Cache.entry(directory, "partition $position")), 1:Cache.LIBRARY_FILES)
+            @test held(partition) == ["d", "f", "g"]
+            # Database keeps newest partitions.
+            for position in 1:Cache.LIBRARY_PARTITIONS
+                sleep(0.05)
+                keep!(Dict("x" => stamped(1)), Set{String}(), 100, "partition $position")
+            end
+            @test isempty(held(partition)) && all(position -> held("partition $position") == ["x"], 1:Cache.LIBRARY_PARTITIONS)
+            # Write leaves default RNG alone (SQLite.jl `transaction` names savepoint with `randstring`).
+            Random.seed!(7)
+            expected = rand()
+            Random.seed!(7)
+            keep!(Dict("y" => stamped(1)), Set{String}(), 100, partition)
+            @test rand() == expected
+            # Throw inside write rolls it back.
+            wipe(db::Cache.SQLite.DB)::Nothing = (Cache.DBInterface.execute(db, "DELETE FROM library"); error("stop"))
+            @test_throws ErrorException Cache.with_database(db -> Cache.immediate(() -> wipe(db), db), directory)
+            @test held(partition) == ["y"]
         end
     end
 
     @testset "entries" begin
         mktempdir(@__DIR__) do directory
             cache = joinpath(directory, "cache")
-            @test Cache.cold(cache, "/checked") && isnothing(Cache.lookup(String, cache, "/checked", "key"))
+            # Reads of missing database make none.
+            @test Cache.cold(cache, "/checked") && isnothing(Cache.lookup(String, cache, "/checked", "key")) && !isdir(cache)
             Cache.store!(cache, "/checked", "key", "first")
             Cache.store!(cache, "/checked", "key", "stored")
             @test !Cache.cold(cache, "/checked") && Cache.cold(cache, "/other")
             @test Cache.lookup(String, cache, "/checked", "key") == "stored"
             @test isnothing(Cache.lookup(String, cache, "/checked", "other key"))
-            # Entry is file per checked path; no staging file stays behind.
-            @test readdir(cache) == [basename(Cache.entry(cache, "/checked"))]
+            # Closed database leaves no journal file behind.
+            @test readdir(cache) == ["cache.sqlite"] && Cache.stored_key(cache, "/checked") == "key"
             @test_throws TypeError Cache.lookup(Int, cache, "/checked", "key")
+            # Database of other layout starts empty.
+            cache_column(cache, "PRAGMA user_version = $(Cache.LAYOUT + 1)", ())
+            @test Cache.cold(cache, "/checked")
         end
     end
 
@@ -236,13 +315,13 @@ end
             @test settings.confidence == Corset.Facts.Confidence.definite && stored.files == [joinpath(checked, "a.jl")]
             @test isnothing(Corset.Engine.cached(directory, Flags(; deny_warnings = true), cache, Base.load_path()))
             # Stored analysis serves check: entry with no diagnostics hides finding.
-            key = readline(Cache.entry(cache, checked))
+            key = something(Cache.stored_key(cache, checked))
             Cache.store!(cache, checked, key, Corset.Engine.Analysis(checked, stored.files, [], [], [], []))
             @test isempty(Corset.check(directory; cache).diagnostics)
             @test Corset.Engine.baseline(directory; cache) == 0
             write(joinpath(directory, "a.jl"), "total = 1.0\ntotal ≈ 0\n\n")
             @test length(Corset.check(directory; cache).diagnostics) == 1
-            @test readline(Cache.entry(cache, checked)) != key
+            @test Cache.stored_key(cache, checked) != key
         end
     end
 
@@ -270,7 +349,7 @@ end
             mktempdir(@__DIR__) do cache
                 @test first(cached_corset(cache, "check", package)) == 0
                 checked, store_entry = realpath(package), Corset.Engine.method_entry(realpath(package))
-                key, b = readline(Cache.entry(cache, store_entry)), joinpath(realpath(package), "src", "b.jl")
+                key, b = something(Cache.stored_key(cache, store_entry)), joinpath(realpath(package), "src", "b.jl")
                 store = Cache.lookup(Corset.Inference.Store, cache, store_entry, key)
                 # Entry of `second_part` that claims failing call shows store serves facts.
                 held = first(name for (name, held) in store if first(held.file) == b)
@@ -283,7 +362,7 @@ end
                 @test occursin("call to `fake` never succeeds", cached_corset(cache, "check", package)[2])
                 write(b, second_part * "\n")
                 @test first(cached_corset(cache, "check", package)) == 0
-                rm(Cache.entry(cache, store_entry))
+                forget!(cache, store_entry)
                 write(b, second_part)
                 @test first(cached_corset(cache, "check", package, "--no-cache")) == 0 && Cache.cold(cache, store_entry)
             end

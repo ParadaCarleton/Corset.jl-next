@@ -333,7 +333,7 @@ Value of type `T` that library cache holds under entry `key`, which `instance` r
 when throw helper verdict entry keeps no longer holds (`helper!`). Hit joins `run.cache.hits`.
 """
 function stored_value!(run::Run, ::Type{T}, key::Union{Nothing, String}, instance::Core.MethodInstance)::Union{Nothing, T} where {T}
-    stamped = isnothing(key) ? nothing : get(run.cache.library.entries, key, nothing)
+    stamped = isnothing(key) ? nothing : library_entry(run.cache.library, key)
     isnothing(stamped) && return nothing
     entry = deserialize(IOBuffer(stamped.bytes))::LibraryEntry
     for (callee, verdict) in entry.helpers
@@ -344,7 +344,7 @@ function stored_value!(run::Run, ::Type{T}, key::Union{Nothing, String}, instanc
 end
 
 """Whether library cache lists instance key of `instance` (`instance_key!`): only then can entry key of it match."""
-listed(run::Run, instance::Core.MethodInstance)::Bool = !isempty(run.cache.library) && !package_instance!(run, instance) && instance_key!(run, instance) in run.cache.library.instances
+listed(run::Run, instance::Core.MethodInstance)::Bool = !isempty(run.cache.library) && !package_instance!(run, instance) && lists(run.cache.library, instance_key!(run, instance))
 
 """Stored summary of library cache for `variant` (`stored_value!`)."""
 stored_summary(run::Run, variant::Variant)::Union{Nothing, Summary} = listed(run, first(variant)) ? stored_value!(run, Summary, variant_key!(run, run.cache.closure, variant), first(variant)) : nothing
@@ -444,7 +444,7 @@ Add `value` of `instance` under entry `key` to library cache `entries`, with thr
 `state`. Missing key, or key cache holds already, adds nothing.
 """
 function add_entry!(entries::Library, run::Run, state::Closure, key::Union{Nothing, String}, instance::Core.MethodInstance, value::Union{Summary, Set{Int}, Bool})::Nothing
-    (isnothing(key) || haskey(run.cache.library.entries, something(key))) && return nothing
+    (isnothing(key) || holds(run.cache.library, something(key))) && return nothing
     helpers = Pair{Any, Bool}[callee => first(run.helpers[callee]) for callee in state.helpers[instance_node(run, instance)]]
     listing = instance_key!(run, instance)
     entries.entries[something(key)] = Cache.Stamped(listing, serialized(LibraryEntry(value, helpers)), time())

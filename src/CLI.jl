@@ -202,7 +202,8 @@ function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err
         command = parsed["%COMMAND%"]
         options = parsed[command]
         command == "explain" && return explain(out, options["rule"])
-        path = options["path"]
+        # Concrete type keeps string methods of other packages from invalidating this code.
+        path = options["path"]::String
         ispath(path) || throw(UsageError("no such file or directory: $path"))
         flags = Flags(; levels, deny_warnings, confidence = enum_option(Confidence.T, options, "confidence"), tier = enum_option(Tier.T, options, "tier"))
         cache = options["no-cache"] ? nothing : cache

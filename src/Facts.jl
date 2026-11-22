@@ -606,7 +606,7 @@ end
 macro_name(file::SyntaxFile, node::SyntaxNode)::String = (name = macro_span(file, node); file.text[name.first_byte:thisind(file.text, name.last_byte)])
 
 """Name of identifier `node`; `nothing` for other kinds."""
-identifier_name(node::JS.TreeNode)::Union{Nothing, String} = kind_name(node) == "Identifier" ? string(node.val) : nothing
+identifier_name(node::JS.TreeNode)::Union{Nothing, String} = kind_name(node) == "Identifier" ? string(node.val::Symbol) : nothing
 
 """Module paths whose names count as Base names, as written before `.`: `Base.error`, `Core.Task`, `Threads.@spawn`."""
 const BASE_MODULES = ("Base", "Core", "Threads", "Base.Threads")

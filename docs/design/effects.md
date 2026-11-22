@@ -276,7 +276,8 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Library instance: method outside package, and signature names no package type.
 - Library summary: variant of library instance. Disk cache keeps it; cache hit skips native inference and passes.
 - Cache also keeps variant parameters and stand-in cut of library instances.
-- Partition: Julia version, cache flags and Corset content. One library file per partition serves every checked path and environment.
+- Partition: Julia version, cache flags and Corset content without rule sources. Partition serves every checked path and environment.
+- Rule sources change no summary, so rule edit keeps partition. Self-lint of Corset reruns cold only after engine edit.
 - Entry key: kind, closure key of instance, and constants of variant. Module constant adds its owner text.
 - Closure key: digest over strongly connected components of native edge graph, callees first. Walk order cannot change it.
 - Node: cached code instance, else instance that run inferred. Lookup before native inference needs cached code; instance without it misses.
@@ -295,9 +296,10 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Variant whose solve reaches package code or unshared variant stays out. Summary with callback record stays out: caller needs record variants too.
 - Throw helper verdict reads every method of callee. Entry keeps each verdict its closure read; hit checks each again.
 - Stand-in cut that inferred model types reads methods outside native edges. Store gives no key to closure that holds its instance.
-- Library file lists instance key of each entry. Lookup walks closure only for listed instance.
-- Write reads file again, merges new entries, and stamps hits. Entries go newest first within 128 MiB.
-- Write goes to staging file, then rename. Concurrent writer can lose entries; file stays whole. Directory keeps newest 4 library files.
+- Library table indexes instance key of each entry. Lookup walks closure only for listed instance.
+- Run reads entries one at a time from cache database. Hit deserializes its entry only.
+- Write adds new entries and stamps hits in one transaction. Entries go newest first within 128 MiB.
+- Database keeps newest 4 partitions.
 - Run that skipped crashed instance stores nothing: its blind spot holds for that run only.
 - Package summary: method store entry keeps effects record of unit beside `Inferred`, with same invalidation.
 - Record: accesses with spans, holds, call facts, blind spots and cuts. Call fact names callee methods by signature, since deserialized `Method` is new object.

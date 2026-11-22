@@ -2,6 +2,8 @@
 
 using Corset: Corset
 
+include("cache_database.jl")
+
 """Exit code, standard output and standard error of `corset args...`."""
 function corset(args::String...)::Tuple{Int, String, String}
     out, err = IOBuffer(), IOBuffer()

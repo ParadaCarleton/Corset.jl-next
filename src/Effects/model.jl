@@ -292,22 +292,36 @@ end
 
 """
 Library summary cache (`effects.md`, Solve and cache): serialized `LibraryEntry` by entry key (`variant_key!`,
-`instance_entry_key!`), and instance keys of entries (`instance_key!`). Entry deserializes on hit only, since it can
-name modules that other environments lack.
+`instance_entry_key!`), and instance keys of entries (`instance_key!`), in memory or on `shelf` of cache database.
+Entry deserializes on hit only, since it can name modules that other environments lack.
 """
 struct Library
     entries::Dict{String, Cache.Stamped}
     instances::Set{String}
+    shelf::Union{Nothing, Cache.Shelf}
 end
 
-"""Library cache of `entries`."""
-Library(entries::Dict{String, Cache.Stamped})::Library = Library(entries, Set{String}(stamped.instance for stamped in values(entries)))
+"""Library cache of `entries` in memory."""
+Library(entries::Dict{String, Cache.Stamped})::Library = Library(entries, Set{String}(stamped.instance for stamped in values(entries)), nothing)
+
+"""Library cache of entries on `shelf`."""
+Library(shelf::Cache.Shelf)::Library = Library(Dict{String, Cache.Stamped}(), Set{String}(), shelf)
 
 """Library cache without entries."""
 Library()::Library = Library(Dict{String, Cache.Stamped}())
 
 """Whether `library` holds no entry."""
-Base.isempty(library::Library)::Bool = isempty(library.entries)
+Base.isempty(library::Library)::Bool = isempty(library.entries) && (isnothing(library.shelf) || library.shelf.empty)
+
+"""Entry of `library` under `key`; `nothing` without one."""
+library_entry(library::Library, key::String)::Union{Nothing, Cache.Stamped} =
+    haskey(library.entries, key) ? library.entries[key] : isnothing(library.shelf) ? nothing : Cache.shelf_entry(library.shelf, key)
+
+"""Whether `library` holds entry under `key`; reads no entry bytes."""
+holds(library::Library, key::String)::Bool = haskey(library.entries, key) || (!isnothing(library.shelf) && Cache.shelf_holds(library.shelf, key))
+
+"""Whether `library` holds entry of instance key `instance` (`instance_key!`)."""
+lists(library::Library, instance::String)::Bool = instance in library.instances || (!isnothing(library.shelf) && Cache.shelf_lists(library.shelf, instance))
 
 """
 Library cache entry: summary of variant (no callback record), variant parameters of instance, or whether

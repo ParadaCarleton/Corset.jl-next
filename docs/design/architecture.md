@@ -120,15 +120,16 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 
 ### Incremental runs and disk cache
 
-- Disk cache (`Cache`) holds one entry per checked path: key line, then serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.
+- Disk cache (`Cache`) is one SQLite database. It holds one entry per checked path: key and serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.
 - Key: SHA-256 of Julia version, `Base.CacheFlags`, checked path, serialized flags, each load path environment with Manifest and preferences, Corset source, analyzed files, and every file of project root and Manifest `path` entries.
 - Key reads file content, so fresh CI checkout hits. Names that start with dot and cache directory stay out of key.
-- Location: Corset scratch space `analyses` in Julia depot. CI that saves depot keeps cache. `--no-cache` turns cache off.
+- Location: Corset scratch space `cache` in Julia depot. CI that saves depot keeps cache. `--no-cache` turns cache off.
+- Processes share database: writer waits for lock of other writer, so no entry is lost. Other table layout starts empty database.
 - Relaunching process computes key of relaunched process (temporary environment, load path `@:@stdlib`) and asks cache first. Hit loads no package and starts no process. `fix` always relaunches.
 - Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.
 - Later: `syntax` stage findings per file, keyed by file content hash.
 - `inference` stage keeps method store per checked path beside analysis entry. Store holds one entry per inferred method and signature: reached signatures, stage facts and blind spots.
-- `effects` run adds effects record of unit to each entry (`effects.md`, Solve and cache). Library summaries keep one file per partition in directory `library`; every environment shares it (`effects.md`, Solve and cache).
+- `effects` run adds effects record of unit to each entry (`effects.md`, Solve and cache). Library summaries go by partition in same database; every environment shares them (`effects.md`, Solve and cache).
 - Entry holds plain data: spans, names, call signatures. Typed code stays inside stage, so no rule reads data that store leaves out.
 - Entry depends on content hash of file of its method, since spans hold byte offsets.
 - Entry also depends on lowered code of each package method that inference read through compiler edges, transitively. Lowered code holds macro output and `@eval` code.
@@ -136,7 +137,9 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 - Edge walk passes through dependency method whose specialization names package type or function: `map(f, xs)` with package `f` depends on `f`.
 - Entry records generated code of each `@generated` instance it read. Run calls generator again and compares.
 - Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.
-- Store key line hashes environment, Corset source, analyzed file list and package shape. Other key drops whole store.
+- Store key line hashes environment, Corset source without rule sources, analyzed file list and package shape. Other key drops whole store.
+- Corset source counts apart from analyzed files: self-lint analyzes engine files, and engine edit must drop stored facts.
+- Store key leaves Corset tree out of Manifest `path` entries, so rule edit keeps stored facts. Package that depends on Corset keeps it in: its code can call rules.
 - Package shape: signature and file of each package method, struct layouts, global types and constants. Non-analyzed files in `src`, `ext` and `deps` count too.
 - Constant counts by value when plain (number, string, symbol, immutable struct of those), by name when function or module, else by type.
 - Type counts by layout: field names and types. Struct that edit redefines serializes as before.
