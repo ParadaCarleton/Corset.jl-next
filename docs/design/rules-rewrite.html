@@ -1024,7 +1024,8 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li>Library instance: method outside package, and signature names no package type.</li>
 <li>Library summary: variant of library instance. Disk cache keeps it; cache hit skips native inference and passes.</li>
 <li>Cache also keeps variant parameters and stand-in cut of library instances.</li>
-<li>Partition: Julia version, cache flags and Corset content. One library file per partition serves every checked path and environment.</li>
+<li>Partition: Julia version, cache flags and Corset content without rule sources. Partition serves every checked path and environment.</li>
+<li>Rule sources change no summary, so rule edit keeps partition. Self-lint of Corset reruns cold only after engine edit.</li>
 <li>Entry key: kind, closure key of instance, and constants of variant. Module constant adds its owner text.</li>
 <li>Closure key: digest over strongly connected components of native edge graph, callees first. Walk order cannot change it.</li>
 <li>Node: cached code instance, else instance that run inferred. Lookup before native inference needs cached code; instance without it misses.</li>
@@ -1043,9 +1044,10 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li>Variant whose solve reaches package code or unshared variant stays out. Summary with callback record stays out: caller needs record variants too.</li>
 <li>Throw helper verdict reads every method of callee. Entry keeps each verdict its closure read; hit checks each again.</li>
 <li>Stand-in cut that inferred model types reads methods outside native edges. Store gives no key to closure that holds its instance.</li>
-<li>Library file lists instance key of each entry. Lookup walks closure only for listed instance.</li>
-<li>Write reads file again, merges new entries, and stamps hits. Entries go newest first within 128 MiB.</li>
-<li>Write goes to staging file, then rename. Concurrent writer can lose entries; file stays whole. Directory keeps newest 4 library files.</li>
+<li>Library table indexes instance key of each entry. Lookup walks closure only for listed instance.</li>
+<li>Run reads entries one at a time from cache database. Hit deserializes its entry only.</li>
+<li>Write adds new entries and stamps hits in one transaction. Entries go newest first within 128 MiB.</li>
+<li>Database keeps newest 4 partitions.</li>
 <li>Run that skipped crashed instance stores nothing: its blind spot holds for that run only.</li>
 <li>Package summary: method store entry keeps effects record of unit beside <code>Inferred</code>, with same invalidation.</li>
 <li>Record: accesses with spans, holds, call facts, blind spots and cuts. Call fact names callee methods by signature, since deserialized <code>Method</code> is new object.</li>
@@ -1270,15 +1272,16 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <p>UI cases for rules after <code>syntax</code>: case directory holds package (Project.toml with <code>name</code> and <code>uuid</code>, <code>src/</code>). Harness loads it in test process under unique name. Fixture that extends function it does not own (<code>piracy</code>) adds only methods no other case calls, so later cases see same dispatch.</p>
 </div><div class="decision"><h3>Incremental runs and disk cache</h3>
 <ul>
-<li>Disk cache (<code>Cache</code>) holds one entry per checked path: key line, then serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.</li>
+<li>Disk cache (<code>Cache</code>) is one SQLite database. It holds one entry per checked path: key and serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.</li>
 <li>Key: SHA-256 of Julia version, <code>Base.CacheFlags</code>, checked path, serialized flags, each load path environment with Manifest and preferences, Corset source, analyzed files, and every file of project root and Manifest <code>path</code> entries.</li>
 <li>Key reads file content, so fresh CI checkout hits. Names that start with dot and cache directory stay out of key.</li>
-<li>Location: Corset scratch space <code>analyses</code> in Julia depot. CI that saves depot keeps cache. <code>--no-cache</code> turns cache off.</li>
+<li>Location: Corset scratch space <code>cache</code> in Julia depot. CI that saves depot keeps cache. <code>--no-cache</code> turns cache off.</li>
+<li>Processes share database: writer waits for lock of other writer, so no entry is lost. Other table layout starts empty database.</li>
 <li>Relaunching process computes key of relaunched process (temporary environment, load path <code>@:@stdlib</code>) and asks cache first. Hit loads no package and starts no process. <code>fix</code> always relaunches.</li>
 <li>Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.</li>
 <li>Later: <code>syntax</code> stage findings per file, keyed by file content hash.</li>
 <li><code>inference</code> stage keeps method store per checked path beside analysis entry. Store holds one entry per inferred method and signature: reached signatures, stage facts and blind spots.</li>
-<li><code>effects</code> run adds effects record of unit to each entry (<code>effects.md</code>, Solve and cache). Library summaries keep one file per partition in directory <code>library</code>; every environment shares it (<code>effects.md</code>, Solve and cache).</li>
+<li><code>effects</code> run adds effects record of unit to each entry (<code>effects.md</code>, Solve and cache). Library summaries go by partition in same database; every environment shares them (<code>effects.md</code>, Solve and cache).</li>
 <li>Entry holds plain data: spans, names, call signatures. Typed code stays inside stage, so no rule reads data that store leaves out.</li>
 <li>Entry depends on content hash of file of its method, since spans hold byte offsets.</li>
 <li>Entry also depends on lowered code of each package method that inference read through compiler edges, transitively. Lowered code holds macro output and <code>@eval</code> code.</li>

@@ -133,13 +133,15 @@ Effects facts of `package` from inference `units`, their blind spots, and effect
 instances.
 """
 function effects_facts(package::PackageFacts, units::Inference.Units, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, Effects.UnitEffects}}}
-    library_directory = isnothing(cache) ? "" : Cache.library_directory(cache)
-    partition = isnothing(cache) ? "" : Cache.partition_key(string(VERSION), DEPOT_PATH)
-    library = Effects.Library(isnothing(cache) ? Dict{String, Cache.Stamped}() : Cache.read_library(library_directory, partition))
-    solve(journal::Union{Nothing, Inference.Journal}) = Effects.cached_effects(package, units, journal, library)
-    facts, spots, records, found, hits = isnothing(directory) ? solve(nothing) : journaled(solve, directory)
-    isnothing(cache) || Cache.keep_library!(library_directory, partition, found.entries, hits, Cache.LIBRARY_BYTES)
-    return facts, spots, records
+    solve(library::Effects.Library) = (journal::Union{Nothing, Inference.Journal}) -> Effects.cached_effects(package, units, journal, library)
+    solved(library::Effects.Library)::Tuple = isnothing(directory) ? solve(library)(nothing) : journaled(solve(library), directory)
+    isnothing(cache) && return solved(Effects.Library())[1:3]
+    partition = Cache.partition_key(string(VERSION), DEPOT_PATH)
+    return Cache.with_database(cache) do db
+        facts, spots, records, found, hits = solved(Effects.Library(Cache.Shelf(db, partition)))
+        Cache.keep_library!(db, partition, found.entries, hits, Cache.LIBRARY_BYTES)
+        (facts, spots, records)
+    end
 end
 
 """

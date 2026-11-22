@@ -13,6 +13,8 @@ using Moshi.Data: isa_variant
 using Serialization: deserialize
 using Random: RandomDevice
 
+include("cache_database.jl")
+
 const CASE = joinpath(@__DIR__, "effects", "EffectsCases")
 
 """Fixture module, files and package facts of `EffectsCases`, loaded with case on load path."""
@@ -334,20 +336,21 @@ end
         mktempdir(@__DIR__) do cache
             staged(effects::Bool)::Tuple = Corset.Engine.stage_facts(CASE, PACKAGE, FILES, true, effects, cache, nothing)
             entry = Corset.Engine.method_entry(CASE)
-            store() = Cache.lookup(Store, cache, entry, readline(Cache.entry(cache, entry)))
+            store() = Cache.lookup(Store, cache, entry, something(Cache.stored_key(cache, entry)))
+            partitions() = cache_column(cache, "SELECT partition FROM partitions", ())
             # Inference run keeps no records; effects run infers their units again.
             @test isnothing(staged(false)[3]) && all(found -> isempty(found.effects), values(store()))
             _, _, facts, spots = staged(true)
             @test fact_text(facts) == fact_text(FACTS) && spots == SPOTS && all(found -> !isempty(found.effects), values(store()))
-            @test length(readdir(Cache.library_directory(cache))) == 1
+            @test length(partitions()) == 1
             # Stored entries keep their records through inference run.
             staged(false)
             @test all(found -> !isempty(found.effects), values(store()))
             # Fresh units with library summaries, then stored units only.
-            rm(Cache.entry(cache, entry))
+            forget!(cache, entry)
             @test fact_text(staged(true)[3]) == fact_text(FACTS)
             @test fact_text(staged(true)[3]) == fact_text(FACTS)
-            @test length(readdir(Cache.library_directory(cache))) == 1
+            @test length(partitions()) == 1
         end
         mktempdir(@__DIR__) do directory
             mktempdir(@__DIR__) do cache
