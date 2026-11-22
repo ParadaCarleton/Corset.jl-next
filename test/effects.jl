@@ -1100,10 +1100,45 @@ four_way(x::Symbol) = x
         flow.backing[holder] = Targets(detour => BLIND_DOUBT, memory => NO_DOUBT)
         flow.backing[detour], flow.backing[memory] = Targets(memory => NO_DOUBT), Targets()
         flow.heap[detour], flow.heap[memory] = Dict{Step.Type, Targets}(), Dict{Step.Type, Targets}(Step.Element() => element)
-        flow.stale = true
+        for origin in (holder, detour, memory)
+            Effects.invalidate!(flow, (origin, nothing, true))
+            Effects.invalidate!(flow, (origin, Step.Element(), false))
+        end
         @test load(flow, Targets(holder => NO_DOUBT), Step.Element()) == element
         @test load_any(flow, Targets(detour => BLIND_DOUBT, memory => NO_DOUBT)) == element
     end
+    # A call with many stores reuses traces of other slots on the same object.
+    many = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
+    summary = empty_summary()
+    prefix = Step.Field(:chain)
+    root = global_place(@__MODULE__, :NESTED)
+    for index in 1:40
+        place = Place.At(Root.Global(GlobalRef(@__MODULE__, :NESTED)), Step.Type[prefix, Step.Position(index)])
+        summary.edges[(Node.Placed(root), Step.Position(index))] = Nodes(Node.Placed(place) => NO_DOUBT)
+    end
+    Effects.apply_stores!(many, CallSite(Targets[], Sources[], 1, 0), summary)
+    @test haskey(many.follows, (Origin.Caller(root), prefix))
+    @test length(many.follows) >= 40
+    # This fixture executes 41 traces; allow headroom for changes in path handling.
+    @test many.traces <= 60
+    # A backing-chain mutation invalidates every trace that reaches the changed origin.
+    chain = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
+    first_memory, second_memory = Targets(Origin.Allocation(101) => NO_DOUBT), Targets(Origin.Allocation(102) => NO_DOUBT)
+    store_backing!(chain, first_memory, second_memory)
+    @test isempty(load(chain, first_memory, Step.Element()))
+    store!(chain, second_memory, Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
+    @test load(chain, first_memory, Step.Element()) == Targets(Origin.Unknown() => NO_DOUBT)
+    spread = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
+    @test isempty(load(spread, first_memory, Step.Field(:x))) && isempty(load(spread, first_memory, Step.Field(:y)))
+    store!(spread, first_memory, nothing, Targets(Origin.Unknown() => NO_DOUBT))
+    @test load(spread, first_memory, Step.Field(:x)) == Targets(Origin.Unknown() => NO_DOUBT)
+    @test load(spread, first_memory, Step.Field(:y)) == Targets(Origin.Unknown() => NO_DOUBT)
+    # A retained trace still charges the work of a global cache flush.
+    limited = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, 2)
+    @test isempty(load(limited, first_memory, Step.Element()))
+    store!(limited, second_memory, Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
+    @test isempty(load(limited, first_memory, Step.Element()))
+    @test limited.traces == 1 && limited.work == 3 && over_budget(limited)
     # Type sources: parameter of caller place, sources of chain; global and merge of fresh objects are doubt in code.
     held_global = Origin.Caller(global_place(@__MODULE__, :HOLDER))
     none = Sources(0)
