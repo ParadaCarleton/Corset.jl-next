@@ -1139,7 +1139,7 @@ four_way(x::Symbol) = x
     store!(limited, second_memory, Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
     @test isempty(load(limited, first_memory, Step.Element()))
     @test limited.traces == 1 && limited.work == 3 && over_budget(limited)
-    # Long backing chains keep at most 64 origins of dependencies per trace.
+    # Long traces stay indexed until the flow membership budget fills.
     long = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
     memories = [Targets(Origin.Allocation(index) => NO_DOUBT) for index in 1001:2000]
     for index in 1:(length(memories) - 1)
@@ -1147,15 +1147,17 @@ four_way(x::Symbol) = x
     end
     @test all(isempty(load(long, memory, Step.Element())) for memory in memories)
     memberships = sum(length, values(long.dependents); init = 0)
-    @test memberships == 3 * sum(1:Effects.TRACE_ORIGIN_LIMIT) == 6240
-    @test length(long.coarse) == 1000 - Effects.TRACE_ORIGIN_LIMIT
+    @test memberships == long.memberships && memberships <= Effects.TRACE_MEMBERSHIP_LIMIT
+    @test memberships > 6240 && !isempty(long.coarse)
     @test long.traces == 1000
     @test isempty(load(long, first(memories), Step.Element())) && long.traces == 1000
     store!(long, Targets(Origin.Allocation(2001) => NO_DOUBT), Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
-    @test isempty(long.coarse) && length(long.follows) == Effects.TRACE_ORIGIN_LIMIT
-    @test isempty(load(long, first(memories), Step.Element())) && long.traces == 1001
+    @test isempty(long.coarse) && haskey(long.follows, (Origin.Allocation(1001), Step.Element()))
+    @test isempty(load(long, first(memories), Step.Element())) && long.traces == 1000
     store!(long, last(memories), Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
-    @test load(long, first(memories), Step.Element()) == Targets(Origin.Unknown() => NO_DOUBT)
+    expected = Effects.trace(long, Origin.Allocation(1001), Step.Element()).targets
+    @test load(long, first(memories), Step.Element()) == expected == Targets(Origin.Unknown() => NO_DOUBT)
+    @test long.memberships == sum(length, values(long.dependents); init = 0)
     # Type sources: parameter of caller place, sources of chain; global and merge of fresh objects are doubt in code.
     held_global = Origin.Caller(global_place(@__MODULE__, :HOLDER))
     none = Sources(0)
