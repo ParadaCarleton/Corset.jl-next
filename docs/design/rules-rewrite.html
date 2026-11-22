@@ -1291,6 +1291,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li>Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.</li>
 <li>Store key line hashes environment, Corset source without rule sources, analyzed file list and package shape. Other key drops whole store.</li>
 <li>Corset source counts apart from analyzed files: self-lint analyzes engine files, and engine edit must drop stored facts.</li>
+<li>Store key leaves Corset tree out of Manifest <code>path</code> entries, so rule edit keeps stored facts. Package that depends on Corset keeps it in: its code can call rules.</li>
 <li>Package shape: signature and file of each package method, struct layouts, global types and constants. Non-analyzed files in <code>src</code>, <code>ext</code> and <code>deps</code> count too.</li>
 <li>Constant counts by value when plain (number, string, symbol, immutable struct of those), by name when function or module, else by type.</li>
 <li>Type counts by layout: field names and types. Struct that edit redefines serializes as before.</li>

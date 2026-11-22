@@ -139,6 +139,7 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 - Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.
 - Store key line hashes environment, Corset source without rule sources, analyzed file list and package shape. Other key drops whole store.
 - Corset source counts apart from analyzed files: self-lint analyzes engine files, and engine edit must drop stored facts.
+- Store key leaves Corset tree out of Manifest `path` entries, so rule edit keeps stored facts. Package that depends on Corset keeps it in: its code can call rules.
 - Package shape: signature and file of each package method, struct layouts, global types and constants. Non-analyzed files in `src`, `ext` and `deps` count too.
 - Constant counts by value when plain (number, string, symbol, immutable struct of those), by name when function or module, else by type.
 - Type counts by layout: field names and types. Struct that edit redefines serializes as before.

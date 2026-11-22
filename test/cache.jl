@@ -86,6 +86,48 @@ end
             # Engine counts though analyzed files hold it: Corset that checks itself must not reuse facts of old engine.
             corset = [joinpath(Corset.Launch.corset_root(), "src", "Corset.jl")]
             @test key(["shape"], corset, "engine") != key(["shape"], corset, "edited engine")
+            # Manifest `path` entry of Corset leaves its tree out, so rule edits keep stored facts; package that reaches Corset keeps it.
+            home, other, real = Corset.Launch.corset_root(), joinpath(scratch, "environment"), realpath(root)
+            code = joinpath.(real, ["src", "ext", "deps"])
+            @test Cache.store_trees([home, joinpath(home, "src"), other, root], real, false) == [other; code]
+            @test Cache.store_trees([home, other, root], real, true) == [home, other, code...]
+        end
+    end
+
+    @testset "reaches Corset" begin
+        mktempdir(@__DIR__) do scratch
+            root, environment = joinpath.(scratch, ["root", "environment"])
+            corset, uuid = Corset.Launch.corset_root(), Base.UUID(rand(UInt128))
+            write_files(root, "Project.toml" => "[deps]\nCorset = \"$(Base.PkgId(Corset).uuid)\"\n")
+            entries(link::String) = """
+            manifest_format = "2.0"
+
+            [[deps.A]]
+            deps = ["B"]
+            path = "../root"
+            uuid = "$uuid"
+
+            [[deps.B]]
+            uuid = "$(Base.UUID(rand(UInt128)))"
+            $link
+
+            [[deps.Corset]]
+            path = $(repr(corset))
+            uuid = "$(Base.PkgId(Corset).uuid)"
+            """
+            project = joinpath(environment, "Project.toml")
+            write_files(environment, "Project.toml" => "", "Manifest.toml" => entries("[deps.B.deps]\nCorset = \"$(Base.PkgId(Corset).uuid)\""))
+            @test Cache.reaches_corset([project], realpath(root))
+            write_files(environment, "Manifest.toml" => entries("deps = []"))
+            @test !Cache.reaches_corset([project], realpath(root))
+            # Corset as weak dependency triggers extension that can call rules.
+            write_files(environment, "Manifest.toml" => entries("weakdeps = [\"Corset\"]"))
+            @test Cache.reaches_corset([project], realpath(root))
+            # Unknown reach counts as reach: package absent from load path, or project without Manifest.
+            @test Cache.reaches_corset(String[], realpath(root)) && Cache.reaches_corset([joinpath(root, "Project.toml")], realpath(root))
+            # Environment project at root starts from its own deps.
+            write_files(root, "Manifest.toml" => entries("deps = []"))
+            @test Cache.reaches_corset([joinpath(root, "Project.toml")], realpath(root))
         end
     end
 

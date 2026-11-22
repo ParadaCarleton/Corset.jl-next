@@ -99,11 +99,64 @@ code loads from (`src`, `ext`, `deps`) but `files` leave out. Store entries coun
 """
 function method_key(path::String, root::String, files::Vector{String}, shape::Vector{String}, load_path::Vector{String}, engine::String, cache::String)::String
     parts, listed, trees = environment_inputs(load_path)
-    root, source = realpath(root), realpath(joinpath(corset_root(), "src"))
-    kept = [filter(tree -> !(ispath(tree) && realpath(tree) in (root, source)), trees); joinpath.(root, ["src", "ext", "deps"])]
+    root = realpath(root)
     analyzed = Set(ispath(file) ? realpath(file) : file for file in files)
-    outside = filter(file -> !(file in analyzed), found_files(listed, kept, cache))
+    outside = filter(file -> !(file in analyzed), found_files(listed, store_trees(trees, root, reaches_corset(load_path, root)), cache))
     return digest([string(VERSION), repr(Base.CacheFlags()), path, engine, parts..., files..., shape...], outside)
+end
+
+"""
+Trees of method store key: environment `trees` without analyzed project `root`, then package code directories of
+`root`. Corset tree stays out unless package code `reaches` it: `engine` counts it then, without rule sources.
+"""
+function store_trees(trees::Vector{String}, root::String, reaches::Bool)::Vector{String}
+    corset = realpath(corset_root())
+    own = reaches ? (root,) : (root, corset, joinpath(corset, "src"))
+    return [filter(tree -> !(ispath(tree) && realpath(tree) in own), trees); joinpath.(root, ["src", "ext", "deps"])]
+end
+
+"""
+Whether package at `root` can depend on Corset, directly or through other packages, in environments of `load_path`.
+Package starts from environment project at `root` or Manifest `path` entry of `root`; same-named entries all count.
+Weak dependencies count: extension they trigger is package code too. Unknown reach counts as reach: `root` absent from
+`load_path`, or dependency without Manifest entry.
+"""
+function reaches_corset(load_path::Vector{String}, root::String)::Bool
+    corset, located = string(Base.PkgId(Base.moduleroot(@__MODULE__)).uuid), false
+    for environment in filter(isfile, load_path)
+        manifest = Base.project_file_manifest_path(environment)
+        deps = isnothing(manifest) ? Dict{String, Any}() : Base.get_deps(TOML.parsefile(manifest))
+        at_root(entry::Dict{String, Any})::Bool = haskey(entry, "path") && (path = abspath(dirname(manifest), entry["path"]); ispath(path) && realpath(path) == root)
+        todo = String[name for (name, entries) in deps if any(at_root, entries)]
+        own = realpath(dirname(environment)) == root
+        own && append!(todo, dependency_names(TOML.parsefile(environment)))
+        (own || !isempty(todo)) || continue
+        located, seen = true, Set{String}()
+        while !isempty(todo)
+            name = pop!(todo)
+            name in seen && continue
+            push!(seen, name)
+            haskey(deps, name) || return true
+            for entry in deps[name]
+                !at_root(entry) && get(entry, "uuid", "") == corset && return true
+                append!(todo, dependency_names(entry))
+            end
+        end
+    end
+    return !located
+end
+
+"""
+Names in `deps` and `weakdeps` of project or Manifest entry: weak dependency can trigger extension that calls it. Field
+holds list of names, or table from name to uuid.
+"""
+function dependency_names(entry::Dict{String, Any})::Vector{String}
+    names = String[]
+    for field in ("deps", "weakdeps")
+        listed = get(entry, field, String[])
+        append!(names, listed isa Dict ? keys(listed) : listed)
+    end
+    return names
 end
 
 """SHA-256 of `parts`, then of path and content of each of `files`. Missing file counts too: file that appears changes digest."""
