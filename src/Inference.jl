@@ -222,7 +222,7 @@ function mappings(code::Core.CodeInfo, instance::Core.MethodInstance, site::Meth
     # Inference wraps unreached statements in `Core.Const`. TypedSyntax.jl maps only statements later code reads, so it
     # would skip call that never returns; unwrapped copy shows those reads.
     unwrapped = copy(code)
-    unwrapped.code = Any[statement isa Core.Const ? statement.val : statement for statement in code.code]
+    unwrapped.code = Any[Widening.unwrapped(statement) for statement in code.code]
     # Barrier: package that loads later invalidates TypedSyntax.jl line lookup (`promote_rule`), which would take caller too.
     mapped = Base.inferencebarrier(TypedSyntax.map_ssas_to_source)(unwrapped, instance, site.node, 0)[1]::Vector{Vector{TypedSyntax.MaybeTypedSyntaxNode}}
     return [collect(SyntaxNode, found) for found in mapped]
@@ -301,12 +301,14 @@ lowers to `hvcat((2, 2), x, 0.5, 1, 2)`.
 """
 function weak_node(code::Core.CodeInfo, node::Union{Nothing, SyntaxNode}, origin::Widening.Origin, file::SyntaxFile)::Union{Nothing, SyntaxNode}
     isnothing(node) && return nothing
+    # Origin from later widening round can sit in statement original inference left unreached.
+    statement = Widening.unwrapped(code.code[origin.index])
     if origin.position == 0
         kind_name(node) == "=" && return children_of(node)[2]
         # Mapping that gives variable name holds no value.
-        return source(file, node) == string(code.slotnames[(code.code[origin.index]::Expr).args[1].id]) ? nothing : node
+        return source(file, node) == string(code.slotnames[(statement::Expr).args[1].id]) ? nothing : node
     end
-    call = something(statement_call(code.code[origin.index]))
+    call = something(statement_call(statement))
     name, kind = callee_name(code, call), kind_name(node)
     # Product `2x` and array literal `[x, 0.5]` name no callee.
     if kind == "juxtapose" || (kind in ("vect", "hcat", "vcat") && name === Symbol(kind))
@@ -476,7 +478,7 @@ function disruptions(typed::TypedCode, instance::Core.MethodInstance, nodes::Vec
     for change in changes
         origin, file = change.origin, typed.site.file
         node = weak_node(typed.code, nodes[origin.index], origin, file)
-        statement = typed.code.code[origin.index]
+        statement = Widening.unwrapped(typed.code.code[origin.index])
         variable = origin.kind == Weak.variable ? string(typed.code.slotnames[(statement::Expr).args[1].id]) : ""
         confidence = branch || isnothing(node) ? Confidence.possible : Confidence.definite
         # Statement node that cannot narrow may be wrong one (`hvcat` maps to last row), so line stands for it.
