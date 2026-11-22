@@ -323,7 +323,7 @@ Summary of instance with `count` parameters engine cannot analyze, for blind spo
 every parameter, result anywhere.
 """
 function open_summary(count::Int, cause::String)::Summary
-    places = [Place.At(Root.Parameter(position), Step.Type[]) for position in 1:count]
+    places = [Place.At(Root.Parameter(position), NO_STEPS) for position in 1:count]
     effects = Accesses((place, true, EffectKind.memory) => Effect(BLIND_DOUBT, 0, cause) for place in places)
     result = Nodes(Node.Placed(place) => BLIND_DOUBT for place in places)
     result[Node.Outside()] = BLIND_DOUBT

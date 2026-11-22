@@ -21,9 +21,37 @@ object open call returns, global included.
 end
 @derive Root[Show]
 
+"""Read-only access steps and their precomputed hash."""
+struct PlaceSteps <: AbstractVector{Step.Type}
+    steps::Vector{Step.Type}
+    fingerprint::UInt
+    """Copy `steps` and cache their hash."""
+    function PlaceSteps(steps::AbstractVector{Step.Type})::PlaceSteps
+        copied = Vector{Step.Type}(steps)
+        return new(copied, steps_hash(copied, UInt(0)))
+    end
+    """Path of `steps` then `step`: one allocation; hash extends hash of `steps`."""
+    function PlaceSteps(steps::PlaceSteps, step::Step.Type)::PlaceSteps
+        return new([getfield(steps, :steps); step], hash(step, getfield(steps, :fingerprint)))
+    end
+end
+
+"""Copy `steps` into a read-only path."""
+Base.convert(::Type{PlaceSteps}, steps::AbstractVector{Step.Type})::PlaceSteps = PlaceSteps(steps)
+"""Fields are private: steps behind cached hash must not change. Code inside `Facts` reads them with `getfield`."""
+Base.getproperty(::PlaceSteps, name::Symbol)::Union{} = throw(ArgumentError("PlaceSteps field `$name` is private"))
+"""Size of `steps`."""
+Base.size(steps::PlaceSteps)::Tuple{Int} = (length(getfield(steps, :steps)),)
+"""Step at `index` in `steps`."""
+Base.getindex(steps::PlaceSteps, index::Int)::Step.Type = getfield(steps, :steps)[index]
+"""Index `PlaceSteps` by position."""
+Base.IndexStyle(::Type{PlaceSteps})::IndexLinear = IndexLinear()
+"""Show `steps` as a vector."""
+Base.show(io::IO, steps::PlaceSteps)::Nothing = show(io, getfield(steps, :steps))
+
 """Object reached from root: exact `At` path, or `Deep`: some object below root past exact path."""
 @data Place begin
-    At(Root.Type, Vector{Step.Type})
+    At(Root.Type, PlaceSteps)
     Deep(Root.Type)
 end
 @derive Place[Show]
@@ -72,19 +100,22 @@ Base.hash(root::Root.Type, seed::UInt)::UInt = @match root begin
     Root.Elsewhere() => hash(0x13, seed)
 end
 
-"""Hash of `place`: variant tag, root, then each step."""
+"""Hash of `place`: variant tag, root, then precomputed steps hash."""
 Base.hash(place::Place.Type, seed::UInt)::UInt = @match place begin
-    Place.At(root, steps) => steps_hash(steps, hash(root, hash(0x21, seed)))
+    Place.At(root, steps) => hash(getfield(steps, :fingerprint), hash(root, hash(0x21, seed)))
     Place.Deep(root) => hash(root, hash(0x22, seed))
 end
 
 """Hash of `steps` after `seed`, one step at a time."""
-function steps_hash(steps::Vector{Step.Type}, seed::UInt)::UInt
+function steps_hash(steps::AbstractVector{Step.Type}, seed::UInt)::UInt
     for step in steps
         seed = hash(step, seed)
     end
     return seed
 end
+
+"""Empty path; read-only, so every root place shares it."""
+const NO_STEPS = PlaceSteps(Step.Type[])
 
 """Steps of longest exact path; declared field types collapse most paths earlier (`effects.md`, Origins and points-to)."""
 const PATH_DEPTH = 8

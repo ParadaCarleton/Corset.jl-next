@@ -2,7 +2,7 @@
 function access_place(origin::Origin.Type)::Union{Nothing, Place.Type}
     return @match origin begin
         Origin.Caller(place) => place
-        Origin.Unknown() => Place.At(Root.Elsewhere(), Step.Type[])
+        Origin.Unknown() => Place.At(Root.Elsewhere(), NO_STEPS)
         Origin.Allocation(_) => nothing
     end
 end

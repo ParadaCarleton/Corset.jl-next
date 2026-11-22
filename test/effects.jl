@@ -1020,6 +1020,20 @@ four_way(x::Symbol) = x
     @test root_of(Place.Deep(Root.Elsewhere())) == Root.Elsewhere()
     # Equality by matching: each variant equals copy of itself and no other value; `isequal` agrees with `==`.
     at = Place.At(Root.Parameter(2), Step.Type[Step.Field(:a)])
+    mutable_steps = Step.Type[Step.Field(:a)]
+    stable = Place.At(Root.Parameter(2), mutable_steps)
+    empty!(mutable_steps)
+    @test stable == at && all(seed -> hash(stable, seed) == hash(at, seed), UInt[0, 1, typemax(UInt)])
+    @test get(Dict(stable => 7), at, 0) == 7
+    path = Facts.PlaceSteps(Step.Type[Step.Field(:a)])
+    @test_throws ArgumentError path.steps
+    @test_throws ArgumentError path.fingerprint
+    @test_throws Base.CanonicalIndexError setindex!(path, Step.Field(:b), 1)
+    # Extended path equals and hashes as path built at once.
+    extended = Facts.PlaceSteps(Facts.PlaceSteps(path, Step.Element()), Step.Position(1))
+    whole = Facts.PlaceSteps(Step.Type[Step.Field(:a), Step.Element(), Step.Position(1)])
+    @test extended == whole && hash(Place.At(Root.Parameter(2), extended)) == hash(Place.At(Root.Parameter(2), whole)) && length(path) == 1
+    @test Place.At(Root.Elsewhere(), Facts.NO_STEPS) == Place.At(Root.Elsewhere(), Step.Type[])
     groups = (
         [Step.Field(:a), Step.Field(:b), Step.Position(1), Step.Element()],
         [Root.Parameter(2), Root.Global(GlobalRef(Base, :stdout)), Root.Elsewhere()],

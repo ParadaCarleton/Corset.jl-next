@@ -57,7 +57,7 @@ function result_aliases(summary::Summary)::Vector{Place.Type}
         push!(seen, node)
         @match node begin
             Node.Placed(place) => push!(found, place)
-            Node.Outside() => push!(found, Place.At(Root.Elsewhere(), Step.Type[]))
+            Node.Outside() => push!(found, Place.At(Root.Elsewhere(), NO_STEPS))
             Node.Fresh(_) => append!(pending, node_contents(summary, node))
         end
     end
@@ -82,7 +82,7 @@ function lock_writes(summary::Summary, span_of::Function, kind_of::Function)::Tu
         resource == Resource.lock || continue
         place = @match node begin
             Node.Placed(place) => place
-            Node.Outside() => Place.At(Root.Elsewhere(), Step.Type[])
+            Node.Outside() => Place.At(Root.Elsewhere(), NO_STEPS)
             Node.Fresh(_) => nothing
         end
         isnothing(place) && continue
