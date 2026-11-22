@@ -115,11 +115,9 @@ function argument_settings()::ArgParseSettings
             action = :store_true
         end
     end
-    for command in ("check", "fix")
-        @add_arg_table! settings[command] begin
-            "--output"
-            help = "write report to file"
-        end
+    @add_arg_table! settings["check"] begin
+        "--output"
+        help = "write report to file"
     end
     @add_arg_table! settings["fix"] begin
         "--tier"
@@ -140,8 +138,8 @@ that resolves to analyzed source fails as usage error.
 """
 function finish_output(command::String, settings::Settings, analyzed::Analysis, out::IO, err::IO, format::String, file::Union{Nothing, String})::Int
     isnothing(file) && return finish(command, settings, analyzed, out, err, format)
-    target = ispath(file) ? realpath(file) : abspath(file)
-    any(source -> ispath(source) && realpath(source) == target, analyzed.files) && throw(UsageError("--output $file is analyzed source"))
+    # `samefile` compares device and inode, so symbolic and hard links count too.
+    ispath(file) && any(source -> ispath(source) && samefile(source, file), analyzed.files) && throw(UsageError("--output $file is analyzed source"))
     report = IOBuffer()
     code = finish(command, settings, analyzed, report, err, format)
     write(file, take!(report))

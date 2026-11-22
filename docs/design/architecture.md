@@ -90,7 +90,7 @@ Flag `--format` accepts `text`, `json`, or `sarif`.
 Flag `--tier` selects `safe`, `likely`, or `breaking` fixes.
 Flag `--no-cache` disables cache.
 Flag `--effects` runs effects stage without an effects rule.
-Flag `--output` writes report to named file.
+Flag `--output` of `check` writes report to named file. Output file that is analyzed source, also through link, fails (exit 2).
 
 Install: `pkg> app add Corset` puts `corset` on PATH (Julia app); `julia -m Corset` runs same entry point. Text output ends with count line (errors, warnings, baselined), then coverage line. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.
 

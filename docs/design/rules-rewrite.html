@@ -1256,7 +1256,7 @@ Flag <code>--format</code> accepts <code>text</code>, <code>json</code>, or <cod
 Flag <code>--tier</code> selects <code>safe</code>, <code>likely</code>, or <code>breaking</code> fixes.
 Flag <code>--no-cache</code> disables cache.
 Flag <code>--effects</code> runs effects stage without an effects rule.
-Flag <code>--output</code> writes report to named file.</p>
+Flag <code>--output</code> of <code>check</code> writes report to named file. Output file that is analyzed source, also through link, fails (exit 2).</p>
 <p>Install: <code>pkg&gt; app add Corset</code> puts <code>corset</code> on PATH (Julia app); <code>julia -m Corset</code> runs same entry point. Text output ends with count line (errors, warnings, baselined), then coverage line. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.</p>
 <p>Files, as Cargo picks targets:</p>
 <ul>

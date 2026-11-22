@@ -615,14 +615,17 @@ end
 
 @testset "output path" begin
     mktempdir(@__DIR__) do scratch
-        script, link, report = joinpath.(scratch, ["script.jl", "link.jl", "report.txt"])
+        script, link, hard, report = joinpath.(scratch, ["script.jl", "link.jl", "hard.txt", "report.txt"])
         write(script, "x = 1\n")
         symlink(script, link)
-        # Output on analyzed source, also through symbolic link, fails and keeps source.
-        for target in (script, link)
+        hardlink(script, hard)
+        # Output on analyzed source, also through symbolic or hard link, fails and keeps source.
+        for target in (script, link, hard)
             code, _, err = corset("check", script, "--output", target)
             @test code == 2 && occursin("analyzed source", err) && read(script, String) == "x = 1\n"
         end
         @test first(corset("check", script, "--output", report)) in (0, 1) && isfile(report)
+        # `fix` takes no output file: its edits land before any report.
+        @test first(corset("fix", script, "--output", report)) == 2
     end
 end
