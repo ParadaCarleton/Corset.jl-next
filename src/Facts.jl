@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, Weak, Exit, EffectKind
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, InferenceFacts, Step, Root, Place, Access, BlindAccess, UnguardedHold, Callee, CallFact, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, StatefulIterate, InferenceFacts, Step, Root, Place, Access, BlindAccess, UnguardedHold, Callee, CallFact, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, tuple_parameters, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -284,6 +284,15 @@ struct Disruption
 end
 
 """
+Call `iterate(s)` or `iterate(s, state)` in source, where inference types `s` as `Iterators.Stateful` (`inference` stage
+fact). `span`: call; `iterator`: text of `s`.
+"""
+struct StatefulIterate
+    span::Span
+    iterator::String
+end
+
+"""
 Type test whose narrowing `&&` or `||` chain drops (`inference` stage fact). `test`: type test term; `guard`: statement
 that branches on chain value, or chain itself; `read`: first read after guard that inference types wider. `narrowed`:
 type test proves; `found`: type inference gives read. `chain`: `&&` or `||`. `split`: guard text with one guard per
@@ -335,7 +344,8 @@ end
 """
 `inference` stage facts: calls that never return, one per statement, without explicit throws and calls of package
 methods (their own frame reports); weak values that change input type, one per span; hard-coded arrays, one per span;
-type tests whose narrowing guard drops, one per test; annotation guesses, one per cause. Typed code stays inside stage.
+type tests whose narrowing guard drops, one per test; annotation guesses, one per cause; `iterate` calls on
+`Iterators.Stateful`, one per span. Typed code stays inside stage.
 """
 struct InferenceFacts
     failing::Vector{FailingCall}
@@ -343,6 +353,7 @@ struct InferenceFacts
     hard_arrays::Vector{HardArray}
     narrowings::Vector{NarrowingLoss}
     guesses::Vector{AnnotationGuess}
+    stateful_iterates::Vector{StatefulIterate}
 end
 
 include("Facts/effects.jl")

@@ -276,7 +276,7 @@ end
                 held = first(name for (name, held) in store if first(held.file) == b)
                 span = Corset.Facts.Span(b, 1, 11, Corset.Facts.Precision.exact)
                 fake = Corset.Facts.FailingCall(span, span, "fake", Corset.Facts.Confidence.definite)
-                bytes = Corset.Inference.serialized(Corset.Inference.Inferred(Union{}, Tuple{Type, Type}[], Type[], [1 => fake], true, false, Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[]))
+                bytes = Corset.Inference.serialized(Corset.Inference.Inferred(Union{}, Tuple{Type, Type}[], Type[], [1 => fake], true, false, Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.StatefulIterate[]))
                 store[held] = Corset.Inference.Entry(store[held].file, store[held].methods, store[held].staged, bytes, store[held].effects)
                 Cache.store!(cache, store_entry, key, store)
                 write(joinpath(checked, "src", "a.jl"), first_part * "\n")
