@@ -59,8 +59,9 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
 - `getfield`, `getproperty` with constant name and `getindex` add a step to roots of their first operand.
 - Phi and pi nodes join roots of their values.
 - Alias table: library functions whose result can lie beneath an operand. Result takes `deep` place of that operand.
-  - Table: `view`, `reshape`, `vec`, `parent`, `transpose`, `adjoint`, `keys`, `values`, `pairs`, `first`, `last`, `only`, `something`, `convert`, `identity`, `Ref`, `skipmissing`, iterator wrappers (`zip`, `enumerate`, `Iterators.*`).
-  - Constructor result can hold its operands.
+  - Table: `view`, `reshape`, `vec`, `parent`, `transpose`, `adjoint`, `keys`, `values`, `pairs`, `first`, `last`, `only`, `something`, `convert`, `identity`, `skipmissing`, iterator wrappers (`zip`, `enumerate`, `Iterators.*`).
+  - Pointer conversions before foreign call: `pointer`, `cconvert`, `unsafe_convert`.
+  - Constructor result can hold its operands: `Ref(x)` holds `x`.
 - Result of other call is fresh: Base documents each function whose result shares memory with an operand.
 - Result of package call is fresh. Later: package record keeps result roots, and callers map them.
 - Result with `isbitstype` type holds no root.
@@ -69,31 +70,37 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
 
 Write sources, in order:
 
-1. Builtin store: `setfield!`, `setglobal!`, `memoryrefset!`, `swapfield!`, `modifyfield!`, `replacefield!`, `setfieldonce!`. Definite write on roots of target.
+1. Builtin store: `setfield!`, `setglobal!`, `memoryrefset!`, `swapfield!`, `modifyfield!`, `replacefield!`, `setfieldonce!`. Definite write on roots of target. Pointer store intrinsics (`pointerset`) write target or below.
 2. Call to function whose name ends in `!`. Written operand follows Julia style guide argument order:
    - Skip leading callable (`Function`, `Type`), `IO` and `AbstractRNG` operands. First other operand is written: definite.
    - Skipped `IO` operand takes IO write; skipped `AbstractRNG` operand takes RNG argument write.
-   - No operand left: definite write on unknown global state (`Random.seed!()`).
+   - No operand left: `possible` write on keyword values (`f!(; items)`); without keywords, definite write on unknown global state (`Random.seed!()`).
    - Position table holds exceptions: `ldiv!(A, B)` and `lmul!(A, B)` write `B`.
-   - `!` call stores its other operands into written operand: `push!(v, x)` puts `x` into `v`.
-3. Exception table: library functions without `!` that write. Iteration of stateful types (`Iterators.Stateful`, `Channel`, `EachLine`), IO functions on `IO` operand, locks and conditions, tasks, RNG functions, `finalizer`.
+   - `!` call stores its other operands into written operand: `push!(v, x)` puts `x` into `v`. Later load from `v` can give `x`, also when `v` is caller place.
+3. Exception table: library functions without `!` that write. Iteration of stateful types (`Iterators.Stateful`, `Channel`, `EachLine`, `Iterators` wrappers of them), IO functions on `IO` operand, locks and conditions, task switches, RNG functions.
+   - `first`, `only` and consuming table on stateful iterator write it or below. `Iterators.flatten` of stateful iterators consumes them.
 4. Foreign call: `possible` write on roots of pointer and object operands.
-5. Closure built in method (`new` of closure type): its writes through captured fields map onto captured operands, with their certainty.
+5. Closure built in method (`new` of closure type): call that can invoke it writes through captured fields onto captured operands, with their certainty.
+   - Invoking calls: direct call, and function that calls its function arguments (`foreach`, `map`, leading callable of `!` call).
+   - Builtins, constructors, tuples, alias functions and stored operands of `!` calls never invoke it. Closure that only escapes writes nothing in its builder.
+   - Call that compiler proves `effect_free` runs no closure that writes caller state (`hash(f)`). `@assume_effects` in method or its callee voids that proof.
 6. Other call: no write. Call of function value without name (callable argument or field) writes nothing too: Base names higher-order functions without `!` (`map`, `foreach`).
 
 - Value with more than one root gives `possible` write on each root: branch decides which object changes.
 - Write in package code keeps certainty on every root: `f(x::Any) = setfield!(x, :n, 0)` writes `x`.
 - Writes before throw stay. Writes to fresh objects inside error paths are local.
 - Compiler `effect_free` on unit proves no write: definite none. Else no write event gives none by name trust: at most `possible` none.
+- Stand-in signature gives no proof: compiler effects describe stand-in only. `@assume_effects :effect_free` on method, block in it, or direct callee gives none either.
+- Code coverage voids `effect_free` of tracked files: inference counts coverage counters as effects. Tests of proof rules run with coverage off.
 
 #### Reads
 
 - Load of global binding: read of global. Constant binding of mutable type counts; constant of immutable type does not.
-- `getfield` and `getproperty` read roots of their first operand. Every call reads roots of its operands.
+- Facts keep reads of globals, special kinds and iteration starts. Plain argument loads stay out: every call reads its operands.
 - RNG function without `AbstractRNG` operand: default RNG read and write.
 - `ScopedValue` read: `getindex` on `ScopedValue` or `ScopedValues.get`. Task-local state: `task_local_storage`, `current_task` fields.
 - Iteration start: `iterate` without state, `first`, `only`, generic `isempty` and destructuring start their operand.
-- Consuming table: library functions that iterate their operand (`collect`, `sum`, `map`, `filter`, `foreach`, `reduce`, `any`, `all`, `count`). Call starts its iterator operand.
+- Consuming table: library functions that iterate their operand (`collect`, `sum`, `map`, `filter`, `foreach`, `reduce`, `any`, `all`, `count`). Call starts its iterator operand, and writes stateful iterator operand.
 
 #### Effect kinds
 
@@ -107,7 +114,7 @@ Facts keep every effect with its kind. Rules apply exemptions.
 
 #### Release balance
 
-Facts keep hold count per resource at normal exit and at each statement that may throw.
+Facts keep hold count per resource at normal exit and at each statement that may throw. Lands with F98 (`phase5.md`, row 8).
 
 - Primitive table: `lock`, `unlock`, `trylock` on lock; `acquire`, `release` on `Semaphore`; `open` with `IOStream` result; `close` on `IOStream`.
 - `lock(f, l)`, `open(f, path)` and `@lock l expr` release in `finally`, which dataflow balances.

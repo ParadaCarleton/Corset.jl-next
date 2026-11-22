@@ -1,7 +1,7 @@
 """Discover files, build facts, run registered rules; apply opt-outs, levels, confidence setting and baseline."""
 module Engine
 
-using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, ProjectFacts, PackageFacts, InferenceFacts, EffectsFacts, MethodEffects, ExternalFacts
+using ..Facts: Facts, FactSet, Finding, BlindSpot, RuleEntry, Confidence, Stage, ProjectFacts, PackageFacts, InferenceFacts, EffectsFacts, ExternalFacts
 using ..Rules: REGISTRY, entry
 using ..Config: Config, Flags, Settings, Level, level_of, project_root
 using ..OptOuts: OptOuts
@@ -110,7 +110,7 @@ function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files:
     effects && !isnothing(store) && filter!(pair -> !isempty(last(pair).effects), store)
     infer(journal::Union{Nothing, Inference.Journal}) = Inference.infer_package(package, files, store, journal)
     facts, spots, units, used = isnothing(directory) ? infer(nothing) : journaled(infer, directory)
-    effects_found, effects_spots, records = effects ? effects_facts(package, units, cache, directory) : (nothing, BlindSpot[], nothing)
+    effects_found, effects_spots, records = effects ? Effects.effects_facts(package, units) : (nothing, BlindSpot[], nothing)
     isnothing(cache) || Cache.store!(cache, method_entry(path), key, isnothing(records) ? something(used) : with_records(something(used), units, records))
     return facts, spots, effects_found, effects_spots
 end
@@ -124,11 +124,6 @@ function with_records(used::Inference.Store, units::Inference.Units, records::Ve
     none = Effects.record_bytes(nothing)
     filled(key::String, entry::Inference.Entry)::Inference.Entry = Inference.Entry(entry.file, entry.methods, entry.staged, entry.inferred, get(bytes, key, none))
     return Inference.Store(key => isempty(entry.effects) ? filled(key, entry) : entry for (key, entry) in used)
-end
-
-"""Return empty effects facts and one empty record per typed unit."""
-function effects_facts(package::PackageFacts, units::Inference.Units, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, Effects.UnitEffects}}}
-    return EffectsFacts(MethodEffects[]), BlindSpot[], Union{Nothing, Effects.UnitEffects}[nothing for _ in units.typed]
 end
 
 """

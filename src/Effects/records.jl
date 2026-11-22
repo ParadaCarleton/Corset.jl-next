@@ -3,7 +3,12 @@ using Serialization: deserialize
 """Call facts of one unit, each keyed by source statement and span, in statement order."""
 const UnitCalls = Vector{Pair{Tuple{Int, Span}, CallFact}}
 
-"""Facts of one inference unit, stored with its method entry."""
+"""
+Effects of one unit for facts of its method (`effects.md`, Units and IR): accesses with cause spans, result aliases,
+holds throws skip, call facts, blind spots, compiler proof of no write (`effect_free`), and span of first stand-in cut
+(`nothing`: none). Unit that always throws on stand-ins gives no verdict (`verdict` false), only its blind spot. Method
+store entry of unit keeps record (`record_bytes`), so stored unit needs no typed code.
+"""
 struct UnitEffects
     verdict::Bool
     writes::Vector{Access}
@@ -12,8 +17,8 @@ struct UnitEffects
     unguarded::Vector{UnguardedHold}
     calls::UnitCalls
     spots::Vector{BlindSpot}
+    effect_free::Bool
     cut::Union{Nothing, Span}
-    own_cut::Bool
 end
 
 """`record` with call facts `calls`."""
@@ -65,4 +70,3 @@ function unit_record(bytes::Vector{UInt8}, world::UInt)::Union{Nothing, UnitEffe
     record, calls = stored
     return with_calls(record, UnitCalls([key => with_callee(fact, loaded_callee(callee, world)) for (key, fact, callee) in calls]))
 end
-

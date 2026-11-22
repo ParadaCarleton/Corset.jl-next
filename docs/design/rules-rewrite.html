@@ -804,8 +804,9 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Phi and pi nodes join roots of their values.</li>
 <li>Alias table: library functions whose result can lie beneath an operand. Result takes <code>deep</code> place of that operand.
 <ul>
-<li>Table: <code>view</code>, <code>reshape</code>, <code>vec</code>, <code>parent</code>, <code>transpose</code>, <code>adjoint</code>, <code>keys</code>, <code>values</code>, <code>pairs</code>, <code>first</code>, <code>last</code>, <code>only</code>, <code>something</code>, <code>convert</code>, <code>identity</code>, <code>Ref</code>, <code>skipmissing</code>, iterator wrappers (<code>zip</code>, <code>enumerate</code>, <code>Iterators.*</code>).</li>
-<li>Constructor result can hold its operands.</li>
+<li>Table: <code>view</code>, <code>reshape</code>, <code>vec</code>, <code>parent</code>, <code>transpose</code>, <code>adjoint</code>, <code>keys</code>, <code>values</code>, <code>pairs</code>, <code>first</code>, <code>last</code>, <code>only</code>, <code>something</code>, <code>convert</code>, <code>identity</code>, <code>skipmissing</code>, iterator wrappers (<code>zip</code>, <code>enumerate</code>, <code>Iterators.*</code>).</li>
+<li>Pointer conversions before foreign call: <code>pointer</code>, <code>cconvert</code>, <code>unsafe_convert</code>.</li>
+<li>Constructor result can hold its operands: <code>Ref(x)</code> holds <code>x</code>.</li>
 </ul>
 </li>
 <li>Result of other call is fresh: Base documents each function whose result shares memory with an operand.</li>
@@ -815,19 +816,29 @@ Code lives in <code>src/Effects/</code>.</p>
 <h4>Writes</h4>
 <p>Write sources, in order:</p>
 <ol>
-<li>Builtin store: <code>setfield!</code>, <code>setglobal!</code>, <code>memoryrefset!</code>, <code>swapfield!</code>, <code>modifyfield!</code>, <code>replacefield!</code>, <code>setfieldonce!</code>. Definite write on roots of target.</li>
+<li>Builtin store: <code>setfield!</code>, <code>setglobal!</code>, <code>memoryrefset!</code>, <code>swapfield!</code>, <code>modifyfield!</code>, <code>replacefield!</code>, <code>setfieldonce!</code>. Definite write on roots of target. Pointer store intrinsics (<code>pointerset</code>) write target or below.</li>
 <li>Call to function whose name ends in <code>!</code>. Written operand follows Julia style guide argument order:
 <ul>
 <li>Skip leading callable (<code>Function</code>, <code>Type</code>), <code>IO</code> and <code>AbstractRNG</code> operands. First other operand is written: definite.</li>
 <li>Skipped <code>IO</code> operand takes IO write; skipped <code>AbstractRNG</code> operand takes RNG argument write.</li>
-<li>No operand left: definite write on unknown global state (<code>Random.seed!()</code>).</li>
+<li>No operand left: <code>possible</code> write on keyword values (<code>f!(; items)</code>); without keywords, definite write on unknown global state (<code>Random.seed!()</code>).</li>
 <li>Position table holds exceptions: <code>ldiv!(A, B)</code> and <code>lmul!(A, B)</code> write <code>B</code>.</li>
-<li><code>!</code> call stores its other operands into written operand: <code>push!(v, x)</code> puts <code>x</code> into <code>v</code>.</li>
+<li><code>!</code> call stores its other operands into written operand: <code>push!(v, x)</code> puts <code>x</code> into <code>v</code>. Later load from <code>v</code> can give <code>x</code>, also when <code>v</code> is caller place.</li>
 </ul>
 </li>
-<li>Exception table: library functions without <code>!</code> that write. Iteration of stateful types (<code>Iterators.Stateful</code>, <code>Channel</code>, <code>EachLine</code>), IO functions on <code>IO</code> operand, locks and conditions, tasks, RNG functions, <code>finalizer</code>.</li>
+<li>Exception table: library functions without <code>!</code> that write. Iteration of stateful types (<code>Iterators.Stateful</code>, <code>Channel</code>, <code>EachLine</code>, <code>Iterators</code> wrappers of them), IO functions on <code>IO</code> operand, locks and conditions, task switches, RNG functions.
+<ul>
+<li><code>first</code>, <code>only</code> and consuming table on stateful iterator write it or below. <code>Iterators.flatten</code> of stateful iterators consumes them.</li>
+</ul>
+</li>
 <li>Foreign call: <code>possible</code> write on roots of pointer and object operands.</li>
-<li>Closure built in method (<code>new</code> of closure type): its writes through captured fields map onto captured operands, with their certainty.</li>
+<li>Closure built in method (<code>new</code> of closure type): call that can invoke it writes through captured fields onto captured operands, with their certainty.
+<ul>
+<li>Invoking calls: direct call, and function that calls its function arguments (<code>foreach</code>, <code>map</code>, leading callable of <code>!</code> call).</li>
+<li>Builtins, constructors, tuples, alias functions and stored operands of <code>!</code> calls never invoke it. Closure that only escapes writes nothing in its builder.</li>
+<li>Call that compiler proves <code>effect_free</code> runs no closure that writes caller state (<code>hash(f)</code>). <code>@assume_effects</code> in method or its callee voids that proof.</li>
+</ul>
+</li>
 <li>Other call: no write. Call of function value without name (callable argument or field) writes nothing too: Base names higher-order functions without <code>!</code> (<code>map</code>, <code>foreach</code>).</li>
 </ol>
 <ul>
@@ -835,15 +846,17 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Write in package code keeps certainty on every root: <code>f(x::Any) = setfield!(x, :n, 0)</code> writes <code>x</code>.</li>
 <li>Writes before throw stay. Writes to fresh objects inside error paths are local.</li>
 <li>Compiler <code>effect_free</code> on unit proves no write: definite none. Else no write event gives none by name trust: at most <code>possible</code> none.</li>
+<li>Stand-in signature gives no proof: compiler effects describe stand-in only. <code>@assume_effects :effect_free</code> on method, block in it, or direct callee gives none either.</li>
+<li>Code coverage voids <code>effect_free</code> of tracked files: inference counts coverage counters as effects. Tests of proof rules run with coverage off.</li>
 </ul>
 <h4>Reads</h4>
 <ul>
 <li>Load of global binding: read of global. Constant binding of mutable type counts; constant of immutable type does not.</li>
-<li><code>getfield</code> and <code>getproperty</code> read roots of their first operand. Every call reads roots of its operands.</li>
+<li>Facts keep reads of globals, special kinds and iteration starts. Plain argument loads stay out: every call reads its operands.</li>
 <li>RNG function without <code>AbstractRNG</code> operand: default RNG read and write.</li>
 <li><code>ScopedValue</code> read: <code>getindex</code> on <code>ScopedValue</code> or <code>ScopedValues.get</code>. Task-local state: <code>task_local_storage</code>, <code>current_task</code> fields.</li>
 <li>Iteration start: <code>iterate</code> without state, <code>first</code>, <code>only</code>, generic <code>isempty</code> and destructuring start their operand.</li>
-<li>Consuming table: library functions that iterate their operand (<code>collect</code>, <code>sum</code>, <code>map</code>, <code>filter</code>, <code>foreach</code>, <code>reduce</code>, <code>any</code>, <code>all</code>, <code>count</code>). Call starts its iterator operand.</li>
+<li>Consuming table: library functions that iterate their operand (<code>collect</code>, <code>sum</code>, <code>map</code>, <code>filter</code>, <code>foreach</code>, <code>reduce</code>, <code>any</code>, <code>all</code>, <code>count</code>). Call starts its iterator operand, and writes stateful iterator operand.</li>
 </ul>
 <h4>Effect kinds</h4>
 <p>Facts keep every effect with its kind. Rules apply exemptions.</p>
@@ -855,7 +868,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Package <code>setfieldonce!</code> and package caches follow memo-cache rule above: cheap proof or opt-out.</li>
 </ul>
 <h4>Release balance</h4>
-<p>Facts keep hold count per resource at normal exit and at each statement that may throw.</p>
+<p>Facts keep hold count per resource at normal exit and at each statement that may throw. Lands with F98 (<code>phase5.md</code>, row 8).</p>
 <ul>
 <li>Primitive table: <code>lock</code>, <code>unlock</code>, <code>trylock</code> on lock; <code>acquire</code>, <code>release</code> on <code>Semaphore</code>; <code>open</code> with <code>IOStream</code> result; <code>close</code> on <code>IOStream</code>.</li>
 <li><code>lock(f, l)</code>, <code>open(f, path)</code> and <code>@lock l expr</code> release in <code>finally</code>, which dataflow balances.</li>
@@ -1328,7 +1341,7 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 <td>Name tier</td>
 <td><code>effects</code> stage on name trust and compiler effects replaces engine; engine and library summary cache leave</td>
 <td>—</td>
-<td>—</td>
+<td>#298; done</td>
 </tr>
 <tr>
 <td>6</td>
@@ -1392,14 +1405,14 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 <ul>
 <li><code>Engine</code> runs <code>effects</code> after <code>inference</code> when enabled rule reads <code>effects</code>. Name tier replaces engine call in <code>effects_facts</code>.</li>
 <li>Facts keep <code>MethodEffects</code>, <code>Access</code>, <code>CallFact</code> and <code>UnguardedHold</code>, so rules of local effect-rules stack port.</li>
-<li>Facts drop fields name tier never fills: <code>blind_writes</code>, <code>blind_reads</code>, <code>closed_world</code>.</li>
+<li>Facts drop fields name tier never fills: <code>blind_writes</code>, <code>blind_reads</code>, <code>closed_world</code>. Method facts add compiler <code>effect_free</code>.</li>
 <li>Delete engine files, library summary cache, crash relaunch for library instances, engine diagnostics and their tests. Keep crash journal that <code>inference</code> stage reads.</li>
-<li>Tables: written operand position, alias, exception, consuming, release primitives. Each entry cites Base docstring or style guide.</li>
-<li>Method store keeps unit record; same record format as engine (<code>records.jl</code>).</li>
+<li>Tables: written operand position, alias, exception, consuming. Each entry cites Base docstring or style guide.</li>
+<li>Method store keeps unit record (<code>records.jl</code>); record drops engine fields.</li>
 </ul>
 <p>Tests:</p>
 <ul>
-<li>Fixture package <code>test/effects/EffectsCases</code>: method per write source, table entry and kind; closure capture; release primitive.</li>
+<li>Fixture package <code>test/names/NameCases</code>: method per write source, table entry and kind; closure capture.</li>
 <li>Soundness property on fixtures that follow convention: observed write needs fact.</li>
 </ul>
 <p>Done: every fixture gives expected facts; property passes; every-PR bar met.
@@ -1439,6 +1452,7 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 <li><code>impure-lambda</code> (F56): anonymous function captures mutable state.</li>
 <li><code>false-effects</code> (F58): write and read events contradict package <code>@assume_effects</code> claim.</li>
 <li><code>unguarded-release</code> (F98): effects version reads hold counts; delete syntax version in same PR.</li>
+<li>Release balance (<code>effects.md</code>) lands with F98: release primitive table, hold counts, <code>UnguardedHold</code> facts, fixture per primitive.</li>
 </ul>
 </div><div class="decision"><h3>9 <code>bang-convention</code></h3>
 <ul>

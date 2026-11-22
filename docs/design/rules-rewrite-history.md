@@ -1327,3 +1327,19 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Stopped with it: Base name contract (step 7) and shipped library summary artifact (#292).
 - Accepted cost: write through non-`!` function that breaks convention stays unseen in callers. `bang-convention` reports breach where function lives.
 - Revive engine only when name-trust misses block quality gate of a rule (`plan.md`, Design reviews).
+
+### Name tier measure
+
+Row 5 measure on winwsl (`benchmark/names.jl`): warm `effects` against cold `inference`.
+
+| Package | Methods | Inference s | Warm effects s | Ratio | Write facts | `possible` `!` writes |
+|---|---|---|---|---|---|---|
+| Distances 0.10.12 | 188 | 2.38 | 0.09 | 0.038 | 24 (12.8%) | 0 |
+| DataStructures 0.18.22 | 947 | 5.33 | 0.23 | 0.043 | 226 (23.9%) | 42 (4.4%) |
+| SpecialFunctions 2.9.2 | 499 | 7.82 | 0.12 | 0.016 | 19 (3.8%) | 18 (3.6%) |
+| StatsFuns 2.3.1 | 289 | 3.56 | 0.08 | 0.024 | 0 | 0 |
+| Distributions 0.25.135 | 956 | 18.91 | 0.28 | 0.015 | 112 (11.7%) | 0 |
+
+- Corpus total: 0.80 s warm `effects` against 38.0 s `inference`, ratio 0.021. Budget is 0.25; engine took 0.27 to 1.55.
+- Store tracking first took 2.87 s on DataStructures: exact paths through linked nodes (`left`, `right`, `parent`) grew without bound. Each root now keeps at most 16 exact places, then root and `Deep` of root.
+- Callee order key printed method signatures, and type printing searches aliases. Order now prints signature only when module, file and line tie. Distances fell from 2.06 s to 0.09 s.

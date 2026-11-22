@@ -12,7 +12,7 @@ end
 
 """
 Object access starts from: `Parameter` by argument position (1 is called function), `Global` binding, or `Elsewhere`:
-object open call returns, global included.
+global state no binding names (`Random.seed!()`, foreign call).
 """
 @data Root begin
     Parameter(Int)
@@ -117,7 +117,7 @@ end
 """Empty path; read-only, so every root place shares it."""
 const NO_STEPS = PlaceSteps(Step.Type[])
 
-"""Steps of longest exact path; declared field types collapse most paths earlier (`effects.md`, Origins and points-to)."""
+"""Steps of longest exact path; longer path collapses to `Deep` (`effects.md`, Roots)."""
 const PATH_DEPTH = 8
 
 """Source text of `step` after its object: `.field`, `[position]` or `[…]` for array element."""
@@ -129,12 +129,12 @@ end
 
 """
 Source text of `root` in `method`: argument name (closure itself for argument 1 of anonymous function), qualified
-global name, or open call result.
+global name, or global state.
 """
 root_text(method::Method, root::Root.Type)::String = @match root begin
     Root.Parameter(position) => (name = Base.method_argnames(method)[position]; name === Symbol("#self#") ? "closure" : string(name))
     Root.Global(binding) => string(binding.mod, ".", binding.name)
-    Root.Elsewhere() => "result of open call"
+    Root.Elsewhere() => "global state"
 end
 
 """Source text of `place` in `method`, as code writes path to it: `items.data[…]`; `Deep` place adds `or below`."""
@@ -152,8 +152,7 @@ end
 
 """
 Access to caller-visible object (`effects` stage fact): place, whether it covers every place below it too, kind,
-confidence, and cause span in package code. `possible` access from open call is doubt in code. `Deep` place keeps
-certainty: object lies below its root.
+confidence, and cause span in package code. `possible` access: value can hold more than one object, or foreign call.
 """
 struct Access
     place::Place.Type
@@ -165,7 +164,7 @@ end
 
 """
 Resource hold that throw skips release of (`effects` stage fact, F98): span of acquire, span of statement that may
-throw while method holds resource, and confidence: definite count, or `possible` from join of different counts.
+throw while method holds resource, and confidence: definite count, or `possible` from unknown count.
 """
 struct UnguardedHold
     acquire::Span
@@ -189,7 +188,13 @@ end
 Callee `Methods` of `methods`, each once, in source order: module, file, line, signature. Dispatch and unit merge give
 methods in varying order, so facts and their equality depend on none.
 """
-methods_callee(methods::Vector{Method})::Callee.Type = Callee.Methods(sort!(unique(methods); by = method -> (string(method.module), string(method.file), method.line, string(method.sig))))
+methods_callee(methods::Vector{Method})::Callee.Type = Callee.Methods(sort!(unique(methods); lt = source_before))
+
+"""Whether `method` comes before `other` in source order; printed signature breaks ties only, since printing type is slow."""
+function source_before(method::Method, other::Method)::Bool
+    key, other_key = (string(method.module), string(method.file), method.line), (string(other.module), string(other.file), other.line)
+    return key == other_key ? isless(string(method.sig), string(other.sig)) : isless(key, other_key)
+end
 
 """Name of function `callee` calls: method name shared by every method, or builtin name; else `nothing`."""
 callee_name(callee::Callee.Type)::Union{Nothing, String} = @match callee begin
@@ -205,20 +210,27 @@ callee_methods(callee::Callee.Type)::Union{Nothing, Vector{Method}} = @match cal
 end
 
 """
-Call statement of package method (`effects` stage fact, F54, F86): span, callee, and kinds of writes call makes at any
-certainty, holds it leaves included. Compiler effects give `throws` (may throw) and `terminates`. `used`: code reads
-result. Units of method merge: any unit that may throw, writes or uses result decides.
+Call statement of package method (`effects` stage fact, F54, F56, F86): span, callee, kinds of writes call makes at any
+certainty, and kinds of its definite writes (`definite`). Compiler effects give `throws` (may throw) and `terminates`.
+`used`: code reads result. `stand_in`: operand type holds stand-in, so compiler effects describe stand-in only. Units of
+method merge: any unit that may throw, writes or uses result decides.
 """
 struct CallFact
     span::Span
     callee::Callee.Type
     kinds::Vector{EffectKind.T}
+    definite::Vector{EffectKind.T}
     throws::Bool
     terminates::Bool
     used::Bool
+    stand_in::Bool
 end
 
-"""Effects of a package method across its inference units."""
+"""
+Effects of package method over its units (`effects.md`, Name trust): writes, reads, places its result can lie beneath
+(`aliases`), holds throws skip (`unguarded`), call statements in source order, `complete` (no unit incomplete or cut),
+`effect_free` (compiler proves every unit writes nothing caller sees), and effects its `@assume_effects` claims.
+"""
 struct MethodEffects
     site::MethodSite
     writes::Vector{Access}
@@ -227,9 +239,11 @@ struct MethodEffects
     unguarded::Vector{UnguardedHold}
     calls::Vector{CallFact}
     complete::Bool
+    effect_free::Bool
+    claims::Vector{Symbol}
 end
 
-"""`effects` stage facts: facts per package method."""
+"""`effects` stage facts: facts per package method with units."""
 struct EffectsFacts
     methods::Vector{MethodEffects}
 end
