@@ -324,7 +324,7 @@ function builtin!(flow::Flow, writes::OriginAccesses, index::Int, @nospecialize(
 end
 
 """Place of global `binding` as targets: write to binding writes it."""
-global_place(binding::GlobalRef)::Targets = Targets(Origin.Caller(Place.At(Root.Global(binding), Step.Type[])) => NO_DOUBT)
+global_place(binding::GlobalRef)::Targets = Targets(Origin.Caller(Place.At(Root.Global(binding), NO_STEPS)) => NO_DOUBT)
 
 """Read of global `binding` at statement `index`: mutable binding counts as read."""
 function read_global!(flow::Flow, index::Int, binding::GlobalRef)::Nothing

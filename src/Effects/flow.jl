@@ -79,7 +79,7 @@ stop once `work` passes `limit` (`over_budget`).
 """
 function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, message::Vector{Bool}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::Vector{Sources}, record::Bool, limit::Int)::Flow
     arguments = [
-        referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), Step.Type[])) => NO_DOUBT) : Targets()
+        referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), NO_STEPS)) => NO_DOUBT) : Targets()
             for (position, type) in enumerate(ir.argtypes)
     ]
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
@@ -219,7 +219,7 @@ null_pointer(binding::GlobalRef)::Bool = isconst(binding) && (pointer = getgloba
 """Targets of global `binding`: object caller sees there, and objects instance binds to it. Null pointer has none."""
 function global_targets(flow::Flow, binding::GlobalRef)::Targets
     null_pointer(binding) && return Targets()
-    found = Targets(Origin.Caller(Place.At(Root.Global(binding), Step.Type[])) => NO_DOUBT)
+    found = Targets(Origin.Caller(Place.At(Root.Global(binding), NO_STEPS)) => NO_DOUBT)
     add_all!(found, get(flow.bound, binding, nothing), NO_DOUBT)
     return found
 end
@@ -254,7 +254,7 @@ of its root. Collapse adds no doubt: object stays below same root (`effects.md`,
 """
 function extend(ir::CC.IRCode, place::Place.Type, step::Step.Type)::Place.Type
     return @match place begin
-        Place.At(root, steps) => (extended = [steps; step]; exact_path(ir, root, extended) ? Place.At(root, extended) : Place.Deep(root))
+        Place.At(root, steps) => (extended = PlaceSteps(steps, step); exact_path(ir, root, extended) ? Place.At(root, extended) : Place.Deep(root))
         Place.Deep(root) => place
     end
 end
@@ -267,7 +267,7 @@ Whether path `steps` below `root` in instance with IR `ir` stays exact: path fol
 at step into concrete type it already passed (recursive type), at abstract step past `ABSTRACT_STEPS` in a row, or past
 `PATH_DEPTH` steps.
 """
-function exact_path(ir::CC.IRCode, root::Root.Type, steps::Vector{Step.Type})::Bool
+function exact_path(ir::CC.IRCode, root::Root.Type, steps::AbstractVector{Step.Type})::Bool
     length(steps) <= PATH_DEPTH || return false
     type, passed, run = root_type(ir, root), Any[], 0
     for step in steps
