@@ -60,8 +60,11 @@ struct Journal
     crashed::Set{String}
 end
 
-"""Journal of `directory` open for append, with crashed keys of earlier runs."""
-open_journal(directory::String)::Journal = Journal(open(journal_file(directory), "a"), crashed(records(directory)))
+"""Journal of `directory` open for append, with crashed keys of earlier runs; reads records before open, so read error leaks no stream."""
+function open_journal(directory::String)::Journal
+    keys = crashed(records(directory))
+    return Journal(open(journal_file(directory), "a"), keys)
+end
 
 """Name of `method` with file and line, for crash note: `Newer.scaled at Newer.jl:12`."""
 method_label(method::Method)::String = "$(method.module).$(method.name) at $(basename(string(method.file))):$(method.line)"
