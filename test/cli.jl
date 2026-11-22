@@ -11,6 +11,10 @@ include("helpers.jl")
 const SARIF_SCHEMA = JSONSchema.Schema(JSON.parsefile(joinpath(@__DIR__, "fixtures", "sarif-schema-2.1.0.json")))
 
 @testset "cli check" begin
+    parsed = Corset.CLI.parse_args(["check", LIBRARY, "--effects"], Corset.CLI.argument_settings())
+    @test parsed["check"]["effects"]
+    forced = Corset.Config.settings(nothing, Corset.Config.Flags(; effects = true), Corset.Rules.REGISTRY)
+    @test Corset.Engine.needs_effects(forced) && Corset.Engine.needs_inference(forced) && Corset.Engine.needs_package(forced)
     code, out, _ = corset("check", LIBRARY)
     @test code == 1 && occursin("error[approx-zero]", out) && endswith(out, "corset: 2 errors, 1 warning, 0 baselined\ncoverage: analyzed 2 files\n")
     @test first(corset("check", LIBRARY, "-A", "approx-zero")) == 0

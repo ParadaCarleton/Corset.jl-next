@@ -386,9 +386,8 @@ function Shelf(db::SQLite.DB, partition::String, shipped::Union{Nothing, SQLite.
     return Shelf(db, partition, empty, shipped)
 end
 
-"""Use the declared summary artifact during `body`, unless an artifact build disables shipped reads."""
+"""Use the declared summary artifact during `body`, and close its read-only database afterward."""
 function with_shipped(body::Function)::Any
-    get(ENV, "CORSET_BUILD_SUMMARIES", "") == "1" && return body(nothing)
     manifest = joinpath(corset_root(), "Artifacts.toml")
     (!isfile(manifest) || !haskey(TOML.parsefile(manifest), "library_summaries")) && return body(nothing)
     artifact = ensure_artifact_installed("library_summaries", manifest)

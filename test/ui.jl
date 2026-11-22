@@ -13,7 +13,7 @@ using TOML: TOML
 const UI = joinpath(@__DIR__, "ui")
 const BLESS = get(ENV, "CORSET_BLESS", "") == "1"
 """Settings UI cases render under: library preset with restriction rules on, both confidences."""
-const UI_SETTINGS = Settings(Kind.library, Confidence.possible, Tier.breaking, Dict("restriction" => (Level.warn, "UI cases")), false, Ban[])
+const UI_SETTINGS = Settings(Kind.library, Confidence.possible, Tier.breaking, Dict("restriction" => (Level.warn, "UI cases")), false, Ban[], false)
 
 """Bans of `[Corset]` table in `config.toml` next to case, as LocalPreferences.toml holds them; none without file."""
 case_bans(directory::String)::Vector{Ban} = Corset.Config.bans(Corset.Config.read_table(joinpath(directory, "config.toml"), ("Corset",)))

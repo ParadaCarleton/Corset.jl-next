@@ -1247,7 +1247,13 @@ Build holds file lock. Next run removes lock of dead process at once when lock i
 </tr>
 </tbody>
 </table></div>
-<p>Flags: <code>-A</code>, <code>-W</code>, <code>-D &lt;rule or group&gt;</code> set levels and apply in order, as in rustc; <code>-D warnings</code> fails run on warnings; <code>--confidence definite|possible</code>; <code>--format text|json|sarif</code>; <code>--tier safe|likely|breaking</code> for <code>fix</code>; <code>--no-cache</code>.</p>
+<p>Flags <code>-A</code>, <code>-W</code>, and <code>-D &lt;rule or group&gt;</code> set levels in order, as in rustc.
+Flag <code>-D warnings</code> fails run on warnings.
+Flag <code>--confidence</code> accepts <code>definite</code> or <code>possible</code>.
+Flag <code>--format</code> accepts <code>text</code>, <code>json</code>, or <code>sarif</code>.
+Flag <code>--tier</code> selects <code>safe</code>, <code>likely</code>, or <code>breaking</code> fixes.
+Flag <code>--no-cache</code> disables cache.
+Flag <code>--effects</code> runs effects stage without an effects rule.</p>
 <p>Install: <code>pkg&gt; app add Corset</code> puts <code>corset</code> on PATH (Julia app); <code>julia -m Corset</code> runs same entry point. Text output ends with count line (errors, warnings, baselined), then coverage line. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.</p>
 <p>Files, as Cargo picks targets:</p>
 <ul>
@@ -1284,7 +1290,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li>Development checkout without artifact declaration uses local shelf alone.</li>
 <li>Failed artifact download stops run: release errors must be visible.</li>
 <li>Release branch workflow runs workload and exports current partition to fresh database.</li>
-<li>Workload forces effects stage and skips shipped shelf during collection.</li>
+<li>Workload uses <code>--effects</code> and removes shipped binding during collection.</li>
 <li>Workflow uploads artifact tarball as release asset and commits artifact binding.</li>
 <li>Portable content identities give same keys across installations.</li>
 <li>Portable identities invalidate existing library partitions once.</li>

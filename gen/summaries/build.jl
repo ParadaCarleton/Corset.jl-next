@@ -11,10 +11,22 @@ module SummaryArtifact
     """Run checks of `paths` with shared `cache` and reject internal errors."""
     function check_workload(paths::Vector{String}, cache::String, launch::Bool)::Nothing
         for path in paths
-            code = Corset.CLI.execute(["check", path], stdout, stderr; launch, cache)
+            code = Corset.CLI.execute(["check", path, "--effects"], stdout, stderr; launch, cache)
             code in (Corset.CLI.EXIT_PASS, Corset.CLI.EXIT_FAIL) || error("Check failed for $path with exit code $code")
         end
         return nothing
+    end
+
+    """Run `body` without the summary binding in `manifest`; restore its original bytes on exit."""
+    function without_binding(body::Function, manifest::String)::Any
+        (!isfile(manifest) || !haskey(TOML.parsefile(manifest), "library_summaries")) && return body()
+        original = read(manifest)
+        try
+            Artifacts.unbind_artifact!(manifest, "library_summaries")
+            return body()
+        finally
+            write(manifest, original)
+        end
     end
 
     """Copy rows of `partition` from `cache` to a fresh SQLite database in `directory`."""
@@ -43,7 +55,7 @@ module SummaryArtifact
     """Check `paths`, archive their summaries to `tarball`, and bind `url` in `manifest`."""
     function build(paths::Vector{String}, cache::String, manifest::String, tarball::String, url::String, launch::Bool)::Nothing
         isempty(paths) && error("Summary workload is empty")
-        withenv("CORSET_BUILD_SUMMARIES" => "1") do
+        without_binding(joinpath(pkgdir(Corset), "Artifacts.toml")) do
             check_workload(paths, cache, launch)
         end
         partition = Cache.partition_key(string(VERSION), DEPOT_PATH)

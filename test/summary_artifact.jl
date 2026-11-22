@@ -1,7 +1,7 @@
 using Corset: Corset
 using Pkg: Pkg
 using TOML: TOML
-using Test: @test, @testset
+using Test: @test, @testset, @test_throws
 
 include(joinpath(@__DIR__, "..", "gen", "summaries", "build.jl"))
 
@@ -12,6 +12,14 @@ include(joinpath(@__DIR__, "..", "gen", "summaries", "build.jl"))
         write(joinpath(fixture, "Project.toml"), "name = \"SummaryFixture\"\nuuid = \"ac050f5a-7a06-4f96-9db6-dcc4744c69e7\"\n[preferences.Corset]\nkind = \"library\"\n")
         write(joinpath(fixture, "src", "SummaryFixture.jl"), "module SummaryFixture\nappend_one(xs::Vector{Int}) = (push!(xs, 1); length(xs))\nend\n")
         cache, manifest, tarball = joinpath.(scratch, ["cache", "Artifacts.toml", "summaries.tar.gz"])
+        original = "[library_summaries]\ngit-tree-sha1 = \"0000000000000000000000000000000000000000\"\n\n[other]\ngit-tree-sha1 = \"1111111111111111111111111111111111111111\"\n"
+        write(manifest, original)
+        SummaryArtifact.without_binding(manifest) do
+            @test !haskey(TOML.parsefile(manifest), "library_summaries") && haskey(TOML.parsefile(manifest), "other")
+        end
+        @test read(manifest, String) == original
+        @test_throws ErrorException SummaryArtifact.without_binding(() -> error("failure"), manifest)
+        @test read(manifest, String) == original
         push!(LOAD_PATH, fixture)
         try
             SummaryArtifact.build([fixture], cache, manifest, tarball, "https://example.org/summaries.tar.gz", false)

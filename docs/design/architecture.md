@@ -82,7 +82,13 @@ end
 | `corset explain <rule>` | Print rule docs offline. |
 | `corset baseline [path]` | Write current findings to baseline. |
 
-Flags: `-A`, `-W`, `-D <rule or group>` set levels and apply in order, as in rustc; `-D warnings` fails run on warnings; `--confidence definite|possible`; `--format text|json|sarif`; `--tier safe|likely|breaking` for `fix`; `--no-cache`.
+Flags `-A`, `-W`, and `-D <rule or group>` set levels in order, as in rustc.
+Flag `-D warnings` fails run on warnings.
+Flag `--confidence` accepts `definite` or `possible`.
+Flag `--format` accepts `text`, `json`, or `sarif`.
+Flag `--tier` selects `safe`, `likely`, or `breaking` fixes.
+Flag `--no-cache` disables cache.
+Flag `--effects` runs effects stage without an effects rule.
 
 Install: `pkg> app add Corset` puts `corset` on PATH (Julia app); `julia -m Corset` runs same entry point. Text output ends with count line (errors, warnings, baselined), then coverage line. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.
 
@@ -129,7 +135,7 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 - Development checkout without artifact declaration uses local shelf alone.
 - Failed artifact download stops run: release errors must be visible.
 - Release branch workflow runs workload and exports current partition to fresh database.
-- Workload forces effects stage and skips shipped shelf during collection.
+- Workload uses `--effects` and removes shipped binding during collection.
 - Workflow uploads artifact tarball as release asset and commits artifact binding.
 - Portable content identities give same keys across installations.
 - Portable identities invalidate existing library partitions once.

@@ -46,6 +46,7 @@ end
     confidence::Union{Nothing, Confidence.T} = nothing
     tier::Union{Nothing, Tier.T} = nothing
     deny_warnings::Bool = false
+    effects::Bool = false
 end
 
 """Resolved settings for one run. `levels` maps group or rule name to level and where it was set."""
@@ -56,6 +57,7 @@ struct Settings
     levels::Dict{String, Tuple{Level.T, String}}
     deny_warnings::Bool
     bans::Vector{Ban}
+    effects::Bool
 end
 
 """Groups each kind enables, and highest fix tier it applies. No kind enables `restriction`: its rules are opt-in."""
@@ -180,7 +182,7 @@ function settings(root::Union{Nothing, String}, flags::Flags, rules::Vector{Rule
     end
     confidence = something(flags.confidence, isnothing(table.confidence) ? Confidence.definite : parse_enum(Confidence.T, table.confidence, "confidence"))
     tier = something(flags.tier, isnothing(table.fix_tier) ? last(PRESETS[kind]) : parse_enum(Tier.T, table.fix_tier, "fix_tier"))
-    return Settings(kind, confidence, tier, levels, flags.deny_warnings, bans(table))
+    return Settings(kind, confidence, tier, levels, flags.deny_warnings, bans(table), flags.effects)
 end
 
 """Level of `entry` under `settings`, and where it was set. Rule setting beats group setting; group setting beats preset."""

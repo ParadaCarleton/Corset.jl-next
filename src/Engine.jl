@@ -71,8 +71,8 @@ wants(settings::Settings, stage::Stage.T)::Bool = any(entry -> (entry.stage == s
 """Whether `settings` enable rule that reads `inference` stage, or stage built on its units: `effects`, `lifecycle`."""
 needs_inference(settings::Settings)::Bool = needs_effects(settings) || wants(settings, Stage.inference)
 
-"""Whether `settings` enable rule that reads `effects` stage, or `lifecycle` stage built on it."""
-needs_effects(settings::Settings)::Bool = get(ENV, "CORSET_BUILD_SUMMARIES", "") == "1" || wants(settings, Stage.effects) || wants(settings, Stage.lifecycle)
+"""Whether `settings` request effects or enable a rule that reads effects or lifecycle."""
+needs_effects(settings::Settings)::Bool = settings.effects || wants(settings, Stage.effects) || wants(settings, Stage.lifecycle)
 
 """Whether `settings` enable any rule whose findings or fixes read stage after `syntax`."""
 needs_package(settings::Settings)::Bool = needs_effects(settings) || any(entry -> entry.fix_stage != Stage.syntax && enabled(settings, entry), REGISTRY)

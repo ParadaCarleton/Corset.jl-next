@@ -107,6 +107,9 @@ function argument_settings()::ArgParseSettings
             "--no-cache"
             help = "analyze again; read and write no cached analysis"
             action = :store_true
+            "--effects"
+            help = "run effects stage without an effects rule; collect library summaries"
+            action = :store_true
         end
     end
     @add_arg_table! settings["fix"] begin
@@ -205,7 +208,7 @@ function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err
         # Concrete type keeps string methods of other packages from invalidating this code.
         path = options["path"]::String
         ispath(path) || throw(UsageError("no such file or directory: $path"))
-        flags = Flags(; levels, deny_warnings, confidence = enum_option(Confidence.T, options, "confidence"), tier = enum_option(Tier.T, options, "tier"))
+        flags = Flags(; levels, deny_warnings, effects = options["effects"], confidence = enum_option(Confidence.T, options, "confidence"), tier = enum_option(Tier.T, options, "tier"))
         cache = options["no-cache"] ? nothing : cache
         target = launch ? Engine.load_target(path, flags) : nothing
         if !isnothing(target)
