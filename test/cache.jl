@@ -157,6 +157,7 @@ end
         @test Cache.portable_path.(sort(windows_paths; by = Cache.portable_path)) == sort(paths; by = Cache.portable_path)
         julia = string(VERSION)
         @test Cache.partition_key(julia, DEPOT_PATH) == Cache.partition_key(julia, DEPOT_PATH) != Cache.partition_key("$julia+other", DEPOT_PATH)
+        @test Cache.partition_key(julia, DEPOT_PATH, "x86_64-linux-gnu") != Cache.partition_key(julia, DEPOT_PATH, "aarch64-linux-gnu")
         mktempdir(@__DIR__) do scratch
             depot, developed, environment = joinpath.(scratch, ["depot", "developed", "environment"])
             registered = joinpath(depot, "packages", "Registered", "slug")
@@ -268,6 +269,21 @@ end
                 end
             end
             @test read(shipped_file) == before
+        end
+    end
+
+    @testset "unavailable shipped platform" begin
+        mktempdir(@__DIR__) do scratch
+            manifest = joinpath(scratch, "Artifacts.toml")
+            write(manifest, "[[library_summaries]]\narch = \"x86_64\"\nos = \"linux\"\nlibc = \"glibc\"\ngit-tree-sha1 = \"0000000000000000000000000000000000000000\"\n")
+            other = Base.BinaryPlatforms.Platform("aarch64", "linux"; libc = "glibc")
+            open(joinpath(scratch, "stderr"), "w+") do stream
+                redirect_stderr(stream) do
+                    @test Cache.with_shipped(isnothing, manifest, other)
+                end
+                seekstart(stream)
+                @test isempty(read(stream, String))
+            end
         end
     end
 

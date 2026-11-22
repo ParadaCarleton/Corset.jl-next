@@ -12,7 +12,8 @@ using SHA: SHA, sha256
 using Scratch: get_scratch!, delete_scratch!
 using TOML: TOML
 using URIs: escapepath
-using Pkg.Artifacts: ensure_artifact_installed
+using Pkg.Artifacts: artifact_meta, ensure_artifact_installed
+using Base.BinaryPlatforms: AbstractPlatform, HostPlatform, triplet
 using ..Launch: corset_root
 
 """Cache directory of command line: scratch space of Corset in Julia depot. CI that saves depot keeps it."""
@@ -246,10 +247,13 @@ end
 rule_sources(root::String)::String = joinpath(root, "src", "rules")
 
 """
-Partition key of library summaries: Julia version `julia`, cache flags and content of Corset (`package_content`) under
+Partition key of library summaries: Julia version `julia`, platform `platform`, cache flags and content of Corset under
 `depots`, rule sources left out. Entry keys hold all else.
 """
-partition_key(julia::String, depots::Vector{String})::String = digest([julia, repr(Base.CacheFlags()), engine_content(corset_root(), depots)], String[])
+partition_key(julia::String, depots::Vector{String}, platform::String)::String = digest([julia, platform, repr(Base.CacheFlags()), engine_content(corset_root(), depots)], String[])
+
+"""Partition key for this host platform."""
+partition_key(julia::String, depots::Vector{String})::String = partition_key(julia, depots, triplet(HostPlatform()))
 
 """Content of Corset at `root` under `depots` (`package_content`), rule sources left out: stage facts depend on rest."""
 function engine_content(root::String, depots::Vector{String})::String
@@ -392,9 +396,18 @@ end
 
 """Use the declared summary artifact during `body`, and close its read-only database afterward."""
 function with_shipped(body::Function)::Any
-    manifest = joinpath(corset_root(), "Artifacts.toml")
-    (!isfile(manifest) || !haskey(TOML.parsefile(manifest), "library_summaries")) && return body(nothing)
-    artifact = ensure_artifact_installed("library_summaries", manifest)
+    return with_shipped(body, joinpath(corset_root(), "Artifacts.toml"), HostPlatform())
+end
+
+"""Use shipped database selected from `manifest` for `platform` during `body`."""
+function with_shipped(body::Function, manifest::String, platform::AbstractPlatform)::Any
+    isfile(manifest) || return body(nothing)
+    bindings = get(TOML.parsefile(manifest), "library_summaries", nothing)
+    (isnothing(bindings) || bindings isa Dict) && return body(nothing)
+    bindings isa Vector || error("Invalid shipped library summary binding")
+    meta = artifact_meta("library_summaries", manifest; platform)
+    isnothing(meta) && return body(nothing)
+    artifact = ensure_artifact_installed("library_summaries", manifest; platform)
     path = joinpath(artifact, "library.sqlite")
     isfile(path) || error("Shipped library summary database is missing: $path")
     escaped = escapepath(abspath(path))

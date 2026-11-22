@@ -23,11 +23,14 @@ module SummaryArtifact
 
     """Run checks of `paths` with shared `cache` and reject incomplete analyses."""
     function check_workload(paths::Vector{String}, cache::String, launch::Bool)::Nothing
+        mkpath(cache)
         for path in paths
-            output = IOBuffer()
-            code = Corset.CLI.execute(["check", path, "--effects", "--kind", "library", "--format", "json"], output, stderr; launch, cache)
-            code in (Corset.CLI.EXIT_PASS, Corset.CLI.EXIT_FAIL) || error("Check failed for $path with exit code $code")
-            complete_report(path, code, Corset.CLI.JSON.parse(String(take!(output))))
+            mktempdir(cache) do directory
+                report = joinpath(directory, "report.json")
+                code = Corset.CLI.execute(["check", path, "--effects", "--kind", "library", "--format", "json", "--output", report], stdout, stderr; launch, cache)
+                code in (Corset.CLI.EXIT_PASS, Corset.CLI.EXIT_FAIL) || error("Check failed for $path with exit code $code")
+                complete_report(path, code, Corset.CLI.JSON.parsefile(report))
+            end
             println("Checked $path")
         end
         return nothing
@@ -85,9 +88,24 @@ module SummaryArtifact
             name = "library-summaries-$digest.tar.gz"
             tarball = joinpath(output, name)
             mv(temporary, tarball)
-            Artifacts.bind_artifact!(manifest, "library_summaries", hash; download_info = [("$url_prefix/$name", digest)], lazy = true, force = true)
+            bind_platform(manifest, hash, "$url_prefix/$name", digest)
             return tarball
         end
+    end
+
+    """Bind artifact `hash` for this host, replacing any legacy platform-independent binding."""
+    function bind_platform(manifest::String, hash::Base.SHA1, url::String, digest::String)::Nothing
+        original = isfile(manifest) ? read(manifest) : nothing
+        try
+            if !isnothing(original) && get(TOML.parsefile(manifest), "library_summaries", nothing) isa Dict
+                Artifacts.unbind_artifact!(manifest, "library_summaries")
+            end
+            Artifacts.bind_artifact!(manifest, "library_summaries", hash; platform = Base.BinaryPlatforms.HostPlatform(), download_info = [(url, digest)], lazy = true, force = true)
+        catch
+            isnothing(original) || write(manifest, original)
+            rethrow()
+        end
+        return nothing
     end
 
     """Install workload packages in `environment` and return their source paths."""

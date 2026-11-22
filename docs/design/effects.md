@@ -276,7 +276,8 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Library instance: method outside package, and signature names no package type.
 - Library summary: variant of library instance. Disk cache keeps it; cache hit skips native inference and passes.
 - Cache also keeps variant parameters and stand-in cut of library instances.
-- Partition: Julia version, cache flags and Corset content without rule sources. Partition serves every checked path and environment.
+- Partition: host platform triplet, Julia version, cache flags and Corset content without rule sources.
+- Partition serves every checked path and environment.
 - Rule sources change no summary, so rule edit keeps partition. Self-lint of Corset reruns cold only after engine edit.
 - Entry key: kind, closure key of instance, and constants of variant. Module constant adds its owner text.
 - Closure key: digest over strongly connected components of native edge graph, callees first. Walk order cannot change it.

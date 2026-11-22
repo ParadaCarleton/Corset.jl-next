@@ -500,6 +500,15 @@ end
                 code, out, err = launched("check", root, "-A", "shadowed-base")
                 @test code == 0 && !occursin("building environment", err)
             end
+            mktempdir(@__DIR__) do root
+                write(joinpath(root, "Project.toml"), "name = \"Noisy\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n")
+                mkpath(joinpath(root, "src"))
+                write(joinpath(root, "src", "Noisy.jl"), "module Noisy\n__init__() = println(\"noisy initialization\")\nend\n")
+                report_file = joinpath(scratch, "noisy-report.json")
+                code, out, _ = launched("check", root, "--kind", "library", "--format", "json", "--output", report_file)
+                @test code in (0, 1) && occursin("noisy initialization", out)
+                @test JSON.parsefile(report_file)["coverage"]["files"] > 0
+            end
             # Generator aborts Julia on float stand-in, as Enzyme generator does; rerun skips that inference.
             crashing = """
             \"\"\"Package whose generator aborts Julia on float stand-in.\"\"\"

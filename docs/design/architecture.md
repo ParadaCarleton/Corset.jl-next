@@ -90,6 +90,7 @@ Flag `--format` accepts `text`, `json`, or `sarif`.
 Flag `--tier` selects `safe`, `likely`, or `breaking` fixes.
 Flag `--no-cache` disables cache.
 Flag `--effects` runs effects stage without an effects rule.
+Flag `--output` writes report to named file.
 
 Install: `pkg> app add Corset` puts `corset` on PATH (Julia app); `julia -m Corset` runs same entry point. Text output ends with count line (errors, warnings, baselined), then coverage line. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.
 
@@ -128,6 +129,9 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 ### Shipped library summaries
 
 - Release artifact holds read-only SQLite database with library rows of one partition.
+- Partition includes host platform triplet, Julia version, cache flags, and engine content.
+- Artifact bindings select host platform. Missing platform binding uses local shelf alone.
+- Release workflow builds x86_64 Linux artifact only.
 - Rows include Base, Core, standard library, and package summaries.
 - Local byte limit and prune order bound artifact size.
 - Lookup reads local shelf first, then shipped shelf.

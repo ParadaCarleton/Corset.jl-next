@@ -115,6 +115,12 @@ function argument_settings()::ArgParseSettings
             action = :store_true
         end
     end
+    for command in ("check", "fix")
+        @add_arg_table! settings[command] begin
+            "--output"
+            help = "write report to file"
+        end
+    end
     @add_arg_table! settings["fix"] begin
         "--tier"
         help = "highest fix tier to apply: safe, likely or breaking"
@@ -126,6 +132,14 @@ function argument_settings()::ArgParseSettings
         required = true
     end
     return settings
+end
+
+"""Finish `command` with report at `file`, or on `out` when no file is named."""
+function finish_output(command::String, settings::Settings, analyzed::Analysis, out::IO, err::IO, format::String, file::Union{Nothing, String})::Int
+    isnothing(file) && return finish(command, settings, analyzed, out, err, format)
+    return open(file, "w") do stream
+        finish(command, settings, analyzed, stream, err, format)
+    end
 end
 
 """Enum value of `T` named by option `name` in `options`; `nothing` when option is absent."""
@@ -218,7 +232,7 @@ function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err
             env = Launch.environment(target, err)
             # Fix writes files and checks again, so it always runs in relaunched process.
             stored = command == "fix" || isnothing(cache) ? nothing : Engine.cached(path, flags, cache, Launch.load_path(env))
-            isnothing(stored) || return finish(command, stored..., out, err, options["format"])
+            isnothing(stored) || return finish_output(command, stored..., out, err, options["format"], get(options, "output", nothing))
             code = exit_code(Launch.supervise(env, args, cache, out, err, Launch.CRASHES))
             code == EXIT_RECHECK || return code
             return exit_code(Launch.supervise(env, recheck_arguments(args), cache, out, err, Launch.CRASHES))
@@ -233,7 +247,7 @@ function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err
                 return EXIT_RECHECK
             end
         end
-        return finish(command, Engine.analysis(path, flags, cache, journal)..., out, err, options["format"])
+        return finish_output(command, Engine.analysis(path, flags, cache, journal)..., out, err, options["format"], get(options, "output", nothing))
     catch error
         if error isa ArgParseError || error isa ConfigError || error isa UsageError
             println(err, "corset: ", sprint(showerror, error))

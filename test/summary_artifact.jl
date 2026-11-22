@@ -11,7 +11,7 @@ include(joinpath(@__DIR__, "..", "gen", "summaries", "build.jl"))
         mkpath(joinpath(fixture, "src"))
         project = "name = \"SummaryFixture\"\nuuid = \"ac050f5a-7a06-4f96-9db6-dcc4744c69e7\"\n"
         write(joinpath(fixture, "Project.toml"), project)
-        write(joinpath(fixture, "src", "SummaryFixture.jl"), "module SummaryFixture\nappend_one(xs::Vector{Int}) = (push!(xs, 1); length(xs))\nend\n")
+        write(joinpath(fixture, "src", "SummaryFixture.jl"), "module SummaryFixture\n__init__() = println(\"fixture initialization output\")\nappend_one(xs::Vector{Int}) = (push!(xs, 1); length(xs))\nend\n")
         cache, manifest, output = joinpath.(scratch, ["cache", "Artifacts.toml", "output"])
         original = "[library_summaries]\ngit-tree-sha1 = \"0000000000000000000000000000000000000000\"\n\n[other]\ngit-tree-sha1 = \"1111111111111111111111111111111111111111\"\n"
         write(manifest, original)
@@ -28,7 +28,14 @@ include(joinpath(@__DIR__, "..", "gen", "summaries", "build.jl"))
         finally
             pop!(LOAD_PATH)
         end
-        meta = TOML.parsefile(manifest)["library_summaries"]
+        meta = Pkg.Artifacts.artifact_meta("library_summaries", manifest)
+        @test length(TOML.parsefile(manifest)["library_summaries"]) == 1
+        other_arch = Base.BinaryPlatforms.arch(Base.BinaryPlatforms.HostPlatform()) == "aarch64" ? "x86_64" : "aarch64"
+        other_platform = Base.BinaryPlatforms.Platform(other_arch, "linux"; libc = "glibc")
+        other_hash = Base.SHA1(hex2bytes("1111111111111111111111111111111111111111"))
+        Pkg.Artifacts.bind_artifact!(manifest, "library_summaries", other_hash; platform = other_platform, lazy = true)
+        SummaryArtifact.bind_platform(manifest, Base.SHA1(hex2bytes(meta["git-tree-sha1"])), only(meta["download"])["url"], only(meta["download"])["sha256"])
+        @test Pkg.Artifacts.artifact_meta("library_summaries", manifest; platform = other_platform)["git-tree-sha1"] == bytes2hex(other_hash.bytes)
         download = only(meta["download"])
         @test download["url"] == "https://example.org/releases/library-summaries-$(download["sha256"]).tar.gz"
         @test meta["lazy"] && length(meta["git-tree-sha1"]) == 40
@@ -37,8 +44,7 @@ include(joinpath(@__DIR__, "..", "gen", "summaries", "build.jl"))
         shipped_file = joinpath(artifact, "library.sqlite")
         before = read(shipped_file)
         partition = Corset.Cache.partition_key(string(VERSION), DEPOT_PATH)
-        shipped = Corset.Cache.SQLite.DB("file:" * Corset.Cache.escapepath(shipped_file) * "?mode=ro&immutable=1")
-        try
+        Corset.Cache.with_shipped(manifest, Base.BinaryPlatforms.HostPlatform()) do shipped
             Corset.Cache.with_database(cache) do local_db
                 rows = Corset.Cache.DBInterface.execute(local_db, "SELECT key FROM library WHERE partition = ? LIMIT 1", (partition,))
                 key = try
@@ -52,10 +58,13 @@ include(joinpath(@__DIR__, "..", "gen", "summaries", "build.jl"))
                     @test !isnothing(Corset.Cache.shelf_entry(shelf, key))
                 end
             end
-        finally
-            close(shipped)
         end
         @test read(shipped_file) == before
+        report_file = joinpath(scratch, "report.json")
+        child = "using Corset: Corset; push!(LOAD_PATH, $(repr(fixture))); code = Corset.CLI.execute([\"check\", $(repr(fixture)), \"--kind\", \"library\", \"--format\", \"json\", \"--output\", $(repr(report_file))], stdout, stderr; launch=false, cache=nothing); exit(code in (0, 1) ? 0 : code)"
+        output_text = read(`$(Base.julia_cmd()) --startup-file=no --project=test -e $child`, String)
+        @test occursin("fixture initialization output", output_text)
+        @test Corset.CLI.JSON.parsefile(report_file)["coverage"]["files"] > 0
     end
 end
 
