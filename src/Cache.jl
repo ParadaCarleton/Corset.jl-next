@@ -92,17 +92,18 @@ function found_files(listed::Vector{String}, trees::Vector{String}, skipped::Str
 end
 
 """
-Key line of method store of checked `path`: Julia version, cache flags, `path`, environment (`environment_inputs`),
-analyzed `files` by path, package `shape`, and files of project `root` that package code loads from (`src`, `ext`,
-`deps`) but `files` leave out. Store entries count analyzed files by content, so Manifest `path` entry of `root` stays out.
+Key line of method store of checked `path`: Julia version, cache flags, `path`, `engine` content (`engine_content`),
+environment (`environment_inputs`), analyzed `files` by path, package `shape`, and files of project `root` that package
+code loads from (`src`, `ext`, `deps`) but `files` leave out. Store entries count analyzed files by content, so Manifest
+`path` entry of `root` stays out. `engine` counts apart: Corset that checks itself analyzes its own engine files.
 """
-function method_key(path::String, root::String, files::Vector{String}, shape::Vector{String}, load_path::Vector{String}, cache::String)::String
+function method_key(path::String, root::String, files::Vector{String}, shape::Vector{String}, load_path::Vector{String}, engine::String, cache::String)::String
     parts, listed, trees = environment_inputs(load_path)
-    root = realpath(root)
-    kept = [filter(tree -> !(ispath(tree) && realpath(tree) == root), trees); joinpath.(root, ["src", "ext", "deps"])]
+    root, source = realpath(root), realpath(joinpath(corset_root(), "src"))
+    kept = [filter(tree -> !(ispath(tree) && realpath(tree) in (root, source)), trees); joinpath.(root, ["src", "ext", "deps"])]
     analyzed = Set(ispath(file) ? realpath(file) : file for file in files)
     outside = filter(file -> !(file in analyzed), found_files(listed, kept, cache))
-    return digest([string(VERSION), repr(Base.CacheFlags()), path, parts..., files..., shape...], outside)
+    return digest([string(VERSION), repr(Base.CacheFlags()), path, engine, parts..., files..., shape...], outside)
 end
 
 """SHA-256 of `parts`, then of path and content of each of `files`. Missing file counts too: file that appears changes digest."""
@@ -174,17 +175,17 @@ function dependency_ids(root::String)::Union{Nothing, Vector{Base.PkgId}}
 end
 
 
-"""Rule sources of Corset at `root`: library summaries never read them, so partition key leaves them out."""
+"""Rule sources of Corset at `root`: stage facts never read them, so partition and method store keys leave them out."""
 rule_sources(root::String)::String = joinpath(root, "src", "rules")
 
 """
 Partition key of library summaries: Julia version `julia`, cache flags and content of Corset (`package_content`) under
 `depots`, rule sources left out. Entry keys hold all else.
 """
-function partition_key(julia::String, depots::Vector{String})::String
-    corset, root = Base.moduleroot(@__MODULE__), corset_root()
-    return digest([julia, repr(Base.CacheFlags()), package_content(Base.PkgId(corset), root, depots, rule_sources(root))], String[])
-end
+partition_key(julia::String, depots::Vector{String})::String = digest([julia, repr(Base.CacheFlags()), engine_content(corset_root(), depots)], String[])
+
+"""Content of Corset at `root` under `depots` (`package_content`), rule sources left out: stage facts depend on rest."""
+engine_content(root::String, depots::Vector{String})::String = package_content(Base.PkgId(Base.moduleroot(@__MODULE__)), root, depots, rule_sources(root))
 
 """
 Library cache entry: instance key of instance it describes (`Effects.instance_key!`), serialized value, and time of

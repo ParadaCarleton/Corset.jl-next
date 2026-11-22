@@ -1289,7 +1289,8 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li>Edge walk passes through dependency method whose specialization names package type or function: <code>map(f, xs)</code> with package <code>f</code> depends on <code>f</code>.</li>
 <li>Entry records generated code of each <code>@generated</code> instance it read. Run calls generator again and compares.</li>
 <li>Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.</li>
-<li>Store key line hashes environment, Corset source, analyzed file list and package shape. Other key drops whole store.</li>
+<li>Store key line hashes environment, Corset source without rule sources, analyzed file list and package shape. Other key drops whole store.</li>
+<li>Corset source counts apart from analyzed files: self-lint analyzes engine files, and engine edit must drop stored facts.</li>
 <li>Package shape: signature and file of each package method, struct layouts, global types and constants. Non-analyzed files in <code>src</code>, <code>ext</code> and <code>deps</code> count too.</li>
 <li>Constant counts by value when plain (number, string, symbol, immutable struct of those), by name when function or module, else by type.</li>
 <li>Type counts by layout: field names and types. Struct that edit redefines serializes as before.</li>

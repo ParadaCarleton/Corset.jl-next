@@ -73,8 +73,8 @@ end
             manifest = "manifest_format = \"2.0\"\n\n[[deps.A]]\npath = \"../root\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n"
             write_files(environment, "Project.toml" => "", "Manifest.toml" => manifest)
             analyzed = [joinpath(root, "src", "A.jl")]
-            key(shape::Vector{String}, files::Vector{String})::String =
-                Cache.method_key(root, root, files, shape, [joinpath(environment, "Project.toml")], joinpath(root, "cache"))
+            key(shape::Vector{String}, files::Vector{String}, engine::String = "engine")::String =
+                Cache.method_key(root, root, files, shape, [joinpath(environment, "Project.toml")], engine, joinpath(root, "cache"))
             original = key(["shape"], analyzed)
             write_files(root, "src/A.jl" => "a = 2\n", "test/runtests.jl" => "b = 1\n")
             @test key(["shape"], analyzed) == original
@@ -83,6 +83,9 @@ end
             # File of `src` that run does not analyze can change package code.
             write_files(root, "src/b.jl" => "b = 1\n")
             @test key(["shape"], analyzed) != original
+            # Engine counts though analyzed files hold it: Corset that checks itself must not reuse facts of old engine.
+            corset = [joinpath(Corset.Launch.corset_root(), "src", "Corset.jl")]
+            @test key(["shape"], corset, "engine") != key(["shape"], corset, "edited engine")
         end
     end
 
@@ -129,6 +132,12 @@ end
             before = skipping()
             write_files(developed, "src/rules/rule.jl" => "rule = 2\n")
             @test skipping() == before && contents()[2] != edited[2]
+            # Engine content skips rule sources the same way.
+            engine = Cache.engine_content(developed, [depot])
+            write_files(developed, "src/rules/rule.jl" => "rule = 3\n")
+            @test Cache.engine_content(developed, [depot]) == engine
+            write_files(developed, "src/Engine.jl" => "engine = 1\n")
+            @test Cache.engine_content(developed, [depot]) != engine
             # Preferences of package count too.
             write_files(environment, "Project.toml" => "[deps]\nDeveloped = \"$(ids[2].uuid)\"\n\n[preferences.Developed]\nmode = \"fast\"\n")
             push!(LOAD_PATH, environment)

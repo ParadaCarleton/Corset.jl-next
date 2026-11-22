@@ -14,6 +14,7 @@ using ..Inference: Inference
 using ..Effects: Effects
 using ..External: External
 using ..Cache: Cache
+using ..Launch: corset_root
 using Serialization: serialize
 using SHA: sha256
 
@@ -92,7 +93,7 @@ method_entry(path::String)::String = "$path\nmethod store"
 
 """Key of method store entry of checked `path` with `package` in analyzed `files` in cache directory `cache`."""
 store_key(path::String, package::PackageFacts, files::Vector{Facts.SyntaxFile}, cache::String)::String =
-    Cache.method_key(path, something(project_root(path)), [file.path for file in files], Inference.shape(package), Base.load_path(), cache)
+    Cache.method_key(path, something(project_root(path)), [file.path for file in files], Inference.shape(package), Base.load_path(), Cache.engine_content(corset_root(), DEPOT_PATH), cache)
 
 """
 Inference and effects facts of `package` in analyzed `files`, each with its blind spots: inference facts when
