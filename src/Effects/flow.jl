@@ -10,6 +10,9 @@ const Deferred = Tuple{Variant, Vector{Targets}}
 """Heap location read by a trace: origin, slot (`nothing` for unknown), and backing flag."""
 const TraceDependency = Tuple{Origin.Type, Union{Nothing, Step.Type}, Bool}
 
+"""Index at most 64 origins per trace; invalidate longer traces on any heap growth."""
+const TRACE_ORIGIN_LIMIT = 64
+
 """Cached trace, its dependencies, and its work in the current cache generation."""
 mutable struct Follow
     const targets::Targets
@@ -27,6 +30,7 @@ below; callback records by call statement. `changed` records growth of targets i
 join over methods loaded now, and `cut` path stand-ins cut (`Summary`). `flush` resolves every callback record here:
 root unit has no caller to resolve them. `record` keeps kinds of writes each call statement makes (`call_kinds`).
 `follows` keeps slot targets by origin and step (`load`); `dependents` indexes traces by origins they read.
+`coarse` holds traces beyond `TRACE_ORIGIN_LIMIT`; any heap growth invalidates them.
 `stale` and `generation` preserve work accounting after heap growth.
 `traces` counts trace executions.
 `settled`: round after one that changed nothing, so it applies callee accesses and skips callee stores (`apply!`).
@@ -54,6 +58,7 @@ mutable struct Flow
     const call_kinds::Dict{Int, Set{EffectKind.T}}
     const follows::Dict{Tuple{Origin.Type, Step.Type}, Follow}
     const dependents::Dict{TraceDependency, Set{Tuple{Origin.Type, Step.Type}}}
+    const coarse::Set{Tuple{Origin.Type, Step.Type}}
     generation::Int
     changed::Bool
     stale::Bool
@@ -79,7 +84,7 @@ function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     callbacks = Dict{Int, Vector{Deferred}}()
     primitives = Union{Nothing, Primitive}[statement_primitive(ir, index, outcomes[index]) for index in 1:length(ir.stmts)]
-    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, Dict{Int, Set{EffectKind.T}}(), Dict{Tuple{Origin.Type, Step.Type}, Follow}(), Dict{TraceDependency, Set{Tuple{Origin.Type, Step.Type}}}(), 0, false, false, false, false, cut, limit, 0, 0)
+    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, Dict{Int, Set{EffectKind.T}}(), Dict{Tuple{Origin.Type, Step.Type}, Follow}(), Dict{TraceDependency, Set{Tuple{Origin.Type, Step.Type}}}(), Set{Tuple{Origin.Type, Step.Type}}(), 0, false, false, false, false, cut, limit, 0, 0)
 end
 
 """Release balance primitive of statement `index` of `ir` with call `outcome`: dispatched call only (`primitive`)."""
@@ -304,9 +309,11 @@ function trace(flow::Flow, origin::Origin.Type, step::Step.Type)::Follow
     end
     flow.work += length(reached)
     dependencies = TraceDependency[]
-    for current in keys(reached)
-        push!(dependencies, (current, step, false), (current, nothing, false))
-        (step == Step.Element() || step == MEMORY_POINTER) && push!(dependencies, (current, nothing, true))
+    if length(reached) <= TRACE_ORIGIN_LIMIT
+        for current in keys(reached)
+            push!(dependencies, (current, step, false), (current, nothing, false))
+            (step == Step.Element() || step == MEMORY_POINTER) && push!(dependencies, (current, nothing, true))
+        end
     end
     return Follow(found, dependencies, length(reached), flow.generation)
 end
@@ -325,6 +332,7 @@ function load(flow::Flow, objects::Targets, step::Step.Type)::Targets
         if isnothing(followed)
             followed = trace(flow, origin, step)
             flow.follows[key] = followed
+            isempty(followed.dependencies) && push!(flow.coarse, key)
             for dependency in followed.dependencies
                 push!(get!(Set{Tuple{Origin.Type, Step.Type}}, flow.dependents, dependency), key)
             end
@@ -342,6 +350,8 @@ end
 
 """Discard traces that read `dependency` after its heap contents grow."""
 function invalidate!(flow::Flow, dependency::TraceDependency)::Nothing
+    foreach(key -> delete!(flow.follows, key), flow.coarse)
+    empty!(flow.coarse)
     for key in pop!(flow.dependents, dependency, Set{Tuple{Origin.Type, Step.Type}}())
         followed = pop!(flow.follows, key)
         for other in followed.dependencies
