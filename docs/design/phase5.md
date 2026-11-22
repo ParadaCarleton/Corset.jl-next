@@ -11,7 +11,7 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 | 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance | 2 | 3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249 (fix #252), iteration starts #250, frame copy #253; frozen |
 | 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | #251 (per-environment key), #254 (per-entry key); frozen |
 | 5 | Name tier | `effects` stage on name trust and compiler effects replaces engine; engine and library summary cache leave | — | — |
-| 6 | `stateful-iterate` | F109 | — | #297 |
+| 6 | `stateful-iterate` | F109 | — | #297; done |
 | 7 | Alias rules | F48, F50, F51 | 5 | — |
 | 8 | Effect rules | F54, F55, F56, F58, F98 | 5 | — |
 | 9 | `bang-convention` | F53, F86 | 5 | — |
