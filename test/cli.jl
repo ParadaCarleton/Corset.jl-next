@@ -612,3 +612,17 @@ end
     edits = Corset.Fixes.applicable_edits([finding(1, 3), finding(2, 4), finding(5, 6)], Corset.Facts.Tier.safe)
     @test [edit.span.first_byte for edit in edits] == [1, 5]
 end
+
+@testset "output path" begin
+    mktempdir(@__DIR__) do scratch
+        script, link, report = joinpath.(scratch, ["script.jl", "link.jl", "report.txt"])
+        write(script, "x = 1\n")
+        symlink(script, link)
+        # Output on analyzed source, also through symbolic link, fails and keeps source.
+        for target in (script, link)
+            code, _, err = corset("check", script, "--output", target)
+            @test code == 2 && occursin("analyzed source", err) && read(script, String) == "x = 1\n"
+        end
+        @test first(corset("check", script, "--output", report)) in (0, 1) && isfile(report)
+    end
+end

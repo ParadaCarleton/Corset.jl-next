@@ -134,12 +134,18 @@ function argument_settings()::ArgParseSettings
     return settings
 end
 
-"""Finish `command` with report at `file`, or on `out` when no file is named."""
+"""
+Finish `command` with report at `file`, or on `out` when no file is named. Report renders before `file` opens; `file`
+that resolves to analyzed source fails as usage error.
+"""
 function finish_output(command::String, settings::Settings, analyzed::Analysis, out::IO, err::IO, format::String, file::Union{Nothing, String})::Int
     isnothing(file) && return finish(command, settings, analyzed, out, err, format)
-    return open(file, "w") do stream
-        finish(command, settings, analyzed, stream, err, format)
-    end
+    target = ispath(file) ? realpath(file) : abspath(file)
+    any(source -> ispath(source) && realpath(source) == target, analyzed.files) && throw(UsageError("--output $file is analyzed source"))
+    report = IOBuffer()
+    code = finish(command, settings, analyzed, report, err, format)
+    write(file, take!(report))
+    return code
 end
 
 """Enum value of `T` named by option `name` in `options`; `nothing` when option is absent."""
