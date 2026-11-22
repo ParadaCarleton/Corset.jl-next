@@ -351,6 +351,9 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         named(type::Any)::Bool = names_package!(IdDict{Any, Bool}(), type, Set([MODULE]))
         @test named(Union{Int, MODULE.Wrap{Int}}) && named(Vector{T} where {T <: MODULE.Shape}) && named(Tuple{Vararg{MODULE.Shape}})
         @test !named(Tuple{Vararg}) && !named(Vector{Int}) && !named(1)
+        # `names_package!` walks parameters without cycle guard: bound that names own variable must stay invalid.
+        @test_throws UndefVarError Core.eval(Module(), :(struct Holder{T <: AbstractVector{T}} end))
+        @test_throws UndefVarError Core.eval(Module(), :(held(x::T) where {T <: AbstractVector{T}} = x))
     end
     @testset "failing call helpers" begin
         helper(callee::Any)::Bool = first(throw_helper(callee))
