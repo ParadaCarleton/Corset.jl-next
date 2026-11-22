@@ -11,6 +11,7 @@ using Serialization: serialize, deserialize
 using SHA: SHA, sha256
 using Scratch: get_scratch!, delete_scratch!
 using TOML: TOML
+using URIs: escapepath
 using Pkg.Artifacts: ensure_artifact_installed
 using ..Launch: corset_root
 
@@ -249,8 +250,7 @@ partition_key(julia::String, depots::Vector{String})::String = digest([julia, re
 """Content of Corset at `root` under `depots` (`package_content`), rule sources left out: stage facts depend on rest."""
 function engine_content(root::String, depots::Vector{String})::String
     id = Base.PkgId(Base.moduleroot(@__MODULE__))
-    preferences = Base.get_preferences(id.uuid)
-    return "$(id.name) $(id.uuid) $(package_digest(root, rule_sources(root)))" * (isempty(preferences) ? "" : "\n" * sprint(io -> TOML.print(io, preferences; sorted = true)))
+    return "$(id.name) $(id.uuid) $(package_digest(root, rule_sources(root)))"
 end
 
 """
@@ -375,7 +375,7 @@ struct Shelf
 end
 
 """Shelf of `partition` in open cache database `db`, with optional read-only `shipped` database."""
-function Shelf(db::SQLite.DB, partition::String, shipped::Union{Nothing, SQLite.DB} = nothing)::Shelf
+function Shelf(db::SQLite.DB, partition::String, shipped::Union{Nothing, SQLite.DB})::Shelf
     empty = isnothing(first_value(db, "SELECT 1 FROM library WHERE partition = ? LIMIT 1", (partition,)))
     if !isnothing(shipped)
         matching = !isnothing(first_value(shipped, "SELECT 1 FROM library WHERE partition = ? LIMIT 1", (partition,)))
@@ -386,14 +386,15 @@ function Shelf(db::SQLite.DB, partition::String, shipped::Union{Nothing, SQLite.
     return Shelf(db, partition, empty, shipped)
 end
 
-"""Use the declared summary artifact during `body`, and close its read-only database afterward."""
+"""Use the declared summary artifact during `body`, unless an artifact build disables shipped reads."""
 function with_shipped(body::Function)::Any
+    get(ENV, "CORSET_BUILD_SUMMARIES", "") == "1" && return body(nothing)
     manifest = joinpath(corset_root(), "Artifacts.toml")
     (!isfile(manifest) || !haskey(TOML.parsefile(manifest), "library_summaries")) && return body(nothing)
     artifact = ensure_artifact_installed("library_summaries", manifest)
     path = joinpath(artifact, "library.sqlite")
     isfile(path) || error("Shipped library summary database is missing: $path")
-    escaped = join((isascii(Char(byte)) && (isletter(Char(byte)) || isdigit(Char(byte)) || byte in codeunits("/-._~:")) ? string(Char(byte)) : "%" * uppercase(string(byte; base = 16, pad = 2)) for byte in codeunits(abspath(path))))
+    escaped = escapepath(abspath(path))
     shipped = SQLite.DB("file:$escaped?mode=ro&immutable=1")
     try
         first_value(shipped, "PRAGMA user_version", ()) == LAYOUT || error("Shipped library summary database has an incompatible layout")

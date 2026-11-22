@@ -69,13 +69,13 @@ enabled(settings::Settings, entry::RuleEntry)::Bool = first(level_of(settings, e
 wants(settings::Settings, stage::Stage.T)::Bool = any(entry -> (entry.stage == stage || entry.fix_stage == stage) && enabled(settings, entry), REGISTRY)
 
 """Whether `settings` enable rule that reads `inference` stage, or stage built on its units: `effects`, `lifecycle`."""
-needs_inference(settings::Settings)::Bool = any(stage -> wants(settings, stage), (Stage.inference, Stage.effects, Stage.lifecycle))
+needs_inference(settings::Settings)::Bool = needs_effects(settings) || wants(settings, Stage.inference)
 
 """Whether `settings` enable rule that reads `effects` stage, or `lifecycle` stage built on it."""
-needs_effects(settings::Settings)::Bool = wants(settings, Stage.effects) || wants(settings, Stage.lifecycle)
+needs_effects(settings::Settings)::Bool = get(ENV, "CORSET_BUILD_SUMMARIES", "") == "1" || wants(settings, Stage.effects) || wants(settings, Stage.lifecycle)
 
 """Whether `settings` enable any rule whose findings or fixes read stage after `syntax`."""
-needs_package(settings::Settings)::Bool = any(entry -> entry.fix_stage != Stage.syntax && enabled(settings, entry), REGISTRY)
+needs_package(settings::Settings)::Bool = needs_effects(settings) || any(entry -> entry.fix_stage != Stage.syntax && enabled(settings, entry), REGISTRY)
 
 """Whether run under `settings` loads package of `project`: package project, and enabled rule after `syntax` stage."""
 loads(project::Union{Nothing, ProjectFacts}, settings::Settings)::Bool = !isnothing(project) && needs_package(settings)

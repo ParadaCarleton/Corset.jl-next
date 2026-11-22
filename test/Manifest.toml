@@ -2,7 +2,7 @@
 
 julia_version = "1.13.4"
 manifest_format = "2.1"
-project_hash = "215eb30d4db1363d9fd389f5b4685085c862ec88"
+project_hash = "8f75813f37ce94ae58d334cb884784f855612987"
 
 [[deps.Aqua]]
 deps = ["Compat", "Pkg", "Test"]
@@ -71,7 +71,7 @@ uuid = "5218b696-f38b-4ac9-8b61-a12ec717816d"
 version = "0.17.8"
 
 [[deps.Corset]]
-deps = ["Aqua", "ArgParse", "Argus", "Configurations", "DBInterface", "EnumX", "ExplicitImports", "FileWatching", "IntervalTrees", "JSON", "JuliaSyntax", "Moshi", "Pkg", "PrecompileTools", "Random", "ReadOnlyArrays", "SHA", "SQLite", "Scratch", "Serialization", "TOML", "Test", "TypedSyntax"]
+deps = ["Aqua", "ArgParse", "Argus", "Configurations", "DBInterface", "EnumX", "ExplicitImports", "FileWatching", "IntervalTrees", "JSON", "JuliaSyntax", "Moshi", "Pkg", "PrecompileTools", "Random", "ReadOnlyArrays", "SHA", "SQLite", "Scratch", "Serialization", "TOML", "Test", "TypedSyntax", "URIs"]
 path = ".."
 uuid = "09bf9df1-bea6-4267-acd1-e930da7492cc"
 version = "0.6.0-DEV"

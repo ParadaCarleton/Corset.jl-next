@@ -100,7 +100,7 @@ function package_workload()::Nothing
         # Rerun takes effects records from method store. Fresh units read library summaries, as check of other package does.
         _, _, units, _ = Inference.infer_package(package, files, nothing, nothing)
         Cache.with_database(cache) do db
-            library = Effects.Library(Cache.Shelf(db, Cache.partition_key(string(VERSION), DEPOT_PATH)))
+            library = Effects.Library(Cache.Shelf(db, Cache.partition_key(string(VERSION), DEPOT_PATH), nothing))
             isempty(library) && error("precompile workload: effects stage stored no library summary")
             hits = last(Effects.cached_effects(package, units, nothing, library))
             isempty(hits) && error("precompile workload: effects stage hit no library summary")

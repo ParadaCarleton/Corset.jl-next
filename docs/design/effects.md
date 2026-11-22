@@ -291,6 +291,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Package content: path relative to depot `packages` or standard library. Depot slug derives from tree hash.
 - Other package content uses a relative-path digest of project file, `src`, `ext` and `deps`.
 - Corset engine content always uses a relative-path digest, including in an installed package.
+- Corset settings select rules and do not change engine content.
 - Package content adds preferences of package. Edit of unrelated package keeps key.
 - No key: package code, `Main` code, root without project file, unknown edge form, or edge target without node.
 - Solve of shared variant stays inside native edges of its node. Union split, folded call and callee limit can leave them.

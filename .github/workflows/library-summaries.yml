@@ -1,0 +1,42 @@
+name: Build library summaries
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag
+        required: true
+        type: string
+permissions:
+  contents: write
+jobs:
+  summaries:
+    if: startsWith(github.ref, 'refs/heads/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: "1.13"
+      - uses: julia-actions/cache@v2
+      - name: Instantiate Corset
+        run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
+      - name: Build artifact
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          url="https://github.com/${REPOSITORY}/releases/download/${RELEASE_TAG}/library-summaries.tar.gz"
+          julia --startup-file=no --project=. gen/summaries/build.jl "$url" library-summaries.tar.gz
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: gh release upload "$RELEASE_TAG" library-summaries.tar.gz --clobber
+      - name: Commit artifact binding
+        run: |
+          git config user.name github-actions\[bot\]
+          git config user.email 41898282+github-actions\[bot\]@users.noreply.github.com
+          git add Artifacts.toml
+          git commit -m 'Bind library summaries artifact'
+          git push

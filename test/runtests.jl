@@ -24,6 +24,7 @@ end
     isolated("properties.jl")
     isolated("cli.jl")
     isolated("cache.jl")
+    isolated("summary_artifact.jl")
     isolated("invalidation.jl")
     # Coverage instrumentation slows code many times, so speed tests run in process without it.
     if Base.JLOptions().code_coverage == 0

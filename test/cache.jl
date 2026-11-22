@@ -188,11 +188,13 @@ end
             @test Cache.engine_content(developed, [depot]) == engine
             write_files(developed, "src/Engine.jl" => "engine = 1\n")
             @test Cache.engine_content(developed, [depot]) != engine
+            engine = Cache.engine_content(developed, [depot])
             # Preferences of package count too.
-            write_files(environment, "Project.toml" => "[deps]\nDeveloped = \"$(ids[2].uuid)\"\n\n[preferences.Developed]\nmode = \"fast\"\n")
+            write_files(environment, "Project.toml" => "[deps]\nDeveloped = \"$(ids[2].uuid)\"\nCorset = \"$(Base.PkgId(Corset).uuid)\"\n\n[preferences.Developed]\nmode = \"fast\"\n\n[preferences.Corset]\nkind = \"script\"\n")
             push!(LOAD_PATH, environment)
             try
                 @test endswith(contents()[2], "\nmode = \"fast\"\n")
+                @test Cache.engine_content(developed, [depot]) == engine
             finally
                 pop!(LOAD_PATH)
             end
@@ -270,7 +272,7 @@ end
             stamped(size::Int)::Cache.Stamped = Cache.Stamped("instance", fill(0x01, size), 0.0)
             keep!(found::Dict{String, Cache.Stamped}, hits::Set{String}, limit::Int, at::String)::Nothing = Cache.with_database(db -> Cache.keep_library!(db, at, found, hits, limit), directory)
             held(at::String)::Vector{Any} = cache_column(directory, "SELECT key FROM library WHERE partition = ? ORDER BY key", (at,))
-            shelved(f::Function)::Any = Cache.with_database(db -> f(Cache.Shelf(db, partition)), directory)
+            shelved(f::Function)::Any = Cache.with_database(db -> f(Cache.Shelf(db, partition, nothing)), directory)
             @test shelved(shelf -> shelf.empty)
             before = time()
             keep!(Dict("a" => stamped(10)), Set{String}(), 100, partition)
@@ -294,7 +296,7 @@ end
             @test shelved(shelf -> something(Cache.shelf_entry(shelf, "d")).used) > used && isempty(held("other"))
             # Writer whose shelf opened before other write keeps entries of both.
             Cache.with_database(directory) do db
-                shelf = Cache.Shelf(db, partition)
+                shelf = Cache.Shelf(db, partition, nothing)
                 keep!(Dict("f" => stamped(1)), Set{String}(), 100, partition)
                 Cache.keep_library!(db, partition, Dict("g" => stamped(1)), Set{String}(), 100)
                 @test Cache.shelf_holds(shelf, "f")
