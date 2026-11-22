@@ -418,6 +418,10 @@ end
     pinned = Dict{String, Any}("A" => [entry("a", "1.0.0")], "B" => [entry("b", "2.0.0")], "C" => [entry("c")], "D" => [entry("d", "1.0.0")])
     used = Dict{String, Any}("A" => [entry("a", "1.1.0")], "B" => [entry("b", "2.0.0")], "C" => [entry("c", "3.0.0")])
     @test Launch.moves(pinned, used) == [("A", "1.0.0", "1.1.0")]
+    # Target without Manifest pins nothing, so test dependency may move version `develop` picked.
+    @test Launch.preserve_level(Dict{String, Any}(), Set{Base.UUID}()) == Launch.Pkg.PRESERVE_TIERED
+    @test Launch.preserve_level(pinned, Set{Base.UUID}()) == Launch.Pkg.PRESERVE_ALL
+    @test Launch.preserve_level(pinned, Set([textwrap])) == Launch.Pkg.PRESERVE_DIRECT
     @test Launch.freed(Dict{String, Any}("TextWrap" => [entry(string(textwrap))], "Other" => [entry(string(Base.UUID(rand(UInt128))))]), Set([textwrap, syntax])) == Set([textwrap])
     mktempdir(@__DIR__) do root
         json, argus = Base.PkgId(Base.UUID("682c06a0-de6a-54ab-a142-c8b1cf79cde6"), "JSON"), Base.PkgId(Base.UUID("e39743ec-b2cc-45ef-a990-b666fc093538"), "Argus")
