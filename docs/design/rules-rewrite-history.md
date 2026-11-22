@@ -1315,3 +1315,15 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 | StatsFuns | 417 | 427 |
 
 - Limit 10 million: flow past it gets open summary, blind spot `effects budget`.
+
+### Engine freeze
+
+- Phase 5 rows 1 to 4 built whole-program engine: points-to through Base and dependencies, library summary cache. 61 PRs (#232 to #296) merged, nearly all engine; no effects rule shipped.
+- Engine doubled run time: cold `effects` took 0.27 to 1.55 times `inference` ("Gate speed check"); JSON took 4.9 times ("Engine cost").
+- Precision item failed: `possible` share passed 30% on Distances and Distributions ("Corpus speed check").
+- Determinism item waited on Julia #65131 release: Distributions facts changed between rebuilds ("Visit order").
+- Bug rules (F48, F50, F51, F98, F58, F54) need local patterns, `!` names and compiler effects. Whole-program soundness served `!` naming (F53, F86) most.
+- Decision: freeze engine at tag `effects-engine`. `effects` stage moves to name trust (`effects.md`): callee name stands in for callee body.
+- Stopped with it: Base name contract (step 7) and shipped library summary artifact (#292).
+- Accepted cost: write through non-`!` function that breaks convention stays unseen in callers. `bang-convention` reports breach where function lives.
+- Revive engine only when name-trust misses block quality gate of a rule (`plan.md`, Design reviews).

@@ -15,7 +15,7 @@ Each stage is one module that produces facts. Rules read facts through one API. 
 | `StandIns` | Stand-in types: float, integer, array, dense array and function. |
 | `Signatures` | Stand-in signatures per package method: stand-ins for generic arguments and type variables; at most 8 per method. |
 | `Inference` | `inference` stage: native inference of unoptimized code on stand-in signatures; worklist follows calls into untyped package methods. TypedSyntax.jl maps statements onto `syntax` stage tree; callee check demotes doubtful spans to line. |
-| `Effects` | `effects` stage: effect and alias summary per method. |
+| `Effects` | `effects` stage: effect facts per method from name trust. |
 | `Lifecycle` | `lifecycle` stage: local def-use per array; callee writes from `effects`. |
 | `External` | `external` stage: Aqua.jl, `Test.detect_ambiguities` and ExplicitImports.jl output as facts; jscpd later. |
 | `Facts` | Fact types and query API. Only module rule code may import. |
@@ -101,7 +101,7 @@ Relaunched `fix` that edits loaded package exits `3`: loaded methods keep old co
 
 Main goal of rewrite: clean structure. Legacy implemented each rule on its own, so analyses repeated and code grew.
 
-- Each stage computes facts once per run: syntax index, array def-use, scopes, module facts, typed IR, effect summary.
+- Each stage computes facts once per run: syntax index, array def-use, scopes, module facts, typed IR, effect facts.
 - Rule is one pure function: facts in, findings out. Rule code imports only facts API; test enforces it.
 - Rule that needs new information adds fact to its analysis. Long rule signals missing fact.
 - Registry is data: name, group, footguns, stage, fix tier. Docs page per rule comes from footgun table.
@@ -128,7 +128,7 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 - Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.
 - Later: `syntax` stage findings per file, keyed by file content hash.
 - `inference` stage keeps method store per checked path beside analysis entry. Store holds one entry per inferred method and signature: reached signatures, stage facts and blind spots.
-- `effects` run adds effects record of unit to each entry (`effects.md`, Solve and cache). Library summaries keep one file per partition in directory `library`; every environment shares it (`effects.md`, Solve and cache).
+- `effects` run adds effects record of unit to each entry (`effects.md`, Units and IR).
 - Entry holds plain data: spans, names, call signatures. Typed code stays inside stage, so no rule reads data that store leaves out.
 - Entry depends on content hash of file of its method, since spans hold byte offsets.
 - Entry also depends on lowered code of each package method that inference read through compiler edges, transitively. Lowered code holds macro output and `@eval` code.

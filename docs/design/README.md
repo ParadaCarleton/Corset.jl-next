@@ -12,7 +12,7 @@ Never hand-edit `rules-rewrite.html`.
 | `pipeline.md` | Stage order and diagram |
 | `findings.md` | Groups, confidence, levels, opt-outs, config, project kind, fix tiers, messages, macro output, conventions |
 | `types.md` | Stand-in types, type-disruption, lost narrowing, arguments without stand-in, annotations, union policy, Moshi, arrays |
-| `effects.md` | `!` convention, effect summary |
+| `effects.md` | `!` convention, name trust, effect facts |
 | `architecture.md` | Code layout, core types, process model, tests, command line, rule contract, package load, cache, reference linters |
 | `plan.md` | Phases, quality gate, speed budget |
 | `phase5.md` | Phase 5 PR plan: `effects` and `lifecycle` stages and rules |

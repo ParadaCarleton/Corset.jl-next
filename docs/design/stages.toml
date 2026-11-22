@@ -24,13 +24,13 @@ text = "One inference per package method; stand-in types replace generic argumen
 
 [[stage]]
 name = "effects"
-title = "Effect and alias summary"
-text = "Per unit of `inference` stage: reads and writes of arguments and globals, result aliases. Field-sensitive points-to over SSA IR from `inference` stage code; provenance separates doubt in code from blind spots. Bottom-up through callees, Base and dependencies included; library summaries cached."
+title = "Effect facts"
+text = "Per unit of `inference` stage, each method alone: writes and reads of arguments and globals, call facts, resource holds, statement events. Callee name stands in for callee body (name trust): `!` call writes its mutated operand; other calls write nothing. Builtin stores, closures built in method and compiler effects add evidence. No callee body is read."
 
 [[stage]]
 name = "lifecycle"
 title = "Array lifecycle"
-text = "Local def-use per array: created, written, read before write, resized, escapes, read once. Allocation identity and statement events come from `effects`; callee reads and writes come from its summaries, so passing array to non-writing callee is no escape. Definite only for straight-line patterns."
+text = "Local def-use per array: created, written, read before write, resized, escapes, read once. Allocation identity and statement events come from `effects`; callee names decide writes, so passing array to non-`!` callee is no escape unless result can hold it. Definite only for straight-line patterns."
 
 [[stage]]
 name = "external"

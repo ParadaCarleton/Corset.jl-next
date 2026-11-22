@@ -10,7 +10,7 @@ Draft. Each phase ships usable rules. Phase order follows stage cost: syntax nee
 | 2 syntax | `syntax` stage. Copy ReLint.jl rules (Argus patterns) and LintApp.jl rules (in JuliaWorkspaces) where they exist. Parse errors as findings; file role fact; reference comparison harness with allowlist. | {{count:syntax}} | Works on scripts. Reference comparison clean or allowlisted. **First release.** |
 | 3 module | Package load: command line builds temporary environment and relaunches (architecture.md, "Process model"). Extension triggers loaded. Load errors as findings. Stages `package` and `external`. | {{count:package external}} | Load and rules run on every corpus package. |
 | 4 types | Stand-in inference over every eligible package method (annotated, or reached from analyzed caller; coverage line counts the rest); `inference` stage and type-disruption scan; findings disk cache; `annotation` fixer guesses argument types and fills result types (annotation transition, `types.md`). | {{count:inference}} | Precision gate passes on corpus. `unverified-inbounds` agrees with julia-in-lean site verdicts. |
-| 5 effects | `effects` stage: effect and alias summary; `lifecycle` stage reads callee writes from it; `!` convention flow. | {{count:effects lifecycle}} | Flow fixtures pass, IO, RNG and memo exemptions included. Call resolution meets go/no-go (`phase5.md`, PR 5). |
+| 5 effects | `effects` stage on name trust: `!` names, builtin stores, closures and compiler effects per method (`effects.md`); `lifecycle` stage reads its events; `!` convention flow. | {{count:effects lifecycle}} | Name-tier fixtures pass, IO, RNG and memo exemptions included. Each rule passes quality gate on corpus. |
 | 6 scope | `scope` stage on JuliaLowering. | {{count:scope}} | Scope fixtures pass on packages and scripts. |
 | later | F12, F45, F46, F49, F76 (off by default); string and dict stand-in types; language server mode; directory discovery reads `.gitignore` and `.ignore`, like Ruff; test helper that runs rules on macro expansion, so macro authors check generated code (other packages' macro output gets no findings); replace `{}` stopgap with skip of macro arguments Julia rejects as written (`{x}`, `x ~ Normal()`), once `scope` lowering and `package` method tables can supply it; dimension-aware stand-in for `Number` (catches `x + 1` on Unitful quantity); nursery group for rules before quality gate; upstream to Moshi in order (owner approves each PR): unreachable-arm check (Roger-luo/Moshi.jl#96), exhaustiveness check, order chains (fork branch `data-order`, PR after #96 gets review); after Moshi release, `unchecked-enum` moves Corset enums to Moshi; upstream root-kind rule index to Argus.jl (owner approves PR); prompt or LLM handoff for `manual` fixes; concrete probes for Base widening; warm daemon with incremental runs; secret scan that finds hard-coded tokens and keys in string literals and tracked files, with gitleaks rule set; shape and axis checking: track array sizes and axes through code, so dimension mismatch (`A * B`, broadcast, `dims` argument) and axes of one array used to index other array give findings; borrow checking. | {{count:later}} | — |
 
@@ -29,10 +29,8 @@ Rule is on by default only when all hold:
 Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.
 
 - `check` and `inference` stages: full cold run at least 5× faster than legacy on same package.
-- `effects` stage: at most 2.5× `inference` stage time with empty library cache or cache from other package.
-- `effects` stage with warm library cache: at most `inference` stage time.
+- `effects` stage: at most 0.25× `inference` stage time. Phase 5 row 5 measures it.
 - Legacy runs no effects analysis, so ratio to legacy leaves `effects` stage out.
-- Corpus on main 725b59a0 (history, "Gate speed check"): cold `effects` at most 1.55 times `inference`; warm cache at most 1.0 except Distributions. Distributions warm after #284: 0.92 to 1.03.
 
 Syntax stage: 21 rules take 15–40 ms per 10,000 lines; rule time grows linearly with rule count.
 
@@ -56,7 +54,6 @@ Rerun after edit of one file: `inference` stage with method store, seconds; stor
 | JSON | 3.3 | 0.28 | `lazy.jl` | 0.94 |
 
 Distances loads ChainRulesCore.jl, whose `promote_rule` invalidates JuliaSyntax.jl line lookup; stage recompiles about 1 s of Corset code.
-Remaining risk: effect summary cost is unmeasured. Shared IR, compiler-effects skip and library cache must keep it inside budget; engine PR measures solver before rule PRs.
 
 Repository bar: 100% line coverage; mutation testing on rule code. Corpus: packages that already run legacy Corset, plus registered packages Distances, SpecialFunctions, StatsFuns, Distributions (numeric) and DataStructures (data).
 
@@ -67,6 +64,6 @@ Design is draft until code proves it. Revisit at each checkpoint:
 - After first release: corpus findings and real use test footgun list, levels, presets and messages.
 - After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (`types.md`). Revisit integer input of `type-disruption` if corpus shows integer widening outside index math.
 - Before each later phase: reread parts that phase builds on; question decisions that no longer fit.
-- After phase 5 call resolution: go/no-go in `phase5.md`, PR 5.
+- After phase 5 rule rows: count name-trust misses that block rules on corpus. Revive frozen engine only when they block a quality gate.
 - Each review: adversarial pass by second model on changed parts; log findings and outcomes in `rules-rewrite-history.md`.
 - Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.

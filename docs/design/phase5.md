@@ -6,170 +6,106 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 
 | # | PR | Holds | Needs | Status |
 |---|---|---|---|---|
-| 1 | Engine core | Units, IR, origins, points-to, builtins, static calls, solve, soundness property | — | #232 |
-| 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | 2a #234; 2b #235; 2c #237; 2d #238; 2e #239 |
-| 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance | 2 | 3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249 (fix #252), iteration starts #250, frame copy #253 |
-| 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | #251 (per-environment key), #254 (per-entry key) |
-| 5 | Corpus go/no-go | Gate below; no rule PR before it passes | 4 | — |
-| 6 | `bang-convention` | F53, F86 | 5 | — |
-| 7 | Effect rules | F54, F55, F56, F58, F98 | 5 | — |
-| 8 | Alias rules | F48, F50, F51, F109 | 5 | — |
-| 9 | Lifecycle facts | `lifecycle` stage | 5 | — |
-| 10 | Lifecycle rules | F32, F33, F34, F39, F40, F41 | 9 | — |
+| 1 | Engine core | Units, IR, origins, points-to, builtins, static calls, solve, soundness property | — | #232; frozen |
+| 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | 2a #234; 2b #235; 2c #237; 2d #238; 2e #239; frozen |
+| 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance | 2 | 3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249 (fix #252), iteration starts #250, frame copy #253; frozen |
+| 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | #251 (per-environment key), #254 (per-entry key); frozen |
+| 5 | Name tier | `effects` stage on name trust and compiler effects; facts keep `MethodEffects` shape | — | — |
+| 6 | Engine removal | Delete engine, library summary cache and their tests | 5 | — |
+| 7 | `stateful-iterate` | F109 | — | — |
+| 8 | Alias rules | F48, F50, F51 | 5 | — |
+| 9 | Effect rules | F54, F55, F56, F58, F98 | 5 | — |
+| 10 | `bang-convention` | F53, F86 | 5 | — |
+| 11 | Lifecycle facts | `lifecycle` stage | 5 | — |
+| 12 | Lifecycle rules | F32, F33, F34, F39, F40, F41 | 11 | — |
 
-- One PR per row. Status gets PR number at merge.
-- Rows 6 to 9 can merge in any order after row 5.
+- One PR per row; split a rule row by rule when it grows large. Status gets PR number at merge.
+- Rule rows merge in any order after row 5. Bug rules go first: F48, F50, F98, F58, F54.
+- Rows 1 to 4 built the whole-program engine. Its code and design stay at tag `effects-engine` (history, "Engine freeze").
 
 ### Every PR
 
 - Work in jj workspace `.worktrees/<name>` from `main`; one bookmark per PR.
 - Cover every new line; add regression test per bug found. Mutation check on copy is optional.
 - Pass Runic check, self-lint, `test/invalidation.jl` and full local suite before merge.
-- Engine PR: no rule reads its facts yet. Tests call `Effects` API directly.
 - Rule PR: UI case per footgun with positive, negative and fix case (`architecture.md`, Tests).
+- Rule PR passes quality gate on corpus (`plan.md`). It waits for no other gate.
 
-### 1 Engine core
+### 5 Name tier
 
-Sound summaries for package units through builtins and static calls. Other calls stay open (step 7) until PR 2.
+Facts for every effects rule from each package method alone (`effects.md`, Name trust).
 
-- `inference` stage keeps `TypedCode` of units it infers this run; `inference_facts` returns them to `Engine`.
-- From PR 4, method store entry keeps effects record of unit, so stored unit needs no typed code.
-- `Engine` runs `effects` after `inference` when enabled rule reads `effects`. `FactSet` gains `effects` field.
-- `src/Effects/`: units, IR, origins, points-to, builtins (call step 1), static calls (call step 3), solve.
-- IR: copy unit code, then run passes until `CC: COMPACT_1`. Instance outside package: native inference first.
-- Native inference abort on instance outside package: crash journal and relaunch skip instance; it gets open summary and blind spot.
-- Solve: call graph over variants; SCCs from own iterative Tarjan; worklist inside component.
-- Sum types with data (origin kinds, call outcomes) use Moshi `@data` (new dependency). Ordered enums stay EnumX (`types.md`, Sum types).
-- Facts: verdict per method, parameter and global; cause spans; result aliases; blind spots by reason.
-- Coverage reasons: `always throws on stand-ins`, incomplete method causes, `alias`.
+- `Engine` runs `effects` after `inference` when enabled rule reads `effects`. Name tier replaces engine call in `effects_facts`.
+- Facts keep `MethodEffects`, `Access`, `CallFact` and `UnguardedHold`, so rules of local effect-rules stack port.
+- Fields name tier never fills (`blind_writes`, `blind_reads`, `closed_world`) leave in row 6.
+- Tables: written operand position, alias, exception, consuming, release primitives. Each entry cites Base docstring or style guide.
+- Method store keeps unit record; same record format as engine (`records.jl`).
 
 Tests:
 
-- Fixture package `test/effects/EffectsCases`: method per builtin transfer function, origin kind and path depth (1, 2, `deep`).
-- Result alias fixtures: write through returned view of argument; write through returned global.
-- Soundness property (Supposition.jl): generate inputs per fixture method; compare deep copies before and after call.
-- Observed write without definite or `possible` write in summary fails property.
+- Fixture package `test/effects/EffectsCases`: method per write source, table entry and kind; closure capture; release primitive.
+- Soundness property on fixtures that follow convention: observed write needs fact.
 
-Done: every fixture gives expected verdict; property passes; every-PR bar met.
-Measure on corpus: instances, time, memory, share of methods with `possible` write. Log numbers in history.
+Done: every fixture gives expected facts; property passes; every-PR bar met.
+Measure on corpus: `effects` stage time against `inference` stage; methods with write fact; `possible` share.
 
-### 2 Call resolution
+### 6 Engine removal
 
-Resolve calls that PR 1 leaves open: steps 2, 4, 5, 6 and 7 of `effects.md`, Calls.
-Stacked PRs: 2a foreign table, zero match, join; 2b Base contracts; 2c splat dispatch; 2d provenance; 2e callback records.
-Open-call census after 2b set this order; callback records cover least. Ablation and census: history, "Phase 5 call resolution".
+- Delete engine files, library summary cache, crash relaunch for library instances, and their tests.
+- Keep crash journal that `inference` stage reads.
+- Tag `effects-engine` at last main commit with engine.
 
-- Zero-match call throws `MethodError`: dead code.
-- Foreign call table: `memmove`, runtime type queries. Unknown foreign call gives `possible` write.
-- Callback record: static call on callable holding caller object. Caller applies callee accesses to its own objects.
-- Join over at most 3 matching methods in package code. Disagreement gives `possible`. Library code keeps dispatch open.
-- Base contract table holds documented behavior only. `iterate` on `Iterators.Stateful` gives `possible` write.
-- Contract applies after join fails: library code and package dispatch over 3 methods. Contract verdict is closed-world.
-- Open call: provenance decides finding, blind spot or nothing.
+### 7 `stateful-iterate`
 
-Tests:
-
-- Fixture per step: closure, `Base.Fix1`, callable struct, `foreach` with writing closure.
-- `f(x::Any) = setfield!(x, :n, 0)` keeps definite write.
-- Open call on opaque argument gives blind spot only.
-
-Measure: `possible` share per corpus package; methods per join; contract hits. Join limit 3 since 2a; keep it at least compiler `max_methods`.
-
-### 3 Engine limits
-
-Compiler effects for speed; stand-in cuts and effect kinds for correct verdicts.
-Stacked PRs: 3a compiler-effects shortcut and claims; 3b stand-in cuts; 3c effect kinds; 3d throw paths and call facts; 3e release balance; iteration starts last. Before 3c: derived provenance (Provenance in `effects.md`). Throw paths land before 3c; call facts read effect kinds, so they follow 3c.
-
-- Shortcut: empty summary for instance with `effect_free`, `inaccessiblememonly`, `notaskstate` and result without reference.
-- Skip shortcut when reached method outside Base carries effects override.
-- Compaction deletes call with unused result when compiler effects allow. Keep calls whose callee carries effects override: false claim hides write.
-- Cuts: `inference` stage finds units with dead call or store statements, then infers those at declared signature.
-- Effect kinds and audited Base table (`effects.md`, Effect kinds).
-- Release balance (`effects.md`): hold counts of locks, semaphores and files at normal and throw exits. `trylock` comes later.
-- Throw paths: writes before throw stay. Calls that only build thrown value add definite writes only.
-- Call facts: callee, kinds, may throw, result used or discarded.
-
-Tests:
-
-- Fixture per effect kind and per audited table entry.
-- `x isa BigFloat && (STATE[] += 1)` gives `cut`.
-- False `@assume_effects` in fixture dependency turns shortcut off.
-- Caller of method with false `:effect_free` claim that drops result keeps write.
-- `foreign_mutate!(x); error()` keeps write on `x`.
-- `lock(l); x[i] = v; unlock(l)` gives F98 fact; `@lock`, `lock(f, l)` and `finally` release give none.
-- `hold!(q) = lock(q.lk)` gives definite lock write; lock in one branch only gives `possible`.
-
-Measure: share of instances shortcut skips; time it saves.
-
-### 4 Summary cache
-
-- Library summaries: disk cache in Corset scratch space. Key: `effects.md`, Solve and cache.
-- Entry key holds native edge closure and owner packages of entry, so entries serve every environment.
-- Package unit summaries: method store entry beside `Inferred`, same invalidation.
-
-Tests: cache hit gives same summaries as cold run, also with other package loaded. Other process gives same closure key.
-Edit of reached package, method that changes dispatch, or push past method limit misses. Edit of unrelated package hits.
-Measure: cold run with empty cache; cold run with cache from other corpus package; warm rerun.
-
-### 5 Corpus go/no-go
-
-Run engine on each corpus package (`plan.md`, Corpus). Every item holds per package:
-
-- `possible` write of kind that `bang-convention` reads on at most 30% of package methods with verdict; closures and keyword bodies count.
-  Exempt kinds (IO, RNG, lazy init, audited) stay out: they lower recall of other effect rules, never precision.
-- Coverage line counts methods without verdict.
-- Facts stay same when Corset or target package compiles again. Corset rebuild passes (jobs 900, 902).
-  Distributions rebuild fails: Julia skips one narrowing when match loop stops early (history, "Visit order").
-  Julia PR #65131 fixes it: one fact set over 14 rebuilds, stock gives two (job 1071). Gate passes on first Julia release with fix.
-- Hand audit of 20 contract and join verdicts finds no false definite.
-- With warm library cache, `effects` stage takes at most `inference` stage time.
-- Full cold run with library cache from other corpus package stays inside speed budget (`plan.md`): `effects` at most 2.5× `inference`.
-- First run with empty library cache and cold Base cache build are measured.
-
-Fail: revise call resolution, then run gate again. Log result in history; put timings in `plan.md` speed budget.
-
-### 6 `bang-convention`
-
-- F53 `missing`: method writes argument or global; name has no `!`. Decision flow: `effects.md`.
-- F86 `spurious`: `!` method writes nothing on any path; callers drop its result.
-- Method added to other module's `!` function: no rename fix. Writes nothing on any path: F86 finding, fix `manual`.
-- F86 exempts `sizehint!` (hint) and `!!` functions (mutate when possible, else return new value).
-- Definite write gives `definite` finding. `possible` findings stay off until quality gate passes.
-- Fix: rename definition and package call sites.
-
-### 7 Effect rules
-
-- `unused-call` (F54): discarded call without effect of any kind, without throw, and with termination.
-- `hidden-input` (F55): reads default RNG, task-local state, `ScopedValue` or mutable global.
-- `impure-lambda` (F56): anonymous function captures mutable state.
-- `false-effects` (F58): own analysis contradicts package `@assume_effects` claim.
-- `unguarded-release` (F98): effects version reads throw-exit count; delete syntax version in same PR.
+- F109: `iterate` on `Iterators.Stateful`; suggest `popfirst!`. Reads inference facts only.
 
 ### 8 Alias rules
 
 Rules read per-unit statement events and must-alias pairs.
 
-- `iteration-mutation` (F48): container written inside loop that iterates it.
-- `self-alias` (F50): same container passed twice to writing call.
+- `iteration-mutation` (F48): container written inside loop that iterates it. Alias-table result counts: `keys(d)` iterates `d`.
+- `self-alias` (F50): same container passed as written operand and as other operand of `!` call.
+  - Exempt: functions that unalias operands (`copyto!`, `broadcast!`, `materialize!`).
+  - Definite for function whose docstring warns of shared memory ("Behavior can be unexpected when any mutated argument shares memory"). Else `possible`.
 - `stateful-reuse` (F51): method restarts iterator whose type admits stateful iterator, or lets it escape after start.
-  - Start: `iterate` without state, directly, through contract (`first`, generic `isempty`) or through callee summary.
+  - Start: `iterate` without state, contract start (`first`, generic `isempty`) or consuming-table call.
   - Restart: second start of same object on one path. Loop re-entry counts; `zip(itr, itr)` counts.
-  - Escape after start, or start after escape: return, store into object or global, operand of open call.
-  - Parameter started once without escape: no finding. Summary records start, so caller sees its own restart.
+  - Escape after start, or start after escape: return, store into object or global, operand of package call.
+  - Parameter started once without escape: no finding.
   - Multi-pass types: `AbstractArray`, `AbstractDict`, `AbstractSet`, `AbstractString`, `Tuple`, `NamedTuple`, `Number`, `AbstractChar`.
-  - Other abstract type admits stateful iterator. Concrete type is stateful when its `iterate` summary writes iterator or below it.
-  - Definite when starts and escape are in method code and objects must-alias; on in default preset. Open call or may-alias gives `possible`.
+  - Other abstract type admits stateful iterator. Concrete library type: exception table decides.
+  - Definite when starts and escape are in method code and objects must-alias; on in default preset. May-alias gives `possible`.
   - Fix `manual`: `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type.
-- `stateful-iterate` (F109): `iterate` on `Iterators.Stateful`; suggest `popfirst!`. Reads inference facts only.
 
-### 9 Lifecycle facts
+### 9 Effect rules
+
+Port rules of local effect-rules stack onto name-tier facts.
+
+- `unused-call` (F54): discarded call that compiler proves `effect_free`, `nothrow` and terminating.
+- `hidden-input` (F55): reads default RNG, task-local state, `ScopedValue` or mutable global.
+- `impure-lambda` (F56): anonymous function captures mutable state.
+- `false-effects` (F58): write and read events contradict package `@assume_effects` claim.
+- `unguarded-release` (F98): effects version reads hold counts; delete syntax version in same PR.
+
+### 10 `bang-convention`
+
+- F53 `missing`: method writes argument or global; name has no `!`. Decision flow: `effects.md`.
+- F53 also reports library-function methods that write an argument without `!`: name trust depends on them.
+- F86 `spurious`: `!` method writes nothing on any path; callers drop its result.
+- F86 is definite only when compiler proves `effect_free` for every unit. Else name-trust none gives `possible`.
+- Method added to other module's `!` function: no rename fix. Writes nothing on any path: F86 finding, fix `manual`.
+- F86 exempts `sizehint!` (hint) and `!!` functions (mutate when possible, else return new value).
+- Definite write gives `definite` finding. `possible` findings stay off until quality gate passes.
+- Fix: rename definition and package call sites.
+
+### 11 Lifecycle facts
 
 - `lifecycle` stage builds def-use per array from allocation sites, events, must-alias pairs and escapes of `effects`.
-- Callee reads and writes come from summaries. Array passed to callee that does not write it does not escape.
+- Callee reads and writes come from names: `!` call writes its written operand; other call reads operands.
 - Element events carry index operand; stage decides which elements writes cover.
 - Definite facts need straight-line pattern. Branch join gives `possible`.
 
-### 10 Lifecycle rules
+### 12 Lifecycle rules
 
 `temporary-array` (F32), `unwritten-element` (F33, F34), `constant-array` (F39), `slice-copy` (F40), `broadcast-rebind` (F41). Split by rule if PR grows large.
 
@@ -183,4 +119,4 @@ Rules read per-unit statement events and must-alias pairs.
 
 Owner decides before PR that names decision:
 
-- PR 6: fix tier of rename. Proposal: `breaking` for public or exported name; `likely` for other names.
+- Row 10: fix tier of rename. Proposal: `breaking` for public or exported name; `likely` for other names.

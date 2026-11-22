@@ -22,4 +22,5 @@ Terms this design coins.
 | baseline | Stored existing findings that never fail run. |
 | opt-out | `# corset: allow <rule> -- <reason>` comment. |
 | coverage line | End-of-run count of blind spots by cause. |
+| name trust | `effects` stage assumption: function writes an argument only when its name ends in `!`. Callee name stands in for callee body. |
 | order chain | Moshi `@data` body `A() < B() < C()`: declares singleton variants and their order. |
