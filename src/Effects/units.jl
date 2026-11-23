@@ -15,7 +15,7 @@ facts. `effect_free`: compiler proves unit writes nothing caller sees; stand-in 
 direct callee gives no proof.
 Unit that always throws on stand-ins gives no verdict, only its blind spot.
 """
-function unit_effects(typed::TypedCode, modules::Set{Module}, interpreter::CC.NativeInterpreter, world::UInt)::UnitEffects
+function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt)::UnitEffects
     cut = isempty(typed.cuts) ? nothing : typed.spans[first(typed.cuts)]
     typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, cut)
     walk, lines, used, claimed = unit_walk(typed, modules, interpreter, world)
@@ -46,7 +46,7 @@ end
 Walk of unit `typed` before `walk_values!`, source line of each IR statement, use of each source line, and whether method
 claims `:effect_free`.
 """
-function unit_walk(typed::TypedCode, modules::Set{Module}, interpreter::CC.NativeInterpreter, world::UInt)::Tuple{Walk, Vector{Int}, Vector{Bool}, Bool}
+function unit_walk(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt)::Tuple{Walk, Vector{Int}, Vector{Bool}, Bool}
     ir, lines, used = frame_ir(typed.frame, interpreter, Bool[call_statement(statement) for statement in typed.frame.src.code])
     # Source flags keep compiler `effect_free`, which `frame_ir` clears on kept calls. Claim in method voids proof.
     # Inferred flags reuse claim bits, so claim reads code before inference.
@@ -60,7 +60,7 @@ end
 Fact of call statement `index` in `walk` with its `events` (`CallFact`): write kinds include writes of package closures
 it takes or calls. Compiler flags give `throws` and `terminates`.
 """
-function call_fact(walk::Walk, index::Int, events::Vector{Event}, span::Span, used::Bool)::CallFact
+function call_fact(walk::Walk, index::Integer, events::AbstractVector{Event}, span::Span, used::Bool)::CallFact
     statement = walk.ir.stmts[index][:stmt]::Expr
     operands = call_operands(statement)
     kinds = sort!(unique!([event.kind for event in events if event.write]))
@@ -109,7 +109,7 @@ end
 `items` sorted by `key`, each key computed once: place text costs `repr`. Type parameter `F` makes Julia specialize on
 `key`, so key vector is concrete: abstract one leaves `sortperm` open to invalidation.
 """
-function text_order(items::Vector{T}, key::F)::Vector{T} where {T, F <: Function}
+function text_order(items::AbstractVector{T}, key::F)::Vector{T} where {T, F <: Function}
     return items[sortperm(map(key, items))]
 end
 
@@ -117,7 +117,7 @@ end
 place_key(place::Place.Type, below::Bool, kind::EffectKind.T)::Tuple{String, Bool, EffectKind.T} = (repr(place), below, kind)
 
 """Worst access per place, coverage and kind over `accesses` of all units: definite beats possible; first cause stays."""
-function worst(accesses::Vector{Access})::Vector{Access}
+function worst(accesses::AbstractVector{Access})::Vector{Access}
     found = Dict{Tuple{Place.Type, Bool, EffectKind.T}, Access}()
     for access in accesses
         key = (access.place, access.below, access.kind)
@@ -131,7 +131,7 @@ end
 Facts over all units of method, one per `key` in key order: definite in any unit decides. Key leads with source
 position of fact, so order is source order.
 """
-function surest(facts::Vector{T}, key::F)::Vector{T} where {T <: Union{LoopWrite, SelfAlias}, F <: Function}
+function surest(facts::AbstractVector{T}, key::F)::Vector{T} where {T <: Union{LoopWrite, SelfAlias}, F <: Function}
     found = Dict{Tuple{String, Int, Int, Int, String}, T}()
     for fact in facts
         slot = key(fact)
@@ -180,7 +180,7 @@ claimed_effects(method::Method)::Vector{Symbol} = (claim = CC.decode_effects_ove
 Effects record of each unit in inference order, with its method: typed unit takes its record in `fresh`, stored unit
 (`Units.stored`) its record in `stored`. Order keeps first cause per access (`worst`), as run that infers all.
 """
-function ordered_records(units::Units, fresh::Vector{Union{Nothing, UnitEffects}}, stored::Vector{Union{Nothing, UnitEffects}})::Vector{Pair{Method, Union{Nothing, UnitEffects}}}
+function ordered_records(units::Units, fresh::AbstractVector{Union{Nothing, UnitEffects}}, stored::AbstractVector{Union{Nothing, UnitEffects}})::Vector{Pair{Method, Union{Nothing, UnitEffects}}}
     positions = [[(index, 0) for index in eachindex(units.typed)]; [(unit.position, 1) for unit in units.stored]]
     methods = Method[[typed.site.method for typed in units.typed]; [unit.site.method for unit in units.stored]]
     records = Union{Nothing, UnitEffects}[fresh; stored]
@@ -195,7 +195,7 @@ Facts of methods of `package` from effects `records` of units in inference order
 method (`effects.md`, Facts). Method in `incomplete`, or that stand-ins cut, is incomplete; no write with cut gives
 blind spot `CUT`. Method is effect-free when compiler proves every unit effect-free.
 """
-function method_facts(package::PackageFacts, incomplete::Set{Method}, records::Vector{Pair{Method, Union{Nothing, UnitEffects}}})::Tuple{EffectsFacts, Vector{BlindSpot}}
+function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, records::AbstractVector{Pair{Method, Union{Nothing, UnitEffects}}})::Tuple{EffectsFacts, Vector{BlindSpot}}
     spots = BlindSpot[]
     found, free, cuts = IdDict{Method, Collected}(), IdDict{Method, Bool}(), IdDict{Method, Span}()
     for (method, record) in records

@@ -106,7 +106,7 @@ Annotation text that holds every one of `observed` types in `scope`: families jo
 `Integer` and `Bool`, at most `FAMILIES` in `Union`, `Nothing` and `Missing` last. `nothing` when observed type has no
 family, families exceed limit, or text does not hold every observed type.
 """
-function annotation_text(observed::Vector{Any}, scope::Module)::Union{Nothing, String}
+function annotation_text(observed::AbstractVector, scope::Module)::Union{Nothing, String}
     pieces = String[]
     for type in observed, member in members(type)
         text = family_text(member, scope)
@@ -146,7 +146,7 @@ end
 const EVIDENCE_WIDTH = 40
 
 """Evidence for message: first three distinct `types` as `scope` prints them, stand-ins as models."""
-function evidence(types::Vector{Any}, scope::Module)::Vector{String}
+function evidence(types::AbstractVector, scope::Module)::Vector{String}
     texts = String[]
     for type in types
         model = StandIns.model_type(type)
@@ -176,7 +176,7 @@ omitted default value) share evidence. Result guess is `likely` when own inferen
 keyword argument (inference sees default only), every method `covered` and none in `incomplete` (skipped or failed
 signature, or code that tests type). Else `breaking`.
 """
-function annotation_guesses(package::PackageFacts, observed::IdDict{Method, Vector{Tuple{Type, Type}}}, incomplete::Set{Method})::Vector{AnnotationGuess}
+function annotation_guesses(package::PackageFacts, observed::IdDict{Method, <:AbstractVector{Tuple{Type, Type}}}, incomplete::AbstractSet{Method})::Vector{AnnotationGuess}
     definitions, order = IdDict{SyntaxNode, Vector{MethodSite}}(), SyntaxNode[]
     for site in package.methods
         isnothing(site.node) && continue

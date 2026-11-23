@@ -85,7 +85,7 @@ function negated(file::SyntaxFile, node::SyntaxNode, operator::Symbol)::String
 end
 
 """Condition text that holds when every term of `nodes` is false: `!a && !b`; `&&` term turns into `||` of negated terms."""
-function none_text(file::SyntaxFile, nodes::Vector{SyntaxNode})::String
+function none_text(file::SyntaxFile, nodes::AbstractVector{SyntaxNode})::String
     single = length(nodes) == 1
     parts = map(nodes) do node
         kind_name(node) == "&&" || return negated(file, node, single ? CONDITION : :&&)
@@ -99,7 +99,7 @@ end
 const Branch = Pair{Union{Nothing, String}, String}
 
 """`if` statement text whose first line starts after `indent`; body lines indent four spaces deeper."""
-function if_text(branches::Vector{Branch}, indent::String)::String
+function if_text(branches::AbstractVector{Branch}, indent::String)::String
     lines = String[]
     for (index, (condition, body)) in enumerate(branches)
         head = isnothing(condition) ? "else" : (index == 1 ? "if " : "elseif ") * condition

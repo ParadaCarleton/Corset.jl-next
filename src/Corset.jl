@@ -72,7 +72,7 @@ end
 Run `external` stage and every rule on `package`, `inference` and `effects` facts of analyzed `files`, their `entries`,
 module file `entry` and `project`.
 """
-function package_rules(package::Facts.PackageFacts, inference::Union{Nothing, Facts.InferenceFacts}, effects::Union{Nothing, Facts.EffectsFacts}, files::Vector{Facts.SyntaxFile}, entries::Vector{String}, entry::String, project::Union{Nothing, Facts.ProjectFacts})::Nothing
+function package_rules(package::Facts.PackageFacts, inference::Union{Nothing, Facts.InferenceFacts}, effects::Union{Nothing, Facts.EffectsFacts}, files::AbstractVector{Facts.SyntaxFile}, entries::AbstractVector{String}, entry::String, project::Union{Nothing, Facts.ProjectFacts})::Nothing
     Engine.run_rules(Facts.FactSet(files, entries, Facts.Ban[], project, package, inference, effects, External.external_facts(package, entry, files)))
     return nothing
 end

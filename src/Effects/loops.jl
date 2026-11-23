@@ -16,7 +16,8 @@ Writes to collection inside each loop of `walk`, with `spans` of its IR statemen
 unknown place. Loop step `iterate(x, state)` closes loop over `x`; loop starts at `iterate(x)` on same operand, or at
 its step when none exists.
 """
-function loop_writes(walk::Walk, spans::Vector{Span})::Tuple{Vector{LoopWrite}, Vector{BlindSpot}}
+function loop_writes(walk::Walk, spans::AbstractVector{Span})::Tuple{Vector{LoopWrite}, Vector{BlindSpot}}
+    Base.require_one_based_indexing(spans)
     found, spots = LoopWrite[], BlindSpot[]
     steps = filter(index -> (operands = iterate_operands(walk, index); !isnothing(operands) && length(operands) == 2), 1:length(walk.ir.stmts))
     isempty(steps) && return (found, spots)
@@ -40,7 +41,7 @@ function loop_writes(walk::Walk, spans::Vector{Span})::Tuple{Vector{LoopWrite}, 
 end
 
 """Operands of `iterate` call at statement `index` of `walk`; `nothing` for other statement."""
-function iterate_operands(walk::Walk, index::Int)::Union{Nothing, Vector{Any}}
+function iterate_operands(walk::Walk, index::Integer)::Union{Nothing, Vector{Any}}
     statement = walk.ir.stmts[index][:stmt]
     statement isa Expr || return nothing
     statement.head === :call || return nothing
@@ -53,7 +54,7 @@ Statements of loop that step at statement `index` closes: natural loop of back e
 node of header. Back edge comes from block that header dominates, so step ahead of `while` and preheader of inner loop
 close none. Body is header and blocks that reach back edge without header: code after inner loop stays outside it.
 """
-function loop_statements(ir::CC.IRCode, index::Int, domtree::CC.DomTree)::Vector{Int}
+function loop_statements(ir::CC.IRCode, index::Integer, domtree::CC.DomTree)::Vector{Int}
     blocks, found = ir.cfg.blocks, step_edges(ir, index)
     isnothing(found) && return Int[]
     header, edges = found
@@ -64,7 +65,7 @@ function loop_statements(ir::CC.IRCode, index::Int, domtree::CC.DomTree)::Vector
 end
 
 """Block of `φ` node in `ir` that takes value of statement `index`, and predecessor blocks that carry it; `nothing` when none does."""
-function step_edges(ir::CC.IRCode, index::Int)::Union{Nothing, Tuple{Int, Vector{Int}}}
+function step_edges(ir::CC.IRCode, index::Integer)::Union{Nothing, Tuple{Int, Vector{Int}}}
     step = Core.SSAValue(index)
     for other in 1:length(ir.stmts)
         node = ir.stmts[other][:stmt]
@@ -76,8 +77,8 @@ function step_edges(ir::CC.IRCode, index::Int)::Union{Nothing, Tuple{Int, Vector
 end
 
 """Blocks that `starts` reach along `next` edges, `starts` included. Entry block has predecessor 0: function entry."""
-function reached(starts::Vector{Int}, next::F)::Set{Int} where {F <: Function}
-    found, pending = Set{Int}(starts), copy(starts)
+function reached(starts::AbstractVector{<:Integer}, next::F)::Set{Int} where {F <: Function}
+    found, pending = Set{Int}(starts), append!(Int[], starts)
     while !isempty(pending)
         for other in next(pop!(pending))
             (other < 1 || other in found) && continue
@@ -93,7 +94,7 @@ Writing function name and confidence of write at statement `index` to loop `coll
 `nothing` confidence for write through unknown place (blind spot). `nothing` when statement writes no collection place,
 replaces array element, or deletes from `DELETION_SAFE` collection.
 """
-function loop_write(walk::Walk, index::Int, @nospecialize(collection::Any), sources::Base.IdSet{Any})::Union{Nothing, Tuple{String, Union{Nothing, Confidence.T}}}
+function loop_write(walk::Walk, index::Integer, @nospecialize(collection::Any), sources::Base.IdSet{Any})::Union{Nothing, Tuple{String, Union{Nothing, Confidence.T}}}
     statement = walk.ir.stmts[index][:stmt]
     statement isa Expr || return nothing
     statement.head === :call || return nothing

@@ -56,7 +56,7 @@ const MANUAL = "annotate with intended abstract types; `::Any` accepts anything 
 Fix of finding with `causes` from inference `guesses` by cause span: edits of guessed causes at tier of least safe
 guess, and types each guess saw; `manual` when no cause has guess.
 """
-function annotation_fix(causes::Vector{Label}, guesses::Dict{Span, AnnotationGuess})::Fix
+function annotation_fix(causes::AbstractVector{Label}, guesses::AbstractDict{Span, AnnotationGuess})::Fix
     chosen = AnnotationGuess[guesses[label.span] for label in causes if haskey(guesses, label.span)]
     isempty(chosen) && return manual_fix(MANUAL)
     written = join(("`$(guess.edit.replacement)` (seen: $(join(("`$type`" for type in guess.evidence), ", ")))" for guess in chosen), ", ")

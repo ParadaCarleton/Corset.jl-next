@@ -45,7 +45,7 @@ const Swap = @NamedTuple{index::Int, position::Int, value::Any}
 swap(origin::Origin)::Swap = (index = origin.index, position = origin.position, value = origin.replacement)
 
 """Replacements of `origins`."""
-swaps(origins::Vector{Origin})::Vector{Swap} = Swap[swap(origin) for origin in origins]
+swaps(origins::AbstractVector{Origin})::Vector{Swap} = Swap[swap(origin) for origin in origins]
 
 """
 Effect of leaving `origin` unconverted while other weak values convert: type changes at statement `at`, as `exit` says.
@@ -222,13 +222,13 @@ function renames(name::Type)::Bool
 end
 
 """Whether position `position` of call to `callee` takes type name that converts: callee, `convert(T, x)`, `T.(x)`."""
-conversion(@nospecialize(callee::Any), position::Int)::Bool = position == 1 || (position == 2 && (callee === convert || callee === Base.Broadcast.broadcasted))
+conversion(@nospecialize(callee::Any), position::Integer)::Bool = position == 1 || (position == 2 && (callee === convert || callee === Base.Broadcast.broadcasted))
 
 """
 Result type of call with argument types `types`, callee first, over at most `MATCHES` methods; `Any` when unknown.
 Adds instances it infers to compiler `edges`.
 """
-function call_result!(edges::Vector{Any}, types::Vector{Any})::Type
+function call_result!(edges::AbstractVector{Any}, types::AbstractVector{Any})::Type
     matches = Base._methods_by_ftype(Tuple{types...}, MATCHES, Base.get_world_counter())
     matches isa Vector || return Any
     isempty(matches) && return Any
@@ -245,11 +245,13 @@ end
 known(type::Type)::Bool = type !== Union{} && type !== Any
 
 """Type call result `type` stands for: array that lazy broadcast materializes to, else `type`. Adds to `edges`."""
-materialized!(edges::Vector{Any}, type::Type)::Type = type <: Base.Broadcast.Broadcasted ? call_result!(edges, Any[typeof(Base.Broadcast.materialize), type]) : type
+materialized!(edges::AbstractVector{Any}, type::Type)::Type = type <: Base.Broadcast.Broadcasted ? call_result!(edges, Any[typeof(Base.Broadcast.materialize), type]) : type
 
 """Argument `types` with type of each of `positions` replaced by its converted type in `swaps`."""
-function with_swaps(types::Vector{Any}, swaps::Dict{Int, Any}, positions::Any)::Vector{Any}
-    converted = copy(types)
+function with_swaps(types::AbstractVector, swaps::AbstractDict{<:Integer}, positions::Any)::Vector{Any}
+    # Positions count arguments from one.
+    Base.require_one_based_indexing(types)
+    converted = Vector{Any}(types)
     for position in positions
         converted[position] = swaps[position]
     end
@@ -263,7 +265,7 @@ input absorbs them: with input swapped to `Float64`, conversion changes nothing.
 do not meet `x`. Name that converts input meets it at once. Builtins (`getfield(t, 2)`) change no result type, so scan
 skips them. Adds instances meeting test infers to compiler `edges`.
 """
-function meetings!(found::Dict{Tuple{Int, Int}, Origin}, dropped::Set{Tuple{Int, Int}}, edges::Vector{Any}, code::Core.CodeInfo, parameters::Vector{CC.VarState})::Bool
+function meetings!(found::AbstractDict{<:Tuple{Integer, Integer}, Origin}, dropped::AbstractSet{<:Tuple{Integer, Integer}}, edges::AbstractVector{Any}, code::Core.CodeInfo, parameters::AbstractVector{CC.VarState})::Bool
     variables = variable_origins(code)
     count = length(found)
     for (index, statement) in enumerate(code.code)
@@ -330,7 +332,7 @@ end
 Typed code of `instance` with each of `swaps` applied to copy of lowered code; `nothing` when inference gives none.
 Adds compiler edges of inference to `edges`.
 """
-function converted!(edges::Vector{Any}, instance::Core.MethodInstance, swaps::Vector{Swap})::Union{Nothing, Core.CodeInfo}
+function converted!(edges::AbstractVector{Any}, instance::Core.MethodInstance, swaps::AbstractVector{Swap})::Union{Nothing, Core.CodeInfo}
     interpreter = CC.NativeInterpreter()
     source = CC.retrieve_code_info(instance, CC.get_inference_world(interpreter))
     isnothing(source) && return nothing
@@ -353,7 +355,7 @@ function converted!(edges::Vector{Any}, instance::Core.MethodInstance, swaps::Ve
 end
 
 """Type of statement `index` of typed `code`, widened."""
-statement_type(code::Core.CodeInfo, index::Int)::Type = CC.widenconst(code.ssavaluetypes[index])
+statement_type(code::Core.CodeInfo, index::Integer)::Type = CC.widenconst(code.ssavaluetypes[index])
 
 """
 Whether `changed` code throws at reached statement that returns in `code`: weak value was index or field number.
@@ -364,13 +366,13 @@ breaks(changed::Core.CodeInfo, code::Core.CodeInfo)::Bool = any(eachindex(code.c
 end
 
 """Type of `argument` in typed `code`, widened."""
-argument_type(code::Core.CodeInfo, @nospecialize(argument::Any), parameters::Vector{CC.VarState})::Type = CC.widenconst(code_argextype(argument, code, parameters))
+argument_type(code::Core.CodeInfo, @nospecialize(argument::Any), parameters::AbstractVector{CC.VarState})::Type = CC.widenconst(code_argextype(argument, code, parameters))
 
 """
 Type of call `argument` in typed `code` or IR (`CC.argextype`). Library tuple of `cglobal` stays nested `Core.tuple`
 call, which `CC.argextype` rejects: it gives tuple of element types. Other nested call fails loud.
 """
-function code_argextype(@nospecialize(argument::Any), code::Union{Core.CodeInfo, CC.IRCode}, parameters::Vector{CC.VarState})::Any
+function code_argextype(@nospecialize(argument::Any), code::Union{Core.CodeInfo, CC.IRCode}, parameters::AbstractVector{CC.VarState})::Any
     if argument isa Expr && argument.head === :call
         CC.argextype(argument.args[1], code, parameters) == Core.Const(Core.tuple) || error("nested call in argument position: $argument")
         return Tuple{(CC.widenconst(code_argextype(element, code, parameters)) for element in argument.args[2:end])...}
@@ -396,7 +398,7 @@ Value statement of typed `code` returns or stores in argument, global or returne
 target type, store); target `nothing` for return, store `callee => call` for container and `nothing` for global.
 `nothing` for other statement.
 """
-function exit_value(code::Core.CodeInfo, @nospecialize(statement::Any), parameters::Vector{CC.VarState}, arguments::Int)::Union{Nothing, Tuple{Any, Any, Any}}
+function exit_value(code::Core.CodeInfo, @nospecialize(statement::Any), parameters::AbstractVector{CC.VarState}, arguments::Integer)::Union{Nothing, Tuple{Any, Any, Any}}
     statement isa Core.ReturnNode && return isdefined(statement, :val) ? (statement.val, nothing, nothing) : nothing
     call = statement_call(statement)
     isnothing(call) && return nothing
@@ -418,7 +420,7 @@ function exit_value(code::Core.CodeInfo, @nospecialize(statement::Any), paramete
 end
 
 """Whether store of `exit_value` converts value: concrete global, field, dictionary value or element type."""
-function converts(code::Core.CodeInfo, @nospecialize(target::Any), @nospecialize(store::Any), parameters::Vector{CC.VarState})::Bool
+function converts(code::Core.CodeInfo, @nospecialize(target::Any), @nospecialize(store::Any), parameters::AbstractVector{CC.VarState})::Bool
     isnothing(store) && return isconcretetype(target)
     callee, call = store
     # Identity test: `in` compares with `==`, which gives `missing` for `missing` callee.
@@ -435,7 +437,7 @@ First statement of typed `left` that returns or stores value whose type differs 
 `nothing` when none. Store counts when it writes into argument, global or returned local container whose type does not
 convert value (`converts`).
 """
-function exit_statement(left::Core.CodeInfo, baseline::Core.CodeInfo, parameters::Vector{CC.VarState}, arguments::Int)::Union{Nothing, Tuple{Int, Exit.T}}
+function exit_statement(left::Core.CodeInfo, baseline::Core.CodeInfo, parameters::AbstractVector{CC.VarState}, arguments::Integer)::Union{Nothing, Tuple{Int, Exit.T}}
     for (index, statement) in enumerate(left.code)
         exit = exit_value(left, statement, parameters, arguments)
         isnothing(exit) && continue
@@ -449,7 +451,7 @@ function exit_statement(left::Core.CodeInfo, baseline::Core.CodeInfo, parameters
 end
 
 """Types of value statement `index` returns, stores or computes, in `left` and in `baseline`."""
-function exit_types(left::Core.CodeInfo, baseline::Core.CodeInfo, parameters::Vector{CC.VarState}, arguments::Int, index::Int)::Tuple{Type, Type}
+function exit_types(left::Core.CodeInfo, baseline::Core.CodeInfo, parameters::AbstractVector{CC.VarState}, arguments::Integer, index::Integer)::Tuple{Type, Type}
     exit = exit_value(left, left.code[index], parameters, arguments)
     isnothing(exit) && return statement_type(left, index), statement_type(baseline, index)
     return argument_type(left, exit[1], parameters), argument_type(baseline, exit[1], parameters)
@@ -462,7 +464,7 @@ carries_number(type::Type)::Bool = type !== Union{} && (type <: Number || type <
 First call of typed `left` that computes number, with other number type in `baseline`; `nothing` when none. Slot read
 computes nothing: `x::T = 0.5` converts constant.
 """
-function widened_statement(left::Core.CodeInfo, baseline::Core.CodeInfo, parameters::Vector{CC.VarState})::Union{Nothing, Int}
+function widened_statement(left::Core.CodeInfo, baseline::Core.CodeInfo, parameters::AbstractVector{CC.VarState})::Union{Nothing, Int}
     for (index, statement) in enumerate(left.code)
         call = statement_call(statement)
         isnothing(call) && continue
@@ -497,7 +499,7 @@ function declared_conversion(code::Core.CodeInfo, call::Expr)::Bool
 end
 
 """Whether `argument` of `code` is result of `Core.get_binding_type`: declared type of global."""
-function binding_type(code::Core.CodeInfo, @nospecialize(argument::Any), parameters::Vector{CC.VarState})::Bool
+function binding_type(code::Core.CodeInfo, @nospecialize(argument::Any), parameters::AbstractVector{CC.VarState})::Bool
     argument isa Core.SSAValue || return false
     call = statement_call(code.code[argument.id])
     return !isnothing(call) && code_argextype(call.args[1], code, parameters) == Core.Const(Core.get_binding_type)
@@ -510,7 +512,7 @@ const TYPE_TESTS = Base.IdSet{Any}([isa, <:, ===, ==, !=, isequal])
 Whether typed `code` tests type: `x isa Float64`, `T <: Integer`, `T === Float32`. Tests lowering adds for declared
 types do not count: global (`global g = v`), result (`f(x)::Real`) and local (`y::Real = v`).
 """
-function type_branch(code::Core.CodeInfo, parameters::Vector{CC.VarState})::Bool
+function type_branch(code::Core.CodeInfo, parameters::AbstractVector{CC.VarState})::Bool
     for statement in code.code
         call = statement_call(statement)
         isnothing(call) && continue
@@ -529,7 +531,7 @@ Changes typed `code` of `instance` makes by weak values (`Change`), ordered by s
 tests type (`type_branch`). Adds compiler edges of every inference scan runs to `edges`. Weak value whose conversion
 makes statement throw is dropped: it was index or field number there.
 """
-function changes!(edges::Vector{Any}, instance::Core.MethodInstance, code::Core.CodeInfo)::Tuple{Vector{Change}, Bool}
+function changes!(edges::AbstractVector{Any}, instance::Core.MethodInstance, code::Core.CodeInfo)::Tuple{Vector{Change}, Bool}
     parameters = CC.sptypes_from_meth_instance(instance)
     found, dropped = Dict{Tuple{Int, Int}, Origin}(), Set{Tuple{Int, Int}}()
     meetings!(found, dropped, edges, code, parameters) || return Change[], false

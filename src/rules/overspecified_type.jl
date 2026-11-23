@@ -109,7 +109,7 @@ end
 covariant(head::Union{Nothing, Type})::Bool = head === Union || (!isnothing(head) && Base.unwrap_unionall(head) <: Tuple)
 
 """Widened text of curly `node`: union of number types becomes its join; parameters widen, with `<:` inside invariant type."""
-function widened_curly(mod::Module, file::SyntaxFile, node::SyntaxNode, found::Vector{SyntaxNode})::String
+function widened_curly(mod::Module, file::SyntaxFile, node::SyntaxNode, found::AbstractVector{SyntaxNode})::String
     head, parameters = children_of(node)[1], children_of(node)[2:end]
     resolved = resolve_type(mod, file, head)
     resolved in (Type, Val) && return source(file, node)
@@ -129,7 +129,7 @@ function widened_curly(mod::Module, file::SyntaxFile, node::SyntaxNode, found::V
 end
 
 """Widened text of annotation `node` of `file` in `mod`; pushes each reported part to `found`."""
-function widened_text(mod::Module, file::SyntaxFile, node::SyntaxNode, found::Vector{SyntaxNode})::String
+function widened_text(mod::Module, file::SyntaxFile, node::SyntaxNode, found::AbstractVector{SyntaxNode})::String
     kind = kind_name(node)
     kind == "curly" && return widened_curly(mod, file, node, found)
     kind == "<:" && length(children_of(node)) == 1 && return "<:" * widened_text(mod, file, only(children_of(node)), found)
@@ -148,14 +148,14 @@ function public_function(method::Method, public::Base.IdSet{Any}, types::Set{Cor
 end
 
 """Whether wider method in `sites` covers `site`: `site` is fast path beside generic method of same function."""
-fast_path(site::MethodSite, sites::Vector{MethodSite})::Bool =
+fast_path(site::MethodSite, sites::AbstractVector{MethodSite})::Bool =
     any(other -> site.method.sig <: other.method.sig && !(other.method.sig <: site.method.sig), sites)
 
 """
 Finding for overspecified `annotation` of `file`, widened to `wider`, with reported parts `found`. Fix is manual unless
 widened method is `safe` for dispatch.
 """
-function overspecified_finding(file::SyntaxFile, annotation::SyntaxNode, wider::String, found::Vector{SyntaxNode}, safe::Bool)::Finding
+function overspecified_finding(file::SyntaxFile, annotation::SyntaxNode, wider::String, found::AbstractVector{SyntaxNode}, safe::Bool)::Finding
     text = source(file, annotation)
     causes = [Label(span(file, part), "names specific type") for part in found if part !== annotation]
     fix = safe ? replace_fix(file, annotation, wider, Tier.likely) : manual_fix("replace with `$wider` after other methods change: widened method overlaps them")

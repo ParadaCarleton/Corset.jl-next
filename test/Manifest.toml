@@ -2,7 +2,7 @@
 
 julia_version = "1.13.4"
 manifest_format = "2.1"
-project_hash = "215eb30d4db1363d9fd389f5b4685085c862ec88"
+project_hash = "619e55373edd76199740bccd5dc439bb3823b5c1"
 
 [[deps.Aqua]]
 deps = ["Compat", "Pkg", "Test"]
@@ -236,6 +236,18 @@ version = "2026.11.5"
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 version = "1.3.0"
+
+[[deps.OffsetArrays]]
+git-tree-sha1 = "750d0f2b5aac238d50dfee5f7a44fae3175a3305"
+registries = "General"
+uuid = "6fe1bfb0-de20-5000-8ca7-80f57d26f881"
+version = "1.18.0"
+
+    [deps.OffsetArrays.extensions]
+    OffsetArraysAdaptExt = "Adapt"
+
+    [deps.OffsetArrays.weakdeps]
+    Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 
 [[deps.OpenSSL_jll]]
 deps = ["Artifacts", "Libdl"]

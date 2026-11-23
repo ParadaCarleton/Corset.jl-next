@@ -142,7 +142,7 @@ function parse_enum(::Type{T}, name::String, key::String)::T where {T <: Enum}
 end
 
 """Kind from `setting`; without setting, `script` outside any project and `application` for nameless project."""
-function project_kind(setting::Union{Nothing, String}, project::Union{Nothing, Dict{String, Any}})::Kind.T
+function project_kind(setting::Union{Nothing, String}, project::Union{Nothing, AbstractDict{String, Any}})::Kind.T
     isnothing(setting) || return parse_enum(Kind.T, setting, "kind")
     isnothing(project) && return Kind.script
     haskey(project, "name") || return Kind.application
@@ -167,7 +167,7 @@ project_table(root::String)::Table = overlay(
 )
 
 """Settings for project at `root` (`nothing` outside any project) and command-line `flags`; level names must name group or rule in `rules`."""
-function settings(root::Union{Nothing, String}, flags::Flags, rules::Vector{RuleEntry})::Settings
+function settings(root::Union{Nothing, String}, flags::Flags, rules::AbstractVector{RuleEntry})::Settings
     project = isnothing(root) ? nothing : parse_toml(joinpath(root, "Project.toml"))
     table = isnothing(root) ? Table() : project_table(root)
     kind = project_kind(table.kind, project)

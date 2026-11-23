@@ -5,6 +5,7 @@ using Corset.Facts: Facts, Span, Label, Edit, Fix, Finding, Precision, Tier, Con
 using Corset.Config: Config, ConfigError, Flags, Kind, Level, Settings
 using Corset.Engine: Diagnostic, Report
 using Corset.Rules: REGISTRY, entry
+using OffsetArrays: OffsetVector
 using Test: @test, @testset, @test_throws
 
 """Finding in file `name` with primary span `bytes`, causes `causes` and fix `fix`."""
@@ -85,6 +86,21 @@ end
     @test Corset.Render.line_text("x\r\n", [1, 4], 1) == "x"
     tabbed = "\ty = 1\n"
     @test occursin("1 |     y = 1\n  |     ^ primary", sprint(io -> Corset.Render.render(io, Diagnostic(sample_finding(2:2), Level.warn, "test"), Dict("f.jl" => tabbed), ".", false)))
+end
+
+@testset "widened arguments take offset vectors" begin
+    key, other = (Corset.Baseline.Key("rule", "f.jl", "f", snippet) for snippet in ("a", "b"))
+    @test Corset.Baseline.cover(Dict(key => 1), OffsetVector([key, other], -1)) == ([true, false], Corset.Baseline.Key[])
+    @test Corset.Rules.Docstring.as_docstring("# note\n", OffsetVector([1:6], -1), "") == "\"\"\"note\"\"\""
+    @test_throws ArgumentError Corset.Render.line_text("a\nb", OffsetVector([1, 3], -1), 1)
+    instance = Base.method_instance(first, (Vector{Int},))
+    site = Facts.MethodSite(instance.def, Corset.Syntax.parse_file("f.jl", "f(x) = x\n", Role.package), nothing, Span("f.jl", 1, 1, Precision.line))
+    nodes = Union{Nothing, Facts.SyntaxNode}[nothing]
+    @test_throws ArgumentError Corset.Inference.spans(only(code_lowered(first, (Vector{Int},))), instance, site, OffsetVector([1, 4], -1), nodes)
+end
+
+@testset "swapped types keep element types of caller" begin
+    @test Corset.Widening.with_swaps([Int, Float64], Dict(1 => Float32), (1,)) == Any[Float32, Float64]
 end
 
 @testset "facts" begin
@@ -287,6 +303,11 @@ end
         write(joinpath(root, "Project.toml"), "name = \"Pkg\"\n\n[weakdeps]\nC = \"$(Base.UUID(rand(UInt128)))\"\n\n[extensions]\nGoneExt = \"C\"\n\n[preferences.Corset]\nkind = \"library\"\n")
         @test_throws "extension GoneExt has no file ext/GoneExt.jl" Corset.Discovery.discover(root; environment = nothing)
         @test_throws "extension GoneExt has no file ext/GoneExt.jl" Corset.check(joinpath(root, "src"); flags = SYNTAX_ONLY)
+        write(joinpath(root, "Project.toml"), "name = \"Pkg\"\n\n[weakdeps]\nA = \"$(Base.UUID(rand(UInt128)))\"\nB = \"$(Base.UUID(rand(UInt128)))\"\n\n[extensions]\nFlatExt = [\"A\", \"B\"]\n")
+        @test [id.name for id in only(Corset.Discovery.project_facts(root; environment = nothing).extensions).triggers] == ["A", "B"]
+        # TOML parses empty list as `Vector{Any}`; extension without trigger never loads.
+        write(joinpath(root, "Project.toml"), "name = \"Pkg\"\n\n[extensions]\nFlatExt = []\n")
+        @test_throws "extension FlatExt needs trigger name or list of names" Corset.Discovery.discover(root; environment = nothing)
     end
 end
 

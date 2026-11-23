@@ -67,7 +67,7 @@ function numbered(family::Type)::Vector{Type}
 end
 
 """Types that stand for argument of declared type `bound`; `structs` are package struct stand-ins. Empty when none fits."""
-function stand_ins(bound::Type, structs::Vector{<:Type})::Vector{Type}
+function stand_ins(bound::Type, structs::AbstractVector{<:Type})::Vector{Type}
     bound === Any && return Type[]
     isconcretetype(bound) && return Type[bound]
     numbers = fitting(StandIns.NUMBERS, bound)
@@ -93,7 +93,7 @@ end
 Types with stand-ins for type variables of `type`, outermost first; variable that no stand-in fits stays free.
 Stops after more than `LIMIT` types, so caller sees overflow.
 """
-function instantiate(type::Type, structs::Vector{<:Type})::Vector{Type}
+function instantiate(type::Type, structs::AbstractVector{<:Type})::Vector{Type}
     type isa UnionAll || return Type[type]
     variable, applications = type.var, Type[]
     for value in stand_ins(variable.ub, structs)
@@ -124,7 +124,8 @@ end
 inhabited(type::Type)::Bool = isconcretetype(type) && !any(field -> field === Union{}, fieldtypes(type))
 
 """First member of each of `groups`, then second of each, and so on."""
-function interleaved(groups::Vector{Vector{Type}})::Vector{Type}
+function interleaved(groups::AbstractVector{<:AbstractVector{<:Type}})::Vector{Type}
+    foreach(Base.require_one_based_indexing, groups)
     found = Type[]
     for index in 1:maximum(length, groups; init = 0), group in groups
         index <= length(group) && push!(found, group[index])
@@ -139,7 +140,7 @@ takes its bound: field of type `Any` holds data that gives no findings, as `::An
 at `LIMIT` reaches most structs and most data: stand-ins without bound come first, and first stand-in of each struct
 comes before second of any.
 """
-function struct_stand_ins(structs::Vector{<:Type})::Vector{Type}
+function struct_stand_ins(structs::AbstractVector{<:Type})::Vector{Type}
     found = Type[]
     for _ in 1:ROUNDS
         exact, filled = Vector{Type}[], Vector{Type}[]
@@ -159,7 +160,7 @@ function struct_stand_ins(structs::Vector{<:Type})::Vector{Type}
 end
 
 """Choices for argument `parameter` of `signature`; records position in `bare` when no stand-in fits."""
-function choices(parameter::Any, position::Int, signature::Type, structs::Vector{<:Type}, bare::Vector{Int})::Vector{Any}
+function choices(parameter::Any, position::Integer, signature::Type, structs::AbstractVector{<:Type}, bare::AbstractVector{<:Integer})::Vector{Any}
     element = Base.unwrapva(parameter)
     # Free type variable keeps whole signature generic, so its arguments keep declared types.
     found = signature isa UnionAll ? Type[] : stand_ins(element, structs)
@@ -173,7 +174,9 @@ end
 First `limit` combinations of one entry per position of `options`, first position fastest as `Iterators.product`
 orders them, and whether more exist. `Iterators.product` over splatted options compiles once per argument count.
 """
-function combinations(options::Vector{Vector{Any}}, limit::Int)::Tuple{Vector{Vector{Any}}, Bool}
+function combinations(options::AbstractVector{<:AbstractVector}, limit::Integer)::Tuple{Vector{Vector{Any}}, Bool}
+    Base.require_one_based_indexing(options)
+    foreach(Base.require_one_based_indexing, options)
     found, indices = Vector{Any}[], ones(Int, length(options))
     more = !any(isempty, options)
     while more
@@ -187,7 +190,7 @@ function combinations(options::Vector{Vector{Any}}, limit::Int)::Tuple{Vector{Ve
 end
 
 """Stand-in signatures of `method`; `structs` come from `struct_stand_ins`."""
-function method_signatures(method::Method, structs::Vector{<:Type})::MethodSignatures
+function method_signatures(method::Method, structs::AbstractVector{<:Type})::MethodSignatures
     instantiated = instantiate(method.sig, structs)
     signatures, bare = Type[], Int[]
     over_limit = length(instantiated) > LIMIT
@@ -235,7 +238,7 @@ Provenance of argument `position` (1 is first argument after callee) of `method`
 `stand_in`: stand-in signatures gave unit, so type that differs from declared type is stand-in Corset chose.
 `explicit_any`: source declares argument `::Any`.
 """
-function provenance(method::Method, type::Any, position::Int, stand_in::Bool, explicit_any::Bool)::Provenance.T
+function provenance(method::Method, type::Any, position::Integer, stand_in::Bool, explicit_any::Bool)::Provenance.T
     # Function and array stand-ins come from Corset only, also in signatures calls reach.
     stand_in_type = type === FunctionStandIn || StandIns.array_stand_in(type)
     stand_in_type && holds_open(type) && return Provenance.opaque
@@ -252,7 +255,7 @@ end
 Provenance of each argument of unit `signature` of `method`, callee first (`provenance`): callee is `code`. `opted`
 lists argument positions source declares `::Any`.
 """
-function argument_provenance(method::Method, signature::Type, stand_in::Bool, opted::Vector{Int})::Vector{Provenance.T}
+function argument_provenance(method::Method, signature::Type, stand_in::Bool, opted::AbstractVector{<:Integer})::Vector{Provenance.T}
     arguments = tuple_parameters(signature)
     found = Provenance.T[Provenance.code]
     for position in 1:(length(arguments) - 1)

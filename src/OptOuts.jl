@@ -32,7 +32,7 @@ struct OptOut
 end
 
 """Problem finding at comment `bytes` of `file`."""
-problem(file::SyntaxFile, bytes::UnitRange{Int}, kind::Symbol, message::String, why::String, fix::String)::Finding = Finding(
+problem(file::SyntaxFile, bytes::UnitRange{<:Integer}, kind::Symbol, message::String, why::String, fix::String)::Finding = Finding(
     NAME, kind, Confidence.definite, message, Label(Span(file.path, first(bytes), last(bytes), Precision.exact), "opt-out comment"),
     Label[], why, Facts.manual_fix(fix),
 )
@@ -59,24 +59,24 @@ function Layout(file::SyntaxFile)::Layout
 end
 
 """Whether bytes `range` hold code."""
-holds_code(layout::Layout, range::UnitRange{Int})::Bool = any(view(layout.code, range))
+holds_code(layout::Layout, range::UnitRange{<:Integer})::Bool = any(view(layout.code, range))
 
 """Bytes of line holding byte `index`, newline excluded."""
-function line_bytes(text::String, index::Int)::UnitRange{Int}
+function line_bytes(text::String, index::Integer)::UnitRange{Int}
     start = something(findprev(==(UInt8('\n')), codeunits(text), index), 0) + 1
     stop = something(findnext(==(UInt8('\n')), codeunits(text), index), ncodeunits(text) + 1) - 1
     return start:stop
 end
 
 """Bytes of outermost statement starting at first code after byte `index`; empty range when no code follows."""
-function next_statement(layout::Layout, index::Int)::UnitRange{Int}
+function next_statement(layout::Layout, index::Integer)::UnitRange{Int}
     target = findnext(layout.code, index + 1)
     isnothing(target) && return (index + 1):index
     return target:get(layout.stops, target, target)
 end
 
 """Opt-out in comment `bytes` of layout's file, problem finding, or `nothing` when comment does not address Corset."""
-function read_comment(layout::Layout, bytes::UnitRange{Int}, known::Set{Symbol})::Union{OptOut, Finding, Nothing}
+function read_comment(layout::Layout, bytes::UnitRange{<:Integer}, known::AbstractSet{Symbol})::Union{OptOut, Finding, Nothing}
     file = layout.file
     text = String(codeunits(file.text)[bytes])
     occursin(ADDRESSED, text) || return nothing
@@ -108,7 +108,7 @@ function read_comment(layout::Layout, bytes::UnitRange{Int}, known::Set{Symbol})
 end
 
 """Findings no opt-out covers, and problems: bad comments plus opt-out rules that suppressed nothing. `known` holds rule names."""
-function apply(facts::FactSet, findings::Vector{Finding}, known::Set{Symbol})::Tuple{Vector{Finding}, Vector{Finding}}
+function apply(facts::FactSet, findings::AbstractVector{Finding}, known::AbstractSet{Symbol})::Tuple{Vector{Finding}, Vector{Finding}}
     problems = Finding[]
     optouts = Dict(file.path => OptOut[] for file in facts.files)
     for file in facts.files

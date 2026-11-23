@@ -52,7 +52,7 @@ Text parts and files that key of analysis of checked `path` with `flags` text ha
 with its Manifest and preferences, and every file of project root `root` and of Manifest `path` entries, `cache`
 directory left out.
 """
-function inputs(path::String, flags::String, root::Union{Nothing, String}, files::Vector{String}, load_path::Vector{String}, cache::String)::Tuple{Vector{String}, Vector{String}}
+function inputs(path::String, flags::String, root::Union{Nothing, String}, files::AbstractVector{String}, load_path::AbstractVector{String}, cache::String)::Tuple{Vector{String}, Vector{String}}
     parts, listed, trees = environment_inputs(load_path)
     return [string(VERSION), repr(Base.CacheFlags()), path, flags, parts...], found_files([files; listed], [trees; something(root, String[])], cache)
 end
@@ -61,7 +61,7 @@ end
 Environment parts of key: each environment of `load_path`. Files: Corset project file, and each project environment
 with its Manifest and preferences. Trees: Corset source and Manifest `path` entries.
 """
-function environment_inputs(load_path::Vector{String})::Tuple{Vector{String}, Vector{String}, Vector{String}}
+function environment_inputs(load_path::AbstractVector{String})::Tuple{Vector{String}, Vector{String}, Vector{String}}
     corset = corset_root()
     parts, listed, trees = String[], [joinpath(corset, "Project.toml")], [joinpath(corset, "src")]
     for environment in load_path
@@ -76,7 +76,7 @@ function environment_inputs(load_path::Vector{String})::Tuple{Vector{String}, Ve
 end
 
 """`listed` files and every file of `trees`, `cache` directory left out, by real path and sorted."""
-function found_files(listed::Vector{String}, trees::Vector{String}, cache::String)::Vector{String}
+function found_files(listed::AbstractVector{String}, trees::AbstractVector{String}, cache::String)::Vector{String}
     # Stale `path` entry names directory that is gone; it adds no file.
     found = [listed; (tree_files(tree, cache) for tree in unique(trees) if isdir(tree))...]
     # Processes that reach file through other links must agree, so files count by real path.
@@ -88,7 +88,7 @@ Key line of method store of checked `path`: Julia version, cache flags, `path`, 
 analyzed `files` by path, package `shape`, and files of project `root` that package code loads from (`src`, `ext`,
 `deps`) but `files` leave out. Store entries count analyzed files by content, so Manifest `path` entry of `root` stays out.
 """
-function method_key(path::String, root::String, files::Vector{String}, shape::Vector{String}, load_path::Vector{String}, cache::String)::String
+function method_key(path::String, root::String, files::AbstractVector{String}, shape::AbstractVector{String}, load_path::AbstractVector{String}, cache::String)::String
     parts, listed, trees = environment_inputs(load_path)
     root = realpath(root)
     kept = [filter(tree -> !(ispath(tree) && realpath(tree) == root), trees); joinpath.(root, ["src", "ext", "deps"])]
@@ -98,7 +98,7 @@ function method_key(path::String, root::String, files::Vector{String}, shape::Ve
 end
 
 """SHA-256 of `parts`, then of path and content of each of `files`. Missing file counts too: file that appears changes digest."""
-function digest(parts::Vector{String}, files::Vector{String})::String
+function digest(parts::AbstractVector{String}, files::AbstractVector{String})::String
     context = SHA.SHA256_CTX()
     foreach(part -> update_part!(context, part), parts)
     for file in files
@@ -109,7 +109,7 @@ function digest(parts::Vector{String}, files::Vector{String})::String
 end
 
 """Key of analysis: digest of `inputs`."""
-key(path::String, flags::String, root::Union{Nothing, String}, files::Vector{String}, load_path::Vector{String}, cache::String)::String =
+key(path::String, flags::String, root::Union{Nothing, String}, files::AbstractVector{String}, load_path::AbstractVector{String}, cache::String)::String =
     digest(inputs(path, flags, root, files, load_path, cache)...)
 
 """Entry file of checked `path` in cache `directory`."""

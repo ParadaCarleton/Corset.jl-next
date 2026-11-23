@@ -220,7 +220,7 @@ end
 Whether `node` spells call to `name` with `arguments` positional arguments; callee lowering inserts passes. Product
 `2x` spells call to `*`.
 """
-function spells(file::SyntaxFile, node::SyntaxNode, name::Symbol, arguments::Int)::Bool
+function spells(file::SyntaxFile, node::SyntaxNode, name::Symbol, arguments::Integer)::Bool
     name in LOWERED && return true
     kind_name(node) == "juxtapose" && return name === :* && length(children_of(node)) == arguments
     kind_name(node) == "call" || return false
@@ -247,7 +247,7 @@ end
 Node of each statement of `code` in `file`: lone node `mapped` gives statement, kept when node spells statement's call
 (`spells`) and calls of one callee map in evaluation order; `nothing` elsewhere.
 """
-function statement_nodes(code::Core.CodeInfo, mapped::Vector{Vector{SyntaxNode}}, file::SyntaxFile)::Vector{Union{Nothing, SyntaxNode}}
+function statement_nodes(code::Core.CodeInfo, mapped::AbstractVector{<:AbstractVector{SyntaxNode}}, file::SyntaxFile)::Vector{Union{Nothing, SyntaxNode}}
     nodes = Union{Nothing, SyntaxNode}[nothing for _ in code.code]
     ends = Dict{Symbol, Int}()
     for (index, (statement, found)) in enumerate(zip(code.code, mapped))
@@ -275,7 +275,8 @@ end
 Dotcall node of `broadcasted` statement `index` of `code`: node of `materialize` statement that consumes it. Mapping
 gives outermost broadcast of `xs .* 0.5 .+ 1.0` to its `materialize` statement only. `nothing` for other consumer.
 """
-function broadcast_node(code::Core.CodeInfo, nodes::Vector{Union{Nothing, SyntaxNode}}, index::Int)::Union{Nothing, SyntaxNode}
+function broadcast_node(code::Core.CodeInfo, nodes::AbstractVector{Union{Nothing, SyntaxNode}}, index::Integer)::Union{Nothing, SyntaxNode}
+    Base.require_one_based_indexing(nodes)
     for user in (index + 1):length(code.code)
         call = statement_call(code.code[user])
         (isnothing(call) || !(Core.SSAValue(index) in call.args)) && continue
@@ -289,9 +290,11 @@ Span of each statement of `code`: span of its node in `nodes` (`statement_nodes`
 that line lies in definition; else method site span. Statement without own line takes line of statement before it.
 Code from macro of same file carries line of macro body, outside definition, so it gets method site span.
 """
-function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodSite, starts::Vector{Int}, nodes::Vector{Union{Nothing, SyntaxNode}})::Vector{Span}
+function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodSite, starts::AbstractVector{<:Integer}, nodes::AbstractVector{Union{Nothing, SyntaxNode}})::Vector{Span}
+    # Debuginfo line number indexes `starts`.
+    Base.require_one_based_indexing(nodes, starts)
     path = site.file.path
-    lines = isnothing(site.node) ? (1:length(starts)) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
+    lines = isnothing(site.node) ? eachindex(starts) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
     found, line = Span[], 0
     # Lowering gives method for omitted defaults first body line, though definition line holds defaults and forwarding call.
     wrapper = forwards(site)
@@ -462,7 +465,8 @@ Hard-coded array facts of `typed` code of `instance` from `changes` (`HardArrays
 nodes. Escape is `possible` when method tests type (`branch`) or node cannot narrow; meeting is `possible` always, since
 caller's array type decides whether mixing fails (GPU array with CPU array).
 """
-function hard_arrays(typed::TypedCode, instance::Core.MethodInstance, nodes::Vector{Union{Nothing, SyntaxNode}}, changes::Vector{HardArrays.Change}, branch::Bool)::Vector{HardArray}
+function hard_arrays(typed::TypedCode, instance::Core.MethodInstance, nodes::AbstractVector{Union{Nothing, SyntaxNode}}, changes::AbstractVector{HardArrays.Change}, branch::Bool)::Vector{HardArray}
+    Base.require_one_based_indexing(nodes)
     found, file = HardArray[], typed.site.file
     for change in changes
         construction = change.construction
@@ -488,7 +492,7 @@ end
 `iterate` calls on `Iterators.Stateful` in `typed` code of `instance`; `nodes` are its statement nodes. Call needs node
 that spells `iterate`: `for` loop lowers to `iterate` too, and its node is loop.
 """
-function stateful_iterates(typed::TypedCode, instance::Core.MethodInstance, nodes::Vector{Union{Nothing, SyntaxNode}})::Vector{StatefulIterate}
+function stateful_iterates(typed::TypedCode, instance::Core.MethodInstance, nodes::AbstractVector{Union{Nothing, SyntaxNode}})::Vector{StatefulIterate}
     found, file, parameters = StatefulIterate[], typed.site.file, CC.sptypes_from_meth_instance(instance)
     for (statement, node) in zip(typed.code.code, nodes)
         call = statement_call(statement)
@@ -505,7 +509,8 @@ end
 Disruption facts of `typed` code of `instance` from weak value `changes` (`Widening.changes!`); `nodes` are its
 statement nodes. Finding is `possible` when method tests type (`branch`) or node cannot narrow to weak value.
 """
-function disruptions(typed::TypedCode, instance::Core.MethodInstance, nodes::Vector{Union{Nothing, SyntaxNode}}, changes::Vector{Widening.Change}, branch::Bool)::Vector{Disruption}
+function disruptions(typed::TypedCode, instance::Core.MethodInstance, nodes::AbstractVector{Union{Nothing, SyntaxNode}}, changes::AbstractVector{Widening.Change}, branch::Bool)::Vector{Disruption}
+    Base.require_one_based_indexing(nodes)
     found, conversion = Disruption[], isempty(changes) ? nothing : converter(typed, instance)
     for change in changes
         origin, file = change.origin, typed.site.file
@@ -534,7 +539,8 @@ end
 Lost narrowing facts of `typed` code from `losses` (`Narrowing.losses`); `nodes` are its statement nodes. Loss counts
 when test maps to term of `&&` or `||` chain (`Narrowing.guard`).
 """
-function narrowings(typed::TypedCode, nodes::Vector{Union{Nothing, SyntaxNode}}, losses::Vector{Narrowing.Loss})::Vector{NarrowingLoss}
+function narrowings(typed::TypedCode, nodes::AbstractVector{Union{Nothing, SyntaxNode}}, losses::AbstractVector{Narrowing.Loss})::Vector{NarrowingLoss}
+    Base.require_one_based_indexing(nodes)
     found, file = NarrowingLoss[], typed.site.file
     for loss in losses
         node = nodes[loss.test]
@@ -574,7 +580,7 @@ end
 Calls in typed `code` of `instance` to function of package `modules` with concrete argument types that dispatch to one
 method of analyzed files (`by_path`): signature, and type inference gives call there. Annotation guesses read them.
 """
-function package_calls(code::Core.CodeInfo, instance::Core.MethodInstance, modules::Set{Module}, by_path::Dict{String, SyntaxFile})::Vector{Tuple{Type, Type}}
+function package_calls(code::Core.CodeInfo, instance::Core.MethodInstance, modules::AbstractSet{Module}, by_path::AbstractDict{String, SyntaxFile})::Vector{Tuple{Type, Type}}
     parameters = CC.sptypes_from_meth_instance(instance)
     found = Tuple{Type, Type}[]
     for (index, statement) in enumerate(code.code)
@@ -631,7 +637,7 @@ end
 Whether `type` names type or function of package `modules`, parameters included; `named` caches answers. Parameters
 form no cycle: Julia rejects bound that names own type variable.
 """
-function names_package!(named::IdDict{Any, Bool}, @nospecialize(type::Any), modules::Set{Module})::Bool
+function names_package!(named::IdDict{Any, Bool}, @nospecialize(type::Any), modules::AbstractSet{Module})::Bool
     haskey(named, type) && return named[type]
     answer = if type isa Union
         names_package!(named, type.a, modules) || names_package!(named, type.b, modules)
@@ -656,8 +662,8 @@ ones apart. Walk passes through package methods and through dependency specializ
 (`map(f, xs)` with package `f`). `nothing` when generated instance has signature store cannot read back (`holds_gensym`).
 `named` caches `names_package!` answers.
 """
-function dependency_methods!(named::IdDict{Any, Bool}, edges::Vector{Any}, files::Dict{String, SyntaxFile}, modules::Set{Module})::Union{Nothing, Tuple{Vector{Method}, Vector{Core.MethodInstance}}}
-    found, staged, visited, stack = Method[], Core.MethodInstance[], Base.IdSet{Core.MethodInstance}(), copy(edges)
+function dependency_methods!(named::IdDict{Any, Bool}, edges::AbstractVector{Any}, files::AbstractDict{String, SyntaxFile}, modules::AbstractSet{Module})::Union{Nothing, Tuple{Vector{Method}, Vector{Core.MethodInstance}}}
+    found, staged, visited, stack = Method[], Core.MethodInstance[], Base.IdSet{Core.MethodInstance}(), append!(Any[], edges)
     while !isempty(stack)
         edge = pop!(stack)
         instance = edge_instance(edge)
@@ -707,7 +713,7 @@ code_digest(method::Method)::String = digest(Base.uncompressed_ast(method))
 staged_digest(instance::Core.MethodInstance)::String = digest(CC.get_staged(instance, Base.get_world_counter()))
 
 """Methods defined in analyzed `files` by `method_id`, keyword bodies and closures included; `ids` keeps each one's id."""
-function method_index(files::Dict{String, SyntaxFile})::Tuple{Dict{String, Method}, IdDict{Method, String}}
+function method_index(files::AbstractDict{String, SyntaxFile})::Tuple{Dict{String, Method}, IdDict{Method, String}}
     ids = IdDict{Method, String}()
     Base.visit(method -> haskey(files, string(method.file)) && (ids[method] = method_id(method)), Core.methodtable)
     return Dict(id => method for (method, id) in ids), ids
@@ -717,7 +723,7 @@ end
 Entry `store` holds under `key` when file of method keeps its hash in `hashes`, each method entry read keeps its code,
 and each generator it read gives same code. `index` finds methods by id; `codes` caches digests by id or staged key.
 """
-function valid_entry(store::Store, key::String, hashes::Dict{String, String}, index::Dict{String, Method}, codes::Dict{String, String})::Union{Nothing, Entry}
+function valid_entry(store::Store, key::String, hashes::AbstractDict{String, String}, index::AbstractDict{String, Method}, codes::AbstractDict{String, String})::Union{Nothing, Entry}
     entry = get(store, key, nothing)
     (isnothing(entry) || get(hashes, first(entry.file), "") != last(entry.file)) && return nothing
     for (id, code) in entry.methods
@@ -737,7 +743,7 @@ end
 Store entry of `inferred` result of `site` on `signature`, whose inferences gave compiler `edges`; `nothing` when walk
 gives none (`dependency_methods!`). `ids` and `codes` cache method ids and digests.
 """
-function entry!(named::IdDict{Any, Bool}, ids::IdDict{Method, String}, codes::Dict{String, String}, site::MethodSite, signature::Type, inferred::Inferred, edges::Vector{Any}, files::Dict{String, SyntaxFile}, hashes::Dict{String, String}, modules::Set{Module})::Union{Nothing, Entry}
+function entry!(named::IdDict{Any, Bool}, ids::IdDict{Method, String}, codes::AbstractDict{String, String}, site::MethodSite, signature::Type, inferred::Inferred, edges::AbstractVector{Any}, files::AbstractDict{String, SyntaxFile}, hashes::AbstractDict{String, String}, modules::AbstractSet{Module})::Union{Nothing, Entry}
     read = dependency_methods!(named, edges, files, modules)
     isnothing(read) && return nothing
     found, generated = read
@@ -838,7 +844,7 @@ Signatures: stand-in signatures of package methods in `files`, then those their 
 stand-in only. `store` serves entries whose files are unchanged; `nothing` turns store off and gives no store.
 `journal` records each inference; key that crashed earlier run gets blind spot and no inference. Journal needs store.
 """
-function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::Union{Nothing, Store}, journal::Union{Nothing, Journal})::Tuple{InferenceFacts, Vector{BlindSpot}, Units, Union{Nothing, Store}}
+function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile}, store::Union{Nothing, Store}, journal::Union{Nothing, Journal})::Tuple{InferenceFacts, Vector{BlindSpot}, Units, Union{Nothing, Store}}
     isnothing(journal) || !isnothing(store) || throw(ArgumentError("crash journal records store keys, so it needs method store"))
     structs = struct_stand_ins(Type[site.type for site in package.structs])
     spots = BlindSpot[]

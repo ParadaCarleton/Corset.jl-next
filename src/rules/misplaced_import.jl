@@ -37,7 +37,7 @@ using ...Facts
 const NAME = Symbol("misplaced-import")
 
 """First statement of module body in `file` that holds `byte`; top-level statement when no `module` form holds it."""
-function first_statement(file::SyntaxFile, byte::Int)::SyntaxNode
+function first_statement(file::SyntaxFile, byte::Integer)::SyntaxNode
     holders = filter(node -> span(file, node).first_byte <= byte <= span(file, node).last_byte, forms(file, "module"))
     body = isempty(holders) ? file.tree : last(children_of(last(holders)))
     return first(children_of(body))
@@ -61,7 +61,7 @@ function move_fix(file::SyntaxFile, statement::Span, target::SyntaxFile, use::Sp
 end
 
 """Finding for `imported` when only one file other than its own uses its names; `nothing` otherwise."""
-function misplaced_finding(files::Dict{String, SyntaxFile}, imported::ExplicitImport)::Union{Nothing, Finding}
+function misplaced_finding(files::AbstractDict{String, SyntaxFile}, imported::ExplicitImport)::Union{Nothing, Finding}
     users = unique(use.file for (_, use) in imported.uses)
     length(users) == 1 && only(users) != imported.statement.file || return nothing
     target = files[only(users)]

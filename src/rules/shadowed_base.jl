@@ -47,7 +47,7 @@ function shadows(mod::Module, name::Symbol)::Bool
 end
 
 """Whether `type` names type of package `modules`, in parameters, unions and `where` bodies included."""
-function names_own_type(type::Any, modules::Set{Module})::Bool
+function names_own_type(type::Any, modules::AbstractSet{Module})::Bool
     type isa UnionAll && return names_own_type(Base.unwrap_unionall(type), modules)
     type isa Union && return names_own_type(type.a, modules) || names_own_type(type.b, modules)
     type isa DataType || return false
@@ -55,7 +55,7 @@ function names_own_type(type::Any, modules::Set{Module})::Bool
 end
 
 """Whether `method` signature names package type in argument other than function itself."""
-function own_signature(method::Method, modules::Set{Module})::Bool
+function own_signature(method::Method, modules::AbstractSet{Module})::Bool
     arguments = tuple_parameters(method.sig)[2:end]
     return any(argument -> names_own_type(argument, modules), arguments)
 end
@@ -69,7 +69,7 @@ const INTERFACE = Set(
 )
 
 """Confidence of shadow `name` with method `sites`: definite for operator or interface function when each signature names package type."""
-function shadow_confidence(name::Symbol, sites::Vector{MethodSite}, modules::Set{Module})::Confidence.T
+function shadow_confidence(name::Symbol, sites::AbstractVector{MethodSite}, modules::AbstractSet{Module})::Confidence.T
     meant = (Base.isoperator(name) || name in INTERFACE) && all(site -> own_signature(site.method, modules), sites)
     return meant ? Confidence.definite : Confidence.possible
 end
@@ -78,7 +78,7 @@ end
 qualified(name::Symbol)::String = Base.isoperator(name) ? "Base.:$name" : "Base.$name"
 
 """Fix for shadow with method `sites`: qualify each definition name, or manual when site lacks node or signature names no package type."""
-function shadow_fix(name::Symbol, sites::Vector{MethodSite}, modules::Set{Module})::Fix
+function shadow_fix(name::Symbol, sites::AbstractVector{MethodSite}, modules::AbstractSet{Module})::Fix
     exact = all(site -> !isnothing(site.node), sites)
     exact && all(site -> own_signature(site.method, modules), sites) || return manual_fix("rename function, or extend `$(qualified(name))` for package types only")
     edits = [Edit(span(site.file, definition_name(site.node)), qualified(name)) for site in sites]
@@ -86,7 +86,7 @@ function shadow_fix(name::Symbol, sites::Vector{MethodSite}, modules::Set{Module
 end
 
 """Method `sites` of function with type `created`."""
-function function_sites(sites::Vector{MethodSite}, created::Type)::Vector{MethodSite}
+function function_sites(sites::AbstractVector{MethodSite}, created::Type)::Vector{MethodSite}
     # Loop: closure over type value passed to `filter` compiles once per value.
     found = MethodSite[]
     for site in sites

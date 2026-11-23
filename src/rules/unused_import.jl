@@ -76,14 +76,14 @@ function loaded_packages(file::SyntaxFile, statement::SyntaxNode)::Vector{String
 end
 
 """Manual fix that removes import, unless loading `packages` has intended effect."""
-load_fix(packages::Vector{String})::Fix = manual_fix("remove import, unless loading $(join(("`$name`" for name in packages), ", ")) has intended effect")
+load_fix(packages::AbstractVector{String})::Fix = manual_fix("remove import, unless loading $(join(("`$name`" for name in packages), ", ")) has intended effect")
 
 """
 Fix removing `unused` paths of `statement`: rewrite with kept paths, or delete lines of statement with none kept.
 Manual when unused path binds package, or when deleted statement is only import of file role that loads package in
 `sole`: load effects may be intended.
 """
-function removal_fix(file::SyntaxFile, statement::SyntaxNode, unused::Vector{SyntaxNode}, sole::Set{Tuple{Role.T, String}})::Fix
+function removal_fix(file::SyntaxFile, statement::SyntaxNode, unused::AbstractVector{SyntaxNode}, sole::AbstractSet{Tuple{Role.T, String}})::Fix
     loads = [source(file, path) for path in unused if binds_package(file, statement, path)]
     isempty(loads) || return load_fix(loads)
     kept = [path for path in bound_paths(statement) if !any(node -> node === path, unused)]
@@ -103,7 +103,7 @@ end
 Finding for `imported` statement of `file` with names its module never uses; `nothing` when all are used. `sole` holds
 packages only one import of file role loads.
 """
-function unused_finding(file::SyntaxFile, imported::ExplicitImport, sole::Set{Tuple{Role.T, String}})::Union{Nothing, Finding}
+function unused_finding(file::SyntaxFile, imported::ExplicitImport, sole::AbstractSet{Tuple{Role.T, String}})::Union{Nothing, Finding}
     statement = only(node for kind in ("using", "import") for node in forms(file, kind) if span(file, node) == imported.statement)
     used = Set(first.(imported.uses))
     # ExplicitImports.jl gives `var"name"` path no import row; such name is no known name.

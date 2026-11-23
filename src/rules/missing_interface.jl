@@ -54,10 +54,10 @@ function implemented(callee::Union{Function, Type}, query::Type, interface::Type
 end
 
 """Text of call to `callee` on struct `name` with `arguments` after it: `getindex(::Ones, ::Int)`."""
-call_text(callee::Union{Function, Type}, name::String, arguments::Vector{String})::String = "$(nameof(callee))($(join(["::$name"; arguments], ", ")))"
+call_text(callee::Union{Function, Type}, name::String, arguments::AbstractVector{String})::String = "$(nameof(callee))($(join(["::$name"; arguments], ", ")))"
 
 """Fix text that defines `gaps` in `Base`."""
-define(gaps::Vector{String})::String = "define " * join(("`Base.$gap`" for gap in gaps), " and ")
+define(gaps::AbstractVector{String})::String = "define " * join(("`Base.$gap`" for gap in gaps), " and ")
 
 """Dimension count of array struct `body`: `Int`, or type variable of struct."""
 function rank(body::DataType)::Union{Int, TypeVar}
@@ -118,7 +118,7 @@ end
 supertype_label(site::StructSite, interface::String)::Label = Label(span(site.file, children_of(children_of(site.node)[1])[2]), "opts into $interface interface")
 
 """Finding for struct `site` that misses `gaps` of `interface`; `causes` label code that opts into it; `why` and `fix` explain."""
-function gap_finding(site::StructSite, interface::String, gaps::Vector{String}, causes::Vector{Label}, why::String, fix::String)::Finding
+function gap_finding(site::StructSite, interface::String, gaps::AbstractVector{String}, causes::AbstractVector{Label}, why::String, fix::String)::Finding
     name = definition_name(site.node)
     return Finding(
         NAME, :missing_method, Confidence.definite, "`$(source(site.file, name))` misses $(join(("`$gap`" for gap in gaps), ", ", " and ")) of $interface interface",

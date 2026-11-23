@@ -34,14 +34,14 @@ function discover(path::String; environment::Union{Nothing, String})::Sources
 end
 
 """Table `key` of parsed TOML `data`; empty when absent."""
-table(data::Dict{String, Any}, key::String)::Dict{String, Any} = get(data, key, Dict{String, Any}())
+table(data::AbstractDict{String, Any}, key::String)::Dict{String, Any} = get(data, key, Dict{String, Any}())
 
 """Package identities of dependency table `names` (name to uuid), sorted by name."""
-ids(names::Dict{String, Any})::Vector{Base.PkgId} = [Base.PkgId(Base.UUID(uuid), name) for (name, uuid) in sort!(collect(names); by = first)]
+ids(names::AbstractDict{String, Any})::Vector{Base.PkgId} = [Base.PkgId(Base.UUID(uuid), name) for (name, uuid) in sort!(collect(names); by = first)]
 
 """
 Project.toml facts of package with project root `root`; `nothing` for project without `name`. Manifest of `environment`
-project file gives `test_loads`. Config error: missing module or extension file, unknown trigger or test target name.
+project file gives `test_loads`. Config error: missing module or extension file, malformed or unknown trigger, unknown test target name.
 Only package load needs uuid.
 """
 function project_facts(root::String; environment::Union{Nothing, String})::Union{Nothing, ProjectFacts}
@@ -51,7 +51,7 @@ function project_facts(root::String; environment::Union{Nothing, String})::Union
     entry = joinpath(root, "src", "$name.jl")
     isfile(entry) || throw(ConfigError("package $name has no module file src/$name.jl"))
     known = merge(table(project, "deps"), table(project, "weakdeps"))
-    extensions = [extension(root, extension_name, triggers, known) for (extension_name, triggers) in sort!(collect(table(project, "extensions")); by = first)]
+    extensions = [extension(root, extension_name, trigger_names(extension_name, triggers), known) for (extension_name, triggers) in sort!(collect(table(project, "extensions")); by = first)]
     test_deps, tests = test_dependencies(root, project)
     uuid = tryparse(Base.UUID, string(get(project, "uuid", "")))
     loads = isnothing(uuid) || isnothing(environment) ? nothing : test_loads(environment, uuid, tests)
@@ -62,7 +62,7 @@ end
 Packages that load with package `uuid` and its test dependencies `tests`: their transitive `[deps]` in Manifest of
 `environment` project file, sorted by name. `nothing` when Manifest is missing or lacks package.
 """
-function test_loads(environment::String, uuid::Base.UUID, tests::Vector{Base.PkgId})::Union{Nothing, Vector{Base.PkgId}}
+function test_loads(environment::String, uuid::Base.UUID, tests::AbstractVector{Base.PkgId})::Union{Nothing, Vector{Base.PkgId}}
     manifest = Base.project_file_manifest_path(environment)
     isnothing(manifest) && return nothing
     entries = table(parse_toml(manifest), "deps")
@@ -80,19 +80,26 @@ function test_loads(environment::String, uuid::Base.UUID, tests::Vector{Base.Pkg
     return sort!([Base.PkgId(id, first(found[id])) for id in seen]; by = id -> id.name)
 end
 
-"""Extension `name` of package at `root` with trigger name or names `triggers`, looked up in `known` (`[deps]` and `[weakdeps]`)."""
-function extension(root::String, name::String, triggers::Union{String, Vector}, known::Dict{String, Any})::Extension
-    names = triggers isa String ? [triggers] : Vector{String}(triggers)
-    unknown = filter(trigger -> !haskey(known, trigger), names)
+"""Trigger names of extension `name` from its `[extensions]` entry `triggers`: one name or list of names."""
+function trigger_names(name::String, triggers::Any)::Vector{String}
+    triggers isa String && return [triggers]
+    # TOML parses list of names as `Vector{String}`; empty or mixed list as `Vector{Any}`.
+    triggers isa Vector{String} && return triggers
+    throw(ConfigError("extension $name needs trigger name or list of names"))
+end
+
+"""Extension `name` of package at `root` with trigger names `triggers`, looked up in `known` (`[deps]` and `[weakdeps]`)."""
+function extension(root::String, name::String, triggers::AbstractVector{String}, known::AbstractDict{String, Any})::Extension
+    unknown = filter(trigger -> !haskey(known, trigger), triggers)
     isempty(unknown) || throw(ConfigError("extension $name names $(join(unknown, ", ")), which [weakdeps] lacks"))
-    return Extension(name, extension_file(root, name), [Base.PkgId(Base.UUID(known[trigger]), trigger) for trigger in names])
+    return Extension(name, extension_file(root, name), [Base.PkgId(Base.UUID(known[trigger]), trigger) for trigger in triggers])
 end
 
 """
 Where package at `root` with parsed `project` lists test dependencies, and those not in `[deps]`.
 `[targets].test` names come from `[weakdeps]` and `[extras]`; else test/Project.toml `[deps]`, without package itself.
 """
-function test_dependencies(root::String, project::Dict{String, Any})::Tuple{TestDeps.T, Vector{Base.PkgId}}
+function test_dependencies(root::String, project::AbstractDict{String, Any})::Tuple{TestDeps.T, Vector{Base.PkgId}}
     deps = table(project, "deps")
     if haskey(table(project, "targets"), "test")
         known = merge(table(project, "weakdeps"), table(project, "extras"))
@@ -131,8 +138,9 @@ function extension_file(root::String, name::String)::String
 end
 
 """Parse `entries` of `project` and every file they include, breadth first; include calls not followed become blind spots."""
-function closure(entries::Vector{String}, project::Union{Nothing, ProjectFacts})::Sources
-    files, blind_spots, pending, seen = SyntaxFile[], BlindSpot[], copy(entries), Set{String}()
+function closure(entries::AbstractVector{String}, project::Union{Nothing, ProjectFacts})::Sources
+    paths = append!(String[], entries)
+    files, blind_spots, pending, seen = SyntaxFile[], BlindSpot[], copy(paths), Set{String}()
     while !isempty(pending)
         path = popfirst!(pending)
         path in seen && continue
@@ -150,7 +158,7 @@ function closure(entries::Vector{String}, project::Union{Nothing, ProjectFacts})
             end
         end
     end
-    return Sources(files, blind_spots, entries, project)
+    return Sources(files, blind_spots, paths, project)
 end
 
 """Julia files under `directory`, sorted; skips hidden directories, symbolic links and directories with own Project.toml."""

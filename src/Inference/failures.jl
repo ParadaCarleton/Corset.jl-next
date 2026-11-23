@@ -34,14 +34,14 @@ end
 Function or type `call` in typed `code` (lowered or IR) calls, when inference knows it: inner callee of splatted call
 (`Core._apply_iterate`) and keyword call (`Core.kwcall`); else `nothing`.
 """
-function called(code::Union{Core.CodeInfo, CC.IRCode}, call::Expr, parameters::Vector{CC.VarState})::Any
+function called(code::Union{Core.CodeInfo, CC.IRCode}, call::Expr, parameters::AbstractVector{CC.VarState})::Any
     callee = callable(code_argextype(call.args[1], code, parameters))
     callee in (Core._apply_iterate, Core.kwcall) && length(call.args) >= 3 && return callable(code_argextype(call.args[3], code, parameters))
     return callee
 end
 
 """Whether `call` dispatches to one method that analyzed `files` define; its own frame reports failure inside it."""
-function package_call(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.VarState}, files::Dict{String, SyntaxFile})::Bool
+function package_call(code::Core.CodeInfo, call::Expr, parameters::AbstractVector{CC.VarState}, files::AbstractDict{String, SyntaxFile})::Bool
     types = Any[CC.widenconst(code_argextype(argument, code, parameters)) for argument in call.args]
     matches = Base._methods_by_ftype(Tuple{types...}, 1, Base.get_world_counter())
     return matches isa Vector && length(matches) == 1 && haskey(files, string(only(matches).method.file))
@@ -52,7 +52,7 @@ Inferred type on `signature` of statement `index` of code of `method` on `own`, 
 without code. Generated code differs per signature, so its index names no statement on other signature: `nothing` too.
 Adds compiler edges of inference to `edges`.
 """
-function statement_type!(edges::Vector{Any}, method::Method, own::Type, signature::Type, index::Int)::Union{Nothing, Type}
+function statement_type!(edges::AbstractVector{Any}, method::Method, own::Type, signature::Type, index::Integer)::Union{Nothing, Type}
     Base.hasgenerator(method) && signature != own && return nothing
     inferred = infer(method, signature)
     isnothing(inferred) && return nothing
@@ -67,7 +67,7 @@ callee_text(@nospecialize(callee::Any), scope::Module)::String = callee isa Func
 Reached call statements of typed `code` that never return, with callee that inference knows (`called`): statement
 index, call and callee. `parameters` are static parameters of instance of `code`.
 """
-function never_returning(code::Core.CodeInfo, parameters::Vector{CC.VarState})::Vector{Tuple{Int, Expr, Any}}
+function never_returning(code::Core.CodeInfo, parameters::AbstractVector{CC.VarState})::Vector{Tuple{Int, Expr, Any}}
     found = Tuple{Int, Expr, Any}[]
     for (index, statement) in enumerate(code.code)
         # Unreached statement is wrapped in `Core.Const`, so it is no call.
@@ -85,7 +85,7 @@ become their models. Skips unknown callees and throw helpers. Also gives index o
 stand-in cuts (`cuts!`). Call of package method in `files` gets no fact or spot: its own frame reports failure inside it.
 Adds compiler edges of inferences it runs to `edges`; `helpers` caches throw-helper verdicts with their edges.
 """
-function failures!(edges::Vector{Any}, helpers::IdDict{Any, Tuple{Bool, Vector{Any}}}, typed::TypedCode, files::Dict{String, SyntaxFile})::Tuple{Vector{Pair{Int, Union{FailingCall, BlindSpot}}}, Vector{Int}}
+function failures!(edges::AbstractVector{Any}, helpers::IdDict{Any, <:Tuple{Bool, AbstractVector{Any}}}, typed::TypedCode, files::AbstractDict{String, SyntaxFile})::Tuple{Vector{Pair{Int, Union{FailingCall, BlindSpot}}}, Vector{Int}}
     found, failing = Pair{Int, Union{FailingCall, BlindSpot}}[], Int[]
     method, code, signature = typed.site.method, typed.code, typed.signature
     parameters = CC.sptypes_from_meth_instance(something(instance(method, signature)))
@@ -120,7 +120,7 @@ declared signature reaches, and `failing` calls (fail on stand-in only, `failure
 method (`declared`), only for code with dead calls. Declared signature without code cannot clear dead call, so each
 counts as cut; nor can generated code, whose statements differ per signature.
 """
-function cuts!(declared::IdDict{Method, Union{Nothing, Core.CodeInfo}}, method::Method, signature::Type, code::Core.CodeInfo, failing::Vector{Int})::Vector{Int}
+function cuts!(declared::IdDict{Method, Union{Nothing, Core.CodeInfo}}, method::Method, signature::Type, code::Core.CodeInfo, failing::AbstractVector{<:Integer})::Vector{Int}
     dead = dead_calls(code)
     (isempty(dead) || signature == method.sig) && return failing
     reference = get!(() -> (result = Base.hasgenerator(method) ? nothing : infer(method, method.sig); isnothing(result) ? nothing : result[2]), declared, method)
