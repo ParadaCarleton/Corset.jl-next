@@ -469,6 +469,9 @@ other operand adds its value to `found`. Return whether `testers` grew.
 """
 function tested!(found::Base.IdSet{Any}, testers::IdDict{Method, <:AbstractSet{<:Integer}}, method::Method, code::AbstractVector{Any}, operand::Any)::Bool
     operand isa Core.SSAValue && (operand = code[operand.id])
+    # Local `target = f` stands for argument `f`.
+    operand isa Core.SlotNumber && operand.id > method.nargs && (operand = Facts.assigned_once(code, operand))
+    operand isa Core.SSAValue && (operand = code[operand.id])
     if operand isa Core.SlotNumber && 2 <= operand.id <= method.nargs
         tested = get!(Set{Int}, testers, method)
         (operand.id - 1) in tested && return false

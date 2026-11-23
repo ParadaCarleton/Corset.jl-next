@@ -491,6 +491,7 @@ module ProbedCases
     probed_method_error(x::Float64) = x
     probed_guarded(x::Float64) = x
     probed_object(x::Float64) = x
+    probed_alias(x::Float64) = x
     kept_filtered(x::Float64) = x
     kept_finally(x::Float64) = x
     kept_called(x::Float64) = x
@@ -539,6 +540,15 @@ module ProbedCases
         0
     end
     guarded(x) = call_or_zero(probed_guarded, x)
+    function call_alias_or_zero(f, x)
+        target = f
+        return try
+            target(x)
+        catch
+            0
+        end
+    end
+    guarded_alias(x) = call_alias_or_zero(probed_alias, x)
     struct Guard
         fallback::Int
     end
@@ -559,8 +569,8 @@ end
     # Methods of functions, types and callable objects, as package stage collects them.
     found = Corset.Package.probed(unique!([method for value in bindings for method in methods(value) if method.module === ProbedCases]))
     @test sort!([String(nameof(value)) for value in owned if value in found]) == [
-        "probed_bare", "probed_direct", "probed_guarded", "probed_interrupt", "probed_local", "probed_method_error",
-        "probed_object", "probed_qualified", "probed_rewrapped", "probed_splat", "probed_wrapped",
+        "probed_alias", "probed_bare", "probed_direct", "probed_guarded", "probed_interrupt", "probed_local",
+        "probed_method_error", "probed_object", "probed_qualified", "probed_rewrapped", "probed_splat", "probed_wrapped",
     ]
     # Lowering pops exception before return; optimized IR can return from handler directly.
     @test Corset.Package.swallows(Any[Core.EnterNode(2), Core.ReturnNode(0)], 1, 2)
