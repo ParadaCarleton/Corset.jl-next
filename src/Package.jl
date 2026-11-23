@@ -7,7 +7,7 @@ Each extension whose triggers environment can load gets them loaded; extension t
 """
 module Package
 
-using ..Facts: Facts, line_starts, PackageFacts, ProjectFacts, MethodSite, StructSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
+using ..Facts: Facts, line_starts, lowered_value, PackageFacts, ProjectFacts, MethodSite, StructSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
 using ..Config: ConfigError, parse_toml
 
 """Rule name load failures report under."""
@@ -357,10 +357,40 @@ function load(project::ProjectFacts, files::AbstractVector{SyntaxFile})::Loaded
     return Loaded(package_facts(package_modules(mod, project), files), errors, [blind_spots; moved_versions(project)])
 end
 
+"""Functions that answer whether function takes arguments."""
+const REFLECTION = Union{typeof(applicable), typeof(hasmethod), typeof(which), typeof(methods)}
+
+"""
+Functions and types lowered code of `sites` tests for methods: passes to reflection call (`REFLECTION`), or calls in
+`try` of method that names `MethodError`. Generated methods pass: they keep generator only.
+"""
+function probed(sites::AbstractVector{MethodSite})::Base.IdSet{Any}
+    found = Base.IdSet{Any}()
+    for site in sites
+        isdefined(site.method, :source) || continue
+        code = Base.uncompressed_ast(site.method).code
+        calls = Tuple{Int, Expr}[]
+        for (index, statement) in pairs(code)
+            call = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
+            call isa Expr && call.head === :call && push!(calls, (index, call))
+        end
+        for (_, call) in calls
+            length(call.args) >= 2 && lowered_value(code, call.args[1]) isa REFLECTION && push!(found, lowered_value(code, call.args[2]))
+        end
+        any(((_, call),) -> any(argument -> lowered_value(code, argument) === MethodError, call.args), calls) || continue
+        tries = [(index, statement.catch_dest) for (index, statement) in pairs(code) if statement isa Core.EnterNode]
+        for (index, call) in calls
+            any(((enter, catch_dest),) -> enter < index < catch_dest, tries) && push!(found, lowered_value(code, call.args[1]))
+        end
+    end
+    delete!(found, nothing)
+    return found
+end
+
 """Facts of loaded package `modules`, root module first, with method and struct sites in `files`."""
 function package_facts(modules::AbstractVector{Module}, files::AbstractVector{SyntaxFile})::PackageFacts
     sites = method_sites(modules, files)
-    return PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files, modules))
+    return PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files, modules), probed(sites))
 end
 
 end

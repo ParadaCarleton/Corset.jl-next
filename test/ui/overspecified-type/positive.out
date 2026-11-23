@@ -289,3 +289,23 @@ warning[overspecified-type]: `Dict{Symbol, Vector{Float64}}` rejects callers `Ab
    = fix: replace with `AbstractDict{Symbol, <:AbstractVector{<:Real}}`   [likely]
    = docs: corset explain overspecified-type
 
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:78:11
+   |
+78 | halved(x::Float64) = x / 2
+   |           ^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real` after checking `applicable` calls and `MethodError` catches: widening changes what they do   [manual]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:89:12
+   |
+89 | thirded(x::Float64) = x / 3
+   |            ^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real` after checking `applicable` calls and `MethodError` catches: widening changes what they do   [manual]
+   = docs: corset explain overspecified-type
+

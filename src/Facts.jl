@@ -15,7 +15,7 @@ export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, W
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, StatefulIterate, InferenceFacts, Step, Root, Place, Access, UnguardedHold, LoopWrite, SelfAlias, Callee, callee_name, callee_methods, place_text, root_global, CallFact, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
-export name_span, tuple_parameters, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
+export name_span, tuple_parameters, lowered_value, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal, line_start, owned_lines, line_deletion
 export negation, exits, terms, exit_guard, later_term, returning_function, CONDITION, operand, body_text, negated, none_text, Branch, if_text, statement_indent
@@ -237,6 +237,7 @@ end
 Loaded package (`package` stage facts): package modules (root, submodules, loaded extensions; root first), values
 public names reach, and sites of methods and structs package modules define in analyzed files.
 `methods` keeps methods later definitions replaced; `overwrites` pairs each (earlier, later) by same signature.
+`probed`: functions and types package methods test for methods, so new method changes what code does (`Package.probed`).
 """
 struct PackageFacts
     modules::Vector{Module}
@@ -244,6 +245,7 @@ struct PackageFacts
     methods::Vector{MethodSite}
     overwrites::Vector{Tuple{MethodSite, MethodSite}}
     structs::Vector{StructSite}
+    probed::Base.IdSet{Any}
 end
 
 """
@@ -750,6 +752,18 @@ Parameters of tuple type `type` under its `where`: callee type, then argument ty
 infer `SimpleVector`; with `Any`, they dispatch at run time, and package that loads later can invalidate them.
 """
 tuple_parameters(type::Type)::Core.SimpleVector = Base.unwrap_unionall(type).parameters
+
+"""Value of `operand` in lowered `code`: global it names, directly, through statement or as `Module.name`; else `nothing`."""
+function lowered_value(code::AbstractVector{Any}, operand::Any)::Any
+    Base.require_one_based_indexing(code)
+    operand isa Core.SSAValue && (operand = code[operand.id])
+    operand isa GlobalRef && return isdefined(operand.mod, operand.name) ? getglobal(operand.mod, operand.name) : nothing
+    # Lowering turns `Base.f` into `getproperty(Base, :f)`.
+    (operand isa Expr && operand.head === :call && length(operand.args) == 3 && operand.args[3] isa QuoteNode) || return nothing
+    owner, name = lowered_value(code, operand.args[2]), operand.args[3].value
+    qualified = lowered_value(code, operand.args[1]) isa typeof(getproperty) && owner isa Module && name isa Symbol
+    return qualified && isdefined(owner, name) ? getglobal(owner, name) : nothing
+end
 
 """
 Type of argument `position` of `method`, wrapped in signature `where`: element type for `Vararg`, bound for type variable.

@@ -711,7 +711,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <li>Corset code uses Moshi <code>@data</code> for sum types with data. EnumX enums move to Moshi with <code>unchecked-enum</code>.</li>
 </ul>
 </div><div class="decision"><h3>Suggested abstract type</h3>
-<p>Always suggest <code>Real</code> for floats. <code>overspecified-type</code> uses one helper: <code>float_to_real(typejoin(members))</code>. Struct field fix is type parameter (<code>x::T</code>) only. Argument fix stays <code>likely</code> only when widened method and each other method of function are disjoint or nested; otherwise it is manual. Property test: applying any fix never creates new finding. Build general mechanism only if test keeps finding conflicts.</p>
+<p>Always suggest <code>Real</code> for floats. <code>overspecified-type</code> uses one helper: <code>float_to_real(typejoin(members))</code>. Struct field fix is type parameter (<code>x::T</code>) only. Argument fix stays <code>likely</code> only when widened method and each other method of function are disjoint or nested; otherwise it is manual. Fix is manual for function package code tests for methods (<code>applicable</code>, <code>hasmethod</code>, <code>which</code>, <code>methods</code>, <code>catch</code> of <code>MethodError</code>): widening changes what that code does. Property test: applying any fix never creates new finding. Build general mechanism only if test keeps finding conflicts.</p>
 </div><div class="decision"><h3>Annotation transition</h3>
 <p>Helps unannotated package reach full annotations. <code>annotation</code> fixer guesses types; message shows evidence for each guess.</p>
 <ul>

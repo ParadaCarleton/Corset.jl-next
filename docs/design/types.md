@@ -111,7 +111,7 @@ One policy for inferred locals, results and struct fields; argument annotations 
 
 ### Suggested abstract type
 
-Always suggest `Real` for floats. `overspecified-type` uses one helper: `float_to_real(typejoin(members))`. Struct field fix is type parameter (`x::T`) only. Argument fix stays `likely` only when widened method and each other method of function are disjoint or nested; otherwise it is manual. Property test: applying any fix never creates new finding. Build general mechanism only if test keeps finding conflicts.
+Always suggest `Real` for floats. `overspecified-type` uses one helper: `float_to_real(typejoin(members))`. Struct field fix is type parameter (`x::T`) only. Argument fix stays `likely` only when widened method and each other method of function are disjoint or nested; otherwise it is manual. Fix is manual for function package code tests for methods (`applicable`, `hasmethod`, `which`, `methods`, `catch` of `MethodError`): widening changes what that code does. Property test: applying any fix never creates new finding. Build general mechanism only if test keeps finding conflicts.
 
 ### Annotation transition
 

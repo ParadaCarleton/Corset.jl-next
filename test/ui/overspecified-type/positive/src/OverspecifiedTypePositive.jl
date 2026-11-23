@@ -2,7 +2,7 @@
 """Package whose functions annotate narrower types than their code needs."""
 module OverspecifiedTypePositive
 
-export scale, area, total, middle, weighted, present, rows, absolute, Point, power, code, rounded, forwarded
+export scale, area, total, middle, weighted, present, rows, absolute, Point, power, code, rounded, forwarded, halve, third
 public counted, sizes, members, mean
 
 """Scaled copy of values."""
@@ -72,5 +72,20 @@ end
 
 """Lengths of named groups."""
 sizes(groups::Dict{Symbol, Vector{Float64}}) = Dict(name => length(group) for (name, group) in groups)
+
+"""Half of float, else zero; widened private `halved` would change `applicable` answer, so fix is manual."""
+halve(x) = Base.applicable(halved, x) ? halved(x) : 0
+halved(x::Float64) = x / 2
+
+"""Third of float, else zero; widened private `thirded` would throw no `MethodError` to catch, so fix is manual."""
+function third(x)
+    try
+        return thirded(x)
+    catch error
+        error isa MethodError || rethrow()
+        return 0
+    end
+end
+thirded(x::Float64) = x / 3
 
 end

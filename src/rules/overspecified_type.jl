@@ -12,6 +12,8 @@ Private method counts: public `f(x) = _f(x)` with `_f(x::Vector)` rejects every 
 Method passes when other method of same function covers its signature: it is fast path beside generic method.
 Fix is `likely` when widened method and each other method of function, widened too or not, are disjoint or nested.
 Otherwise fix is manual: Julia could find call ambiguous, or drop method with same widened signature.
+Fix is manual for function package code tests for methods: passes to `applicable`, `hasmethod`, `which` or `methods`,
+or calls in `try` of method that names `MethodError`. Widening changes what that code does.
 
 ## Rationale
 Julia compiles method for each concrete argument type, so wider annotation runs as fast.
@@ -30,6 +32,8 @@ scale(values::AbstractVector{<:Real}, factor::Real)::AbstractVector{<:Real} = va
 ## Limitations
 Rule reads argument annotations; result types, `where` bounds and struct fields pass.
 Methods on other modules' functions and constructors of other modules' types pass: their owner sets signature.
+Fix stays `likely` when package code tests for methods in generated code, or catches `MethodError` in caller of caller:
+rule reads reflection calls and `try` bodies of each method alone.
 `Bool`, unsigned types and C aliases as `Cint` pass: they mark flags, bit patterns and C calls.
 Type alias that names listed type passes.
 """
@@ -148,18 +152,32 @@ function owned(method::Method, modules::AbstractSet{Module})::Bool
     return callee isa DataType && callee.name.module in modules
 end
 
+"""Function or type method `method` belongs to; `nothing` for callable object of type with fields."""
+function method_function(method::Method)::Any
+    callee = Base.unwrap_unionall(tuple_parameters(method.sig)[1])
+    Base.isType(callee) && return callee.parameters[1]
+    return callee isa DataType && isdefined(callee, :instance) ? callee.instance : nothing
+end
+
+"""What to do before widening `method`, whose function package code tests for methods when in `probed`; `nothing` when fix is safe."""
+function fix_blocker(method::Method, probed::AbstractSet)::Union{Nothing, String}
+    dispatch_safe(method, widened_signature(method.sig)) || return "other methods change: widened method overlaps them"
+    method_function(method) in probed && return "checking `applicable` calls and `MethodError` catches: widening changes what they do"
+    return nothing
+end
+
 """Whether wider method in `sites` covers `site`: `site` is fast path beside generic method of same function."""
 fast_path(site::MethodSite, sites::AbstractVector{MethodSite})::Bool =
     any(other -> site.method.sig <: other.method.sig && !(other.method.sig <: site.method.sig), sites)
 
 """
-Finding for overspecified `annotation` of `file`, widened to `wider`, with reported parts `found`. Fix is manual unless
-widened method is `safe` for dispatch.
+Finding for overspecified `annotation` of `file`, widened to `wider`, with reported parts `found`. Fix is manual with
+`blocker`, what to do first; else `likely`.
 """
-function overspecified_finding(file::SyntaxFile, annotation::SyntaxNode, wider::String, found::AbstractVector{SyntaxNode}, safe::Bool)::Finding
+function overspecified_finding(file::SyntaxFile, annotation::SyntaxNode, wider::String, found::AbstractVector{SyntaxNode}, blocker::Union{Nothing, String})::Finding
     text = source(file, annotation)
     causes = [Label(span(file, part), "names specific type") for part in found if part !== annotation]
-    fix = safe ? replace_fix(file, annotation, wider, Tier.likely) : manual_fix("replace with `$wider` after other methods change: widened method overlaps them")
+    fix = isnothing(blocker) ? replace_fix(file, annotation, wider, Tier.likely) : manual_fix("replace with `$wider` after $blocker")
     return Finding(
         NAME, :overspecified, Confidence.definite, "`$text` rejects callers `$wider` accepts", Label(span(file, annotation), "narrower than code needs"),
         causes, "Julia compiles method for each concrete argument type, so wider annotation runs as fast", fix,
@@ -177,16 +195,17 @@ function findings(facts::FactSet)::Vector{Finding}
     for site in package.methods
         parts = isnothing(site.node) ? nothing : signature(site.node)
         (isnothing(parts) || !owned(site.method, modules) || fast_path(site, package.methods)) && continue
-        safe = nothing
+        pending = Tuple{SyntaxNode, String, Vector{SyntaxNode}}[]
         for argument in parts.arguments, annotation in argument_annotations(argument)
             annotation in seen && continue
             push!(seen, annotation)
             reported = SyntaxNode[]
             wider = widened_text(site.method.module, site.file, annotation, reported)
-            isempty(reported) && continue
-            isnothing(safe) && (safe = dispatch_safe(site.method, widened_signature(site.method.sig)))
-            push!(found, overspecified_finding(site.file, annotation, wider, reported, safe))
+            isempty(reported) || push!(pending, (annotation, wider, reported))
         end
+        isempty(pending) && continue
+        blocker = fix_blocker(site.method, package.probed)
+        append!(found, [overspecified_finding(site.file, annotation, wider, reported, blocker) for (annotation, wider, reported) in pending])
     end
     return found
 end
