@@ -14,6 +14,7 @@ include("names.jl")
 include("loops.jl")
 include("aliasing.jl")
 include("reuse.jl")
+include("balance.jl")
 include("units.jl")
 
 end

@@ -170,12 +170,14 @@ end
 
 """
 Resource hold that throw skips release of (`effects` stage fact, F98): span of acquire, span of statement that may
-throw while method holds resource, and confidence: definite count, or `possible` from unknown count.
+throw while method holds resource, confidence (definite count, or `possible` from unknown count), and kind of resource:
+lock or semaphore slot (`synchronization`), or file (`io`).
 """
 struct UnguardedHold
     acquire::Span
     throws::Span
     confidence::Confidence.T
+    kind::EffectKind.T
 end
 
 """
