@@ -112,6 +112,7 @@ end
     @test Set(shape(effects(:reset_either!).writes)) == Set([(parameter(3), false, MEMORY, POSSIBLE), (parameter(4), false, MEMORY, POSSIBLE)])
     @test shape(effects(:stock!).writes) == [(parameter(2, Step.Element()), true, MEMORY, DEFINITE)]
     @test shape(effects(:zero_listed!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
+    @test shape(effects(:zero_converted!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
     @test shape(effects(:zero_typed_listed!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
 end
 

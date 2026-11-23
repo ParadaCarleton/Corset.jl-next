@@ -66,7 +66,7 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
   - Pointer conversions before foreign call: `pointer`, `cconvert`, `unsafe_convert`.
 - Choice table: result is one of the operands, callable objects included, so it joins their values: `something`, `coalesce`, `max`, `min`, `ifelse`.
 - `convert` result is its operand, or new object as for other call.
-- Constructor, tuple and vector literal results hold their operands: `Ref(x)` holds `x`.
+- Constructor, tuple and vector literal results hold their operands: `Ref(x)` holds `x`. Typed literal `T[x]` converts `x` not of type `T`, so it can hold new object.
 - Iteration: result of `iterate` and `indexed_iterate` holds element of iterated operand. Element step for array, dictionary, set and tuple; `deep` for other iterator.
 - Element table: result is element of container operand, or other operand (`get(d, k, default)`).
   - Table: `get`, `get!`, `getkey`, `pop!`, `popfirst!`, `popat!`, `maximum`, `minimum`, `reduce`, `foldl`, `foldr`, `rand`, `take!`, `fetch`.

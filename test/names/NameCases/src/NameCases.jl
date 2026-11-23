@@ -215,6 +215,9 @@ end
 Base.getindex(shelf::Shelf, index::Int) = shelf.items[index]
 """Push onto first vector of `shelf`: indexing callable object is load."""
 stock!(shelf::Shelf)::Nothing = (push!(shelf[1], 7); nothing)
+Base.convert(::Type{Box}, holder::Holder) = Box(holder.box.value)
+"""Zero box that typed literal converts from `holder`: conversion gives new box."""
+zero_converted!(holder::Holder)::Nothing = (Box[holder][1].value = 0; nothing)
 """Zero `box` through vector literal."""
 zero_listed!(box::Box)::Nothing = ([box][1].value = 0; nothing)
 """Zero `box` through typed vector literal."""

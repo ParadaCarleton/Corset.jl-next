@@ -201,6 +201,17 @@ function holding_value(walk::Walk, operands::Vector{Any})::Value
     return fresh_value(inner, untracked)
 end
 
+"""
+Value of typed array literal with `operands`: element type, then elements. Element not of that type converts, and
+conversion can give new object, so literal holds untracked objects too.
+"""
+function literal_value(walk::Walk, operands::Vector{Any})::Value
+    holder = holding_value(walk, operands[2:end])
+    element = constant_value(walk, operands[1])
+    exact = element isa Type && all(operand -> operand_type(walk, operand) <: element, operands[2:end])
+    return Value(holder.places, holder.inner, holder.fresh, holder.untracked || !exact)
+end
+
 """Step from container of `type` to its element: `Element` for array, dictionary, set and tuple; unknown step else."""
 element_step(@nospecialize(type::Any))::Union{Nothing, Step.Type} = type <: Union{AbstractArray, AbstractDict, AbstractSet, Tuple, NamedTuple} ? Step.Element() : nothing
 
@@ -220,7 +231,7 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
     callee, operands = call_parts(walk, call)
     (isnothing(operands) || isempty(operands)) && return fresh_value(Set{Place.Type}(), true)
     # Array literal `T[a, b]`: element type operand, then elements.
-    callee === getindex && operand_type(walk, operands[1]) <: Type && return holding_value(walk, operands[2:end])
+    callee === getindex && operand_type(walk, operands[1]) <: Type && return literal_value(walk, operands)
     object = operand_value(walk, operands[1])
     if callee in LOAD_BUILTINS || callee === getproperty
         step = callee === getfield || callee === getproperty ? (length(operands) >= 2 ? field_step(walk, operands[2]) : nothing) : Step.Element()
