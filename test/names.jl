@@ -102,6 +102,7 @@ end
     @test shape(effects(:zero_lookup!).writes) == [(parameter(2, Step.Element()), true, MEMORY, POSSIBLE)]
     @test (parameter(2, Step.Element()), true, MEMORY, POSSIBLE) in shape(effects(:group!).writes)
     @test shape(effects(:push_lookup!).writes) == [(parameter(2, Step.Element()), true, MEMORY, POSSIBLE)]
+    @test Set(shape(effects(:push_handler!).writes)) == Set([(parameter(2, Step.Element()), true, MEMORY, POSSIBLE), (parameter(4), true, MEMORY, POSSIBLE)])
     # Sample advances default RNG only.
     @test shape(effects(:push_sample!).writes) == [(ELSEWHERE, false, EffectKind.default_rng, DEFINITE)]
     @test any(access -> access.place == Place.Deep(Root.Parameter(2)) && access.confidence == POSSIBLE, effects(:take_bytes).writes)

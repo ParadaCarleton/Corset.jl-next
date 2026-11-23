@@ -170,11 +170,12 @@ poke!(pointer::Ptr{Int})::Nothing = (Core.Intrinsics.pointerset(pointer, 7, 1, 1
 
 # Call results: iteration and element functions give elements; other results can hold operand objects.
 """Zero every box of `boxes` in loop."""
-zero_all!(boxes::Vector{Box})::Nothing = (
+function zero_all!(boxes::Vector{Box})::Nothing
     for box in boxes
         box.value = 0
-    end; nothing
-)
+    end
+    return nothing
+end
 """Zero first box of `pair` by destructuring."""
 zero_first_pair!(pair::Tuple{Box, Box})::Nothing = ((left, _) = pair; left.value = 0; nothing)
 """Zero first box of copy of `boxes`: shallow copy holds same boxes."""
@@ -187,6 +188,8 @@ zero_lookup!(table::Dict{Symbol, Box})::Nothing = (get(table, :a, Box(0)).value 
 group!(groups::Dict{Symbol, Vector{Int}}, key::Symbol, value::Int)::Nothing = (push!(get!(Vector{Int}, groups, key), value); nothing)
 """Push onto entry `key` of `table`, or new vector: key is never result."""
 push_lookup!(table::Dict{Vector{Int}, Vector{Float64}}, key::Vector{Int})::Nothing = (push!(get(table, key, Float64[]), 1.0); nothing)
+"""Push onto handler vector of `key`, or onto `fallback`: function key leaves default third."""
+push_handler!(handlers::Dict{Function, Vector{Int}}, key::Function, fallback::Vector{Int})::Nothing = (push!(get(handlers, key, fallback), 1); nothing)
 """Push onto sample of `groups`: sample with dimensions is new vector."""
 push_sample!(groups::Vector{Vector{Int}})::Nothing = (push!(rand(groups, 2), Int[]); nothing)
 """Zero first byte that `take!` gives: bytes can share buffer of `io`."""

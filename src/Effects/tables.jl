@@ -29,6 +29,9 @@ reductions, random choice and channel takes (Base docstrings).
 """
 const ELEMENT_FUNCTIONS = Base.IdSet{Any}(Any[get, get!, getkey, pop!, popfirst!, popat!, maximum, minimum, reduce, foldl, foldr, Random.rand, take!, fetch])
 
+"""Element functions whose third operand is default result: `get(d, k, default)`, `pop!(d, k, default)`."""
+const DEFAULT_FUNCTIONS = Base.IdSet{Any}(Any[get, get!, getkey, pop!, popat!])
+
 """Base IO functions: each writes its `IO` operands (IO kind). Printing without `IO` operand writes `stdout`."""
 const IO_FUNCTIONS = Base.IdSet{Any}(
     Any[

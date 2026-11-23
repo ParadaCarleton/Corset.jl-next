@@ -818,8 +818,9 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Element table: result is element of container operand, or other operand (<code>get(d, k, default)</code>).
 <ul>
 <li>Table: <code>get</code>, <code>get!</code>, <code>getkey</code>, <code>pop!</code>, <code>popfirst!</code>, <code>popat!</code>, <code>maximum</code>, <code>minimum</code>, <code>reduce</code>, <code>foldl</code>, <code>foldr</code>, <code>rand</code>, <code>take!</code>, <code>fetch</code>.</li>
-<li>Container operand: first operand that is not callable or <code>AbstractRNG</code>. Third such operand is default (<code>get(d, k, default)</code>).</li>
-<li>Result of callable operand can be fresh. <code>rand</code> with dimensions gives new array of elements.</li>
+<li>Container: first operand, or second after leading callable or <code>AbstractRNG</code> (<code>get(f, d, k)</code>, <code>rand(rng, xs)</code>).</li>
+<li>Lookup default: third operand of <code>get</code>, <code>get!</code>, <code>getkey</code>, <code>pop!</code>, <code>popat!</code> without leading callable.</li>
+<li>Result of leading callable can be fresh. <code>rand</code> with dimensions gives new array of elements.</li>
 <li>Keyword call can give new array of elements (<code>dims</code>) or keyword value (<code>init</code>).</li>
 <li><code>take!</code> and <code>fetch</code> give element of <code>Channel</code>. Other result lies beneath operand or is new: <code>take!(::IOBuffer)</code> can share buffer.</li>
 </ul>

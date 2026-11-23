@@ -263,25 +263,27 @@ function new_value(walk::Walk, operands::Vector{Any}, @nospecialize(type::Any)):
 end
 
 """
-Value of element function call `call` of `callee` with `operands` and result of `type`. Container operand: first
-operand that is not callable or `AbstractRNG`. Result is its element, or third such operand (`get(d, k, default)`).
-Result of callable operand can be fresh. Exceptions: `take!` and `fetch` off `Channel`, `rand` with dimensions.
+Value of element function call `call` of `callee` with `operands` and result of `type`. Container is first operand,
+or second after leading callable or `AbstractRNG` (`get(f, d, k)`, `rand(rng, xs)`). Result is its element, or default
+of lookup (`get(d, k, default)`). Result of leading callable can be fresh. Exceptions: `take!` and `fetch` off
+`Channel`, `rand` with dimensions.
 """
 function element_value(walk::Walk, call::Expr, @nospecialize(callee::Any), operands::Vector{Any}, @nospecialize(type::Any))::Value
-    plain = [operand for operand in operands if !callable(walk, operand) && !rng_operand(walk, operand)]
-    isempty(plain) && return fresh_value(Set{Place.Type}(), true)
-    container = operand_type(walk, plain[1])
-    element = load_value(walk, operand_value(walk, plain[1]), element_step(container))
+    called = callable(walk, operands[1])
+    position = called || rng_operand(walk, operands[1]) ? 2 : 1
+    position <= length(operands) || return fresh_value(Set{Place.Type}(), true)
+    container = operand_type(walk, operands[position])
+    element = load_value(walk, operand_value(walk, operands[position]), element_step(container))
     # `take!(::IOBuffer)` can share buffer or copy it; `fetch(::Task)` gives task result.
     (callee === take! || callee === fetch) && !(container <: Channel) && return joined(element, new_value(walk, operands, type))
     # Sample with dimensions gives new array of elements.
-    sampled = callee === Random.rand && length(plain) > 1
+    sampled = callee === Random.rand && length(operands) > position
     sampled && return fresh_value(element.places, element.fresh || isempty(element.places))
     # Keyword reduction can give new array of elements (`dims`) or keyword value (`init`).
     keywords = keyword_value(walk, call)
     isnothing(keywords) || (element = joined(joined(element, fresh_value(element.places, true)), deep_loaded(keywords)))
-    found = length(plain) >= 3 ? joined(element, operand_value(walk, plain[3])) : element
-    return any(operand -> callable(walk, operand), operands) ? joined(found, fresh_value(Set{Place.Type}(), true)) : found
+    found = callee in DEFAULT_FUNCTIONS && position == 1 && length(operands) >= 3 ? joined(element, operand_value(walk, operands[3])) : element
+    return called ? joined(found, fresh_value(Set{Place.Type}(), true)) : found
 end
 
 """Whether `operand` is callable by style guide order: function or type."""

@@ -70,8 +70,9 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
 - Iteration: result of `iterate` and `indexed_iterate` holds element of iterated operand. Element step for array, dictionary, set and tuple; `deep` for other iterator.
 - Element table: result is element of container operand, or other operand (`get(d, k, default)`).
   - Table: `get`, `get!`, `getkey`, `pop!`, `popfirst!`, `popat!`, `maximum`, `minimum`, `reduce`, `foldl`, `foldr`, `rand`, `take!`, `fetch`.
-  - Container operand: first operand that is not callable or `AbstractRNG`. Third such operand is default (`get(d, k, default)`).
-  - Result of callable operand can be fresh. `rand` with dimensions gives new array of elements.
+  - Container: first operand, or second after leading callable or `AbstractRNG` (`get(f, d, k)`, `rand(rng, xs)`).
+  - Lookup default: third operand of `get`, `get!`, `getkey`, `pop!`, `popat!` without leading callable.
+  - Result of leading callable can be fresh. `rand` with dimensions gives new array of elements.
   - Keyword call can give new array of elements (`dims`) or keyword value (`init`).
   - `take!` and `fetch` give element of `Channel`. Other result lies beneath operand or is new: `take!(::IOBuffer)` can share buffer.
 - Result of other call, package call included, is fresh. It can hold untracked objects, and `deep` place of each operand whose type can hold pointing objects (`copy`, `filter`).
