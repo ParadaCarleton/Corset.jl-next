@@ -60,6 +60,10 @@ foreach(call -> println("  ", call.confidence, " ", call.callee, " ", source_lin
 reuses = [reuse for found in methods for reuse in found.stateful_reuses]
 println("stateful_reuses=", length(reuses), " definite=", count(reuse -> reuse.confidence == Confidence.definite, reuses))
 foreach(reuse -> println("  ", reuse.confidence, " ", something(reuse.iterator, "-"), " ", source_line(reuse.later), " <- ", source_line(reuse.earlier)), reuses)
+# Unproven indices (F36) for quality gate audit: indexing call, then index source.
+indices = [unproven for found in methods for unproven in found.unproven_indices]
+println("unproven_indices=", length(indices), " definite=", count(unproven -> unproven.confidence == Confidence.definite, indices))
+foreach(unproven -> println("  ", unproven.confidence, " ", something(unproven.array, "-"), " ", source_line(unproven.site), isnothing(unproven.source) ? "" : " <- " * source_line(something(unproven.source))), indices)
 """
 
 """Copy of registered package `name` at `version` in `work`, made writable, with library preset."""

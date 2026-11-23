@@ -767,7 +767,28 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <p>Base results that index <code>x</code>: <code>findfirst</code>, <code>findnext</code>, <code>findall</code>, <code>argmin</code>, <code>argmax</code>, <code>searchsorted*</code>, <code>sortperm</code>.</p>
 </li>
 <li>
-<p>Closure: <code>i ± k</code>, <code>prevind</code>, <code>nextind</code>, <code>min</code>, <code>max</code>, <code>clamp</code>, midpoint <code>(lo + hi) ÷ 2</code>, range between indices of <code>x</code>, loop variable over such range.</p>
+<p>Closure: <code>i ± k</code>, <code>prevind</code>, <code>nextind</code>, <code>min</code>, <code>max</code>, <code>clamp</code>, midpoint <code>lo + (hi - lo) ÷ 2</code>, range between indices of <code>x</code>, loop variable over such range.</p>
+</li>
+<li>
+<p>Index argument stays caller's index through <code>i ± k</code>. Choice (<code>min</code>, <code>clamp</code>, range bound) of argument and literal is absolute: <code>x[1:i]</code> needs proof.</p>
+</li>
+<li>
+<p>In choice, index argument matches any array: <code>min(i, lastindex(x))</code> indexes <code>x</code>, <code>min(i, firstindex(y))</code> indexes <code>y</code>.</p>
+</li>
+<li>
+<p>Proof reads lowered and typed code for indexing: inference with one-based stand-in can drop branch on <code>firstindex(x) == 1</code>.</p>
+</li>
+<li>
+<p>Generated method that accepts offset stand-in, or no code with offset stand-in: blind spot. Generator does not run again on new types.</p>
+</li>
+<li>
+<p>Arguments that share type variable (<code>x::T, y::T</code>) take offset stand-in together.</p>
+</li>
+<li>
+<p>Midpoint <code>(lo + hi) ÷ 2</code> is no proof: sum of two indices overflows on axes near <code>typemin</code>.</p>
+</li>
+<li>
+<p>Other arithmetic (<code>*</code>, <code>÷</code>, <code>mod</code>, shifts) gives absolute number: heap parent <code>i ÷ 2</code> assumes one-based axes.</p>
 </li>
 <li>
 <p>Two arrays: <code>eachindex(x, y)</code> throws on different axes, so it gives index of both. So does guard <code>axes(x) == axes(y) || throw(...)</code>.</p>
@@ -783,6 +804,9 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 </li>
 <li>
 <p>Index argument (<code>f(x, i) = x[i]</code>): per-method fact names indexed argument; package call sites must pass index of that array. Public function carries contract, as <code>getindex</code> does.</p>
+</li>
+<li>
+<p>Call-site check is second step. Until then, index argument passes unchecked.</p>
 </li>
 <li>
 <p>Absolute index (literal, <code>length</code>, <code>size</code>, <code>enumerate</code> counter, index of other array): <code>definite</code>.</p>
@@ -970,6 +994,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Per package method, F48: loop writes: span of loop start, span of write, writing function, confidence (<code>phase5.md</code>, row 7).</li>
 <li>Per package method, F50: self-alias calls: call span, writing function, confidence (<code>phase5.md</code>, row 7).</li>
 <li>Per package method, F51: stateful reuses: earlier and later event spans, which events escape, iterator text, confidence (<code>phase5.md</code>, row 7).</li>
+<li>Per package method, F36: unproven indices: indexing call span, index source span, array text, confidence (<code>types.md</code>, Index proof).</li>
 <li>Per unit, for <code>lifecycle</code> rules: allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.</li>
 <li>Must-alias: two values with same single root and path, where root is one object per call (parameter, global, allocation outside loop).</li>
 <li>Escape: return; store into object or global; operand of <code>!</code> call that is not the written operand; operand of alias-table call or constructor whose result escapes.</li>

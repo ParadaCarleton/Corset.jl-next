@@ -128,6 +128,8 @@ loop_shape(name::Symbol)::Vector{Tuple{String, Confidence.T}} = [(write.callee, 
     # Claim in generated code voids proof of method and of its direct caller.
     @test !effects(:generated_store!).effect_free && !effects(:optional_store!).effect_free
     @test !effects(:generated_caller!).effect_free
+    # Index proof skips generated method that takes array stand-in, dropped branch included: blind spot.
+    @test count(spot -> spot.cause == Effects.OFFSET_GENERATED, SPOTS) == 2
 end
 
 @testset "loop writes" begin

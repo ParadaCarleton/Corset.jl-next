@@ -2,8 +2,8 @@
 module Effects
 
 using Moshi.Match: @match
-using ..Facts: Access, UnguardedHold, LoopWrite, SelfAlias, StatefulReuse, Callee, methods_callee, callee_methods, CallFact, MethodEffects, EffectsFacts, PackageFacts, Place, PlaceSteps, place_root, root_global, place_text, Root, Step, NO_STEPS, PATH_DEPTH, EffectKind, Confidence, BlindSpot, Span
-using ..Inference: TypedCode, Units, called, holds_stand_in, serialized
+using ..Facts: Access, UnguardedHold, LoopWrite, SelfAlias, StatefulReuse, UnprovenIndex, Callee, methods_callee, callee_methods, CallFact, MethodEffects, EffectsFacts, PackageFacts, Place, PlaceSteps, place_root, root_global, place_text, Root, Step, NO_STEPS, PATH_DEPTH, EffectKind, Confidence, BlindSpot, Span
+using ..Inference: Inference, TypedCode, Units, called, holds_stand_in, serialized
 
 const CC = Core.Compiler
 
@@ -14,6 +14,7 @@ include("names.jl")
 include("loops.jl")
 include("aliasing.jl")
 include("reuse.jl")
+include("indices.jl")
 include("units.jl")
 
 end

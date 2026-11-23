@@ -17,7 +17,7 @@ Unit that always throws on stand-ins gives no verdict, only its blind spot.
 """
 function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt)::UnitEffects
     cut = isempty(typed.cuts) ? nothing : typed.spans[first(typed.cuts)]
-    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, cut)
+    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], UnprovenIndex[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, cut)
     walk, lines, used, claimed = unit_walk(typed, modules, interpreter, world)
     ir = walk.ir
     walk_values!(walk, 2 * length(ir.stmts) + 10)
@@ -40,18 +40,25 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
     effect_free = CC.is_effect_free(typed.frame.ipo_effects) && !claimed && !holds_stand_in(typed.signature) && !callee_claimed
     loops, loop_spots = loop_writes(walk, spans)
     reuses, reuse_spots = stateful_reuses(walk, typed.site.method, spans)
-    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), reuses, [loop_spots; reuse_spots], effect_free, cut)
+    indices, index_spots = unit_indices(typed, walk, interpreter)
+    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), reuses, indices, [loop_spots; reuse_spots; index_spots], effect_free, cut)
 end
 
 """
 Walk of unit `typed` before `walk_values!`, source line of each IR statement, use of each source line, and whether method
-claims `:effect_free`.
+claims `:effect_free` (`frame_walk`).
 """
-function unit_walk(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt)::Tuple{Walk, Vector{Int}, Vector{Bool}, Bool}
-    ir, lines, used = frame_ir(typed.frame, interpreter, Bool[call_statement(statement) for statement in typed.frame.src.code])
+unit_walk(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt)::Tuple{Walk, Vector{Int}, Vector{Bool}, Bool} = frame_walk(typed.frame, typed.site.method, modules, interpreter, world)
+
+"""
+Walk of inference `frame` of `method` before `walk_values!`, source line of each IR statement, use of each source line,
+and whether method claims `:effect_free`.
+"""
+function frame_walk(frame::CC.InferenceState, method::Method, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt)::Tuple{Walk, Vector{Int}, Vector{Bool}, Bool}
+    ir, lines, used = frame_ir(frame, interpreter, Bool[call_statement(statement) for statement in frame.src.code])
     # Source flags keep compiler `effect_free`, which `frame_ir` clears on kept calls. Claim in method voids proof.
     # Inferred flags reuse claim bits, so claim reads code before inference.
-    flags, claimed = typed.frame.src.ssaflags, claims_effect_free(typed.site.method, CC.retrieve_code_info(typed.frame.linfo, world))
+    flags, claimed = frame.src.ssaflags, claims_effect_free(method, CC.retrieve_code_info(frame.linfo, world))
     proven = Bool[!claimed && line in eachindex(flags) && flags[line] & CC.IR_FLAG_EFFECT_FREE != 0 for line in lines]
     walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{CapturedWrite}}(), IdDict{Union{Method, Core.MethodInstance}, Bool}(), world)
     return walk, lines, used, claimed
@@ -132,7 +139,7 @@ end
 Facts over all units of method, one per `key` in key order: definite in any unit decides. Key leads with source
 position of fact, so order is source order.
 """
-function surest(facts::AbstractVector{T}, key::F)::Vector{T} where {T <: Union{LoopWrite, SelfAlias, StatefulReuse}, F <: Function}
+function surest(facts::AbstractVector{T}, key::F)::Vector{T} where {T <: Union{LoopWrite, SelfAlias, StatefulReuse, UnprovenIndex}, F <: Function}
     found = Dict{Tuple{String, Int, Int, Int, String}, T}()
     for fact in facts
         slot = key(fact)
@@ -149,6 +156,9 @@ alias_key(call::SelfAlias)::Tuple{String, Int, Int, Int, String} = (call.call.fi
 
 """Merge key of stateful reuse: later event bytes, earlier event start, kinds of both events."""
 reuse_key(reuse::StatefulReuse)::Tuple{String, Int, Int, Int, String} = (reuse.later.file, reuse.later.first_byte, reuse.later.last_byte, reuse.earlier.first_byte, string(reuse.earlier_escapes, reuse.later_escapes))
+
+"""Merge key of unproven index: indexing call bytes."""
+index_key(unproven::UnprovenIndex)::Tuple{String, Int, Int, Int, String} = (unproven.site.file, unproven.site.first_byte, unproven.site.last_byte, 0, "")
 
 """Call facts of one method by source statement and span."""
 const Calls = Dict{Tuple{Int, Span}, CallFact}
@@ -193,9 +203,9 @@ end
 
 """
 Accesses of all units of one method: writes, reads, result aliases, holds throws skip, call facts, loop writes, self
-aliases, stateful reuses.
+aliases, stateful reuses, unproven indices.
 """
-const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{Place.Type}, Vector{UnguardedHold}, Calls, Vector{LoopWrite}, Vector{SelfAlias}, Vector{StatefulReuse}}
+const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{Place.Type}, Vector{UnguardedHold}, Calls, Vector{LoopWrite}, Vector{SelfAlias}, Vector{StatefulReuse}, Vector{UnprovenIndex}}
 
 """
 Facts of methods of `package` from effects `records` of units in inference order, and blind spots: worst over units of
@@ -209,7 +219,7 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
         isnothing(record) && continue
         append!(spots, record.spots)
         record.verdict || continue
-        writes, reads, aliases, unguarded, calls, loops, selves, reuses = get!(() -> (Access[], Access[], Place.Type[], UnguardedHold[], Calls(), LoopWrite[], SelfAlias[], StatefulReuse[]), found, method)
+        writes, reads, aliases, unguarded, calls, loops, selves, reuses, indices = get!(() -> (Access[], Access[], Place.Type[], UnguardedHold[], Calls(), LoopWrite[], SelfAlias[], StatefulReuse[], UnprovenIndex[]), found, method)
         append!(writes, record.writes)
         append!(reads, record.reads)
         append!(aliases, record.aliases)
@@ -218,17 +228,18 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
         append!(loops, record.loop_writes)
         append!(selves, record.self_aliases)
         append!(reuses, record.stateful_reuses)
+        append!(indices, record.unproven_indices)
         free[method] = get(free, method, true) && record.effect_free
         isnothing(record.cut) || haskey(cuts, method) || (cuts[method] = something(record.cut))
     end
     methods = MethodEffects[]
     for site in package.methods
         haskey(found, site.method) || continue
-        writes, reads, aliases, unguarded, calls, loops, selves, reuses = found[site.method]
+        writes, reads, aliases, unguarded, calls, loops, selves, reuses, indices = found[site.method]
         complete = !(site.method in incomplete) && !haskey(cuts, site.method)
         effects = MethodEffects(
             site, worst(writes), worst(reads), text_order(unique!(aliases), repr), text_order(unique!(unguarded), repr),
-            call_order(calls), surest(loops, loop_key), surest(selves, alias_key), surest(reuses, reuse_key), complete, free[site.method], claimed_effects(site.method),
+            call_order(calls), surest(loops, loop_key), surest(selves, alias_key), surest(reuses, reuse_key), surest(indices, index_key), complete, free[site.method], claimed_effects(site.method),
         )
         push!(methods, effects)
         # Write keeps its certainty with cut; only method without write goes to coverage line.

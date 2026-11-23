@@ -203,7 +203,7 @@ function unhashed_finding(type::Type, sites::AbstractVector{MethodSite}, floats:
         "define `Base.hash(x::$name, h::UInt)` over fields equality compares"
     return Finding(
         NAME, :eq_without_hash, Confidence.definite, "`$(first(sites).method.name)` defined for `$name` without `hash`",
-        Label(name_span(first(sites)), "equality without matching `hash`"), [Label(name_span(site), "also defines equality") for site in sites[2:end]],
+        Label(name_span(first(sites)), "equality without matching `hash`"), [Label(name_span(site), "also defines equality") for site in Iterators.drop(sites, 1)],
         "`Dict` and `Set` need `isequal(x, y)` to imply equal hashes; Base default `hash` follows `===`, so equal values miss",
         manual_fix(fix),
     )
