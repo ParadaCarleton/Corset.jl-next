@@ -1,8 +1,8 @@
 [deps]
 Corset = "09bf9df1-bea6-4267-acd1-e930da7492cc"
+EvilArrays = "2841289f-1868-4ac6-8d7a-1afe267ffb4f"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 JSONSchema = "7d188eb4-7ad8-530c-ae41-71a32a6d4692"
-OffsetArrays = "6fe1bfb0-de20-5000-8ca7-80f57d26f881"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Scratch = "6c6a2e73-6563-6170-7368-637461726353"
 SnoopCompileCore = "e2b509da-e806-4183-be48-004708413034"
@@ -14,9 +14,9 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Corset = {path = ".."}
 
 [compat]
+EvilArrays = "1"
 JSON = "1"
 JSONSchema = "1"
-OffsetArrays = "1"
 Random = "1"
 Scratch = "1"
 SnoopCompileCore = "3"
