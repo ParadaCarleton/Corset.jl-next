@@ -8,6 +8,9 @@ using Random: Random, AbstractRNG
 """
 const WRITE_POSITION = Dict{Tuple{Symbol, Int}, Int}((:ldiv!, 2) => 2, (:lmul!, 2) => 2)
 
+"""Package of LinearAlgebra standard library: owner check of table entries (`library_owner`)."""
+const LINEAR_ALGEBRA = Base.PkgId(Base.UUID("37e2e46d-f89d-539d-b4ee-838fcccc9c8e"), "LinearAlgebra")
+
 """
 Library functions whose result can lie beneath an operand: views and wrappers (Base docstrings name each one), element
 queries, `identity`, and pointer conversions before foreign call.
@@ -39,6 +42,25 @@ Base collections that Base deletes from while iterating: `filter!` of `IdDict`, 
 `Set`, `IdSet`, `BitSet` (`unsafe_filter!`). `Set` iterates its `Dict`, so `Dict` counts too.
 """
 const DELETION_SAFE = Any[Dict, IdDict, WeakKeyDict, Set, Base.IdSet, BitSet]
+
+"""
+`!` functions that give wrong result, or throw, on one object as output and input (F50), by owner (`library_owner`)
+and name, to position of input operand that breaks (`nothing`: any). LinearAlgebra docstrings: `mul!` output "must
+not be aliased" with inputs; `transpose!`, `adjoint!` give "unexpected results" on "overlapping memory". Base
+reductions fill output with init value before they read input. Base `circshift!` and `circcopy!` throw.
+`splice!(a, indices, replacement)` copies replacement after resize frees its slots; index operand reads before resize.
+"""
+const ALIAS_BREAKS = Dict{Tuple{Symbol, Symbol}, Union{Nothing, Int}}(
+    (:Base, :sum!) => nothing, (:Base, :prod!) => nothing, (:Base, :any!) => nothing, (:Base, :all!) => nothing,
+    (:Base, :count!) => nothing, (:Base, :splice!) => 3, (:Base, :circshift!) => nothing, (:Base, :circcopy!) => nothing,
+    (:LinearAlgebra, :mul!) => nothing, (:LinearAlgebra, :transpose!) => nothing, (:LinearAlgebra, :adjoint!) => nothing,
+)
+
+"""
+`!` functions that copy aliased input first (F50): Base `copyto!` and `setindex!` on arrays call `Base.unalias`;
+`copy!` calls `copyto!`; `prepend!` unaliases items; broadcast `preprocess` calls `broadcast_unalias`.
+"""
+const UNALIAS_FUNCTIONS = Base.IdSet{Any}(Any[copyto!, copy!, setindex!, prepend!, broadcast!, Broadcast.materialize!])
 
 """Library functions whose result is one of their operands: each operand is an alternative (Base docstrings)."""
 const CHOICE_FUNCTIONS = Base.IdSet{Any}(Any[something, coalesce, max, min, ifelse])

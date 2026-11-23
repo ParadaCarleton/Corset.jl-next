@@ -69,9 +69,18 @@ Rules read per-unit statement events and must-alias pairs.
   - Base `filter!(f, ::AbstractDict)` warns: "dictionary types may not support mutation during iteration". Other types count.
   - Consuming call with closure (`foreach(x -> push!(v, x), v)`) stays unseen: its loop is in library code.
   - Fix `manual`: iterate copy (`collect(keys(d))`), or collect changes and apply after loop.
-- `self-alias` (F50): same container passed as written operand and as other operand of `!` call.
-  - Exempt: functions that unalias operands (`copyto!`, `broadcast!`, `materialize!`).
-  - Definite for function whose docstring warns of shared memory ("Behavior can be unexpected when any mutated argument shares memory"). Else `possible`.
+- `self-alias` (F50): `!` call writes operand while it reads same memory through other operand.
+  - Same object: written operand and other operand are one IR value after `π` nodes, or one place (F48 same object).
+  - Shared memory: operands share IR value only after view calls (`view`, `reshape`, …): overlap depends on index values.
+  - `ALIAS_BREAKS`: functions that give wrong result, or throw, on one object as output and input.
+  - Docstring forbids it (`mul!`, `transpose!`, `adjoint!`); output starts from init value (`sum!`, `prod!`, `any!`, `all!`, `count!`).
+  - Base throws (`circshift!`, `circcopy!`); `splice!` reads slots its resize freed.
+  - Entry names input operand that breaks: `splice!` breaks on replacement only, never on index operand.
+  - Warned function: matched method docstring carries Base aliasing warning (`Base._DOCS_ALIASING_WARNING`), or `ALIAS_BREAKS` function.
+  - Same object to `ALIAS_BREAKS` function gives `definite`. Shared memory to warned function gives `possible`.
+  - Same object to other warned function: no finding. Base docstring calls `map!(f, A, A)` equivalent of `map!(f, A)`.
+  - Exempt: functions that unalias operands with `Base.unalias` (`copyto!`, `copy!`, `setindex!`, `prepend!`, `broadcast!`, `materialize!`).
+  - Fix `manual`: pass copy of read operand, or write into other container.
 - `stateful-reuse` (F51): method restarts iterator whose type admits stateful iterator, or lets it escape after start.
   - Start: `iterate` without state, contract start (`first`, generic `isempty`) or consuming-table call.
   - Restart: second start of same object on one path. Loop re-entry counts; `zip(itr, itr)` counts.

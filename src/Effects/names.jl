@@ -394,12 +394,23 @@ end
 bang_function(@nospecialize(callee::Any))::Bool = callee isa Function && !(callee isa Core.Builtin) && endswith(string(nameof(callee)), "!")
 
 """
+Library that owns function `callee`, for tables of functions Corset never loads: `:Base`, `:LinearAlgebra` (root module
+with its package UUID), else `nothing`. Package submodule can share library name.
+"""
+function library_owner(@nospecialize(callee::Any))::Union{Nothing, Symbol}
+    owner = parentmodule(callee)
+    owner === Base && return :Base
+    (Base.moduleroot(owner) === owner && Base.PkgId(owner) == LINEAR_ALGEBRA) && return :LinearAlgebra
+    return nothing
+end
+
+"""
 Position of operand that `!` function `callee` writes among `operands` (`effects.md`, Writes, source 2): first operand
 after leading callable, `IO` and `AbstractRNG` operands, or position table entry. `nothing` when none is left.
 """
 function written_position(walk::Walk, @nospecialize(callee::Any), operands::Vector{Any})::Union{Nothing, Int}
     table = get(WRITE_POSITION, (nameof(callee), length(operands)), nothing)
-    !isnothing(table) && nameof(parentmodule(callee)) === :LinearAlgebra && return table
+    !isnothing(table) && library_owner(callee) === :LinearAlgebra && return table
     for (position, operand) in enumerate(operands)
         (callable(walk, operand) || io_operand(walk, operand) || rng_operand(walk, operand)) && continue
         return position
