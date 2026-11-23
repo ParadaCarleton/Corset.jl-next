@@ -287,11 +287,12 @@ function broadcast_node(code::Core.CodeInfo, nodes::AbstractVector{Union{Nothing
     return nothing
 end
 
-"""Indexes of call statements of `code` whose value no statement reads: Julia runs them for effect only."""
-function unused_calls(code::Core.CodeInfo)::BitSet
+"""Indexes of call statements among `statements` whose value no statement reads: Julia runs them for effect only."""
+function unused_calls(statements::AbstractVector{Any})::BitSet
+    Base.require_one_based_indexing(statements)
     used = BitSet()
-    foreach(statement -> CC.scan_ssa_use!(push!, used, statement), code.code)
-    return BitSet(index for (index, statement) in enumerate(code.code) if statement isa Expr && statement.head === :call && !(index in used))
+    foreach(statement -> CC.scan_ssa_use!(push!, used, statement), statements)
+    return BitSet(index for (index, statement) in enumerate(statements) if statement isa Expr && statement.head === :call && !(index in used))
 end
 
 """Call statements of method of `site` whose value Julia drops (`Facts.discarded`), by line in file with line `starts`."""
@@ -308,21 +309,40 @@ function discarded_calls(site::MethodSite, starts::AbstractVector{<:Integer})::D
 end
 
 """
-Node of unused call `statement` of `code` among discarded call statements `candidates` of its line: only one that
-spells its call and no other statement took. TypedSyntax.jl maps no statement whose value code drops.
+Nodes of unused call statements of `code` that `nodes` leaves without node, by statement, among discarded call
+statements `candidates` by line. Statements of one callee and argument count on one line map in evaluation order:
+inner call ends first. Counts must agree, so unreached statements, which inference wraps in `Core.Const`, count too.
+TypedSyntax.jl maps no statement whose value code drops.
 """
-function discarded_node(file::SyntaxFile, code::Core.CodeInfo, statement::Expr, candidates::AbstractVector{SyntaxNode}, taken::Base.IdSet{SyntaxNode})::Union{Nothing, SyntaxNode}
-    name = callee_name(code, statement)
-    isnothing(name) && return nothing
-    spelled = [node for node in candidates if !(node in taken) && spells_call(file, node, name, length(statement.args) - 1)]
-    length(spelled) == 1 || return nothing
-    push!(taken, only(spelled))
-    return only(spelled)
+function discarded_nodes(file::SyntaxFile, code::Core.CodeInfo, nodes::AbstractVector{Union{Nothing, SyntaxNode}}, lines::AbstractVector{<:Integer}, candidates::AbstractDict{Int, Vector{SyntaxNode}})::Dict{Int, SyntaxNode}
+    Base.require_one_based_indexing(nodes, lines)
+    found = Dict{Int, SyntaxNode}()
+    isempty(candidates) && return found
+    # Unreached callee reference is wrapped too, so callee names resolve in unwrapped copy.
+    unwrapped = copy(code)
+    unwrapped.code = Any[Widening.unwrapped(statement) for statement in code.code]
+    taken = Base.IdSet{SyntaxNode}(node for node in nodes if !isnothing(node))
+    groups = Dict{Tuple{Int, Symbol, Int}, Vector{Int}}()
+    for index in unused_calls(unwrapped.code)
+        (isnothing(nodes[index]) && lines[index] > 0) || continue
+        statement = unwrapped.code[index]::Expr
+        name = callee_name(unwrapped, statement)
+        isnothing(name) || push!(get!(Vector{Int}, groups, (lines[index], name, length(statement.args) - 1)), index)
+    end
+    for ((line, name, arguments), indexes) in groups
+        spelled = [node for node in get(candidates, line, SyntaxNode[]) if !(node in taken) && spells_call(file, node, name, arguments)]
+        length(spelled) == length(indexes) || continue
+        sort!(spelled; by = node -> last(Facts.trimmed_bytes(file.text, node)))
+        for (index, node) in zip(indexes, spelled)
+            found[index] = node
+        end
+    end
+    return found
 end
 
 """
 Span of each statement of `code`: span of its node in `nodes` (`statement_nodes`), or of discarded call statement
-(`discarded_node`); else start of debuginfo line, when that line lies in definition; else method site span. Statement
+(`discarded_nodes`); else start of debuginfo line, when that line lies in definition; else method site span. Statement
 without own line takes line of statement before it. Code from macro of same file carries line of macro body, outside
 definition, so it gets method site span.
 """
@@ -330,23 +350,24 @@ function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodS
     # Debuginfo line number indexes `starts`.
     Base.require_one_based_indexing(nodes, starts)
     path = site.file.path
-    lines = isnothing(site.node) ? eachindex(starts) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
-    unused, candidates = unused_calls(code), discarded_calls(site, starts)
-    taken = Base.IdSet{SyntaxNode}(node for node in nodes if !isnothing(node))
-    found, line = Span[], 0
+    inside = isnothing(site.node) ? eachindex(starts) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
+    lines, line = zeros(Int, length(nodes)), 0
     # Lowering gives method for omitted defaults first body line, though definition line holds defaults and forwarding call.
     wrapper = forwards(site)
-    for (index, node) in enumerate(nodes)
+    for index in eachindex(nodes)
         scopes = Base.IRShow.buildLineInfoNode(code.debuginfo, instance, index)
         if !isempty(scopes)
             # Outermost scope is method itself, even for code from macro of other file; corpus run found no exception.
             string(first(scopes).file) == path || error("debuginfo of $(site.method) starts outside its file: $(first(scopes).file)")
             scope_line = wrapper ? site.method.line : first(scopes).line
-            line = scope_line in lines ? Int(scope_line) : 0
+            line = scope_line in inside ? Int(scope_line) : 0
         end
-        if isnothing(node) && line > 0 && index in unused
-            node = discarded_node(site.file, code, code.code[index]::Expr, get(candidates, line, SyntaxNode[]), taken)
-        end
+        lines[index] = line
+    end
+    discarded = discarded_nodes(site.file, code, nodes, lines, discarded_calls(site, starts))
+    found = Span[]
+    for (index, line) in enumerate(lines)
+        node = something(nodes[index], get(discarded, index, nothing), Some(nothing))
         push!(found, !isnothing(node) ? Facts.span(site.file, node) : line > 0 ? Span(path, starts[line], starts[line], Precision.line) : site.span)
     end
     return found
