@@ -662,7 +662,7 @@ ones apart. Walk passes through package methods and through dependency specializ
 `named` caches `names_package!` answers.
 """
 function dependency_methods!(named::IdDict{Any, Bool}, edges::AbstractVector{Any}, files::AbstractDict{String, SyntaxFile}, modules::AbstractSet{Module})::Union{Nothing, Tuple{Vector{Method}, Vector{Core.MethodInstance}}}
-    found, staged, visited, stack = Method[], Core.MethodInstance[], Base.IdSet{Core.MethodInstance}(), collect(Any, edges)
+    found, staged, visited, stack = Method[], Core.MethodInstance[], Base.IdSet{Core.MethodInstance}(), append!(Any[], edges)
     while !isempty(stack)
         edge = pop!(stack)
         instance = edge_instance(edge)

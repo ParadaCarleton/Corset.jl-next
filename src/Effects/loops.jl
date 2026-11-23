@@ -78,7 +78,7 @@ end
 
 """Blocks that `starts` reach along `next` edges, `starts` included. Entry block has predecessor 0: function entry."""
 function reached(starts::AbstractVector{<:Integer}, next::F)::Set{Int} where {F <: Function}
-    found, pending = Set{Int}(starts), collect(Int, starts)
+    found, pending = Set{Int}(starts), append!(Int[], starts)
     while !isempty(pending)
         for other in next(pop!(pending))
             (other < 1 || other in found) && continue
