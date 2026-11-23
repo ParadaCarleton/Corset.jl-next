@@ -566,6 +566,24 @@ end
 reuse_zip(itr::Any)::Int = count(pair -> pair[1] == pair[2], zip(itr, itr))
 """Returned zip of iterator with itself: caller that consumes it starts iterator twice."""
 reuse_zip_returned(itr::Any)::Any = zip(itr, itr)
+"""`isempty` of zip iterates it when `isdone` of part gives `missing`: both parts start."""
+reuse_zip_empty(itr::Any)::Bool = isempty(zip(itr, itr))
+"""Twelve nested `zip(z, z)`: iterator starts twice, and joint starts stay few."""
+function reuse_zip_chain(itr::Any)::Any
+    z = zip(itr, itr)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    return z
+end
 """Load of same element on each loop pass can give same iterator again."""
 function reuse_reload(groups::Vector{Any}, n::Int)::Int
     total = 0
@@ -667,6 +685,42 @@ function kept_nested(groups::Any)::Int
 end
 """Vector after `isempty`: arrays start from first element each time."""
 kept_vector(items::Vector{Int})::Int = isempty(items) ? 0 : sum(items)
+"""Destructured and returned `iterate` result: protocol makes it tuple, though inference gives `Any`."""
+function kept_protocol(itr::Any)::Any
+    next = iterate(itr)
+    isnothing(next) && return nothing
+    value, _ = next
+    return (value, next)
+end
+"""Iterator struct of any parameters."""
+struct Bag{T}
+    items::Vector{T}
+end
+Base.iterate(bag::Bag, index::Int = 1) = index > length(bag.items) ? nothing : (bag.items[index], index + 1)
+"""Element of `Vector{Bag}` has type of struct family: one kind of iterator, so restart is deliberate."""
+function kept_family(bags::Vector{Bag})::Int
+    bag = bags[1]
+    return isempty(bag) ? 0 : count(_ -> true, bag)
+end
+"""Abstract type with own `first`."""
+abstract type Shape end
+"""Only shape."""
+struct Square <: Shape end
+Base.first(::Shape)::Int = 0
+"""Package `first` serves abstract shape: call starts no iteration."""
+function kept_dispatched(shapes::Vector{Shape})::Int
+    shape = shapes[1]
+    return first(shape) + first(shape)
+end
+"""Field that struct declares as named tuple: multi-pass whatever its parameters."""
+struct Named{K, V}
+    items::NamedTuple{K, V}
+end
+"""Named tuple field escapes to package function, then iteration starts."""
+function kept_declared(named::Named)::Int
+    reuse_return(named.items)
+    return count(_ -> true, named.items)
+end
 """Loop that threads `iterate` state: one start."""
 function kept_state(itr::Any)::Int
     count, next = 0, iterate(itr)

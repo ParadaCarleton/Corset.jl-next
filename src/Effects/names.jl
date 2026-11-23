@@ -693,8 +693,28 @@ Both generic methods alone match gives `definite`, generic among others `possibl
 """
 function isempty_start(walk::Walk, @nospecialize(type::Any))::Union{Nothing, Confidence.T}
     emptiness = generic_match(walk, Tuple{typeof(isempty), type}, Tuple{typeof(isempty), Any})
-    done = generic_match(walk, Tuple{typeof(Base.isdone), type}, Tuple{typeof(Base.isdone), Any, Vararg{Any}})
+    done = done_missing(walk, type)
     return (isnothing(emptiness) || isnothing(done)) ? nothing : max(emptiness, done)
+end
+
+"""
+Certainty that `isdone` on value of `type` gives `missing`: generic method gives it. `zip` and product give it when part
+does and no part is done, so every part sure gives `definite`, some part `possible`.
+"""
+function done_missing(walk::Walk, @nospecialize(type::Any))::Union{Nothing, Confidence.T}
+    parts = joint_parts(type)
+    isnothing(parts) && return generic_match(walk, Tuple{typeof(Base.isdone), type}, Tuple{typeof(Base.isdone), Any, Vararg{Any}})
+    found = Union{Nothing, Confidence.T}[done_missing(walk, part) for part in parts]
+    all(isnothing, found) && return nothing
+    return all(==(Confidence.definite), found) ? Confidence.definite : Confidence.possible
+end
+
+"""Part types of `zip` or product type; `nothing` for other type. Open part tuple gives one `Any` part."""
+function joint_parts(@nospecialize(type::Any))::Union{Nothing, Vector{Any}}
+    type isa Type || return nothing
+    type !== Union{} && type <: Union{Iterators.Zip, Iterators.ProductIterator} || return nothing
+    parts = type isa DataType ? only(type.parameters) : Any
+    return parts isa DataType && parts <: Tuple && !any(Base.isvarargtype, parts.parameters) ? Any[parts.parameters...] : Any[Any]
 end
 
 """Certainty that call of `signature` runs method of `generic` signature: `definite` alone, `possible` among others."""

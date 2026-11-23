@@ -188,6 +188,13 @@ reuse_shape(name::Symbol)::Vector{Tuple{Bool, Bool, Union{Nothing, String}, Conf
     @test !joint.repeats && joint.earlier == joint.later
     # Caller consumes returned zip; load of same element on each pass can give same iterator.
     @test reuse_shape(:reuse_zip_returned) == [(false, false, "itr", DEFINITE)]
+    # `isempty` of zip asks `isdone` of each part; part of any type can give `missing`.
+    @test reuse_shape(:reuse_zip_empty) == [(false, false, "itr", POSSIBLE)]
+    # Nested `zip(z, z)`: each operand starts at most twice per statement, so events grow with chain length only.
+    @test reuse_shape(:reuse_zip_chain) == [(false, false, "itr", DEFINITE)]
+    chain = only(typed for typed in UNITS.typed if typed.site.method.name == :reuse_zip_chain)
+    walk = first(Effects.unit_walk(chain, Set{Module}(PACKAGE.modules), Core.Compiler.NativeInterpreter(), Base.get_world_counter()))
+    @test sum(index -> length(Effects.iterator_events(walk, index)), 1:length(walk.ir.stmts)) <= 64
     reload = only(effects(:reuse_reload).stateful_reuses)
     @test (reload.repeats, reload.confidence) == (true, POSSIBLE)
     # Element of outer loop starts twice in one pass.
@@ -206,8 +213,9 @@ reuse_shape(name::Symbol)::Vector{Tuple{Bool, Bool, Union{Nothing, String}, Conf
     @test reuse_shape(:reuse_fresh) == [(false, true, nothing, DEFINITE)]
     @test reuse_shape(:reuse_mixed) == [(false, false, nothing, DEFINITE)]
     # Multi-pass type, unconsumed `zip`, tuple of fresh value, container built from iterator, threaded state, `popfirst!` write, separate branches, concrete package iterator, stateful kind
-    # (`isdone` on `eachline` result, deliberate header skip), new object on each loop pass: none.
-    for name in (:kept_vector, :kept_zip, :kept_zip_type, :kept_shared, :kept_collected, :kept_state, :kept_popped, :kept_branches, :kept_countdown, :kept_lines, :kept_peeled, :kept_destructured, :kept_nested)
+    # (`isdone` on `eachline` result, deliberate header skip), new object on each loop pass, `iterate` result, struct family, package `first`, declared field: none.
+    kept = (:kept_vector, :kept_zip, :kept_zip_type, :kept_shared, :kept_collected, :kept_state, :kept_popped, :kept_branches, :kept_countdown, :kept_lines, :kept_peeled, :kept_destructured, :kept_nested)
+    for name in (kept..., :kept_protocol, :kept_family, :kept_dispatched, :kept_declared)
         @test isempty(reuse_shape(name))
     end
 end

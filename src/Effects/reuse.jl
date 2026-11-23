@@ -32,13 +32,94 @@ function either_pass(@nospecialize(type::Any))::Bool
 end
 
 """
-Kind of iterator of `type`: `true` for stateful iterator (`stateful_iterator`), `false` for `MULTI_PASS`, `Type` or one
-concrete type, `nothing` when unknown. Restart of one kind is deliberate: `first(eachline(io))` skips header line.
+Kind of iterator of `type`: `true` for stateful iterator (`stateful_iterator`), `false` for `MULTI_PASS`, `Type`, one
+concrete type or one struct of any parameters (`Bag{T} where T`), `nothing` when unknown. Restart of one kind is
+deliberate: `first(eachline(io))` skips header line.
 """
 function pass_kind(type::Type)::Union{Nothing, Bool}
-    stateful_iterator(Base.unwrap_unionall(type)) && return true
+    body = Base.unwrap_unionall(type)
+    stateful_iterator(body) && return true
     (type <: MULTI_PASS || type <: Type || isconcretetype(type)) && return false
-    return nothing
+    return body isa DataType && isstructtype(body) && !isabstracttype(body) ? false : nothing
+end
+
+"""
+Whether start of IR `operand` in `walk` can meet iterator of either kind (`either_pass`): result of `iterate` is
+`nothing` or tuple by protocol, though inference can give `Any`.
+"""
+open_start(walk::Walk, @nospecialize(operand::Any))::Bool = either_pass(iterator_type(walk, operand)) && !iterate_result(walk, operand)
+
+"""
+Type of IR `operand` in `walk`, narrowed by declared type of field it loads: struct stand-in can leave field type open
+(`Any`), though struct declares it (`NamedTuple{K, V}`).
+"""
+function iterator_type(walk::Walk, @nospecialize(operand::Any))::Any
+    type, value = operand_type(walk, operand), underlying(walk, operand)
+    value isa Core.SSAValue || return type
+    statement = walk.ir.stmts[value.id][:stmt]
+    statement isa Expr || return type
+    statement.head === :call || return type
+    callee, operands = call_parts(walk, statement)
+    isnothing(operands) && return type
+    length(operands) == 2 || return type
+    object = operand_type(walk, operands[1])
+    # Field load: `getfield`, or `getproperty` that only Base default method serves.
+    field = callee === getfield || (callee === getproperty && generic_match(walk, Tuple{typeof(getproperty), object, Symbol}, Tuple{typeof(getproperty), Any, Symbol}) == Confidence.definite)
+    field || return type
+    declared = declared_field(object, constant_value(walk, operands[2]))
+    return isnothing(declared) ? type : typeintersect(type, something(declared))
+end
+
+"""Declared type of field `name` of struct family of `object`, over all its parameters; `nothing` for tuple or unknown field."""
+function declared_field(@nospecialize(object::Any), @nospecialize(name::Any))::Union{Nothing, Some{Any}}
+    name isa Union{Symbol, Int} || return nothing
+    body = Base.unwrap_unionall(object)
+    body isa DataType || return nothing
+    (isabstracttype(body) || body <: Union{Tuple, NamedTuple}) && return nothing
+    wrapper = body.name.wrapper
+    generic = Base.unwrap_unionall(wrapper)::DataType
+    name isa Symbol && !hasfield(generic, name) && return nothing
+    name isa Int && !(1 <= name <= fieldcount(generic)) && return nothing
+    return Some{Any}(Base.rewrap_unionall(fieldtype(generic, name), wrapper))
+end
+
+"""Whether IR `operand` of `walk` is result of `iterate`, through `π` and `φ` nodes and `nothing` on some paths."""
+function iterate_result(walk::Walk, @nospecialize(operand::Any))::Bool
+    pending, seen = Any[operand], Set{Int}()
+    while !isempty(pending)
+        value = underlying(walk, pop!(pending))
+        isnothing(value) && continue
+        value isa Core.SSAValue || return false
+        value.id in seen && continue
+        push!(seen, value.id)
+        statement = walk.ir.stmts[value.id][:stmt]
+        if statement isa Core.PhiNode
+            append!(pending, (statement.values[edge] for edge in eachindex(statement.values) if isassigned(statement.values, edge)))
+        elseif !(statement isa Expr && statement.head === :call && call_parts(walk, statement)[1] === iterate)
+            return false
+        end
+    end
+    return true
+end
+
+"""
+Whether call of `callee` on `operands` in `walk` can run generic method that iterates operand at `position`: matching
+method takes `Any` there. Package method for open type, as `minimum` of distribution, iterates nothing.
+"""
+function generic_consumer(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any}, position::Integer)::Bool
+    matches = Base._methods_by_ftype(Tuple{Core.Typeof(callee), Any[operand_type(walk, operand) for operand in operands]...}, -1, walk.world)
+    matches isa Vector || return true
+    return any(match -> takes_any(match.method.sig, position), matches)
+end
+
+"""Whether method `signature` takes `Any` at argument `position`, `Vararg{Any}` and unbounded type variable included."""
+function takes_any(@nospecialize(signature::Type), position::Integer)::Bool
+    parameters = Base.unwrap_unionall(signature).parameters
+    isempty(parameters) && return false
+    parameter = position + 1 <= length(parameters) ? parameters[position + 1] : parameters[end]
+    (position + 1 > length(parameters) && !Base.isvarargtype(parameter)) && return false
+    parameter = Base.unwrapva(parameter)
+    return (parameter isa TypeVar ? parameter.ub : parameter) === Any
 end
 
 """
@@ -48,7 +129,7 @@ statements. Later event pairs with first earlier event of same object on one pat
 function stateful_reuses(walk::Walk, method::Method, spans::AbstractVector{Span})::Vector{StatefulReuse}
     Base.require_one_based_indexing(spans)
     # Escaping value can hold iterator (returned tuple), so only start needs type of either kind.
-    events = IteratorEvent[event for index in 1:length(walk.ir.stmts) for event in iterator_events(walk, index) if event.escapes || either_pass(operand_type(walk, event.operand))]
+    events = IteratorEvent[event for index in 1:length(walk.ir.stmts) for event in iterator_events(walk, index) if event.escapes || open_start(walk, event.operand)]
     found, following = StatefulReuse[], Dict{Tuple{Int, Vector{Int}}, Set{Int}}()
     any(event -> !event.escapes, events) || return found
     for later in events, earlier in events
@@ -89,25 +170,35 @@ function iterator_events(walk::Walk, index::Integer)::Vector{IteratorEvent}
     elseif statement isa Expr && statement.head === :call
         callee, operands = call_parts(walk, statement)
         isnothing(operands) && return found
-        append!(found, (IteratorEvent(index, [position], operands[position], false, Confidence.definite) for position in started_positions(walk, callee, operands)))
+        starts = started_positions(walk, callee, operands)
+        # Consuming call of open operand starts it only through generic method.
+        callee === iterate || callee === Base.indexed_iterate || filter!(position -> !open_start(walk, operands[position]) || generic_consumer(walk, callee, operands, position), starts)
+        append!(found, (IteratorEvent(index, [position], operands[position], false, Confidence.definite) for position in starts))
         if isempty(found) && callee === isempty && length(operands) == 1
             confidence = isempty_start(walk, operand_type(walk, operands[1]))
             isnothing(confidence) || push!(found, IteratorEvent(index, [1], operands[1], false, confidence))
         end
         append!(found, (IteratorEvent(index, [position], operands[position], true, Confidence.definite) for position in escaped_positions(walk, callee, operands)))
     end
-    foreach(event -> joint_starts!(found, walk, event.index, event.position, event.operand), copy(found))
+    counts = Dict{Any, Int}()
+    foreach(event -> joint_starts!(found, counts, walk, event), copy(found))
     return found
 end
 
-"""Push onto `found` starts of operands that `zip` result `operand` of `walk` iterates, at statement `index` and path `position`."""
-function joint_starts!(found::AbstractVector{IteratorEvent}, walk::Walk, index::Integer, position::AbstractVector{<:Integer}, @nospecialize(operand::Any))::Nothing
-    parts = joint_operands(walk, operand)
+"""
+Push onto `found` starts of operands that `zip` result of `event` in `walk` iterates, at its statement and below its path,
+with its certainty. `counts` holds starts of each underlying operand: two show reuse, so nested `zip(z, z)` stays linear.
+"""
+function joint_starts!(found::AbstractVector{IteratorEvent}, counts::AbstractDict{Any, <:Integer}, walk::Walk, event::IteratorEvent)::Nothing
+    parts = joint_operands(walk, event.operand)
     isnothing(parts) && return nothing
     for (inner, part) in enumerate(parts)
-        path = Int[position; inner]
-        push!(found, IteratorEvent(index, path, part, false, Confidence.definite))
-        joint_starts!(found, walk, index, path, part)
+        key = underlying(walk, part)
+        get(counts, key, 0) >= 2 && continue
+        counts[key] = get(counts, key, 0) + 1
+        start = IteratorEvent(event.index, Int[event.position; inner], part, false, event.confidence)
+        push!(found, start)
+        joint_starts!(found, counts, walk, start)
     end
     return nothing
 end
