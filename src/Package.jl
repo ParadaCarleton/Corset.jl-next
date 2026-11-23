@@ -505,7 +505,8 @@ Functions, types and callable objects lowered code of `methods` tests for method
 Generated methods pass: they keep generator only.
 """
 function probed(methods::AbstractVector{Method})::Base.IdSet{Any}
-    bodies = [(method, Base.uncompressed_ast(method).code, callee_type(method)) for method in methods if isdefined(method, :source)]
+    # Typed: element with `Type` field infers abstract, and `Any` callers below would invalidate.
+    bodies = Tuple{Method, Vector{Any}, Type}[(method, Base.uncompressed_ast(method).code, callee_type(method)) for method in methods if isdefined(method, :source)]
     calls = [(lowered_calls(code), guarded_statements(code)) for (_, code, _) in bodies]
     found = Base.IdSet{Any}()
     # Tested argument positions by callee type; each pass costs one lookup per call, and passes end when none grows.
