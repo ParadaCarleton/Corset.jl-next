@@ -536,4 +536,135 @@ end
     end
 end
 
+# Stateful reuse (F51): iterator started twice, or escaping after start.
+"""Loop after `first`: second start of argument any iterator can fill."""
+function reuse_first(itr::Any)::Any
+    head = first(itr)
+    for item in itr
+        head = item
+    end
+    return head
+end
+"""Loop after `isempty`: generic `isempty` is one of many methods, so start is possible."""
+function reuse_isempty(itr::Any)::Int
+    isempty(itr) && return 0
+    count = 0
+    for _ in itr
+        count += 1
+    end
+    return count
+end
+"""`first` inside loop: start runs again on each pass."""
+function reuse_loop(itr::Any, n::Int)::Int
+    found = 0
+    for _ in 1:n
+        found += first(itr)
+    end
+    return found
+end
+"""Zip of iterator with itself: one call starts it twice."""
+reuse_zip(itr::Any)::Int = count(pair -> pair[1] == pair[2], zip(itr, itr))
+"""Discarded zip of iterator with itself iterates nothing."""
+function kept_zip(itr::Any)::Int
+    zip(itr, itr)
+    return sum(itr)
+end
+"""Return iterator with its first element: caller gets started iterator."""
+reuse_return(itr::Any)::Tuple{Any, Any} = (first(itr), itr)
+"""Asserted argument is argument itself: loop after `first` of it starts argument again."""
+function reuse_asserted(itr::Any)::Any
+    head = first(itr::Any)
+    for x in itr
+        head = x
+    end
+    return head
+end
+"""Hand argument to package function, then loop over it."""
+function reuse_handed(itr::Any)::Int
+    reuse_return(itr)
+    return sum(itr)
+end
+"""Store tuple that holds iterator, then loop over iterator."""
+function reuse_stored(box::Vector{Any}, itr::Any)::Int
+    push!(box, (itr, 1))
+    return sum(itr)
+end
+"""Fresh iterator in returned tuple after `first`: caller gets started iterator."""
+function reuse_fresh(make::Function)::Tuple{Any, Any}
+    itr = make()
+    head = first(itr)
+    return (head, itr)
+end
+"""Union of stateful and multi-pass iterator: loop after `first` depends on branch."""
+function reuse_mixed(io::IO, flag::Bool)::Int
+    itr = flag ? eachline(io) : readlines(io)
+    head = first(itr)
+    return count(line -> line != head, itr)
+end
+"""Each element starts twice in one pass of outer loop."""
+function reuse_inner(groups::Any)::Int
+    total = 0
+    for group in groups
+        head = first(group)
+        for item in group
+            total += item - head
+        end
+    end
+    return total
+end
+"""`isempty` on `eachline` result: `isdone` checks end of stream without reading line."""
+function kept_lines(io::IO)::Int
+    lines = eachline(io)
+    isempty(lines) && return 0
+    return count(_ -> true, lines)
+end
+"""Dictionary from fresh iterator: constructor holds elements, so iterator does not escape."""
+function kept_collected(make::Function)::Dict{Any, Int}
+    items = make()
+    isempty(items) && return Dict{Any, Int}()
+    return Dict{Any, Int}(item => 1 for item in items)
+end
+"""Header line, then other lines: restart of stateful kind is deliberate."""
+function kept_peeled(io::IO)::Int
+    lines = eachline(io)
+    header = first(lines)
+    return count(line -> line != header, lines)
+end
+"""Destructured elements: each pass starts new element."""
+function kept_destructured(entries::Any)::Int
+    total = 0
+    for (a, b) in entries
+        total += a + b
+    end
+    return total
+end
+"""Nested loop: inner loop starts new group on each outer pass."""
+function kept_nested(groups::Any)::Int
+    total = 0
+    for group in groups, item in group
+        total += item
+    end
+    return total
+end
+"""Vector after `isempty`: arrays start from first element each time."""
+kept_vector(items::Vector{Int})::Int = isempty(items) ? 0 : sum(items)
+"""Loop that threads `iterate` state: one start."""
+function kept_state(itr::Any)::Int
+    count, next = 0, iterate(itr)
+    while !isnothing(next)
+        count += 1
+        next = iterate(itr, next[2])
+    end
+    return count
+end
+"""Take element with `popfirst!`, then loop: write, not start."""
+function kept_popped(lines::Iterators.Stateful)::Int
+    popfirst!(lines)
+    return count(_ -> true, lines)
+end
+"""Starts on separate branches: one start per path."""
+kept_branches(itr::Any, flag::Bool)::Any = flag ? first(itr) : collect(itr)
+"""Package iterator type: concrete type outside stateful table."""
+kept_countdown(countdown::Countdown)::Int = isempty(countdown) ? 0 : length(collect(countdown))
+
 end

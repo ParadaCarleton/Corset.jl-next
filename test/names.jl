@@ -175,6 +175,39 @@ alias_shape(name::Symbol)::Vector{Tuple{String, Confidence.T}} = [(call.callee, 
     end
 end
 
+"""Escape kinds, iterator text and confidence of each stateful reuse of fixture method `name`."""
+reuse_shape(name::Symbol)::Vector{Tuple{Bool, Bool, Union{Nothing, String}, Confidence.T}} = [(reuse.earlier_escapes, reuse.later_escapes, reuse.iterator, reuse.confidence) for reuse in effects(name).stateful_reuses]
+
+@testset "stateful reuses" begin
+    # Second start of one argument: `first` then loop, `first` inside loop (restarts each pass), zip with itself.
+    @test reuse_shape(:reuse_first) == [(false, false, "itr", DEFINITE)]
+    @test reuse_shape(:reuse_loop) == [(false, false, "itr", DEFINITE)]
+    @test only(effects(:reuse_loop).stateful_reuses).repeats
+    @test reuse_shape(:reuse_zip) == [(false, false, "itr", DEFINITE)]
+    joint = only(effects(:reuse_zip).stateful_reuses)
+    @test !joint.repeats && joint.earlier == joint.later
+    # Element of outer loop starts twice in one pass.
+    inner = only(effects(:reuse_inner).stateful_reuses)
+    @test (inner.earlier_escapes, inner.later_escapes, inner.repeats, inner.confidence) == (false, false, false, DEFINITE)
+    # `isempty` on argument of any type: other `isempty` methods can serve it.
+    @test reuse_shape(:reuse_isempty) == [(false, false, "itr", POSSIBLE)]
+    # `typeassert` gives its operand: annotated return value and asserted argument are argument itself.
+    @test reuse_shape(:reuse_asserted) == [(false, false, "itr", DEFINITE)]
+    # Escape after start; start after escape to package function.
+    @test reuse_shape(:reuse_return) == [(false, true, "itr", DEFINITE)]
+    @test reuse_shape(:reuse_handed) == [(true, false, "itr", DEFINITE)]
+    # Stored tuple holds iterator: start after escape of its holder.
+    @test reuse_shape(:reuse_stored) == [(true, false, "itr", DEFINITE)]
+    # Fresh iterator in returned tuple; union of stateful and multi-pass iterator. Neither has caller name.
+    @test reuse_shape(:reuse_fresh) == [(false, true, nothing, DEFINITE)]
+    @test reuse_shape(:reuse_mixed) == [(false, false, nothing, DEFINITE)]
+    # Multi-pass type, discarded `zip`, container built from iterator, threaded state, `popfirst!` write, separate branches, concrete package iterator, stateful kind
+    # (`isdone` on `eachline` result, deliberate header skip), new object on each loop pass: none.
+    for name in (:kept_vector, :kept_zip, :kept_collected, :kept_state, :kept_popped, :kept_branches, :kept_countdown, :kept_lines, :kept_peeled, :kept_destructured, :kept_nested)
+        @test isempty(reuse_shape(name))
+    end
+end
+
 @testset "exception table" begin
     @test shape(effects(:print_value).writes) == [(parameter(2), true, EffectKind.io, DEFINITE)]
     @test shape(effects(:shout).writes) == [(Place.At(Root.Global(GlobalRef(Base, :stdout)), Step.Type[]), true, EffectKind.io, DEFINITE)]

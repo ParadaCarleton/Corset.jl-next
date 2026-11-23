@@ -144,11 +144,14 @@ past `Element` step, `Deep` place, or global state no binding names can be other
 function same_place(walk::Walk, @nospecialize(first::Any), @nospecialize(second::Any))::Bool
     one, other = operand_value(walk, first), operand_value(walk, second)
     (one.fresh || other.fresh || length(one.places) != 1 || one.places != other.places) && return false
-    return @match only(one.places) begin
-        Place.At(Root.Elsewhere(), _) => false
-        Place.At(_, steps) => !any(step -> step == Step.Element(), steps)
-        Place.Deep(_) => false
-    end
+    return object_place(only(one.places))
+end
+
+"""Whether `place` names one object: field and tuple steps below argument or global. Element place names every element."""
+object_place(place::Place.Type)::Bool = @match place begin
+    Place.At(Root.Elsewhere(), _) => false
+    Place.At(_, steps) => !any(step -> step == Step.Element(), steps)
+    Place.Deep(_) => false
 end
 
 """Closest overlap of places of `written` operand with places of `collection` operand (`place_overlap`)."""

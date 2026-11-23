@@ -1,0 +1,60 @@
+error[stateful-reuse]: `itr` starts iteration twice
+ --> src/StatefulReusePositive.jl:8:9
+  |
+6 |     low = first(itr)
+  |           ---------- first start
+7 |     high = low
+8 |     for x in itr
+  |         ^^^^^^^^ starts iteration again
+  |
+  = why: stateful iterator gives each element once, so second pass misses elements first pass consumed
+  = fix: take first element with `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type   [manual]
+  = docs: corset explain stateful-reuse
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow stateful-reuse -- <reason>`
+
+error[stateful-reuse]: `itr` starts iteration twice
+  --> src/StatefulReusePositive.jl:17:12
+   |
+16 |     isempty(itr) && return 0
+   |     ------------ first start
+17 |     return sum(itr)
+   |            ^^^^^^^^ starts iteration again
+   |
+   = why: stateful iterator gives each element once, so second pass misses elements first pass consumed
+   = confidence: possible
+   = fix: take first element with `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type   [manual]
+   = docs: corset explain stateful-reuse
+
+error[stateful-reuse]: `itr` starts iteration twice in one expression
+  --> src/StatefulReusePositive.jl:21:32
+   |
+21 | self_pairs(itr::Any) = collect(zip(itr, itr))
+   |                                ^^^^^^^^^^^^^ starts iteration twice
+   |
+   = why: stateful iterator gives each element once, so second pass misses elements first pass consumed
+   = fix: take first element with `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type   [manual]
+   = docs: corset explain stateful-reuse
+
+error[stateful-reuse]: `itr` escapes after iteration started
+  --> src/StatefulReusePositive.jl:26:5
+   |
+25 |     head = first(itr)
+   |            ---------- starts iteration
+26 |     return (head, itr)
+   |     ^^^^^^^^^^^^^^^^^^ lets iterator escape
+   |
+   = why: stateful iterator gives each element once, so second pass misses elements first pass consumed
+   = fix: take first element with `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type   [manual]
+   = docs: corset explain stateful-reuse
+
+error[stateful-reuse]: `itr` starts again on each loop pass
+  --> src/StatefulReusePositive.jl:33:20
+   |
+33 |         push!(out, first(itr))
+   |                    ^^^^^^^^^^ starts iteration inside loop
+   |
+   = why: stateful iterator gives each element once, so second pass misses elements first pass consumed
+   = fix: take first element with `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type   [manual]
+   = docs: corset explain stateful-reuse
+

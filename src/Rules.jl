@@ -49,6 +49,7 @@ include("rules/self_alias.jl")
 include("rules/shadowed_base.jl")
 include("rules/short_circuit_statement.jl")
 include("rules/stateful_iterate.jl")
+include("rules/stateful_reuse.jl")
 include("rules/ternary_statement.jl")
 include("rules/threadid_buffer.jl")
 include("rules/type_disruption.jl")
@@ -110,6 +111,7 @@ const REGISTRY = RuleEntry[
     ShadowedBase.ENTRY,
     ShortCircuitStatement.ENTRY,
     StatefulIterate.ENTRY,
+    StatefulReuse.ENTRY,
     TernaryStatement.ENTRY,
     ThreadidBuffer.ENTRY,
     TypeDisruption.ENTRY,

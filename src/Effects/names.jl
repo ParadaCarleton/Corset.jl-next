@@ -230,7 +230,7 @@ function holds_pointing(walk::Walk, @nospecialize(type::Any))::Bool
 end
 
 """
-Value of call `call` with result of `type`: field and element loads add step, alias functions keep operand places,
+Value of call `call` with result of `type`: type assertion gives operand, field and element loads add step, alias functions keep operand places,
 iteration and element functions give elements, constructors hold operands, others give fresh object.
 """
 function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
@@ -243,6 +243,8 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
         return literal_value(walk, callee === Base.vect ? operands : operands[2:end], type)
     end
     object = operand_value(walk, operands[1])
+    # Type assertion gives its operand, as on return of method with return type.
+    callee === typeassert && return object
     if callee in LOAD_BUILTINS || callee === getproperty
         step = callee === getfield || callee === getproperty ? (length(operands) >= 2 ? field_step(walk, operands[2]) : nothing) : Step.Element()
         return load_value(walk, object, step)
@@ -652,14 +654,21 @@ function read_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractV
     elseif callee in TASK_FUNCTIONS
         push!(found, Event(ELSEWHERE, false, EffectKind.task_local, Confidence.definite, false))
     end
-    if starts_iteration(walk, callee, operands)
-        append!(found, value_events(walk, object, EffectKind.iteration, false, false))
-    elseif callee in CONSUMING_FUNCTIONS || callee === first || callee === only
-        for operand in operands
-            callable(walk, operand) || append!(found, value_events(walk, operand_value(walk, operand), EffectKind.iteration, false, false))
-        end
+    for position in started_positions(walk, callee, operands)
+        append!(found, value_events(walk, operand_value(walk, operands[position]), EffectKind.iteration, false, false))
     end
     return found
+end
+
+"""
+Positions of operands call of `callee` starts iterating (`effects.md`, Reads): first operand of `starts_iteration` call,
+each non-callable operand of consuming call, `first` or `only`.
+"""
+function started_positions(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Int}
+    Base.require_one_based_indexing(operands)
+    starts_iteration(walk, callee, operands) && return [1]
+    (callee in CONSUMING_FUNCTIONS || callee === first || callee === only) || return Int[]
+    return Int[position for position in eachindex(operands) if !callable(walk, operands[position])]
 end
 
 """Whether `place` starts at global binding."""
@@ -667,7 +676,7 @@ global_place(place::Place.Type)::Bool = !isnothing(root_global(place))
 
 """
 Whether call starts iteration of first operand without state: `iterate(x)`, destructuring `indexed_iterate(x, 1)`,
-`first`, `only`, or `isempty` by generic method.
+`first`, `only`, or generic `isempty` that surely iterates (`isempty_start`).
 """
 function starts_iteration(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Bool
     Base.require_one_based_indexing(operands)
@@ -675,8 +684,25 @@ function starts_iteration(walk::Walk, @nospecialize(callee::Any), operands::Abst
     callee === Base.indexed_iterate && return length(operands) == 2 && constant_value(walk, operands[2]) == 1
     callee in START_FUNCTIONS && length(operands) == 1 || return false
     callee === isempty || return true
-    matches = Base._methods_by_ftype(Tuple{typeof(isempty), operand_type(walk, operands[1])}, 1, walk.world)
-    return matches isa Vector && length(matches) == 1 && only(matches).method.sig == Tuple{typeof(isempty), Any}
+    return isempty_start(walk, operand_type(walk, operands[1])) == Confidence.definite
+end
+
+"""
+Certainty that `isempty` on value of `type` iterates it: generic `isempty` calls `iterate` when `isdone` gives `missing`.
+Both generic methods alone match gives `definite`, generic among others `possible`; `nothing` when one cannot match.
+"""
+function isempty_start(walk::Walk, @nospecialize(type::Any))::Union{Nothing, Confidence.T}
+    emptiness = generic_match(walk, Tuple{typeof(isempty), type}, Tuple{typeof(isempty), Any})
+    done = generic_match(walk, Tuple{typeof(Base.isdone), type}, Tuple{typeof(Base.isdone), Any, Vararg{Any}})
+    return (isnothing(emptiness) || isnothing(done)) ? nothing : max(emptiness, done)
+end
+
+"""Certainty that call of `signature` runs method of `generic` signature: `definite` alone, `possible` among others."""
+function generic_match(walk::Walk, @nospecialize(signature::Type), @nospecialize(generic::Type))::Union{Nothing, Confidence.T}
+    matches = Base._methods_by_ftype(signature, -1, walk.world)
+    matches isa Vector || return nothing
+    any(match -> match.method.sig == generic, matches) || return nothing
+    return length(matches) == 1 ? Confidence.definite : Confidence.possible
 end
 
 """
