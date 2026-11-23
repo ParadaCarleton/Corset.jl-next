@@ -244,10 +244,42 @@ warning[overspecified-type]: `Int` rejects callers `Integer` accepts
    = fix: replace with `Integer`   [likely]
    = docs: corset explain overspecified-type
 
-warning[overspecified-type]: `Dict{Symbol, Vector{Float64}}` rejects callers `AbstractDict{Symbol, <:AbstractVector{<:Real}}` accepts
-  --> src/OverspecifiedTypePositive.jl:61:15
+warning[overspecified-type]: `Vector{Float64}` rejects callers `AbstractVector{<:Real}` accepts
+  --> src/OverspecifiedTypePositive.jl:62:26
    |
-61 | sizes(groups::Dict{Symbol, Vector{Float64}}) = Dict(name => length(group) for (name, group) in groups)
+62 | forwarded_length(values::Vector{Float64}) = length(values)
+   |                          ^^^^^^^^^^^^^^^ narrower than code needs
+   |                          ------ names specific type
+   |                                 ------- names specific type
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `AbstractVector{<:Real}`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:65:11
+   |
+65 | helper(x::Float64) = 2x
+   |           ^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:70:19
+   |
+70 |     Hidden(value::Float64) = new(value)
+   |                   ^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real`   [likely]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Dict{Symbol, Vector{Float64}}` rejects callers `AbstractDict{Symbol, <:AbstractVector{<:Real}}` accepts
+  --> src/OverspecifiedTypePositive.jl:74:15
+   |
+74 | sizes(groups::Dict{Symbol, Vector{Float64}}) = Dict(name => length(group) for (name, group) in groups)
    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ narrower than code needs
    |               ---- names specific type
    |                            ------ names specific type
@@ -256,4 +288,44 @@ warning[overspecified-type]: `Dict{Symbol, Vector{Float64}}` rejects callers `Ab
    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
    = fix: replace with `AbstractDict{Symbol, <:AbstractVector{<:Real}}`   [likely]
    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:78:11
+   |
+78 | halved(x::Float64) = x / 2
+   |           ^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real` after checking `applicable` calls and `MethodError` catches: widening changes what they do   [manual]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:89:12
+   |
+89 | thirded(x::Float64) = x / 3
+   |            ^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real` after checking `applicable` calls and `MethodError` catches: widening changes what they do   [manual]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:99:14
+   |
+99 | quartered(x::Float64) = x / 4
+   |              ^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real` after checking `applicable` calls and `MethodError` catches: widening changes what they do   [manual]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+   --> src/OverspecifiedTypePositive.jl:105:21
+    |
+105 | (scaler::Scaler)(x::Float64) = scaler.factor * x
+    |                     ^^^^^^^ narrower than code needs
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Real` after checking `applicable` calls and `MethodError` catches: widening changes what they do   [manual]
+    = docs: corset explain overspecified-type
 

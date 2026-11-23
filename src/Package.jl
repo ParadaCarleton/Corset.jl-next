@@ -7,7 +7,7 @@ Each extension whose triggers environment can load gets them loaded; extension t
 """
 module Package
 
-using ..Facts: Facts, line_starts, PackageFacts, ProjectFacts, MethodSite, StructSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
+using ..Facts: Facts, line_starts, lowered_value, PackageFacts, ProjectFacts, MethodSite, StructSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
 using ..Config: ConfigError, parse_toml
 
 """Rule name load failures report under."""
@@ -357,10 +357,178 @@ function load(project::ProjectFacts, files::AbstractVector{SyntaxFile})::Loaded
     return Loaded(package_facts(package_modules(mod, project), files), errors, [blind_spots; moved_versions(project)])
 end
 
+"""Functions that answer whether function takes arguments."""
+const REFLECTION = Union{typeof(applicable), typeof(hasmethod), typeof(which), typeof(methods)}
+
+"""Leading operands of splat parts `parts` of `Core._apply_iterate` call: elements of each `tuple(...)` part until other part."""
+function splatted(code::AbstractVector{Any}, parts::AbstractVector{Any})::Vector{Any}
+    operands = Any[]
+    for part in parts
+        part isa Core.SSAValue || break
+        tuple = code[part.id]
+        tuple isa Expr || break
+        (tuple.head === :call && lowered_value(code, tuple.args[1]) === Core.tuple) || break
+        append!(operands, tuple.args[2:end])
+    end
+    return operands
+end
+
+"""
+Calls of lowered `code`: statement index, callee value, callee operand and positional operands.
+Splat call `f(a, xs...)` keeps `a`.
+"""
+function lowered_calls(code::AbstractVector{Any})::Vector{Tuple{Int, Any, Any, Vector{Any}}}
+    found = Tuple{Int, Any, Any, Vector{Any}}[]
+    for (index, statement) in pairs(code)
+        call = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
+        call isa Expr || continue
+        call.head === :call || continue
+        head, operands = call.args[1], call.args[2:end]
+        if lowered_value(code, head) === Core._apply_iterate && length(operands) >= 2
+            head, operands = operands[2], splatted(code, operands[3:end])
+        end
+        push!(found, (index, lowered_value(code, head), head, operands))
+    end
+    return found
+end
+
+"""Type of function, type or callable object `method` belongs to: `Core.Typeof` of callee value that can run it."""
+callee_type(method::Method)::Type = Base.rewrap_unionall(Facts.tuple_parameters(method.sig)[1], method.sig)
+
+"""
+Branch `MethodError` takes at condition `condition` of lowered `code` when it tests caught exception in slot `caught`:
+`true` when condition holds, `false` when it fails, `nothing` for other condition.
+"""
+function method_error_branch(code::AbstractVector{Any}, condition::Any, caught::Any)::Union{Nothing, Bool}
+    condition isa Core.SSAValue || return nothing
+    test = code[condition.id]
+    test isa Expr || return nothing
+    (test.head === :call && length(test.args) == 3) || return nothing
+    subject = test.args[2]
+    subject isa Core.SSAValue && (subject = code[subject.id])
+    (subject == caught && lowered_value(code, test.args[1]) === isa) || return nothing
+    type = lowered_value(code, test.args[3])
+    type isa Type || return nothing
+    MethodError <: type && return true
+    return typeintersect(MethodError, type) === Union{} ? false : nothing
+end
+
+"""Whether lowered `statement` of `code` calls `rethrow` or `throw`."""
+function throws(code::AbstractVector{Any}, statement::Any)::Bool
+    call = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
+    call isa Expr || return false
+    return call.head === :call && lowered_value(code, call.args[1]) isa Union{typeof(rethrow), typeof(throw)}
+end
+
+"""
+Whether handler at `catch_dest` of `try` that statement `enter` of lowered `code` opens can finish on `MethodError`:
+some path reaches its `pop_exception` or return without `rethrow`. `try`/`finally` handler always rethrows.
+"""
+function swallows(code::AbstractVector{Any}, enter::Integer, catch_dest::Integer)::Bool
+    head = code[catch_dest]
+    caught = head isa Expr && head.head === :(=) && head.args[2] == Expr(:the_exception) ? head.args[1] : nothing
+    pending, seen = [catch_dest], Set{Int}()
+    while !isempty(pending)
+        index = pop!(pending)
+        (index in seen || index > lastindex(code)) && continue
+        push!(seen, index)
+        statement = code[index]
+        statement isa Expr && statement.head === :pop_exception && statement.args[1] == Core.SSAValue(enter) && return true
+        if statement isa Core.ReturnNode
+            # Return node without value marks unreachable code.
+            isdefined(statement, :val) && return true
+        elseif statement isa Core.GotoNode
+            push!(pending, statement.label)
+        elseif statement isa Core.GotoIfNot
+            # Type test of caught exception sends `MethodError` one way; other condition, both ways.
+            branch = method_error_branch(code, statement.cond, caught)
+            branch === false || push!(pending, index + 1)
+            branch === true || push!(pending, statement.dest)
+        elseif !throws(code, statement)
+            push!(pending, index + 1)
+        end
+    end
+    return false
+end
+
+"""Statements of lowered `code` inside `try` whose handler swallows `MethodError`."""
+function guarded_statements(code::AbstractVector{Any})::Set{Int}
+    guarded = Set{Int}()
+    for (enter, statement) in pairs(code)
+        statement isa Core.EnterNode || continue
+        # IR marks scope without handler as `EnterNode(0)`.
+        statement.catch_dest > 0 || continue
+        swallows(code, enter, statement.catch_dest) && union!(guarded, (enter + 1):(statement.catch_dest - 1))
+    end
+    return guarded
+end
+
+"""
+Record that lowered `code` of `method` tests `operand` for methods: argument adds its position under callee type
+`key` to `exact` (concrete `key`) or `inexact`, other operand adds its value to `found`. Return whether positions grew.
+"""
+function tested!(found::Base.IdSet{Any}, exact::IdDict{<:Type, <:AbstractSet{<:Integer}}, inexact::IdDict{<:Type, <:AbstractSet{<:Integer}}, key::Type, method::Method, code::AbstractVector{Any}, operand::Any)::Bool
+    operand isa Core.SSAValue && (operand = code[operand.id])
+    # Local `target = f` stands for argument `f`.
+    operand isa Core.SlotNumber && operand.id > method.nargs && (operand = Facts.assigned_once(code, operand))
+    operand isa Core.SSAValue && (operand = code[operand.id])
+    if operand isa Core.SlotNumber && 2 <= operand.id <= method.nargs
+        tested = get!(Set{Int}, isconcretetype(key) ? exact : inexact, key)
+        (operand.id - 1) in tested && return false
+        push!(tested, operand.id - 1)
+        return true
+    end
+    push!(found, lowered_value(code, operand))
+    return false
+end
+
+"""
+Argument positions call of `callee` tests for methods: reflection tests first; package methods their positions in
+`exact` under `Core.Typeof(callee)`, or in `inexact` under supertype of it. Position can repeat.
+"""
+function tested_positions(callee::Any, exact::IdDict{<:Type, <:AbstractSet{<:Integer}}, inexact::IdDict{<:Type, <:AbstractSet{<:Integer}})::Vector{Int}
+    callee isa REFLECTION && return [1]
+    positions = Int[]
+    isnothing(callee) && return positions
+    type = Core.Typeof(callee)
+    haskey(exact, type) && append!(positions, exact[type])
+    # Parametric callable types and constructors (`Type{T}`) match by subtype; package has few of them.
+    for (key, tested) in inexact
+        type <: key && append!(positions, tested)
+    end
+    return positions
+end
+
+"""
+Functions, types and callable objects lowered code of `methods` tests for methods: passes to reflection call
+(`REFLECTION`) or calls in `try` whose handler swallows `MethodError`, directly or through argument of package method.
+Generated methods pass: they keep generator only.
+"""
+function probed(methods::AbstractVector{Method})::Base.IdSet{Any}
+    # Typed: element with `Type` field infers abstract, and `Any` callers below would invalidate.
+    bodies = Tuple{Method, Vector{Any}, Type}[(method, Base.uncompressed_ast(method).code, callee_type(method)) for method in methods if isdefined(method, :source)]
+    calls = [(lowered_calls(code), guarded_statements(code)) for (_, code, _) in bodies]
+    found = Base.IdSet{Any}()
+    # Tested argument positions by callee type; each pass costs one lookup per call, and passes end when none grows.
+    exact, inexact, grown = IdDict{Type, Set{Int}}(), IdDict{Type, Set{Int}}(), true
+    while grown
+        grown = false
+        for ((method, code, key), (method_calls, guarded)) in zip(bodies, calls), (index, callee, head, operands) in method_calls
+            index in guarded && (grown |= tested!(found, exact, inexact, key, method, code, head))
+            for position in tested_positions(callee, exact, inexact)
+                position <= length(operands) || continue
+                grown |= tested!(found, exact, inexact, key, method, code, operands[position])
+            end
+        end
+    end
+    delete!(found, nothing)
+    return found
+end
+
 """Facts of loaded package `modules`, root module first, with method and struct sites in `files`."""
 function package_facts(modules::AbstractVector{Module}, files::AbstractVector{SyntaxFile})::PackageFacts
     sites = method_sites(modules, files)
-    return PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files, modules))
+    return PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files, modules), probed([site.method for site in sites]))
 end
 
 end

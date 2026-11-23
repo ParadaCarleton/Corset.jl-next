@@ -116,13 +116,6 @@ function struct_fields(type::Type)::Set{Symbol}
     return fields
 end
 
-"""Callee of call statement `head` in lowered `code`: value of global or of statement it names; else `nothing`."""
-function callee(code::AbstractVector{Any}, head::Any)::Any
-    Base.require_one_based_indexing(code)
-    head isa Core.SSAValue && (head = code[head.id])
-    return head isa GlobalRef && isdefined(head.mod, head.name) ? getglobal(head.mod, head.name) : nothing
-end
-
 """Whether `slot` appears anywhere in `expression`."""
 mentions(expression::Any, slot::Core.SlotNumber)::Bool =
     expression == slot || (expression isa Expr && any(argument -> mentions(argument, slot), expression.args))
@@ -145,8 +138,9 @@ function read_fields(method::Method, type::Type)::Union{Nothing, Set{Symbol}}
     for statement in code, slot in slots
         mentions(statement, slot) || continue
         call = value_side(statement)
-        read = call isa Expr && call.head === :call && length(call.args) == 3 && call.args[2] == slot &&
-            call.args[3] isa QuoteNode && callee(code, call.args[1]) in (getproperty, getfield)
+        call isa Expr || return nothing
+        read = call.head === :call && length(call.args) == 3 && call.args[2] == slot &&
+            call.args[3] isa QuoteNode && lowered_value(code, call.args[1]) isa Union{typeof(getproperty), typeof(getfield)}
         read || return nothing
         push!(fields, call.args[3].value)
     end

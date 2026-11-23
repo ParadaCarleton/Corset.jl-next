@@ -67,6 +67,7 @@ footguns = [14]
 [[rule]]
 name = "overspecified-type"
 footguns = [15]
+note = "Private methods count: narrow private callee narrows public function that calls it."
 
 [[rule]]
 name = "vague-type"

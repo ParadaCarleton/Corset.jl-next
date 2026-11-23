@@ -15,7 +15,7 @@ export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, W
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, StatefulIterate, InferenceFacts, Step, Root, Place, Access, UnguardedHold, LoopWrite, SelfAlias, Callee, callee_name, callee_methods, place_text, root_global, CallFact, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
-export name_span, tuple_parameters, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
+export name_span, tuple_parameters, lowered_value, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal, line_start, owned_lines, line_deletion
 export negation, exits, terms, exit_guard, later_term, returning_function, CONDITION, operand, body_text, negated, none_text, Branch, if_text, statement_indent
@@ -237,6 +237,7 @@ end
 Loaded package (`package` stage facts): package modules (root, submodules, loaded extensions; root first), values
 public names reach, and sites of methods and structs package modules define in analyzed files.
 `methods` keeps methods later definitions replaced; `overwrites` pairs each (earlier, later) by same signature.
+`probed`: functions, types and callable objects package methods test for methods; new method changes what code does.
 """
 struct PackageFacts
     modules::Vector{Module}
@@ -244,6 +245,7 @@ struct PackageFacts
     methods::Vector{MethodSite}
     overwrites::Vector{Tuple{MethodSite, MethodSite}}
     structs::Vector{StructSite}
+    probed::Base.IdSet{Any}
 end
 
 """
@@ -751,6 +753,40 @@ infer `SimpleVector`; with `Any`, they dispatch at run time, and package that lo
 """
 tuple_parameters(type::Type)::Core.SimpleVector = Base.unwrap_unionall(type).parameters
 
+"""Value local `slot` gets in lowered `code` when one statement assigns it; else `nothing`."""
+function assigned_once(code::AbstractVector{Any}, slot::Core.SlotNumber)::Any
+    found = nothing
+    for statement in code
+        statement isa Expr || continue
+        (statement.head === :(=) && statement.args[1] == slot) || continue
+        isnothing(found) || return nothing
+        found = Some(statement.args[2])
+    end
+    return isnothing(found) ? nothing : something(found)
+end
+
+"""
+Value of `operand` in lowered `code`: global it names, directly, through statement, through local assigned once or
+as `Module.name`; else `nothing`.
+"""
+function lowered_value(code::AbstractVector{Any}, operand::Any)::Any
+    Base.require_one_based_indexing(code)
+    # Lowering reads local into statement of its own: `%4 = _3`.
+    operand isa Core.SSAValue && (operand = code[operand.id])
+    operand isa Core.SlotNumber && (operand = assigned_once(code, operand))
+    operand isa Core.SSAValue && (operand = code[operand.id])
+    operand isa GlobalRef && return isdefined(operand.mod, operand.name) ? getglobal(operand.mod, operand.name) : nothing
+    # Lowering turns `Base.f` into `getproperty(Base, :f)`.
+    operand isa Expr || return nothing
+    (operand.head === :call && length(operand.args) == 3 && lowered_value(code, operand.args[1]) isa typeof(getproperty)) || return nothing
+    owner, name = lowered_value(code, operand.args[2]), operand.args[3]
+    owner isa Module || return nothing
+    name isa QuoteNode || return nothing
+    symbol = name.value
+    symbol isa Symbol || return nothing
+    return isdefined(owner, symbol) ? getglobal(owner, symbol) : nothing
+end
+
 """
 Type of argument `position` of `method`, wrapped in signature `where`: element type for `Vararg`, bound for type variable.
 `nothing` when method has no such argument.
@@ -923,71 +959,7 @@ line_deletion(file::SyntaxFile, lines::UnitRange{<:Integer})::Edit =
 """Fix with no edits; shown, never applied."""
 manual_fix(text::String)::Fix = Fix(text, Edit[], Tier.manual)
 
-"""Irrational constants float literal can spell, with name of each: Base names, then IrrationalConstants.jl names."""
-const IRRATIONALS = (
-    (π, "π"), (ℯ, "ℯ"), (Base.MathConstants.γ, "γ"), (Base.MathConstants.φ, "φ"), (2π, "twoπ"), (π / 2, "halfπ"),
-    (π / 4, "quartπ"), (1 / π, "invπ"), (sqrt(2), "sqrt2"), (1 / sqrt(2), "invsqrt2"), (sqrt(π), "sqrtπ"),
-    (sqrt(2π), "sqrt2π"), (1 / sqrt(2π), "invsqrt2π"), (log(2), "logtwo"), (log(10), "logten"), (log(π), "logπ"),
-)
-
-"""Base names of `IRRATIONALS`; others come from IrrationalConstants.jl."""
-const BASE_IRRATIONALS = ("π", "ℯ", "γ", "φ")
-
-"""Name of irrational constant float `value` spells to five significant digits; `nothing` when none."""
-function irrational_name(value::Real)::Union{Nothing, String}
-    for (constant, name) in IRRATIONALS
-        isapprox(value, Float64(constant); rtol = 1.0e-5) && return name
-    end
-    return nothing
-end
-
-"""Words for weak value of `disruption` in message: literal `0.5`, constant `HALF`, conversion to `Float64`, or start value of `s`."""
-function weak_words(disruption::Disruption)::String
-    disruption.kind == Weak.literal && return "literal `$(disruption.value)`"
-    disruption.kind == Weak.constant && return "constant `$(disruption.value)`"
-    disruption.kind == Weak.name && return "conversion to `$(disruption.weak_type)`"
-    return "start value of `$(disruption.variable)`"
-end
-
-"""Label at weak value of `disruption`: type weak value keeps for every input type."""
-function weak_label(disruption::Disruption)::String
-    disruption.kind == Weak.name && return "converts every input type to `$(disruption.weak_type)`"
-    disruption.kind == Weak.variable && return "starts `$(disruption.variable)` as `$(disruption.weak_type)`"
-    return "`$(disruption.weak_type)` for every input type"
-end
-
-"""
-Fix of `disruption`: irrational constant for float literal that spells one (`manual`); conversion to input type
-(`likely`: callers see input type), `manual` where inference stage gives no `converted` text or literal leaves
-`Float32` range: `oftype(x, 1e39)` gives `Inf32`.
-"""
-function weak_fix(disruption::Disruption)::Fix
-    irrational = isnothing(disruption.float) ? nothing : irrational_name(something(disruption.float))
-    if !isnothing(irrational)
-        package = irrational in BASE_IRRATIONALS ? "" : " from IrrationalConstants.jl"
-        return manual_fix("use irrational `$irrational`$package; it takes input type")
-    end
-    value = disruption.float
-    if !isnothing(value) && !iszero(value) && isfinite(value)
-        narrowed = Float32(value)
-        isinf(narrowed) && return manual_fix("`$(disruption.value)` overflows `Float32` input: rescale, or opt out to keep `Float64`")
-        iszero(narrowed) && return manual_fix("`$(disruption.value)` rounds to zero in `Float32` input: rescale, or opt out to keep `Float64`")
-    end
-    converted = disruption.converted
-    isnothing(converted) || return Fix("convert to input type: `$converted`", [Edit(disruption.span, converted)], Tier.likely)
-    disruption.kind == Weak.name && return manual_fix("drop conversion, or keep input type with `float(x)` or `oftype(x, y)`")
-    disruption.kind == Weak.variable && return manual_fix("start `$(disruption.variable)` with input type, as in `zero(T)` or `zero(eltype(xs))`")
-    return manual_fix("convert `$(disruption.value)` to input type, as in `oftype(x, $(disruption.value))` or `T($(disruption.value))`")
-end
-
-"""Cause labels of `disruption`: meeting call, then statement where type changes as `exit_text` says; equal spans merge."""
-function weak_causes(disruption::Disruption, exit_text::String)::Vector{Label}
-    meeting = "meets `$(disruption.input)` input here"
-    disruption.meeting == disruption.exit_span && return [Label(disruption.meeting, "$meeting and $exit_text")]
-    return [Label(disruption.meeting, meeting), Label(disruption.exit_span, exit_text)]
-end
-
-
+include("Facts/weak.jl")
 include("Statements.jl")
 
 end

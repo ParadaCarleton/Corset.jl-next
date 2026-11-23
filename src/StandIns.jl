@@ -9,13 +9,13 @@ module StandIns
 """Float stand-in; promotes like `Float32`: absorbs integers and irrationals, loses to `Float64`."""
 struct FloatStandIn <: AbstractFloat
     model::Float32
-    FloatStandIn(model::Float32)::FloatStandIn = new(model)
+    FloatStandIn(model::Float32)::FloatStandIn = new(model) # corset: allow overspecified-type -- stand-in wraps exactly its model type
 end
 
 """Integer stand-in; promotes like `Int32`: absorbs `Bool`, `Int8` and `Int16`, loses to `Int`."""
 struct IntStandIn <: Signed
     model::Int32
-    IntStandIn(model::Int32)::IntStandIn = new(model)
+    IntStandIn(model::Int32)::IntStandIn = new(model) # corset: allow overspecified-type -- stand-in wraps exactly its model type
 end
 
 """Array stand-in for `AbstractArray` bound; `similar` and broadcast keep it, as for caller array type."""

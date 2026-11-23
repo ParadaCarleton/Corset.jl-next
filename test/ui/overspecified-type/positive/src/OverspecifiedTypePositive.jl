@@ -2,7 +2,7 @@
 """Package whose functions annotate narrower types than their code needs."""
 module OverspecifiedTypePositive
 
-export scale, area, total, middle, weighted, present, rows, absolute, Point, power, code, rounded
+export scale, area, total, middle, weighted, present, rows, absolute, Point, power, code, rounded, forwarded, halve, third, quarter, doubled
 public counted, sizes, members, mean
 
 """Scaled copy of values."""
@@ -57,7 +57,55 @@ code(value::Int) = 2
 rounded(value::Float64) = round(Int, value)
 rounded(value::Int) = value
 
+"""Length of values; private helper takes only `Vector{Float64}`, so public function does too."""
+forwarded(values) = forwarded_length(values)
+forwarded_length(values::Vector{Float64}) = length(values)
+
+"""Private helper."""
+helper(x::Float64) = 2x
+
+"""Private struct; its constructor takes only `Float64`."""
+struct Hidden
+    value::Float64
+    Hidden(value::Float64) = new(value)
+end
+
 """Lengths of named groups."""
 sizes(groups::Dict{Symbol, Vector{Float64}}) = Dict(name => length(group) for (name, group) in groups)
+
+"""Half of float, else zero; widened private `halved` would change `applicable` answer, so fix is manual."""
+halve(x) = Base.applicable(halved, x) ? halved(x) : 0
+halved(x::Float64) = x / 2
+
+"""Third of float, else zero; widened private `thirded` would throw no `MethodError` to catch, so fix is manual."""
+function third(x)
+    try
+        return thirded(x)
+    catch error
+        error isa MethodError || rethrow()
+        return 0
+    end
+end
+thirded(x::Float64) = x / 3
+
+"""Quarter of float, else zero; bare `catch` swallows `MethodError` from private `quartered`, so fix is manual."""
+function quarter(x)
+    try
+        return quartered(x)
+    catch
+        return 0
+    end
+end
+quartered(x::Float64) = x / 4
+
+"""Callable that scales floats by `factor`."""
+struct Scaler
+    factor::Real
+end
+(scaler::Scaler)(x::Float64) = scaler.factor * x
+const doubler = Scaler(2)
+
+"""Double of float, else zero; widened call method of `Scaler` would change `applicable` answer, so fix is manual."""
+doubled(x) = applicable(doubler, x) ? doubler(x) : 0
 
 end

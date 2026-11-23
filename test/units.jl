@@ -477,3 +477,114 @@ end
         @test_throws ConfigError Corset.check(directory)
     end
 end
+
+"""Cases of `Package.probed`: package code tests each `probed_` function for methods, and no `kept_` function."""
+module ProbedCases
+    probed_direct(x::Float64) = x
+    probed_qualified(x::Float64) = x
+    probed_wrapped(x::Float64) = x
+    probed_rewrapped(x::Float64) = x
+    probed_splat(x::Float64) = x
+    probed_local(x::Float64) = x
+    probed_bare(x::Float64) = x
+    probed_interrupt(x::Float64) = x
+    probed_method_error(x::Float64) = x
+    probed_guarded(x::Float64) = x
+    probed_object(x::Float64) = x
+    probed_alias(x::Float64) = x
+    probed_parametric(x::Float64) = x
+    kept_filtered(x::Float64) = x
+    kept_finally(x::Float64) = x
+    kept_called(x::Float64) = x
+    kept_scoped(x::Float64) = x
+    const SCOPE = Base.ScopedValues.ScopedValue(0)
+    direct(x) = applicable(probed_direct, x)
+    qualified(x) = Base.hasmethod(probed_qualified, Tuple{typeof(x)})
+    accepts(f, x) = applicable(f, x)
+    accepts_again(f, x) = accepts(f, x)
+    wrapped(x) = accepts(probed_wrapped, x)
+    rewrapped(x) = accepts_again(probed_rewrapped, x)
+    splat(xs...) = applicable(probed_splat, xs...)
+    function aliased(x)
+        target = probed_local
+        return applicable(target, x)
+    end
+    bare(x) = try
+        probed_bare(x)
+    catch
+        0
+    end
+    interrupt(x) = try
+        probed_interrupt(x)
+    catch caught
+        caught isa InterruptException && rethrow(); 0
+    end
+    method_error(x) = try
+        probed_method_error(x)
+    catch caught
+        caught isa MethodError ? 0 : rethrow()
+    end
+    filtered(x) = try
+        kept_filtered(x)
+    catch caught
+        caught isa ArgumentError || rethrow(); 0
+    end
+    finally_only(x) = try
+        kept_finally(x)
+    finally
+        flush(stdout)
+    end
+    called(x) = kept_called(x)
+    call_or_zero(f, x) = try
+        f(x)
+    catch
+        0
+    end
+    guarded(x) = call_or_zero(probed_guarded, x)
+    function call_alias_or_zero(f, x)
+        target = f
+        return try
+            target(x)
+        catch
+            0
+        end
+    end
+    guarded_alias(x) = call_alias_or_zero(probed_alias, x)
+    struct Guard
+        fallback::Int
+    end
+    (guard::Guard)(f, x) = try
+        f(x)
+    catch
+        guard.fallback
+    end
+    const guard = Guard(0)
+    guarded_object(x) = guard(probed_object, x)
+    struct Wrapper{T}
+        fallback::T
+    end
+    (wrapper::Wrapper)(f, x) = try
+        f(x)
+    catch
+        wrapper.fallback
+    end
+    const wrapper = Wrapper(0)
+    guarded_parametric(x) = wrapper(probed_parametric, x)
+    # `@with` opens `try` with scope; its handler rethrows.
+    scoped(x) = Base.ScopedValues.@with SCOPE => 1 kept_scoped(x)
+end
+
+@testset "probed functions" begin
+    bindings = [getglobal(ProbedCases, name) for name in names(ProbedCases; all = true)]
+    owned = [value for value in bindings if value isa Function && parentmodule(value) === ProbedCases]
+    # Methods of functions, types and callable objects, as package stage collects them.
+    found = Corset.Package.probed(unique!([method for value in bindings for method in methods(value) if method.module === ProbedCases]))
+    @test sort!([String(nameof(value)) for value in owned if value in found]) == [
+        "probed_alias", "probed_bare", "probed_direct", "probed_guarded", "probed_interrupt", "probed_local",
+        "probed_method_error", "probed_object", "probed_parametric", "probed_qualified", "probed_rewrapped", "probed_splat",
+        "probed_wrapped",
+    ]
+    # Lowering pops exception before return; optimized IR can return from handler directly.
+    @test Corset.Package.swallows(Any[Core.EnterNode(2), Core.ReturnNode(0)], 1, 2)
+    @test !Corset.Package.swallows(Any[Core.EnterNode(2), Core.ReturnNode()], 1, 2)
+end
