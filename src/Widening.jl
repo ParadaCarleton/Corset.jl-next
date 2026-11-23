@@ -249,7 +249,7 @@ materialized!(edges::AbstractVector{Any}, type::Type)::Type = type <: Base.Broad
 
 """Argument `types` with type of each of `positions` replaced by its converted type in `swaps`."""
 function with_swaps(types::AbstractVector{Any}, swaps::AbstractDict{<:Integer, Any}, positions::Any)::Vector{Any}
-    converted = copy(types)
+    converted = Vector{Any}(types)
     for position in positions
         converted[position] = swaps[position]
     end
