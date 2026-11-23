@@ -145,6 +145,23 @@ Helps unannotated package reach full annotations. `annotation` fixer guesses typ
 - Messages name container only (`Vector`): element type of stand-in would print as its model.
 - Later: `constant-array` (FillArrays.jl) and `unwritten-element` may share fix text builder.
 
+### Index proof (`one-based-range`)
+
+Each index into array needs proof unless inferred `axes` type of array is `OneTo`. Rule asks code for proof; it never assumes one.
+
+- Index of `x`: value that stays in index range of `x`. Rule follows SSA values of typed code.
+- Sources: `eachindex(x)`, `axes(x)`, `keys(x)`, `pairs(x)`, `firstindex(x)`, `lastindex(x)`, `begin`, `end`, `LinearIndices(x)`, `CartesianIndices(x)`.
+- Base results that index `x`: `findfirst`, `findnext`, `findall`, `argmin`, `argmax`, `searchsorted*`, `sortperm`.
+- Closure: `i ± k`, `prevind`, `nextind`, `min`, `max`, `clamp`, midpoint `(lo + hi) ÷ 2`, range between indices of `x`, loop variable over such range.
+- Two arrays: `eachindex(x, y)` throws on different axes, so it gives index of both. So does guard `axes(x) == axes(y) || throw(...)`.
+- Guard `Base.require_one_based_indexing(x)` proves every index of `x` after it.
+- `checkbounds` is no proof: absolute index inside shifted range passes it and reads wrong element.
+- Index argument (`f(x, i) = x[i]`): per-method fact names indexed argument; package call sites must pass index of that array. Public function carries contract, as `getindex` does.
+- Absolute index (literal, `length`, `size`, `enumerate` counter, index of other array): `definite`.
+- Index of unknown source (stored indices, unchecked arithmetic): `possible`.
+- Stored indices into input array: copy input to `Vector` at construction, or guard. Both give proof.
+- Tests run fixtures on EvilArrays.jl arrays too: code with proof gives same result.
+
 ### Specialization count
 
 `specialization-blowup` predicts from source: `package` stage finds methods that specialize on `Function` or `Type` argument; `syntax` stage counts distinct closures or types passed at package call sites.

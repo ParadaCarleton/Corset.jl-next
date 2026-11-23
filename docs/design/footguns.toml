@@ -406,7 +406,7 @@ text = "Positional index assumes 1-based indices"
 example = "`1:length(A)` or `A[1]`: `OffsetArray` breaks both"
 group = "composability"
 stage = "inference"
-note = "Index into array needs proof unless inferred `axes` type is `OneTo` (`Array`, DataStructures `CircularDeque`). Proof: index comes from same array through `eachindex`, `axes`, `keys`, `pairs`, `firstindex`, `lastindex`, `begin`, `end` or `find*` result, plus integer offset; or `Base.require_one_based_indexing` guard. Literal, `length`, `size`, `enumerate` counter and other array's index have no proof. Unproven index into argument of abstract array type gives `definite`. Array stand-in has `OneTo` axes, so rule reads declared argument type for stand-in arguments."
+note = "Index into array needs proof unless inferred `axes` type is `OneTo` (`Array`, DataStructures `CircularDeque`); `types.md`, Index proof. Array stand-in has `OneTo` axes, so rule reads declared argument type for stand-in arguments."
 
 [[footgun]]
 id = 37
