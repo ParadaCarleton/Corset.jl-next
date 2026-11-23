@@ -373,18 +373,21 @@ function splatted(code::AbstractVector{Any}, parts::AbstractVector{Any})::Vector
     return operands
 end
 
-"""Calls of lowered `code`: statement index, callee value and positional operands; splat call `f(a, xs...)` keeps `a`."""
-function lowered_calls(code::AbstractVector{Any})::Vector{Tuple{Int, Any, Vector{Any}}}
-    found = Tuple{Int, Any, Vector{Any}}[]
+"""
+Calls of lowered `code`: statement index, callee value, callee operand and positional operands.
+Splat call `f(a, xs...)` keeps `a`.
+"""
+function lowered_calls(code::AbstractVector{Any})::Vector{Tuple{Int, Any, Any, Vector{Any}}}
+    found = Tuple{Int, Any, Any, Vector{Any}}[]
     for (index, statement) in pairs(code)
         call = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
         call isa Expr || continue
         call.head === :call || continue
-        callee, operands = lowered_value(code, call.args[1]), call.args[2:end]
-        if callee === Core._apply_iterate && length(operands) >= 2
-            callee, operands = lowered_value(code, operands[2]), splatted(code, operands[3:end])
+        head, operands = call.args[1], call.args[2:end]
+        if lowered_value(code, head) === Core._apply_iterate && length(operands) >= 2
+            head, operands = operands[2], splatted(code, operands[3:end])
         end
-        push!(found, (index, callee, operands))
+        push!(found, (index, lowered_value(code, head), head, operands))
     end
     return found
 end
@@ -451,43 +454,56 @@ function swallows(code::AbstractVector{Any}, enter::Integer, catch_dest::Integer
     return false
 end
 
+"""Statements of lowered `code` inside `try` whose handler swallows `MethodError`."""
+function guarded_statements(code::AbstractVector{Any})::Set{Int}
+    guarded = Set{Int}()
+    for (enter, statement) in pairs(code)
+        statement isa Core.EnterNode || continue
+        # Scope-only `EnterNode(0)` of `@with` has no handler.
+        statement.catch_dest > 0 || continue
+        swallows(code, enter, statement.catch_dest) && union!(guarded, (enter + 1):(statement.catch_dest - 1))
+    end
+    return guarded
+end
+
+"""
+Record that lowered `code` of `method` tests `operand` for methods: argument of package function adds position
+to `testers`, other operand adds its value to `found`. Return whether `testers` grew.
+"""
+function tested!(found::Base.IdSet{Any}, testers::IdDict{Any, Set{Int}}, method::Method, code::AbstractVector{Any}, operand::Any)::Bool
+    own = own_function(method)
+    operand isa Core.SSAValue && (operand = code[operand.id])
+    if operand isa Core.SlotNumber && 2 <= operand.id <= method.nargs && !isnothing(own)
+        tested = get!(Set{Int}, testers, own)
+        (operand.id - 1) in tested && return false
+        push!(tested, operand.id - 1)
+        return true
+    end
+    push!(found, lowered_value(code, operand))
+    return false
+end
+
 """
 Functions, types and callable objects lowered code of `methods` tests for methods: passes to reflection call
-(`REFLECTION`) or to argument package function passes on to one, or calls in `try` whose handler swallows `MethodError`.
+(`REFLECTION`) or calls in `try` whose handler swallows `MethodError`, directly or through argument of package function.
 Generated methods pass: they keep generator only.
 """
 function probed(methods::AbstractVector{Method})::Base.IdSet{Any}
     bodies = [(method, Base.uncompressed_ast(method).code) for method in methods if isdefined(method, :source)]
-    calls = [lowered_calls(code) for (_, code) in bodies]
+    calls = [(lowered_calls(code), guarded_statements(code)) for (_, code) in bodies]
     found = Base.IdSet{Any}()
-    # Argument positions each package function passes to reflection; grows until no function gains position.
+    # Argument positions each package function tests; grows until no function gains position.
     testers, grown = IdDict{Any, Set{Int}}(), true
     while grown
         grown = false
-        for ((method, code), method_calls) in zip(bodies, calls), (_, callee, operands) in method_calls
+        for ((method, code), (method_calls, guarded)) in zip(bodies, calls), (index, callee, head, operands) in method_calls
+            index in guarded && (grown |= tested!(found, testers, method, code, head))
             positions = callee isa REFLECTION ? (1,) : get(testers, callee, ())
             # Copy: recursive function adds to set it reads.
             for position in collect(positions)
                 position <= length(operands) || continue
-                operand, own = operands[position], own_function(method)
-                operand isa Core.SSAValue && (operand = code[operand.id])
-                if operand isa Core.SlotNumber && 2 <= operand.id <= method.nargs && !isnothing(own)
-                    tested = get!(Set{Int}, testers, own)
-                    (operand.id - 1) in tested && continue
-                    push!(tested, operand.id - 1)
-                    grown = true
-                else
-                    push!(found, lowered_value(code, operand))
-                end
+                grown |= tested!(found, testers, method, code, operands[position])
             end
-        end
-    end
-    for ((method, code), method_calls) in zip(bodies, calls), (enter, statement) in pairs(code)
-        statement isa Core.EnterNode || continue
-        catch_dest = statement.catch_dest
-        swallows(code, enter, catch_dest) || continue
-        for (index, callee, _) in method_calls
-            enter < index < catch_dest && push!(found, callee)
         end
     end
     delete!(found, nothing)
