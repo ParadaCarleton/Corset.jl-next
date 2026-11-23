@@ -143,6 +143,12 @@ place_text(method::Method, place::Place.Type)::String = @match place begin
     Place.Deep(root) => root_text(method, root) * " or below"
 end
 
+"""Root of `place`."""
+place_root(place::Place.Type)::Root.Type = @match place begin
+    Place.At(root, _) => root
+    Place.Deep(root) => root
+end
+
 """Global binding `place` starts at; `nothing` for place at argument or elsewhere."""
 root_global(place::Place.Type)::Union{Nothing, GlobalRef} = @match place begin
     Place.At(Root.Global(ref), _) => ref
