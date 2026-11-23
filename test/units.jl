@@ -5,7 +5,7 @@ using Corset.Facts: Facts, Span, Label, Edit, Fix, Finding, Precision, Tier, Con
 using Corset.Config: Config, ConfigError, Flags, Kind, Level, Settings
 using Corset.Engine: Diagnostic, Report
 using Corset.Rules: REGISTRY, entry
-using OffsetArrays: OffsetVector
+using EvilArrays: EvilArray
 using Test: @test, @testset, @test_throws
 
 """Finding in file `name` with primary span `bytes`, causes `causes` and fix `fix`."""
@@ -90,13 +90,13 @@ end
 
 @testset "widened arguments take offset vectors" begin
     key, other = (Corset.Baseline.Key("rule", "f.jl", "f", snippet) for snippet in ("a", "b"))
-    @test Corset.Baseline.cover(Dict(key => 1), OffsetVector([key, other], -1)) == ([true, false], Corset.Baseline.Key[])
-    @test Corset.Rules.Docstring.as_docstring("# note\n", OffsetVector([1:6], -1), "") == "\"\"\"note\"\"\""
-    @test_throws ArgumentError Corset.Render.line_text("a\nb", OffsetVector([1, 3], -1), 1)
+    @test Corset.Baseline.cover(Dict(key => 1), EvilArray([key, other])) == ([true, false], Corset.Baseline.Key[])
+    @test Corset.Rules.Docstring.as_docstring("# note\n", EvilArray([1:6]), "") == "\"\"\"note\"\"\""
+    @test_throws ArgumentError Corset.Render.line_text("a\nb", EvilArray([1, 3]), 1)
     instance = Base.method_instance(first, (Vector{Int},))
     site = Facts.MethodSite(instance.def, Corset.Syntax.parse_file("f.jl", "f(x) = x\n", Role.package), nothing, Span("f.jl", 1, 1, Precision.line))
     nodes = Union{Nothing, Facts.SyntaxNode}[nothing]
-    @test_throws ArgumentError Corset.Inference.spans(only(code_lowered(first, (Vector{Int},))), instance, site, OffsetVector([1, 4], -1), nodes)
+    @test_throws ArgumentError Corset.Inference.spans(only(code_lowered(first, (Vector{Int},))), instance, site, EvilArray([1, 4]), nodes)
 end
 
 @testset "swapped types keep element types of caller" begin
