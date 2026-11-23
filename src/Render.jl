@@ -19,6 +19,8 @@ end
 
 """Text of line `line` without its newline."""
 function line_text(text::String, starts::AbstractVector{<:Integer}, line::Integer)::String
+    # Index into `starts` is line number.
+    Base.require_one_based_indexing(starts)
     stop = line < lastindex(starts) ? starts[line + 1] - 2 : ncodeunits(text)
     return replace(chopsuffix(text[starts[line]:thisind(text, max(stop, starts[line] - 1))], "\r"), '\t' => TAB)
 end
@@ -29,8 +31,8 @@ width_between(text::String, first::Integer, stop::Integer)::Int = stop < first ?
 """Tab stop used for source lines; renderer expands tabs so underlines align."""
 const TAB = "    "
 
-"""1-based display column of byte `byte` on line `line`."""
-column(text::String, starts::AbstractVector{<:Integer}, line::Integer, byte::Integer)::Int = width_between(text, starts[line], byte - 1) + 1
+"""1-based display column of byte `byte` on line that starts at byte `line_start`."""
+column(text::String, line_start::Integer, byte::Integer)::Int = width_between(text, line_start, byte - 1) + 1
 
 """Line, column and underline width of `span`; multi-line span underlines to end of first line."""
 function placement(text::String, starts::AbstractVector{<:Integer}, span::Span)::Tuple{Int, Int, Int}
@@ -43,7 +45,7 @@ function placement(text::String, starts::AbstractVector{<:Integer}, span::Span):
         return line, indent + 1, max(textwidth(strip(content)), 1)
     end
     line_end = starts[line] + ncodeunits(content) - 1
-    first_col = column(text, starts, line, span.first_byte)
+    first_col = column(text, starts[line], span.first_byte)
     return line, first_col, max(width_between(text, span.first_byte, min(span.last_byte, line_end)), 1)
 end
 
