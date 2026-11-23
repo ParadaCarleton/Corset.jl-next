@@ -57,15 +57,12 @@ function statements(files::AbstractVector{SyntaxFile})::Dict{Tuple{String, Int, 
     return found
 end
 
-"""Whether call `node` of `file` names function `name`, module prefix dropped; product `2x` calls `*`."""
-function names_callee(file::SyntaxFile, node::SyntaxNode, name::String)::Bool
-    kind_name(node) == "juxtapose" && return name == "*"
-    return last(split(source(file, callee_node(node)), '.')) == name
-end
+"""Function name that call `node` of `file` spells, module prefix dropped; product `2x` calls `*`."""
+spelled_callee(file::SyntaxFile, node::SyntaxNode)::String = kind_name(node) == "juxtapose" ? "*" : last(split(source(file, callee_node(node)), '.'))
 
 """
 Findings for each call statement of package method that has no effect and whose value Julia drops. Call span must
-be exact and spell discarded statement with same callee: lowering gives calls it inserts span of nearby statement.
+be exact: only discarded call statement that spells IR callee reference gets one (`discarded_nodes`), alias included.
 """
 function findings(facts::FactSet)::Vector{Finding}
     effects = facts.effects
@@ -73,9 +70,9 @@ function findings(facts::FactSet)::Vector{Finding}
     found, sources = Finding[], statements(facts.files)
     for method in effects.methods, call in method.calls
         no_effect(call) && call.span.precision == Precision.exact || continue
-        name = callee_name(call.callee)
         site = get(sources, (call.span.file, call.span.first_byte, call.span.last_byte), nothing)
-        (isnothing(name) || isnothing(site) || !names_callee(site..., name)) && continue
+        isnothing(site) && continue
+        name = spelled_callee(site...)
         sure = method.complete && !call.open_dispatch && !call.stand_in
         push!(
             found, Finding(

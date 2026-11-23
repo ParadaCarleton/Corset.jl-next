@@ -26,6 +26,10 @@ function total(counts::Vector{Int})
     return sum
 end
 
+# Alias of function: finding names call as code spells it.
+const magnitude = abs
+scaled_norm(x::Float64) = (magnitude(x); 2x)
+
 # Check passes for stand-in array only: other array types can throw.
 function first_of(items::AbstractVector)
     Base.require_one_based_indexing(items)

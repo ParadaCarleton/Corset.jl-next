@@ -30,10 +30,20 @@ error[unused-call]: call to `+` has no effect
    = fix: assign result, or delete call   [manual]
    = docs: corset explain unused-call
 
-error[unused-call]: call to `require_one_based_indexing` has no effect
-  --> src/UnusedCallPositive.jl:31:5
+error[unused-call]: call to `magnitude` has no effect
+  --> src/UnusedCallPositive.jl:31:28
    |
-31 |     Base.require_one_based_indexing(items)
+31 | scaled_norm(x::Float64) = (magnitude(x); 2x)
+   |                            ^^^^^^^^^^^^ result dropped; call writes nothing and cannot throw
+   |
+   = why: call does nothing but compute value, and code drops value; assignment is probably missing
+   = fix: assign result, or delete call   [manual]
+   = docs: corset explain unused-call
+
+error[unused-call]: call to `require_one_based_indexing` has no effect
+  --> src/UnusedCallPositive.jl:35:5
+   |
+35 |     Base.require_one_based_indexing(items)
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ result dropped; call writes nothing and cannot throw
    |
    = why: call does nothing but compute value, and code drops value; assignment is probably missing
