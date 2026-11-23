@@ -10,7 +10,7 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 | 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | 2a #234; 2b #235; 2c #237; 2d #238; 2e #239; frozen |
 | 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance | 2 | 3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249 (fix #252), iteration starts #250, frame copy #253; frozen |
 | 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | #251 (per-environment key), #254 (per-entry key); frozen |
-| 5 | Name tier | `effects` stage on name trust and compiler effects replaces engine; engine and library summary cache leave | — | — |
+| 5 | Name tier | `effects` stage on name trust and compiler effects replaces engine; engine and library summary cache leave | — | #298; done |
 | 6 | `stateful-iterate` | F109 | — | #297; done |
 | 7 | Alias rules | F48, F50, F51 | 5 | — |
 | 8 | Effect rules | F54, F55, F56, F58, F98 | 5 | — |
@@ -36,14 +36,14 @@ Facts for every effects rule from each package method alone (`effects.md`, Name 
 
 - `Engine` runs `effects` after `inference` when enabled rule reads `effects`. Name tier replaces engine call in `effects_facts`.
 - Facts keep `MethodEffects`, `Access`, `CallFact` and `UnguardedHold`, so rules of local effect-rules stack port.
-- Facts drop fields name tier never fills: `blind_writes`, `blind_reads`, `closed_world`.
+- Facts drop fields name tier never fills: `blind_writes`, `blind_reads`, `closed_world`. Method facts add compiler `effect_free`.
 - Delete engine files, library summary cache, crash relaunch for library instances, engine diagnostics and their tests. Keep crash journal that `inference` stage reads.
-- Tables: written operand position, alias, exception, consuming, release primitives. Each entry cites Base docstring or style guide.
-- Method store keeps unit record; same record format as engine (`records.jl`).
+- Tables: written operand position, alias, exception, consuming. Each entry cites Base docstring or style guide.
+- Method store keeps unit record (`records.jl`); record drops engine fields.
 
 Tests:
 
-- Fixture package `test/effects/EffectsCases`: method per write source, table entry and kind; closure capture; release primitive.
+- Fixture package `test/names/NameCases`: method per write source, table entry and kind; closure capture.
 - Soundness property on fixtures that follow convention: observed write needs fact.
 
 Done: every fixture gives expected facts; property passes; every-PR bar met.
@@ -80,6 +80,7 @@ Port rules of local effect-rules stack onto name-tier facts.
 - `impure-lambda` (F56): anonymous function captures mutable state.
 - `false-effects` (F58): write and read events contradict package `@assume_effects` claim.
 - `unguarded-release` (F98): effects version reads hold counts; delete syntax version in same PR.
+- Release balance (`effects.md`) lands with F98: release primitive table, hold counts, `UnguardedHold` facts, fixture per primitive.
 
 ### 9 `bang-convention`
 

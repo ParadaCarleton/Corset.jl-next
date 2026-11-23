@@ -12,7 +12,7 @@ end
 
 """
 Object access starts from: `Parameter` by argument position (1 is called function), `Global` binding, or `Elsewhere`:
-object open call returns, global included.
+global state no binding names (`Random.seed!()`, foreign call).
 """
 @data Root begin
     Parameter(Int)
@@ -117,13 +117,42 @@ end
 """Empty path; read-only, so every root place shares it."""
 const NO_STEPS = PlaceSteps(Step.Type[])
 
-"""Steps of longest exact path; declared field types collapse most paths earlier (`effects.md`, Origins and points-to)."""
+"""Steps of longest exact path; longer path collapses to `Deep` (`effects.md`, Roots)."""
 const PATH_DEPTH = 8
+
+"""Source text of `step` after its object: `.field`, `[position]` or `[…]` for array element."""
+step_text(step::Step.Type)::String = @match step begin
+    Step.Field(name) => "." * string(name)
+    Step.Position(position) => "[$position]"
+    Step.Element() => "[…]"
+end
+
+"""
+Source text of `root` in `method`: argument name (closure itself for argument 1 of anonymous function), qualified
+global name, or global state.
+"""
+root_text(method::Method, root::Root.Type)::String = @match root begin
+    Root.Parameter(position) => (name = Base.method_argnames(method)[position]; name === Symbol("#self#") ? "closure" : string(name))
+    Root.Global(binding) => string(binding.mod, ".", binding.name)
+    Root.Elsewhere() => "global state"
+end
+
+"""Source text of `place` in `method`, as code writes path to it: `items.data[…]`; `Deep` place adds `or below`."""
+place_text(method::Method, place::Place.Type)::String = @match place begin
+    Place.At(root, steps) => root_text(method, root) * join(step_text.(steps))
+    Place.Deep(root) => root_text(method, root) * " or below"
+end
+
+"""Global binding `place` starts at; `nothing` for place at argument or elsewhere."""
+root_global(place::Place.Type)::Union{Nothing, GlobalRef} = @match place begin
+    Place.At(Root.Global(ref), _) => ref
+    Place.Deep(Root.Global(ref)) => ref
+    _ => nothing
+end
 
 """
 Access to caller-visible object (`effects` stage fact): place, whether it covers every place below it too, kind,
-confidence, and cause span in package code. `possible` access from open call is doubt in code. `Deep` place keeps
-certainty: object lies below its root.
+confidence, and cause span in package code. `possible` access: value can hold more than one object, or foreign call.
 """
 struct Access
     place::Place.Type
@@ -134,19 +163,8 @@ struct Access
 end
 
 """
-Access Corset cannot judge (`effects` stage fact): place, whether it covers places below, kind, and blind spot with
-cause (`alias` for collapsed path or merged call result). It counts on coverage line only.
-"""
-struct BlindAccess
-    place::Place.Type
-    below::Bool
-    kind::EffectKind.T
-    spot::BlindSpot
-end
-
-"""
 Resource hold that throw skips release of (`effects` stage fact, F98): span of acquire, span of statement that may
-throw while method holds resource, and confidence: definite count, or `possible` from join of different counts.
+throw while method holds resource, and confidence: definite count, or `possible` from unknown count.
 """
 struct UnguardedHold
     acquire::Span
@@ -170,42 +188,62 @@ end
 Callee `Methods` of `methods`, each once, in source order: module, file, line, signature. Dispatch and unit merge give
 methods in varying order, so facts and their equality depend on none.
 """
-methods_callee(methods::Vector{Method})::Callee.Type = Callee.Methods(sort!(unique(methods); by = method -> (string(method.module), string(method.file), method.line, string(method.sig))))
+methods_callee(methods::Vector{Method})::Callee.Type = Callee.Methods(sort!(unique(methods); lt = source_before))
+
+"""Whether `method` comes before `other` in source order; printed signature breaks ties only, since printing type is slow."""
+function source_before(method::Method, other::Method)::Bool
+    key, other_key = (string(method.module), string(method.file), method.line), (string(other.module), string(other.file), other.line)
+    return key == other_key ? isless(string(method.sig), string(other.sig)) : isless(key, other_key)
+end
+
+"""Name of function `callee` calls: method name shared by every method, or builtin name; else `nothing`."""
+callee_name(callee::Callee.Type)::Union{Nothing, String} = @match callee begin
+    Callee.Methods(methods) => (names = unique(method.name for method in methods); length(names) == 1 ? string(only(names)) : nothing)
+    Callee.Builtin(builtin) => string(nameof(builtin))
+    _ => nothing
+end
+
+"""Methods of `callee` that dispatch reaches (none: call throws); `nothing` for builtin, foreign or open callee."""
+callee_methods(callee::Callee.Type)::Union{Nothing, Vector{Method}} = @match callee begin
+    Callee.Methods(methods) => methods
+    _ => nothing
+end
 
 """
-Call statement of package method (`effects` stage fact, F54, F86): span, callee, and kinds of writes call makes at any
-certainty, holds it leaves included. Compiler effects give `throws` (may throw) and `terminates`. `used`: code reads
-result. Units of method merge: any unit that may throw, writes or uses result decides.
+Call statement of package method (`effects` stage fact, F54, F56, F86): span, callee, kinds of writes call makes at any
+certainty, and kinds of its definite writes (`definite`). Compiler effects give `throws` (may throw) and `terminates`.
+`used`: code reads result. `stand_in`: operand type holds stand-in, so compiler effects describe stand-in only. Units of
+method merge: any unit that may throw, writes or uses result decides.
 """
 struct CallFact
     span::Span
     callee::Callee.Type
     kinds::Vector{EffectKind.T}
+    definite::Vector{EffectKind.T}
     throws::Bool
     terminates::Bool
     used::Bool
+    stand_in::Bool
 end
 
 """
-Effect summary of package method (`effects` stage fact): writes and reads over its units, blind writes and reads,
-places its result aliases, holds throws skip (`unguarded`), call statements (`calls`, by span), `complete`, and
-`closed_world`. Method with blind access, or incomplete method (inference skipped some argument types, or stand-ins cut
-path), has no definite none. Closed-world method joins methods loaded now: its none is at most `possible`.
+Effects of package method over its units (`effects.md`, Name trust): writes, reads, places its result can lie beneath
+(`aliases`), holds throws skip (`unguarded`), call statements in source order, `complete` (no unit incomplete or cut),
+`effect_free` (compiler proves every unit writes nothing caller sees), and effects its `@assume_effects` claims.
 """
 struct MethodEffects
     site::MethodSite
     writes::Vector{Access}
     reads::Vector{Access}
-    blind_writes::Vector{BlindAccess}
-    blind_reads::Vector{BlindAccess}
     aliases::Vector{Place.Type}
     unguarded::Vector{UnguardedHold}
     calls::Vector{CallFact}
     complete::Bool
-    closed_world::Bool
+    effect_free::Bool
+    claims::Vector{Symbol}
 end
 
-"""`effects` stage facts: summary per package method with verdict (`effects.md`, Effects engine)."""
+"""`effects` stage facts: facts per package method with units."""
 struct EffectsFacts
     methods::Vector{MethodEffects}
 end

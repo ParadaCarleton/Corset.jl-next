@@ -1,5 +1,0 @@
-name = "EffectsCases"
-uuid = "ffe8177f-805e-4fc8-938c-f851f72cf357"
-
-[preferences.Corset]
-kind = "library"

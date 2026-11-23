@@ -90,19 +90,13 @@ function package_workload()::Nothing
     path = joinpath(@__DIR__, "PackageSample.jl")
     files = [Syntax.parse_file(path, read(path, String), Facts.Role.package)]
     package = Package.package_facts([PackageSample], files)
-    # Second run takes method store and library summaries from first, as rerun of `corset check` does.
+    # Second run takes method store from first, as rerun of `corset check` does.
     mktempdir() do cache
         Engine.stage_facts(path, package, files, true, true, cache, nothing)
         store = Cache.lookup(Inference.Store, cache, Engine.method_entry(path), Engine.store_key(path, package, files, cache))
         isempty(something(store, Inference.Store())) && error("precompile workload: inference stage stored no sample method")
-        library = Cache.read_library(Cache.library_directory(cache), Cache.partition_key(string(VERSION), DEPOT_PATH))
-        isempty(library) && error("precompile workload: effects stage stored no library summary")
         inference, _, effects, _ = Engine.stage_facts(path, package, files, true, true, cache, nothing)
         package_rules(package, inference, effects, files, [path], path, nothing)
-        # Rerun takes effects records from method store. Fresh units read library summaries, as check of other package does.
-        _, _, units, _ = Inference.infer_package(package, files, nothing, nothing)
-        hits = last(Effects.cached_effects(package, units, nothing, Effects.Library(library)))
-        isempty(hits) && error("precompile workload: effects stage hit no library summary")
     end
     return nothing
 end
