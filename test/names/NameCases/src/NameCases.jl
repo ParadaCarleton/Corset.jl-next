@@ -190,6 +190,8 @@ group!(groups::Dict{Symbol, Vector{Int}}, key::Symbol, value::Int)::Nothing = (p
 push_lookup!(table::Dict{Vector{Int}, Vector{Float64}}, key::Vector{Int})::Nothing = (push!(get(table, key, Float64[]), 1.0); nothing)
 """Push onto handler vector of `key`, or onto `fallback`: function key leaves default third."""
 push_handler!(handlers::Dict{Function, Vector{Int}}, key::Function, fallback::Vector{Int})::Nothing = (push!(get(handlers, key, fallback), 1); nothing)
+"""Push onto entry `:a` of `table`, or onto `items` that default closure gives."""
+push_default!(table::Dict{Symbol, Vector{Int}}, items::Vector{Int})::Nothing = (push!(get(() -> items, table, :a), 1); nothing)
 """Push onto sample of `groups`: sample with dimensions is new vector."""
 push_sample!(groups::Vector{Vector{Int}})::Nothing = (push!(rand(groups, 2), Int[]); nothing)
 """Zero first byte that `take!` gives: bytes can share buffer of `io`."""

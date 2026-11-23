@@ -72,7 +72,7 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
   - Table: `get`, `get!`, `getkey`, `pop!`, `popfirst!`, `popat!`, `maximum`, `minimum`, `reduce`, `foldl`, `foldr`, `rand`, `take!`, `fetch`.
   - Container: first operand, or second after leading callable or `AbstractRNG` (`get(f, d, k)`, `rand(rng, xs)`).
   - Lookup default: third operand of `get`, `get!`, `getkey`, `pop!`, `popat!` without leading callable.
-  - Result of leading callable can be fresh. `rand` with dimensions gives new array of elements.
+  - Result of leading callable can be fresh, or object it captures. `rand` with dimensions gives new array of elements.
   - Keyword call can give new array of elements (`dims`) or keyword value (`init`).
   - `take!` and `fetch` give element of `Channel`. Other result lies beneath operand or is new: `take!(::IOBuffer)` can share buffer.
 - Result of other call, package call included, is fresh. It can hold untracked objects, and `deep` place of each operand whose type can hold pointing objects (`copy`, `filter`).

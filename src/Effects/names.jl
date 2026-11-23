@@ -266,8 +266,8 @@ end
 """
 Value of element function call `call` of `callee` with `operands` and result of `type`. Container is first operand,
 or second after leading callable or `AbstractRNG` (`get(f, d, k)`, `rand(rng, xs)`). Result is its element, or default
-of lookup (`get(d, k, default)`). Result of leading callable can be fresh. Exceptions: `take!` and `fetch` off
-`Channel`, `rand` with dimensions.
+of lookup (`get(d, k, default)`). Result of leading callable can be fresh or captured object. Exceptions: `take!`
+and `fetch` off `Channel`, `rand` with dimensions.
 """
 function element_value(walk::Walk, call::Expr, @nospecialize(callee::Any), operands::Vector{Any}, @nospecialize(type::Any))::Value
     called = callable(walk, operands[1])
@@ -284,7 +284,8 @@ function element_value(walk::Walk, call::Expr, @nospecialize(callee::Any), opera
     keywords = keyword_value(walk, call)
     isnothing(keywords) || (element = joined(joined(element, fresh_value(element.places, true)), deep_loaded(keywords)))
     found = callee in DEFAULT_FUNCTIONS && position == 1 && length(operands) >= 3 ? joined(element, operand_value(walk, operands[3])) : element
-    return called ? joined(found, fresh_value(Set{Place.Type}(), true)) : found
+    # Leading callable gives new object or object it captures (`get(() -> x, d, k)`).
+    return called ? joined(found, joined(fresh_value(Set{Place.Type}(), true), deep_loaded(operand_value(walk, operands[1])))) : found
 end
 
 """Whether `operand` is callable by style guide order: function or type."""
