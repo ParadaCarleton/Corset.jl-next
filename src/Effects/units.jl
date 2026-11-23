@@ -49,7 +49,8 @@ claims `:effect_free`.
 function unit_walk(typed::TypedCode, modules::Set{Module}, interpreter::CC.NativeInterpreter, world::UInt)::Tuple{Walk, Vector{Int}, Vector{Bool}, Bool}
     ir, lines, used = frame_ir(typed.frame, interpreter, Bool[call_statement(statement) for statement in typed.frame.src.code])
     # Source flags keep compiler `effect_free`, which `frame_ir` clears on kept calls. Claim in method voids proof.
-    flags, claimed = typed.frame.src.ssaflags, claims_effect_free(typed.site.method, typed.frame.src)
+    # Inferred flags reuse claim bits, so claim reads code before inference.
+    flags, claimed = typed.frame.src.ssaflags, claims_effect_free(typed.site.method, CC.retrieve_code_info(typed.frame.linfo, world))
     proven = Bool[!claimed && line in eachindex(flags) && flags[line] & CC.IR_FLAG_EFFECT_FREE != 0 for line in lines]
     walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{CapturedWrite}}(), IdDict{Union{Method, Core.MethodInstance}, Bool}(), world)
     return walk, lines, used, claimed
