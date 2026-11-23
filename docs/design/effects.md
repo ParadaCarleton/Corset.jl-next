@@ -57,16 +57,27 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
 - Root: parameter, global binding, or fresh. Fresh objects are local: writes to them are no facts.
 - Path: field name or element below root. Path collapses to `deep` past 8 steps.
 - `getfield`, `getproperty` with constant name and `getindex` add a step to roots of their first operand.
-- Load from fresh object gives roots it holds. Loaded value can be fresh too, so writes through it are `possible`.
+- Load from fresh object gives roots it holds. Nested fresh objects flatten: outer object holds roots that inner objects hold.
+- Fresh object can also hold untracked objects: fresh, or unknown. Load from such object can be fresh, so writes through it are `possible`.
 - Mutable literal in code, such as interpolated object, is global state: `Elsewhere` root.
 - Phi and pi nodes join roots of their values.
-- Alias table: library functions whose result can lie beneath an operand. Result takes `deep` place of that operand.
-  - Table: `view`, `reshape`, `vec`, `parent`, `transpose`, `adjoint`, `keys`, `values`, `pairs`, `first`, `last`, `only`, `something`, `convert`, `identity`, `skipmissing`, iterator wrappers (`zip`, `enumerate`, `Iterators.*`).
+- Alias table: library functions whose result can be an operand or lie beneath it. Result keeps places of each non-callable operand.
+  - Table: `view`, `reshape`, `vec`, `parent`, `transpose`, `adjoint`, `keys`, `values`, `pairs`, `first`, `last`, `only`, `identity`, `skipmissing`, iterator wrappers (`zip`, `enumerate`, `Iterators.*`).
   - Pointer conversions before foreign call: `pointer`, `cconvert`, `unsafe_convert`.
-  - Constructor result can hold its operands: `Ref(x)` holds `x`.
-- Result of other call is fresh: Base documents each function whose result shares memory with an operand.
-- Result of package call is fresh. Later: package record keeps result roots, and callers map them.
-- Result with `isbitstype` type holds no root.
+- Choice table: result is one of the operands, callable objects included, so it joins their values: `something`, `coalesce`, `max`, `min`, `ifelse`.
+- `convert` result is its operand, or new object as for other call.
+- Constructor, tuple and vector literal results hold their operands: `Ref(x)` holds `x`. Literal (`[x]`, `T[x]`) converts element not of its element type, so it can hold new object. Package method on literal syntax (`SA[x]`) is package call.
+- Iteration: result of `iterate` and `indexed_iterate` holds element of iterated operand. Element step for array, dictionary, set and tuple; `deep` for other iterator.
+- Element table: result is element of container operand, or other operand (`get(d, k, default)`).
+  - Table: `get`, `get!`, `getkey`, `pop!`, `popfirst!`, `popat!`, `maximum`, `minimum`, `reduce`, `foldl`, `foldr`, `rand`, `take!`, `fetch`.
+  - Container: first operand, or second after leading callable or `AbstractRNG` (`get(f, d, k)`, `rand(rng, xs)`).
+  - Lookup default: third operand of `get`, `get!`, `getkey`, `pop!`, `popat!` without leading callable.
+  - Result of leading callable can be fresh, or object it captures. `rand` with dimensions gives new array of elements.
+  - Keyword call can give new array of elements (`dims`) or keyword value (`init`).
+  - `take!` and `fetch` give element of `Channel`. Other result lies beneath operand or is new: `take!(::IOBuffer)` can share buffer.
+- Result of other call, package call included, is fresh. It can hold untracked objects, and `deep` place of each operand whose type can hold pointing objects (`copy`, `filter`).
+- Result that is package call operand, or lies beneath it, needs package record of result roots. Later: callers map them.
+- Result with `isbitstype` type holds no root. Result whose type holds no pointing object holds no root inside.
 
 #### Writes
 

@@ -168,6 +168,69 @@ end
 """Store 7 through `pointer`."""
 poke!(pointer::Ptr{Int})::Nothing = (Core.Intrinsics.pointerset(pointer, 7, 1, 1); nothing)
 
+# Call results: iteration and element functions give elements; other results can hold operand objects.
+"""Zero every box of `boxes` in loop."""
+function zero_all!(boxes::Vector{Box})::Nothing
+    for box in boxes
+        box.value = 0
+    end
+    return nothing
+end
+"""Zero first box of `pair` by destructuring."""
+zero_first_pair!(pair::Tuple{Box, Box})::Nothing = ((left, _) = pair; left.value = 0; nothing)
+"""Zero first box of copy of `boxes`: shallow copy holds same boxes."""
+zero_copied!(boxes::Vector{Box})::Nothing = (copy(boxes)[1].value = 0; nothing)
+"""Push onto copy of `items`: copy of integers holds no caller object."""
+grow_copy(items::Vector{Int})::Vector{Int} = push!(copy(items), 1)
+"""Zero box under `:a` in `table`, or new box."""
+zero_lookup!(table::Dict{Symbol, Box})::Nothing = (get(table, :a, Box(0)).value = 0; nothing)
+"""Push `value` onto group `key` of `groups`, made on first use."""
+group!(groups::Dict{Symbol, Vector{Int}}, key::Symbol, value::Int)::Nothing = (push!(get!(Vector{Int}, groups, key), value); nothing)
+"""Push onto entry `key` of `table`, or new vector: key is never result."""
+push_lookup!(table::Dict{Vector{Int}, Vector{Float64}}, key::Vector{Int})::Nothing = (push!(get(table, key, Float64[]), 1.0); nothing)
+"""Push onto handler vector of `key`, or onto `fallback`: function key leaves default third."""
+push_handler!(handlers::Dict{Function, Vector{Int}}, key::Function, fallback::Vector{Int})::Nothing = (push!(get(handlers, key, fallback), 1); nothing)
+"""Push onto entry `:a` of `table`, or onto `items` that default closure gives."""
+push_default!(table::Dict{Symbol, Vector{Int}}, items::Vector{Int})::Nothing = (push!(get(() -> items, table, :a), 1); nothing)
+"""Push onto sample of `groups`: sample with dimensions is new vector."""
+push_sample!(groups::Vector{Vector{Int}})::Nothing = (push!(rand(groups, 2), Int[]); nothing)
+"""Zero first byte that `take!` gives: bytes can share buffer of `io`."""
+take_bytes(io::IOBuffer)::Vector{UInt8} = (bytes = take!(io); bytes[1] = 0x00; bytes)
+"""Zero larger of `left` and `right`."""
+zero_larger!(left::Box, right::Box)::Nothing = (ifelse(left.value > right.value, left, right).value = 0; nothing)
+"""Zero first element of `items`, or of new vector: write reaches `items` only when `flag` holds."""
+zero_chosen!(flag::Bool, items::Vector{Int})::Nothing = (ifelse(flag, items, [2])[1] = 0; nothing)
+"""Callable counter."""
+mutable struct Tally <: Function
+    count::Int
+end
+(tally::Tally)() = tally.count
+"""Reset `left` or `right`: choice keeps callable operands."""
+reset_either!(flag::Bool, left::Tally, right::Tally)::Nothing = (setfield!(ifelse(flag, left, right), :count, 0); nothing)
+"""Callable holder of vectors with indexing."""
+struct Shelf <: Function
+    items::Vector{Vector{Int}}
+end
+(shelf::Shelf)() = length(shelf.items)
+Base.getindex(shelf::Shelf, index::Int) = shelf.items[index]
+"""Push onto first vector of `shelf`: indexing callable object is load."""
+stock!(shelf::Shelf)::Nothing = (push!(shelf[1], 7); nothing)
+Base.convert(::Type{Box}, holder::Holder) = Box(holder.box.value)
+"""Zero box that typed literal converts from `holder`: conversion gives new box."""
+zero_converted!(holder::Holder)::Nothing = (Box[holder][1].value = 0; nothing)
+Base.promote_rule(::Type{Holder}, ::Type{Box}) = Box
+"""Zero first element of literal that promotes `holder` to new box."""
+zero_promoted!(holder::Holder, box::Box)::Nothing = ([holder, box][1].value = 0; nothing)
+"""Marker type whose literal syntax returns its one vector."""
+struct Same end
+Base.getindex(::Type{Same}, items::Vector{Int}) = items
+"""Push onto `Same[items]`: package literal method is package call."""
+push_same!(items::Vector{Int})::Nothing = (push!(Same[items], 2); nothing)
+"""Zero `box` through vector literal."""
+zero_listed!(box::Box)::Nothing = ([box][1].value = 0; nothing)
+"""Zero `box` through typed vector literal."""
+zero_typed_listed!(box::Box)::Nothing = (Box[box][1].value = 0; nothing)
+
 # Alias table and constructor.
 """View of first element of `items`."""
 first_view(items::Vector{Int}) = view(items, 1:1)
