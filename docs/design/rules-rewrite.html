@@ -801,19 +801,32 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Root: parameter, global binding, or fresh. Fresh objects are local: writes to them are no facts.</li>
 <li>Path: field name or element below root. Path collapses to <code>deep</code> past 8 steps.</li>
 <li><code>getfield</code>, <code>getproperty</code> with constant name and <code>getindex</code> add a step to roots of their first operand.</li>
-<li>Load from fresh object gives roots it holds. Loaded value can be fresh too, so writes through it are <code>possible</code>.</li>
+<li>Load from fresh object gives roots it holds. Nested fresh objects flatten: outer object holds roots that inner objects hold.</li>
+<li>Fresh object can also hold untracked objects: fresh, or unknown. Load from such object can be fresh, so writes through it are <code>possible</code>.</li>
 <li>Mutable literal in code, such as interpolated object, is global state: <code>Elsewhere</code> root.</li>
 <li>Phi and pi nodes join roots of their values.</li>
-<li>Alias table: library functions whose result can lie beneath an operand. Result takes <code>deep</code> place of that operand.
+<li>Alias table: library functions whose result can be an operand or lie beneath it. Result keeps places of each non-callable operand.
 <ul>
-<li>Table: <code>view</code>, <code>reshape</code>, <code>vec</code>, <code>parent</code>, <code>transpose</code>, <code>adjoint</code>, <code>keys</code>, <code>values</code>, <code>pairs</code>, <code>first</code>, <code>last</code>, <code>only</code>, <code>something</code>, <code>convert</code>, <code>identity</code>, <code>skipmissing</code>, iterator wrappers (<code>zip</code>, <code>enumerate</code>, <code>Iterators.*</code>).</li>
+<li>Table: <code>view</code>, <code>reshape</code>, <code>vec</code>, <code>parent</code>, <code>transpose</code>, <code>adjoint</code>, <code>keys</code>, <code>values</code>, <code>pairs</code>, <code>first</code>, <code>last</code>, <code>only</code>, <code>identity</code>, <code>skipmissing</code>, iterator wrappers (<code>zip</code>, <code>enumerate</code>, <code>Iterators.*</code>).</li>
 <li>Pointer conversions before foreign call: <code>pointer</code>, <code>cconvert</code>, <code>unsafe_convert</code>.</li>
-<li>Constructor result can hold its operands: <code>Ref(x)</code> holds <code>x</code>.</li>
 </ul>
 </li>
-<li>Result of other call is fresh: Base documents each function whose result shares memory with an operand.</li>
-<li>Result of package call is fresh. Later: package record keeps result roots, and callers map them.</li>
-<li>Result with <code>isbitstype</code> type holds no root.</li>
+<li>Choice table: result is one of the non-callable operands, so it joins their values: <code>something</code>, <code>coalesce</code>, <code>max</code>, <code>min</code>, <code>ifelse</code>.</li>
+<li><code>convert</code> result is its operand, or new object as for other call.</li>
+<li>Constructor, tuple and vector literal results hold their operands: <code>Ref(x)</code> holds <code>x</code>.</li>
+<li>Iteration: result of <code>iterate</code> and <code>indexed_iterate</code> holds element of iterated operand. Element step for array, dictionary, set and tuple; <code>deep</code> for other iterator.</li>
+<li>Element table: result is element of container operand, or other operand (<code>get(d, k, default)</code>).
+<ul>
+<li>Table: <code>get</code>, <code>get!</code>, <code>getkey</code>, <code>pop!</code>, <code>popfirst!</code>, <code>popat!</code>, <code>maximum</code>, <code>minimum</code>, <code>reduce</code>, <code>foldl</code>, <code>foldr</code>, <code>rand</code>, <code>take!</code>, <code>fetch</code>.</li>
+<li>Container operand: first operand that is not callable or <code>AbstractRNG</code>. Third such operand is default (<code>get(d, k, default)</code>).</li>
+<li>Result of callable operand can be fresh. <code>rand</code> with dimensions gives new array of elements.</li>
+<li>Keyword call can give new array of elements (<code>dims</code>) or keyword value (<code>init</code>).</li>
+<li><code>take!</code> and <code>fetch</code> give element of <code>Channel</code>. Other result lies beneath operand or is new: <code>take!(::IOBuffer)</code> can share buffer.</li>
+</ul>
+</li>
+<li>Result of other call, package call included, is fresh. It can hold untracked objects, and <code>deep</code> place of each operand whose type can hold pointing objects (<code>copy</code>, <code>filter</code>).</li>
+<li>Result that is package call operand, or lies beneath it, needs package record of result roots. Later: callers map them.</li>
+<li>Result with <code>isbitstype</code> type holds no root. Result whose type holds no pointing object holds no root inside.</li>
 </ul>
 <h4>Writes</h4>
 <p>Write sources, in order:</p>

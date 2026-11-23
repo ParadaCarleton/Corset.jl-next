@@ -2,27 +2,30 @@
 
 """
 Caller-visible places one IR value can be or lie beneath (`places`), places stored inside it (`inner`: fresh object
-that holds operands), and whether value can be fresh object on some path (`fresh`).
+that holds operands), whether value can be fresh object on some path (`fresh`), and whether it can hold fresh or
+unknown objects that `inner` omits (`untracked`).
 """
 struct Value
     places::Set{Place.Type}
     inner::Set{Place.Type}
     fresh::Bool
+    untracked::Bool
 end
 
 """Whether `first` and `second` hold same places: fixpoint test compares set contents."""
-Base.:(==)(first::Value, second::Value)::Bool = first.fresh == second.fresh && first.places == second.places && first.inner == second.inner
+Base.:(==)(first::Value, second::Value)::Bool =
+    first.fresh == second.fresh && first.untracked == second.untracked && first.places == second.places && first.inner == second.inner
 """Hash of `value` consistent with `==`."""
-Base.hash(value::Value, seed::UInt)::UInt = hash(value.inner, hash(value.places, hash(value.fresh, seed)))
+Base.hash(value::Value, seed::UInt)::UInt = hash(value.inner, hash(value.places, hash(value.untracked, hash(value.fresh, seed))))
 
 """Value that holds no caller-visible place: `isbits` result, literal, function."""
-const NO_VALUE = Value(Set{Place.Type}(), Set{Place.Type}(), false)
+const NO_VALUE = Value(Set{Place.Type}(), Set{Place.Type}(), false, false)
 
-"""Fresh object that holds `inner` places."""
-fresh_value(inner::Set{Place.Type})::Value = Value(Set{Place.Type}(), inner, true)
+"""Fresh object that holds `inner` places; `untracked` when it can hold other objects too."""
+fresh_value(inner::Set{Place.Type}, untracked::Bool)::Value = Value(Set{Place.Type}(), inner, true, untracked)
 
 """Value that is exactly `place`."""
-place_value(place::Place.Type)::Value = Value(Set{Place.Type}([place]), Set{Place.Type}(), false)
+place_value(place::Place.Type)::Value = Value(Set{Place.Type}([place]), Set{Place.Type}(), false, false)
 
 """Most exact places of one root a set keeps; more collapse to `Deep` of that root (`bounded`)."""
 const PLACE_LIMIT = 16
@@ -51,10 +54,11 @@ function bounded(places::Set{Place.Type})::Set{Place.Type}
 end
 
 """`value` with `bounded` places and inner places."""
-bounded(value::Value)::Value = Value(bounded(value.places), bounded(value.inner), value.fresh)
+bounded(value::Value)::Value = Value(bounded(value.places), bounded(value.inner), value.fresh, value.untracked)
 
 """Value either of `first` or `second` can be on its path."""
-joined(first::Value, second::Value)::Value = Value(union(first.places, second.places), union(first.inner, second.inner), first.fresh || second.fresh)
+joined(first::Value, second::Value)::Value =
+    Value(union(first.places, second.places), union(first.inner, second.inner), first.fresh || second.fresh, first.untracked || second.untracked)
 
 """Every place `value` holds or holds inside."""
 held(value::Value)::Set{Place.Type} = union(value.places, value.inner)
@@ -72,13 +76,15 @@ place_root(place::Place.Type)::Root.Type = @match place begin
 end
 
 """
-Value loaded one `step` below `value`: places one step deeper, and objects fresh value holds inside. Fresh value can
-hold fresh objects too, which `inner` omits.
+Value loaded one `step` below `value`: places one step deeper, and objects fresh value holds inside. Untracked object
+inside is fresh or unknown, so loaded value can be fresh and untracked too.
 """
-loaded(value::Value, step::Step.Type)::Value = Value(union(Set{Place.Type}(deeper(place, step) for place in value.places), value.inner), Set{Place.Type}(), value.fresh)
+loaded(value::Value, step::Step.Type)::Value =
+    Value(union(Set{Place.Type}(deeper(place, step) for place in value.places), value.inner), Set{Place.Type}(), value.untracked, value.untracked)
 
 """Value loaded at unknown step below `value`: `Deep` of each root, and objects fresh value holds inside."""
-deep_loaded(value::Value)::Value = Value(union(Set{Place.Type}(Place.Deep(place_root(place)) for place in value.places), value.inner), Set{Place.Type}(), value.fresh)
+deep_loaded(value::Value)::Value =
+    Value(union(Set{Place.Type}(Place.Deep(place_root(place)) for place in value.places), value.inner), Set{Place.Type}(), value.untracked, value.untracked)
 
 """
 Event of one statement: access to `place` of `kind` with `confidence`, covering places below (`below`), as `write` or
@@ -123,7 +129,7 @@ function load_value(walk::Walk, value::Value, step::Union{Nothing, Step.Type})::
         stored = get(walk.stored, place, nothing)
         isnothing(stored) || union!(found.places, stored)
     end
-    return Value(bounded(found.places), found.inner, found.fresh)
+    return Value(bounded(found.places), found.inner, found.fresh, found.untracked)
 end
 
 """Type of statement or operand `operand` in `walk`, widened."""
@@ -176,15 +182,45 @@ function statement_value(walk::Walk, index::Int)::Value
     statement isa Core.UpsilonNode && return isdefined(statement, :val) ? operand_value(walk, statement.val) : NO_VALUE
     statement isa Union{Core.SSAValue, Core.Argument, GlobalRef} && return operand_value(walk, statement)
     statement isa Expr || return NO_VALUE
-    statement.head === :new && return fresh_value(reduce(union, (held(operand_value(walk, operand)) for operand in statement.args[2:end]); init = Set{Place.Type}()))
-    statement.head === :call || return statement.head === :foreigncall ? fresh_value(Set{Place.Type}()) : NO_VALUE
-    return call_value(walk, statement)
+    statement.head === :new && return holding_value(walk, statement.args[2:end])
+    statement.head === :call || return statement.head === :foreigncall ? fresh_value(Set{Place.Type}(), true) : NO_VALUE
+    return call_value(walk, statement, CC.widenconst(walk.ir.stmts[index][:type]))
 end
 
-"""Value of call `call`: field and element loads add step, alias functions keep operand places, others give fresh object."""
-function call_value(walk::Walk, call::Expr)::Value
+"""
+Fresh object that holds objects of `operands`: untracked when some operand of pointing type can be fresh, or holds no
+place.
+"""
+function holding_value(walk::Walk, operands::Vector{Any})::Value
+    inner, untracked = Set{Place.Type}(), false
+    for operand in operands
+        value = operand_value(walk, operand)
+        union!(inner, held(value))
+        untracked |= pointing(walk, operand_type(walk, operand)) && (value.fresh || isempty(value.places))
+    end
+    return fresh_value(inner, untracked)
+end
+
+"""Step from container of `type` to its element: `Element` for array, dictionary, set and tuple; unknown step else."""
+element_step(@nospecialize(type::Any))::Union{Nothing, Step.Type} = type <: Union{AbstractArray, AbstractDict, AbstractSet, Tuple, NamedTuple} ? Step.Element() : nothing
+
+"""Whether objects of `type` can hold pointing objects: field or element type that points; unknown type can."""
+function holds_pointing(walk::Walk, @nospecialize(type::Any))::Bool
+    type isa DataType || return true
+    Base.isabstracttype(type) && return true
+    isnothing(element_step(type)) || return pointing(walk, element_type(type))
+    return any(index -> pointing(walk, fieldtype(type, index)), 1:fieldcount(type))
+end
+
+"""
+Value of call `call` with result of `type`: field and element loads add step, alias functions keep operand places,
+iteration and element functions give elements, constructors hold operands, others give fresh object.
+"""
+function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
     callee, operands = call_parts(walk, call)
-    (isnothing(operands) || isempty(operands)) && return fresh_value(Set{Place.Type}())
+    (isnothing(operands) || isempty(operands)) && return fresh_value(Set{Place.Type}(), true)
+    # Array literal `T[a, b]`: element type operand, then elements.
+    callee === getindex && callable(walk, operands[1]) && return holding_value(walk, operands[2:end])
     object = operand_value(walk, operands[1])
     if callee in LOAD_BUILTINS || callee === getproperty
         step = callee === getfield || callee === getproperty ? (length(operands) >= 2 ? field_step(walk, operands[2]) : nothing) : Step.Element()
@@ -194,11 +230,58 @@ function call_value(walk::Walk, call::Expr)::Value
     if callee in ALIAS_FUNCTIONS
         # Result holds every operand at once (`zip(a, b)`): fresh operand leaves certainty of caller operand.
         values = Value[operand_value(walk, operand) for operand in operands if !callable(walk, operand)]
-        return Value(reduce(union, (value.places for value in values); init = Set{Place.Type}()), reduce(union, (value.inner for value in values); init = Set{Place.Type}()), any(value -> value.fresh && !isempty(value.places), values))
+        places, inner = reduce(union, (value.places for value in values); init = Set{Place.Type}()), reduce(union, (value.inner for value in values); init = Set{Place.Type}())
+        return Value(places, inner, any(value -> value.fresh && !isempty(value.places), values), any(value -> value.untracked, values))
     end
-    # Constructor and tuple results can hold their operands.
-    (callee isa Type || callee === Core.tuple) && return fresh_value(reduce(union, (held(operand_value(walk, operand)) for operand in operands); init = Set{Place.Type}()))
-    return fresh_value(Set{Place.Type}())
+    # Iteration result: tuple of element and state.
+    if callee === iterate || callee === Base.indexed_iterate
+        element = load_value(walk, object, element_step(operand_type(walk, operands[1])))
+        return fresh_value(element.places, element.fresh || isempty(element.places))
+    end
+    callee in ELEMENT_FUNCTIONS && return element_value(walk, call, callee, operands, type)
+    choices = (operand_value(walk, operand) for operand in operands if !callable(walk, operand))
+    callee in CHOICE_FUNCTIONS && return reduce(joined, choices; init = NO_VALUE)
+    # Conversion gives operand itself, or new object.
+    callee === convert && return reduce(joined, choices; init = new_value(walk, operands, type))
+    # Constructor, tuple and vector literal results hold their operands.
+    (callee isa Type || callee === Core.tuple || callee === Base.vect) && return holding_value(walk, operands)
+    return new_value(walk, operands, type)
+end
+
+"""
+New object of `type` from call with `operands`: untracked, and holds `Deep` place below each operand whose type can
+hold pointing objects (`copy`, `filter`). Type that holds no pointing object holds nothing.
+"""
+function new_value(walk::Walk, operands::Vector{Any}, @nospecialize(type::Any))::Value
+    holds_pointing(walk, type) || return fresh_value(Set{Place.Type}(), false)
+    inner = Set{Place.Type}()
+    for operand in operands
+        holds_pointing(walk, operand_type(walk, operand)) || continue
+        foreach(place -> push!(inner, Place.Deep(place_root(place))), held(operand_value(walk, operand)))
+    end
+    return fresh_value(inner, true)
+end
+
+"""
+Value of element function call `call` of `callee` with `operands` and result of `type`. Container operand: first
+operand that is not callable or `AbstractRNG`. Result is its element, or third such operand (`get(d, k, default)`).
+Result of callable operand can be fresh. Exceptions: `take!` and `fetch` off `Channel`, `rand` with dimensions.
+"""
+function element_value(walk::Walk, call::Expr, @nospecialize(callee::Any), operands::Vector{Any}, @nospecialize(type::Any))::Value
+    plain = [operand for operand in operands if !callable(walk, operand) && !rng_operand(walk, operand)]
+    isempty(plain) && return fresh_value(Set{Place.Type}(), true)
+    container = operand_type(walk, plain[1])
+    element = load_value(walk, operand_value(walk, plain[1]), element_step(container))
+    # `take!(::IOBuffer)` can share buffer or copy it; `fetch(::Task)` gives task result.
+    (callee === take! || callee === fetch) && !(container <: Channel) && return joined(element, new_value(walk, operands, type))
+    # Sample with dimensions gives new array of elements.
+    sampled = callee === Random.rand && length(plain) > 1
+    sampled && return fresh_value(element.places, element.fresh || isempty(element.places))
+    # Keyword reduction can give new array of elements (`dims`) or keyword value (`init`).
+    keywords = keyword_value(walk, call)
+    isnothing(keywords) || (element = joined(joined(element, fresh_value(element.places, true)), deep_loaded(keywords)))
+    found = length(plain) >= 3 ? joined(element, operand_value(walk, plain[3])) : element
+    return any(operand -> callable(walk, operand), operands) ? joined(found, fresh_value(Set{Place.Type}(), true)) : found
 end
 
 """Whether `operand` is callable by style guide order: function or type."""
@@ -222,7 +305,7 @@ function widen!(walk::Walk)::Nothing
         union!(places, stored)
     end
     top = Set{Place.Type}(wide for place in places for wide in (Place.At(place_root(place), NO_STEPS), Place.Deep(place_root(place))))
-    fill!(walk.values, Value(top, top, true))
+    fill!(walk.values, Value(top, top, true, true))
     foreach(place -> walk.stored[place] = top, union(top, keys(walk.stored)))
     return nothing
 end
@@ -244,11 +327,13 @@ function walk_values!(walk::Walk, limit::Int)::Nothing
         for index in eachindex(walk.values)
             stored = store_target(walk, index)
             isnothing(stored) && continue
-            target, inner = stored
-            isempty(inner) && continue
+            target, contents = stored
+            inner = contents.inner
+            isempty(inner) && !contents.untracked && continue
             if target isa Core.SSAValue
-                merged = bounded(Value(walk.values[target.id].places, union(walk.values[target.id].inner, inner), walk.values[target.id].fresh))
-                merged == walk.values[target.id] || (walk.values[target.id] = merged; changed = true)
+                old = walk.values[target.id]
+                merged = bounded(Value(old.places, union(old.inner, inner), old.fresh, old.untracked || contents.untracked))
+                merged == old || (walk.values[target.id] = merged; changed = true)
             end
             for place in operand_value(walk, target).places
                 old = get(walk.stored, place, NO_VALUE.places)
@@ -266,10 +351,10 @@ function walk_values!(walk::Walk, limit::Int)::Nothing
 end
 
 """
-Operand that statement `index` stores other operands into, and places they hold: builtin store target or written
-operand of `!` call. `nothing` for other statement.
+Operand that statement `index` stores other operands into, and their objects as fresh holder (`holding_value`):
+builtin store target or written operand of `!` call. `nothing` for other statement.
 """
-function store_target(walk::Walk, index::Int)::Union{Nothing, Tuple{Any, Set{Place.Type}}}
+function store_target(walk::Walk, index::Int)::Union{Nothing, Tuple{Any, Value}}
     statement = walk.ir.stmts[index][:stmt]
     statement isa Expr || return nothing
     statement.head === :call || return nothing
@@ -277,8 +362,7 @@ function store_target(walk::Walk, index::Int)::Union{Nothing, Tuple{Any, Set{Pla
     (isnothing(operands) || isempty(operands)) && return nothing
     position = callee in STORE_BUILTINS ? 1 : bang_function(callee) ? written_position(walk, callee, operands) : nothing
     isnothing(position) && return nothing
-    others = Set{Place.Type}(place for (other, operand) in enumerate(operands) if other != position for place in held(operand_value(walk, operand)))
-    return operands[position], others
+    return operands[position], holding_value(walk, Any[operand for (other, operand) in enumerate(operands) if other != position])
 end
 
 """Whether `callee` is function whose name ends in `!`, builtins excepted."""
@@ -575,13 +659,13 @@ end
 
 """
 Operands that call `call` of `callee` can invoke: called function, and operands of function that calls its function
-arguments. Builtin, constructor, tuple and alias function return or store operands; `!` call stores operands after
-written one.
+arguments. Builtin, constructor, tuple, alias and choice function return or store operands; `!` call stores
+operands after written one.
 """
 function invoked_operands(walk::Walk, call::Expr, @nospecialize(callee::Any), operands::Vector{Any})::Vector{Any}
     invoked = Any[call.args[1]]
     constant_value(walk, call.args[1]) === Core.kwcall && length(call.args) >= 3 && push!(invoked, call.args[3])
-    (callee isa Core.Builtin || callee isa Type || callee === Core.tuple || callee in ALIAS_FUNCTIONS) && return invoked
+    (callee isa Core.Builtin || callee isa Type || callee === Core.tuple || callee in ALIAS_FUNCTIONS || callee in CHOICE_FUNCTIONS) && return invoked
     written = bang_function(callee) ? written_position(walk, callee, operands) : nothing
     return append!(invoked, operands[1:(something(written, length(operands) + 1) - 1)])
 end

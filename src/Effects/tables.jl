@@ -10,16 +10,24 @@ const WRITE_POSITION = Dict{Tuple{Symbol, Int}, Int}((:ldiv!, 2) => 2, (:lmul!, 
 
 """
 Library functions whose result can lie beneath an operand: views and wrappers (Base docstrings name each one), element
-queries, identity-like conversions, and pointer conversions before foreign call.
+queries, `identity`, and pointer conversions before foreign call.
 """
 const ALIAS_FUNCTIONS = Base.IdSet{Any}(
     Any[
-        view, reshape, vec, parent, transpose, adjoint, keys, values, pairs, first, last, only, something, convert,
-        identity, skipmissing, zip, enumerate, pointer, Base.cconvert, Base.unsafe_convert, Iterators.accumulate, Iterators.cycle, Iterators.drop,
+        view, reshape, vec, parent, transpose, adjoint, keys, values, pairs, first, last, only, identity, skipmissing, zip, enumerate, pointer, Base.cconvert, Base.unsafe_convert, Iterators.accumulate, Iterators.cycle, Iterators.drop,
         Iterators.dropwhile, Iterators.filter, Iterators.flatten, Iterators.partition, Iterators.product, Iterators.rest,
         Iterators.reverse, Iterators.take, Iterators.takewhile,
     ],
 )
+
+"""Library functions whose result is one of their non-callable operands: each operand is an alternative (Base docstrings)."""
+const CHOICE_FUNCTIONS = Base.IdSet{Any}(Any[something, coalesce, max, min, ifelse])
+
+"""
+Library functions whose result can be element of container operand, or other operand: lookups with default, removals,
+reductions, random choice and channel takes (Base docstrings).
+"""
+const ELEMENT_FUNCTIONS = Base.IdSet{Any}(Any[get, get!, getkey, pop!, popfirst!, popat!, maximum, minimum, reduce, foldl, foldr, Random.rand, take!, fetch])
 
 """Base IO functions: each writes its `IO` operands (IO kind). Printing without `IO` operand writes `stdout`."""
 const IO_FUNCTIONS = Base.IdSet{Any}(

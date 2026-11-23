@@ -91,6 +91,26 @@ const PROVES = Base.JLOptions().code_coverage == 0 || Base.JLOptions().code_cove
     @test isempty(effects(:thread_count_address).writes)
 end
 
+@testset "call results" begin
+    # Iteration result holds element of iterated container.
+    @test shape(effects(:zero_all!).writes) == [(parameter(2, Step.Element()), true, MEMORY, DEFINITE)]
+    @test shape(effects(:zero_first_pair!).writes) == [(parameter(2, Step.Element()), true, MEMORY, DEFINITE)]
+    # Other result can hold objects below operand, when its type can hold pointing objects.
+    @test shape(effects(:zero_copied!).writes) == [(Place.Deep(Root.Parameter(2)), true, MEMORY, POSSIBLE)]
+    @test isempty(effects(:grow_copy).writes) && isempty(effects(:grow_copy).aliases)
+    # Element function result: element of container, or other operand.
+    @test shape(effects(:zero_lookup!).writes) == [(parameter(2, Step.Element()), true, MEMORY, POSSIBLE)]
+    @test (parameter(2, Step.Element()), true, MEMORY, POSSIBLE) in shape(effects(:group!).writes)
+    @test shape(effects(:push_lookup!).writes) == [(parameter(2, Step.Element()), true, MEMORY, POSSIBLE)]
+    # Sample advances default RNG only.
+    @test shape(effects(:push_sample!).writes) == [(ELSEWHERE, false, EffectKind.default_rng, DEFINITE)]
+    @test any(access -> access.place == Place.Deep(Root.Parameter(2)) && access.confidence == POSSIBLE, effects(:take_bytes).writes)
+    @test Set(shape(effects(:zero_larger!).writes)) == Set([(parameter(2), true, MEMORY, POSSIBLE), (parameter(3), true, MEMORY, POSSIBLE)])
+    @test shape(effects(:zero_chosen!).writes) == [(parameter(3), true, MEMORY, POSSIBLE)]
+    @test shape(effects(:zero_listed!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
+    @test shape(effects(:zero_typed_listed!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
+end
+
 @testset "exception table" begin
     @test shape(effects(:print_value).writes) == [(parameter(2), true, EffectKind.io, DEFINITE)]
     @test shape(effects(:shout).writes) == [(Place.At(Root.Global(GlobalRef(Base, :stdout)), Step.Type[]), true, EffectKind.io, DEFINITE)]
@@ -158,7 +178,7 @@ end
     # Moshi variants are immutable, so table hits compare by `===`; call `==` directly.
     @test Step.Position(1) == Step.Position(1) && Step.Position(1) != Step.Position(2)
     @test Place.Deep(Root.Parameter(2)) == Place.Deep(Root.Parameter(2)) && Place.Deep(Root.Parameter(2)) != Place.Deep(Root.Parameter(3))
-    @test hash(Effects.NO_VALUE) == hash(Effects.Value(Set{Place.Type}(), Set{Place.Type}(), false))
+    @test hash(Effects.NO_VALUE) == hash(Effects.Value(Set{Place.Type}(), Set{Place.Type}(), false, false))
     @test_throws ArgumentError Facts.NO_STEPS.steps
     counter = GlobalRef(CASES, :COUNTER)
     @test root_global(Place.Deep(Root.Global(counter))) == counter && isnothing(root_global(parameter(2)))
@@ -182,7 +202,12 @@ end
 end
 
 """State of fixture argument `argument` that writes change."""
-state(argument::Any)::Any = argument isa CASES.Box ? argument.value : argument isa CASES.Holder ? argument.box.value : argument
+function state(argument::Any)::Any
+    argument isa CASES.Box && return argument.value
+    argument isa CASES.Holder && return argument.box.value
+    argument isa Vector{CASES.Box} && return [box.value for box in argument]
+    return argument isa Dict{Symbol, CASES.Box} ? Dict(key => box.value for (key, box) in argument) : argument
+end
 
 """Whether facts of `name` hold write on parameter `position` or below it."""
 writes_parameter(name::Symbol, position::Int)::Bool = any(access -> place_root(access.place) == Root.Parameter(position), effects(name).writes)
@@ -200,6 +225,8 @@ writes_parameter(name::Symbol, position::Int)::Bool = any(access -> place_root(a
             :store_then_fill! => ([copy(items)], copy(items)), :register! => (Function[], copy(items)),
             :assumed_foreach! => (Int[], copy(items)), :claimed_caller! => (copy(items),), :keyword_caller! => (copy(items),),
             :fill_wrapped! => (copy(items),), :push_all! => (copy(items), copy(items)), :collect_local! => (Int[], copy(items)),
+            :zero_all! => (CASES.Box.(items),), :zero_copied! => (CASES.Box.(items),), :grow_copy => (copy(items),),
+            :zero_lookup! => (Dict(:a => CASES.Box(number)),), :group! => (Dict(:a => copy(items)), :a, number),
         )
         return all(cases) do (name, arguments)
             before = map(state ∘ deepcopy, arguments)
