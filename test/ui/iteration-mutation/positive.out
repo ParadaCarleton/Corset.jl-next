@@ -1,0 +1,64 @@
+error[iteration-mutation]: `delete!` changes collection while loop iterates it
+ --> src/IterationMutationPositive.jl:6:9
+  |
+5 |     for name in keys(groups)
+  |         -------------------- loop iterates collection
+6 |         isempty(groups[name]) && delete!(groups, name)
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ writes collection
+  |
+  = why: loop can skip or repeat elements, or throw, when collection changes between steps
+  = fix: iterate copy (`collect(keys(d))`), or collect changes and apply them after loop   [manual]
+  = docs: corset explain iteration-mutation
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow iteration-mutation -- <reason>`
+
+error[iteration-mutation]: `push!` changes collection while loop iterates it
+  --> src/IterationMutationPositive.jl:14:9
+   |
+13 |     for x in xs
+   |         ------- loop iterates collection
+14 |         x > 1 && push!(xs, 0)
+   |         ^^^^^^^^^^^^^^^^^^^^^ writes collection
+   |
+   = why: loop can skip or repeat elements, or throw, when collection changes between steps
+   = fix: iterate copy (`collect(keys(d))`), or collect changes and apply them after loop   [manual]
+   = docs: corset explain iteration-mutation
+
+error[iteration-mutation]: `popfirst!` changes collection while loop iterates it
+  --> src/IterationMutationPositive.jl:23:9
+   |
+22 |     for x in QUEUE
+   |         ---------- loop iterates collection
+23 |         x > 0 && popfirst!(QUEUE)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^ writes collection
+   |
+   = why: loop can skip or repeat elements, or throw, when collection changes between steps
+   = fix: iterate copy (`collect(keys(d))`), or collect changes and apply them after loop   [manual]
+   = docs: corset explain iteration-mutation
+
+error[iteration-mutation]: `halve!` changes collection while loop iterates it
+  --> src/IterationMutationPositive.jl:32:9
+   |
+31 |     for x in xs
+   |         ------- loop iterates collection
+32 |         x > 10 && halve!(xs)
+   |         ^^^^^^^^^^^^^^^^^^^^ writes collection
+   |
+   = why: loop can skip or repeat elements, or throw, when collection changes between steps
+   = confidence: possible
+   = fix: iterate copy (`collect(keys(d))`), or collect changes and apply them after loop   [manual]
+   = docs: corset explain iteration-mutation
+
+error[iteration-mutation]: `setindex!` changes collection while loop iterates it
+  --> src/IterationMutationPositive.jl:39:9
+   |
+38 |     for (key, count) in counts
+   |         ---------------------- loop iterates collection
+39 |         counts[key + 1] = count
+   |         ^^^^^^^^^^^^^^^^^^^^^^^ writes collection
+   |
+   = why: loop can skip or repeat elements, or throw, when collection changes between steps
+   = confidence: possible
+   = fix: iterate copy (`collect(keys(d))`), or collect changes and apply them after loop   [manual]
+   = docs: corset explain iteration-mutation
+

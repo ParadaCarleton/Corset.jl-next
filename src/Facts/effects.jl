@@ -173,6 +173,17 @@ struct UnguardedHold
 end
 
 """
+Write to collection inside loop that iterates it (`effects` stage fact, F48): span of loop start, span of write, name of
+writing function, and confidence: size change of same object gives `definite`.
+"""
+struct LoopWrite
+    loop::Span
+    write::Span
+    callee::String
+    confidence::Confidence.T
+end
+
+"""
 Callee of call statement: `Methods` that dispatch reaches (none when no method matches: call throws), `Builtin` or
 intrinsic function, `Foreign` C function, or `Open` dispatch (Base contract, open or unresolved call).
 """
@@ -228,8 +239,9 @@ end
 
 """
 Effects of package method over its units (`effects.md`, Name trust): writes, reads, places its result can lie beneath
-(`aliases`), holds throws skip (`unguarded`), call statements in source order, `complete` (no unit incomplete or cut),
-`effect_free` (compiler proves every unit writes nothing caller sees), and effects its `@assume_effects` claims.
+(`aliases`), holds throws skip (`unguarded`), call statements in source order, writes to collection its loop iterates
+(`loop_writes`), `complete` (no unit incomplete or cut), `effect_free` (compiler proves every unit writes nothing caller
+sees), and effects its `@assume_effects` claims.
 """
 struct MethodEffects
     site::MethodSite
@@ -238,6 +250,7 @@ struct MethodEffects
     aliases::Vector{Place.Type}
     unguarded::Vector{UnguardedHold}
     calls::Vector{CallFact}
+    loop_writes::Vector{LoopWrite}
     complete::Bool
     effect_free::Bool
     claims::Vector{Symbol}

@@ -119,6 +119,32 @@ end
     @test shape(effects(:zero_typed_listed!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
 end
 
+"""Writing function and confidence of each loop write of fixture method `name`."""
+loop_shape(name::Symbol)::Vector{Tuple{String, Confidence.T}} = [(write.callee, write.confidence) for write in effects(name).loop_writes]
+
+@testset "loop writes" begin
+    # Size change of same object: argument, view of argument, two loads of one field, narrowed argument.
+    @test loop_shape(:loop_push!) == [("push!", DEFINITE)]
+    @test loop_shape(:loop_keys!) == [("delete!", DEFINITE)]
+    @test loop_shape(:loop_field!) == [("push!", DEFINITE)]
+    @test loop_shape(:loop_narrowed!) == [("push!", DEFINITE)]
+    @test loop_shape(:loop_zipped!) == [("push!", DEFINITE)]
+    # Write after inner loop lies outside inner loop body.
+    @test isempty(loop_shape(:loop_after_inner!))
+    # Base deletes from `Dict` while iterating; array element replacement keeps indices; size change leaves element.
+    @test isempty(loop_shape(:loop_dict!)) && isempty(loop_shape(:loop_replace!)) && isempty(loop_shape(:loop_outer!))
+    # Package call on holder, field store, or element that loads can make other object.
+    @test loop_shape(:loop_holder!) == [("clear!", POSSIBLE)]
+    @test loop_shape(:loop_count!) == [("setfield!", POSSIBLE)]
+    @test loop_shape(:loop_element!) == [("push!", POSSIBLE)]
+    # Field that name selects is `Deep` place: name tier cannot tell objects apart, so write is blind spot.
+    @test isempty(loop_shape(:loop_named!)) && any(spot -> spot.cause == Effects.LOOP_UNKNOWN, SPOTS)
+    @test isempty(loop_shape(:loop_literal!))
+    # Loop without `iterate(x)` starts at its step, after write in source.
+    resume = only(effects(:loop_resume!).loop_writes)
+    @test resume.callee == "push!" && resume.loop.first_byte > resume.write.first_byte
+end
+
 @testset "exception table" begin
     @test shape(effects(:print_value).writes) == [(parameter(2), true, EffectKind.io, DEFINITE)]
     @test shape(effects(:shout).writes) == [(Place.At(Root.Global(GlobalRef(Base, :stdout)), Step.Type[]), true, EffectKind.io, DEFINITE)]

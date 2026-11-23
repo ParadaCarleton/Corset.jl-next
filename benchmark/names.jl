@@ -42,6 +42,14 @@ println("calls=", length(calls), " discarded=", count(call -> !call.used, calls)
 causes = Dict{String, Int}()
 foreach(spot -> causes[spot.cause] = get(causes, spot.cause, 0) + 1, spots)
 println("spots=", sort!(collect(causes); by = last, rev = true))
+# Loop writes (F48) for quality gate audit: each with source line of write.
+loops = [write for found in methods for write in found.loop_writes]
+println("loop_writes=", length(loops), " definite=", count(write -> write.confidence == Confidence.definite, loops))
+for write in loops
+    text = read(write.write.file, String)
+    line = count(==(UInt8('\n')), codeunits(text)[1:(write.write.first_byte - 1)]) + 1
+    println("  ", write.confidence, " ", write.callee, " ", relpath(write.write.file, root), ":", line, " | ", strip(split(text, '\n')[line]))
+end
 """
 
 """Copy of registered package `name` at `version` in `work`, made writable, with library preset."""

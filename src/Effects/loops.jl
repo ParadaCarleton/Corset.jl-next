@@ -1,0 +1,165 @@
+# Loop writes of name tier (F48; `phase5.md`, row 7): writes to collection inside loop that iterates it.
+
+"""Blind spot cause of loop write through `Deep` place: name tier cannot tell objects below one root apart."""
+const LOOP_UNKNOWN = "loop write place unknown"
+
+"""
+How write to place meets object at other place: `none`; `exact`: same place, or place below written one when write
+covers places below; `unknown`: either is `Deep` of shared root.
+"""
+@enumx Overlap none exact unknown
+
+"""
+Writes to collection inside each loop of `walk`, with `spans` of its IR statements, and blind spots of writes through
+unknown place. Loop step `iterate(x, state)` closes loop over `x`; loop starts at `iterate(x)` on same operand, or at
+its step when none exists.
+"""
+function loop_writes(walk::Walk, spans::Vector{Span})::Tuple{Vector{LoopWrite}, Vector{BlindSpot}}
+    found, spots = LoopWrite[], BlindSpot[]
+    for index in 1:length(walk.ir.stmts)
+        operands = iterate_operands(walk, index)
+        (isnothing(operands) || length(operands) != 2) && continue
+        collection = operands[1]
+        start = findfirst(other -> (started = iterate_operands(walk, other); !isnothing(started) && length(started) == 1 && started[1] === collection), 1:length(walk.ir.stmts))
+        sources = origins(walk, collection)
+        for statement in loop_statements(walk.ir, index)
+            write = loop_write(walk, statement, collection, sources)
+            isnothing(write) && continue
+            callee, confidence = write
+            isnothing(confidence) ? push!(spots, BlindSpot(LOOP_UNKNOWN, spans[statement])) : push!(found, LoopWrite(spans[something(start, index)], spans[statement], callee, confidence))
+        end
+    end
+    return unique!(found), unique!(spots)
+end
+
+"""Operands of `iterate` call at statement `index` of `walk`; `nothing` for other statement."""
+function iterate_operands(walk::Walk, index::Int)::Union{Nothing, Vector{Any}}
+    statement = walk.ir.stmts[index][:stmt]
+    (statement isa Expr && statement.head === :call) || return nothing
+    callee, operands = call_parts(walk, statement)
+    return callee === iterate ? operands : nothing
+end
+
+"""
+Statements of loop that step at statement `index` closes: natural loop of header block whose `φ` node takes step
+result. Body is header and blocks that reach back edge without header, so code after inner loop stays outside it.
+None without such header, or for step outside body.
+"""
+function loop_statements(ir::CC.IRCode, index::Int)::Vector{Int}
+    blocks, header = ir.cfg.blocks, step_header(ir, index)
+    isnothing(header) && return Int[]
+    ahead = reached(blocks[header].succs, other -> blocks[other].succs)
+    latches = filter(other -> other in ahead, blocks[header].preds)
+    isempty(latches) && return Int[]
+    body = push!(reached(latches, other -> other == header ? Int[] : blocks[other].preds), header)
+    # Step before loop feeds header too (`next = iterate(x, state)` ahead of `while`); only step inside closes loop.
+    CC.block_for_inst(ir.cfg, index) in body || return Int[]
+    return Int[statement for other in sort!(collect(body)) for statement in blocks[other].stmts]
+end
+
+"""Block of `φ` node in `ir` that takes value of statement `index`; `nothing` when none does."""
+function step_header(ir::CC.IRCode, index::Int)::Union{Nothing, Int}
+    step = Core.SSAValue(index)
+    for other in 1:length(ir.stmts)
+        node = ir.stmts[other][:stmt]
+        node isa Core.PhiNode || continue
+        any(position -> isassigned(node.values, position) && node.values[position] === step, eachindex(node.values)) && return CC.block_for_inst(ir.cfg, other)
+    end
+    return nothing
+end
+
+"""Blocks that `starts` reach along `next` edges, `starts` included. Entry block has predecessor 0: function entry."""
+function reached(starts::Vector{Int}, next::F)::Set{Int} where {F <: Function}
+    found, pending = Set{Int}(starts), copy(starts)
+    while !isempty(pending)
+        for other in next(pop!(pending))
+            (other < 1 || other in found) && continue
+            push!(found, other)
+            push!(pending, other)
+        end
+    end
+    return found
+end
+
+"""
+Writing function name and confidence of write at statement `index` to loop `collection` with its `origins` (`sources`);
+`nothing` confidence for write through unknown place (blind spot). `nothing` when statement writes no collection place,
+replaces array element, or deletes from `DELETION_SAFE` collection.
+"""
+function loop_write(walk::Walk, index::Int, @nospecialize(collection::Any), sources::Vector{Any})::Union{Nothing, Tuple{String, Union{Nothing, Confidence.T}}}
+    statement = walk.ir.stmts[index][:stmt]
+    (statement isa Expr && statement.head === :call) || return nothing
+    callee, operands = call_parts(walk, statement)
+    isnothing(operands) && return nothing
+    store = callee in STORE_BUILTINS
+    position = store ? 1 : bang_function(callee) ? written_position(walk, callee, operands) : nothing
+    isnothing(position) && return nothing
+    written = operands[position]
+    same = any(origin -> any(source -> origin === source, sources), origins(walk, written)) || same_place(walk, written, collection)
+    # Size change and field store change their operand only; other `!` call can change objects below it.
+    relation = same ? Overlap.exact : overlap(walk, written, collection, !store && !(callee in RESIZE_FUNCTIONS))
+    relation == Overlap.none && return nothing
+    type = operand_type(walk, written)
+    callee === setindex! && type <: AbstractArray && return nothing
+    callee in DELETE_FUNCTIONS && any(safe -> type <: safe, DELETION_SAFE) && return nothing
+    relation == Overlap.unknown && return (string(nameof(callee)), nothing)
+    return (string(nameof(callee)), (same && callee in RESIZE_FUNCTIONS) ? Confidence.definite : Confidence.possible)
+end
+
+"""
+IR values `operand` can be same object as: itself, and operands of view calls and `π` nodes it comes from. Each value
+appears once, so shared operands (`zip(z, z)`) cost one visit.
+"""
+function origins(walk::Walk, @nospecialize(operand::Any))::Vector{Any}
+    found, pending = Any[], Any[operand]
+    while !isempty(pending)
+        current = pop!(pending)
+        any(seen -> seen === current, found) && continue
+        push!(found, current)
+        current isa Core.SSAValue || continue
+        statement = walk.ir.stmts[current.id][:stmt]
+        statement isa Core.PiNode && (push!(pending, statement.val); continue)
+        (statement isa Expr && statement.head === :call) || continue
+        callee, operands = call_parts(walk, statement)
+        (isnothing(operands) || !(callee in ALIAS_FUNCTIONS) || callee in ELEMENT_ALIASES) && continue
+        append!(pending, (other for other in operands if !callable(walk, other)))
+    end
+    return found
+end
+
+"""
+Whether IR operands `first` and `second` are each exactly one caller place, same for both, on no fresh path. Place
+past `Element` step, `Deep` place, or global state no binding names can be other object at each load.
+"""
+function same_place(walk::Walk, @nospecialize(first::Any), @nospecialize(second::Any))::Bool
+    one, other = operand_value(walk, first), operand_value(walk, second)
+    (one.fresh || other.fresh || length(one.places) != 1 || one.places != other.places) && return false
+    return @match only(one.places) begin
+        Place.At(Root.Elsewhere(), _) => false
+        Place.At(_, steps) => !any(step -> step == Step.Element(), steps)
+        Place.Deep(_) => false
+    end
+end
+
+"""Closest overlap of places of `written` operand with places of `collection` operand (`place_overlap`)."""
+function overlap(walk::Walk, @nospecialize(written::Any), @nospecialize(collection::Any), below::Bool)::Overlap.T
+    found, places = Overlap.none, operand_value(walk, collection).places
+    for target in operand_value(walk, written).places, place in places
+        relation = place_overlap(target, place, below)
+        relation == Overlap.exact && return relation
+        relation == Overlap.unknown && (found = relation)
+    end
+    return found
+end
+
+"""
+Overlap of write to `target` with object at `place`, write covering places below when `below`. Global state that no
+binding names overlaps none.
+"""
+function place_overlap(target::Place.Type, place::Place.Type, below::Bool)::Overlap.T
+    (place_root(target) == place_root(place) && place_root(place) != Root.Elsewhere()) || return Overlap.none
+    return @match (target, place) begin
+        (Place.At(_, steps), Place.At(_, others)) => (steps == others || (below && length(steps) < length(others) && steps == others[1:length(steps)])) ? Overlap.exact : Overlap.none
+        _ => Overlap.unknown
+    end
+end
