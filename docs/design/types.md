@@ -149,11 +149,15 @@ Helps unannotated package reach full annotations. `annotation` fixer guesses typ
 
 Each index into array needs proof unless inferred `axes` type of array is `OneTo`. Rule asks code for proof; it never assumes one.
 
+- Array stand-in stands for every caller array, offset arrays included. Rule infers `axes` with offset stand-in in place of array stand-in.
+- So `view(x, 2:3)` has `OneTo` axes, and `view(x, :)` keeps axes of `x`.
+
 - Index of `x`: value that stays in index range of `x`. Rule follows SSA values of typed code.
 - Sources: `eachindex(x)`, `axes(x)`, `keys(x)`, `pairs(x)`, `firstindex(x)`, `lastindex(x)`, `begin`, `end`, `LinearIndices(x)`, `CartesianIndices(x)`.
 - Base results that index `x`: `findfirst`, `findnext`, `findall`, `argmin`, `argmax`, `searchsorted*`, `sortperm`.
 - Closure: `i ± k`, `prevind`, `nextind`, `min`, `max`, `clamp`, midpoint `(lo + hi) ÷ 2`, range between indices of `x`, loop variable over such range.
 - Two arrays: `eachindex(x, y)` throws on different axes, so it gives index of both. So does guard `axes(x) == axes(y) || throw(...)`.
+- Same axes: `similar(x)`, `similar(x, T)`, `copy(x)`, `zero(x)` and broadcast of `x` with scalars have axes of `x`. Index of `x` indexes them.
 - Guard `Base.require_one_based_indexing(x)` proves every index of `x` after it.
 - `checkbounds` is no proof: absolute index inside shifted range passes it and reads wrong element.
 - Index argument (`f(x, i) = x[i]`): per-method fact names indexed argument; package call sites must pass index of that array. Public function carries contract, as `getindex` does.
