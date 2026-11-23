@@ -291,7 +291,8 @@ that line lies in definition; else method site span. Statement without own line 
 Code from macro of same file carries line of macro body, outside definition, so it gets method site span.
 """
 function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodSite, starts::AbstractVector{<:Integer}, nodes::AbstractVector{Union{Nothing, SyntaxNode}})::Vector{Span}
-    Base.require_one_based_indexing(nodes)
+    # Debuginfo line number indexes `starts`.
+    Base.require_one_based_indexing(nodes, starts)
     path = site.file.path
     lines = isnothing(site.node) ? eachindex(starts) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
     found, line = Span[], 0

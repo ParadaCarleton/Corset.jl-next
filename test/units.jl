@@ -93,6 +93,10 @@ end
     @test Corset.Baseline.cover(Dict(key => 1), OffsetVector([key, other], -1)) == ([true, false], Corset.Baseline.Key[])
     @test Corset.Rules.Docstring.as_docstring("# note\n", OffsetVector([1:6], -1), "") == "\"\"\"note\"\"\""
     @test_throws ArgumentError Corset.Render.line_text("a\nb", OffsetVector([1, 3], -1), 1)
+    instance = Base.method_instance(first, (Vector{Int},))
+    site = Facts.MethodSite(instance.def, Corset.Syntax.parse_file("f.jl", "f(x) = x\n", Role.package), nothing, Span("f.jl", 1, 1, Precision.line))
+    nodes = Union{Nothing, Facts.SyntaxNode}[nothing]
+    @test_throws ArgumentError Corset.Inference.spans(only(code_lowered(first, (Vector{Int},))), instance, site, OffsetVector([1, 4], -1), nodes)
 end
 
 @testset "swapped types keep element types of caller" begin
