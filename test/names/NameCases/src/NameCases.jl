@@ -170,7 +170,11 @@ poke!(pointer::Ptr{Int})::Nothing = (Core.Intrinsics.pointerset(pointer, 7, 1, 1
 
 # Call results: iteration and element functions give elements; other results can hold operand objects.
 """Zero every box of `boxes` in loop."""
-zero_all!(boxes::Vector{Box})::Nothing = (for box in boxes; box.value = 0; end; nothing)
+zero_all!(boxes::Vector{Box})::Nothing = (
+    for box in boxes
+        box.value = 0
+    end; nothing
+)
 """Zero first box of `pair` by destructuring."""
 zero_first_pair!(pair::Tuple{Box, Box})::Nothing = ((left, _) = pair; left.value = 0; nothing)
 """Zero first box of copy of `boxes`: shallow copy holds same boxes."""
