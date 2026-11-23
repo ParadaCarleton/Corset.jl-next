@@ -402,11 +402,11 @@ note = "Inferred value type decides mutability; syntax list of mutable construct
 [[footgun]]
 id = 36
 area = "arrays"
-text = "`1:length(A)` assumes 1-based indices"
-example = "`OffsetArray` breaks it"
+text = "Positional index assumes 1-based indices"
+example = "`1:length(A)` or `A[1]`: `OffsetArray` breaks both"
 group = "composability"
 stage = "inference"
-note = "Inferred `axes` type decides: `OneTo` gives no finding (`Array`, DataStructures `CircularDeque`); argument of abstract array type gives `definite`. Array stand-in has `OneTo` axes, so rule reads declared argument type for stand-in arguments."
+note = "Index into array needs proof unless inferred `axes` type is `OneTo` (`Array`, DataStructures `CircularDeque`). Proof: index comes from same array through `eachindex`, `axes`, `keys`, `pairs`, `firstindex`, `lastindex`, `begin`, `end` or `find*` result, plus integer offset; or `Base.require_one_based_indexing` guard. Literal, `length`, `size`, `enumerate` counter and other array's index have no proof. Unproven index into argument of abstract array type gives `definite`. Array stand-in has `OneTo` axes, so rule reads declared argument type for stand-in arguments."
 
 [[footgun]]
 id = 37
