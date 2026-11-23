@@ -1,0 +1,38 @@
+error[false-effects]: method claims `:effect_free`, but writes `FalseEffectsPositive.CALLS`
+ --> src/FalseEffectsPositive.jl:7:35
+  |
+7 | Base.@assume_effects :effect_free function scaled(x::Float64)
+  |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^ claims `:effect_free`
+8 |     CALLS[] += 1
+  |     ------------ writes `FalseEffectsPositive.CALLS`
+  |
+  = why: compiler trusts claim without check; false claim lets it delete, move or fold calls
+  = fix: drop `:effect_free` from `@assume_effects`, or remove access   [manual]
+  = docs: corset explain false-effects
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow false-effects -- <reason>`
+
+error[false-effects]: method claims `:inaccessiblememonly`, but reads `FalseEffectsPositive.SCALE`
+  --> src/FalseEffectsPositive.jl:12:43
+   |
+12 | Base.@assume_effects :inaccessiblememonly function rescaled(x::Float64)
+   |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ claims `:inaccessiblememonly`
+13 |     return SCALE[] * x
+   |            ------- reads `FalseEffectsPositive.SCALE`
+   |
+   = why: compiler trusts claim without check; false claim lets it delete, move or fold calls
+   = fix: drop `:inaccessiblememonly` from `@assume_effects`, or remove access   [manual]
+   = docs: corset explain false-effects
+
+error[false-effects]: method claims `:notaskstate`, but writes default RNG
+  --> src/FalseEffectsPositive.jl:16:35
+   |
+16 | Base.@assume_effects :notaskstate function noisy(x::Float64)
+   |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^ claims `:notaskstate`
+17 |     return x + rand()
+   |                ------ writes default RNG
+   |
+   = why: compiler trusts claim without check; false claim lets it delete, move or fold calls
+   = fix: drop `:notaskstate` from `@assume_effects`, or remove access   [manual]
+   = docs: corset explain false-effects
+

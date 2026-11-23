@@ -69,12 +69,6 @@ deeper(place::Place.Type, step::Step.Type)::Place.Type = @match place begin
     Place.Deep(_) => place
 end
 
-"""Root of `place`."""
-place_root(place::Place.Type)::Root.Type = @match place begin
-    Place.At(root, _) => root
-    Place.Deep(root) => root
-end
-
 """
 Value loaded one `step` below `value`: places one step deeper, and objects fresh value holds inside. Untracked object
 inside is fresh or unknown, so loaded value can be fresh and untracked too.

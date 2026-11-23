@@ -17,6 +17,7 @@ include("rules/closed_struct.jl")
 include("rules/docstring.jl")
 include("rules/double_include.jl")
 include("rules/duplicate_statement.jl")
+include("rules/false_effects.jl")
 include("rules/field_prefix.jl")
 include("rules/file_length.jl")
 include("rules/guard_result.jl")
@@ -79,6 +80,7 @@ const REGISTRY = RuleEntry[
     Docstring.ENTRY,
     DoubleInclude.ENTRY,
     DuplicateStatement.ENTRY,
+    FalseEffects.ENTRY,
     FieldPrefix.ENTRY,
     FileLength.ENTRY,
     GuardResult.ENTRY,
