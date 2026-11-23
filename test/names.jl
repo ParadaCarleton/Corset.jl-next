@@ -215,7 +215,10 @@ end
     @test effects(:add).effect_free == PROVES && isempty(effects(:add).writes) && isempty(effects(:add).reads)
     @test !effects(:push_value!).effect_free && effects(:add).complete
     call = only(fact for fact in effects(:discard).calls if callee_name(fact.callee) == "length")
-    @test !call.used && !call.throws && call.terminates && isempty(call.kinds) && !call.stand_in
+    @test !call.used && !call.throws && call.terminates && isempty(call.kinds) && !call.stand_in && !call.open_dispatch && call.effect_free == PROVES
+    @test only(fact for fact in effects(:discard_open).calls if fact.callee == Callee.Open()).open_dispatch
+    # Claim of callee voids proof of call.
+    @test !only(fact for fact in effects(:claimed_caller!).calls if callee_name(fact.callee) == "run_claimed").effect_free
     push = only(fact for fact in effects(:push_value!).calls if callee_name(fact.callee) == "push!")
     @test push.used && push.kinds == [MEMORY] && push.definite == [MEMORY]
     # Closure operand lends its writes to call that can call it.

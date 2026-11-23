@@ -308,6 +308,8 @@ end
 generated_caller!(items::Vector{Int})::Vector{Int} = (generated_store!(items); items)
 """Discard length of `items`."""
 discard(items::Vector{Int})::Nothing = (length(items); nothing)
+"""Discard length of element of unknown type: compiler effects join methods loaded now."""
+discard_open(items::Vector{Any})::Nothing = (length(items[1]); nothing)
 
 # Loop writes (F48).
 """Repeat each item at end: loop over `items` grows it."""

@@ -685,9 +685,8 @@ Writes, source 5): closure body writes through captured fields map onto operands
 """
 function closure_events(walk::Walk, call::Expr, index::Integer, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Event}
     found, closures = Event[], filter(!isnothing, Union{Nothing, Expr}[closure_new(walk, operand) for operand in invoked_operands(walk, call, callee, operands)])
-    # Compiler proof of call holds unless callee claims it (`@assume_effects`).
     isempty(closures) && return found
-    walk.proven[index] && !callee_claims(walk, call, call_callee(walk, call)) && return found
+    proven_call(walk, index, call, call_callee(walk, call)) && return found
     for built in closures
         for write in closure_writes!(walk, constant_value(walk, built.args[1])::DataType)
             write.field + 1 <= length(built.args) || continue
@@ -711,6 +710,9 @@ function invoked_operands(walk::Walk, call::Expr, @nospecialize(callee::Any), op
     written = bang_function(callee) ? written_position(walk, callee, operands) : nothing
     return append!(invoked, operands[1:(something(written, length(operands) + 1) - 1)])
 end
+
+"""Whether compiler proves call statement `index` of `walk` with `callee` `effect_free`; claim of callee (`@assume_effects`) voids proof."""
+proven_call(walk::Walk, index::Integer, call::Expr, callee::Callee.Type)::Bool = walk.proven[index] && !callee_claims(walk, call, callee)
 
 """
 Whether method `callee` of call `call` dispatches to claims `:effect_free` (`claims_effect_free`); open callee claims
