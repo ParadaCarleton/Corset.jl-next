@@ -149,8 +149,10 @@ Helps unannotated package reach full annotations. `annotation` fixer guesses typ
 
 Each index into array needs proof unless inferred `axes` type of array is `OneTo`. Rule asks code for proof; it never assumes one.
 
-- Array stand-in stands for every caller array, offset arrays included. Rule infers `axes` with offset stand-in in place of array stand-in.
-- So `view(x, 2:3)` has `OneTo` axes, and `view(x, :)` keeps axes of `x`.
+- Array stand-in stands for every caller array, offset arrays included. Its `OneTo` axes hide offsets: inference folds `firstindex(x)` into literal `1`.
+- So `effects` stage infers each method with array stand-in again, with offset stand-in (`OffsetArray` of array stand-in) in its place.
+- Proof runs on that code. Inferred `axes` type there decides: `view(x, 2:3)` has `OneTo` axes, `view(x, :)` keeps axes of `x`.
+- Method store keeps facts of second inference with unit record.
 
 - Index of `x`: value that stays in index range of `x`. Rule follows SSA values of typed code.
 - Sources: `eachindex(x)`, `axes(x)`, `keys(x)`, `pairs(x)`, `firstindex(x)`, `lastindex(x)`, `begin`, `end`, `LinearIndices(x)`, `CartesianIndices(x)`.

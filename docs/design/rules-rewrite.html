@@ -746,10 +746,16 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <p>Each index into array needs proof unless inferred <code>axes</code> type of array is <code>OneTo</code>. Rule asks code for proof; it never assumes one.</p>
 <ul>
 <li>
-<p>Array stand-in stands for every caller array, offset arrays included. Rule infers <code>axes</code> with offset stand-in in place of array stand-in.</p>
+<p>Array stand-in stands for every caller array, offset arrays included. Its <code>OneTo</code> axes hide offsets: inference folds <code>firstindex(x)</code> into literal <code>1</code>.</p>
 </li>
 <li>
-<p>So <code>view(x, 2:3)</code> has <code>OneTo</code> axes, and <code>view(x, :)</code> keeps axes of <code>x</code>.</p>
+<p>So <code>effects</code> stage infers each method with array stand-in again, with offset stand-in (<code>OffsetArray</code> of array stand-in) in its place.</p>
+</li>
+<li>
+<p>Proof runs on that code. Inferred <code>axes</code> type there decides: <code>view(x, 2:3)</code> has <code>OneTo</code> axes, <code>view(x, :)</code> keeps axes of <code>x</code>.</p>
+</li>
+<li>
+<p>Method store keeps facts of second inference with unit record.</p>
 </li>
 <li>
 <p>Index of <code>x</code>: value that stays in index range of <code>x</code>. Rule follows SSA values of typed code.</p>
