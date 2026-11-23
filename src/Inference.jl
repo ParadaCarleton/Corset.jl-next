@@ -943,13 +943,4 @@ function infer_package(package::PackageFacts, files::Vector{SyntaxFile}, store::
     return facts, unique!(append!(spots, gaps)), Units(typed, incomplete, stored), used
 end
 
-"""
-Inference facts of `package` in analyzed `files`, their blind spots, and store of entries run used (`infer_package`).
-`journal` as in `infer_package`.
-"""
-function inference_facts(package::PackageFacts, files::Vector{SyntaxFile}, store::Union{Nothing, Store}, journal::Union{Nothing, Journal})::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Store}}
-    facts, spots, _, used = infer_package(package, files, store, journal)
-    return facts, spots, used
-end
-
 end
