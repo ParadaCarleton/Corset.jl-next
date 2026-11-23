@@ -36,7 +36,7 @@ Call whose operand types are not concrete joins effects of methods loaded now; o
 effects of stand-in only. Both give `possible`: other types can give call effect.
 `@assume_effects` claim of callee voids proof: compiler trusts claim without check.
 Rule skips call it cannot tie to source statement: call lowering inserts or copies (`finally`), call inside macro
-call. Such call without effect goes to coverage line.
+call. Copied source call without effect goes to coverage line.
 `Core.donotdelete` passes: it keeps value alive for benchmarks.
 Fix is `manual`: rule cannot tell missing assignment from leftover statement.
 """
