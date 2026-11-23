@@ -492,6 +492,7 @@ module ProbedCases
     probed_guarded(x::Float64) = x
     probed_object(x::Float64) = x
     probed_alias(x::Float64) = x
+    probed_parametric(x::Float64) = x
     kept_filtered(x::Float64) = x
     kept_finally(x::Float64) = x
     kept_called(x::Float64) = x
@@ -559,6 +560,16 @@ module ProbedCases
     end
     const guard = Guard(0)
     guarded_object(x) = guard(probed_object, x)
+    struct Wrapper{T}
+        fallback::T
+    end
+    (wrapper::Wrapper)(f, x) = try
+        f(x)
+    catch
+        wrapper.fallback
+    end
+    const wrapper = Wrapper(0)
+    guarded_parametric(x) = wrapper(probed_parametric, x)
     # `@with` opens `try` with scope; its handler rethrows.
     scoped(x) = Base.ScopedValues.@with SCOPE => 1 kept_scoped(x)
 end
@@ -570,7 +581,8 @@ end
     found = Corset.Package.probed(unique!([method for value in bindings for method in methods(value) if method.module === ProbedCases]))
     @test sort!([String(nameof(value)) for value in owned if value in found]) == [
         "probed_alias", "probed_bare", "probed_direct", "probed_guarded", "probed_interrupt", "probed_local",
-        "probed_method_error", "probed_object", "probed_qualified", "probed_rewrapped", "probed_splat", "probed_wrapped",
+        "probed_method_error", "probed_object", "probed_parametric", "probed_qualified", "probed_rewrapped", "probed_splat",
+        "probed_wrapped",
     ]
     # Lowering pops exception before return; optimized IR can return from handler directly.
     @test Corset.Package.swallows(Any[Core.EnterNode(2), Core.ReturnNode(0)], 1, 2)

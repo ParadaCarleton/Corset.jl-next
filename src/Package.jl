@@ -464,16 +464,16 @@ function guarded_statements(code::AbstractVector{Any})::Set{Int}
 end
 
 """
-Record that lowered `code` of `method` tests `operand` for methods: argument adds its position to `testers`,
-other operand adds its value to `found`. Return whether `testers` grew.
+Record that lowered `code` of `method` tests `operand` for methods: argument adds its position under callee type
+`key` to `exact` (concrete `key`) or `inexact`, other operand adds its value to `found`. Return whether positions grew.
 """
-function tested!(found::Base.IdSet{Any}, testers::IdDict{Method, <:AbstractSet{<:Integer}}, method::Method, code::AbstractVector{Any}, operand::Any)::Bool
+function tested!(found::Base.IdSet{Any}, exact::IdDict{<:Type, <:AbstractSet{<:Integer}}, inexact::IdDict{<:Type, <:AbstractSet{<:Integer}}, key::Type, method::Method, code::AbstractVector{Any}, operand::Any)::Bool
     operand isa Core.SSAValue && (operand = code[operand.id])
     # Local `target = f` stands for argument `f`.
     operand isa Core.SlotNumber && operand.id > method.nargs && (operand = Facts.assigned_once(code, operand))
     operand isa Core.SSAValue && (operand = code[operand.id])
     if operand isa Core.SlotNumber && 2 <= operand.id <= method.nargs
-        tested = get!(Set{Int}, testers, method)
+        tested = get!(Set{Int}, isconcretetype(key) ? exact : inexact, key)
         (operand.id - 1) in tested && return false
         push!(tested, operand.id - 1)
         return true
@@ -483,15 +483,18 @@ function tested!(found::Base.IdSet{Any}, testers::IdDict{Method, <:AbstractSet{<
 end
 
 """
-Argument positions call of `callee` tests for methods: reflection tests first, package method its `testers` positions.
-Position can repeat.
+Argument positions call of `callee` tests for methods: reflection tests first; package methods their positions in
+`exact` under `Core.Typeof(callee)`, or in `inexact` under supertype of it. Position can repeat.
 """
-function tested_positions(callee::Any, testers::IdDict{Method, <:AbstractSet{<:Integer}}, types::IdDict{Method, <:Type})::Vector{Int}
+function tested_positions(callee::Any, exact::IdDict{<:Type, <:AbstractSet{<:Integer}}, inexact::IdDict{<:Type, <:AbstractSet{<:Integer}})::Vector{Int}
     callee isa REFLECTION && return [1]
     positions = Int[]
     isnothing(callee) && return positions
-    for (method, tested) in testers
-        Core.Typeof(callee) <: types[method] && append!(positions, tested)
+    type = Core.Typeof(callee)
+    haskey(exact, type) && append!(positions, exact[type])
+    # Parametric callable types and constructors (`Type{T}`) match by subtype; package has few of them.
+    for (key, tested) in inexact
+        type <: key && append!(positions, tested)
     end
     return positions
 end
@@ -502,19 +505,18 @@ Functions, types and callable objects lowered code of `methods` tests for method
 Generated methods pass: they keep generator only.
 """
 function probed(methods::AbstractVector{Method})::Base.IdSet{Any}
-    bodies = [(method, Base.uncompressed_ast(method).code) for method in methods if isdefined(method, :source)]
-    calls = [(lowered_calls(code), guarded_statements(code)) for (_, code) in bodies]
-    types = IdDict{Method, Type}(method => callee_type(method) for (method, _) in bodies)
+    bodies = [(method, Base.uncompressed_ast(method).code, callee_type(method)) for method in methods if isdefined(method, :source)]
+    calls = [(lowered_calls(code), guarded_statements(code)) for (_, code, _) in bodies]
     found = Base.IdSet{Any}()
-    # Argument positions each package method tests; grows until no method gains position.
-    testers, grown = IdDict{Method, Set{Int}}(), true
+    # Tested argument positions by callee type; each pass costs one lookup per call, and passes end when none grows.
+    exact, inexact, grown = IdDict{Type, Set{Int}}(), IdDict{Type, Set{Int}}(), true
     while grown
         grown = false
-        for ((method, code), (method_calls, guarded)) in zip(bodies, calls), (index, callee, head, operands) in method_calls
-            index in guarded && (grown |= tested!(found, testers, method, code, head))
-            for position in tested_positions(callee, testers, types)
+        for ((method, code, key), (method_calls, guarded)) in zip(bodies, calls), (index, callee, head, operands) in method_calls
+            index in guarded && (grown |= tested!(found, exact, inexact, key, method, code, head))
+            for position in tested_positions(callee, exact, inexact)
                 position <= length(operands) || continue
-                grown |= tested!(found, testers, method, code, operands[position])
+                grown |= tested!(found, exact, inexact, key, method, code, operands[position])
             end
         end
     end
