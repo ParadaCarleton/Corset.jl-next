@@ -13,7 +13,7 @@ Workspaces live in .worktrees/<name> inside repo (git-ignored); never in sibling
 
 Each `Rule` is pure function of `Corset.Facts`. Analysis stages compute facts once per run. If more information is needed, add a fact to its stage.
 Every finding: primary span, labeled cause spans, one-line reason, fix with tier.
-Every rule: UI snapshot test with positive, negative and fix case.
+Every rule: UI snapshot test with positive, negative and fix case. Manual fix has no edits: positive snapshot shows its text.
 
 ## Scope
 
