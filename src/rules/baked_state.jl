@@ -4,7 +4,7 @@
 ## Description
 Reports global assigned at module top level from expression that reads run-time state, in package code only.
 State: thread count, `ENV`, home, working and temporary directory, clock, random numbers, host name, process ID, pointers.
-Top level spans module body, `begin`, `if`, `global` in `let`, `@static` and `@eval`.
+Top level spans module body, `begin`, `if`, ternary, `&&`, `||`, `global` in `let`, `@static` and `@eval`.
 Function bodies, closures and `__init__` run later and pass. Arguments of other macros pass: macro decides whether they run.
 Scripts never precompile, so rule skips them.
 
@@ -61,8 +61,8 @@ const READS = (
 
 """Kinds whose body runs later, when called."""
 const DEFERRED = ("function", "->", "do", "macro")
-"""Kinds that keep code at module top level: code runs now, and assignment sets global."""
-const TOP_LEVEL = ("toplevel", "module", "block", "if", "elseif", "doc", "const", "global")
+"""Kinds that keep code at module top level: code runs now, and assignment sets global. Ternary and `&&` run as `if` does."""
+const TOP_LEVEL = ("toplevel", "module", "block", "if", "elseif", "?", "&&", "||", "doc", "const", "global")
 """Macros whose argument runs as module top-level code. Other macros get syntax, such as Argus `@pattern`, and may never run it."""
 const TRANSPARENT = ("@static", "@eval")
 
