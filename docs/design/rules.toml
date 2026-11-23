@@ -182,7 +182,7 @@ note = "Fix tier `manual`."
 [[rule]]
 name = "one-based-range"
 footguns = [36]
-note = "Fixer: `eachindex`."
+note = "Fixer: `eachindex`. Index after `Base.require_one_based_indexing(x)` guard gives no finding."
 
 [[rule]]
 name = "unverified-inbounds"
