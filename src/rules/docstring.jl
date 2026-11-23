@@ -49,7 +49,7 @@ line_text(text::String, line::UnitRange{<:Integer})::String = text[first(line):t
 """Docstring text built from comment lines `lines` of `text`, with indentation `indent`."""
 function as_docstring(text::String, lines::AbstractVector{<:UnitRange{<:Integer}}, indent::String)::String
     body = [escaped(lstrip(chopprefix(lstrip(line_text(text, line)), "#"))) for line in lines]
-    return length(body) == 1 ? "$indent\"\"\"$(body[1])\"\"\"" :
+    return length(body) == 1 ? "$indent\"\"\"$(only(body))\"\"\"" :
         "$indent\"\"\"\n" * join((indent * line for line in body), "\n") * "\n$indent\"\"\""
 end
 

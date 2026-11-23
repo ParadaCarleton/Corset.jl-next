@@ -5,6 +5,7 @@ using Corset.Facts: Facts, Span, Label, Edit, Fix, Finding, Precision, Tier, Con
 using Corset.Config: Config, ConfigError, Flags, Kind, Level, Settings
 using Corset.Engine: Diagnostic, Report
 using Corset.Rules: REGISTRY, entry
+using OffsetArrays: OffsetVector
 using Test: @test, @testset, @test_throws
 
 """Finding in file `name` with primary span `bytes`, causes `causes` and fix `fix`."""
@@ -83,10 +84,15 @@ end
     elsewhere = render(sample_finding(13:17; causes = [Label(Span("g.jl", 7, 7, Precision.exact), "there"), Label(Span("f.jl", 1, 1, Precision.exact), "here")]))
     @test occursin(" --> f.jl:3:1\n  |\n1 | a = 1\n  | - here\n2 | b = 2\n3 | c = 3\n  | ^^^^^ primary\n  |\n ::: g.jl:2:1\n  |\n2 | y = 2\n  | - there\n  |\n  = why", elsewhere)
     @test Corset.Render.line_text("x\r\n", [1, 4], 1) == "x"
-    # Line number indexes `starts`; offset vector would select wrong line.
-    @test_throws ArgumentError Corset.Render.line_text("a\nb", Base.IdentityUnitRange(0:1), 1)
     tabbed = "\ty = 1\n"
     @test occursin("1 |     y = 1\n  |     ^ primary", sprint(io -> Corset.Render.render(io, Diagnostic(sample_finding(2:2), Level.warn, "test"), Dict("f.jl" => tabbed), ".", false)))
+end
+
+@testset "widened arguments take offset vectors" begin
+    key, other = (Corset.Baseline.Key("rule", "f.jl", "f", snippet) for snippet in ("a", "b"))
+    @test Corset.Baseline.cover(Dict(key => 1), OffsetVector([key, other], -1)) == ([true, false], Corset.Baseline.Key[])
+    @test Corset.Rules.Docstring.as_docstring("# note\n", OffsetVector([1:6], -1), "") == "\"\"\"note\"\"\""
+    @test_throws ArgumentError Corset.Render.line_text("a\nb", OffsetVector([1, 3], -1), 1)
 end
 
 @testset "swapped types keep element types of caller" begin

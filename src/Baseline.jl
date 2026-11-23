@@ -101,10 +101,12 @@ end
 """Which of `keys` baseline `counts` covers, in order, and stale keys with counts no finding used."""
 function cover(counts::AbstractDict{Key, <:Integer}, keys::AbstractVector{Key})::Tuple{Vector{Bool}, Vector{Key}}
     left = Dict{Key, Int}(counts)
-    covered = map(keys) do key
-        get(left, key, 0) > 0 || return false
-        left[key] -= 1
-        return true
+    # Loop, since `map` keeps axes of offset `keys`.
+    covered = Bool[]
+    for key in keys
+        used = get(left, key, 0) > 0
+        used && (left[key] -= 1)
+        push!(covered, used)
     end
     return covered, sort!([key for (key, count) in left if count > 0]; by = key -> (key.file, key.rule, key.definition))
 end
