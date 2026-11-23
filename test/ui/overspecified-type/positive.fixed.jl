@@ -3,7 +3,7 @@
 """Package whose functions annotate narrower types than their code needs."""
 module OverspecifiedTypePositive
 
-export scale, area, total, middle, weighted, present, rows, absolute, Point, power, code, rounded
+export scale, area, total, middle, weighted, present, rows, absolute, Point, power, code, rounded, forwarded
 public counted, sizes, members, mean
 
 """Scaled copy of values."""
@@ -57,6 +57,19 @@ code(value::Int) = 2
 """Rounded value; widened methods nest, `Integer` inside `Real`, so dispatch keeps both."""
 rounded(value::Real) = round(Int, value)
 rounded(value::Integer) = value
+
+"""Length of values; private helper takes only `Vector{Float64}`, so public function does too."""
+forwarded(values) = forwarded_length(values)
+forwarded_length(values::AbstractVector{<:Real}) = length(values)
+
+"""Private helper."""
+helper(x::Real) = 2x
+
+"""Private struct; its constructor takes only `Float64`."""
+struct Hidden
+    value::Float64
+    Hidden(value::Real) = new(value)
+end
 
 """Lengths of named groups."""
 sizes(groups::AbstractDict{Symbol, <:AbstractVector{<:Real}}) = Dict(name => length(group) for (name, group) in groups)

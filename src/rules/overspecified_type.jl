@@ -2,11 +2,13 @@
 `overspecified-type` (F15): argument annotation names specific number type, `AbstractFloat` or concrete container.
 
 ## Description
-Reports argument annotation of method on public function or constructor of public type when it names, anywhere inside:
+Reports argument annotation of package function or constructor of package type, private included, when it names,
+anywhere inside:
 - specific number type: `Float64`, `Float32`, `Float16`, `BigFloat`, `Int`, `Int8` to `Int128`, `BigInt`;
 - `AbstractFloat`, which rejects rationals and dual numbers;
 - concrete container: `Vector`, `Matrix`, `Array`, `Dict`, `Set`.
 Union of number types only, as `Union{Int32, Int64}`, reports as whole and widens to `Integer` or `Real`.
+Private method counts: public `f(x) = _f(x)` with `_f(x::Vector)` rejects every other vector.
 Method passes when other method of same function covers its signature: it is fast path beside generic method.
 Fix is `likely` when widened method and each other method of function, widened too or not, are disjoint or nested.
 Otherwise fix is manual: Julia could find call ambiguous, or drop method with same widened signature.
@@ -27,7 +29,7 @@ scale(values::AbstractVector{<:Real}, factor::Real)::AbstractVector{<:Real} = va
 
 ## Limitations
 Rule reads argument annotations; result types, `where` bounds and struct fields pass.
-Private functions pass: no outside caller meets them. Methods on other modules' functions pass: their owner sets signature.
+Methods on other modules' functions and constructors of other modules' types pass: their owner sets signature.
 `Bool`, unsigned types and C aliases as `Cint` pass: they mark flags, bit patterns and C calls.
 Type alias that names listed type passes.
 """
@@ -139,12 +141,11 @@ function widened_text(mod::Module, file::SyntaxFile, node::SyntaxNode, found::Ab
     return wider
 end
 
-"""Whether `public` values hold function `method` belongs to, or type it constructs, by type name in `types`."""
-function public_function(method::Method, public::Base.IdSet{Any}, types::Set{Core.TypeName})::Bool
-    callee = tuple_parameters(method.sig)[1]
-    Base.isType(callee) || return isdefined(callee, :instance) && callee.instance in public
-    target = Base.unwrap_unionall(callee.parameters[1])
-    return target isa DataType && target.name in types
+"""Whether package `modules` own function or callable type `method` belongs to, or type it constructs."""
+function owned(method::Method, modules::AbstractSet{Module})::Bool
+    callee = Base.unwrap_unionall(tuple_parameters(method.sig)[1])
+    Base.isType(callee) && (callee = Base.unwrap_unionall(callee.parameters[1]))
+    return callee isa DataType && callee.name.module in modules
 end
 
 """Whether wider method in `sites` covers `site`: `site` is fast path beside generic method of same function."""
@@ -165,17 +166,17 @@ function overspecified_finding(file::SyntaxFile, annotation::SyntaxNode, wider::
     )
 end
 
-"""Findings for overspecified argument annotations of package methods on public functions; fast paths pass."""
+"""Findings for overspecified argument annotations of package methods on package functions; fast paths pass."""
 function findings(facts::FactSet)::Vector{Finding}
     package = facts.package
     isnothing(package) && return Finding[]
-    types = Set{Core.TypeName}(body.name for body in map(Base.unwrap_unionall, collect(package.public)) if body isa DataType)
+    modules = Set(package.modules)
     # Default arguments give one definition several methods; each annotation reports once.
     seen = Base.IdSet{SyntaxNode}()
     found = Finding[]
     for site in package.methods
         parts = isnothing(site.node) ? nothing : signature(site.node)
-        (isnothing(parts) || !public_function(site.method, package.public, types) || fast_path(site, package.methods)) && continue
+        (isnothing(parts) || !owned(site.method, modules) || fast_path(site, package.methods)) && continue
         safe = nothing
         for argument in parts.arguments, annotation in argument_annotations(argument)
             annotation in seen && continue

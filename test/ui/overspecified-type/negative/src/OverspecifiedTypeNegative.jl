@@ -2,7 +2,7 @@
 """Package whose annotations name what code needs, or fast paths beside generic methods."""
 module OverspecifiedTypeNegative
 
-export scale, norm2, encode, zero_of, half, bounded, anything, Counter, Geometry
+export scale, norm2, encode, zero_of, half, bounded, anything, Counter, Geometry, generic
 
 """Scaled copy of values."""
 scale(values::AbstractVector{<:Real}, factor::Real) = values .* factor
@@ -31,14 +31,13 @@ end
 Base.getindex(counter::Counter, index::Int) = index
 Base.iterate(counter::Counter, state::Int = 1) = state > counter.count ? nothing : (state, state + 1)
 
-"""Private helper: no outside caller meets its annotation."""
-helper(x::Float64) = 2x
+"""Sum through private helper whose `Vector{Float64}` method is fast path beside generic one."""
+generic(values) = generic_sum(values)
+generic_sum(values) = sum(values)
+generic_sum(values::Vector{Float64}) = sum(values)
 
-"""Private struct; its constructor takes only `Float64`."""
-struct Hidden
-    value::Float64
-    Hidden(value::Float64) = new(value)
-end
+"""Methods on Base constructor of Base type follow Base signatures."""
+Base.Float64(counter::Counter) = Float64(counter.count)
 
 """Own `Vector` type; annotation names it, not Base `Vector`."""
 module Geometry
