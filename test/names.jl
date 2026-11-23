@@ -85,9 +85,9 @@ const PROVES = Base.JLOptions().code_coverage == 0 || Base.JLOptions().code_cove
     # Load from fresh vector can give fresh object, so write is possible.
     @test shape(effects(:fill_wrapped!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
     @test (Place.Deep(Root.Parameter(2)), true, MEMORY, POSSIBLE) in shape(effects(:push_all!).writes)
-    @test shape(effects(:collect_local!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
-    @test shape(effects(:swap_local!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
-    @test shape(effects(:loop_local!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
+    @test shape(effects(:collect_local!).writes) == [(global_place(:SEEN), true, MEMORY, DEFINITE), (parameter(2), true, MEMORY, DEFINITE)]
+    @test shape(effects(:swap_local!).writes) == [(global_place(:SEEN), true, MEMORY, DEFINITE), (parameter(2), true, MEMORY, POSSIBLE)]
+    @test shape(effects(:loop_local!).writes) == [(global_place(:SEEN), true, MEMORY, DEFINITE), (parameter(2), true, MEMORY, POSSIBLE)]
     @test isempty(effects(:thread_count_address).writes)
 end
 
@@ -295,7 +295,14 @@ end
     @test push.used && push.kinds == [MEMORY] && push.definite == [MEMORY]
     # Closure operand lends its writes to call that can call it.
     each = only(fact for fact in effects(:collect_into!).calls if callee_name(fact.callee) == "foreach")
-    @test each.kinds == [MEMORY] && each.definite == [MEMORY]
+    @test each.kinds == [MEMORY] && each.definite == [MEMORY] && each.closure_kinds == [MEMORY] && each.closure_definite == [MEMORY]
+    @test isempty(push.closure_kinds)
+    doubled = only(fact for fact in effects(:doubled_rest).calls if callee_name(fact.callee) == "map")
+    @test !isempty(doubled.kinds) && isempty(doubled.closure_kinds)
+    @test (parameter(2), true, MEMORY, DEFINITE) in shape(effects(:sort_logged!).writes)
+    @test (global_place(:CLOSURE_CALLS), true, MEMORY, DEFINITE) in shape(effects(:counted_sum).writes)
+    @test (global_place(:tally_count), true, MEMORY, DEFINITE) in shape(effects(:tallied).writes)
+    @test only(fact for fact in effects(:seen_once).calls if callee_name(fact.callee) == "filter").closure_definite == [MEMORY]
     # Block claim makes compiler trust it, so it proves nothing.
     @test !effects(:assumed_store!).effect_free
     @test any(fact -> fact.callee == Callee.Foreign(), effects(:zero_bytes!).calls)

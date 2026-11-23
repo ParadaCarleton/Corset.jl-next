@@ -60,7 +60,7 @@ function referent!(cache::IdDict{Any, Bool}, @nospecialize(type::Any))::Bool
     elseif type <: Ptr || ismutabletype(type)
         true
     else
-        any(index -> referent!(cache, fieldtype(type, index)), 1:fieldcount(type))
+        any(index -> referent!(cache, fieldtype(type, index)), 1:fieldcount(type))  # corset: allow impure-lambda -- memo cache; call count cannot change answer
     end
     cache[type] = answer
     return answer

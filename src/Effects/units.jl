@@ -26,14 +26,14 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
     spans = Span[line in eachindex(typed.spans) ? typed.spans[line] : typed.site.span for line in lines]
     for index in 1:length(ir.stmts)
         line, span = lines[index], spans[index]
-        events = statement_events(walk, index)
+        events, invoked = statement_events(walk, index)
         foreach(event -> push!(event.write ? writes : reads, Access(event.place, event.below, event.kind, event.confidence, span)), events)
         statement = ir.stmts[index][:stmt]
         statement isa Core.ReturnNode && isdefined(statement, :val) && union!(aliases, held(operand_value(walk, statement.val)))
         statement isa Expr || continue
         statement.head in (:call, :foreigncall) || continue
         # Compiler trusts claim of direct callee too (`@assume_effects`); keyword call hides its callee, so it counts.
-        fact = call_fact(walk, index, events, span, iszero(line) ? !isempty(users[index]) : used[line])
+        fact = call_fact(walk, index, events, invoked, span, iszero(line) ? !isempty(users[index]) : used[line])
         callee_claimed |= statement.head === :call && callee_claims(walk, statement, fact.callee)
         push!(calls, (line, span) => fact)
     end
@@ -53,22 +53,32 @@ function unit_walk(typed::TypedCode, modules::AbstractSet{Module}, interpreter::
     # Inferred flags reuse claim bits, so claim reads code before inference.
     flags, claimed = typed.frame.src.ssaflags, claims_effect_free(typed.site.method, CC.retrieve_code_info(typed.frame.linfo, world))
     proven = Bool[!claimed && line in eachindex(flags) && flags[line] & CC.IR_FLAG_EFFECT_FREE != 0 for line in lines]
-    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{CapturedWrite}}(), IdDict{Union{Method, Core.MethodInstance}, Bool}(), world)
+    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{ClosureWrite}}(), IdDict{Union{Method, Core.MethodInstance}, Bool}(), world)
     return walk, lines, used, claimed
 end
 
 """
 Fact of call statement `index` in `walk` with its `events` (`CallFact`): write kinds include writes of package closures
-it takes or calls. Compiler flags give `throws` and `terminates`.
+it takes or calls. Closure kinds come from closure `writes`, fresh captured objects included. Compiler flags give
+`throws` and `terminates`.
 """
-function call_fact(walk::Walk, index::Integer, events::AbstractVector{Event}, span::Span, used::Bool)::CallFact
+function call_fact(walk::Walk, index::Integer, events::AbstractVector{Event}, writes::AbstractVector{ClosureWrite}, span::Span, used::Bool)::CallFact
     statement = walk.ir.stmts[index][:stmt]::Expr
     operands = call_operands(statement)
-    kinds = sort!(unique!([event.kind for event in events if event.write]))
-    definite = sort!(unique!([event.kind for event in events if event.write && event.confidence == Confidence.definite]))
     flag = walk.ir.stmts[index][:flag]
     stand_in = any(operand -> holds_stand_in(operand_type(walk, operand)), operands)
-    return CallFact(span, call_callee(walk, statement), kinds, definite, flag & CC.IR_FLAG_NOTHROW == 0, flag & CC.IR_FLAG_TERMINATES != 0, used, stand_in)
+    return CallFact(span, call_callee(walk, statement), write_kinds(events)..., closure_kinds(writes)..., flag & CC.IR_FLAG_NOTHROW == 0, flag & CC.IR_FLAG_TERMINATES != 0, used, stand_in)
+end
+
+"""Kinds of closure `writes` at any certainty, and kinds of exact writes."""
+function closure_kinds(writes::AbstractVector{ClosureWrite})::Tuple{Vector{EffectKind.T}, Vector{EffectKind.T}}
+    return sort!(unique!([write.kind for write in writes])), sort!(unique!([write.kind for write in writes if write.exact]))
+end
+
+"""Kinds of writes among `events` at any certainty, and kinds of definite writes."""
+function write_kinds(events::AbstractVector{Event})::Tuple{Vector{EffectKind.T}, Vector{EffectKind.T}}
+    writes = [event for event in events if event.write]
+    return sort!(unique!([event.kind for event in writes])), sort!(unique!([event.kind for event in writes if event.confidence == Confidence.definite]))
 end
 
 """Operands of call `statement`, callee first; foreign call gives its argument operands."""
@@ -163,7 +173,8 @@ end
 """Fact of call statement over two units of method: unit that may throw, writes or uses result decides."""
 function merge_calls(first::CallFact, second::CallFact)::CallFact
     kinds, definite = sort!(union(first.kinds, second.kinds)), sort!(union(first.definite, second.definite))
-    return CallFact(first.span, merge_callees(first.callee, second.callee), kinds, definite, first.throws || second.throws, first.terminates && second.terminates, first.used || second.used, first.stand_in || second.stand_in)
+    closure_kinds, closure_definite = sort!(union(first.closure_kinds, second.closure_kinds)), sort!(union(first.closure_definite, second.closure_definite))
+    return CallFact(first.span, merge_callees(first.callee, second.callee), kinds, definite, closure_kinds, closure_definite, first.throws || second.throws, first.terminates && second.terminates, first.used || second.used, first.stand_in || second.stand_in)
 end
 
 """Add call facts `found` of unit to `calls` of its method (`merge_calls`)."""

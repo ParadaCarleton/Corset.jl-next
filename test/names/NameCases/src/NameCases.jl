@@ -73,6 +73,24 @@ zero_bytes!(items::Vector{UInt8})::Nothing = (ccall(:memset, Ptr{Cvoid}, (Ptr{UI
 # Closure: call that takes or calls closure writes through captured fields.
 """Collect `items` into `out` through closure."""
 collect_into!(out::Vector{Int}, items::Vector{Int})::Nothing = (foreach(item -> push!(out, item), items); nothing)
+"""Map pure closure over stateful iterator: consumed iterator is write of call, not of closure."""
+doubled_rest(rest::Iterators.Stateful{Vector{Int}})::Vector{Int} = map(item -> 2item, rest)
+"""Sort by keyword closure that writes argument: keyword tuple passes closure to `sort`."""
+sort_logged!(log::Vector{Int}, items::Vector{Int})::Vector{Int} = sort(items; by = item -> (push!(log, item); item))
+"""Counter that closure body writes."""
+const CLOSURE_CALLS = Ref(0)
+"""Sum through closure that writes global counter."""
+counted_sum(items::Vector{Int})::Int = sum(item -> (CLOSURE_CALLS[] += 1; item), items)
+
+tally_count = 0
+function tallied(items::Vector{Int})::Vector{Int}
+    return map(items) do item
+        global tally_count += 1
+        item
+    end
+end
+"""Filter through closure that writes set it captures: fresh set gives no write, call fact keeps closure write."""
+seen_once(items::Vector{Int})::Vector{Int} = (seen = Set{Int}(); filter(item -> item in seen ? false : (push!(seen, item); true), items))
 """Build writing closure without calling it."""
 make_callback(items::Vector{Int}) = () -> push!(items, 1)
 """Pass writing closure through alias function: `identity` never calls it."""

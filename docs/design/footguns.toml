@@ -577,11 +577,11 @@ stage = "effects"
 [[footgun]]
 id = 56
 area = "effects"
-text = "Anonymous function impure: captures mutable state"
-example = "`filter(x -> x in seen, xs)`, `seen::Set`"
+text = "Anonymous function passed to query function writes state"
+example = "`filter(x -> x in seen ? false : (push!(seen, x); true), xs)`"
 group = "correctness"
 stage = "effects"
-note = "Named functions follow `!` convention; anonymous ones stay pure. Read-only capture counts."
+note = "Named functions follow `!` convention; anonymous ones stay pure. Read-only capture passes: nothing changes during call."
 
 [[footgun]]
 id = 57

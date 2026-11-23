@@ -253,7 +253,8 @@ end
 
 """
 Call statement of package method (`effects` stage fact, F54, F56, F86): span, callee, kinds of writes call makes at any
-certainty, and kinds of its definite writes (`definite`). Compiler effects give `throws` (may throw) and `terminates`.
+certainty, and kinds of its definite writes (`definite`). `closure_kinds` and `closure_definite` hold same for writes of
+package closures call invokes, writes to fresh captured objects included. Compiler effects give `throws` (may throw) and `terminates`.
 `used`: code reads result. `stand_in`: operand type holds stand-in, so compiler effects describe stand-in only. Units of
 method merge: any unit that may throw, writes or uses result decides.
 """
@@ -262,6 +263,8 @@ struct CallFact
     callee::Callee.Type
     kinds::Vector{EffectKind.T}
     definite::Vector{EffectKind.T}
+    closure_kinds::Vector{EffectKind.T}
+    closure_definite::Vector{EffectKind.T}
     throws::Bool
     terminates::Bool
     used::Bool

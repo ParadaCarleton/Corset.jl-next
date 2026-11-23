@@ -109,7 +109,7 @@ Port rules of local effect-rules stack onto name-tier facts.
 
 - `unused-call` (F54): discarded call that compiler proves `effect_free`, `nothrow` and terminating.
 - `hidden-input` (F55): reads default RNG, task-local state, `ScopedValue` or mutable global.
-- `impure-lambda` (F56): anonymous function captures mutable state.
+- `impure-lambda` (F56): anonymous function passed to Base query function writes state.
 - `false-effects` (F58): write and read events contradict package `@assume_effects` claim.
 - `unguarded-release` (F98): effects version reads hold counts; delete syntax version in same PR.
 - Release balance (`effects.md`) lands with F98: release primitive table, hold counts, `UnguardedHold` facts, fixture per primitive.
