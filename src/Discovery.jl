@@ -139,7 +139,7 @@ end
 
 """Parse `entries` of `project` and every file they include, breadth first; include calls not followed become blind spots."""
 function closure(entries::AbstractVector{String}, project::Union{Nothing, ProjectFacts})::Sources
-    files, blind_spots, pending, seen = SyntaxFile[], BlindSpot[], copy(entries), Set{String}()
+    files, blind_spots, pending, seen = SyntaxFile[], BlindSpot[], Vector{String}(entries), Set{String}()
     while !isempty(pending)
         path = popfirst!(pending)
         path in seen && continue

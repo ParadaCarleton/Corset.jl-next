@@ -124,7 +124,8 @@ end
 inhabited(type::Type)::Bool = isconcretetype(type) && !any(field -> field === Union{}, fieldtypes(type))
 
 """First member of each of `groups`, then second of each, and so on."""
-function interleaved(groups::AbstractVector{<:AbstractVector{Type}})::Vector{Type}
+function interleaved(groups::AbstractVector{<:AbstractVector{<:Type}})::Vector{Type}
+    foreach(Base.require_one_based_indexing, groups)
     found = Type[]
     for index in 1:maximum(length, groups; init = 0), group in groups
         index <= length(group) && push!(found, group[index])

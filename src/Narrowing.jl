@@ -129,8 +129,8 @@ function outcomes(code::Core.CodeInfo, condition::Any, index::Integer, state::St
     return holds ? (proven, state.proven) : (state.proven, proven)
 end
 
-"""Slots `statement` reads as values: call arguments, assigned value, condition, returned value."""
-function read_slots!(found::AbstractVector{<:Integer}, statement::Any)::Vector{Int}
+"""Push to `found` slots `statement` reads as values: call arguments, assigned value, condition, returned value."""
+function read_slots!(found::AbstractVector{<:Integer}, statement::Any)::Nothing
     if statement isa Core.SlotNumber
         push!(found, statement.id)
     elseif statement isa Expr && statement.head in (:call, :invoke, :new, :foreigncall, :(=))
@@ -140,7 +140,7 @@ function read_slots!(found::AbstractVector{<:Integer}, statement::Any)::Vector{I
     elseif statement isa Core.ReturnNode && isdefined(statement, :val)
         read_slots!(found, statement.val)
     end
-    return found
+    return nothing
 end
 
 """
@@ -152,7 +152,9 @@ function transfer!(losses::AbstractVector{Loss}, code::Core.CodeInfo, flow::Flow
     proven, stored, assigned = copy(state.proven), copy(state.stored), Dict{Int, Type}()
     for index in flow.graph.blocks[block].stmts
         statement = code.code[index]
-        for slot in read_slots!(Int[], statement)
+        slots = Int[]
+        read_slots!(slots, statement)
+        for slot in slots
             haskey(proven, slot) || continue
             type, test = proven[slot]
             found = slot_type(table, assigned, slot)

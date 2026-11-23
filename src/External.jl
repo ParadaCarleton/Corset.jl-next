@@ -109,12 +109,12 @@ function internal_accesses(package::PackageFacts, entry::String, files::Abstract
 end
 
 """Push accesses to internal names onto `found` from `explicit`, ExplicitImports.jl rows of explicit imports by module."""
-function explicit_accesses!(found::AbstractVector{InternalAccess}, explicit::AbstractVector{<:Pair{Module}}, by_path::AbstractDict{String, SyntaxFile})::Vector{InternalAccess}
+function explicit_accesses!(found::AbstractVector{InternalAccess}, explicit::AbstractVector{<:Pair{Module}}, by_path::AbstractDict{String, SyntaxFile})::Nothing
     for (_, rows) in explicit, row in something(rows, ())
         span = location_span(row.location, string(row.name), by_path)
         row.public_import || isnothing(span) || push!(found, InternalAccess(row.importing_from, string(row.name), span, true))
     end
-    return found
+    return nothing
 end
 
 """
