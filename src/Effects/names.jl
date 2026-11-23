@@ -108,7 +108,8 @@ end
 """
 IR of one unit with value of each statement, whether compiler proves each statement `effect_free` (`proven`), places
 stored into each caller place (`stored`), `referent!` answers (`ir.jl`), package modules, captured field writes of each
-closure type (`closure_writes!`), `effect_free` claim of each callee method, and world dispatch reads.
+closure type (`closure_writes!`), `effect_free` claim of each callee method or generated instance, and world dispatch
+reads.
 """
 struct Walk
     ir::CC.IRCode
@@ -118,7 +119,7 @@ struct Walk
     referent::IdDict{Any, Bool}
     modules::Set{Module}
     closures::IdDict{Any, Vector{CapturedWrite}}
-    claims::IdDict{Method, Bool}
+    claims::IdDict{Union{Method, Core.MethodInstance}, Bool}
     world::UInt
 end
 
@@ -698,12 +699,20 @@ end
 Whether method `callee` of call `call` dispatches to claims `:effect_free` (`claims_effect_free`); open callee claims
 none seen. Keyword call dispatches to keyword sorter, which hides claim of keyword body, so it counts as claiming.
 """
-callee_claims(walk::Walk, call::Expr, callee::Callee.Type)::Bool = constant_value(walk, call.args[1]) === Core.kwcall || methods_claim(walk, callee)
+function callee_claims(walk::Walk, call::Expr, callee::Callee.Type)::Bool
+    constant_value(walk, call.args[1]) === Core.kwcall && return true
+    isnothing(callee_methods(callee)) && return false
+    matches = call_matches(walk, call)
+    return !isnothing(matches) && any(match -> match_claims(walk, match), matches)
+end
 
-"""Whether some method of `callee` claims `:effect_free`; answers cached in `walk`."""
-function methods_claim(walk::Walk, callee::Callee.Type)::Bool
-    methods = callee_methods(callee)
-    return !isnothing(methods) && any(method -> get!(() -> claims_effect_free(method), walk.claims, method), methods)
+"""
+Whether method of `match` claims `:effect_free` in code compiler infers for its instance; answers cached in `walk`.
+Generated method gives code per instance, so its answer is per instance.
+"""
+function match_claims(walk::Walk, match::Core.MethodMatch)::Bool
+    key = Base.hasgenerator(match.method) ? CC.specialize_method(match) : match.method
+    return get!(() -> claims_effect_free(match.method, CC.retrieve_code_info(CC.specialize_method(match), walk.world)), walk.claims, key)
 end
 
 """`new` statement of package closure that IR `operand` holds; `nothing` for other operand."""
@@ -727,7 +736,7 @@ function closure_writes!(walk::Walk, type::DataType)::Vector{CapturedWrite}
     # `methods(type)` lists constructors; call methods match call signature of closure instance.
     matches = Base._methods_by_ftype(Tuple{type, Vararg{Any}}, -1, walk.world)
     for method in (matches isa Vector ? Method[(match::Core.MethodMatch).method for match in matches] : Method[])
-        method.source === nothing && continue
+        (isdefined(method, :source) && method.source !== nothing) || continue
         code = Base.uncompressed_ast(method)
         captured, slots, assignments, written = Dict{Int, Set{Int}}(), Dict{Int, Set{Int}}(), Dict{Int, Int}(), Set{Int}[]
         # Loop can assign local after write through it: scan again until field sets stop growing.

@@ -283,7 +283,157 @@ keyword_caller!(out::Vector{Int})::Vector{Int} = (run_keyword(() -> push!(out, 1
 assumed_store!(items::Vector{Int})::Vector{Int} = (Base.@assume_effects :effect_free items[1] = 3; items)
 """Address of thread count in Julia library: library tuple stays nested call in IR."""
 thread_count_address()::Ptr{Cint} = cglobal((:jl_n_threads, "libjulia-internal"), Cint)
+"""Generated method: its `Method` has no `source`."""
+@generated generated_double(x::Real) = :(x + x)
+"""Store under block claim in generated code: compiler trusts claim, though `Method.source` holds none."""
+@generated function generated_store!(items::Vector{Int})
+    return quote
+        Base.@assume_effects :effect_free items[1] = 3
+        items
+    end
+end
+"""Store under block claim in generated branch: compiler infers it, not claim-free fallback."""
+function optional_store!(items::Vector{Int})
+    if @generated
+        return quote
+            Base.@assume_effects :effect_free items[1] = 3
+            items
+        end
+    else
+        items[1] = 3
+        return items
+    end
+end
+"""Call generated store: compiler trusts claim of direct callee."""
+generated_caller!(items::Vector{Int})::Vector{Int} = (generated_store!(items); items)
 """Discard length of `items`."""
 discard(items::Vector{Int})::Nothing = (length(items); nothing)
+
+# Loop writes (F48).
+"""Repeat each item at end: loop over `items` grows it."""
+function loop_push!(items::Vector{Int})::Vector{Int}
+    for item in items
+        push!(items, item)
+    end
+    return items
+end
+"""Delete each key: loop over view of `table`."""
+function loop_keys!(table::AbstractDict{Int, Int})::AbstractDict{Int, Int}
+    for key in keys(table)
+        delete!(table, key)
+    end
+    return table
+end
+"""Delete each key of `Dict`: Base deletes while iterating it."""
+function loop_dict!(table::Dict{Int, Int})::Dict{Int, Int}
+    for key in keys(table)
+        delete!(table, key)
+    end
+    return table
+end
+"""Replace first element in loop: array keeps its indices."""
+function loop_replace!(items::Vector{Int})::Vector{Int}
+    for item in items
+        items[1] = item
+    end
+    return items
+end
+"""Collection in field."""
+mutable struct Bin
+    items::Vector{Int}
+    seen::Int
+end
+"""Empty items of `bin`."""
+clear!(bin::Bin)::Bin = (empty!(bin.items); bin)
+"""Grow field while loop iterates it: two loads of one place."""
+function loop_field!(bin::Bin)::Bin
+    for item in bin.items
+        push!(bin.items, item)
+    end
+    return bin
+end
+"""Clear holder of iterated field: package call can change field."""
+function loop_holder!(bin::Bin)::Bin
+    for item in bin.items
+        clear!(bin)
+    end
+    return bin
+end
+"""Grow holder of iterated element: size change leaves element."""
+function loop_outer!(groups::Vector{Vector{Int}})::Vector{Vector{Int}}
+    for item in first(groups)
+        push!(groups, [item])
+    end
+    return groups
+end
+"""Grow element while loop iterates other element: each load can be other object."""
+function loop_element!(groups::Vector{Vector{Int}}, i::Int, j::Int)::Vector{Vector{Int}}
+    for item in groups[i]
+        push!(groups[j], item)
+    end
+    return groups
+end
+"""Grow field that name selects while loop iterates it: each load can be other field."""
+function loop_named!(bin::Bin, name::Symbol)::Bin
+    for item in getfield(bin, name)
+        push!(getfield(bin, name), item)
+    end
+    return bin
+end
+"""Bin iterates its items and counts each step."""
+Base.iterate(bin::Bin, index::Int = 1) = index > length(bin.items) ? nothing : (bin.items[index], index + 1)
+"""Count steps in field of iterated object."""
+function loop_count!(bin::Bin)::Bin
+    for _ in bin
+        setfield!(bin, :seen, bin.seen + 1)
+    end
+    return bin
+end
+"""Resume iteration from `state`: first step lies off cycle, so loop has no start."""
+function loop_resume!(items::Vector{Int}, state::Int)::Vector{Int}
+    next = iterate(items, state)
+    while next !== nothing
+        item, state = next
+        push!(items, item)
+        next = iterate(items, state)
+    end
+    return items
+end
+"""Grow `items` after inner loop over it ends: outer loop iterates other collection."""
+function loop_after_inner!(groups::Vector{Int}, items::Vector{Int})::Vector{Int}
+    total = 0
+    for group in groups
+        for item in items
+            total += item
+        end
+        push!(items, group + total)
+    end
+    return items
+end
+"""Grow `items` in loop over zip of it with itself: view operand appears twice."""
+function loop_zipped!(items::Vector{Int})::Vector{Int}
+    for (first_item, _) in zip(items, items)
+        push!(items, first_item)
+    end
+    return items
+end
+"""Grow narrowed argument in loop over it."""
+function loop_narrowed!(items::Any)::Any
+    if items isa Vector{Int}
+        for item in items
+            push!(items, item)
+        end
+    end
+    return items
+end
+@eval begin
+    """Grow one literal in loop over other: global state that no binding names is no one object."""
+    function loop_literal!()::Nothing
+        for item in $(Int[1])
+            push!($(Int[2]), item)
+        end
+        return nothing
+    end
+end
 
 end

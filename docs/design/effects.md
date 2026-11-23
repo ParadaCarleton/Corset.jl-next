@@ -144,6 +144,7 @@ Facts keep hold count per resource at normal exit and at each statement that may
 - Compiler effects come free with unit inference.
 - `unused-call` (F54) needs compiler proof: discarded call with `effect_free`, `nothrow` and `terminates`. Name trust never proves none for it.
 - `@assume_effects` makes compiler trust a claim. Call to package method with claim takes no proof from its flags.
+- Claim check reads code compiler infers. Generated method gives its generated code per instance.
 - Claim deeper in callees stays unseen. `false-effects` reports a false claim in package that owns it.
 - `false-effects` compares claims of package methods with their own write and read events.
 
@@ -153,7 +154,8 @@ Facts keep hold count per resource at normal exit and at each statement that may
 - Per call statement: callee, kinds of its writes, may throw, terminates, result used or discarded (F54, F86).
 - Use counts before compaction: compaction turns each use of constant result into literal.
 - Units of method merge by source statement: unit that may throw, writes or uses result decides.
-- Per unit, for `lifecycle` and statement rules (F48, F50, F51): allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.
+- Per package method, F48: loop writes: span of loop start, span of write, writing function, confidence (`phase5.md`, row 7).
+- Per unit, for `lifecycle` and statement rules (F50, F51): allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.
 - Must-alias: two values with same single root and path, where root is one object per call (parameter, global, allocation outside loop).
 - Escape: return; store into object or global; operand of `!` call that is not the written operand; operand of alias-table call or constructor whose result escapes.
 - Element event carries index operand: constant or SSA value. `lifecycle` decides which elements writes cover (F33, F34).

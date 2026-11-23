@@ -57,7 +57,18 @@ Measure on corpus: `effects` stage time against `inference` stage; methods with 
 
 Rules read per-unit statement events and must-alias pairs.
 
-- `iteration-mutation` (F48): container written inside loop that iterates it. Alias-table result counts: `keys(d)` iterates `d`.
+- `iteration-mutation` (F48): collection written inside loop that iterates it. View result counts: `keys(d)` iterates `d`.
+  - Loop: IR blocks on cycle through `iterate(x, state)`. Collection: operand `x`.
+  - Write: `!` call or field store whose written operand is collection, or holds place at or above collection place.
+  - Same object: written operand and `x` share IR value after view calls, or both are one place without fresh path.
+  - Size change on same object (`push!`, `delete!`, `empty!`, …: `RESIZE_FUNCTIONS`) gives `definite`; other write `possible`.
+  - Element write below collection never counts: `for b in boxes; b.n = 0; end`.
+  - Overlap through `Deep` place: blind spot `loop write place unknown`. Name tier cannot tell objects below one root apart.
+  - `setindex!` on array replaces element: no finding. On dictionary, key can be new: `possible`.
+  - Deletion from `Dict`, `IdDict`, `WeakKeyDict`, `Set`, `IdSet`, `BitSet`: no finding. Base deletes from each while iterating it.
+  - Base `filter!(f, ::AbstractDict)` warns: "dictionary types may not support mutation during iteration". Other types count.
+  - Consuming call with closure (`foreach(x -> push!(v, x), v)`) stays unseen: its loop is in library code.
+  - Fix `manual`: iterate copy (`collect(keys(d))`), or collect changes and apply after loop.
 - `self-alias` (F50): same container passed as written operand and as other operand of `!` call.
   - Exempt: functions that unalias operands (`copyto!`, `broadcast!`, `materialize!`).
   - Definite for function whose docstring warns of shared memory ("Behavior can be unexpected when any mutated argument shares memory"). Else `possible`.

@@ -25,6 +25,7 @@ include("rules/inference_dependent.jl")
 include("rules/intermediate_widening.jl")
 include("rules/internal_access.jl")
 include("rules/invariant_parameter.jl")
+include("rules/iteration_mutation.jl")
 include("rules/iterator_traits.jl")
 include("rules/juxtaposition.jl")
 include("rules/lost_narrowing.jl")
@@ -84,6 +85,7 @@ const REGISTRY = RuleEntry[
     IntermediateWidening.ENTRY,
     InternalAccess.ENTRY,
     InvariantParameter.ENTRY,
+    IterationMutation.ENTRY,
     IteratorTraits.ENTRY,
     Juxtaposition.ENTRY,
     LostNarrowing.ENTRY,

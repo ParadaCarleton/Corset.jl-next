@@ -17,15 +17,15 @@ Unit that always throws on stand-ins gives no verdict, only its blind spot.
 """
 function unit_effects(typed::TypedCode, modules::Set{Module}, interpreter::CC.NativeInterpreter, world::UInt)::UnitEffects
     cut = isempty(typed.cuts) ? nothing : typed.spans[first(typed.cuts)]
-    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, cut)
+    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, cut)
     walk, lines, used, claimed = unit_walk(typed, modules, interpreter, world)
     ir = walk.ir
     walk_values!(walk, 2 * length(ir.stmts) + 10)
     users = statement_users(ir)
     writes, reads, aliases, calls, callee_claimed = Access[], Access[], Set{Place.Type}(), UnitCalls(), false
+    spans = Span[line in eachindex(typed.spans) ? typed.spans[line] : typed.site.span for line in lines]
     for index in 1:length(ir.stmts)
-        line = lines[index]
-        span = line in eachindex(typed.spans) ? typed.spans[line] : typed.site.span
+        line, span = lines[index], spans[index]
         events = statement_events(walk, index)
         foreach(event -> push!(event.write ? writes : reads, Access(event.place, event.below, event.kind, event.confidence, span)), events)
         statement = ir.stmts[index][:stmt]
@@ -38,7 +38,8 @@ function unit_effects(typed::TypedCode, modules::Set{Module}, interpreter::CC.Na
         push!(calls, (line, span) => fact)
     end
     effect_free = CC.is_effect_free(typed.frame.ipo_effects) && !claimed && !holds_stand_in(typed.signature) && !callee_claimed
-    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, BlindSpot[], effect_free, cut)
+    loops, spots = loop_writes(walk, spans)
+    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, spots, effect_free, cut)
 end
 
 """
@@ -48,9 +49,10 @@ claims `:effect_free`.
 function unit_walk(typed::TypedCode, modules::Set{Module}, interpreter::CC.NativeInterpreter, world::UInt)::Tuple{Walk, Vector{Int}, Vector{Bool}, Bool}
     ir, lines, used = frame_ir(typed.frame, interpreter, Bool[call_statement(statement) for statement in typed.frame.src.code])
     # Source flags keep compiler `effect_free`, which `frame_ir` clears on kept calls. Claim in method voids proof.
-    flags, claimed = typed.frame.src.ssaflags, claims_effect_free(typed.site.method)
+    # Inferred flags reuse claim bits, so claim reads code before inference.
+    flags, claimed = typed.frame.src.ssaflags, claims_effect_free(typed.site.method, CC.retrieve_code_info(typed.frame.linfo, world))
     proven = Bool[!claimed && line in eachindex(flags) && flags[line] & CC.IR_FLAG_EFFECT_FREE != 0 for line in lines]
-    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{CapturedWrite}}(), IdDict{Method, Bool}(), world)
+    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{CapturedWrite}}(), IdDict{Union{Method, Core.MethodInstance}, Bool}(), world)
     return walk, lines, used, claimed
 end
 
@@ -83,18 +85,24 @@ function call_callee(walk::Walk, statement::Expr)::Callee.Type
     head = constant_value(walk, statement.args[1])
     head === Core._apply_iterate && return Callee.Open()
     head isa Core.Builtin && return Callee.Builtin(head)
-    types = Any[operand_type(walk, operand) for operand in statement.args]
-    holds_stand_in(types[1]) && return Callee.Open()
-    matches = Base._methods_by_ftype(Tuple{types...}, DISPATCH_LIMIT, walk.world)
-    matches isa Vector || return Callee.Open()
-    return methods_callee(Method[(match::Core.MethodMatch).method for match in matches])
+    holds_stand_in(operand_type(walk, statement.args[1])) && return Callee.Open()
+    matches = call_matches(walk, statement)
+    return isnothing(matches) ? Callee.Open() : methods_callee(Method[match.method for match in matches])
 end
 
-"""Whether `@assume_effects` claims `:effect_free` on `method` or on block in its code: compiler then trusts claim."""
-function claims_effect_free(method::Method)::Bool
+"""Method matches of call `statement` in `walk` by operand types, up to `DISPATCH_LIMIT`; `nothing` when more match."""
+function call_matches(walk::Walk, statement::Expr)::Union{Nothing, Vector{Core.MethodMatch}}
+    matches = Base._methods_by_ftype(Tuple{Any[operand_type(walk, operand) for operand in statement.args]...}, DISPATCH_LIMIT, walk.world)
+    return matches isa Vector ? Core.MethodMatch[match for match in matches] : nothing
+end
+
+"""
+Whether `@assume_effects` claims `:effect_free` on `method` or on block of `code`, code compiler infers for instance of
+`method` (`nothing`: none). Compiler then trusts claim. Generated method gives code per instance, not `Method.source`.
+"""
+function claims_effect_free(method::Method, code::Union{Nothing, Core.CodeInfo})::Bool
     CC.decode_effects_override(method.purity).effect_free && return true
-    method.source === nothing && return false
-    return any(flag -> CC.decode_statement_effects_override(flag).effect_free, Base.uncompressed_ast(method).ssaflags)
+    return !isnothing(code) && any(flag -> CC.decode_statement_effects_override(flag).effect_free, code.ssaflags)
 end
 
 """
@@ -117,6 +125,16 @@ function worst(accesses::Vector{Access})::Vector{Access}
         (isnothing(old) || access.confidence < old.confidence) && (found[key] = access)
     end
     return text_order(collect(values(found)), access -> place_key(access.place, access.below, access.kind))
+end
+
+"""Loop writes over all units of method, one per loop and write in source order: definite in any unit decides."""
+function surest(loops::Vector{LoopWrite})::Vector{LoopWrite}
+    found = Dict{Tuple{Span, Span, String}, LoopWrite}()
+    for loop in loops
+        key = (loop.loop, loop.write, loop.callee)
+        (!haskey(found, key) || loop.confidence < found[key].confidence) && (found[key] = loop)
+    end
+    return sort!(collect(values(found)); by = loop -> (loop.write.file, loop.write.first_byte, loop.loop.first_byte, loop.callee))
 end
 
 """Call facts of one method by source statement and span."""
@@ -160,8 +178,8 @@ function ordered_records(units::Units, fresh::Vector{Union{Nothing, UnitEffects}
     return [methods[index] => records[index] for index in sortperm(positions)]
 end
 
-"""Accesses of all units of one method: writes, reads, result aliases, holds throws skip, call facts."""
-const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{Place.Type}, Vector{UnguardedHold}, Calls}
+"""Accesses of all units of one method: writes, reads, result aliases, holds throws skip, call facts, loop writes."""
+const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{Place.Type}, Vector{UnguardedHold}, Calls, Vector{LoopWrite}}
 
 """
 Facts of methods of `package` from effects `records` of units in inference order, and blind spots: worst over units of
@@ -175,23 +193,24 @@ function method_facts(package::PackageFacts, incomplete::Set{Method}, records::V
         isnothing(record) && continue
         append!(spots, record.spots)
         record.verdict || continue
-        writes, reads, aliases, unguarded, calls = get!(() -> (Access[], Access[], Place.Type[], UnguardedHold[], Calls()), found, method)
+        writes, reads, aliases, unguarded, calls, loops = get!(() -> (Access[], Access[], Place.Type[], UnguardedHold[], Calls(), LoopWrite[]), found, method)
         append!(writes, record.writes)
         append!(reads, record.reads)
         append!(aliases, record.aliases)
         append!(unguarded, record.unguarded)
         add_calls!(calls, record.calls)
+        append!(loops, record.loop_writes)
         free[method] = get(free, method, true) && record.effect_free
         isnothing(record.cut) || haskey(cuts, method) || (cuts[method] = something(record.cut))
     end
     methods = MethodEffects[]
     for site in package.methods
         haskey(found, site.method) || continue
-        writes, reads, aliases, unguarded, calls = found[site.method]
+        writes, reads, aliases, unguarded, calls, loops = found[site.method]
         complete = !(site.method in incomplete) && !haskey(cuts, site.method)
         effects = MethodEffects(
             site, worst(writes), worst(reads), text_order(unique!(aliases), repr), text_order(unique!(unguarded), repr),
-            call_order(calls), complete, free[site.method], claimed_effects(site.method),
+            call_order(calls), surest(loops), complete, free[site.method], claimed_effects(site.method),
         )
         push!(methods, effects)
         # Write keeps its certainty with cut; only method without write goes to coverage line.

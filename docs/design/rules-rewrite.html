@@ -901,6 +901,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Compiler effects come free with unit inference.</li>
 <li><code>unused-call</code> (F54) needs compiler proof: discarded call with <code>effect_free</code>, <code>nothrow</code> and <code>terminates</code>. Name trust never proves none for it.</li>
 <li><code>@assume_effects</code> makes compiler trust a claim. Call to package method with claim takes no proof from its flags.</li>
+<li>Claim check reads code compiler infers. Generated method gives its generated code per instance.</li>
 <li>Claim deeper in callees stays unseen. <code>false-effects</code> reports a false claim in package that owns it.</li>
 <li><code>false-effects</code> compares claims of package methods with their own write and read events.</li>
 </ul>
@@ -910,7 +911,8 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Per call statement: callee, kinds of its writes, may throw, terminates, result used or discarded (F54, F86).</li>
 <li>Use counts before compaction: compaction turns each use of constant result into literal.</li>
 <li>Units of method merge by source statement: unit that may throw, writes or uses result decides.</li>
-<li>Per unit, for <code>lifecycle</code> and statement rules (F48, F50, F51): allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.</li>
+<li>Per package method, F48: loop writes: span of loop start, span of write, writing function, confidence (<code>phase5.md</code>, row 7).</li>
+<li>Per unit, for <code>lifecycle</code> and statement rules (F50, F51): allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.</li>
 <li>Must-alias: two values with same single root and path, where root is one object per call (parameter, global, allocation outside loop).</li>
 <li>Escape: return; store into object or global; operand of <code>!</code> call that is not the written operand; operand of alias-table call or constructor whose result escapes.</li>
 <li>Element event carries index operand: constant or SSA value. <code>lifecycle</code> decides which elements writes cover (F33, F34).</li>
@@ -1440,7 +1442,21 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 </div><div class="decision"><h3>7 Alias rules</h3>
 <p>Rules read per-unit statement events and must-alias pairs.</p>
 <ul>
-<li><code>iteration-mutation</code> (F48): container written inside loop that iterates it. Alias-table result counts: <code>keys(d)</code> iterates <code>d</code>.</li>
+<li><code>iteration-mutation</code> (F48): collection written inside loop that iterates it. View result counts: <code>keys(d)</code> iterates <code>d</code>.
+<ul>
+<li>Loop: IR blocks on cycle through <code>iterate(x, state)</code>. Collection: operand <code>x</code>.</li>
+<li>Write: <code>!</code> call or field store whose written operand is collection, or holds place at or above collection place.</li>
+<li>Same object: written operand and <code>x</code> share IR value after view calls, or both are one place without fresh path.</li>
+<li>Size change on same object (<code>push!</code>, <code>delete!</code>, <code>empty!</code>, …: <code>RESIZE_FUNCTIONS</code>) gives <code>definite</code>; other write <code>possible</code>.</li>
+<li>Element write below collection never counts: <code>for b in boxes; b.n = 0; end</code>.</li>
+<li>Overlap through <code>Deep</code> place: blind spot <code>loop write place unknown</code>. Name tier cannot tell objects below one root apart.</li>
+<li><code>setindex!</code> on array replaces element: no finding. On dictionary, key can be new: <code>possible</code>.</li>
+<li>Deletion from <code>Dict</code>, <code>IdDict</code>, <code>WeakKeyDict</code>, <code>Set</code>, <code>IdSet</code>, <code>BitSet</code>: no finding. Base deletes from each while iterating it.</li>
+<li>Base <code>filter!(f, ::AbstractDict)</code> warns: &quot;dictionary types may not support mutation during iteration&quot;. Other types count.</li>
+<li>Consuming call with closure (<code>foreach(x -&gt; push!(v, x), v)</code>) stays unseen: its loop is in library code.</li>
+<li>Fix <code>manual</code>: iterate copy (<code>collect(keys(d))</code>), or collect changes and apply after loop.</li>
+</ul>
+</li>
 <li><code>self-alias</code> (F50): same container passed as written operand and as other operand of <code>!</code> call.
 <ul>
 <li>Exempt: functions that unalias operands (<code>copyto!</code>, <code>broadcast!</code>, <code>materialize!</code>).</li>

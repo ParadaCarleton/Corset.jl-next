@@ -20,6 +20,26 @@ const ALIAS_FUNCTIONS = Base.IdSet{Any}(
     ],
 )
 
+"""Alias functions whose result is element or pointer, not view: iterating result never iterates operand (F48)."""
+const ELEMENT_ALIASES = Base.IdSet{Any}(Any[first, last, only, pointer, Base.cconvert, Base.unsafe_convert])
+
+"""`!` functions that change size or key set of collection (Base docstrings): loop over it can skip or repeat elements (F48)."""
+const RESIZE_FUNCTIONS = Base.IdSet{Any}(
+    Any[
+        push!, pushfirst!, pop!, popfirst!, popat!, insert!, deleteat!, delete!, empty!, append!, prepend!, resize!,
+        splice!, filter!, keepat!, unique!, merge!, mergewith!, union!, intersect!, setdiff!, symdiff!,
+    ],
+)
+
+"""Functions that delete from collection: Base `filter!` deletes while iterating `DELETION_SAFE` types (F48)."""
+const DELETE_FUNCTIONS = Base.IdSet{Any}(Any[delete!, pop!])
+
+"""
+Base collections that Base deletes from while iterating: `filter!` of `IdDict`, `WeakKeyDict` (`filter_in_one_pass!`),
+`Set`, `IdSet`, `BitSet` (`unsafe_filter!`). `Set` iterates its `Dict`, so `Dict` counts too.
+"""
+const DELETION_SAFE = Any[Dict, IdDict, WeakKeyDict, Set, Base.IdSet, BitSet]
+
 """Library functions whose result is one of their operands: each operand is an alternative (Base docstrings)."""
 const CHOICE_FUNCTIONS = Base.IdSet{Any}(Any[something, coalesce, max, min, ifelse])
 
