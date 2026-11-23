@@ -21,6 +21,7 @@ include("rules/false_effects.jl")
 include("rules/field_prefix.jl")
 include("rules/file_length.jl")
 include("rules/guard_result.jl")
+include("rules/hidden_input.jl")
 include("rules/implicit_import.jl")
 include("rules/inference_dependent.jl")
 include("rules/intermediate_widening.jl")
@@ -84,6 +85,7 @@ const REGISTRY = RuleEntry[
     FieldPrefix.ENTRY,
     FileLength.ENTRY,
     GuardResult.ENTRY,
+    HiddenInput.ENTRY,
     ImplicitImport.ENTRY,
     InferenceDependent.ENTRY,
     IntermediateWidening.ENTRY,

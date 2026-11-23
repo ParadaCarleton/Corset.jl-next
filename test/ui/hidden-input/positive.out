@@ -1,0 +1,82 @@
+error[hidden-input]: method reads `HiddenInputPositive.SCALE`, which other method writes
+  --> src/HiddenInputPositive.jl:10:22
+   |
+ 8 | set_scale!(scale::Float64) = (SCALE[] = scale; nothing)
+   | ------------------------------------------------------- writes `HiddenInputPositive.SCALE`
+ 9 | 
+10 | scaled(x::Float64) = SCALE[] * x
+   |                      ^^^^^^^ reads `HiddenInputPositive.SCALE`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+   = note: deny from correctness group, library preset
+   = note: opt out with `# corset: allow hidden-input -- <reason>`
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:12:25
+   |
+12 | noisy(x::Float64) = x + randn()
+   | ------------------------------- takes no RNG argument
+   |                         ^^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:21:29
+   |
+21 | ignored(rng::AbstractRNG) = rand()
+   | ---------------------------------- takes RNG argument but draws without it
+   |                             ^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: pass RNG argument to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:25:16
+   |
+25 | pick(x::Int) = rand()
+   | --------------------- takes no RNG argument
+   |                ^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:28:34
+   |
+28 | twin(rng::AbstractRNG, x::Int) = rand()
+   | --------------------------------------- takes RNG argument but draws without it
+   |                                  ^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: pass RNG argument to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:29:16
+   |
+29 | twin(x::Int) = rand()
+   | --------------------- takes no RNG argument
+   |                ^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method reads `HiddenInputPositive.ALIASED`, which other method writes
+  --> src/HiddenInputPositive.jl:35:13
+   |
+34 | bump_aliased!() = (ALIASED.changing[] += 1; nothing)
+   | ---------------------------------------------------- writes `HiddenInputPositive.ALIASED.changing`
+35 | aliased() = ALIASED.stable[]
+   |             ^^^^^^^^^^^^^^ reads `HiddenInputPositive.ALIASED`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+
