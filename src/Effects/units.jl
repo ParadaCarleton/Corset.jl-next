@@ -49,9 +49,9 @@ claims `:effect_free`.
 function unit_walk(typed::TypedCode, modules::Set{Module}, interpreter::CC.NativeInterpreter, world::UInt)::Tuple{Walk, Vector{Int}, Vector{Bool}, Bool}
     ir, lines, used = frame_ir(typed.frame, interpreter, Bool[call_statement(statement) for statement in typed.frame.src.code])
     # Source flags keep compiler `effect_free`, which `frame_ir` clears on kept calls. Claim in method voids proof.
-    flags, claimed = typed.frame.src.ssaflags, claims_effect_free(typed.site.method)
+    flags, claimed = typed.frame.src.ssaflags, claims_effect_free(typed.site.method, typed.frame.src)
     proven = Bool[!claimed && line in eachindex(flags) && flags[line] & CC.IR_FLAG_EFFECT_FREE != 0 for line in lines]
-    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{CapturedWrite}}(), IdDict{Method, Bool}(), world)
+    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{CapturedWrite}}(), IdDict{Union{Method, Core.MethodInstance}, Bool}(), world)
     return walk, lines, used, claimed
 end
 
@@ -84,19 +84,24 @@ function call_callee(walk::Walk, statement::Expr)::Callee.Type
     head = constant_value(walk, statement.args[1])
     head === Core._apply_iterate && return Callee.Open()
     head isa Core.Builtin && return Callee.Builtin(head)
-    types = Any[operand_type(walk, operand) for operand in statement.args]
-    holds_stand_in(types[1]) && return Callee.Open()
-    matches = Base._methods_by_ftype(Tuple{types...}, DISPATCH_LIMIT, walk.world)
-    matches isa Vector || return Callee.Open()
-    return methods_callee(Method[(match::Core.MethodMatch).method for match in matches])
+    holds_stand_in(operand_type(walk, statement.args[1])) && return Callee.Open()
+    matches = call_matches(walk, statement)
+    return isnothing(matches) ? Callee.Open() : methods_callee(Method[match.method for match in matches])
 end
 
-"""Whether `@assume_effects` claims `:effect_free` on `method` or on block in its code: compiler then trusts claim."""
-function claims_effect_free(method::Method)::Bool
+"""Method matches of call `statement` in `walk` by operand types, up to `DISPATCH_LIMIT`; `nothing` when more match."""
+function call_matches(walk::Walk, statement::Expr)::Union{Nothing, Vector{Core.MethodMatch}}
+    matches = Base._methods_by_ftype(Tuple{Any[operand_type(walk, operand) for operand in statement.args]...}, DISPATCH_LIMIT, walk.world)
+    return matches isa Vector ? Core.MethodMatch[match for match in matches] : nothing
+end
+
+"""
+Whether `@assume_effects` claims `:effect_free` on `method` or on block of `code`, code compiler infers for instance of
+`method` (`nothing`: none). Compiler then trusts claim. Generated method gives code per instance, not `Method.source`.
+"""
+function claims_effect_free(method::Method, code::Union{Nothing, Core.CodeInfo})::Bool
     CC.decode_effects_override(method.purity).effect_free && return true
-    # Generated method leaves `source` undefined; its body comes from generator at each call.
-    (isdefined(method, :source) && method.source !== nothing) || return false
-    return any(flag -> CC.decode_statement_effects_override(flag).effect_free, Base.uncompressed_ast(method).ssaflags)
+    return !isnothing(code) && any(flag -> CC.decode_statement_effects_override(flag).effect_free, code.ssaflags)
 end
 
 """

@@ -901,6 +901,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Compiler effects come free with unit inference.</li>
 <li><code>unused-call</code> (F54) needs compiler proof: discarded call with <code>effect_free</code>, <code>nothrow</code> and <code>terminates</code>. Name trust never proves none for it.</li>
 <li><code>@assume_effects</code> makes compiler trust a claim. Call to package method with claim takes no proof from its flags.</li>
+<li>Claim check reads code compiler infers. Generated method gives its generated code per instance.</li>
 <li>Claim deeper in callees stays unseen. <code>false-effects</code> reports a false claim in package that owns it.</li>
 <li><code>false-effects</code> compares claims of package methods with their own write and read events.</li>
 </ul>

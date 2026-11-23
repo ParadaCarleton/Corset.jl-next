@@ -285,6 +285,27 @@ assumed_store!(items::Vector{Int})::Vector{Int} = (Base.@assume_effects :effect_
 thread_count_address()::Ptr{Cint} = cglobal((:jl_n_threads, "libjulia-internal"), Cint)
 """Generated method: its `Method` has no `source`."""
 @generated generated_double(x::Real) = :(x + x)
+"""Store under block claim in generated code: compiler trusts claim, though `Method.source` holds none."""
+@generated function generated_store!(items::Vector{Int})
+    return quote
+        Base.@assume_effects :effect_free items[1] = 3
+        items
+    end
+end
+"""Store under block claim in generated branch: compiler infers it, not claim-free fallback."""
+function optional_store!(items::Vector{Int})
+    if @generated
+        return quote
+            Base.@assume_effects :effect_free items[1] = 3
+            items
+        end
+    else
+        items[1] = 3
+        return items
+    end
+end
+"""Call generated store: compiler trusts claim of direct callee."""
+generated_caller!(items::Vector{Int})::Vector{Int} = (generated_store!(items); items)
 """Discard length of `items`."""
 discard(items::Vector{Int})::Nothing = (length(items); nothing)
 

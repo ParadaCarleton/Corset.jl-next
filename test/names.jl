@@ -123,9 +123,11 @@ end
 loop_shape(name::Symbol)::Vector{Tuple{String, Confidence.T}} = [(write.callee, write.confidence) for write in effects(name).loop_writes]
 
 @testset "generated method" begin
-    # Generated method leaves `Method.source` undefined: claim check must not read it.
+    # Generated method leaves `Method.source` undefined: claim check reads code compiler infers.
     @test isempty(effects(:generated_double).writes)
-    @test !Effects.claims_effect_free(only(methods(CASES.generated_double)))
+    # Claim in generated code voids proof of method and of its direct caller.
+    @test !effects(:generated_store!).effect_free && !effects(:optional_store!).effect_free
+    @test !effects(:generated_caller!).effect_free
 end
 
 @testset "loop writes" begin
