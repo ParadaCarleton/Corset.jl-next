@@ -813,7 +813,7 @@ Code lives in <code>src/Effects/</code>.</p>
 </li>
 <li>Choice table: result is one of the operands, callable objects included, so it joins their values: <code>something</code>, <code>coalesce</code>, <code>max</code>, <code>min</code>, <code>ifelse</code>.</li>
 <li><code>convert</code> result is its operand, or new object as for other call.</li>
-<li>Constructor, tuple and vector literal results hold their operands: <code>Ref(x)</code> holds <code>x</code>. Typed literal <code>T[x]</code> converts <code>x</code> not of type <code>T</code>, so it can hold new object.</li>
+<li>Constructor, tuple and vector literal results hold their operands: <code>Ref(x)</code> holds <code>x</code>. Literal (<code>[x]</code>, <code>T[x]</code>) converts element not of its element type, so it can hold new object.</li>
 <li>Iteration: result of <code>iterate</code> and <code>indexed_iterate</code> holds element of iterated operand. Element step for array, dictionary, set and tuple; <code>deep</code> for other iterator.</li>
 <li>Element table: result is element of container operand, or other operand (<code>get(d, k, default)</code>).
 <ul>

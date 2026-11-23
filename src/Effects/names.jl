@@ -202,13 +202,12 @@ function holding_value(walk::Walk, operands::Vector{Any})::Value
 end
 
 """
-Value of typed array literal with `operands`: element type, then elements. Element not of that type converts, and
+Value of array literal of `type` with `elements` (`[a, b]`, `T[a, b]`). Element not of element type converts, and
 conversion can give new object, so literal holds untracked objects too.
 """
-function literal_value(walk::Walk, operands::Vector{Any})::Value
-    holder = holding_value(walk, operands[2:end])
-    element = constant_value(walk, operands[1])
-    exact = element isa Type && all(operand -> operand_type(walk, operand) <: element, operands[2:end])
+function literal_value(walk::Walk, elements::Vector{Any}, @nospecialize(type::Any))::Value
+    holder = holding_value(walk, elements)
+    exact = type isa DataType && type <: AbstractArray && all(element -> operand_type(walk, element) <: eltype(type), elements)
     return Value(holder.places, holder.inner, holder.fresh, holder.untracked || !exact)
 end
 
@@ -231,7 +230,7 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
     callee, operands = call_parts(walk, call)
     (isnothing(operands) || isempty(operands)) && return fresh_value(Set{Place.Type}(), true)
     # Array literal `T[a, b]`: element type operand, then elements.
-    callee === getindex && operand_type(walk, operands[1]) <: Type && return literal_value(walk, operands)
+    callee === getindex && operand_type(walk, operands[1]) <: Type && return literal_value(walk, operands[2:end], type)
     object = operand_value(walk, operands[1])
     if callee in LOAD_BUILTINS || callee === getproperty
         step = callee === getfield || callee === getproperty ? (length(operands) >= 2 ? field_step(walk, operands[2]) : nothing) : Step.Element()
@@ -255,8 +254,9 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
     callee in CHOICE_FUNCTIONS && return reduce(joined, choices; init = NO_VALUE)
     # Conversion gives operand itself, or new object.
     callee === convert && return reduce(joined, choices; init = new_value(walk, operands, type))
-    # Constructor, tuple and vector literal results hold their operands.
-    (callee isa Type || callee === Core.tuple || callee === Base.vect) && return holding_value(walk, operands)
+    callee === Base.vect && return literal_value(walk, operands, type)
+    # Constructor and tuple results hold their operands.
+    (callee isa Type || callee === Core.tuple) && return holding_value(walk, operands)
     return new_value(walk, operands, type)
 end
 

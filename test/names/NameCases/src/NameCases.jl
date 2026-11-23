@@ -218,6 +218,9 @@ stock!(shelf::Shelf)::Nothing = (push!(shelf[1], 7); nothing)
 Base.convert(::Type{Box}, holder::Holder) = Box(holder.box.value)
 """Zero box that typed literal converts from `holder`: conversion gives new box."""
 zero_converted!(holder::Holder)::Nothing = (Box[holder][1].value = 0; nothing)
+Base.promote_rule(::Type{Holder}, ::Type{Box}) = Box
+"""Zero first element of literal that promotes `holder` to new box."""
+zero_promoted!(holder::Holder, box::Box)::Nothing = ([holder, box][1].value = 0; nothing)
 """Zero `box` through vector literal."""
 zero_listed!(box::Box)::Nothing = ([box][1].value = 0; nothing)
 """Zero `box` through typed vector literal."""
