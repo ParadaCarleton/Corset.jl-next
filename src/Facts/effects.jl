@@ -252,6 +252,13 @@ struct CallFact
 end
 
 """
+Whether `call` has no effect: code drops its result, and compiler proves it writes nothing, cannot throw and terminates.
+Name trust must see no write either. `Core.donotdelete` is exempt.
+"""
+no_effect(call::CallFact)::Bool =
+    !call.used && call.effect_free && isempty(call.kinds) && !call.throws && call.terminates && call.callee != Callee.Builtin(Core.donotdelete)
+
+"""
 Effects of package method over its units (`effects.md`, Name trust): writes, reads, places its result can lie beneath
 (`aliases`), holds throws skip (`unguarded`), call statements in source order, writes to collection its loop iterates
 (`loop_writes`), calls that read memory they write (`self_aliases`), `complete` (no unit incomplete or cut), `effect_free` (compiler proves every unit writes nothing caller

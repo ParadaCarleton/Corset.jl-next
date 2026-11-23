@@ -6,6 +6,9 @@ const ALWAYS_THROWS = "always throws on stand-ins"
 """Blind spot cause of method whose facts hold no write on path stand-ins cut (`effects.md`, Stand-in cuts)."""
 const CUT = "stand-in cuts path"
 
+"""Blind spot cause of call without effect whose span is not exact: `unused-call` cannot name its source call."""
+const UNSPANNED_CALL = "call without effect lacks exact span"
+
 """Most methods call statement callee joins: compiler `max_methods`. More gives open callee."""
 const DISPATCH_LIMIT = 3
 
@@ -230,6 +233,7 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
             call_order(calls), surest(loops, loop_key), surest(selves, alias_key), complete, free[site.method], claimed_effects(site.method),
         )
         push!(methods, effects)
+        append!(spots, (BlindSpot(UNSPANNED_CALL, call.span) for call in effects.calls if no_effect(call) && call.span.precision != Precision.exact))
         # Write keeps its certainty with cut; only method without write goes to coverage line.
         haskey(cuts, site.method) && isempty(effects.writes) && push!(spots, BlindSpot(CUT, cuts[site.method]))
     end

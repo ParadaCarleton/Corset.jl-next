@@ -2,7 +2,7 @@
 module Effects
 
 using Moshi.Match: @match
-using ..Facts: Access, UnguardedHold, LoopWrite, SelfAlias, Callee, methods_callee, callee_methods, CallFact, MethodEffects, EffectsFacts, PackageFacts, Place, PlaceSteps, root_global, Root, Step, NO_STEPS, PATH_DEPTH, EffectKind, Confidence, BlindSpot, Span
+using ..Facts: Access, UnguardedHold, LoopWrite, SelfAlias, Callee, methods_callee, callee_methods, CallFact, no_effect, MethodEffects, EffectsFacts, PackageFacts, Place, PlaceSteps, root_global, Root, Step, NO_STEPS, PATH_DEPTH, EffectKind, Confidence, BlindSpot, Span, Precision
 using ..Inference: TypedCode, Units, called, holds_stand_in, serialized
 
 const CC = Core.Compiler

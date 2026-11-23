@@ -35,7 +35,8 @@ Finding is `definite` when inference covers every argument type method declares 
 Call whose operand types are not concrete joins effects of methods loaded now; operand type that holds stand-in gives
 effects of stand-in only. Both give `possible`: other types can give call effect.
 `@assume_effects` claim of callee voids proof: compiler trusts claim without check.
-Rule skips call it cannot tie to source statement: call lowering inserts, call inside macro call.
+Rule skips call it cannot tie to source statement: call lowering inserts or copies (`finally`), call inside macro
+call. Such call without effect goes to coverage line.
 `Core.donotdelete` passes: it keeps value alive for benchmarks.
 Fix is `manual`: rule cannot tell missing assignment from leftover statement.
 """
@@ -44,13 +45,6 @@ module UnusedCall
 using ...Facts
 
 const NAME = Symbol("unused-call")
-
-"""
-Whether `call` drops its result, and compiler proves it writes nothing, cannot throw and terminates. Name trust must see
-no write either. `Core.donotdelete` is exempt.
-"""
-unused(call::CallFact)::Bool =
-    !call.used && call.effect_free && isempty(call.kinds) && !call.throws && call.terminates && call.callee != Callee.Builtin(Core.donotdelete)
 
 """Call statements of `files` whose value Julia drops (`discarded`), with their file, by path and byte range."""
 function statements(files::AbstractVector{SyntaxFile})::Dict{Tuple{String, Int, Int}, Tuple{SyntaxFile, SyntaxNode}}
@@ -78,7 +72,7 @@ function findings(facts::FactSet)::Vector{Finding}
     isnothing(effects) && return Finding[]
     found, sources = Finding[], statements(facts.files)
     for method in effects.methods, call in method.calls
-        unused(call) && call.span.precision == Precision.exact || continue
+        no_effect(call) && call.span.precision == Precision.exact || continue
         name = callee_name(call.callee)
         site = get(sources, (call.span.file, call.span.first_byte, call.span.last_byte), nothing)
         (isnothing(name) || isnothing(site) || !names_callee(site..., name)) && continue

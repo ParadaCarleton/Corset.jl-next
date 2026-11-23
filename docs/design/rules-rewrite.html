@@ -955,6 +955,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <ul>
 <li>Compiler effects come free with unit inference.</li>
 <li><code>unused-call</code> (F54) needs compiler proof: discarded call with <code>effect_free</code>, <code>nothrow</code> and <code>terminates</code>. Name trust never proves none for it.</li>
+<li>Call without effect whose span is not exact goes to coverage line: <code>unused-call</code> cannot name its source call.</li>
 <li>Call fact keeps proof per call. Claim of callee voids <code>effect_free</code>. Operand types that are not concrete give open dispatch: <code>possible</code>.</li>
 <li>Coverage counters void proof, so CI tracks coverage of <code>src</code> only.</li>
 <li><code>@assume_effects</code> makes compiler trust a claim. Call to package method with claim takes no proof from its flags.</li>

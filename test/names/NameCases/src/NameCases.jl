@@ -310,6 +310,8 @@ generated_caller!(items::Vector{Int})::Vector{Int} = (generated_store!(items); i
 discard(items::Vector{Int})::Nothing = (length(items); nothing)
 """Discard length of element of unknown type: compiler effects join methods loaded now."""
 discard_open(items::Vector{Any})::Nothing = (length(items[1]); nothing)
+"""Lowering copies `finally` call, so calls of `abs` outnumber source calls: no exact span, blind spot."""
+discard_finally(x::Int)::Int = (abs(x); try println(x) finally abs(x) end; x)
 
 # Loop writes (F48).
 """Repeat each item at end: loop over `items` grows it."""

@@ -217,6 +217,9 @@ end
     call = only(fact for fact in effects(:discard).calls if callee_name(fact.callee) == "length")
     @test !call.used && !call.throws && call.terminates && isempty(call.kinds) && !call.stand_in && !call.open_dispatch && call.effect_free == PROVES
     @test only(fact for fact in effects(:discard_open).calls if fact.callee == Callee.Open()).open_dispatch
+    # Call without effect and without exact span goes to coverage line.
+    unspanned(start::String)::Bool = any(spot -> spot.cause == Effects.UNSPANNED_CALL && startswith(read(spot.span.file, String)[spot.span.first_byte:end], start), SPOTS)
+    @test unspanned("discard_finally(") && !unspanned("discard(")
     # Claim of callee voids proof of call.
     @test !only(fact for fact in effects(:claimed_caller!).calls if callee_name(fact.callee) == "run_claimed").effect_free
     push = only(fact for fact in effects(:push_value!).calls if callee_name(fact.callee) == "push!")
