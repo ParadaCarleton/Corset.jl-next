@@ -309,3 +309,23 @@ warning[overspecified-type]: `Float64` rejects callers `Real` accepts
    = fix: replace with `Real` after checking `applicable` calls and `MethodError` catches: widening changes what they do   [manual]
    = docs: corset explain overspecified-type
 
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+  --> src/OverspecifiedTypePositive.jl:99:14
+   |
+99 | quartered(x::Float64) = x / 4
+   |              ^^^^^^^ narrower than code needs
+   |
+   = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+   = fix: replace with `Real` after checking `applicable` calls and `MethodError` catches: widening changes what they do   [manual]
+   = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+   --> src/OverspecifiedTypePositive.jl:105:21
+    |
+105 | (scaler::Scaler)(x::Float64) = scaler.factor * x
+    |                     ^^^^^^^ narrower than code needs
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Real` after checking `applicable` calls and `MethodError` catches: widening changes what they do   [manual]
+    = docs: corset explain overspecified-type
+

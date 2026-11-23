@@ -361,8 +361,9 @@ end
 const REFLECTION = Union{typeof(applicable), typeof(hasmethod), typeof(which), typeof(methods)}
 
 """
-Functions and types lowered code of `sites` tests for methods: passes to reflection call (`REFLECTION`), or calls in
-`try` of method that names `MethodError`. Generated methods pass: they keep generator only.
+Functions, types and callable objects lowered code of `sites` tests for methods: passes to reflection call
+(`REFLECTION`), or calls in `try` whose catch can see `MethodError`: method names `MethodError`, or never rethrows.
+Generated methods pass: they keep generator only.
 """
 function probed(sites::AbstractVector{MethodSite})::Base.IdSet{Any}
     found = Base.IdSet{Any}()
@@ -377,8 +378,10 @@ function probed(sites::AbstractVector{MethodSite})::Base.IdSet{Any}
         for (_, call) in calls
             length(call.args) >= 2 && lowered_value(code, call.args[1]) isa REFLECTION && push!(found, lowered_value(code, call.args[2]))
         end
-        any(((_, call),) -> any(argument -> lowered_value(code, argument) === MethodError, call.args), calls) || continue
         tries = [(index, statement.catch_dest) for (index, statement) in pairs(code) if statement isa Core.EnterNode]
+        isempty(tries) && continue
+        globals = [lowered_value(code, operand) for (_, call) in calls for operand in call.args]
+        (any(named -> named === MethodError, globals) || !any(named -> named === rethrow, globals)) || continue
         for (index, call) in calls
             any(((enter, catch_dest),) -> enter < index < catch_dest, tries) && push!(found, lowered_value(code, call.args[1]))
         end

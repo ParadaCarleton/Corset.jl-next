@@ -2,7 +2,7 @@
 """Package whose functions annotate narrower types than their code needs."""
 module OverspecifiedTypePositive
 
-export scale, area, total, middle, weighted, present, rows, absolute, Point, power, code, rounded, forwarded, halve, third
+export scale, area, total, middle, weighted, present, rows, absolute, Point, power, code, rounded, forwarded, halve, third, quarter, doubled
 public counted, sizes, members, mean
 
 """Scaled copy of values."""
@@ -87,5 +87,25 @@ function third(x)
     end
 end
 thirded(x::Float64) = x / 3
+
+"""Quarter of float, else zero; bare `catch` swallows `MethodError` from private `quartered`, so fix is manual."""
+function quarter(x)
+    try
+        return quartered(x)
+    catch
+        return 0
+    end
+end
+quartered(x::Float64) = x / 4
+
+"""Callable that scales floats by `factor`."""
+struct Scaler
+    factor::Real
+end
+(scaler::Scaler)(x::Float64) = scaler.factor * x
+const doubler = Scaler(2)
+
+"""Double of float, else zero; widened call method of `Scaler` would change `applicable` answer, so fix is manual."""
+doubled(x) = applicable(doubler, x) ? doubler(x) : 0
 
 end

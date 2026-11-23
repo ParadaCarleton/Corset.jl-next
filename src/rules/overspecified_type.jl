@@ -12,8 +12,8 @@ Private method counts: public `f(x) = _f(x)` with `_f(x::Vector)` rejects every 
 Method passes when other method of same function covers its signature: it is fast path beside generic method.
 Fix is `likely` when widened method and each other method of function, widened too or not, are disjoint or nested.
 Otherwise fix is manual: Julia could find call ambiguous, or drop method with same widened signature.
-Fix is manual for function package code tests for methods: passes to `applicable`, `hasmethod`, `which` or `methods`,
-or calls in `try` of method that names `MethodError`. Widening changes what that code does.
+Fix is manual for function or callable object package code tests for methods: passes to `applicable`, `hasmethod`,
+`which` or `methods`, or calls in `try` of method that names `MethodError` or never rethrows. Widening changes what it does.
 
 ## Rationale
 Julia compiles method for each concrete argument type, so wider annotation runs as fast.
@@ -32,8 +32,8 @@ scale(values::AbstractVector{<:Real}, factor::Real)::AbstractVector{<:Real} = va
 ## Limitations
 Rule reads argument annotations; result types, `where` bounds and struct fields pass.
 Methods on other modules' functions and constructors of other modules' types pass: their owner sets signature.
-Fix stays `likely` when package code tests for methods in generated code, or catches `MethodError` in caller of caller:
-rule reads reflection calls and `try` bodies of each method alone.
+Fix stays `likely` when package code tests for methods in generated code or in caller of caller, or when catch
+rethrows some errors and swallows `MethodError`: rule reads reflection calls and `try` bodies of each method alone.
 `Bool`, unsigned types and C aliases as `Cint` pass: they mark flags, bit patterns and C calls.
 Type alias that names listed type passes.
 """
@@ -152,17 +152,20 @@ function owned(method::Method, modules::AbstractSet{Module})::Bool
     return callee isa DataType && callee.name.module in modules
 end
 
-"""Function or type method `method` belongs to; `nothing` for callable object of type with fields."""
-function method_function(method::Method)::Any
-    callee = Base.unwrap_unionall(tuple_parameters(method.sig)[1])
-    Base.isType(callee) && return callee.parameters[1]
-    return callee isa DataType && isdefined(callee, :instance) ? callee.instance : nothing
+"""Whether `method` belongs to function, type or callable object of `probed`, which package code tests for methods."""
+function probed_callee(method::Method, probed::AbstractSet)::Bool
+    callee = Base.rewrap_unionall(tuple_parameters(method.sig)[1], method.sig)
+    # Loop, since closure over type value compiles once per type.
+    for tested in probed
+        tested isa callee && return true
+    end
+    return false
 end
 
-"""What to do before widening `method`, whose function package code tests for methods when in `probed`; `nothing` when fix is safe."""
+"""What to do before widening `method`; `nothing` when fix is safe. Package code tests functions of `probed` for methods."""
 function fix_blocker(method::Method, probed::AbstractSet)::Union{Nothing, String}
     dispatch_safe(method, widened_signature(method.sig)) || return "other methods change: widened method overlaps them"
-    method_function(method) in probed && return "checking `applicable` calls and `MethodError` catches: widening changes what they do"
+    probed_callee(method, probed) && return "checking `applicable` calls and `MethodError` catches: widening changes what they do"
     return nothing
 end
 
