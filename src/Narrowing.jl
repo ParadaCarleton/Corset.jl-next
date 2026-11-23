@@ -69,8 +69,10 @@ combined(proven::Proven, outcome::Outcome)::Outcome = isnothing(outcome) ? nothi
 forget(outcome::Outcome, slot::Integer)::Outcome = isnothing(outcome) ? nothing : delete!(copy(outcome), slot)
 
 """Type of variable `slot` before statement: type assignment earlier in block gives, else type at start of block."""
-slot_type(table::AbstractVector{CC.VarState}, assigned::AbstractDict{<:Integer, <:Type}, slot::Integer)::Type =
-    get(() -> CC.widenconst(table[slot].typ), assigned, slot)
+function slot_type(table::AbstractVector{CC.VarState}, assigned::AbstractDict{<:Integer, <:Type}, slot::Integer)::Type
+    Base.require_one_based_indexing(table)
+    return get(() -> CC.widenconst(table[slot].typ), assigned, slot)
+end
 
 """
 Variable, narrowed type and test result that narrows, for type test `call`: `x isa T`, `x !== nothing`,
@@ -78,6 +80,7 @@ Variable, narrowed type and test result that narrows, for type test `call`: `x i
 means test never gives that result here: lowering reads `x === nothing` again on its own true branch.
 """
 function type_test(code::Core.CodeInfo, call::Expr, parameters::AbstractVector{CC.VarState}, table::AbstractVector{CC.VarState}, assigned::AbstractDict{<:Integer, <:Type})::Union{Nothing, Tuple{Int, Type, Bool}}
+    Base.require_one_based_indexing(table)
     callee = code_argextype(call.args[1], code, parameters)
     callee isa Core.Const || return nothing
     arguments = Any[resolved(code, argument) for argument in call.args[2:end]]

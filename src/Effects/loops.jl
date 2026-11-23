@@ -17,6 +17,7 @@ unknown place. Loop step `iterate(x, state)` closes loop over `x`; loop starts a
 its step when none exists.
 """
 function loop_writes(walk::Walk, spans::AbstractVector{Span})::Tuple{Vector{LoopWrite}, Vector{BlindSpot}}
+    Base.require_one_based_indexing(spans)
     found, spots = LoopWrite[], BlindSpot[]
     steps = filter(index -> (operands = iterate_operands(walk, index); !isnothing(operands) && length(operands) == 2), 1:length(walk.ir.stmts))
     isempty(steps) && return (found, spots)

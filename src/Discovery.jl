@@ -41,7 +41,7 @@ ids(names::AbstractDict{String, Any})::Vector{Base.PkgId} = [Base.PkgId(Base.UUI
 
 """
 Project.toml facts of package with project root `root`; `nothing` for project without `name`. Manifest of `environment`
-project file gives `test_loads`. Config error: missing module or extension file, unknown trigger or test target name.
+project file gives `test_loads`. Config error: missing module or extension file, malformed or unknown trigger, unknown test target name.
 Only package load needs uuid.
 """
 function project_facts(root::String; environment::Union{Nothing, String})::Union{Nothing, ProjectFacts}
@@ -51,7 +51,7 @@ function project_facts(root::String; environment::Union{Nothing, String})::Union
     entry = joinpath(root, "src", "$name.jl")
     isfile(entry) || throw(ConfigError("package $name has no module file src/$name.jl"))
     known = merge(table(project, "deps"), table(project, "weakdeps"))
-    extensions = [extension(root, extension_name, triggers, known) for (extension_name, triggers) in sort!(collect(table(project, "extensions")); by = first)]
+    extensions = [extension(root, extension_name, trigger_names(extension_name, triggers), known) for (extension_name, triggers) in sort!(collect(table(project, "extensions")); by = first)]
     test_deps, tests = test_dependencies(root, project)
     uuid = tryparse(Base.UUID, string(get(project, "uuid", "")))
     loads = isnothing(uuid) || isnothing(environment) ? nothing : test_loads(environment, uuid, tests)
@@ -80,12 +80,19 @@ function test_loads(environment::String, uuid::Base.UUID, tests::AbstractVector{
     return sort!([Base.PkgId(id, first(found[id])) for id in seen]; by = id -> id.name)
 end
 
-"""Extension `name` of package at `root` with trigger name or names `triggers`, looked up in `known` (`[deps]` and `[weakdeps]`)."""
-function extension(root::String, name::String, triggers::Union{String, AbstractVector}, known::AbstractDict{String, Any})::Extension
-    names = triggers isa String ? [triggers] : Vector{String}(triggers)
-    unknown = filter(trigger -> !haskey(known, trigger), names)
+"""Trigger names of extension `name` from its `[extensions]` entry `triggers`: one name or list of names."""
+function trigger_names(name::String, triggers::Any)::Vector{String}
+    triggers isa String && return [triggers]
+    # TOML parses list of names as `Vector{String}`; empty or mixed list as `Vector{Any}`.
+    triggers isa Vector{String} && return triggers
+    throw(ConfigError("extension $name needs trigger name or list of names"))
+end
+
+"""Extension `name` of package at `root` with trigger names `triggers`, looked up in `known` (`[deps]` and `[weakdeps]`)."""
+function extension(root::String, name::String, triggers::AbstractVector{String}, known::AbstractDict{String, Any})::Extension
+    unknown = filter(trigger -> !haskey(known, trigger), triggers)
     isempty(unknown) || throw(ConfigError("extension $name names $(join(unknown, ", ")), which [weakdeps] lacks"))
-    return Extension(name, extension_file(root, name), [Base.PkgId(Base.UUID(known[trigger]), trigger) for trigger in names])
+    return Extension(name, extension_file(root, name), [Base.PkgId(Base.UUID(known[trigger]), trigger) for trigger in triggers])
 end
 
 """

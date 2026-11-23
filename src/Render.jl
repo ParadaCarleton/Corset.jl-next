@@ -19,7 +19,7 @@ end
 
 """Text of line `line` without its newline."""
 function line_text(text::String, starts::AbstractVector{<:Integer}, line::Integer)::String
-    stop = line < length(starts) ? starts[line + 1] - 2 : ncodeunits(text)
+    stop = line < lastindex(starts) ? starts[line + 1] - 2 : ncodeunits(text)
     return replace(chopsuffix(text[starts[line]:thisind(text, max(stop, starts[line] - 1))], "\r"), '\t' => TAB)
 end
 
@@ -34,6 +34,8 @@ column(text::String, starts::AbstractVector{<:Integer}, line::Integer, byte::Int
 
 """Line, column and underline width of `span`; multi-line span underlines to end of first line."""
 function placement(text::String, starts::AbstractVector{<:Integer}, span::Span)::Tuple{Int, Int, Int}
+    # Index into `starts` is line number.
+    Base.require_one_based_indexing(starts)
     line = searchsortedlast(starts, span.first_byte)
     content = line_text(text, starts, line)
     if span.precision == Precision.line

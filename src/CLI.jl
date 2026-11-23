@@ -52,15 +52,15 @@ const BUILTIN_DOCS = Dict(
 """Level flags of `args` in order, whether `-D warnings` appears, and remaining arguments."""
 function level_flags(args::AbstractVector{String})::Tuple{Vector{Pair{String, Level.T}}, Bool, Vector{String}}
     levels, deny_warnings, rest = Pair{String, Level.T}[], false, String[]
-    index = 1
-    while index <= length(args)
+    index = firstindex(args)
+    while index <= lastindex(args)
         level = get(LEVEL_FLAGS, args[index], nothing)
         if isnothing(level)
             push!(rest, args[index])
             index += 1
             continue
         end
-        index < length(args) || throw(ArgParseError("$(args[index]) needs group or rule name"))
+        index < lastindex(args) || throw(ArgParseError("$(args[index]) needs group or rule name"))
         name = args[index + 1]
         if level == Level.deny && name == "warnings"
             deny_warnings = true

@@ -291,6 +291,7 @@ of lookup (`get(d, k, default)`). Result of leading callable can be fresh or cap
 and `fetch` off `Channel`, `rand` with dimensions.
 """
 function element_value(walk::Walk, call::Expr, @nospecialize(callee::Any), operands::AbstractVector{Any}, @nospecialize(type::Any))::Value
+    Base.require_one_based_indexing(operands)
     called = callable(walk, operands[1])
     position = called || rng_operand(walk, operands[1]) ? 2 : 1
     position <= length(operands) || return fresh_value(Set{Place.Type}(), true)
@@ -572,6 +573,7 @@ Events of `!` call (`effects.md`, Writes, source 2): skipped `IO` and RNG operan
 written operand, `possible` write on places keyword tuple holds, else on global state.
 """
 function bang_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any}, keywords::Union{Nothing, Value})::Vector{Event}
+    Base.require_one_based_indexing(operands)
     found, position = Event[], written_position(walk, callee, operands)
     for operand in operands[1:(something(position, length(operands) + 1) - 1)]
         io_operand(walk, operand) && append!(found, value_events(walk, operand_value(walk, operand), EffectKind.io, true, true))
@@ -589,6 +591,7 @@ end
 
 """Events of library function without `!` that writes (`effects.md`, Writes, source 3): IO, synchronization, RNG, stateful iteration."""
 function exception_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Event}
+    Base.require_one_based_indexing(operands)
     found = Event[]
     if callee in IO_FUNCTIONS
         streams = [operand for operand in operands if io_operand(walk, operand)]
@@ -637,6 +640,7 @@ Read events of call (`effects.md`, Reads): field and element loads, `ScopedValue
 starts. Facts keep reads of globals and special kinds; plain argument reads stay out.
 """
 function read_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Event}
+    Base.require_one_based_indexing(operands)
     found = Event[]
     isempty(operands) && return callee in TASK_FUNCTIONS ? [Event(ELSEWHERE, false, EffectKind.task_local, Confidence.definite, false)] : found
     object = operand_value(walk, operands[1])
@@ -666,6 +670,7 @@ Whether call starts iteration of first operand without state: `iterate(x)`, dest
 `first`, `only`, or `isempty` by generic method.
 """
 function starts_iteration(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Bool
+    Base.require_one_based_indexing(operands)
     callee === iterate && return length(operands) == 1
     callee === Base.indexed_iterate && return length(operands) == 2 && constant_value(walk, operands[2]) == 1
     callee in START_FUNCTIONS && length(operands) == 1 || return false
@@ -699,6 +704,7 @@ arguments. Builtin, constructor, tuple, alias and choice function return or stor
 operands after written one.
 """
 function invoked_operands(walk::Walk, call::Expr, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Any}
+    Base.require_one_based_indexing(operands)
     invoked = Any[call.args[1]]
     constant_value(walk, call.args[1]) === Core.kwcall && length(call.args) >= 3 && push!(invoked, call.args[3])
     (callee isa Core.Builtin || callee isa Type || callee === Core.tuple || callee in ALIAS_FUNCTIONS || callee in CHOICE_FUNCTIONS) && return invoked

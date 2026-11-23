@@ -113,7 +113,7 @@ function after_exit(file::SyntaxFile, block::SyntaxNode, labels::AbstractVector{
     (isnothing(index) || index == length(statements)) && return nothing
     exit, dead = statements[index], statements[index + 1]
     next_label = searchsortedfirst(labels, span(file, exit).last_byte)
-    next_label <= length(labels) && labels[next_label] <= span(file, statements[end]).last_byte && return nothing
+    next_label <= lastindex(labels) && labels[next_label] <= span(file, statements[end]).last_byte && return nothing
     name = exit_name(block, exit)
     return finding(
         NAME, file, dead; kind = :after_exit, confidence = Confidence.definite,

@@ -126,7 +126,7 @@ Each set of `tiers` frees its packages; first set that resolves wins. Set that f
 """
 function build!(env::String, project::ProjectFacts, tiers::AbstractVector{<:AbstractSet{Base.UUID}})::Vector{Tuple{String, String, String}}
     root = project.root
-    preferences = get(parse_toml(joinpath(root, "Project.toml")), "preferences", Dict{String, Any}())
+    preferences = get(parse_toml(joinpath(root, "Project.toml")), "preferences", Dict{String, Any}())::Dict{String, Any}
     deps = manifest_deps(joinpath(root, "Project.toml"))
     local_preferences = joinpath(root, "LocalPreferences.toml")
     isfile(local_preferences) && cp(local_preferences, joinpath(env, "LocalPreferences.toml"))

@@ -118,6 +118,7 @@ end
 
 """Callee of call statement `head` in lowered `code`: value of global or of statement it names; else `nothing`."""
 function callee(code::AbstractVector{Any}, head::Any)::Any
+    Base.require_one_based_indexing(code)
     head isa Core.SSAValue && (head = code[head.id])
     return head isa GlobalRef && isdefined(head.mod, head.name) ? getglobal(head.mod, head.name) : nothing
 end

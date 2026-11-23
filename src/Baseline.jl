@@ -73,7 +73,8 @@ function read_baseline(root::String)::Dict{Key, Int}
     counts = Dict{Key, Int}()
     try
         for table in get(TOML.parsefile(path), "finding", Dict{String, Any}[])
-            key, count = entry(table)
+            # Concrete table keeps `entry` instance concrete, so new AbstractDict methods cannot invalidate it.
+            key, count = entry(table::Dict{String, Any})
             counts[key] = count
         end
     catch error
@@ -99,7 +100,7 @@ end
 
 """Which of `keys` baseline `counts` covers, in order, and stale keys with counts no finding used."""
 function cover(counts::AbstractDict{Key, <:Integer}, keys::AbstractVector{Key})::Tuple{Vector{Bool}, Vector{Key}}
-    left = copy(counts)
+    left = Dict{Key, Int}(counts)
     covered = map(keys) do key
         get(left, key, 0) > 0 || return false
         left[key] -= 1

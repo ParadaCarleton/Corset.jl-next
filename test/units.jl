@@ -287,6 +287,11 @@ end
         write(joinpath(root, "Project.toml"), "name = \"Pkg\"\n\n[weakdeps]\nC = \"$(Base.UUID(rand(UInt128)))\"\n\n[extensions]\nGoneExt = \"C\"\n\n[preferences.Corset]\nkind = \"library\"\n")
         @test_throws "extension GoneExt has no file ext/GoneExt.jl" Corset.Discovery.discover(root; environment = nothing)
         @test_throws "extension GoneExt has no file ext/GoneExt.jl" Corset.check(joinpath(root, "src"); flags = SYNTAX_ONLY)
+        write(joinpath(root, "Project.toml"), "name = \"Pkg\"\n\n[weakdeps]\nA = \"$(Base.UUID(rand(UInt128)))\"\nB = \"$(Base.UUID(rand(UInt128)))\"\n\n[extensions]\nFlatExt = [\"A\", \"B\"]\n")
+        @test [id.name for id in only(Corset.Discovery.project_facts(root; environment = nothing).extensions).triggers] == ["A", "B"]
+        # TOML parses empty list as `Vector{Any}`; extension without trigger never loads.
+        write(joinpath(root, "Project.toml"), "name = \"Pkg\"\n\n[extensions]\nFlatExt = []\n")
+        @test_throws "extension FlatExt needs trigger name or list of names" Corset.Discovery.discover(root; environment = nothing)
     end
 end
 

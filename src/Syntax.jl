@@ -26,7 +26,8 @@ function parse_file(path::String, text::String, role::Role.T)::SyntaxFile
         push!(get!(() -> SyntaxNode[], JS.is_leaf(node) ? leaves : forms, JS.kind(node)), node)
     end
     comments = [Int(first(token.range)):Int(last(token.range)) for token in JS.tokenize(text) if JS.kind(token) == JS.K"Comment"]
-    groups = groups!(IdDict{SyntaxNode, UnitRange{Int}}(), text, tree)
+    groups = IdDict{SyntaxNode, UnitRange{Int}}()
+    groups!(groups, text, tree)
     return SyntaxFile(path, text, role, tree, forms, leaves, comments, groups, errors, binding_sites(forms))
 end
 
@@ -96,8 +97,8 @@ parse_problems(facts::FactSet)::Vector{Finding} = [
 Record in `found` bytes of grouping parentheses that wrap only one child of `node` and its descendants.
 JuliaSyntax keeps them as `parens` green children of parent and drops them from `SyntaxNode` tree.
 """
-function groups!(found::IdDict{SyntaxNode, <:UnitRange{<:Integer}}, text::String, node::SyntaxNode)::IdDict{SyntaxNode, UnitRange{Int}}
-    JS.is_leaf(node) && return found
+function groups!(found::IdDict{SyntaxNode, <:UnitRange{<:Integer}}, text::String, node::SyntaxNode)::Nothing
+    JS.is_leaf(node) && return nothing
     children, index, offset = JS.children(node), 1, JS.first_byte(node)
     for green in JS.children(node.raw)
         range = offset:(offset + JS.span(green) - 1)
@@ -112,7 +113,7 @@ function groups!(found::IdDict{SyntaxNode, <:UnitRange{<:Integer}}, text::String
         index <= length(children) && trimmed_bytes(text, children[index]) == inner && (found[children[index]] = range)
     end
     foreach(child -> groups!(found, text, child), children)
-    return found
+    return nothing
 end
 
 """Bytes of only code inside `parens` node `green` at byte `offset`, through nested parentheses; `nothing` for other contents."""

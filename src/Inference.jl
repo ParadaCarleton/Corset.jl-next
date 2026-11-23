@@ -276,6 +276,7 @@ Dotcall node of `broadcasted` statement `index` of `code`: node of `materialize`
 gives outermost broadcast of `xs .* 0.5 .+ 1.0` to its `materialize` statement only. `nothing` for other consumer.
 """
 function broadcast_node(code::Core.CodeInfo, nodes::AbstractVector{Union{Nothing, SyntaxNode}}, index::Integer)::Union{Nothing, SyntaxNode}
+    Base.require_one_based_indexing(nodes)
     for user in (index + 1):length(code.code)
         call = statement_call(code.code[user])
         (isnothing(call) || !(Core.SSAValue(index) in call.args)) && continue
@@ -290,8 +291,9 @@ that line lies in definition; else method site span. Statement without own line 
 Code from macro of same file carries line of macro body, outside definition, so it gets method site span.
 """
 function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodSite, starts::AbstractVector{<:Integer}, nodes::AbstractVector{Union{Nothing, SyntaxNode}})::Vector{Span}
+    Base.require_one_based_indexing(nodes)
     path = site.file.path
-    lines = isnothing(site.node) ? (1:length(starts)) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
+    lines = isnothing(site.node) ? eachindex(starts) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
     found, line = Span[], 0
     # Lowering gives method for omitted defaults first body line, though definition line holds defaults and forwarding call.
     wrapper = forwards(site)
@@ -463,6 +465,7 @@ nodes. Escape is `possible` when method tests type (`branch`) or node cannot nar
 caller's array type decides whether mixing fails (GPU array with CPU array).
 """
 function hard_arrays(typed::TypedCode, instance::Core.MethodInstance, nodes::AbstractVector{Union{Nothing, SyntaxNode}}, changes::AbstractVector{HardArrays.Change}, branch::Bool)::Vector{HardArray}
+    Base.require_one_based_indexing(nodes)
     found, file = HardArray[], typed.site.file
     for change in changes
         construction = change.construction
@@ -506,6 +509,7 @@ Disruption facts of `typed` code of `instance` from weak value `changes` (`Widen
 statement nodes. Finding is `possible` when method tests type (`branch`) or node cannot narrow to weak value.
 """
 function disruptions(typed::TypedCode, instance::Core.MethodInstance, nodes::AbstractVector{Union{Nothing, SyntaxNode}}, changes::AbstractVector{Widening.Change}, branch::Bool)::Vector{Disruption}
+    Base.require_one_based_indexing(nodes)
     found, conversion = Disruption[], isempty(changes) ? nothing : converter(typed, instance)
     for change in changes
         origin, file = change.origin, typed.site.file
@@ -535,6 +539,7 @@ Lost narrowing facts of `typed` code from `losses` (`Narrowing.losses`); `nodes`
 when test maps to term of `&&` or `||` chain (`Narrowing.guard`).
 """
 function narrowings(typed::TypedCode, nodes::AbstractVector{Union{Nothing, SyntaxNode}}, losses::AbstractVector{Narrowing.Loss})::Vector{NarrowingLoss}
+    Base.require_one_based_indexing(nodes)
     found, file = NarrowingLoss[], typed.site.file
     for loss in losses
         node = nodes[loss.test]

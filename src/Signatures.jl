@@ -173,7 +173,9 @@ end
 First `limit` combinations of one entry per position of `options`, first position fastest as `Iterators.product`
 orders them, and whether more exist. `Iterators.product` over splatted options compiles once per argument count.
 """
-function combinations(options::AbstractVector{<:AbstractVector{Any}}, limit::Integer)::Tuple{Vector{Vector{Any}}, Bool}
+function combinations(options::AbstractVector{<:AbstractVector}, limit::Integer)::Tuple{Vector{Vector{Any}}, Bool}
+    Base.require_one_based_indexing(options)
+    foreach(Base.require_one_based_indexing, options)
     found, indices = Vector{Any}[], ones(Int, length(options))
     more = !any(isempty, options)
     while more

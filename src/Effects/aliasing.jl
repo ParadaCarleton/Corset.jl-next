@@ -2,6 +2,7 @@
 
 """Self-alias calls of `walk`, with `spans` of its IR statements (`self_alias`)."""
 function self_aliases(walk::Walk, spans::AbstractVector{Span})::Vector{SelfAlias}
+    Base.require_one_based_indexing(spans)
     found = SelfAlias[]
     for index in 1:length(walk.ir.stmts)
         call = self_alias(walk, index)
