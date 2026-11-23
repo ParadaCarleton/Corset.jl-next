@@ -220,7 +220,7 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
     callee, operands = call_parts(walk, call)
     (isnothing(operands) || isempty(operands)) && return fresh_value(Set{Place.Type}(), true)
     # Array literal `T[a, b]`: element type operand, then elements.
-    callee === getindex && callable(walk, operands[1]) && return holding_value(walk, operands[2:end])
+    callee === getindex && operand_type(walk, operands[1]) <: Type && return holding_value(walk, operands[2:end])
     object = operand_value(walk, operands[1])
     if callee in LOAD_BUILTINS || callee === getproperty
         step = callee === getfield || callee === getproperty ? (length(operands) >= 2 ? field_step(walk, operands[2]) : nothing) : Step.Element()
@@ -239,7 +239,8 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
         return fresh_value(element.places, element.fresh || isempty(element.places))
     end
     callee in ELEMENT_FUNCTIONS && return element_value(walk, call, callee, operands, type)
-    choices = (operand_value(walk, operand) for operand in operands if !callable(walk, operand))
+    # Every operand is an alternative, callable object too (`ifelse(flag, a, b)`).
+    choices = (operand_value(walk, operand) for operand in operands)
     callee in CHOICE_FUNCTIONS && return reduce(joined, choices; init = NO_VALUE)
     # Conversion gives operand itself, or new object.
     callee === convert && return reduce(joined, choices; init = new_value(walk, operands, type))

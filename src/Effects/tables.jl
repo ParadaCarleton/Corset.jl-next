@@ -20,7 +20,7 @@ const ALIAS_FUNCTIONS = Base.IdSet{Any}(
     ],
 )
 
-"""Library functions whose result is one of their non-callable operands: each operand is an alternative (Base docstrings)."""
+"""Library functions whose result is one of their operands: each operand is an alternative (Base docstrings)."""
 const CHOICE_FUNCTIONS = Base.IdSet{Any}(Any[something, coalesce, max, min, ifelse])
 
 """

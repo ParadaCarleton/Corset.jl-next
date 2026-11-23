@@ -64,7 +64,7 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
 - Alias table: library functions whose result can be an operand or lie beneath it. Result keeps places of each non-callable operand.
   - Table: `view`, `reshape`, `vec`, `parent`, `transpose`, `adjoint`, `keys`, `values`, `pairs`, `first`, `last`, `only`, `identity`, `skipmissing`, iterator wrappers (`zip`, `enumerate`, `Iterators.*`).
   - Pointer conversions before foreign call: `pointer`, `cconvert`, `unsafe_convert`.
-- Choice table: result is one of the non-callable operands, so it joins their values: `something`, `coalesce`, `max`, `min`, `ifelse`.
+- Choice table: result is one of the operands, callable objects included, so it joins their values: `something`, `coalesce`, `max`, `min`, `ifelse`.
 - `convert` result is its operand, or new object as for other call.
 - Constructor, tuple and vector literal results hold their operands: `Ref(x)` holds `x`.
 - Iteration: result of `iterate` and `indexed_iterate` holds element of iterated operand. Element step for array, dictionary, set and tuple; `deep` for other iterator.

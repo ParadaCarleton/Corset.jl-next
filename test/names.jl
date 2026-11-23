@@ -108,6 +108,8 @@ end
     @test any(access -> access.place == Place.Deep(Root.Parameter(2)) && access.confidence == POSSIBLE, effects(:take_bytes).writes)
     @test Set(shape(effects(:zero_larger!).writes)) == Set([(parameter(2), true, MEMORY, POSSIBLE), (parameter(3), true, MEMORY, POSSIBLE)])
     @test shape(effects(:zero_chosen!).writes) == [(parameter(3), true, MEMORY, POSSIBLE)]
+    @test Set(shape(effects(:reset_either!).writes)) == Set([(parameter(3), false, MEMORY, POSSIBLE), (parameter(4), false, MEMORY, POSSIBLE)])
+    @test shape(effects(:stock!).writes) == [(parameter(2, Step.Element()), true, MEMORY, DEFINITE)]
     @test shape(effects(:zero_listed!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
     @test shape(effects(:zero_typed_listed!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
 end

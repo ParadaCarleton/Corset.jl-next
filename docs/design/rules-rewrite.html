@@ -811,7 +811,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Pointer conversions before foreign call: <code>pointer</code>, <code>cconvert</code>, <code>unsafe_convert</code>.</li>
 </ul>
 </li>
-<li>Choice table: result is one of the non-callable operands, so it joins their values: <code>something</code>, <code>coalesce</code>, <code>max</code>, <code>min</code>, <code>ifelse</code>.</li>
+<li>Choice table: result is one of the operands, callable objects included, so it joins their values: <code>something</code>, <code>coalesce</code>, <code>max</code>, <code>min</code>, <code>ifelse</code>.</li>
 <li><code>convert</code> result is its operand, or new object as for other call.</li>
 <li>Constructor, tuple and vector literal results hold their operands: <code>Ref(x)</code> holds <code>x</code>.</li>
 <li>Iteration: result of <code>iterate</code> and <code>indexed_iterate</code> holds element of iterated operand. Element step for array, dictionary, set and tuple; <code>deep</code> for other iterator.</li>

@@ -198,6 +198,21 @@ take_bytes(io::IOBuffer)::Vector{UInt8} = (bytes = take!(io); bytes[1] = 0x00; b
 zero_larger!(left::Box, right::Box)::Nothing = (ifelse(left.value > right.value, left, right).value = 0; nothing)
 """Zero first element of `items`, or of new vector: write reaches `items` only when `flag` holds."""
 zero_chosen!(flag::Bool, items::Vector{Int})::Nothing = (ifelse(flag, items, [2])[1] = 0; nothing)
+"""Callable counter."""
+mutable struct Tally <: Function
+    count::Int
+end
+(tally::Tally)() = tally.count
+"""Reset `left` or `right`: choice keeps callable operands."""
+reset_either!(flag::Bool, left::Tally, right::Tally)::Nothing = (setfield!(ifelse(flag, left, right), :count, 0); nothing)
+"""Callable holder of vectors with indexing."""
+struct Shelf <: Function
+    items::Vector{Vector{Int}}
+end
+(shelf::Shelf)() = length(shelf.items)
+Base.getindex(shelf::Shelf, index::Int) = shelf.items[index]
+"""Push onto first vector of `shelf`: indexing callable object is load."""
+stock!(shelf::Shelf)::Nothing = (push!(shelf[1], 7); nothing)
 """Zero `box` through vector literal."""
 zero_listed!(box::Box)::Nothing = ([box][1].value = 0; nothing)
 """Zero `box` through typed vector literal."""
