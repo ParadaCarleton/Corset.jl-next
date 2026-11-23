@@ -122,6 +122,12 @@ end
 """Writing function and confidence of each loop write of fixture method `name`."""
 loop_shape(name::Symbol)::Vector{Tuple{String, Confidence.T}} = [(write.callee, write.confidence) for write in effects(name).loop_writes]
 
+@testset "generated method" begin
+    # Generated method leaves `Method.source` undefined: claim check must not read it.
+    @test isempty(effects(:generated_double).writes)
+    @test !Effects.claims_effect_free(only(methods(CASES.generated_double)))
+end
+
 @testset "loop writes" begin
     # Size change of same object: argument, view of argument, two loads of one field, narrowed argument.
     @test loop_shape(:loop_push!) == [("push!", DEFINITE)]

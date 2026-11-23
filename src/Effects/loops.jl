@@ -1,5 +1,7 @@
 # Loop writes of name tier (F48; `phase5.md`, row 7): writes to collection inside loop that iterates it.
 
+using EnumX: @enumx
+
 """Blind spot cause of loop write through `Deep` place: name tier cannot tell objects below one root apart."""
 const LOOP_UNKNOWN = "loop write place unknown"
 
@@ -16,17 +18,22 @@ its step when none exists.
 """
 function loop_writes(walk::Walk, spans::Vector{Span})::Tuple{Vector{LoopWrite}, Vector{BlindSpot}}
     found, spots = LoopWrite[], BlindSpot[]
-    for index in 1:length(walk.ir.stmts)
-        operands = iterate_operands(walk, index)
-        (isnothing(operands) || length(operands) != 2) && continue
-        collection = operands[1]
+    steps = filter(index -> (operands = iterate_operands(walk, index); !isnothing(operands) && length(operands) == 2), 1:length(walk.ir.stmts))
+    isempty(steps) && return (found, spots)
+    domtree = CC.construct_domtree(walk.ir.cfg.blocks)
+    for index in steps
+        collection = something(iterate_operands(walk, index))[1]
         start = findfirst(other -> (started = iterate_operands(walk, other); !isnothing(started) && length(started) == 1 && started[1] === collection), 1:length(walk.ir.stmts))
         sources = origins(walk, collection)
-        for statement in loop_statements(walk.ir, index)
+        for statement in loop_statements(walk.ir, index, domtree)
             write = loop_write(walk, statement, collection, sources)
             isnothing(write) && continue
             callee, confidence = write
-            isnothing(confidence) ? push!(spots, BlindSpot(LOOP_UNKNOWN, spans[statement])) : push!(found, LoopWrite(spans[something(start, index)], spans[statement], callee, confidence))
+            if isnothing(confidence)
+                push!(spots, BlindSpot(LOOP_UNKNOWN, spans[statement]))
+            else
+                push!(found, LoopWrite(spans[something(start, index)], spans[statement], callee, confidence))
+            end
         end
     end
     return unique!(found), unique!(spots)
@@ -35,35 +42,35 @@ end
 """Operands of `iterate` call at statement `index` of `walk`; `nothing` for other statement."""
 function iterate_operands(walk::Walk, index::Int)::Union{Nothing, Vector{Any}}
     statement = walk.ir.stmts[index][:stmt]
-    (statement isa Expr && statement.head === :call) || return nothing
+    statement isa Expr || return nothing
+    statement.head === :call || return nothing
     callee, operands = call_parts(walk, statement)
     return callee === iterate ? operands : nothing
 end
 
 """
-Statements of loop that step at statement `index` closes: natural loop of header block whose `φ` node takes step
-result. Body is header and blocks that reach back edge without header, so code after inner loop stays outside it.
-None without such header, or for step outside body.
+Statements of loop that step at statement `index` closes: natural loop of back edges that carry step result into `φ`
+node of header. Back edge comes from block that header dominates, so step ahead of `while` and preheader of inner loop
+close none. Body is header and blocks that reach back edge without header: code after inner loop stays outside it.
 """
-function loop_statements(ir::CC.IRCode, index::Int)::Vector{Int}
-    blocks, header = ir.cfg.blocks, step_header(ir, index)
-    isnothing(header) && return Int[]
-    ahead = reached(blocks[header].succs, other -> blocks[other].succs)
-    latches = filter(other -> other in ahead, blocks[header].preds)
+function loop_statements(ir::CC.IRCode, index::Int, domtree::CC.DomTree)::Vector{Int}
+    blocks, found = ir.cfg.blocks, step_edges(ir, index)
+    isnothing(found) && return Int[]
+    header, edges = found
+    latches = filter(edge -> CC.dominates(domtree, header, edge), edges)
     isempty(latches) && return Int[]
     body = push!(reached(latches, other -> other == header ? Int[] : blocks[other].preds), header)
-    # Step before loop feeds header too (`next = iterate(x, state)` ahead of `while`); only step inside closes loop.
-    CC.block_for_inst(ir.cfg, index) in body || return Int[]
     return Int[statement for other in sort!(collect(body)) for statement in blocks[other].stmts]
 end
 
-"""Block of `φ` node in `ir` that takes value of statement `index`; `nothing` when none does."""
-function step_header(ir::CC.IRCode, index::Int)::Union{Nothing, Int}
+"""Block of `φ` node in `ir` that takes value of statement `index`, and predecessor blocks that carry it; `nothing` when none does."""
+function step_edges(ir::CC.IRCode, index::Int)::Union{Nothing, Tuple{Int, Vector{Int}}}
     step = Core.SSAValue(index)
     for other in 1:length(ir.stmts)
         node = ir.stmts[other][:stmt]
         node isa Core.PhiNode || continue
-        any(position -> isassigned(node.values, position) && node.values[position] === step, eachindex(node.values)) && return CC.block_for_inst(ir.cfg, other)
+        edges = Int[node.edges[position] for position in eachindex(node.values) if isassigned(node.values, position) && node.values[position] === step]
+        isempty(edges) || return (CC.block_for_inst(ir.cfg, other), edges)
     end
     return nothing
 end
@@ -86,16 +93,17 @@ Writing function name and confidence of write at statement `index` to loop `coll
 `nothing` confidence for write through unknown place (blind spot). `nothing` when statement writes no collection place,
 replaces array element, or deletes from `DELETION_SAFE` collection.
 """
-function loop_write(walk::Walk, index::Int, @nospecialize(collection::Any), sources::Vector{Any})::Union{Nothing, Tuple{String, Union{Nothing, Confidence.T}}}
+function loop_write(walk::Walk, index::Int, @nospecialize(collection::Any), sources::Base.IdSet{Any})::Union{Nothing, Tuple{String, Union{Nothing, Confidence.T}}}
     statement = walk.ir.stmts[index][:stmt]
-    (statement isa Expr && statement.head === :call) || return nothing
+    statement isa Expr || return nothing
+    statement.head === :call || return nothing
     callee, operands = call_parts(walk, statement)
     isnothing(operands) && return nothing
     store = callee in STORE_BUILTINS
     position = store ? 1 : bang_function(callee) ? written_position(walk, callee, operands) : nothing
     isnothing(position) && return nothing
     written = operands[position]
-    same = any(origin -> any(source -> origin === source, sources), origins(walk, written)) || same_place(walk, written, collection)
+    same = any(origin -> origin in sources, origins(walk, written)) || same_place(walk, written, collection)
     # Size change and field store change their operand only; other `!` call can change objects below it.
     relation = same ? Overlap.exact : overlap(walk, written, collection, !store && !(callee in RESIZE_FUNCTIONS))
     relation == Overlap.none && return nothing
@@ -107,19 +115,20 @@ function loop_write(walk::Walk, index::Int, @nospecialize(collection::Any), sour
 end
 
 """
-IR values `operand` can be same object as: itself, and operands of view calls and `π` nodes it comes from. Each value
-appears once, so shared operands (`zip(z, z)`) cost one visit.
+IR values `operand` can be same object as: itself, and operands of view calls and `π` nodes it comes from. Set holds
+values by identity; each value costs one visit, so shared operands (`zip(z, z)`) stay linear.
 """
-function origins(walk::Walk, @nospecialize(operand::Any))::Vector{Any}
-    found, pending = Any[], Any[operand]
+function origins(walk::Walk, @nospecialize(operand::Any))::Base.IdSet{Any}
+    found, pending = Base.IdSet{Any}(), Any[operand]
     while !isempty(pending)
         current = pop!(pending)
-        any(seen -> seen === current, found) && continue
+        current in found && continue
         push!(found, current)
         current isa Core.SSAValue || continue
         statement = walk.ir.stmts[current.id][:stmt]
         statement isa Core.PiNode && (push!(pending, statement.val); continue)
-        (statement isa Expr && statement.head === :call) || continue
+        statement isa Expr || continue
+        statement.head === :call || continue
         callee, operands = call_parts(walk, statement)
         (isnothing(operands) || !(callee in ALIAS_FUNCTIONS) || callee in ELEMENT_ALIASES) && continue
         append!(pending, (other for other in operands if !callable(walk, other)))

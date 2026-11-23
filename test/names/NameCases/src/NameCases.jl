@@ -283,6 +283,8 @@ keyword_caller!(out::Vector{Int})::Vector{Int} = (run_keyword(() -> push!(out, 1
 assumed_store!(items::Vector{Int})::Vector{Int} = (Base.@assume_effects :effect_free items[1] = 3; items)
 """Address of thread count in Julia library: library tuple stays nested call in IR."""
 thread_count_address()::Ptr{Cint} = cglobal((:jl_n_threads, "libjulia-internal"), Cint)
+"""Generated method: its `Method` has no `source`."""
+@generated generated_double(x::Real) = :(x + x)
 """Discard length of `items`."""
 discard(items::Vector{Int})::Nothing = (length(items); nothing)
 

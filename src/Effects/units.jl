@@ -94,7 +94,8 @@ end
 """Whether `@assume_effects` claims `:effect_free` on `method` or on block in its code: compiler then trusts claim."""
 function claims_effect_free(method::Method)::Bool
     CC.decode_effects_override(method.purity).effect_free && return true
-    method.source === nothing && return false
+    # Generated method leaves `source` undefined; its body comes from generator at each call.
+    (isdefined(method, :source) && method.source !== nothing) || return false
     return any(flag -> CC.decode_statement_effects_override(flag).effect_free, Base.uncompressed_ast(method).ssaflags)
 end
 

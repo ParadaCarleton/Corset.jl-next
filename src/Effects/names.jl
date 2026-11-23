@@ -727,7 +727,7 @@ function closure_writes!(walk::Walk, type::DataType)::Vector{CapturedWrite}
     # `methods(type)` lists constructors; call methods match call signature of closure instance.
     matches = Base._methods_by_ftype(Tuple{type, Vararg{Any}}, -1, walk.world)
     for method in (matches isa Vector ? Method[(match::Core.MethodMatch).method for match in matches] : Method[])
-        method.source === nothing && continue
+        (isdefined(method, :source) && method.source !== nothing) || continue
         code = Base.uncompressed_ast(method)
         captured, slots, assignments, written = Dict{Int, Set{Int}}(), Dict{Int, Set{Int}}(), Dict{Int, Int}(), Set{Int}[]
         # Loop can assign local after write through it: scan again until field sets stop growing.
