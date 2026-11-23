@@ -430,3 +430,36 @@ error[baked-state]: `IN_EVAL` bakes in `(Threads.nthreads())` at precompile time
    = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
    = docs: corset explain baked-state
 
+error[baked-state]: `IN_TERNARY` bakes in `tempdir()` at precompile time
+  --> positive.jl:66:31
+   |
+66 | Sys.islinux() ? (IN_TERNARY = tempdir()) : nothing
+   |                  ---------- value stored in precompile cache
+   |                               ^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps directory of build session; other users, machines and directories get wrong path
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `IN_AND` bakes in `tempdir()` at precompile time
+  --> positive.jl:67:28
+   |
+67 | Sys.isapple() && (IN_AND = tempdir())
+   |                   ------ value stored in precompile cache
+   |                            ^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps directory of build session; other users, machines and directories get wrong path
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
+error[baked-state]: `IN_OR` bakes in `tempdir()` at precompile time
+  --> positive.jl:68:29
+   |
+68 | Sys.iswindows() || (IN_OR = tempdir())
+   |                     ----- value stored in precompile cache
+   |                             ^^^^^^^^^ read when package precompiles
+   |
+   = why: cache keeps directory of build session; other users, machines and directories get wrong path
+   = fix: compute in `__init__` and store in `Ref`, or read at call time   [manual]
+   = docs: corset explain baked-state
+
