@@ -139,7 +139,8 @@ end
 
 """Parse `entries` of `project` and every file they include, breadth first; include calls not followed become blind spots."""
 function closure(entries::AbstractVector{String}, project::Union{Nothing, ProjectFacts})::Sources
-    files, blind_spots, pending, seen = SyntaxFile[], BlindSpot[], Vector{String}(entries), Set{String}()
+    paths = collect(String, entries)
+    files, blind_spots, pending, seen = SyntaxFile[], BlindSpot[], copy(paths), Set{String}()
     while !isempty(pending)
         path = popfirst!(pending)
         path in seen && continue
@@ -157,7 +158,7 @@ function closure(entries::AbstractVector{String}, project::Union{Nothing, Projec
             end
         end
     end
-    return Sources(files, blind_spots, entries, project)
+    return Sources(files, blind_spots, paths, project)
 end
 
 """Julia files under `directory`, sorted; skips hidden directories, symbolic links and directories with own Project.toml."""

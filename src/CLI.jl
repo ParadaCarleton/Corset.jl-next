@@ -165,7 +165,7 @@ Arguments of `check` that runs after `fix` with `args`: command name changes, an
 Command name comes before path, and no option value is `fix`.
 """
 function recheck_arguments(args::AbstractVector{String})::Vector{String}
-    checked = replace!(Vector{String}(args), "fix" => "check"; count = 1)
+    checked = replace!(collect(String, args), "fix" => "check"; count = 1)
     at = findfirst(==("--tier"), checked)
     isnothing(at) || deleteat!(checked, at:(at + 1))
     return filter!(arg -> !startswith(arg, "--tier="), checked)
