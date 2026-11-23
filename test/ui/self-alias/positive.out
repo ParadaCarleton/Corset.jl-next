@@ -1,0 +1,64 @@
+error[self-alias]: `sum!` writes memory it also reads through other operand
+  --> src/SelfAliasPositive.jl:10:5
+   |
+10 |     sum!(totals, totals)
+   |     ^^^^^^^^^^^^^^^^^^^^ passes one array as output and input
+   |
+   = why: function can read elements it already overwrote, so result is wrong
+   = fix: pass copy of read operand (`copy(x)`), or write into other array   [manual]
+   = docs: corset explain self-alias
+   = note: deny from correctness group, library preset
+   = note: opt out with `# corset: allow self-alias -- <reason>`
+
+error[self-alias]: `prod!` writes memory it also reads through other operand
+  --> src/SelfAliasPositive.jl:16:5
+   |
+16 |     prod!(ledger.amounts, ledger.amounts)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ passes one array as output and input
+   |
+   = why: function can read elements it already overwrote, so result is wrong
+   = fix: pass copy of read operand (`copy(x)`), or write into other array   [manual]
+   = docs: corset explain self-alias
+
+error[self-alias]: `splice!` writes memory it also reads through other operand
+  --> src/SelfAliasPositive.jl:22:5
+   |
+22 |     splice!(xs, 1:2, xs)
+   |     ^^^^^^^^^^^^^^^^^^^^ passes one array as output and input
+   |
+   = why: function can read elements it already overwrote, so result is wrong
+   = fix: pass copy of read operand (`copy(x)`), or write into other array   [manual]
+   = docs: corset explain self-alias
+
+error[self-alias]: `any!` writes memory it also reads through other operand
+  --> src/SelfAliasPositive.jl:29:5
+   |
+29 |     any!(flags, flags)
+   |     ^^^^^^^^^^^^^^^^^^ passes one array as output and input
+   |
+   = why: function can read elements it already overwrote, so result is wrong
+   = fix: pass copy of read operand (`copy(x)`), or write into other array   [manual]
+   = docs: corset explain self-alias
+
+error[self-alias]: `map!` writes memory it also reads through other operand
+  --> src/SelfAliasPositive.jl:35:5
+   |
+35 |     map!(identity, view(values, 2:lastindex(values)), view(values, 1:(lastindex(values) - 1)))
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ passes one array as output and input
+   |
+   = why: function can read elements it already overwrote, so result is wrong
+   = confidence: possible
+   = fix: pass copy of read operand (`copy(x)`), or write into other array   [manual]
+   = docs: corset explain self-alias
+
+error[self-alias]: `accumulate!` writes memory it also reads through other operand
+  --> src/SelfAliasPositive.jl:41:5
+   |
+41 |     accumulate!(+, view(xs, 2:lastindex(xs)), xs)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ passes one array as output and input
+   |
+   = why: function can read elements it already overwrote, so result is wrong
+   = confidence: possible
+   = fix: pass copy of read operand (`copy(x)`), or write into other array   [manual]
+   = docs: corset explain self-alias
+

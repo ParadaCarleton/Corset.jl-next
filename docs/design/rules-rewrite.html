@@ -912,7 +912,8 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Use counts before compaction: compaction turns each use of constant result into literal.</li>
 <li>Units of method merge by source statement: unit that may throw, writes or uses result decides.</li>
 <li>Per package method, F48: loop writes: span of loop start, span of write, writing function, confidence (<code>phase5.md</code>, row 7).</li>
-<li>Per unit, for <code>lifecycle</code> and statement rules (F50, F51): allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.</li>
+<li>Per package method, F50: self-alias calls: call span, writing function, confidence (<code>phase5.md</code>, row 7).</li>
+<li>Per unit, for <code>lifecycle</code> and statement rules (F51): allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.</li>
 <li>Must-alias: two values with same single root and path, where root is one object per call (parameter, global, allocation outside loop).</li>
 <li>Escape: return; store into object or global; operand of <code>!</code> call that is not the written operand; operand of alias-table call or constructor whose result escapes.</li>
 <li>Element event carries index operand: constant or SSA value. <code>lifecycle</code> decides which elements writes cover (F33, F34).</li>
@@ -1457,10 +1458,19 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 <li>Fix <code>manual</code>: iterate copy (<code>collect(keys(d))</code>), or collect changes and apply after loop.</li>
 </ul>
 </li>
-<li><code>self-alias</code> (F50): same container passed as written operand and as other operand of <code>!</code> call.
+<li><code>self-alias</code> (F50): <code>!</code> call writes operand while it reads same memory through other operand.
 <ul>
-<li>Exempt: functions that unalias operands (<code>copyto!</code>, <code>broadcast!</code>, <code>materialize!</code>).</li>
-<li>Definite for function whose docstring warns of shared memory (&quot;Behavior can be unexpected when any mutated argument shares memory&quot;). Else <code>possible</code>.</li>
+<li>Same object: written operand and other operand are one IR value after <code>π</code> nodes, or one place (F48 same object).</li>
+<li>Shared memory: operands share IR value only after view calls (<code>view</code>, <code>reshape</code>, …): overlap depends on index values.</li>
+<li><code>ALIAS_BREAKS</code>: functions that give wrong result, or throw, on one object as output and input.</li>
+<li>Docstring forbids it (<code>mul!</code>, <code>transpose!</code>, <code>adjoint!</code>); output starts from init value (<code>sum!</code>, <code>prod!</code>, <code>any!</code>, <code>all!</code>, <code>count!</code>).</li>
+<li>Base throws (<code>circshift!</code>, <code>circcopy!</code>); <code>splice!</code> reads slots its resize freed.</li>
+<li>Entry names input operand that breaks: <code>splice!</code> breaks on replacement only, never on index operand.</li>
+<li>Warned function: matched method docstring carries Base aliasing warning (<code>Base._DOCS_ALIASING_WARNING</code>), or <code>ALIAS_BREAKS</code> function.</li>
+<li>Same object to <code>ALIAS_BREAKS</code> function gives <code>definite</code>. Shared memory to warned function gives <code>possible</code>.</li>
+<li>Same object to other warned function: no finding. Base docstring calls <code>map!(f, A, A)</code> equivalent of <code>map!(f, A)</code>.</li>
+<li>Exempt: functions that unalias operands with <code>Base.unalias</code> (<code>copyto!</code>, <code>copy!</code>, <code>setindex!</code>, <code>prepend!</code>, <code>broadcast!</code>, <code>materialize!</code>).</li>
+<li>Fix <code>manual</code>: pass copy of read operand, or write into other container.</li>
 </ul>
 </li>
 <li><code>stateful-reuse</code> (F51): method restarts iterator whose type admits stateful iterator, or lets it escape after start.

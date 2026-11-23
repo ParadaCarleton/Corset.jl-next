@@ -153,6 +153,28 @@ end
     @test resume.callee == "push!" && resume.loop.first_byte > resume.write.first_byte
 end
 
+"""Writing function and confidence of each self-alias call of fixture method `name`."""
+alias_shape(name::Symbol)::Vector{Tuple{String, Confidence.T}} = [(call.callee, call.confidence) for call in effects(name).self_aliases]
+
+@testset "self aliases" begin
+    # Same object to function that breaks on it: library table by module, argument and two loads of one field.
+    @test alias_shape(:alias_mul!) == [("mul!", DEFINITE)]
+    @test alias_shape(:alias_sum!) == [("sum!", DEFINITE)]
+    @test alias_shape(:alias_field!) == [("sum!", DEFINITE)] && alias_shape(:alias_identity!) == [("sum!", DEFINITE)]
+    # `splice!` breaks on replacement only; index operand is safe.
+    @test alias_shape(:alias_splice!) == [("splice!", DEFINITE)] && isempty(alias_shape(:alias_indices!))
+    @test isempty(alias_shape(:alias_index_view!))
+    # Overlapping views to warned function: Base docstring, or package docstring with Base warning.
+    @test alias_shape(:alias_view!) == [("map!", POSSIBLE)]
+    @test alias_shape(:alias_parent!) == [("accumulate!", POSSIBLE)]
+    @test alias_shape(:alias_blend!) == [("blend!", POSSIBLE)]
+    # Same object to `map!`, unaliasing `copyto!`, unwarned `append!`, other arrays: none.
+    # Package submodule named `LinearAlgebra` owns no library function.
+    for name in (:alias_map!, :alias_copy!, :alias_append!, :alias_append_view!, :alias_other!, :blend!, :alias_lookalike!)
+        @test isempty(alias_shape(name))
+    end
+end
+
 @testset "exception table" begin
     @test shape(effects(:print_value).writes) == [(parameter(2), true, EffectKind.io, DEFINITE)]
     @test shape(effects(:shout).writes) == [(Place.At(Root.Global(GlobalRef(Base, :stdout)), Step.Type[]), true, EffectKind.io, DEFINITE)]

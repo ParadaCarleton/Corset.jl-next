@@ -45,6 +45,7 @@ include("rules/pinned_task.jl")
 include("rules/piracy.jl")
 include("rules/process_state.jl")
 include("rules/repeated_concat.jl")
+include("rules/self_alias.jl")
 include("rules/shadowed_base.jl")
 include("rules/short_circuit_statement.jl")
 include("rules/stateful_iterate.jl")
@@ -105,6 +106,7 @@ const REGISTRY = RuleEntry[
     Piracy.ENTRY,
     ProcessState.ENTRY,
     RepeatedConcat.ENTRY,
+    SelfAlias.ENTRY,
     ShadowedBase.ENTRY,
     ShortCircuitStatement.ENTRY,
     StatefulIterate.ENTRY,

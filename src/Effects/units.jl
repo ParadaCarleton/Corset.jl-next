@@ -17,7 +17,7 @@ Unit that always throws on stand-ins gives no verdict, only its blind spot.
 """
 function unit_effects(typed::TypedCode, modules::Set{Module}, interpreter::CC.NativeInterpreter, world::UInt)::UnitEffects
     cut = isempty(typed.cuts) ? nothing : typed.spans[first(typed.cuts)]
-    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, cut)
+    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, cut)
     walk, lines, used, claimed = unit_walk(typed, modules, interpreter, world)
     ir = walk.ir
     walk_values!(walk, 2 * length(ir.stmts) + 10)
@@ -39,7 +39,7 @@ function unit_effects(typed::TypedCode, modules::Set{Module}, interpreter::CC.Na
     end
     effect_free = CC.is_effect_free(typed.frame.ipo_effects) && !claimed && !holds_stand_in(typed.signature) && !callee_claimed
     loops, spots = loop_writes(walk, spans)
-    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, spots, effect_free, cut)
+    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), spots, effect_free, cut)
 end
 
 """
@@ -127,15 +127,24 @@ function worst(accesses::Vector{Access})::Vector{Access}
     return text_order(collect(values(found)), access -> place_key(access.place, access.below, access.kind))
 end
 
-"""Loop writes over all units of method, one per loop and write in source order: definite in any unit decides."""
-function surest(loops::Vector{LoopWrite})::Vector{LoopWrite}
-    found = Dict{Tuple{Span, Span, String}, LoopWrite}()
-    for loop in loops
-        key = (loop.loop, loop.write, loop.callee)
-        (!haskey(found, key) || loop.confidence < found[key].confidence) && (found[key] = loop)
+"""
+Facts over all units of method, one per `key` in key order: definite in any unit decides. Key leads with source
+position of fact, so order is source order.
+"""
+function surest(facts::Vector{T}, key::F)::Vector{T} where {T <: Union{LoopWrite, SelfAlias}, F <: Function}
+    found = Dict{Tuple{String, Int, Int, Int, String}, T}()
+    for fact in facts
+        slot = key(fact)
+        (!haskey(found, slot) || fact.confidence < found[slot].confidence) && (found[slot] = fact)
     end
-    return sort!(collect(values(found)); by = loop -> (loop.write.file, loop.write.first_byte, loop.loop.first_byte, loop.callee))
+    return T[found[slot] for slot in sort!(collect(keys(found)))]
 end
+
+"""Merge key of loop write: write bytes, loop start, writing function."""
+loop_key(loop::LoopWrite)::Tuple{String, Int, Int, Int, String} = (loop.write.file, loop.write.first_byte, loop.write.last_byte, loop.loop.first_byte, loop.callee)
+
+"""Merge key of self-alias call: call bytes, writing function."""
+alias_key(call::SelfAlias)::Tuple{String, Int, Int, Int, String} = (call.call.file, call.call.first_byte, call.call.last_byte, 0, call.callee)
 
 """Call facts of one method by source statement and span."""
 const Calls = Dict{Tuple{Int, Span}, CallFact}
@@ -178,8 +187,8 @@ function ordered_records(units::Units, fresh::Vector{Union{Nothing, UnitEffects}
     return [methods[index] => records[index] for index in sortperm(positions)]
 end
 
-"""Accesses of all units of one method: writes, reads, result aliases, holds throws skip, call facts, loop writes."""
-const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{Place.Type}, Vector{UnguardedHold}, Calls, Vector{LoopWrite}}
+"""Accesses of all units of one method: writes, reads, result aliases, holds throws skip, call facts, loop writes, self aliases."""
+const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{Place.Type}, Vector{UnguardedHold}, Calls, Vector{LoopWrite}, Vector{SelfAlias}}
 
 """
 Facts of methods of `package` from effects `records` of units in inference order, and blind spots: worst over units of
@@ -193,24 +202,25 @@ function method_facts(package::PackageFacts, incomplete::Set{Method}, records::V
         isnothing(record) && continue
         append!(spots, record.spots)
         record.verdict || continue
-        writes, reads, aliases, unguarded, calls, loops = get!(() -> (Access[], Access[], Place.Type[], UnguardedHold[], Calls(), LoopWrite[]), found, method)
+        writes, reads, aliases, unguarded, calls, loops, selves = get!(() -> (Access[], Access[], Place.Type[], UnguardedHold[], Calls(), LoopWrite[], SelfAlias[]), found, method)
         append!(writes, record.writes)
         append!(reads, record.reads)
         append!(aliases, record.aliases)
         append!(unguarded, record.unguarded)
         add_calls!(calls, record.calls)
         append!(loops, record.loop_writes)
+        append!(selves, record.self_aliases)
         free[method] = get(free, method, true) && record.effect_free
         isnothing(record.cut) || haskey(cuts, method) || (cuts[method] = something(record.cut))
     end
     methods = MethodEffects[]
     for site in package.methods
         haskey(found, site.method) || continue
-        writes, reads, aliases, unguarded, calls, loops = found[site.method]
+        writes, reads, aliases, unguarded, calls, loops, selves = found[site.method]
         complete = !(site.method in incomplete) && !haskey(cuts, site.method)
         effects = MethodEffects(
             site, worst(writes), worst(reads), text_order(unique!(aliases), repr), text_order(unique!(unguarded), repr),
-            call_order(calls), surest(loops), complete, free[site.method], claimed_effects(site.method),
+            call_order(calls), surest(loops, loop_key), surest(selves, alias_key), complete, free[site.method], claimed_effects(site.method),
         )
         push!(methods, effects)
         # Write keeps its certainty with cut; only method without write goes to coverage line.

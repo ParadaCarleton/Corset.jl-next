@@ -184,6 +184,16 @@ struct LoopWrite
 end
 
 """
+`!` call that writes operand while it reads same memory through other operand (`effects` stage fact, F50): call span,
+name of writing function, and confidence: same object to function in `ALIAS_BREAKS` gives `definite`.
+"""
+struct SelfAlias
+    call::Span
+    callee::String
+    confidence::Confidence.T
+end
+
+"""
 Callee of call statement: `Methods` that dispatch reaches (none when no method matches: call throws), `Builtin` or
 intrinsic function, `Foreign` C function, or `Open` dispatch (Base contract, open or unresolved call).
 """
@@ -240,7 +250,7 @@ end
 """
 Effects of package method over its units (`effects.md`, Name trust): writes, reads, places its result can lie beneath
 (`aliases`), holds throws skip (`unguarded`), call statements in source order, writes to collection its loop iterates
-(`loop_writes`), `complete` (no unit incomplete or cut), `effect_free` (compiler proves every unit writes nothing caller
+(`loop_writes`), calls that read memory they write (`self_aliases`), `complete` (no unit incomplete or cut), `effect_free` (compiler proves every unit writes nothing caller
 sees), and effects its `@assume_effects` claims.
 """
 struct MethodEffects
@@ -251,6 +261,7 @@ struct MethodEffects
     unguarded::Vector{UnguardedHold}
     calls::Vector{CallFact}
     loop_writes::Vector{LoopWrite}
+    self_aliases::Vector{SelfAlias}
     complete::Bool
     effect_free::Bool
     claims::Vector{Symbol}

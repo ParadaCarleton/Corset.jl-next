@@ -155,7 +155,8 @@ Facts keep hold count per resource at normal exit and at each statement that may
 - Use counts before compaction: compaction turns each use of constant result into literal.
 - Units of method merge by source statement: unit that may throw, writes or uses result decides.
 - Per package method, F48: loop writes: span of loop start, span of write, writing function, confidence (`phase5.md`, row 7).
-- Per unit, for `lifecycle` and statement rules (F50, F51): allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.
+- Per package method, F50: self-alias calls: call span, writing function, confidence (`phase5.md`, row 7).
+- Per unit, for `lifecycle` and statement rules (F51): allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.
 - Must-alias: two values with same single root and path, where root is one object per call (parameter, global, allocation outside loop).
 - Escape: return; store into object or global; operand of `!` call that is not the written operand; operand of alias-table call or constructor whose result escapes.
 - Element event carries index operand: constant or SSA value. `lifecycle` decides which elements writes cover (F33, F34).

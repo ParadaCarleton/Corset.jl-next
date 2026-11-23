@@ -5,7 +5,7 @@ const UnitCalls = Vector{Pair{Tuple{Int, Span}, CallFact}}
 
 """
 Effects of one unit for facts of its method (`effects.md`, Units and IR): accesses with cause spans, result aliases,
-holds throws skip, call facts, loop writes (F48), blind spots, compiler proof of no write (`effect_free`), and span of
+holds throws skip, call facts, loop writes (F48), self-alias calls (F50), blind spots, compiler proof of no write (`effect_free`), and span of
 first stand-in cut (`nothing`: none). Unit that always throws on stand-ins gives no verdict (`verdict` false), only its
 blind spot. Method store entry of unit keeps record (`record_bytes`), so stored unit needs no typed code.
 """
@@ -17,6 +17,7 @@ struct UnitEffects
     unguarded::Vector{UnguardedHold}
     calls::UnitCalls
     loop_writes::Vector{LoopWrite}
+    self_aliases::Vector{SelfAlias}
     spots::Vector{BlindSpot}
     effect_free::Bool
     cut::Union{Nothing, Span}

@@ -399,6 +399,106 @@ function loop_resume!(items::Vector{Int}, state::Int)::Vector{Int}
     end
     return items
 end
+
+# Self-alias calls (F50).
+"""Multiply into input: `mul!` output must not alias input."""
+function alias_mul!(x::Vector{Float64}, matrix::Matrix{Float64})::Vector{Float64}
+    LinearAlgebra.mul!(x, matrix, x)
+    return x
+end
+"""Sum into same array: `sum!` fills output with zero first."""
+function alias_sum!(x::Vector{Float64})::Vector{Float64}
+    sum!(x, x)
+    return x
+end
+"""Sum into array passed through `identity`: `identity` returns its operand."""
+function alias_identity!(x::Vector{Float64})::Vector{Float64}
+    sum!(x, identity(x))
+    return x
+end
+"""Sum field into same field: two loads give one place."""
+function alias_field!(bin::Bin)::Bin
+    sum!(bin.items, bin.items)
+    return bin
+end
+"""Remove indices that array itself lists: index operand reads before resize."""
+function alias_indices!(x::Vector{Int})::Vector{Int}
+    splice!(x, x)
+    return x
+end
+"""Remove indices that view of array lists: index operand reads before resize."""
+function alias_index_view!(x::Vector{Int})::Vector{Int}
+    splice!(x, view(x, 1:2))
+    return x
+end
+"""Replace front with array itself: `splice!` copies replacement after resize."""
+function alias_splice!(x::Vector{Int})::Vector{Int}
+    splice!(x, 1:2, x)
+    return x
+end
+"""Submodule that shares name of standard library."""
+module Lookalike
+    """Square `x` element by element: package `mul!`, not LinearAlgebra one."""
+    module LinearAlgebra
+        mul!(x::Vector{Float64}, y::Vector{Float64})::Vector{Float64} = (x .*= y)
+    end
+end
+"""Square through package `mul!` in submodule named `LinearAlgebra`: no library table entry."""
+function alias_lookalike!(x::Vector{Float64})::Vector{Float64}
+    Lookalike.LinearAlgebra.mul!(x, x)
+    return x
+end
+"""Square in place: Base calls `map!(f, A, A)` equivalent of `map!(f, A)`."""
+function alias_map!(x::Vector{Float64})::Vector{Float64}
+    map!(abs2, x, x)
+    return x
+end
+"""Shift through overlapping views of one array."""
+function alias_view!(x::Vector{Float64})::Vector{Float64}
+    map!(identity, view(x, 2:3), view(x, 1:2))
+    return x
+end
+"""Scan array into view of itself: view takes place of parent, yet is other object."""
+function alias_parent!(x::Vector{Int})::Vector{Int}
+    accumulate!(+, view(x, 2:3), x)
+    return x
+end
+"""Copy through overlapping views: `copyto!` unaliases input."""
+function alias_copy!(x::Vector{Float64})::Vector{Float64}
+    copyto!(view(x, 2:3), view(x, 1:2))
+    return x
+end
+"""Append array to itself: `append!` docstring has no aliasing warning."""
+function alias_append!(x::Vector{Int})::Vector{Int}
+    append!(x, x)
+    return x
+end
+"""Append view of array to itself: shared memory, but `append!` docstring has no aliasing warning."""
+function alias_append_view!(x::Vector{Int})::Vector{Int}
+    append!(x, view(x, 1:2))
+    return x
+end
+"""Sum view of other array: no shared memory."""
+function alias_other!(x::Vector{Float64}, y::Vector{Float64})::Vector{Float64}
+    sum!(x, view(y, 1:2))
+    return x
+end
+"""
+    blend!(out, input)
+
+Average `input` into `out`.
+
+$(Base._DOCS_ALIASING_WARNING)
+"""
+function blend!(out::AbstractVector{Float64}, input::AbstractVector{Float64})::AbstractVector{Float64}
+    out .= (out .+ input) ./ 2
+    return out
+end
+"""Blend shifted view: package docstring carries Base aliasing warning."""
+function alias_blend!(x::Vector{Float64})::Vector{Float64}
+    blend!(view(x, 2:3), view(x, 1:2))
+    return x
+end
 """Grow `items` after inner loop over it ends: outer loop iterates other collection."""
 function loop_after_inner!(groups::Vector{Int}, items::Vector{Int})::Vector{Int}
     total = 0

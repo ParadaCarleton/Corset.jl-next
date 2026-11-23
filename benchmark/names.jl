@@ -50,6 +50,14 @@ for write in loops
     line = count(==(UInt8('\n')), codeunits(text)[1:(write.write.first_byte - 1)]) + 1
     println("  ", write.confidence, " ", write.callee, " ", relpath(write.write.file, root), ":", line, " | ", strip(split(text, '\n')[line]))
 end
+# Self-alias calls (F50) for quality gate audit.
+selves = [call for found in methods for call in found.self_aliases]
+println("self_aliases=", length(selves), " definite=", count(call -> call.confidence == Confidence.definite, selves))
+for call in selves
+    text = read(call.call.file, String)
+    line = count(==(UInt8('\n')), codeunits(text)[1:(call.call.first_byte - 1)]) + 1
+    println("  ", call.confidence, " ", call.callee, " ", relpath(call.call.file, root), ":", line, " | ", strip(split(text, '\n')[line]))
+end
 """
 
 """Copy of registered package `name` at `version` in `work`, made writable, with library preset."""
