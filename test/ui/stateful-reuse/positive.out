@@ -27,10 +27,10 @@ error[stateful-reuse]: `itr` starts iteration twice
    = docs: corset explain stateful-reuse
 
 error[stateful-reuse]: `itr` starts iteration twice in one expression
-  --> src/StatefulReusePositive.jl:21:32
+  --> src/StatefulReusePositive.jl:21:24
    |
 21 | self_pairs(itr::Any) = collect(zip(itr, itr))
-   |                                ^^^^^^^^^^^^^ starts iteration twice
+   |                        ^^^^^^^^^^^^^^^^^^^^^^ starts iteration twice
    |
    = why: stateful iterator gives each element once, so second pass misses elements first pass consumed
    = fix: take first element with `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type   [manual]
@@ -53,6 +53,18 @@ error[stateful-reuse]: `itr` starts again on each loop pass
    |
 33 |         push!(out, first(itr))
    |                    ^^^^^^^^^^ starts iteration inside loop
+   |
+   = why: stateful iterator gives each element once, so second pass misses elements first pass consumed
+   = fix: take first element with `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type   [manual]
+   = docs: corset explain stateful-reuse
+
+error[stateful-reuse]: `itr` starts iteration after it escaped
+  --> src/StatefulReusePositive.jl:41:12
+   |
+40 |     record(itr)
+   |     ----------- lets iterator escape
+41 |     return sum(itr)
+   |            ^^^^^^^^ starts iteration
    |
    = why: stateful iterator gives each element once, so second pass misses elements first pass consumed
    = fix: take first element with `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type   [manual]

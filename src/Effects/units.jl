@@ -22,8 +22,6 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
     ir = walk.ir
     walk_values!(walk, 2 * length(ir.stmts) + 10)
     users = statement_users(ir)
-    # Compaction turns use of constant result into literal, so source line decides use where statement has one.
-    uses = Bool[iszero(lines[index]) ? !isempty(users[index]) : used[lines[index]] for index in 1:length(ir.stmts)]
     writes, reads, aliases, calls, callee_claimed = Access[], Access[], Set{Place.Type}(), UnitCalls(), false
     spans = Span[line in eachindex(typed.spans) ? typed.spans[line] : typed.site.span for line in lines]
     for index in 1:length(ir.stmts)
@@ -35,13 +33,13 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
         statement isa Expr || continue
         statement.head in (:call, :foreigncall) || continue
         # Compiler trusts claim of direct callee too (`@assume_effects`); keyword call hides its callee, so it counts.
-        fact = call_fact(walk, index, events, span, uses[index])
+        fact = call_fact(walk, index, events, span, iszero(line) ? !isempty(users[index]) : used[line])
         callee_claimed |= statement.head === :call && callee_claims(walk, statement, fact.callee)
         push!(calls, (line, span) => fact)
     end
     effect_free = CC.is_effect_free(typed.frame.ipo_effects) && !claimed && !holds_stand_in(typed.signature) && !callee_claimed
     loops, spots = loop_writes(walk, spans)
-    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), stateful_reuses(walk, typed.site.method, spans, uses), spots, effect_free, cut)
+    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), stateful_reuses(walk, typed.site.method, spans), spots, effect_free, cut)
 end
 
 """

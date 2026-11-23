@@ -83,8 +83,9 @@ Rules read per-unit statement events and must-alias pairs.
   - Fix `manual`: pass copy of read operand, or write into other container.
 - `stateful-reuse` (F51): method restarts iterator whose type admits stateful iterator, or lets it escape after start.
   - Start: `iterate` without state, contract start (`first`, generic `isempty`) or consuming-table call.
-  - Restart: second start of same object on one path. Loop re-entry counts; `zip(itr, itr)` with used result counts at its call.
+  - Restart: second start of same object on one path. Loop re-entry counts; `zip(itr, itr)` starts `itr` twice where code consumes or returns it.
   - Value that loop body defines is new object on each pass: path through its definition makes no pair.
+  - Load of unchanged container and key (`groups[1]` in loop) can give same iterator again: `possible`.
   - Escape after start, or start after escape: return, store into object or global, operand of package call.
   - Escape counts for tuple, `new` or constructor result that holds iterator: `(head, itr)` lets `itr` escape.
   - Generic `isempty` starts only when `isdone` gives `missing`. `EachLine` and `Stateful` define `isdone`.

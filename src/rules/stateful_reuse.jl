@@ -43,7 +43,7 @@ end
 
 ## Limitations
 Lazy wrapper (`enumerate(itr)`, `Iterators.take(itr, n)`) starts nothing until code iterates it; rule sees no start
-there. `zip` with used result counts at its call. Concrete type and known stateful type pass: code that restarts `eachline` result
+there. `zip` starts its operands where code consumes it or lets it escape. Concrete type and known stateful type pass: code that restarts `eachline` result
 consumes lines on purpose. Rule sees methods inference reaches, as `never-succeeds` does. Fix is `manual`.
 """
 module StatefulReuse

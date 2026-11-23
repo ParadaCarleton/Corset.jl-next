@@ -564,6 +564,25 @@ function reuse_loop(itr::Any, n::Int)::Int
 end
 """Zip of iterator with itself: one call starts it twice."""
 reuse_zip(itr::Any)::Int = count(pair -> pair[1] == pair[2], zip(itr, itr))
+"""Returned zip of iterator with itself: caller that consumes it starts iterator twice."""
+reuse_zip_returned(itr::Any)::Any = zip(itr, itr)
+"""Load of same element on each loop pass can give same iterator again."""
+function reuse_reload(groups::Vector{Any}, n::Int)::Int
+    total = 0
+    for _ in 1:n
+        itr = groups[1]
+        total += sum(itr)
+    end
+    return total
+end
+"""Zip result that code never consumes iterates nothing."""
+kept_zip_type(itr::Any)::Type = typeof(zip(itr, itr))
+"""Returned tuple holds fresh value twice, never iterator."""
+function kept_shared(make::Function, itr::Any)::Tuple{Any, Any}
+    part = make()
+    sum(itr)
+    return (part, part)
+end
 """Discarded zip of iterator with itself iterates nothing."""
 function kept_zip(itr::Any)::Int
     zip(itr, itr)

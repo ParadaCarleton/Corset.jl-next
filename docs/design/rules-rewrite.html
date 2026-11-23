@@ -1494,8 +1494,9 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 <li><code>stateful-reuse</code> (F51): method restarts iterator whose type admits stateful iterator, or lets it escape after start.
 <ul>
 <li>Start: <code>iterate</code> without state, contract start (<code>first</code>, generic <code>isempty</code>) or consuming-table call.</li>
-<li>Restart: second start of same object on one path. Loop re-entry counts; <code>zip(itr, itr)</code> with used result counts at its call.</li>
+<li>Restart: second start of same object on one path. Loop re-entry counts; <code>zip(itr, itr)</code> starts <code>itr</code> twice where code consumes or returns it.</li>
 <li>Value that loop body defines is new object on each pass: path through its definition makes no pair.</li>
+<li>Load of unchanged container and key (<code>groups[1]</code> in loop) can give same iterator again: <code>possible</code>.</li>
 <li>Escape after start, or start after escape: return, store into object or global, operand of package call.</li>
 <li>Escape counts for tuple, <code>new</code> or constructor result that holds iterator: <code>(head, itr)</code> lets <code>itr</code> escape.</li>
 <li>Generic <code>isempty</code> starts only when <code>isdone</code> gives <code>missing</code>. <code>EachLine</code> and <code>Stateful</code> define <code>isdone</code>.</li>

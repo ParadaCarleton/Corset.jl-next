@@ -186,6 +186,10 @@ reuse_shape(name::Symbol)::Vector{Tuple{Bool, Bool, Union{Nothing, String}, Conf
     @test reuse_shape(:reuse_zip) == [(false, false, "itr", DEFINITE)]
     joint = only(effects(:reuse_zip).stateful_reuses)
     @test !joint.repeats && joint.earlier == joint.later
+    # Caller consumes returned zip; load of same element on each pass can give same iterator.
+    @test reuse_shape(:reuse_zip_returned) == [(false, false, "itr", DEFINITE)]
+    reload = only(effects(:reuse_reload).stateful_reuses)
+    @test (reload.repeats, reload.confidence) == (true, POSSIBLE)
     # Element of outer loop starts twice in one pass.
     inner = only(effects(:reuse_inner).stateful_reuses)
     @test (inner.earlier_escapes, inner.later_escapes, inner.repeats, inner.confidence) == (false, false, false, DEFINITE)
@@ -201,9 +205,9 @@ reuse_shape(name::Symbol)::Vector{Tuple{Bool, Bool, Union{Nothing, String}, Conf
     # Fresh iterator in returned tuple; union of stateful and multi-pass iterator. Neither has caller name.
     @test reuse_shape(:reuse_fresh) == [(false, true, nothing, DEFINITE)]
     @test reuse_shape(:reuse_mixed) == [(false, false, nothing, DEFINITE)]
-    # Multi-pass type, discarded `zip`, container built from iterator, threaded state, `popfirst!` write, separate branches, concrete package iterator, stateful kind
+    # Multi-pass type, unconsumed `zip`, tuple of fresh value, container built from iterator, threaded state, `popfirst!` write, separate branches, concrete package iterator, stateful kind
     # (`isdone` on `eachline` result, deliberate header skip), new object on each loop pass: none.
-    for name in (:kept_vector, :kept_zip, :kept_collected, :kept_state, :kept_popped, :kept_branches, :kept_countdown, :kept_lines, :kept_peeled, :kept_destructured, :kept_nested)
+    for name in (:kept_vector, :kept_zip, :kept_zip_type, :kept_shared, :kept_collected, :kept_state, :kept_popped, :kept_branches, :kept_countdown, :kept_lines, :kept_peeled, :kept_destructured, :kept_nested)
         @test isempty(reuse_shape(name))
     end
 end

@@ -35,4 +35,12 @@ function firsts(itr::Any, n::Int)
     return out
 end
 
+# Package function can consume argument before sum starts it.
+function logged_sum(itr::Any)
+    record(itr)
+    return sum(itr)
+end
+
+record(itr::Any) = println(typeof(itr))
+
 end
