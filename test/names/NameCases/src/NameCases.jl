@@ -221,6 +221,11 @@ zero_converted!(holder::Holder)::Nothing = (Box[holder][1].value = 0; nothing)
 Base.promote_rule(::Type{Holder}, ::Type{Box}) = Box
 """Zero first element of literal that promotes `holder` to new box."""
 zero_promoted!(holder::Holder, box::Box)::Nothing = ([holder, box][1].value = 0; nothing)
+"""Marker type whose literal syntax returns its one vector."""
+struct Same end
+Base.getindex(::Type{Same}, items::Vector{Int}) = items
+"""Push onto `Same[items]`: package literal method is package call."""
+push_same!(items::Vector{Int})::Nothing = (push!(Same[items], 2); nothing)
 """Zero `box` through vector literal."""
 zero_listed!(box::Box)::Nothing = ([box][1].value = 0; nothing)
 """Zero `box` through typed vector literal."""

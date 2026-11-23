@@ -113,6 +113,8 @@ end
     @test shape(effects(:stock!).writes) == [(parameter(2, Step.Element()), true, MEMORY, DEFINITE)]
     @test shape(effects(:zero_listed!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
     @test shape(effects(:zero_converted!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
+    # Package call result that is operand itself waits for package result roots (`effects.md`, Roots).
+    @test isempty(effects(:push_same!).writes)
     @test Set(shape(effects(:zero_promoted!).writes)) == Set([(parameter(2), true, MEMORY, POSSIBLE), (parameter(3), true, MEMORY, POSSIBLE)])
     @test shape(effects(:zero_typed_listed!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
 end

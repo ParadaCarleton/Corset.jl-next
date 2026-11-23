@@ -207,8 +207,14 @@ conversion can give new object, so literal holds untracked objects too.
 """
 function literal_value(walk::Walk, elements::Vector{Any}, @nospecialize(type::Any))::Value
     holder = holding_value(walk, elements)
-    exact = type isa DataType && type <: AbstractArray && all(element -> operand_type(walk, element) <: eltype(type), elements)
+    exact = type isa DataType && type <: AbstractArray && all(element -> operand_type(walk, element) <: element_type(type), elements)
     return Value(holder.places, holder.inner, holder.fresh, holder.untracked || !exact)
+end
+
+"""Whether call of `callee` with `operands` dispatches to one method that `Base` owns."""
+function base_method(walk::Walk, @nospecialize(callee::Any), operands::Vector{Any})::Bool
+    matches = Base._methods_by_ftype(Tuple{Core.Typeof(callee), Any[operand_type(walk, operand) for operand in operands]...}, 1, walk.world)
+    return matches isa Vector && length(matches) == 1 && only(matches).method.module === Base
 end
 
 """Step from container of `type` to its element: `Element` for array, dictionary, set and tuple; unknown step else."""
@@ -229,8 +235,12 @@ iteration and element functions give elements, constructors hold operands, other
 function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
     callee, operands = call_parts(walk, call)
     (isnothing(operands) || isempty(operands)) && return fresh_value(Set{Place.Type}(), true)
-    # Array literal `T[a, b]`: element type operand, then elements.
-    callee === getindex && operand_type(walk, operands[1]) <: Type && return literal_value(walk, operands[2:end], type)
+    # Array literal: `[a, b]` (`vect`), or `T[a, b]` (element type operand, then elements).
+    if (callee === getindex && operand_type(walk, operands[1]) <: Type) || callee === Base.vect
+        # Package method on literal syntax (`SA[x]`) is package call.
+        base_method(walk, callee, operands) || return new_value(walk, operands, type)
+        return literal_value(walk, callee === Base.vect ? operands : operands[2:end], type)
+    end
     object = operand_value(walk, operands[1])
     if callee in LOAD_BUILTINS || callee === getproperty
         step = callee === getfield || callee === getproperty ? (length(operands) >= 2 ? field_step(walk, operands[2]) : nothing) : Step.Element()
@@ -254,7 +264,6 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
     callee in CHOICE_FUNCTIONS && return reduce(joined, choices; init = NO_VALUE)
     # Conversion gives operand itself, or new object.
     callee === convert && return reduce(joined, choices; init = new_value(walk, operands, type))
-    callee === Base.vect && return literal_value(walk, operands, type)
     # Constructor and tuple results hold their operands.
     (callee isa Type || callee === Core.tuple) && return holding_value(walk, operands)
     return new_value(walk, operands, type)
