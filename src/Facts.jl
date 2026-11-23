@@ -753,9 +753,27 @@ infer `SimpleVector`; with `Any`, they dispatch at run time, and package that lo
 """
 tuple_parameters(type::Type)::Core.SimpleVector = Base.unwrap_unionall(type).parameters
 
-"""Value of `operand` in lowered `code`: global it names, directly, through statement or as `Module.name`; else `nothing`."""
+"""Value local `slot` gets in lowered `code` when one statement assigns it; else `nothing`."""
+function assigned_once(code::AbstractVector{Any}, slot::Core.SlotNumber)::Any
+    found = nothing
+    for statement in code
+        statement isa Expr || continue
+        (statement.head === :(=) && statement.args[1] == slot) || continue
+        isnothing(found) || return nothing
+        found = Some(statement.args[2])
+    end
+    return isnothing(found) ? nothing : something(found)
+end
+
+"""
+Value of `operand` in lowered `code`: global it names, directly, through statement, through local assigned once or
+as `Module.name`; else `nothing`.
+"""
 function lowered_value(code::AbstractVector{Any}, operand::Any)::Any
     Base.require_one_based_indexing(code)
+    # Lowering reads local into statement of its own: `%4 = _3`.
+    operand isa Core.SSAValue && (operand = code[operand.id])
+    operand isa Core.SlotNumber && (operand = assigned_once(code, operand))
     operand isa Core.SSAValue && (operand = code[operand.id])
     operand isa GlobalRef && return isdefined(operand.mod, operand.name) ? getglobal(operand.mod, operand.name) : nothing
     # Lowering turns `Base.f` into `getproperty(Base, :f)`.

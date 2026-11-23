@@ -360,30 +360,134 @@ end
 """Functions that answer whether function takes arguments."""
 const REFLECTION = Union{typeof(applicable), typeof(hasmethod), typeof(which), typeof(methods)}
 
+"""Leading operands of splat parts `parts` of `Core._apply_iterate` call: elements of each `tuple(...)` part until other part."""
+function splatted(code::AbstractVector{Any}, parts::AbstractVector{Any})::Vector{Any}
+    operands = Any[]
+    for part in parts
+        part isa Core.SSAValue || break
+        tuple = code[part.id]
+        tuple isa Expr || break
+        (tuple.head === :call && lowered_value(code, tuple.args[1]) === Core.tuple) || break
+        append!(operands, tuple.args[2:end])
+    end
+    return operands
+end
+
+"""Calls of lowered `code`: statement index, callee value and positional operands; splat call `f(a, xs...)` keeps `a`."""
+function lowered_calls(code::AbstractVector{Any})::Vector{Tuple{Int, Any, Vector{Any}}}
+    found = Tuple{Int, Any, Vector{Any}}[]
+    for (index, statement) in pairs(code)
+        call = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
+        call isa Expr || continue
+        call.head === :call || continue
+        callee, operands = lowered_value(code, call.args[1]), call.args[2:end]
+        if callee === Core._apply_iterate && length(operands) >= 2
+            callee, operands = lowered_value(code, operands[2]), splatted(code, operands[3:end])
+        end
+        push!(found, (index, callee, operands))
+    end
+    return found
+end
+
+"""Function or type all methods with signature of `method` belong to; `nothing` for callable object with fields."""
+function own_function(method::Method)::Any
+    callee = Base.unwrap_unionall(Facts.tuple_parameters(method.sig)[1])
+    return Base.issingletontype(callee) ? callee.instance : nothing
+end
+
 """
-Functions, types and callable objects lowered code of `sites` tests for methods: passes to reflection call
-(`REFLECTION`), or calls in `try` whose catch can see `MethodError`: method names `MethodError`, or never rethrows.
+Branch `MethodError` takes at condition `condition` of lowered `code` when it tests caught exception in slot `caught`:
+`true` when condition holds, `false` when it fails, `nothing` for other condition.
+"""
+function method_error_branch(code::AbstractVector{Any}, condition::Any, caught::Any)::Union{Nothing, Bool}
+    condition isa Core.SSAValue || return nothing
+    test = code[condition.id]
+    test isa Expr || return nothing
+    (test.head === :call && length(test.args) == 3) || return nothing
+    subject = test.args[2]
+    subject isa Core.SSAValue && (subject = code[subject.id])
+    (subject == caught && lowered_value(code, test.args[1]) === isa) || return nothing
+    type = lowered_value(code, test.args[3])
+    type isa Type || return nothing
+    MethodError <: type && return true
+    return typeintersect(MethodError, type) === Union{} ? false : nothing
+end
+
+"""Whether lowered `statement` of `code` calls `rethrow` or `throw`."""
+function throws(code::AbstractVector{Any}, statement::Any)::Bool
+    call = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
+    call isa Expr || return false
+    return call.head === :call && lowered_value(code, call.args[1]) isa Union{typeof(rethrow), typeof(throw)}
+end
+
+"""
+Whether handler at `catch_dest` of `try` that statement `enter` of lowered `code` opens can finish on `MethodError`:
+some path reaches its `pop_exception` or return without `rethrow`. `try`/`finally` handler always rethrows.
+"""
+function swallows(code::AbstractVector{Any}, enter::Integer, catch_dest::Integer)::Bool
+    head = code[catch_dest]
+    caught = head isa Expr && head.head === :(=) && head.args[2] == Expr(:the_exception) ? head.args[1] : nothing
+    pending, seen = [catch_dest], Set{Int}()
+    while !isempty(pending)
+        index = pop!(pending)
+        (index in seen || index > lastindex(code)) && continue
+        push!(seen, index)
+        statement = code[index]
+        statement isa Expr && statement.head === :pop_exception && statement.args[1] == Core.SSAValue(enter) && return true
+        if statement isa Core.ReturnNode
+            # Return node without value marks unreachable code.
+            isdefined(statement, :val) && return true
+        elseif statement isa Core.GotoNode
+            push!(pending, statement.label)
+        elseif statement isa Core.GotoIfNot
+            # Type test of caught exception sends `MethodError` one way; other condition, both ways.
+            branch = method_error_branch(code, statement.cond, caught)
+            branch === false || push!(pending, index + 1)
+            branch === true || push!(pending, statement.dest)
+        elseif !throws(code, statement)
+            push!(pending, index + 1)
+        end
+    end
+    return false
+end
+
+"""
+Functions, types and callable objects lowered code of `methods` tests for methods: passes to reflection call
+(`REFLECTION`) or to argument package function passes on to one, or calls in `try` whose handler swallows `MethodError`.
 Generated methods pass: they keep generator only.
 """
-function probed(sites::AbstractVector{MethodSite})::Base.IdSet{Any}
+function probed(methods::AbstractVector{Method})::Base.IdSet{Any}
+    bodies = [(method, Base.uncompressed_ast(method).code) for method in methods if isdefined(method, :source)]
+    calls = [lowered_calls(code) for (_, code) in bodies]
     found = Base.IdSet{Any}()
-    for site in sites
-        isdefined(site.method, :source) || continue
-        code = Base.uncompressed_ast(site.method).code
-        calls = Tuple{Int, Expr}[]
-        for (index, statement) in pairs(code)
-            call = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
-            call isa Expr && call.head === :call && push!(calls, (index, call))
+    # Argument positions each package function passes to reflection; grows until no function gains position.
+    testers, grown = IdDict{Any, Set{Int}}(), true
+    while grown
+        grown = false
+        for ((method, code), method_calls) in zip(bodies, calls), (_, callee, operands) in method_calls
+            positions = callee isa REFLECTION ? (1,) : get(testers, callee, ())
+            # Copy: recursive function adds to set it reads.
+            for position in collect(positions)
+                position <= length(operands) || continue
+                operand, own = operands[position], own_function(method)
+                operand isa Core.SSAValue && (operand = code[operand.id])
+                if operand isa Core.SlotNumber && 2 <= operand.id <= method.nargs && !isnothing(own)
+                    tested = get!(Set{Int}, testers, own)
+                    (operand.id - 1) in tested && continue
+                    push!(tested, operand.id - 1)
+                    grown = true
+                else
+                    push!(found, lowered_value(code, operand))
+                end
+            end
         end
-        for (_, call) in calls
-            length(call.args) >= 2 && lowered_value(code, call.args[1]) isa REFLECTION && push!(found, lowered_value(code, call.args[2]))
-        end
-        tries = [(index, statement.catch_dest) for (index, statement) in pairs(code) if statement isa Core.EnterNode]
-        isempty(tries) && continue
-        globals = [lowered_value(code, operand) for (_, call) in calls for operand in call.args]
-        (any(named -> named === MethodError, globals) || !any(named -> named === rethrow, globals)) || continue
-        for (index, call) in calls
-            any(((enter, catch_dest),) -> enter < index < catch_dest, tries) && push!(found, lowered_value(code, call.args[1]))
+    end
+    for ((method, code), method_calls) in zip(bodies, calls), (enter, statement) in pairs(code)
+        statement isa Core.EnterNode || continue
+        catch_dest = statement.catch_dest
+        swallows(code, enter, catch_dest) || continue
+        for (index, callee, _) in method_calls
+            enter < index < catch_dest && push!(found, callee)
         end
     end
     delete!(found, nothing)
@@ -393,7 +497,7 @@ end
 """Facts of loaded package `modules`, root module first, with method and struct sites in `files`."""
 function package_facts(modules::AbstractVector{Module}, files::AbstractVector{SyntaxFile})::PackageFacts
     sites = method_sites(modules, files)
-    return PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files, modules), probed(sites))
+    return PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files, modules), probed([site.method for site in sites]))
 end
 
 end
