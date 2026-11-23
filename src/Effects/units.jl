@@ -50,7 +50,7 @@ function unit_walk(typed::TypedCode, modules::Set{Module}, interpreter::CC.Nativ
     # Source flags keep compiler `effect_free`, which `frame_ir` clears on kept calls. Claim in method voids proof.
     flags, claimed = typed.frame.src.ssaflags, claims_effect_free(typed.site.method)
     proven = Bool[!claimed && line in eachindex(flags) && flags[line] & CC.IR_FLAG_EFFECT_FREE != 0 for line in lines]
-    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{Pair{Int, EffectKind.T}}}(), IdDict{Method, Bool}(), world)
+    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{CapturedWrite}}(), IdDict{Method, Bool}(), world)
     return walk, lines, used, claimed
 end
 

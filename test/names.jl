@@ -1,6 +1,6 @@
-using Test: @test, @testset
+using Test: @test, @testset, @test_throws
 using Corset: Corset
-using Corset.Facts: Facts, MethodEffects, Access, Callee, Place, Root, Step, Confidence, EffectKind, BlindSpot, callee_name
+using Corset.Facts: Facts, MethodEffects, Access, Callee, Place, Root, Step, Confidence, EffectKind, BlindSpot, callee_name, place_text, root_global
 using Corset.Inference: infer_package
 using Corset.Effects: Effects, record_bytes, unit_record, place_root, ALWAYS_THROWS
 using Supposition: Supposition, Data, @check
@@ -41,8 +41,8 @@ shape(accesses::Vector{Access})::Vector{Tuple{Place.Type, Bool, EffectKind.T, Co
 
 const DEFINITE, POSSIBLE, MEMORY = Confidence.definite, Confidence.possible, EffectKind.memory
 
-"""Whether inference can prove `effect_free` here: code coverage counts its counters as effects."""
-const PROVES = Base.JLOptions().code_coverage == 0
+"""Whether inference can prove `effect_free` of fixture: coverage of fixture file counts its counters as effects."""
+const PROVES = Base.JLOptions().code_coverage == 0 || Base.JLOptions().code_coverage == 3 && !startswith(CASE, unsafe_string(Base.JLOptions().tracked_path))
 
 @testset "write sources" begin
     # Field assignment calls `setproperty!` before inlining: `!` name writes object or below.
@@ -77,6 +77,18 @@ const PROVES = Base.JLOptions().code_coverage == 0
     @test any(access -> place_root(access.place) == Root.Parameter(2), effects(:set_first!).writes)
     # Tree walk reaches many exact paths; `Deep` of root covers them.
     @test Set(shape(effects(:zero_at!).writes)) == Set([(parameter(2), true, MEMORY, POSSIBLE), (Place.Deep(Root.Parameter(2)), true, MEMORY, POSSIBLE)])
+    # Step types come from tuple field and, for `Ref` element, `Any`.
+    @test shape(effects(:zero_left!).writes) == [(parameter(2, Step.Position(1)), true, MEMORY, DEFINITE)]
+    @test shape(effects(:zero_ref!).writes) == [(parameter(2, Step.Element()), true, MEMORY, DEFINITE)]
+    @test shape(effects(:zero_at_index!).writes) == [(Place.Deep(Root.Parameter(2)), true, MEMORY, DEFINITE)]
+    @test shape(effects(:push_literal!).writes) == [(ELSEWHERE, true, MEMORY, DEFINITE)]
+    # Load from fresh vector can give fresh object, so write is possible.
+    @test shape(effects(:fill_wrapped!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
+    @test (Place.Deep(Root.Parameter(2)), true, MEMORY, POSSIBLE) in shape(effects(:push_all!).writes)
+    @test shape(effects(:collect_local!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
+    @test shape(effects(:swap_local!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
+    @test shape(effects(:loop_local!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
+    @test isempty(effects(:thread_count_address).writes)
 end
 
 @testset "exception table" begin
@@ -107,6 +119,8 @@ end
 @testset "read kinds" begin
     @test shape(effects(:level).reads) == [(global_place(:LEVEL), false, EffectKind.scoped_read, DEFINITE)]
     @test shape(effects(:task_state).reads) == [(ELSEWHERE, false, EffectKind.task_local, DEFINITE)]
+    @test shape(effects(:task_value).reads) == [(ELSEWHERE, false, EffectKind.task_local, DEFINITE)]
+    @test (parameter(2), false, EffectKind.iteration, DEFINITE) in shape(effects(:finished).reads)
     @test shape(effects(:first_of).reads) == [(parameter(2), false, EffectKind.iteration, DEFINITE)]
     @test shape(effects(:total_of).reads) == [(parameter(2), false, EffectKind.iteration, DEFINITE)]
     # Plain argument loads stay out of facts.
@@ -140,6 +154,21 @@ end
     @test all(stored -> Place.Deep(Root.Parameter(3)) in stored, values(walk.stored))
 end
 
+@testset "place helpers" begin
+    # Moshi variants are immutable, so table hits compare by `===`; call `==` directly.
+    @test Step.Position(1) == Step.Position(1) && Step.Position(1) != Step.Position(2)
+    @test Place.Deep(Root.Parameter(2)) == Place.Deep(Root.Parameter(2)) && Place.Deep(Root.Parameter(2)) != Place.Deep(Root.Parameter(3))
+    @test hash(Effects.NO_VALUE) == hash(Effects.Value(Set{Place.Type}(), Set{Place.Type}(), false))
+    @test_throws ArgumentError Facts.NO_STEPS.steps
+    counter = GlobalRef(CASES, :COUNTER)
+    @test root_global(Place.Deep(Root.Global(counter))) == counter && isnothing(root_global(parameter(2)))
+    method = only(methods(CASES.set_inner!))
+    @test place_text(method, parameter(2, Step.Field(:box), Step.Element(), Step.Position(1))) == "holder.box[…][1]"
+    @test place_text(method, Place.Deep(Root.Global(counter))) == "NameCases.COUNTER or below"
+    @test place_text(method, ELSEWHERE) == "global state"
+    @test place_text(only(methods(CASES.make_callback(Int[]))), Place.At(Root.Parameter(1), Step.Type[])) == "closure"
+end
+
 @testset "unit record round trip" begin
     world = Base.get_world_counter()
     @test length(RECORDS) == length(UNITS.typed)
@@ -170,6 +199,7 @@ writes_parameter(name::Symbol, position::Int)::Bool = any(access -> place_root(a
             :call_callback! => (copy(items),), :forward_keyword! => (copy(items),), :assumed_store! => (copy(items),),
             :store_then_fill! => ([copy(items)], copy(items)), :register! => (Function[], copy(items)),
             :assumed_foreach! => (Int[], copy(items)), :claimed_caller! => (copy(items),), :keyword_caller! => (copy(items),),
+            :fill_wrapped! => (copy(items),), :push_all! => (copy(items), copy(items)), :collect_local! => (Int[], copy(items)),
         )
         return all(cases) do (name, arguments)
             before = map(state ∘ deepcopy, arguments)

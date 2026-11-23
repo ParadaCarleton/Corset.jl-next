@@ -41,49 +41,6 @@ function source_used(ir::CC.IRCode, count::Int)::Vector{Bool}
     return used
 end
 
-"""
-IR `ir` with argument types of `constants` (position and value) set to constant. Statements stay shared, unless
-constant `Bool` argument fixes branch on it (`drop_unreached`).
-"""
-function specialize(ir::CC.IRCode, constants::Vector{Pair{Int, Any}})::CC.IRCode
-    isempty(constants) && return ir
-    argtypes = copy(ir.argtypes)
-    foreach(((position, value),) -> argtypes[position] = Core.Const(value), constants)
-    flags = Dict{Int, Bool}(position => value for (position, value) in constants if value isa Bool)
-    stmts = isempty(flags) ? ir.stmts : drop_unreached(ir, flags)
-    return CC.IRCode(stmts, ir.cfg, ir.debuginfo, argtypes, ir.meta, ir.sptypes, ir.valid_worlds)
-end
-
-"""Statements that move no value: flow skips them, and release balance walks blocks through them."""
-const CONTROL = Union{Core.GotoNode, Core.GotoIfNot, Core.EnterNode, Core.UpsilonNode}
-
-"""Whether `statement` is control statement, or `leave` or `pop_exception`: try region needs each to meet its `enter`."""
-structural(@nospecialize(statement::Any))::Bool = statement isa CONTROL || (statement isa Expr && statement.head in (:leave, :pop_exception))
-
-"""
-Statements of `ir` where branch on argument with constant in `flags` (position and `Bool`) takes that constant. Each
-statement of block no path from entry reaches becomes `nothing`, structural statement excepted (`structural`).
-"""
-function drop_unreached(ir::CC.IRCode, flags::Dict{Int, Bool})::CC.InstructionStream
-    stmts, blocks = copy(ir.stmts), ir.cfg.blocks
-    reached, pending = falses(length(blocks)), [1]
-    while !isempty(pending)
-        block = pop!(pending)
-        reached[block] && continue
-        reached[block] = true
-        index = last(blocks[block].stmts)
-        terminator = stmts[index][:stmt]
-        flag = terminator isa Core.GotoIfNot && terminator.cond isa Core.Argument ? get(flags, terminator.cond.n, nothing) : nothing
-        isnothing(flag) && (append!(pending, blocks[block].succs); continue)
-        stmts[index][:stmt] = Core.GotoIfNot(flag, terminator.dest)
-        push!(pending, flag ? block + 1 : terminator.dest)
-    end
-    for block in findall(!, reached), index in blocks[block].stmts
-        structural(stmts[index][:stmt]) || (stmts[index][:stmt] = nothing)
-    end
-    return stmts
-end
-
 """Types whose values point to no object Corset tracks: type objects, modules, symbols and strings."""
 const PLAIN = Union{Type, Core.TypeName, Module, Symbol, String, Core.MethodInstance, Method}
 
@@ -94,9 +51,7 @@ keeps answers; recursive struct counts as pointing.
 function referent!(cache::IdDict{Any, Bool}, @nospecialize(type::Any))::Bool
     haskey(cache, type) && return cache[type]
     cache[type] = true
-    answer = if type === Union{}
-        false
-    elseif type isa Union
+    answer = if type isa Union
         referent!(cache, type.a) || referent!(cache, type.b)
     elseif type isa UnionAll || !(type isa DataType) || !isconcretetype(type)
         !(type <: PLAIN)
@@ -161,23 +116,3 @@ function call_statement(@nospecialize(statement::Any))::Bool
     statement isa Expr && statement.head === :(=) && (statement = statement.args[2])
     return statement isa Expr && statement.head in (:call, :invoke, :foreigncall)
 end
-
-"""
-Whether each statement of `ir` with `users` (`statement_users`) builds thrown value only (`effects.md`, Effect kinds):
-it has use, and each use is `sinks` statement (throw) or other such statement. Use cycle never counts: least fixpoint.
-"""
-function message_statements(users::Vector{Vector{Int}}, sinks::Vector{Bool})::Vector{Bool}
-    message, changed = fill(false, length(users)), true
-    while changed
-        changed = false
-        for index in reverse(eachindex(message))
-            (message[index] || isempty(users[index])) && continue
-            all(user -> sinks[user] || message[user], users[index]) || continue
-            message[index] = changed = true
-        end
-    end
-    return message
-end
-
-"""Whether `type` is tuple type with definite field count: no `Vararg` parameter."""
-definite_tuple(@nospecialize(type::Any))::Bool = type isa DataType && type <: Tuple && (isempty(type.parameters) || !Base.isvarargtype(type.parameters[end]))

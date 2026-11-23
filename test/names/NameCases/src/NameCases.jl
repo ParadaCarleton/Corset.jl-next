@@ -129,6 +129,42 @@ Base.getindex(row::BoxRow, index::Int) = row.boxes[index]
 Base.eltype(::Type{BoxRow}) = error("no element type")
 """Set value of first box in `row`."""
 set_first!(row::BoxRow)::Nothing = (row[1].value = 3; nothing)
+"""Zero first box of `pair` by field position."""
+zero_left!(pair::Tuple{Box, Box})::Nothing = (getfield(pair, 1).value = 0; nothing)
+"""Zero box at `index` of `pair`: field position is unknown."""
+zero_at_index!(pair::Tuple{Box, Box}, index::Int)::Nothing = (getfield(pair, index).value = 0; nothing)
+# Interpolation embeds vector literal in code; no binding names it.
+@eval push_literal!(value::Int)::Vector{Int} = push!($(Int[]), value)
+"""Zero box that `ref` holds: `Ref` has no element type, so step type is `Any`."""
+zero_ref!(ref::Base.RefValue{Box})::Nothing = (ref[].value = 0; nothing)
+"""Wrap `items` and new vector, then fill first: load from fresh vector can give fresh object."""
+function fill_wrapped!(items::Vector{Int})::Nothing
+    wrapped = Vector{Vector{Int}}()
+    push!(wrapped, items)
+    push!(wrapped, Int[])
+    fill!(wrapped[1], 0)
+    return nothing
+end
+"""Push every element of `extra` onto `items`: splat hides written position."""
+push_all!(items::Vector{Int}, extra::Vector{Int})::Vector{Int} = push!(items, extra...)
+"""Items that `collect_local!` logs."""
+const SEEN = Int[]
+"""Collect `items` into `out` through local copy of captured field; log each item to `SEEN`."""
+collect_local!(out::Vector{Int}, items::Vector{Int})::Nothing = (foreach(item -> (target = out; push!(target, item); push!(SEEN, item)), items); nothing)
+"""Push into local that holds captured `out`, then new vector: write on `out` is possible."""
+swap_local!(out::Vector{Int}, items::Vector{Int})::Nothing = (foreach(item -> (target = out; target = Int[]; push!(target, item); push!(SEEN, item)), items); nothing)
+"""Push into local that holds new vector, then captured `out` on later rounds: loop reaches write after assignment."""
+function loop_local!(out::Vector{Int}, items::Vector{Int})::Nothing
+    foreach(items) do item
+        target = Int[]
+        for _ in 1:2
+            push!(target, item)
+            push!(SEEN, item)
+            target = out
+        end
+    end
+    return nothing
+end
 """Store 7 through `pointer`."""
 poke!(pointer::Ptr{Int})::Nothing = (Core.Intrinsics.pointerset(pointer, 7, 1, 1); nothing)
 
@@ -153,6 +189,15 @@ read_total()::Int = total
 level()::Int = LEVEL[]
 """Read task-local storage."""
 task_state()::IdDict{Any, Any} = task_local_storage()
+"""Read task-local value under `key`."""
+task_value(key::Symbol)::Any = task_local_storage(key)
+"""Boxes in order; iteration by generic method."""
+struct Countdown
+    boxes::Vector{Box}
+end
+Base.iterate(countdown::Countdown, index::Int = 1) = index > length(countdown.boxes) ? nothing : (countdown.boxes[index], index + 1)
+"""Whether `countdown` has no box: generic `isempty` starts iteration."""
+finished(countdown::Countdown)::Bool = isempty(countdown)
 """First element of `items`: starts iteration."""
 first_of(items::Vector{Int})::Int = first(items)
 """Sum of `items`: consuming function starts iteration."""
@@ -173,6 +218,8 @@ Base.@assume_effects :effect_free run_keyword(f::Function; flag::Bool = true) = 
 keyword_caller!(out::Vector{Int})::Vector{Int} = (run_keyword(() -> push!(out, 1); flag = true); out)
 """Store under block `@assume_effects`: compiler trusts claim."""
 assumed_store!(items::Vector{Int})::Vector{Int} = (Base.@assume_effects :effect_free items[1] = 3; items)
+"""Address of thread count in Julia library: library tuple stays nested call in IR."""
+thread_count_address()::Ptr{Cint} = cglobal((:jl_n_threads, "libjulia-internal"), Cint)
 """Discard length of `items`."""
 discard(items::Vector{Int})::Nothing = (length(items); nothing)
 

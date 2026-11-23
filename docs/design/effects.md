@@ -57,6 +57,8 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
 - Root: parameter, global binding, or fresh. Fresh objects are local: writes to them are no facts.
 - Path: field name or element below root. Path collapses to `deep` past 8 steps.
 - `getfield`, `getproperty` with constant name and `getindex` add a step to roots of their first operand.
+- Load from fresh object gives roots it holds. Loaded value can be fresh too, so writes through it are `possible`.
+- Mutable literal in code, such as interpolated object, is global state: `Elsewhere` root.
 - Phi and pi nodes join roots of their values.
 - Alias table: library functions whose result can lie beneath an operand. Result takes `deep` place of that operand.
   - Table: `view`, `reshape`, `vec`, `parent`, `transpose`, `adjoint`, `keys`, `values`, `pairs`, `first`, `last`, `only`, `something`, `convert`, `identity`, `skipmissing`, iterator wrappers (`zip`, `enumerate`, `Iterators.*`).

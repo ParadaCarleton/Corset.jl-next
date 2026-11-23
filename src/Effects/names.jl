@@ -71,8 +71,14 @@ place_root(place::Place.Type)::Root.Type = @match place begin
     Place.Deep(root) => root
 end
 
-"""Value loaded one `step` below `value`: places one step deeper, and objects fresh value holds inside."""
-loaded(value::Value, step::Step.Type)::Value = Value(union(Set{Place.Type}(deeper(place, step) for place in value.places), value.inner), Set{Place.Type}(), false)
+"""
+Value loaded one `step` below `value`: places one step deeper, and objects fresh value holds inside. Fresh value can
+hold fresh objects too, which `inner` omits.
+"""
+loaded(value::Value, step::Step.Type)::Value = Value(union(Set{Place.Type}(deeper(place, step) for place in value.places), value.inner), Set{Place.Type}(), value.fresh)
+
+"""Value loaded at unknown step below `value`: `Deep` of each root, and objects fresh value holds inside."""
+deep_loaded(value::Value)::Value = Value(union(Set{Place.Type}(Place.Deep(place_root(place)) for place in value.places), value.inner), Set{Place.Type}(), value.fresh)
 
 """
 Event of one statement: access to `place` of `kind` with `confidence`, covering places below (`below`), as `write` or
@@ -84,6 +90,13 @@ struct Event
     kind::EffectKind.T
     confidence::Confidence.T
     write::Bool
+end
+
+"""Write of closure method on captured field `field`, of `kind`; `exact` when local it writes through holds one object."""
+struct CapturedWrite
+    field::Int
+    kind::EffectKind.T
+    exact::Bool
 end
 
 """
@@ -98,19 +111,19 @@ struct Walk
     stored::Dict{Place.Type, Set{Place.Type}}
     referent::IdDict{Any, Bool}
     modules::Set{Module}
-    closures::IdDict{Any, Vector{Pair{Int, EffectKind.T}}}
+    closures::IdDict{Any, Vector{CapturedWrite}}
     claims::IdDict{Method, Bool}
     world::UInt
 end
 
 """Value loaded below `value` in `walk`: one `step` deeper, or `Deep` of each root for unknown step; stored places too."""
 function load_value(walk::Walk, value::Value, step::Union{Nothing, Step.Type})::Value
-    found = isnothing(step) ? Value(Set{Place.Type}(Place.Deep(place_root(place)) for place in value.places), value.inner, false) : loaded(value, something(step))
+    found = isnothing(step) ? deep_loaded(value) : loaded(value, something(step))
     for place in value.places
         stored = get(walk.stored, place, nothing)
         isnothing(stored) || union!(found.places, stored)
     end
-    return Value(bounded(found.places), found.inner, false)
+    return Value(bounded(found.places), found.inner, found.fresh)
 end
 
 """Type of statement or operand `operand` in `walk`, widened."""
@@ -119,13 +132,14 @@ operand_type(walk::Walk, @nospecialize(operand::Any))::Any = value_type(walk.ir,
 """Whether value of `type` can point to caller-visible object; `ScopedValue` points to its scoped state."""
 pointing(walk::Walk, @nospecialize(type::Any))::Bool = referent!(walk.referent, type) || (type isa Type && type !== Union{} && type <: Base.ScopedValues.ScopedValue)
 
-"""Value of IR `operand` in `walk`: statement value, argument place, global place, or none."""
+"""Value of IR `operand` in `walk`: statement value, argument place, global place, or global state for literal object."""
 function operand_value(walk::Walk, @nospecialize(operand::Any))::Value
     operand isa Core.SSAValue && return walk.values[operand.id]
     pointing(walk, operand_type(walk, operand)) || return NO_VALUE
     operand isa Core.Argument && return place_value(Place.At(Root.Parameter(operand.n), NO_STEPS))
     operand isa GlobalRef && return place_value(Place.At(Root.Global(operand), NO_STEPS))
-    return NO_VALUE
+    # Mutable literal in code, such as interpolated object: global state that no binding names.
+    return place_value(ELSEWHERE)
 end
 
 """Constant that IR `operand` holds in `walk`, or `nothing` when not constant (`constant`)."""
@@ -149,8 +163,7 @@ function field_step(walk::Walk, @nospecialize(field::Any))::Union{Nothing, Step.
     isnothing(found) && return nothing
     name = something(found)
     name isa Symbol && return Step.Field(name)
-    name isa Int && return Step.Position(name)
-    return nothing
+    return name isa Int ? Step.Position(name) : nothing
 end
 
 """Value of IR statement `index` in `walk` from its operands (`effects.md`, Roots)."""
@@ -374,15 +387,12 @@ function statement_events(walk::Walk, index::Int)::Vector{Event}
     statement = walk.ir.stmts[index][:stmt]
     statement isa GlobalRef && return global_reads(walk, statement)
     found = Event[]
-    assigned = statement isa Expr && statement.head === :(=) ? statement.args[1] : nothing
     for reference in CC.userefs(statement)
         operand = reference[]
-        operand isa GlobalRef && operand !== assigned && append!(found, global_reads(walk, operand))
+        operand isa GlobalRef && append!(found, global_reads(walk, operand))
     end
     statement isa Expr || return found
-    if statement.head === :(=) && statement.args[1] isa GlobalRef
-        push!(found, Event(Place.At(Root.Global(statement.args[1]), NO_STEPS), false, EffectKind.memory, Confidence.definite, true))
-    elseif statement.head === :foreigncall
+    if statement.head === :foreigncall
         count = length(statement.args[3]::Core.SimpleVector)
         for operand in statement.args[6:(5 + count)]
             append!(found, (Event(event.place, true, event.kind, Confidence.possible, true) for event in value_events(walk, operand_value(walk, operand), EffectKind.memory, true, true)))
@@ -554,9 +564,10 @@ function closure_events(walk::Walk, call::Expr, index::Int, @nospecialize(callee
     isempty(closures) && return found
     walk.proven[index] && !callee_claims(walk, call, call_callee(walk, call)) && return found
     for built in closures
-        for (field, kind) in closure_writes!(walk, constant_value(walk, built.args[1])::DataType)
-            field + 1 <= length(built.args) || continue
-            append!(found, value_events(walk, operand_value(walk, built.args[field + 1]), kind, true, true))
+        for write in closure_writes!(walk, constant_value(walk, built.args[1])::DataType)
+            write.field + 1 <= length(built.args) || continue
+            events = value_events(walk, operand_value(walk, built.args[write.field + 1]), write.kind, true, true)
+            append!(found, write.exact ? events : [Event(event.place, event.below, event.kind, Confidence.possible, true) for event in events])
         end
     end
     return found
@@ -598,50 +609,87 @@ function closure_new(walk::Walk, @nospecialize(operand::Any))::Union{Nothing, Ex
 end
 
 """
-Captured fields of closure `type` that its methods write, by field position, with effect kind: `!` call or builtin
-store on captured field or below it, in lowered code. Lowered code has no types: callable skip reads constant callees.
+Captured fields of closure `type` that its methods write, by field position: `!` call or builtin store on captured
+field or below it, in lowered code. Lowered code has no types: callable skip reads constant callees.
 """
-function closure_writes!(walk::Walk, type::DataType)::Vector{Pair{Int, EffectKind.T}}
+function closure_writes!(walk::Walk, type::DataType)::Vector{CapturedWrite}
     haskey(walk.closures, type) && return walk.closures[type]
-    walk.closures[type] = Pair{Int, EffectKind.T}[]
-    found = Pair{Int, EffectKind.T}[]
+    walk.closures[type] = CapturedWrite[]
+    found = CapturedWrite[]
     # `methods(type)` lists constructors; call methods match call signature of closure instance.
     matches = Base._methods_by_ftype(Tuple{type, Vararg{Any}}, -1, walk.world)
     for method in (matches isa Vector ? Method[(match::Core.MethodMatch).method for match in matches] : Method[])
         method.source === nothing && continue
         code = Base.uncompressed_ast(method)
-        captured, slots = Dict{Int, Int}(), Dict{Int, Int}()
-        for (index, statement) in enumerate(code.code)
-            # Local that holds captured field: `out = self.out` before `push!(out, x)`.
-            if statement isa Expr && statement.head === :(=) && statement.args[1] isa Core.SlotNumber && statement.args[2] isa Core.SSAValue
-                field = get(captured, (statement.args[2]::Core.SSAValue).id, nothing)
-                isnothing(field) || (slots[(statement.args[1]::Core.SlotNumber).id] = field)
-            end
-            statement isa Expr || continue
-            statement.head === :call || continue
-            callee = lowered_callee(code, statement.args[1])
-            if callee === getfield || callee === getproperty || callee === getindex
-                source = statement.args[2]
-                field = source isa Core.SlotNumber && source.id == 1 && length(statement.args) >= 3 ? captured_field(type, statement.args[3]) : captured_source(captured, slots, source)
-                isnothing(field) || (captured[index] = field)
-            elseif callee === setfield! || bang_function(callee)
-                operands = statement.args[2:end]
-                written = findfirst(operand -> !(lowered_callee(code, operand) isa Union{Function, Type}), operands)
-                isnothing(written) && continue
-                field = captured_source(captured, slots, operands[written])
-                isnothing(field) || push!(found, field => EffectKind.memory)
-            end
+        captured, slots, assignments, written = Dict{Int, Set{Int}}(), Dict{Int, Set{Int}}(), Dict{Int, Int}(), Set{Int}[]
+        # Loop can assign local after write through it: scan again until field sets stop growing.
+        while true
+            held = field_count(captured, slots)
+            empty!(assignments)
+            empty!(written)
+            closure_scan!(code, type, captured, slots, assignments, written)
+            field_count(captured, slots) == held && break
         end
+        # Local assigned twice can hold other object when it writes.
+        exact = all(slot -> assignments[slot] == 1, keys(slots))
+        append!(found, (CapturedWrite(field, EffectKind.memory, exact && length(fields) == 1) for fields in written for field in fields))
     end
     walk.closures[type] = unique!(found)
     return walk.closures[type]
 end
 
-"""Captured field that lowered `operand` holds: statement in `captured` or local in `slots`; `nothing` else."""
-function captured_source(captured::Dict{Int, Int}, slots::Dict{Int, Int}, @nospecialize(operand::Any))::Union{Nothing, Int}
-    operand isa Core.SSAValue && return get(captured, operand.id, nothing)
-    operand isa Core.SlotNumber && operand.id != 1 && return get(slots, operand.id, nothing)
+"""Count of captured fields over every statement and local: sets only grow, so equal count means no change."""
+field_count(captured::Dict{Int, Set{Int}}, slots::Dict{Int, Set{Int}})::Int = sum(length, values(captured); init = 0) + sum(length, values(slots); init = 0)
+
+"""
+One scan of lowered `code` of closure `type`: grows captured fields of each statement (`captured`) and local
+(`slots`), counts assignments of each local, and adds captured fields of each written operand to `written`.
+"""
+function closure_scan!(code::Core.CodeInfo, type::DataType, captured::Dict{Int, Set{Int}}, slots::Dict{Int, Set{Int}}, assignments::Dict{Int, Int}, written::Vector{Set{Int}})::Nothing
+    for (index, statement) in enumerate(code.code)
+        # Local that holds captured field: `out = self.out` before `push!(out, x)`. Scan ignores flow, so it never clears.
+        assigned = statement isa Expr && statement.head === :(=) && statement.args[1] isa Core.SlotNumber ? statement.args[1]::Core.SlotNumber : nothing
+        if assigned isa Core.SlotNumber
+            assignments[assigned.id] = get(assignments, assigned.id, 0) + 1
+            statement = (statement::Expr).args[2]
+        end
+        fields = held_fields(code, type, captured, slots, statement)
+        if !isempty(fields)
+            union!(get!(Set{Int}, captured, index), fields)
+            assigned isa Core.SlotNumber && union!(get!(Set{Int}, slots, assigned.id), fields)
+        end
+        statement isa Expr || continue
+        statement.head === :call || continue
+        callee = lowered_callee(code, statement.args[1])
+        callee === setfield! || bang_function(callee) || continue
+        operands = statement.args[2:end]
+        position = findfirst(operand -> !(lowered_callee(code, operand) isa Union{Function, Type}), operands)
+        isnothing(position) || push!(written, copy(captured_source(captured, slots, operands[position])))
+    end
     return nothing
+end
+
+"""
+Captured fields of closure `type` that lowered `expression` of `code` holds: load from closure or below captured
+field, statement in `captured`, or local in `slots`.
+"""
+function held_fields(code::Core.CodeInfo, type::DataType, captured::Dict{Int, Set{Int}}, slots::Dict{Int, Set{Int}}, @nospecialize(expression::Any))::Set{Int}
+    expression isa Expr || return captured_source(captured, slots, expression)
+    expression.head === :call || return Set{Int}()
+    length(expression.args) >= 2 || return Set{Int}()
+    callee = lowered_callee(code, expression.args[1])
+    callee === getfield || callee === getproperty || callee === getindex || return Set{Int}()
+    source = expression.args[2]
+    (source isa Core.SlotNumber && source.id == 1) || return captured_source(captured, slots, source)
+    field = length(expression.args) >= 3 ? captured_field(type, expression.args[3]) : nothing
+    return isnothing(field) ? Set{Int}() : Set{Int}([field])
+end
+
+"""Captured fields that lowered `operand` holds: statement in `captured` or local in `slots`."""
+function captured_source(captured::Dict{Int, Set{Int}}, slots::Dict{Int, Set{Int}}, @nospecialize(operand::Any))::Set{Int}
+    operand isa Core.SSAValue && return get(captured, operand.id, Set{Int}())
+    operand isa Core.SlotNumber && operand.id != 1 && return get(slots, operand.id, Set{Int}())
+    return Set{Int}()
 end
 
 """Value of lowered operand `operand` of `code` when it names constant global, directly or by statement; `nothing` else."""
