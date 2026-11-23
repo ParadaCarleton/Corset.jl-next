@@ -490,6 +490,7 @@ module ProbedCases
     probed_interrupt(x::Float64) = x
     probed_method_error(x::Float64) = x
     probed_guarded(x::Float64) = x
+    probed_object(x::Float64) = x
     kept_filtered(x::Float64) = x
     kept_finally(x::Float64) = x
     kept_called(x::Float64) = x
@@ -538,17 +539,30 @@ module ProbedCases
         0
     end
     guarded(x) = call_or_zero(probed_guarded, x)
+    struct Guard
+        fallback::Int
+    end
+    (guard::Guard)(f, x) = try
+        f(x)
+    catch
+        guard.fallback
+    end
+    const guard = Guard(0)
+    guarded_object(x) = guard(probed_object, x)
+    # `@with` opens `try` with scope; its handler rethrows.
     scoped(x) = Base.ScopedValues.@with SCOPE => 1 kept_scoped(x)
 end
 
 @testset "probed functions" begin
-    functions = [getglobal(ProbedCases, name) for name in names(ProbedCases; all = true)]
-    owned = [value for value in functions if value isa Function && parentmodule(value) === ProbedCases]
-    found = Corset.Package.probed([method for owner in owned for method in methods(owner)])
+    bindings = [getglobal(ProbedCases, name) for name in names(ProbedCases; all = true)]
+    owned = [value for value in bindings if value isa Function && parentmodule(value) === ProbedCases]
+    # Methods of functions, types and callable objects, as package stage collects them.
+    found = Corset.Package.probed(unique!([method for value in bindings for method in methods(value) if method.module === ProbedCases]))
     @test sort!([String(nameof(value)) for value in owned if value in found]) == [
         "probed_bare", "probed_direct", "probed_guarded", "probed_interrupt", "probed_local", "probed_method_error",
-        "probed_qualified", "probed_rewrapped", "probed_splat", "probed_wrapped",
+        "probed_object", "probed_qualified", "probed_rewrapped", "probed_splat", "probed_wrapped",
     ]
-    # `@with` opens scope-only `try` without handler.
-    @test any(statement -> statement isa Core.EnterNode && statement.catch_dest == 0, Base.uncompressed_ast(only(methods(ProbedCases.scoped))).code)
+    # Lowering pops exception before return; optimized IR can return from handler directly.
+    @test Corset.Package.swallows(Any[Core.EnterNode(2), Core.ReturnNode(0)], 1, 2)
+    @test !Corset.Package.swallows(Any[Core.EnterNode(2), Core.ReturnNode()], 1, 2)
 end

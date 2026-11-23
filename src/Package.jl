@@ -392,11 +392,8 @@ function lowered_calls(code::AbstractVector{Any})::Vector{Tuple{Int, Any, Any, V
     return found
 end
 
-"""Function or type all methods with signature of `method` belong to; `nothing` for callable object with fields."""
-function own_function(method::Method)::Any
-    callee = Base.unwrap_unionall(Facts.tuple_parameters(method.sig)[1])
-    return Base.issingletontype(callee) ? callee.instance : nothing
-end
+"""Type of function, type or callable object `method` belongs to: `Core.Typeof` of callee value that can run it."""
+callee_type(method::Method)::Type = Base.rewrap_unionall(Facts.tuple_parameters(method.sig)[1], method.sig)
 
 """
 Branch `MethodError` takes at condition `condition` of lowered `code` when it tests caught exception in slot `caught`:
@@ -459,7 +456,7 @@ function guarded_statements(code::AbstractVector{Any})::Set{Int}
     guarded = Set{Int}()
     for (enter, statement) in pairs(code)
         statement isa Core.EnterNode || continue
-        # Scope-only `EnterNode(0)` of `@with` has no handler.
+        # IR marks scope without handler as `EnterNode(0)`.
         statement.catch_dest > 0 || continue
         swallows(code, enter, statement.catch_dest) && union!(guarded, (enter + 1):(statement.catch_dest - 1))
     end
@@ -467,14 +464,13 @@ function guarded_statements(code::AbstractVector{Any})::Set{Int}
 end
 
 """
-Record that lowered `code` of `method` tests `operand` for methods: argument of package function adds position
-to `testers`, other operand adds its value to `found`. Return whether `testers` grew.
+Record that lowered `code` of `method` tests `operand` for methods: argument adds its position to `testers`,
+other operand adds its value to `found`. Return whether `testers` grew.
 """
-function tested!(found::Base.IdSet{Any}, testers::IdDict{Any, Set{Int}}, method::Method, code::AbstractVector{Any}, operand::Any)::Bool
-    own = own_function(method)
+function tested!(found::Base.IdSet{Any}, testers::IdDict{Method, <:AbstractSet{<:Integer}}, method::Method, code::AbstractVector{Any}, operand::Any)::Bool
     operand isa Core.SSAValue && (operand = code[operand.id])
-    if operand isa Core.SlotNumber && 2 <= operand.id <= method.nargs && !isnothing(own)
-        tested = get!(Set{Int}, testers, own)
+    if operand isa Core.SlotNumber && 2 <= operand.id <= method.nargs
+        tested = get!(Set{Int}, testers, method)
         (operand.id - 1) in tested && return false
         push!(tested, operand.id - 1)
         return true
@@ -484,23 +480,36 @@ function tested!(found::Base.IdSet{Any}, testers::IdDict{Any, Set{Int}}, method:
 end
 
 """
+Argument positions call of `callee` tests for methods: reflection tests first, package method its `testers` positions.
+Position can repeat.
+"""
+function tested_positions(callee::Any, testers::IdDict{Method, <:AbstractSet{<:Integer}}, types::IdDict{Method, <:Type})::Vector{Int}
+    callee isa REFLECTION && return [1]
+    positions = Int[]
+    isnothing(callee) && return positions
+    for (method, tested) in testers
+        Core.Typeof(callee) <: types[method] && append!(positions, tested)
+    end
+    return positions
+end
+
+"""
 Functions, types and callable objects lowered code of `methods` tests for methods: passes to reflection call
-(`REFLECTION`) or calls in `try` whose handler swallows `MethodError`, directly or through argument of package function.
+(`REFLECTION`) or calls in `try` whose handler swallows `MethodError`, directly or through argument of package method.
 Generated methods pass: they keep generator only.
 """
 function probed(methods::AbstractVector{Method})::Base.IdSet{Any}
     bodies = [(method, Base.uncompressed_ast(method).code) for method in methods if isdefined(method, :source)]
     calls = [(lowered_calls(code), guarded_statements(code)) for (_, code) in bodies]
+    types = IdDict{Method, Type}(method => callee_type(method) for (method, _) in bodies)
     found = Base.IdSet{Any}()
-    # Argument positions each package function tests; grows until no function gains position.
-    testers, grown = IdDict{Any, Set{Int}}(), true
+    # Argument positions each package method tests; grows until no method gains position.
+    testers, grown = IdDict{Method, Set{Int}}(), true
     while grown
         grown = false
         for ((method, code), (method_calls, guarded)) in zip(bodies, calls), (index, callee, head, operands) in method_calls
             index in guarded && (grown |= tested!(found, testers, method, code, head))
-            positions = callee isa REFLECTION ? (1,) : get(testers, callee, ())
-            # Copy: recursive function adds to set it reads.
-            for position in collect(positions)
+            for position in tested_positions(callee, testers, types)
                 position <= length(operands) || continue
                 grown |= tested!(found, testers, method, code, operands[position])
             end

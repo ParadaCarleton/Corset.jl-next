@@ -13,7 +13,7 @@ Method passes when other method of same function covers its signature: it is fas
 Fix is `likely` when widened method and each other method of function, widened too or not, are disjoint or nested.
 Otherwise fix is manual: Julia could find call ambiguous, or drop method with same widened signature.
 Fix is manual for function or callable object package code tests for methods: passes to `applicable`, `hasmethod`,
-`which` or `methods`, or calls in `try` whose handler can swallow `MethodError`, directly or through package function.
+`which` or `methods`, or calls in `try` whose handler can swallow `MethodError`, directly or through package method.
 Widening changes what that code does.
 
 ## Rationale
