@@ -1,15 +1,21 @@
 # Stateful reuse of name tier (F51; `phase5.md`, row 7): iterator started twice, or escaping after start.
 
 """Types whose every iteration starts from first element (`phase5.md`, F51 multi-pass types)."""
-const MULTI_PASS = Union{AbstractArray, AbstractDict, AbstractSet, AbstractString, Tuple, NamedTuple, Number, AbstractChar}
+const MULTI_PASS = Union{AbstractArray, AbstractDict, AbstractSet, AbstractString, Tuple, NamedTuple, Pair, Number, AbstractChar}
 
 """Functions whose result iterates operands together: code that consumes it starts each operand, `zip(itr, itr)` twice."""
 const JOINT_FUNCTIONS = Base.IdSet{Any}(Any[zip, Iterators.product])
 
+"""Blind spot cause of reuse through consuming call that only specialized method serves: its body decides start."""
+const SPECIALIZED_START = "start through specialized method"
+
+"""Blind spot cause of reuse of `blind` kind: struct parameter inside field type (`items::Vector{T}`), so `iterate` body decides kind."""
+const NESTED_PARAMETER = "struct parameter inside field type"
+
 """
 Iterator event of unit: statement `index`, operand path `position` (operand of call, then operands of `zip` it
-consumes), IR `operand`, whether it escapes (`false`: starts iteration), and certainty: generic `isempty` among other
-`isempty` methods gives `possible` start.
+consumes), IR `operand`, whether it escapes (`false`: starts iteration), certainty (generic `isempty` among other
+`isempty` methods gives `possible` start), and whether only specialized method can start it (`specialized`).
 """
 struct IteratorEvent
     index::Int
@@ -17,37 +23,74 @@ struct IteratorEvent
     operand::Any
     escapes::Bool
     confidence::Confidence.T
+    specialized::Bool
 end
 
 """
-Whether iterator of `type` can be stateful or multi-pass, so second start depends on value: member of unknown kind, or
-members of both kinds. `nothing` and `missing` members iterate nothing.
+Kind of iterator that type gives: `multi` restarts at each start, `stateful` advances, `open` depends on value (finding),
+`blind` depends on `iterate` body that Corset does not read (blind spot).
 """
-function either_pass(@nospecialize(type::Any))::Bool
-    kinds = Set{Union{Nothing, Bool}}()
+@enumx Pass multi stateful open blind
+
+"""
+Kind of iterator of `type`, joined over union members; `nothing` and `missing` iterate nothing. Members of both kinds,
+or `open` member, give `open`; else `blind` member gives `blind`. Type variable takes kind of its bound. `memo` holds
+kinds of types this traversal met: bound that parameters share answers once.
+"""
+function pass_kind(@nospecialize(type::Any), memo::IdDict{Any, Pass.T} = IdDict{Any, Pass.T}())::Pass.T
+    haskey(memo, type) && return memo[type]
+    kinds = Set{Pass.T}()
     for member in Base.uniontypes(type)
-        (member isa Type && !(member <: Union{Nothing, Missing})) && push!(kinds, pass_kind(member))
+        if member isa TypeVar
+            push!(kinds, pass_kind(member.ub, memo))
+        elseif member isa Type && !(member <: Union{Nothing, Missing})
+            push!(kinds, member_kind(member, memo))
+        end
     end
-    return nothing in kinds || length(kinds) > 1
+    kind = Pass.open in kinds || (Pass.multi in kinds && Pass.stateful in kinds) ? Pass.open : Pass.blind in kinds ? Pass.blind : Pass.stateful in kinds ? Pass.stateful : Pass.multi
+    memo[type] = kind
+    return kind
 end
 
 """
-Kind of iterator of `type`: `true` for stateful iterator (`stateful_iterator`), `false` for `MULTI_PASS`, `Type`, one
-concrete type or one struct of any parameters (`Bag{T} where T`), `nothing` when unknown. Restart of one kind is
-deliberate: `first(eachline(io))` skips header line.
+Kind of iterator of one type: `stateful_iterator` is `stateful`; `MULTI_PASS`, `Type` and concrete type are `multi`;
+abstract type is `open`. Struct family (`Bag{T} where T`) takes kinds of parameter bounds: `open` bound gives `open` as
+field (`inner::T`: iteration can pass to field) and `blind` inside field type (`items::Vector{T}`); `blind` bound gives
+`blind`. Restart of one kind is deliberate. Recursion ends: bound names only types defined before its family.
 """
-function pass_kind(type::Type)::Union{Nothing, Bool}
+function member_kind(type::Type, memo::IdDict{Any, Pass.T})::Pass.T
     body = Base.unwrap_unionall(type)
-    stateful_iterator(body) && return true
-    (type <: MULTI_PASS || type <: Type || isconcretetype(type)) && return false
-    return body isa DataType && isstructtype(body) && !isabstracttype(body) ? false : nothing
+    stateful_iterator(body) && return Pass.stateful
+    (type <: MULTI_PASS || type <: Type || isconcretetype(type)) && return Pass.multi
+    body isa DataType || return Pass.open
+    # Unbounded variable (`NamedTuple{K, V} where {K, V}`) fails subtype test that family name passes.
+    body.name.wrapper <: MULTI_PASS && return Pass.multi
+    (isstructtype(body) && !isabstracttype(body)) || return Pass.open
+    count = Base.datatype_fieldcount(body)
+    isnothing(count) && return Pass.open
+    kind = Pass.multi
+    for parameter in body.parameters
+        parameter isa TypeVar || continue
+        bound = pass_kind(parameter.ub, memo)
+        bound in (Pass.open, Pass.blind) || continue
+        for index in 1:count
+            field = fieldtype(body, index)
+            Base.has_typevar(field, parameter) || continue
+            (bound === Pass.open && holds_directly(field, parameter)) && return Pass.open
+            kind = Pass.blind
+        end
+    end
+    return kind
 end
 
+"""Whether field type `field` is `parameter`, or union holding it: iteration can pass to field itself."""
+holds_directly(@nospecialize(field::Any), parameter::TypeVar)::Bool = field === parameter || (field isa Union && (holds_directly(field.a, parameter) || holds_directly(field.b, parameter)))
+
 """
-Whether start of IR `operand` in `walk` can meet iterator of either kind (`either_pass`): result of `iterate` is
-`nothing` or tuple by protocol, though inference can give `Any`.
+Kind of iterator that start of IR `operand` in `walk` meets (`pass_kind`): result of `iterate` is `nothing` or tuple
+by protocol, though inference can give `Any`.
 """
-open_start(walk::Walk, @nospecialize(operand::Any))::Bool = either_pass(iterator_type(walk, operand)) && !iterate_result(walk, operand)
+start_kind(walk::Walk, @nospecialize(operand::Any))::Pass.T = iterate_result(walk, operand) ? Pass.multi : pass_kind(iterator_type(walk, operand))
 
 """
 Type of IR `operand` in `walk`, narrowed by declared type of field it loads: struct stand-in can leave field type open
@@ -103,35 +146,49 @@ function iterate_result(walk::Walk, @nospecialize(operand::Any))::Bool
 end
 
 """
-Whether call of `callee` on `operands` in `walk` can run generic method that iterates operand at `position`: matching
-method takes `Any` there. Package method for open type, as `minimum` of distribution, iterates nothing.
+Certainty that call of `callee` on `operands` in `walk` starts operand at `position` through generic method: Base or
+Core method that takes `Any` there. Other Base match keeps iteration contract; other match for multi-pass type makes
+restart harmless: both keep `definite`. Operand that admits `Iterators.Stateful` reaches generic method with it, so
+match that cannot take it keeps `definite` too. Other package match decides start for its values, though it takes
+`Any` there (`map(::typeof(f), xs)`): `possible`. No generic match gives `nothing`: package method, as `minimum` of
+distribution, decides start.
 """
-function generic_consumer(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any}, position::Integer)::Bool
+function generic_start(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any}, position::Integer)::Union{Nothing, Confidence.T}
     matches = Base._methods_by_ftype(Tuple{Core.Typeof(callee), Any[operand_type(walk, operand) for operand in operands]...}, -1, walk.world)
-    matches isa Vector || return true
-    return any(match -> takes_any(match.method.sig, position), matches)
+    matches isa Vector || return Confidence.possible
+    declared = Any[declared_argument(match.method.sig, position) for match in matches]
+    base = Bool[Base.moduleroot(match.method.module) in (Base, Core) for match in matches]
+    any(base[index] && declared[index] === Any for index in eachindex(matches)) || return nothing
+    witness = Iterators.Stateful <: operand_type(walk, operands[position])
+    harmless(type::Any)::Bool = type isa Type && type !== Union{} && (type <: MULTI_PASS || (witness && typeintersect(type, Iterators.Stateful) === Union{}))
+    return all(base[index] || harmless(declared[index]) for index in eachindex(matches)) ? Confidence.definite : Confidence.possible
 end
 
-"""Whether method `signature` takes `Any` at argument `position`, `Vararg{Any}` and unbounded type variable included."""
-function takes_any(@nospecialize(signature::Type), position::Integer)::Bool
+"""
+Type method `signature` declares at argument `position`, `Vararg` element and type variable bound included; `nothing`
+when method takes no such argument.
+"""
+function declared_argument(@nospecialize(signature::Type), position::Integer)::Any
     parameters = Base.unwrap_unionall(signature).parameters
-    isempty(parameters) && return false
+    isempty(parameters) && return nothing
     parameter = position + 1 <= length(parameters) ? parameters[position + 1] : parameters[end]
-    (position + 1 > length(parameters) && !Base.isvarargtype(parameter)) && return false
+    (position + 1 > length(parameters) && !Base.isvarargtype(parameter)) && return nothing
     parameter = Base.unwrapva(parameter)
-    return (parameter isa TypeVar ? parameter.ub : parameter) === Any
+    return Base.rewrap_unionall(parameter isa TypeVar ? parameter.ub : parameter, signature)
 end
 
 """
 Iterators package method starts twice or lets escape after start, in unit `walk` of `method` with `spans` of its IR
-statements. Later event pairs with first earlier event of same object on one path; two escapes make no pair.
+statements, and blind spots. Later event pairs with first earlier event of same object on one path; two escapes make
+no pair. Pair with start that only specialized method serves is blind spot `SPECIALIZED_START`; pair with start of
+`blind` kind (`pass_kind`) is blind spot `NESTED_PARAMETER`.
 """
-function stateful_reuses(walk::Walk, method::Method, spans::AbstractVector{Span})::Vector{StatefulReuse}
+function stateful_reuses(walk::Walk, method::Method, spans::AbstractVector{Span})::Tuple{Vector{StatefulReuse}, Vector{BlindSpot}}
     Base.require_one_based_indexing(spans)
     # Escaping value can hold iterator (returned tuple), so only start needs type of either kind.
-    events = IteratorEvent[event for index in 1:length(walk.ir.stmts) for event in iterator_events(walk, index) if event.escapes || open_start(walk, event.operand)]
-    found, following = StatefulReuse[], Dict{Tuple{Int, Vector{Int}}, Set{Int}}()
-    any(event -> !event.escapes, events) || return found
+    events = IteratorEvent[event for index in 1:length(walk.ir.stmts) for event in iterator_events(walk, index) if event.escapes || start_kind(walk, event.operand) in (Pass.open, Pass.blind)]
+    found, spots, following = StatefulReuse[], BlindSpot[], Dict{Tuple{Int, Vector{Int}}, Set{Int}}()
+    any(event -> !event.escapes, events) || return found, spots
     for later in events, earlier in events
         (earlier.escapes && later.escapes) && continue
         # Escaping `zip` result and starts of its operands name one operand.
@@ -146,10 +203,16 @@ function stateful_reuses(walk::Walk, method::Method, spans::AbstractVector{Span}
             relation = Confidence.possible
         end
         confidence = max(something(relation), earlier.confidence, later.confidence)
+        # Later direct start can still pair with other earlier event.
+        cause = earlier.specialized || later.specialized ? SPECIALIZED_START : start_kind(walk, started.operand) === Pass.blind ? NESTED_PARAMETER : nothing
+        if !isnothing(cause)
+            push!(spots, BlindSpot(cause, spans[later.index]))
+            continue
+        end
         push!(found, StatefulReuse(spans[earlier.index], spans[later.index], earlier.escapes, later.escapes, earlier === later, iterator_text(walk, method, started.operand), confidence))
         break
     end
-    return unique!(found)
+    return unique!(found), unique!(spots)
 end
 
 """Whether events `one` and `other` are one statement and operand path of one starts with path of other."""
@@ -166,19 +229,22 @@ consumes `zip` result, or lets it escape to caller, starts each zipped operand (
 function iterator_events(walk::Walk, index::Integer)::Vector{IteratorEvent}
     statement, found = walk.ir.stmts[index][:stmt], IteratorEvent[]
     if statement isa Core.ReturnNode
-        isdefined(statement, :val) && push!(found, IteratorEvent(index, [1], statement.val, true, Confidence.definite))
+        isdefined(statement, :val) && push!(found, IteratorEvent(index, [1], statement.val, true, Confidence.definite, false))
     elseif statement isa Expr && statement.head === :call
         callee, operands = call_parts(walk, statement)
         isnothing(operands) && return found
         starts = started_positions(walk, callee, operands)
-        # Consuming call of open operand starts it only through generic method.
-        callee === iterate || callee === Base.indexed_iterate || filter!(position -> !open_start(walk, operands[position]) || generic_consumer(walk, callee, operands, position), starts)
-        append!(found, (IteratorEvent(index, [position], operands[position], false, Confidence.definite) for position in starts))
+        # Consuming call of open operand: package methods beside generic one decide start for their types.
+        protocol = callee === iterate || callee === Base.indexed_iterate
+        for position in starts
+            certainty = protocol || start_kind(walk, operands[position]) !== Pass.open ? Confidence.definite : generic_start(walk, callee, operands, position)
+            push!(found, IteratorEvent(index, [position], operands[position], false, something(certainty, Confidence.definite), isnothing(certainty)))
+        end
         if isempty(found) && callee === isempty && length(operands) == 1
             confidence = isempty_start(walk, operand_type(walk, operands[1]))
-            isnothing(confidence) || push!(found, IteratorEvent(index, [1], operands[1], false, confidence))
+            isnothing(confidence) || push!(found, IteratorEvent(index, [1], operands[1], false, confidence, false))
         end
-        append!(found, (IteratorEvent(index, [position], operands[position], true, Confidence.definite) for position in escaped_positions(walk, callee, operands)))
+        append!(found, (IteratorEvent(index, [position], operands[position], true, Confidence.definite, false) for position in escaped_positions(walk, callee, operands)))
     end
     counts = Dict{Any, Int}()
     foreach(event -> joint_starts!(found, counts, walk, event), copy(found))
@@ -196,7 +262,7 @@ function joint_starts!(found::AbstractVector{IteratorEvent}, counts::AbstractDic
         key = underlying(walk, part)
         get(counts, key, 0) >= 2 && continue
         counts[key] = get(counts, key, 0) + 1
-        start = IteratorEvent(event.index, Int[event.position; inner], part, false, event.confidence)
+        start = IteratorEvent(event.index, Int[event.position; inner], part, false, event.confidence, event.specialized)
         push!(found, start)
         joint_starts!(found, counts, walk, start)
     end

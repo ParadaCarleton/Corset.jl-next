@@ -195,6 +195,33 @@ reuse_shape(name::Symbol)::Vector{Tuple{Bool, Bool, Union{Nothing, String}, Conf
     chain = only(typed for typed in UNITS.typed if typed.site.method.name == :reuse_zip_chain)
     walk = first(Effects.unit_walk(chain, Set{Module}(PACKAGE.modules), Core.Compiler.NativeInterpreter(), Base.get_world_counter()))
     @test sum(index -> length(Effects.iterator_events(walk, index)), 1:length(walk.ir.stmts)) <= 64
+    # Shared part type of nested `zip(z, z)` answers once: 40 levels stay fast.
+    nested = foldl((type, _) -> Iterators.Zip{Tuple{type, type}}, 1:40; init = Vector{Int})
+    @test Effects.done_missing(walk, nested) == DEFINITE
+    # Struct whose field has open parameter type can hold stateful iterator.
+    @test reuse_shape(:reuse_relay) == [(false, false, "relays[…]", DEFINITE)]
+    # Package `first` of abstract type can iterate field: blind spot, no finding.
+    @test any(spot -> spot.cause == Effects.SPECIALIZED_START, SPOTS)
+    @test reuse_shape(:reuse_after_dispatched) == [(false, false, "counters[…]", DEFINITE)]
+    @test reuse_shape(:reuse_mixed_dispatch) == [(false, false, "sources[…]", POSSIBLE)]
+    @test reuse_shape(:reuse_isdone) == [(false, false, "drains[…]", DEFINITE)]
+    @test Effects.missing_result(Missing) == DEFINITE && Effects.missing_result(Union{Bool, Missing}) == POSSIBLE
+    @test isnothing(Effects.missing_result(Bool)) && isnothing(Effects.missing_result(Union{}))
+    # Parameter inside field type: `iterate` body decides kind.
+    @test any(spot -> spot.cause == Effects.NESTED_PARAMETER, SPOTS)
+    # Field of open parameter is open; parameter inside field type is blind; wrapper of blind family is blind at any depth.
+    Pass = Effects.Pass
+    kinds = [CASES.Twin => Pass.open, CASES.Relay => Pass.open, CASES.Bag => Pass.blind, CASES.Bag{Int} => Pass.multi, CASES.Relay{<:Number} => Pass.multi]
+    append!(kinds, [CASES.Relay{<:CASES.Bag} => Pass.blind, CASES.Relay{<:CASES.Relay{<:CASES.Bag}} => Pass.blind, Union{CASES.Bag, Vector{Int}} => Pass.blind])
+    # Bound that is other parameter resolves through it.
+    push!(kinds, CASES.Chain => Pass.open)
+    for (type, kind) in kinds
+        @test Effects.pass_kind(type) == kind
+    end
+    # Shared bounds of 16 nested levels answer once: about 8 KB, against 88 MB without memo.
+    deep = foldl((type, _) -> CASES.Duo{<:type, <:type}, 1:16; init = Vector{Int})
+    warm_bytes(type::Type)::Int = (Effects.pass_kind(type); @allocated Effects.pass_kind(type))
+    @test Effects.pass_kind(deep) == Pass.multi && warm_bytes(deep) < 1_000_000
     reload = only(effects(:reuse_reload).stateful_reuses)
     @test (reload.repeats, reload.confidence) == (true, POSSIBLE)
     # Element of outer loop starts twice in one pass.
@@ -215,7 +242,7 @@ reuse_shape(name::Symbol)::Vector{Tuple{Bool, Bool, Union{Nothing, String}, Conf
     # Multi-pass type, unconsumed `zip`, tuple of fresh value, container built from iterator, threaded state, `popfirst!` write, separate branches, concrete package iterator, stateful kind
     # (`isdone` on `eachline` result, deliberate header skip), new object on each loop pass, `iterate` result, struct family, package `first`, declared field: none.
     kept = (:kept_vector, :kept_zip, :kept_zip_type, :kept_shared, :kept_collected, :kept_state, :kept_popped, :kept_branches, :kept_countdown, :kept_lines, :kept_peeled, :kept_destructured, :kept_nested)
-    for name in (kept..., :kept_protocol, :kept_family, :kept_dispatched, :kept_declared)
+    for name in (kept..., :kept_protocol, :kept_family, :kept_dispatched, :kept_declared, :kept_pair, :kept_enumerated, :kept_marked)
         @test isempty(reuse_shape(name))
     end
 end
@@ -229,9 +256,11 @@ end
     @test shape(effects(:hold).writes) == [(parameter(2), false, EffectKind.synchronization, DEFINITE)]
     @test shape(effects(:take_next).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
     @test (parameter(2), false, EffectKind.iteration, DEFINITE) in shape(effects(:take_next).reads)
-    for name in (:drain, :take_one, :zip_drain, :flatten_drain, :first_of_channel)
+    # Vector part of `zip` restarts unchanged: no write.
+    for name in (:drain, :take_one, :zip_drain, :flatten_drain, :first_of_channel, :zip_empty, :zip_empty_items, :zip_collect_items)
         @test shape(effects(name).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
     end
+    @test shape(effects(:zip_maybe_empty).writes) == [(parameter(2), true, MEMORY, POSSIBLE), (parameter(3), true, MEMORY, POSSIBLE)]
 end
 
 @testset "aliases and globals" begin
@@ -252,6 +281,7 @@ end
     @test (parameter(2), false, EffectKind.iteration, DEFINITE) in shape(effects(:finished).reads)
     @test shape(effects(:first_of).reads) == [(parameter(2), false, EffectKind.iteration, DEFINITE)]
     @test shape(effects(:total_of).reads) == [(parameter(2), false, EffectKind.iteration, DEFINITE)]
+    @test shape(effects(:emptiness).reads) == [(parameter(2), false, EffectKind.iteration, POSSIBLE)]
     # Plain argument loads stay out of facts.
     @test isempty(effects(:set_value!).reads)
 end

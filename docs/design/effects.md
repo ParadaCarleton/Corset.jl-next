@@ -113,7 +113,7 @@ Write sources, in order:
 - Facts keep reads of globals, special kinds and iteration starts. Plain argument loads stay out: every call reads its operands.
 - RNG function without `AbstractRNG` operand: default RNG read and write.
 - `ScopedValue` read: `getindex` on `ScopedValue` or `ScopedValues.get`. Task-local state: `task_local_storage`, `current_task` fields.
-- Iteration start: `iterate` without state, `first`, `only` and destructuring start their operand. Generic `isempty` starts it when `isdone` gives `missing`.
+- Iteration start: `iterate` without state, `first`, `only` and destructuring start their operand. Generic `isempty` starts it when inferred `isdone` result can be `missing`.
 - Consuming table: library functions that iterate their operand (`collect`, `sum`, `map`, `filter`, `foreach`, `reduce`, `any`, `all`, `count`). Call starts its iterator operand, and writes stateful iterator operand.
 
 #### Effect kinds

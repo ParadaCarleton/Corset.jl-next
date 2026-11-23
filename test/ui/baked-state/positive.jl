@@ -62,4 +62,8 @@ Base.@static if Sys.isunix()
     const IN_QUALIFIED_STATIC = Threads.nthreads()
 end
 @eval const IN_EVAL = $(Threads.nthreads())
+# Ternary and short-circuit branches run at top level, as `if` does.
+Sys.islinux() ? (IN_TERNARY = tempdir()) : nothing
+Sys.isapple() && (IN_AND = tempdir())
+Sys.iswindows() || (IN_OR = tempdir())
 end

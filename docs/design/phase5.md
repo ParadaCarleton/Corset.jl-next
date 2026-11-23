@@ -89,11 +89,17 @@ Rules read per-unit statement events and must-alias pairs.
   - Escape after start, or start after escape: return, store into object or global, operand of package call.
   - Escape counts for tuple, `new` or constructor result that holds iterator: `(head, itr)` lets `itr` escape.
   - Generic `isempty` starts only when `isdone` gives `missing`. `EachLine` and `Stateful` define `isdone`.
-  - Other `isempty` or `isdone` methods that can match argument type give `possible` start.
+  - Other `isempty` methods that can match argument type give `possible` start.
+  - Inferred result of `isdone` decides, package method included: `Missing` gives `definite` start, union with it `possible`.
   - Parameter started once without escape: no finding.
-  - Multi-pass types: `AbstractArray`, `AbstractDict`, `AbstractSet`, `AbstractString`, `Tuple`, `NamedTuple`, `Number`, `AbstractChar`.
+  - Multi-pass types: `AbstractArray`, `AbstractDict`, `AbstractSet`, `AbstractString`, `Tuple`, `NamedTuple`, `Pair`, `Number`, `AbstractChar`.
   - Type counts when it can hold both kinds: abstract type outside multi-pass types, or union of both kinds.
   - Concrete type and exception-table stateful type are one kind. Restart there is deliberate: `first(eachline(io))`.
+  - Struct family (`Bag{T} where T`) is one kind, unless field has open parameter type (`inner::T`): iteration can pass to field.
+  - Parameter inside field type (`items::Vector{T}`), or parameter bounded by such family: `iterate` body decides kind. Pair with its start is blind spot.
+  - Consuming call that only specialized method serves (`minimum` of distribution): method body decides start. Pair with it is blind spot.
+  - Generic method and package method for other type both serve call: start is `possible`. Base methods keep iteration contract; multi-pass types restart harmlessly.
+  - Argument that admits `Iterators.Stateful` reaches generic method with it: package method that cannot take it keeps `definite`.
   - Definite when starts and escape are in method code and objects must-alias; on in default preset. May-alias gives `possible`.
   - Fix `manual`: `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type.
 

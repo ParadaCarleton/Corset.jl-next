@@ -96,7 +96,8 @@ Stops after more than `LIMIT` types, so caller sees overflow.
 function instantiate(type::Type, structs::AbstractVector{<:Type})::Vector{Type}
     type isa UnionAll || return Type[type]
     variable, applications = type.var, Type[]
-    for value in stand_ins(variable.ub, structs)
+    # Bound that names other variable (`T <: S`) takes no stand-in, so variable stays free.
+    for value in (variable.ub isa Type ? stand_ins(variable.ub, structs) : Type[])
         variable.lb <: value || continue
         application = applied(type, value)
         isnothing(application) || push!(applications, application)

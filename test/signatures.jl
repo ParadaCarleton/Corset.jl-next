@@ -15,6 +15,9 @@ module SignatureCases
     struct Box{T}
         item::T
     end
+    struct Chain{S, T <: S}
+        inner::T
+    end
     area(shape::Shape) = shape
     scale(x::Real, factor::Integer) = x * factor
     total(values::AbstractVector{<:Real}) = sum(values)
@@ -99,6 +102,8 @@ include("compilation.jl")
     ]
     # Recursive bound nests one level per round, so rounds end.
     @test only(struct_stand_ins(Type[CASES.Node])) == CASES.Node{CASES.Node{CASES.Node{CASES.Node{CASES.Tree}}}}
+    # Bound that names other variable stays free, then takes its bound.
+    @test struct_stand_ins(Type[CASES.Chain]) == Type[CASES.Chain{Any, Any}]
     expected = Dict(
         :area => [call(:area, CASES.Circle{FloatStandIn}), call(:area, CASES.Square), call(:area, CASES.Circle{IntStandIn})],
         :scale => [call(:scale, FloatStandIn, IntStandIn), call(:scale, IntStandIn, IntStandIn)],

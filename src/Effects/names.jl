@@ -610,14 +610,31 @@ function exception_events(walk::Walk, @nospecialize(callee::Any), operands::Abst
             append!(found, value_events(walk, operand_value(walk, operand), EffectKind.rng_argument, true, false))
         end
         isempty(generators) && push!(found, Event(ELSEWHERE, false, EffectKind.default_rng, Confidence.definite, true), Event(ELSEWHERE, false, EffectKind.default_rng, Confidence.definite, false))
-    elseif callee === iterate && stateful_iterator(operand_type(walk, operands[1]))
-        append!(found, value_events(walk, operand_value(walk, operands[1]), EffectKind.memory, true, true))
+    elseif callee === iterate
+        append!(found, consumed_events(walk, operands[1]))
+    elseif callee === isempty && length(operands) == 1
+        # Generic `isempty` iterates when `isdone` can give `missing`: `zip` with stateful part consumes that part.
+        writes = consumed_events(walk, operands[1])
+        certainty = isempty(writes) ? nothing : isempty_start(walk, operand_type(walk, operands[1]))
+        isnothing(certainty) || append!(found, (Event(write.place, write.below, write.kind, max(write.confidence, certainty), true) for write in writes))
     elseif callee in CONSUMING_FUNCTIONS || callee === first || callee === only
-        for operand in operands
-            stateful_iterator(operand_type(walk, operand)) && append!(found, value_events(walk, operand_value(walk, operand), EffectKind.memory, true, true))
-        end
+        foreach(operand -> append!(found, consumed_events(walk, operand)), operands)
     end
     return found
+end
+
+"""
+Memory writes of iterating IR `operand` in `walk`: stateful value whole, but only stateful parts of `zip` or product
+that unit builds. Part that restarts, as caller vector, takes no write. `seen` visits shared part of `zip(z, z)` once.
+"""
+function consumed_events(walk::Walk, @nospecialize(operand::Any), seen::AbstractSet{Any} = Set{Any}())::Vector{Event}
+    key = underlying(walk, operand)
+    key in seen && return Event[]
+    push!(seen, key)
+    parts = joint_operands(walk, operand)
+    isnothing(parts) || return Event[event for part in parts for event in consumed_events(walk, part, seen)]
+    stateful_iterator(operand_type(walk, operand)) || return Event[]
+    return value_events(walk, operand_value(walk, operand), EffectKind.memory, true, true)
 end
 
 """
@@ -656,6 +673,11 @@ function read_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractV
     end
     for position in started_positions(walk, callee, operands)
         append!(found, value_events(walk, operand_value(walk, operands[position]), EffectKind.iteration, false, false))
+    end
+    # `isdone` result can be `missing` or not: generic `isempty` may iterate.
+    if callee === isempty && length(operands) == 1 && isempty_start(walk, operand_type(walk, operands[1])) == Confidence.possible
+        starts = value_events(walk, operand_value(walk, operands[1]), EffectKind.iteration, false, false)
+        append!(found, (Event(start.place, start.below, start.kind, Confidence.possible, start.write) for start in starts))
     end
     return found
 end
@@ -698,15 +720,23 @@ function isempty_start(walk::Walk, @nospecialize(type::Any))::Union{Nothing, Con
 end
 
 """
-Certainty that `isdone` on value of `type` gives `missing`: generic method gives it. `zip` and product give it when part
-does and no part is done, so every part sure gives `definite`, some part `possible`.
+Certainty that `isdone` on value of `type` gives `missing`: inferred result decides, so package method counts too. `zip`
+and product give it when part does and no part is done, so every part sure gives `definite`, some part `possible`.
 """
-function done_missing(walk::Walk, @nospecialize(type::Any))::Union{Nothing, Confidence.T}
+done_missing(walk::Walk, @nospecialize(type::Any))::Union{Nothing, Confidence.T} = done_missing!(IdDict{Any, Union{Nothing, Confidence.T}}(), walk, type)
+
+"""`done_missing` of `type`; `memo` keeps answer per part type, so nested `zip(z, z)` visits each type once."""
+function done_missing!(memo::IdDict{Any, Union{Nothing, Confidence.T}}, walk::Walk, @nospecialize(type::Any))::Union{Nothing, Confidence.T}
+    haskey(memo, type) && return memo[type]
     parts = joint_parts(type)
-    isnothing(parts) && return generic_match(walk, Tuple{typeof(Base.isdone), type}, Tuple{typeof(Base.isdone), Any, Vararg{Any}})
-    found = Union{Nothing, Confidence.T}[done_missing(walk, part) for part in parts]
-    all(isnothing, found) && return nothing
-    return all(==(Confidence.definite), found) ? Confidence.definite : Confidence.possible
+    found = if isnothing(parts)
+        missing_result(Base.infer_return_type(Base.isdone, Tuple{type}; world = walk.world))  # corset: allow inference-dependent -- wide result gives `possible`
+    else
+        answers = Union{Nothing, Confidence.T}[done_missing!(memo, walk, part) for part in parts]
+        all(isnothing, answers) ? nothing : all(==(Confidence.definite), answers) ? Confidence.definite : Confidence.possible
+    end
+    memo[type] = found
+    return found
 end
 
 """Part types of `zip` or product type; `nothing` for other type. Open part tuple gives one `Any` part."""
@@ -715,6 +745,12 @@ function joint_parts(@nospecialize(type::Any))::Union{Nothing, Vector{Any}}
     type !== Union{} && type <: Union{Iterators.Zip, Iterators.ProductIterator} || return nothing
     parts = type isa DataType ? only(type.parameters) : Any
     return parts isa DataType && parts <: Tuple && !any(Base.isvarargtype, parts.parameters) ? Any[parts.parameters...] : Any[Any]
+end
+
+"""Certainty that call with inferred `result` type gives `missing`: `Missing` alone `definite`, union with it `possible`."""
+function missing_result(@nospecialize(result::Any))::Union{Nothing, Confidence.T}
+    typeintersect(result, Missing) === Union{} && return nothing
+    return result <: Missing ? Confidence.definite : Confidence.possible
 end
 
 """Certainty that call of `signature` runs method of `generic` signature: `definite` alone, `possible` among others."""

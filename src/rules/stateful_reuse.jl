@@ -7,8 +7,9 @@ Start: `iterate` without state, `for` loop, destructuring, `first`, `only`, gene
 (`collect`, `sum`, `map`, …), or `zip` operand. Escape: return, store, operand `!` call does not write, or operand of
 package function. Start inside loop restarts on each pass, unless loop makes new object each pass. Rule checks type
 that can hold stateful and multi-pass iterators both: abstract type other than `AbstractArray`, `AbstractDict`,
-`AbstractSet`, `AbstractString`, `Tuple`, `NamedTuple`, `Number` or `AbstractChar`, or union of both kinds. One object
-and definite starts give `definite`; overlapping objects, or `isempty` that other methods can serve, give `possible`.
+`AbstractSet`, `AbstractString`, `Tuple`, `NamedTuple`, `Pair`, `Number` or `AbstractChar`; struct with field of open
+parameter type (`inner::T`), to which iteration can pass; or union of both kinds. One object and definite starts give
+`definite`; overlapping objects, or `isempty` that other methods can serve, give `possible`.
 
 ## Rationale
 Generic code that restarts its argument works on vector and loses elements on stateful iterator such as
@@ -43,8 +44,12 @@ end
 
 ## Limitations
 Lazy wrapper (`enumerate(itr)`, `Iterators.take(itr, n)`) starts nothing until code iterates it; rule sees no start
-there. `zip` starts its operands where code consumes it or lets it escape. Concrete type and known stateful type pass: code that restarts `eachline` result
-consumes lines on purpose. Rule sees methods inference reaches, as `never-succeeds` does. Fix is `manual`.
+there. `zip` starts its operands where code consumes it or lets it escape. Concrete type and known stateful type pass:
+code that restarts `eachline` result consumes lines on purpose. Call that only specialized method serves
+(`minimum(d::Distribution)`) goes to coverage line: its body decides start. Package method beside generic one makes
+start `possible`, unless argument admits `Iterators.Stateful` and package method cannot take it. Struct with parameter
+inside field type (`items::Vector{T}`) goes to coverage line too: its `iterate` body decides kind. Rule sees methods
+inference reaches, as `never-succeeds` does. Fix is `manual`.
 """
 module StatefulReuse
 

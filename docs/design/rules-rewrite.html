@@ -745,18 +745,57 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 </div><div class="decision"><h3>Index proof (<code>one-based-range</code>)</h3>
 <p>Each index into array needs proof unless inferred <code>axes</code> type of array is <code>OneTo</code>. Rule asks code for proof; it never assumes one.</p>
 <ul>
-<li>Index of <code>x</code>: value that stays in index range of <code>x</code>. Rule follows SSA values of typed code.</li>
-<li>Sources: <code>eachindex(x)</code>, <code>axes(x)</code>, <code>keys(x)</code>, <code>pairs(x)</code>, <code>firstindex(x)</code>, <code>lastindex(x)</code>, <code>begin</code>, <code>end</code>, <code>LinearIndices(x)</code>, <code>CartesianIndices(x)</code>.</li>
-<li>Base results that index <code>x</code>: <code>findfirst</code>, <code>findnext</code>, <code>findall</code>, <code>argmin</code>, <code>argmax</code>, <code>searchsorted*</code>, <code>sortperm</code>.</li>
-<li>Closure: <code>i ± k</code>, <code>prevind</code>, <code>nextind</code>, <code>min</code>, <code>max</code>, <code>clamp</code>, midpoint <code>(lo + hi) ÷ 2</code>, range between indices of <code>x</code>, loop variable over such range.</li>
-<li>Two arrays: <code>eachindex(x, y)</code> throws on different axes, so it gives index of both. So does guard <code>axes(x) == axes(y) || throw(...)</code>.</li>
-<li>Guard <code>Base.require_one_based_indexing(x)</code> proves every index of <code>x</code> after it.</li>
-<li><code>checkbounds</code> is no proof: absolute index inside shifted range passes it and reads wrong element.</li>
-<li>Index argument (<code>f(x, i) = x[i]</code>): per-method fact names indexed argument; package call sites must pass index of that array. Public function carries contract, as <code>getindex</code> does.</li>
-<li>Absolute index (literal, <code>length</code>, <code>size</code>, <code>enumerate</code> counter, index of other array): <code>definite</code>.</li>
-<li>Index of unknown source (stored indices, unchecked arithmetic): <code>possible</code>.</li>
-<li>Stored indices into input array: copy input to <code>Vector</code> at construction, or guard. Both give proof.</li>
-<li>Tests run fixtures on EvilArrays.jl arrays too: code with proof gives same result.</li>
+<li>
+<p>Array stand-in stands for every caller array, offset arrays included. Its <code>OneTo</code> axes hide offsets: inference folds <code>firstindex(x)</code> into literal <code>1</code>.</p>
+</li>
+<li>
+<p>So <code>effects</code> stage infers each method with array stand-in again, with offset stand-in (<code>OffsetArray</code> of array stand-in) in its place.</p>
+</li>
+<li>
+<p>Proof runs on that code. Inferred <code>axes</code> type there decides: <code>view(x, 2:3)</code> has <code>OneTo</code> axes, <code>view(x, :)</code> keeps axes of <code>x</code>.</p>
+</li>
+<li>
+<p>Method store keeps facts of second inference with unit record.</p>
+</li>
+<li>
+<p>Index of <code>x</code>: value that stays in index range of <code>x</code>. Rule follows SSA values of typed code.</p>
+</li>
+<li>
+<p>Sources: <code>eachindex(x)</code>, <code>axes(x)</code>, <code>keys(x)</code>, <code>pairs(x)</code>, <code>firstindex(x)</code>, <code>lastindex(x)</code>, <code>begin</code>, <code>end</code>, <code>LinearIndices(x)</code>, <code>CartesianIndices(x)</code>.</p>
+</li>
+<li>
+<p>Base results that index <code>x</code>: <code>findfirst</code>, <code>findnext</code>, <code>findall</code>, <code>argmin</code>, <code>argmax</code>, <code>searchsorted*</code>, <code>sortperm</code>.</p>
+</li>
+<li>
+<p>Closure: <code>i ± k</code>, <code>prevind</code>, <code>nextind</code>, <code>min</code>, <code>max</code>, <code>clamp</code>, midpoint <code>(lo + hi) ÷ 2</code>, range between indices of <code>x</code>, loop variable over such range.</p>
+</li>
+<li>
+<p>Two arrays: <code>eachindex(x, y)</code> throws on different axes, so it gives index of both. So does guard <code>axes(x) == axes(y) || throw(...)</code>.</p>
+</li>
+<li>
+<p>Same axes: <code>similar(x)</code>, <code>similar(x, T)</code>, <code>copy(x)</code>, <code>zero(x)</code> and broadcast of <code>x</code> with scalars have axes of <code>x</code>. Index of <code>x</code> indexes them.</p>
+</li>
+<li>
+<p>Guard <code>Base.require_one_based_indexing(x)</code> proves every index of <code>x</code> after it.</p>
+</li>
+<li>
+<p><code>checkbounds</code> is no proof: absolute index inside shifted range passes it and reads wrong element.</p>
+</li>
+<li>
+<p>Index argument (<code>f(x, i) = x[i]</code>): per-method fact names indexed argument; package call sites must pass index of that array. Public function carries contract, as <code>getindex</code> does.</p>
+</li>
+<li>
+<p>Absolute index (literal, <code>length</code>, <code>size</code>, <code>enumerate</code> counter, index of other array): <code>definite</code>.</p>
+</li>
+<li>
+<p>Index of unknown source (stored indices, unchecked arithmetic): <code>possible</code>.</p>
+</li>
+<li>
+<p>Stored indices into input array: copy input to <code>Vector</code> at construction, or guard. Both give proof.</p>
+</li>
+<li>
+<p>Tests run fixtures on EvilArrays.jl arrays too: code with proof gives same result.</p>
+</li>
 </ul>
 </div><div class="decision"><h3>Specialization count</h3>
 <p><code>specialization-blowup</code> predicts from source: <code>package</code> stage finds methods that specialize on <code>Function</code> or <code>Type</code> argument; <code>syntax</code> stage counts distinct closures or types passed at package call sites.</p>
@@ -888,7 +927,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Facts keep reads of globals, special kinds and iteration starts. Plain argument loads stay out: every call reads its operands.</li>
 <li>RNG function without <code>AbstractRNG</code> operand: default RNG read and write.</li>
 <li><code>ScopedValue</code> read: <code>getindex</code> on <code>ScopedValue</code> or <code>ScopedValues.get</code>. Task-local state: <code>task_local_storage</code>, <code>current_task</code> fields.</li>
-<li>Iteration start: <code>iterate</code> without state, <code>first</code>, <code>only</code> and destructuring start their operand. Generic <code>isempty</code> starts it when <code>isdone</code> gives <code>missing</code>.</li>
+<li>Iteration start: <code>iterate</code> without state, <code>first</code>, <code>only</code> and destructuring start their operand. Generic <code>isempty</code> starts it when inferred <code>isdone</code> result can be <code>missing</code>.</li>
 <li>Consuming table: library functions that iterate their operand (<code>collect</code>, <code>sum</code>, <code>map</code>, <code>filter</code>, <code>foreach</code>, <code>reduce</code>, <code>any</code>, <code>all</code>, <code>count</code>). Call starts its iterator operand, and writes stateful iterator operand.</li>
 </ul>
 <h4>Effect kinds</h4>
@@ -1500,11 +1539,17 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 <li>Escape after start, or start after escape: return, store into object or global, operand of package call.</li>
 <li>Escape counts for tuple, <code>new</code> or constructor result that holds iterator: <code>(head, itr)</code> lets <code>itr</code> escape.</li>
 <li>Generic <code>isempty</code> starts only when <code>isdone</code> gives <code>missing</code>. <code>EachLine</code> and <code>Stateful</code> define <code>isdone</code>.</li>
-<li>Other <code>isempty</code> or <code>isdone</code> methods that can match argument type give <code>possible</code> start.</li>
+<li>Other <code>isempty</code> methods that can match argument type give <code>possible</code> start.</li>
+<li>Inferred result of <code>isdone</code> decides, package method included: <code>Missing</code> gives <code>definite</code> start, union with it <code>possible</code>.</li>
 <li>Parameter started once without escape: no finding.</li>
-<li>Multi-pass types: <code>AbstractArray</code>, <code>AbstractDict</code>, <code>AbstractSet</code>, <code>AbstractString</code>, <code>Tuple</code>, <code>NamedTuple</code>, <code>Number</code>, <code>AbstractChar</code>.</li>
+<li>Multi-pass types: <code>AbstractArray</code>, <code>AbstractDict</code>, <code>AbstractSet</code>, <code>AbstractString</code>, <code>Tuple</code>, <code>NamedTuple</code>, <code>Pair</code>, <code>Number</code>, <code>AbstractChar</code>.</li>
 <li>Type counts when it can hold both kinds: abstract type outside multi-pass types, or union of both kinds.</li>
 <li>Concrete type and exception-table stateful type are one kind. Restart there is deliberate: <code>first(eachline(io))</code>.</li>
+<li>Struct family (<code>Bag{T} where T</code>) is one kind, unless field has open parameter type (<code>inner::T</code>): iteration can pass to field.</li>
+<li>Parameter inside field type (<code>items::Vector{T}</code>), or parameter bounded by such family: <code>iterate</code> body decides kind. Pair with its start is blind spot.</li>
+<li>Consuming call that only specialized method serves (<code>minimum</code> of distribution): method body decides start. Pair with it is blind spot.</li>
+<li>Generic method and package method for other type both serve call: start is <code>possible</code>. Base methods keep iteration contract; multi-pass types restart harmlessly.</li>
+<li>Argument that admits <code>Iterators.Stateful</code> reaches generic method with it: package method that cannot take it keeps <code>definite</code>.</li>
 <li>Definite when starts and escape are in method code and objects must-alias; on in default preset. May-alias gives <code>possible</code>.</li>
 <li>Fix <code>manual</code>: <code>Iterators.peel</code>, thread <code>iterate</code> state, or narrow argument to multi-pass type.</li>
 </ul>

@@ -38,8 +38,9 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
         push!(calls, (line, span) => fact)
     end
     effect_free = CC.is_effect_free(typed.frame.ipo_effects) && !claimed && !holds_stand_in(typed.signature) && !callee_claimed
-    loops, spots = loop_writes(walk, spans)
-    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), stateful_reuses(walk, typed.site.method, spans), spots, effect_free, cut)
+    loops, loop_spots = loop_writes(walk, spans)
+    reuses, reuse_spots = stateful_reuses(walk, typed.site.method, spans)
+    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), reuses, [loop_spots; reuse_spots], effect_free, cut)
 end
 
 """
