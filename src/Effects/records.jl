@@ -65,7 +65,7 @@ end
 Unit record that method store entry keeps in `bytes` (`record_bytes`); callees come back in `world`. `nothing` for unit
 without a record. Entry without record throws: `effects` run infers such unit instead.
 """
-function unit_record(bytes::Vector{UInt8}, world::UInt)::Union{Nothing, UnitEffects}
+function unit_record(bytes::AbstractVector{UInt8}, world::UInt)::Union{Nothing, UnitEffects}
     isempty(bytes) && throw(ArgumentError("method store entry keeps no effects record; effects run must infer its unit"))
     stored = deserialize(IOBuffer(bytes))::Union{Nothing, Tuple{UnitEffects, StoredCalls}}
     isnothing(stored) && return nothing

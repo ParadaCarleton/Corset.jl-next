@@ -11,29 +11,29 @@ using ..Baseline: Baseline
 const HEADER = Dict(Level.deny => "error", Level.warn => "warning")
 
 """Line and code-point column of byte `byte` in `text`; `byte` may sit one past end."""
-function line_column(text::String, byte::Int)::Tuple{Int, Int}
+function line_column(text::String, byte::Integer)::Tuple{Int, Int}
     starts = line_starts(text)
     line = searchsortedlast(starts, byte)
     return line, length(text, starts[line], prevind(text, byte)) + 1
 end
 
 """Text of line `line` without its newline."""
-function line_text(text::String, starts::Vector{Int}, line::Int)::String
+function line_text(text::String, starts::AbstractVector{<:Integer}, line::Integer)::String
     stop = line < length(starts) ? starts[line + 1] - 2 : ncodeunits(text)
     return replace(chopsuffix(text[starts[line]:thisind(text, max(stop, starts[line] - 1))], "\r"), '\t' => TAB)
 end
 
 """Display width of `text` between byte `first` and byte `stop`, inclusive."""
-width_between(text::String, first::Int, stop::Int)::Int = stop < first ? 0 : textwidth(replace(text[first:thisind(text, stop)], '\t' => TAB))
+width_between(text::String, first::Integer, stop::Integer)::Int = stop < first ? 0 : textwidth(replace(text[first:thisind(text, stop)], '\t' => TAB))
 
 """Tab stop used for source lines; renderer expands tabs so underlines align."""
 const TAB = "    "
 
 """1-based display column of byte `byte` on line `line`."""
-column(text::String, starts::Vector{Int}, line::Int, byte::Int)::Int = width_between(text, starts[line], byte - 1) + 1
+column(text::String, starts::AbstractVector{<:Integer}, line::Integer, byte::Integer)::Int = width_between(text, starts[line], byte - 1) + 1
 
 """Line, column and underline width of `span`; multi-line span underlines to end of first line."""
-function placement(text::String, starts::Vector{Int}, span::Span)::Tuple{Int, Int, Int}
+function placement(text::String, starts::AbstractVector{<:Integer}, span::Span)::Tuple{Int, Int, Int}
     line = searchsortedlast(starts, span.first_byte)
     content = line_text(text, starts, line)
     if span.precision == Precision.line
@@ -46,7 +46,7 @@ function placement(text::String, starts::Vector{Int}, span::Span)::Tuple{Int, In
 end
 
 """Write source lines that `marked` entries (line, column, width, marker, label) point at, each followed by its markers."""
-function write_lines(io::IO, text::String, starts::Vector{Int}, marked::Vector, gutter::String)::Nothing
+function write_lines(io::IO, text::String, starts::AbstractVector{<:Integer}, marked::AbstractVector, gutter::String)::Nothing
     previous = 0
     for line in sort!(unique(first.(marked)))
         if previous > 0 && line - previous == 2
@@ -68,7 +68,7 @@ Write `diagnostic` to `io` with source text from `sources` by path; paths print 
 Primary file comes first (`-->`); labels in other files follow, one snippet per file (`:::`), as in rustc.
 `note` adds lines saying where level was set and how to opt out.
 """
-function render(io::IO, diagnostic::Diagnostic, sources::Dict{String, String}, root::String, note::Bool)::Nothing
+function render(io::IO, diagnostic::Diagnostic, sources::AbstractDict{String, String}, root::String, note::Bool)::Nothing
     finding = diagnostic.finding
     labels = [(finding.primary, '^'); [(cause, '-') for cause in finding.causes]]
     files = unique(label.span.file for (label, _) in labels)
@@ -140,7 +140,7 @@ function render_coverage(io::IO, report::Report)::Nothing
 end
 
 """Write message for baseline entries no finding matches."""
-function render_stale(io::IO, stale::Vector{Baseline.Key})::Nothing
+function render_stale(io::IO, stale::AbstractVector{Baseline.Key})::Nothing
     println(io, "error[baseline]: ", length(stale), " baseline ", length(stale) == 1 ? "entry matches" : "entries match", " no finding")
     foreach(key -> println(io, "  - `", key.rule, "` in ", key.file, isempty(key.definition) ? "" : " ($(key.definition))"), stale)
     println(io, "  = why: stale entry would hide later finding with same key")

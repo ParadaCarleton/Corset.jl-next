@@ -53,7 +53,7 @@ end
 Values public names reach: names root module, first of package `modules`, exports or declares `public`, then public
 names of package submodules those names reach.
 """
-function public_values(modules::Vector{Module})::Base.IdSet{Any}
+function public_values(modules::AbstractVector{Module})::Base.IdSet{Any}
     package, queue = Set(modules), [first(modules)]
     reached, found = Set(queue), Base.IdSet{Any}()
     while !isempty(queue)
@@ -134,7 +134,7 @@ function method_site(method::Method, file::SyntaxFile, lines::Lines)::MethodSite
 end
 
 """Sites of methods `modules` define in `files`, sorted by file and position; generated methods left out."""
-function method_sites(modules::Vector{Module}, files::Vector{SyntaxFile})::Vector{MethodSite}
+function method_sites(modules::AbstractVector{Module}, files::AbstractVector{SyntaxFile})::Vector{MethodSite}
     by_path = Dict(file.path => file for file in files)
     lines = Dict(file.path => Lines(file) for file in files)
     package = Set(modules)
@@ -165,7 +165,7 @@ function constructed(method::Method)::Union{Nothing, Core.TypeName}
 end
 
 """Struct types named `name` that package `modules` define."""
-function named_structs(modules::Vector{Module}, name::Symbol)::Vector{Type}
+function named_structs(modules::AbstractVector{Module}, name::Symbol)::Vector{Type}
     found = Type[]
     for mod in modules
         isdefined(mod, name) || continue
@@ -182,7 +182,7 @@ in body. So constructor of same name that starts between line start of form and 
 Macro that builds struct (`@concrete struct`) gives constructors its own file; then sole struct of that name in
 package `modules` ties.
 """
-function struct_sites(sites::Vector{MethodSite}, files::Vector{SyntaxFile}, modules::Vector{Module})::Vector{StructSite}
+function struct_sites(sites::AbstractVector{MethodSite}, files::AbstractVector{SyntaxFile}, modules::AbstractVector{Module})::Vector{StructSite}
     built = Dict{String, Vector{Tuple{Int, Core.TypeName}}}()
     for site in sites
         name = constructed(site.method)
@@ -212,7 +212,7 @@ end
 Pairs (earlier, later) of `sites` where later definition replaced earlier one with same signature.
 Julia keeps replaced method in method table with `dispatch_status` 0 and numbers definitions by `primary_world`.
 """
-function overwrites(sites::Vector{MethodSite})::Vector{Tuple{MethodSite, MethodSite}}
+function overwrites(sites::AbstractVector{MethodSite})::Vector{Tuple{MethodSite, MethodSite}}
     ordered = sort(sites; by = site -> site.method.primary_world)
     found = Tuple{MethodSite, MethodSite}[]
     for (index, earlier) in enumerate(ordered)
@@ -255,7 +255,7 @@ end
 `load-error` finding for `error` with `frames`, saying `subject` does not load and `missed` what rules missed.
 Primary span: line of innermost frame in analyzed file; first line of `entry` when none, or when entry is not analyzed.
 """
-function load_error(error::Any, frames::Vector{Base.StackTraces.StackFrame}, entry::String, files::Vector{SyntaxFile}, subject::String, missed::String)::Finding
+function load_error(error::Any, frames::AbstractVector{Base.StackTraces.StackFrame}, entry::String, files::AbstractVector{SyntaxFile}, subject::String, missed::String)::Finding
     by_path = Dict(file.path => file for file in files)
     index = findfirst(frame -> haskey(by_path, string(frame.file)), frames)
     file, line = isnothing(index) ? (get(by_path, entry, nothing), 1) : (by_path[string(frames[index].file)], frames[index].line)
@@ -278,7 +278,7 @@ end
 """
 Whether every package of `triggers` loads. Julia logs error of extension they activate; failure here is trigger's own.
 """
-function loads_triggers(triggers::Vector{Base.PkgId})::Bool
+function loads_triggers(triggers::AbstractVector{Base.PkgId})::Bool
     try
         foreach(Base.require, triggers)
         return true
@@ -292,7 +292,7 @@ end
 Load triggers of each extension of `mod` in `project`; extension activates once all its triggers load.
 Extension with trigger environment cannot find or load becomes blind spot; extension that throws, `load-error` finding.
 """
-function load_extensions(mod::Module, project::ProjectFacts, files::Vector{SyntaxFile})::Tuple{Vector{Finding}, Vector{BlindSpot}}
+function load_extensions(mod::Module, project::ProjectFacts, files::AbstractVector{SyntaxFile})::Tuple{Vector{Finding}, Vector{BlindSpot}}
     errors, blind_spots = Finding[], BlindSpot[]
     for (; name, file, triggers) in project.extensions
         if any(trigger -> isnothing(Base.locate_package(trigger)), triggers)
@@ -339,7 +339,7 @@ end
 Facts of package of `project`, loaded in this process with extension triggers, with method sites in `files`.
 Precompile failure carries no frame inside package, so error comes from second load in anonymous module (`reproduce`).
 """
-function load(project::ProjectFacts, files::Vector{SyntaxFile})::Loaded
+function load(project::ProjectFacts, files::AbstractVector{SyntaxFile})::Loaded
     entry = project.entry
     mod = try
         load_module(package_id(project), entry)
@@ -358,7 +358,7 @@ function load(project::ProjectFacts, files::Vector{SyntaxFile})::Loaded
 end
 
 """Facts of loaded package `modules`, root module first, with method and struct sites in `files`."""
-function package_facts(modules::Vector{Module}, files::Vector{SyntaxFile})::PackageFacts
+function package_facts(modules::AbstractVector{Module}, files::AbstractVector{SyntaxFile})::PackageFacts
     sites = method_sites(modules, files)
     return PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files, modules))
 end

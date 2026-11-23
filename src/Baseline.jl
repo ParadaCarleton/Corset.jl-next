@@ -30,7 +30,7 @@ end
 const FIELDS = Set(["rule", "file", "definition", "snippet", "count"])
 
 """Key and count of one `[[finding]]` table; wrong field set or field type throws."""
-function entry(table::Dict{String, Any})::Pair{Key, Int}
+function entry(table::AbstractDict{String, Any})::Pair{Key, Int}
     Set(keys(table)) == FIELDS || throw(ArgumentError("entry needs exactly fields $(join(sort!(collect(FIELDS)), ", "))"))
     return Key(table["rule"]::String, table["file"]::String, table["definition"]::String, table["snippet"]::String) => table["count"]::Int
 end
@@ -47,7 +47,7 @@ function Definitions(file::SyntaxFile)::Definitions
 end
 
 """Name of innermost definition enclosing byte `byte`; empty string at top level."""
-function definition_name(definitions::Definitions, byte::Int)::String
+function definition_name(definitions::Definitions, byte::Integer)::String
     enclosing = collect(intersect(definitions.tree, (byte, byte)))
     isempty(enclosing) && return ""
     return Facts.source(definitions.file, Facts.definition_name(argmin(interval -> last(interval) - first(interval), enclosing).value))
@@ -61,7 +61,7 @@ function key(definitions::Definitions, root::String, finding::Finding)::Key
 end
 
 """Key of each of `findings` in `facts`, with paths relative to `root`."""
-function finding_keys(facts::FactSet, root::String, findings::Vector{Finding})::Vector{Key}
+function finding_keys(facts::FactSet, root::String, findings::AbstractVector{Finding})::Vector{Key}
     definitions = Dict(file.path => Definitions(file) for file in facts.files)
     return [key(definitions[finding.primary.span.file], root, finding) for finding in findings]
 end
@@ -83,7 +83,7 @@ function read_baseline(root::String)::Dict{Key, Int}
 end
 
 """Write baseline file at `root` holding `keys`, one entry per distinct key with its count."""
-function write_baseline(root::String, keys::Vector{Key})::Nothing
+function write_baseline(root::String, keys::AbstractVector{Key})::Nothing
     counts = Dict{Key, Int}()
     foreach(key -> counts[key] = get(counts, key, 0) + 1, keys)
     tables = [
@@ -98,7 +98,7 @@ function write_baseline(root::String, keys::Vector{Key})::Nothing
 end
 
 """Which of `keys` baseline `counts` covers, in order, and stale keys with counts no finding used."""
-function cover(counts::Dict{Key, Int}, keys::Vector{Key})::Tuple{Vector{Bool}, Vector{Key}}
+function cover(counts::AbstractDict{Key, <:Integer}, keys::AbstractVector{Key})::Tuple{Vector{Bool}, Vector{Key}}
     left = copy(counts)
     covered = map(keys) do key
         get(left, key, 0) > 0 || return false

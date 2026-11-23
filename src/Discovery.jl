@@ -34,10 +34,10 @@ function discover(path::String; environment::Union{Nothing, String})::Sources
 end
 
 """Table `key` of parsed TOML `data`; empty when absent."""
-table(data::Dict{String, Any}, key::String)::Dict{String, Any} = get(data, key, Dict{String, Any}())
+table(data::AbstractDict{String, Any}, key::String)::Dict{String, Any} = get(data, key, Dict{String, Any}())
 
 """Package identities of dependency table `names` (name to uuid), sorted by name."""
-ids(names::Dict{String, Any})::Vector{Base.PkgId} = [Base.PkgId(Base.UUID(uuid), name) for (name, uuid) in sort!(collect(names); by = first)]
+ids(names::AbstractDict{String, Any})::Vector{Base.PkgId} = [Base.PkgId(Base.UUID(uuid), name) for (name, uuid) in sort!(collect(names); by = first)]
 
 """
 Project.toml facts of package with project root `root`; `nothing` for project without `name`. Manifest of `environment`
@@ -62,7 +62,7 @@ end
 Packages that load with package `uuid` and its test dependencies `tests`: their transitive `[deps]` in Manifest of
 `environment` project file, sorted by name. `nothing` when Manifest is missing or lacks package.
 """
-function test_loads(environment::String, uuid::Base.UUID, tests::Vector{Base.PkgId})::Union{Nothing, Vector{Base.PkgId}}
+function test_loads(environment::String, uuid::Base.UUID, tests::AbstractVector{Base.PkgId})::Union{Nothing, Vector{Base.PkgId}}
     manifest = Base.project_file_manifest_path(environment)
     isnothing(manifest) && return nothing
     entries = table(parse_toml(manifest), "deps")
@@ -81,7 +81,7 @@ function test_loads(environment::String, uuid::Base.UUID, tests::Vector{Base.Pkg
 end
 
 """Extension `name` of package at `root` with trigger name or names `triggers`, looked up in `known` (`[deps]` and `[weakdeps]`)."""
-function extension(root::String, name::String, triggers::Union{String, Vector}, known::Dict{String, Any})::Extension
+function extension(root::String, name::String, triggers::Union{String, AbstractVector}, known::AbstractDict{String, Any})::Extension
     names = triggers isa String ? [triggers] : Vector{String}(triggers)
     unknown = filter(trigger -> !haskey(known, trigger), names)
     isempty(unknown) || throw(ConfigError("extension $name names $(join(unknown, ", ")), which [weakdeps] lacks"))
@@ -92,7 +92,7 @@ end
 Where package at `root` with parsed `project` lists test dependencies, and those not in `[deps]`.
 `[targets].test` names come from `[weakdeps]` and `[extras]`; else test/Project.toml `[deps]`, without package itself.
 """
-function test_dependencies(root::String, project::Dict{String, Any})::Tuple{TestDeps.T, Vector{Base.PkgId}}
+function test_dependencies(root::String, project::AbstractDict{String, Any})::Tuple{TestDeps.T, Vector{Base.PkgId}}
     deps = table(project, "deps")
     if haskey(table(project, "targets"), "test")
         known = merge(table(project, "weakdeps"), table(project, "extras"))
@@ -131,7 +131,7 @@ function extension_file(root::String, name::String)::String
 end
 
 """Parse `entries` of `project` and every file they include, breadth first; include calls not followed become blind spots."""
-function closure(entries::Vector{String}, project::Union{Nothing, ProjectFacts})::Sources
+function closure(entries::AbstractVector{String}, project::Union{Nothing, ProjectFacts})::Sources
     files, blind_spots, pending, seen = SyntaxFile[], BlindSpot[], copy(entries), Set{String}()
     while !isempty(pending)
         path = popfirst!(pending)

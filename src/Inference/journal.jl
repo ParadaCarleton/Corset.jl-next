@@ -39,7 +39,7 @@ end
 Keys of inferences that crashed: started record of `records` that no later finished record of same key closes. Key
 can finish in one analysis and crash in next (`fix` checks again after edit).
 """
-function crashed(records::Vector{Record})::Set{String}
+function crashed(records::AbstractVector{Record})::Set{String}
     running = Set{String}()
     for record in records
         if record.finished
@@ -52,7 +52,7 @@ function crashed(records::Vector{Record})::Set{String}
 end
 
 """Store of entries that finished records of `records` hold."""
-finished_store(records::Vector{Record})::Store = Store(record.key => something(record.entry) for record in records if record.finished && !isnothing(record.entry))
+finished_store(records::AbstractVector{Record})::Store = Store(record.key => something(record.entry) for record in records if record.finished && !isnothing(record.entry))
 
 """Crash journal open for one run: stream that appends records, and keys whose inference crashed earlier runs."""
 struct Journal
@@ -70,7 +70,7 @@ end
 method_label(method::Method)::String = "$(method.module).$(method.name) at $(basename(string(method.file))):$(method.line)"
 
 """Last record of `records` when it starts inference no record finishes: crash of run that wrote it; else `nothing`."""
-last_crash(records::Vector{Record})::Union{Nothing, Record} = isempty(records) || last(records).finished ? nothing : last(records)
+last_crash(records::AbstractVector{Record})::Union{Nothing, Record} = isempty(records) || last(records).finished ? nothing : last(records)
 
 """Write `record` to `journal` and flush it, so process that aborts next leaves it on disk."""
 function record!(journal::Journal, record::Record)::Nothing

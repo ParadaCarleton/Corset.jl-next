@@ -22,7 +22,7 @@ Base.hash(value::Value, seed::UInt)::UInt = hash(value.inner, hash(value.places,
 const NO_VALUE = Value(Set{Place.Type}(), Set{Place.Type}(), false, false)
 
 """Fresh object that holds `inner` places; `untracked` when it can hold other objects too."""
-fresh_value(inner::Set{Place.Type}, untracked::Bool)::Value = Value(Set{Place.Type}(), inner, true, untracked)
+fresh_value(inner::AbstractSet{Place.Type}, untracked::Bool)::Value = Value(Set{Place.Type}(), inner, true, untracked)
 
 """Value that is exactly `place`."""
 place_value(place::Place.Type)::Value = Value(Set{Place.Type}([place]), Set{Place.Type}(), false, false)
@@ -37,14 +37,14 @@ is_deep(place::Place.Type)::Bool = @match place begin
 end
 
 """Whether `places` holds `Deep` of some root beside place strictly below that root, which `bounded` drops."""
-covered(places::Set{Place.Type})::Bool =
+covered(places::AbstractSet{Place.Type})::Bool =
     any(deep -> is_deep(deep) && any(place -> !is_deep(place) && place_root(place) == place_root(deep) && place != Place.At(place_root(deep), NO_STEPS), places), places)
 
 """
 `places` where each root with `Deep` place or more than `PLACE_LIMIT` places keeps only root itself and `Deep` of root.
 Linked structures reach many exact paths (`node.left.parent.right`); `Deep` covers them, so fixpoint sets stay finite.
 """
-function bounded(places::Set{Place.Type})::Set{Place.Type}
+function bounded(places::AbstractSet{Place.Type})::Set{Place.Type}
     length(places) <= PLACE_LIMIT && !covered(places) && return places
     counts = Dict{Root.Type, Int}()
     foreach(place -> counts[place_root(place)] = is_deep(place) ? PLACE_LIMIT + 1 : get(counts, place_root(place), 0) + 1, places)
@@ -174,7 +174,7 @@ function field_step(walk::Walk, @nospecialize(field::Any))::Union{Nothing, Step.
 end
 
 """Value of IR statement `index` in `walk` from its operands (`effects.md`, Roots)."""
-function statement_value(walk::Walk, index::Int)::Value
+function statement_value(walk::Walk, index::Integer)::Value
     pointing(walk, CC.widenconst(walk.ir.stmts[index][:type])) || return NO_VALUE
     statement = walk.ir.stmts[index][:stmt]
     statement isa Core.PhiNode && return reduce(joined, (operand_value(walk, statement.values[edge]) for edge in eachindex(statement.values) if isassigned(statement.values, edge)); init = NO_VALUE)
@@ -192,7 +192,7 @@ end
 Fresh object that holds objects of `operands`: untracked when some operand of pointing type can be fresh, or holds no
 place.
 """
-function holding_value(walk::Walk, operands::Vector{Any})::Value
+function holding_value(walk::Walk, operands::AbstractVector{Any})::Value
     inner, untracked = Set{Place.Type}(), false
     for operand in operands
         value = operand_value(walk, operand)
@@ -206,14 +206,14 @@ end
 Value of array literal of `type` with `elements` (`[a, b]`, `T[a, b]`). Element not of element type converts, and
 conversion can give new object, so literal holds untracked objects too.
 """
-function literal_value(walk::Walk, elements::Vector{Any}, @nospecialize(type::Any))::Value
+function literal_value(walk::Walk, elements::AbstractVector{Any}, @nospecialize(type::Any))::Value
     holder = holding_value(walk, elements)
     exact = type isa DataType && type <: AbstractArray && all(element -> operand_type(walk, element) <: element_type(type), elements)
     return Value(holder.places, holder.inner, holder.fresh, holder.untracked || !exact)
 end
 
 """Whether call of `callee` with `operands` dispatches to one method that `Base` owns."""
-function base_method(walk::Walk, @nospecialize(callee::Any), operands::Vector{Any})::Bool
+function base_method(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Bool
     matches = Base._methods_by_ftype(Tuple{Core.Typeof(callee), Any[operand_type(walk, operand) for operand in operands]...}, 1, walk.world)
     return matches isa Vector && length(matches) == 1 && only(matches).method.module === Base
 end
@@ -274,7 +274,7 @@ end
 New object of `type` from call with `operands`: untracked, and holds `Deep` place below each operand whose type can
 hold pointing objects (`copy`, `filter`). Type that holds no pointing object holds nothing.
 """
-function new_value(walk::Walk, operands::Vector{Any}, @nospecialize(type::Any))::Value
+function new_value(walk::Walk, operands::AbstractVector{Any}, @nospecialize(type::Any))::Value
     holds_pointing(walk, type) || return fresh_value(Set{Place.Type}(), false)
     inner = Set{Place.Type}()
     for operand in operands
@@ -290,7 +290,7 @@ or second after leading callable or `AbstractRNG` (`get(f, d, k)`, `rand(rng, xs
 of lookup (`get(d, k, default)`). Result of leading callable can be fresh or captured object. Exceptions: `take!`
 and `fetch` off `Channel`, `rand` with dimensions.
 """
-function element_value(walk::Walk, call::Expr, @nospecialize(callee::Any), operands::Vector{Any}, @nospecialize(type::Any))::Value
+function element_value(walk::Walk, call::Expr, @nospecialize(callee::Any), operands::AbstractVector{Any}, @nospecialize(type::Any))::Value
     called = callable(walk, operands[1])
     position = called || rng_operand(walk, operands[1]) ? 2 : 1
     position <= length(operands) || return fresh_value(Set{Place.Type}(), true)
@@ -341,7 +341,7 @@ written values (`push!(v, x)` puts `x` inside `v`): inside fresh value, or into 
 Values only grow through finite states, so loop ends; long chain needs one round per link. Past `limit` rounds, every
 value widens (`widen!`), and next round must settle.
 """
-function walk_values!(walk::Walk, limit::Int)::Nothing
+function walk_values!(walk::Walk, limit::Integer)::Nothing
     changed, rounds, widened = true, 0, false
     while changed
         changed, rounds = false, rounds + 1
@@ -379,7 +379,7 @@ end
 Operand that statement `index` stores other operands into, and their objects as fresh holder (`holding_value`):
 builtin store target or written operand of `!` call. `nothing` for other statement.
 """
-function store_target(walk::Walk, index::Int)::Union{Nothing, Tuple{Any, Value}}
+function store_target(walk::Walk, index::Integer)::Union{Nothing, Tuple{Any, Value}}
     statement = walk.ir.stmts[index][:stmt]
     statement isa Expr || return nothing
     statement.head === :call || return nothing
@@ -408,7 +408,7 @@ end
 Position of operand that `!` function `callee` writes among `operands` (`effects.md`, Writes, source 2): first operand
 after leading callable, `IO` and `AbstractRNG` operands, or position table entry. `nothing` when none is left.
 """
-function written_position(walk::Walk, @nospecialize(callee::Any), operands::Vector{Any})::Union{Nothing, Int}
+function written_position(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Union{Nothing, Int}
     table = get(WRITE_POSITION, (nameof(callee), length(operands)), nothing)
     !isnothing(table) && library_owner(callee) === :LinearAlgebra && return table
     for (position, operand) in enumerate(operands)
@@ -503,7 +503,7 @@ const ELSEWHERE = Place.At(Root.Elsewhere(), NO_STEPS)
 const STDOUT_PLACE = Place.At(Root.Global(GlobalRef(Base, :stdout)), NO_STEPS)
 
 """Events of IR statement `index` in `walk` (`effects.md`, Writes and Reads)."""
-function statement_events(walk::Walk, index::Int)::Vector{Event}
+function statement_events(walk::Walk, index::Integer)::Vector{Event}
     statement = walk.ir.stmts[index][:stmt]
     statement isa GlobalRef && return global_reads(walk, statement)
     found = Event[]
@@ -534,7 +534,7 @@ end
 Events of call `call`, statement `index` (`effects.md`, Writes, sources 1 to 3, 5 and 6, and Reads). Call that
 compiler proves `effect_free` invokes no closure that writes caller state.
 """
-function call_events(walk::Walk, call::Expr, index::Int)::Vector{Event}
+function call_events(walk::Walk, call::Expr, index::Integer)::Vector{Event}
     callee, operands = call_parts(walk, call)
     isnothing(operands) && return splat_events(walk, callee, call)
     found = Event[]
@@ -571,7 +571,7 @@ keyword_value(walk::Walk, call::Expr)::Union{Nothing, Value} = constant_value(wa
 Events of `!` call (`effects.md`, Writes, source 2): skipped `IO` and RNG operands, then written operand. Without
 written operand, `possible` write on places keyword tuple holds, else on global state.
 """
-function bang_events(walk::Walk, @nospecialize(callee::Any), operands::Vector{Any}, keywords::Union{Nothing, Value})::Vector{Event}
+function bang_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any}, keywords::Union{Nothing, Value})::Vector{Event}
     found, position = Event[], written_position(walk, callee, operands)
     for operand in operands[1:(something(position, length(operands) + 1) - 1)]
         io_operand(walk, operand) && append!(found, value_events(walk, operand_value(walk, operand), EffectKind.io, true, true))
@@ -588,7 +588,7 @@ function bang_events(walk::Walk, @nospecialize(callee::Any), operands::Vector{An
 end
 
 """Events of library function without `!` that writes (`effects.md`, Writes, source 3): IO, synchronization, RNG, stateful iteration."""
-function exception_events(walk::Walk, @nospecialize(callee::Any), operands::Vector{Any})::Vector{Event}
+function exception_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Event}
     found = Event[]
     if callee in IO_FUNCTIONS
         streams = [operand for operand in operands if io_operand(walk, operand)]
@@ -636,7 +636,7 @@ end
 Read events of call (`effects.md`, Reads): field and element loads, `ScopedValue` and task-local reads, and iteration
 starts. Facts keep reads of globals and special kinds; plain argument reads stay out.
 """
-function read_events(walk::Walk, @nospecialize(callee::Any), operands::Vector{Any})::Vector{Event}
+function read_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Event}
     found = Event[]
     isempty(operands) && return callee in TASK_FUNCTIONS ? [Event(ELSEWHERE, false, EffectKind.task_local, Confidence.definite, false)] : found
     object = operand_value(walk, operands[1])
@@ -665,7 +665,7 @@ global_place(place::Place.Type)::Bool = !isnothing(root_global(place))
 Whether call starts iteration of first operand without state: `iterate(x)`, destructuring `indexed_iterate(x, 1)`,
 `first`, `only`, or `isempty` by generic method.
 """
-function starts_iteration(walk::Walk, @nospecialize(callee::Any), operands::Vector{Any})::Bool
+function starts_iteration(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Bool
     callee === iterate && return length(operands) == 1
     callee === Base.indexed_iterate && return length(operands) == 2 && constant_value(walk, operands[2]) == 1
     callee in START_FUNCTIONS && length(operands) == 1 || return false
@@ -678,7 +678,7 @@ end
 Writes of package closures that call `call`, statement `index`, of `callee` with `operands` can invoke (`effects.md`,
 Writes, source 5): closure body writes through captured fields map onto operands its `new` statement captured.
 """
-function closure_events(walk::Walk, call::Expr, index::Int, @nospecialize(callee::Any), operands::Vector{Any})::Vector{Event}
+function closure_events(walk::Walk, call::Expr, index::Integer, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Event}
     found, closures = Event[], filter(!isnothing, Union{Nothing, Expr}[closure_new(walk, operand) for operand in invoked_operands(walk, call, callee, operands)])
     # Compiler proof of call holds unless callee claims it (`@assume_effects`).
     isempty(closures) && return found
@@ -698,7 +698,7 @@ Operands that call `call` of `callee` can invoke: called function, and operands 
 arguments. Builtin, constructor, tuple, alias and choice function return or store operands; `!` call stores
 operands after written one.
 """
-function invoked_operands(walk::Walk, call::Expr, @nospecialize(callee::Any), operands::Vector{Any})::Vector{Any}
+function invoked_operands(walk::Walk, call::Expr, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Any}
     invoked = Any[call.args[1]]
     constant_value(walk, call.args[1]) === Core.kwcall && length(call.args) >= 3 && push!(invoked, call.args[3])
     (callee isa Core.Builtin || callee isa Type || callee === Core.tuple || callee in ALIAS_FUNCTIONS || callee in CHOICE_FUNCTIONS) && return invoked
@@ -767,13 +767,13 @@ function closure_writes!(walk::Walk, type::DataType)::Vector{CapturedWrite}
 end
 
 """Count of captured fields over every statement and local: sets only grow, so equal count means no change."""
-field_count(captured::Dict{Int, Set{Int}}, slots::Dict{Int, Set{Int}})::Int = sum(length, values(captured); init = 0) + sum(length, values(slots); init = 0)
+field_count(captured::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, slots::AbstractDict{<:Integer, <:AbstractSet{<:Integer}})::Int = sum(length, values(captured); init = 0) + sum(length, values(slots); init = 0)
 
 """
 One scan of lowered `code` of closure `type`: grows captured fields of each statement (`captured`) and local
 (`slots`), counts assignments of each local, and adds captured fields of each written operand to `written`.
 """
-function closure_scan!(code::Core.CodeInfo, type::DataType, captured::Dict{Int, Set{Int}}, slots::Dict{Int, Set{Int}}, assignments::Dict{Int, Int}, written::Vector{Set{Int}})::Nothing
+function closure_scan!(code::Core.CodeInfo, type::DataType, captured::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, slots::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, assignments::AbstractDict{<:Integer, <:Integer}, written::AbstractVector{<:AbstractSet{<:Integer}})::Nothing
     for (index, statement) in enumerate(code.code)
         # Local that holds captured field: `out = self.out` before `push!(out, x)`. Scan ignores flow, so it never clears.
         assigned = statement isa Expr && statement.head === :(=) && statement.args[1] isa Core.SlotNumber ? statement.args[1]::Core.SlotNumber : nothing
@@ -801,7 +801,7 @@ end
 Captured fields of closure `type` that lowered `expression` of `code` holds: load from closure or below captured
 field, statement in `captured`, or local in `slots`.
 """
-function held_fields(code::Core.CodeInfo, type::DataType, captured::Dict{Int, Set{Int}}, slots::Dict{Int, Set{Int}}, @nospecialize(expression::Any))::Set{Int}
+function held_fields(code::Core.CodeInfo, type::DataType, captured::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, slots::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, @nospecialize(expression::Any))::Set{Int}
     expression isa Expr || return captured_source(captured, slots, expression)
     expression.head === :call || return Set{Int}()
     length(expression.args) >= 2 || return Set{Int}()
@@ -814,7 +814,7 @@ function held_fields(code::Core.CodeInfo, type::DataType, captured::Dict{Int, Se
 end
 
 """Captured fields that lowered `operand` holds: statement in `captured` or local in `slots`."""
-function captured_source(captured::Dict{Int, Set{Int}}, slots::Dict{Int, Set{Int}}, @nospecialize(operand::Any))::Set{Int}
+function captured_source(captured::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, slots::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, @nospecialize(operand::Any))::Set{Int}
     operand isa Core.SSAValue && return get(captured, operand.id, Set{Int}())
     operand isa Core.SlotNumber && operand.id != 1 && return get(slots, operand.id, Set{Int}())
     return Set{Int}()

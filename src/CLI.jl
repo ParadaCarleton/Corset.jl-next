@@ -50,7 +50,7 @@ const BUILTIN_DOCS = Dict(
 )
 
 """Level flags of `args` in order, whether `-D warnings` appears, and remaining arguments."""
-function level_flags(args::Vector{String})::Tuple{Vector{Pair{String, Level.T}}, Bool, Vector{String}}
+function level_flags(args::AbstractVector{String})::Tuple{Vector{Pair{String, Level.T}}, Bool, Vector{String}}
     levels, deny_warnings, rest = Pair{String, Level.T}[], false, String[]
     index = 1
     while index <= length(args)
@@ -123,7 +123,7 @@ function argument_settings()::ArgParseSettings
 end
 
 """Enum value of `T` named by option `name` in `options`; `nothing` when option is absent."""
-(enum_option(::Type{T}, options::Dict{String, Any}, name::String)::Union{Nothing, T}) where {T <: Enum} =
+(enum_option(::Type{T}, options::AbstractDict{String, Any}, name::String)::Union{Nothing, T}) where {T <: Enum} =
     isnothing(get(options, name, nothing)) ? nothing : only(filter(value -> string(value) == options[name], collect(instances(T))))
 
 """Docstring text of module `mod`, read from docsystem metadata; every rule module has one (test enforces)."""
@@ -164,7 +164,7 @@ end
 Arguments of `check` that runs after `fix` with `args`: command name changes, and `--tier` drops, since `check` rejects it.
 Command name comes before path, and no option value is `fix`.
 """
-function recheck_arguments(args::Vector{String})::Vector{String}
+function recheck_arguments(args::AbstractVector{String})::Vector{String}
     checked = replace(args, "fix" => "check"; count = 1)
     at = findfirst(==("--tier"), checked)
     isnothing(at) || deleteat!(checked, at:(at + 1))
@@ -193,7 +193,7 @@ With `launch`, run that loads package builds temporary environment and runs agai
 unless cache holds analysis for that process; native abort reruns it (`Launch.supervise`). Without `launch`, current
 environment must load package from its root: relaunched process and tests. Relaunched process gets crash `journal`.
 """
-function execute(args::Vector{String}, @nospecialize(out::IO), @nospecialize(err::IO); launch::Bool, cache::Union{Nothing, String}, journal::Union{Nothing, String} = nothing)::Int
+function execute(args::AbstractVector{String}, @nospecialize(out::IO), @nospecialize(err::IO); launch::Bool, cache::Union{Nothing, String}, journal::Union{Nothing, String} = nothing)::Int
     try
         levels, deny_warnings, rest = level_flags(args)
         parsed = parse_args(rest, argument_settings())

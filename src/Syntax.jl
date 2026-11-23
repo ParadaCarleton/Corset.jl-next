@@ -45,7 +45,7 @@ end
 const NAMED = ("function", "macro", "struct", "abstract", "primitive", "module")
 
 """Names code in `forms` binds: parameters, assignment targets, loop variables, then definition names and struct fields."""
-function binding_sites(forms::Dict{Kind, Vector{SyntaxNode}})::Vector{BindingSite}
+function binding_sites(forms::AbstractDict{Kind, <:AbstractVector{SyntaxNode}})::Vector{BindingSite}
     sites = BindingSite[]
     nodes(kind::String)::Vector{SyntaxNode} = get(forms, JS.Kind(kind), SyntaxNode[])
     site!(node::SyntaxNode, kind::BindingKind.T)::Nothing = (foreach(name -> push!(sites, BindingSite(name, kind)), bound_identifiers(node)); nothing)
@@ -96,7 +96,7 @@ parse_problems(facts::FactSet)::Vector{Finding} = [
 Record in `found` bytes of grouping parentheses that wrap only one child of `node` and its descendants.
 JuliaSyntax keeps them as `parens` green children of parent and drops them from `SyntaxNode` tree.
 """
-function groups!(found::IdDict{SyntaxNode, UnitRange{Int}}, text::String, node::SyntaxNode)::IdDict{SyntaxNode, UnitRange{Int}}
+function groups!(found::IdDict{SyntaxNode, <:UnitRange{<:Integer}}, text::String, node::SyntaxNode)::IdDict{SyntaxNode, UnitRange{Int}}
     JS.is_leaf(node) && return found
     children, index, offset = JS.children(node), 1, JS.first_byte(node)
     for green in JS.children(node.raw)
@@ -116,7 +116,7 @@ function groups!(found::IdDict{SyntaxNode, UnitRange{Int}}, text::String, node::
 end
 
 """Bytes of only code inside `parens` node `green` at byte `offset`, through nested parentheses; `nothing` for other contents."""
-function content(text::String, green::JS.GreenNode, offset::Int)::Union{Nothing, UnitRange{Int}}
+function content(text::String, green::JS.GreenNode, offset::Integer)::Union{Nothing, UnitRange{Int}}
     parts = Tuple{JS.GreenNode, Int}[]
     for part in JS.children(green)
         JS.is_trivia(part) || push!(parts, (part, offset))
@@ -137,7 +137,7 @@ const DSL_KINDS = (JS.K"braces", JS.K"bracescat")
 Call `visit` on code nodes of `node`, parents first. Skips quoted code outside `\$` interpolation
 and macro arguments that hold `DSL_KINDS`. `quotes` counts open quotes around `node`.
 """
-function walk(visit::Function, node::SyntaxNode, quotes::Int = 0)::Nothing
+function walk(visit::Function, node::SyntaxNode, quotes::Integer = 0)::Nothing
     quotes == 0 && visit(node)
     JS.is_leaf(node) && return nothing
     kind = JS.kind(node)

@@ -68,7 +68,7 @@ fallbacks()::NTuple{3, Method} = (which(==, Tuple{Any, Any}), which(isequal, Tup
 function_type(method::Method)::Any = tuple_parameters(method.sig)[1]
 
 """First argument type of `method` that names type package `modules` define, with signature type variables; else `nothing`."""
-function compared_type(method::Method, modules::Set{Module})::Union{Nothing, Type}
+function compared_type(method::Method, modules::AbstractSet{Module})::Union{Nothing, Type}
     for position in 1:(method.nargs - 1)
         type = argument_type(method, position)
         body = isnothing(type) ? nothing : Base.unwrap_unionall(type)
@@ -86,7 +86,7 @@ function covering(callee::Function, arguments::Tuple, skipped::NTuple{3, Method}
 end
 
 """Whether argument `position` of `method` has type named `name`."""
-names_type(method::Method, position::Int, name::Core.TypeName)::Bool = (argument = argument_type(method, position); !isnothing(argument) && (body = Base.unwrap_unionall(argument); body isa DataType && body.name === name))
+names_type(method::Method, position::Integer, name::Core.TypeName)::Bool = (argument = argument_type(method, position); !isnothing(argument) && (body = Base.unwrap_unionall(argument); body isa DataType && body.name === name))
 
 """
 Method `isequal` reaches for two values of `type`: `isequal`, else `==`, other than Base fallbacks; `nothing` when values
@@ -117,7 +117,7 @@ function struct_fields(type::Type)::Set{Symbol}
 end
 
 """Callee of call statement `head` in lowered `code`: value of global or of statement it names; else `nothing`."""
-function callee(code::Vector{Any}, head::Any)::Any
+function callee(code::AbstractVector{Any}, head::Any)::Any
     head isa Core.SSAValue && (head = code[head.id])
     return head isa GlobalRef && isdefined(head.mod, head.name) ? getglobal(head.mod, head.name) : nothing
 end
@@ -169,7 +169,7 @@ function float_confidence(type::Any)::Union{Nothing, Confidence.T}
 end
 
 """Float confidence over `fields` of struct `type`: `definite` when one field holds floats, `possible` when one may."""
-function fields_float(type::Type, fields::Set{Symbol})::Union{Nothing, Confidence.T}
+function fields_float(type::Type, fields::AbstractSet{Symbol})::Union{Nothing, Confidence.T}
     body = Base.unwrap_unionall(type)
     found = [float_confidence(fieldtype(body, field)) for field in intersect(fields, struct_fields(type))]
     Confidence.definite in found && return Confidence.definite
@@ -185,10 +185,10 @@ function identity_compared(type::Type)::Bool
 end
 
 """Fields `method` compares as text: `` `a`, `b` ``."""
-field_list(fields::Set{Symbol})::String = join(("`$field`" for field in sort!(collect(fields))), ", ")
+field_list(fields::AbstractSet{Symbol})::String = join(("`$field`" for field in sort!(collect(fields))), ", ")
 
 """Site of `method` among package `sites`; `nothing` for method package code does not define."""
-site_of(method::Method, sites::Vector{MethodSite})::Union{Nothing, MethodSite} = (index = findfirst(site -> site.method === method, sites); isnothing(index) ? nothing : sites[index])
+site_of(method::Method, sites::AbstractVector{MethodSite})::Union{Nothing, MethodSite} = (index = findfirst(site -> site.method === method, sites); isnothing(index) ? nothing : sites[index])
 
 """Finding for method `site` on derived operator `derived`."""
 function derived_finding(site::MethodSite, derived::NamedTuple)::Finding
@@ -202,7 +202,7 @@ function derived_finding(site::MethodSite, derived::NamedTuple)::Finding
 end
 
 """Finding for equality `sites` on package `type` that `hash` does not cover; fix adds `isequal` when compared fields hold floats."""
-function unhashed_finding(type::Type, sites::Vector{MethodSite}, floats::Bool)::Finding
+function unhashed_finding(type::Type, sites::AbstractVector{MethodSite}, floats::Bool)::Finding
     name = nameof(Base.unwrap_unionall(type))
     fix = floats ? "define `Base.isequal` and `Base.hash(x::$name, h::UInt)` that apply `isequal` and `hash` to fields `==` compares" :
         "define `Base.hash(x::$name, h::UInt)` over fields equality compares"
@@ -226,7 +226,7 @@ function float_finding(type::Type, site::MethodSite, confidence::Confidence.T)::
 end
 
 """Finding for `hash` at `site` that reads `extra` fields equality at `compared` ignores."""
-function extra_field_finding(type::Type, site::MethodSite, extra::Set{Symbol}, compared::MethodSite)::Finding
+function extra_field_finding(type::Type, site::MethodSite, extra::AbstractSet{Symbol}, compared::MethodSite)::Finding
     name = nameof(Base.unwrap_unionall(type))
     return Finding(
         NAME, :hash_extra_field, Confidence.definite, "`hash` for `$name` reads $(field_list(extra)), which equality ignores",
@@ -259,7 +259,7 @@ function seed_finding(type::Type, site::MethodSite)::Finding
 end
 
 """Finding for `isless` at `site` that compares `ordered` fields where equality at `compared` compares `equal` fields."""
-function order_finding(type::Type, site::MethodSite, ordered::Set{Symbol}, compared::MethodSite, equal::Set{Symbol})::Finding
+function order_finding(type::Type, site::MethodSite, ordered::AbstractSet{Symbol}, compared::MethodSite, equal::AbstractSet{Symbol})::Finding
     name = nameof(Base.unwrap_unionall(type))
     return Finding(
         NAME, :isless_mismatch, Confidence.possible, "`isless` for `$name` compares $(field_list(ordered)); equality compares $(field_list(equal))",
@@ -270,7 +270,7 @@ function order_finding(type::Type, site::MethodSite, ordered::Set{Symbol}, compa
 end
 
 """Findings for package type `type` from its methods `sites` on `CONTRACT` functions, by function."""
-function contract_findings(type::Type, sites::Sites, all_sites::Vector{MethodSite}, skipped::NTuple{3, Method})::Vector{Finding}
+function contract_findings(type::Type, sites::Sites, all_sites::AbstractVector{MethodSite}, skipped::NTuple{3, Method})::Vector{Finding}
     found = Finding[]
     for site in get(sites, :hash, MethodSite[])
         site.method.nargs == 2 && push!(found, seed_finding(type, site))

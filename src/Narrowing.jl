@@ -60,16 +60,16 @@ function meet(left::State, right::State)::State
 end
 
 """`proven` with `slot` narrowed to `type` by test at statement `test`."""
-narrowed(proven::Proven, slot::Int, type::Type, test::Int)::Proven = (updated = copy(proven); updated[slot] = (type, test); updated)
+narrowed(proven::Proven, slot::Integer, type::Type, test::Integer)::Proven = (updated = copy(proven); updated[slot] = (type, test); updated)
 
 """`proven` and facts of `outcome` together; `nothing` when outcome never happens."""
 combined(proven::Proven, outcome::Outcome)::Outcome = isnothing(outcome) ? nothing : merge(proven, outcome)
 
 """`outcome` without facts about `slot`, which assignment replaces."""
-forget(outcome::Outcome, slot::Int)::Outcome = isnothing(outcome) ? nothing : delete!(copy(outcome), slot)
+forget(outcome::Outcome, slot::Integer)::Outcome = isnothing(outcome) ? nothing : delete!(copy(outcome), slot)
 
 """Type of variable `slot` before statement: type assignment earlier in block gives, else type at start of block."""
-slot_type(table::Vector{CC.VarState}, assigned::Dict{Int, <:Type}, slot::Int)::Type =
+slot_type(table::AbstractVector{CC.VarState}, assigned::AbstractDict{<:Integer, <:Type}, slot::Integer)::Type =
     get(() -> CC.widenconst(table[slot].typ), assigned, slot)
 
 """
@@ -77,7 +77,7 @@ Variable, narrowed type and test result that narrows, for type test `call`: `x i
 `x === nothing`, `isnothing(x)`. `nothing` for other call, or test that narrows nothing. Narrowed type `Union{}`
 means test never gives that result here: lowering reads `x === nothing` again on its own true branch.
 """
-function type_test(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.VarState}, table::Vector{CC.VarState}, assigned::Dict{Int, <:Type})::Union{Nothing, Tuple{Int, Type, Bool}}
+function type_test(code::Core.CodeInfo, call::Expr, parameters::AbstractVector{CC.VarState}, table::AbstractVector{CC.VarState}, assigned::AbstractDict{<:Integer, <:Type})::Union{Nothing, Tuple{Int, Type, Bool}}
     callee = code_argextype(call.args[1], code, parameters)
     callee isa Core.Const || return nothing
     arguments = Any[resolved(code, argument) for argument in call.args[2:end]]
@@ -105,7 +105,7 @@ end
 What `condition` proves when true and when false, as of statement `index`: type test, its negation, or variable that
 holds condition. Test statement is `condition` itself when it is call expression.
 """
-function outcomes(code::Core.CodeInfo, condition::Any, index::Int, state::State, parameters::Vector{CC.VarState}, table::Vector{CC.VarState}, assigned::Dict{Int, <:Type})::Tuple{Outcome, Outcome}
+function outcomes(code::Core.CodeInfo, condition::Any, index::Integer, state::State, parameters::AbstractVector{CC.VarState}, table::AbstractVector{CC.VarState}, assigned::AbstractDict{<:Integer, <:Type})::Tuple{Outcome, Outcome}
     unchanged = (state.proven, state.proven)
     if condition isa Core.SSAValue
         index, condition = condition.id, code.code[condition.id]
@@ -127,7 +127,7 @@ function outcomes(code::Core.CodeInfo, condition::Any, index::Int, state::State,
 end
 
 """Slots `statement` reads as values: call arguments, assigned value, condition, returned value."""
-function read_slots!(found::Vector{Int}, statement::Any)::Vector{Int}
+function read_slots!(found::AbstractVector{<:Integer}, statement::Any)::Vector{Int}
     if statement isa Core.SlotNumber
         push!(found, statement.id)
     elseif statement isa Expr && statement.head in (:call, :invoke, :new, :foreigncall, :(=))
@@ -144,7 +144,7 @@ end
 Run of block `block` from `state`: state at start of each successor. Pushes reads that lose narrowing to `losses`.
 Call that never returns ends block.
 """
-function transfer!(losses::Vector{Loss}, code::Core.CodeInfo, flow::Flow, parameters::Vector{CC.VarState}, block::Int, state::State)::Vector{Pair{Int, State}}
+function transfer!(losses::AbstractVector{Loss}, code::Core.CodeInfo, flow::Flow, parameters::AbstractVector{CC.VarState}, block::Integer, state::State)::Vector{Pair{Int, State}}
     table = something(flow.tables[block])
     proven, stored, assigned = copy(state.proven), copy(state.stored), Dict{Int, Type}()
     for index in flow.graph.blocks[block].stmts
@@ -190,7 +190,7 @@ end
 Reads of typed `code` that lose narrowing type test proves, first read per test. Scan runs to fixed point, then once
 more to collect reads.
 """
-function losses(code::Core.CodeInfo, flow::Flow, parameters::Vector{CC.VarState})::Vector{Loss}
+function losses(code::Core.CodeInfo, flow::Flow, parameters::AbstractVector{CC.VarState})::Vector{Loss}
     blocks = flow.graph.blocks
     (length(flow.tables) == length(blocks) && last(blocks[end].stmts) == length(code.code)) || error("control flow graph does not cover typed code")
     states = Union{Nothing, State}[nothing for _ in flow.graph.blocks]

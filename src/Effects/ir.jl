@@ -4,7 +4,7 @@ whether value of each source statement has use (`effects.md`, IR). Passes run on
 stage left it. Line of each statement carries its index through passes. Compaction keeps statements `kept` marks,
 though compiler effects let it delete them.
 """
-function frame_ir(frame::CC.InferenceState, interpreter::CC.NativeInterpreter, kept::Vector{Bool})::Tuple{CC.IRCode, Vector{Int}, Vector{Bool}}
+function frame_ir(frame::CC.InferenceState, interpreter::CC.NativeInterpreter, kept::AbstractVector{Bool})::Tuple{CC.IRCode, Vector{Int}, Vector{Bool}}
     source = copy(frame.src)
     count = length(source.code)
     for index in findall(kept)
@@ -26,10 +26,10 @@ function frame_ir(frame::CC.InferenceState, interpreter::CC.NativeInterpreter, k
 end
 
 """Source statement index of statement `index` of `ir` (`frame_ir`)."""
-statement_line(ir::CC.IRCode, index::Int)::Int = Int(ir.stmts[index][:line][1])
+statement_line(ir::CC.IRCode, index::Integer)::Int = Int(ir.stmts[index][:line][1])
 
 """Whether value of each of `count` source statements has use in `ir` before compaction: in statement or in new node."""
-function source_used(ir::CC.IRCode, count::Int)::Vector{Bool}
+function source_used(ir::CC.IRCode, count::Integer)::Vector{Bool}
     used = fill(false, count)
     for statement in Iterators.flatten((ir.stmts.stmt, ir.new_nodes.stmts.stmt)), reference in CC.userefs(statement)
         value = reference[]

@@ -46,7 +46,7 @@ function manifest_deps(project::String)::Dict{String, Any}
 end
 
 """Spec of test dependency `id`; `source` is its `[sources]` entry in test/Project.toml, read relative to `directory`."""
-function source_spec(id::Base.PkgId, source::Union{Nothing, Dict{String, Any}}, directory::String)::Pkg.PackageSpec
+function source_spec(id::Base.PkgId, source::Union{Nothing, AbstractDict{String, Any}}, directory::String)::Pkg.PackageSpec
     name, uuid = id.name, id.uuid
     isnothing(source) && return Pkg.PackageSpec(; name, uuid)
     haskey(source, "path") && return Pkg.PackageSpec(; name, uuid, path = abspath(directory, source["path"]))
@@ -92,14 +92,14 @@ function unpin_tiers()::Vector{Set{Base.UUID}}
 end
 
 """Uuids of Manifest entries `deps` that `free` holds."""
-freed(deps::Dict{String, Any}, free::Set{Base.UUID})::Set{Base.UUID} =
+freed(deps::AbstractDict{String, Any}, free::AbstractSet{Base.UUID})::Set{Base.UUID} =
     Set{Base.UUID}(uuid for entries in values(deps) for entry in entries for uuid in (Base.UUID(entry["uuid"]),) if uuid in free)
 
 """
 Write Project.toml and Manifest.toml of `env` from target Manifest entries `deps`. Project.toml lists each versioned entry
 outside `free` as direct dependency, so `PRESERVE_DIRECT` keeps its version. Name with two entries stays unlisted.
 """
-function write_env!(env::String, preferences::Dict{String, Any}, deps::Dict{String, Any}, free::Set{Base.UUID})::Nothing
+function write_env!(env::String, preferences::AbstractDict{String, Any}, deps::AbstractDict{String, Any}, free::AbstractSet{Base.UUID})::Nothing
     kept = Dict{String, Any}(name => only(entries)["uuid"] for (name, entries) in deps if length(entries) == 1 && haskey(only(entries), "version") && Base.UUID(only(entries)["uuid"]) ∉ free)
     open(io -> TOML.print(io, Dict("preferences" => preferences, "deps" => kept)), joinpath(env, "Project.toml"), "w")
     open(io -> TOML.print(io, Dict("manifest_format" => "2.0", "deps" => deps)), joinpath(env, "Manifest.toml"), "w")
@@ -107,7 +107,7 @@ function write_env!(env::String, preferences::Dict{String, Any}, deps::Dict{Stri
 end
 
 """Versions that Manifest entries `used` give packages of `pinned` in place of pinned version: name, pinned, used; sorted."""
-function moves(pinned::Dict{String, Any}, used::Dict{String, Any})::Vector{Tuple{String, String, String}}
+function moves(pinned::AbstractDict{String, Any}, used::AbstractDict{String, Any})::Vector{Tuple{String, String, String}}
     versions = Dict(entry["uuid"] => entry["version"] for entries in values(used) for entry in entries if haskey(entry, "version"))
     moved = [(name, entry["version"], get(versions, entry["uuid"], entry["version"])) for (name, entries) in pinned for entry in entries if haskey(entry, "version")]
     return sort!(filter(((_, from, to),) -> from != to, moved))
@@ -117,14 +117,14 @@ end
 Pkg preserve level of build attempt that frees `uuids` of target Manifest entries `deps`. Without Manifest nothing is
 pinned: resolver may move version that `develop` picked before test dependencies joined.
 """
-preserve_level(deps::Dict{String, Any}, uuids::Set{Base.UUID})::Pkg.PreserveLevel =
+preserve_level(deps::AbstractDict{String, Any}, uuids::AbstractSet{Base.UUID})::Pkg.PreserveLevel =
     isempty(deps) ? Pkg.PRESERVE_TIERED : isempty(uuids) ? Pkg.PRESERVE_ALL : Pkg.PRESERVE_DIRECT
 
 """
 Build temporary environment for package of `project` in empty directory `env`; return Manifest versions it moved.
 Each set of `tiers` frees its packages; first set that resolves wins. Set that frees no new Manifest entry is skipped.
 """
-function build!(env::String, project::ProjectFacts, tiers::Vector{Set{Base.UUID}})::Vector{Tuple{String, String, String}}
+function build!(env::String, project::ProjectFacts, tiers::AbstractVector{<:AbstractSet{Base.UUID}})::Vector{Tuple{String, String, String}}
     root = project.root
     preferences = get(parse_toml(joinpath(root, "Project.toml")), "preferences", Dict{String, Any}())
     deps = manifest_deps(joinpath(root, "Project.toml"))
@@ -212,7 +212,7 @@ untracked(julia::Cmd)::Cmd = `$julia --code-coverage=none --track-allocation=non
 Finished Julia process that ran command line `args` again with cache directory `cache` and crash `journal` directory,
 loading only from `env` and `@stdlib`.
 """
-function relaunch(env::String, args::Vector{String}, cache::Union{Nothing, String}, journal::String, out::IO, err::IO)::Base.Process
+function relaunch(env::String, args::AbstractVector{String}, cache::Union{Nothing, String}, journal::String, out::IO, err::IO)::Base.Process
     command = `$(untracked(Base.julia_cmd())) --startup-file=no --project=$env -e $(child(cache, journal)) -- $args`
     return run(pipeline(ignorestatus(addenv(command, "JULIA_LOAD_PATH" => LOAD_PATH)); stdout = out, stderr = err))
 end
@@ -225,7 +225,7 @@ Last relaunched process of run `relaunch` starts: process that native abort kill
 journal makes that run skip crashed inference. Prints note per crash to `err`; throws after `limit` crashes. Journal
 directory stays when note names its crash log. Julia exception never reruns.
 """
-function supervise(env::String, args::Vector{String}, cache::Union{Nothing, String}, out::IO, err::IO, limit::Int)::Base.Process
+function supervise(env::String, args::AbstractVector{String}, cache::Union{Nothing, String}, out::IO, err::IO, limit::Integer)::Base.Process
     journal = mktempdir(get_scratch!(Base.moduleroot(@__MODULE__), "crashes"); cleanup = false)
     for crashes in 0:limit
         process = relaunch(env, args, cache, journal, out, err)

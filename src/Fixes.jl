@@ -11,7 +11,7 @@ overlap(left::Edit, right::Edit)::Bool =
 Edits of `findings` in every file whose fix tier is at most `tier`; `manual` fixes never apply.
 Fix whose edits overlap edit chosen earlier, in any file, is skipped whole; next fix run applies it.
 """
-function applicable_edits(findings::Vector{Finding}, tier::Tier.T)::Vector{Edit}
+function applicable_edits(findings::AbstractVector{Finding}, tier::Tier.T)::Vector{Edit}
     allowed = tier == Tier.manual ? Tier.breaking : tier
     chosen = Edit[]
     for finding in findings
@@ -23,7 +23,7 @@ function applicable_edits(findings::Vector{Finding}, tier::Tier.T)::Vector{Edit}
 end
 
 """`text` of one file with its `edits` applied. Overlapping edits throw: two fixes would fight over same bytes."""
-function apply_edits(text::String, edits::Vector{Edit})::String
+function apply_edits(text::String, edits::AbstractVector{Edit})::String
     allequal(edit.span.file for edit in edits) || throw(ArgumentError("edits of several files"))
     # Insertion (empty span) before edit at same byte goes first.
     ordered = sort(edits; by = edit -> (edit.span.first_byte, edit.span.last_byte))

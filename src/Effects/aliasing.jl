@@ -1,7 +1,7 @@
 # Self-alias calls of name tier (F50; `phase5.md`, row 7): `!` call that reads memory it writes through other operand.
 
 """Self-alias calls of `walk`, with `spans` of its IR statements (`self_alias`)."""
-function self_aliases(walk::Walk, spans::Vector{Span})::Vector{SelfAlias}
+function self_aliases(walk::Walk, spans::AbstractVector{Span})::Vector{SelfAlias}
     found = SelfAlias[]
     for index in 1:length(walk.ir.stmts)
         call = self_alias(walk, index)
@@ -17,7 +17,7 @@ Writing function name and confidence of `!` call at statement `index` of `walk` 
 (same object) or shares its memory through view. Same object to `ALIAS_BREAKS` function gives `definite`; shared memory
 to warned function (`aliasing_warned`) gives `possible`. `nothing` for other statement and `UNALIAS_FUNCTIONS` callee.
 """
-function self_alias(walk::Walk, index::Int)::Union{Nothing, Tuple{String, Confidence.T}}
+function self_alias(walk::Walk, index::Integer)::Union{Nothing, Tuple{String, Confidence.T}}
     statement = walk.ir.stmts[index][:stmt]
     statement isa Expr || return nothing
     statement.head === :call || return nothing
@@ -96,7 +96,7 @@ end
 Whether docstring of method of `callee` that `operands` match carries Base aliasing warning (`Base._DOCS_ALIASING_WARNING`):
 "Behavior can be unexpected when any mutated argument shares memory with any other argument."
 """
-function aliasing_warned(walk::Walk, @nospecialize(callee::Function), operands::Vector{Any})::Bool
+function aliasing_warned(walk::Walk, @nospecialize(callee::Function), operands::AbstractVector{Any})::Bool
     owner = parentmodule(callee)
     # Default `meta` call defines docstring table in module that lacks one.
     table = Docs.meta(owner; autoinit = false)

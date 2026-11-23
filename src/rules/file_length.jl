@@ -25,7 +25,7 @@ const NAME = Symbol("file-length")
 const MAX_LINES = 1000
 
 """Byte offset where line `line` of `text` starts; `nothing` when file is shorter."""
-function line_start(text::String, line::Int)::Union{Nothing, Int}
+function line_start(text::String, line::Integer)::Union{Nothing, Int}
     offset = 1
     for _ in 2:line
         newline = findnext(==('\n'), text, offset)

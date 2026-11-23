@@ -107,7 +107,7 @@ end
 Finding for first statement after exit in `block`; `nothing` when none, or when `@label` follows exit.
 `labels` holds sorted first bytes of `@label` calls.
 """
-function after_exit(file::SyntaxFile, block::SyntaxNode, labels::Vector{Int})::Union{Nothing, Finding}
+function after_exit(file::SyntaxFile, block::SyntaxNode, labels::AbstractVector{<:Integer})::Union{Nothing, Finding}
     statements = children_of(block)
     index = findfirst(statement -> !isnothing(exit_name(block, statement)), statements)
     (isnothing(index) || index == length(statements)) && return nothing

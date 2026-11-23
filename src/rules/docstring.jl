@@ -33,7 +33,7 @@ const NAME = :docstring
 documented(node::SyntaxNode)::Bool = (parent = parent_of(node); !isnothing(parent) && kind_name(parent) == "doc")
 
 """Whether line above byte `first`, where comment block starts, holds code; `false` at file start."""
-function code_above(text::String, first::Int)::Bool
+function code_above(text::String, first::Integer)::Bool
     first <= 2 && return false
     start = something(findprev(==(UInt8('\n')), codeunits(text), first - 2), 0) + 1
     line = strip(SubString(text, start, prevind(text, first - 1)))
@@ -44,10 +44,10 @@ end
 escaped(line::AbstractString)::String = replace(line, '\\' => "\\\\", '$' => "\\\$", r"\"(?=\"|$)" => "\\\"")
 
 """Text of byte range `line` of `text`; range ends on last byte of character, which `thisind` turns into its index."""
-line_text(text::String, line::UnitRange{Int})::String = text[first(line):thisind(text, last(line))]
+line_text(text::String, line::UnitRange{<:Integer})::String = text[first(line):thisind(text, last(line))]
 
 """Docstring text built from comment lines `lines` of `text`, with indentation `indent`."""
-function as_docstring(text::String, lines::Vector{UnitRange{Int}}, indent::String)::String
+function as_docstring(text::String, lines::AbstractVector{<:UnitRange{<:Integer}}, indent::String)::String
     body = [escaped(lstrip(chopprefix(lstrip(line_text(text, line)), "#"))) for line in lines]
     return length(body) == 1 ? "$indent\"\"\"$(body[1])\"\"\"" :
         "$indent\"\"\"\n" * join((indent * line for line in body), "\n") * "\n$indent\"\"\""

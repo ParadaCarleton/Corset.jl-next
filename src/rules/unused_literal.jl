@@ -51,7 +51,7 @@ end
 in_macro(node::SyntaxNode)::Bool = any(ancestor -> kind_name(ancestor) == "macrocall", ancestors(node))
 
 """Fix for detached docstring with `gap` bytes before definition: join when gap is blank, else manual."""
-function join_fix(file::SyntaxFile, gap::UnitRange{Int})::Fix
+function join_fix(file::SyntaxFile, gap::UnitRange{<:Integer})::Fix
     notes, bytes = comments_in(file, gap), codeunits(file.text)
     any(byte -> bytes[byte] == UInt8(';') && !any(note -> byte in note, notes), gap) &&
         return manual_fix("replace `;` with line break, so definition starts on line below docstring")

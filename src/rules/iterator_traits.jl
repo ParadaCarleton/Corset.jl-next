@@ -37,7 +37,7 @@ using ...Facts
 const NAME = Symbol("iterator-traits")
 
 """Type of first argument of `iterate` `method` with signature type variables; `nothing` unless it names package struct."""
-function iterated(method::Method, modules::Set{Module})::Union{Nothing, Type}
+function iterated(method::Method, modules::AbstractSet{Module})::Union{Nothing, Type}
     type = argument_type(method, 1)
     isnothing(type) && return nothing
     body = Base.unwrap_unionall(type)

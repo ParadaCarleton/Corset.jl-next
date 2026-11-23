@@ -209,7 +209,7 @@ end
 Callee `Methods` of `methods`, each once, in source order: module, file, line, signature. Dispatch and unit merge give
 methods in varying order, so facts and their equality depend on none.
 """
-methods_callee(methods::Vector{Method})::Callee.Type = Callee.Methods(sort!(unique(methods); lt = source_before))
+methods_callee(methods::AbstractVector{Method})::Callee.Type = Callee.Methods(sort!(unique(methods); lt = source_before))
 
 """Whether `method` comes before `other` in source order; printed signature breaks ties only, since printing type is slow."""
 function source_before(method::Method, other::Method)::Bool

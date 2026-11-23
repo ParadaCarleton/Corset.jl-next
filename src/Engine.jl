@@ -40,13 +40,13 @@ struct Report
 end
 
 """Findings of `rules` on `facts`, sorted by file and position."""
-function run_rules(facts::FactSet, rules::Vector{RuleEntry} = REGISTRY)::Vector{Finding}
+function run_rules(facts::FactSet, rules::AbstractVector{RuleEntry} = REGISTRY)::Vector{Finding}
     findings = reduce(vcat, (entry.run(facts) for entry in rules); init = Finding[])
     return sort!(findings; by = finding -> (finding.primary.span.file, finding.primary.span.first_byte, finding.rule))
 end
 
 """Diagnostics for `findings` under `settings`: drops `allow` findings and findings below confidence setting."""
-function diagnostics(findings::Vector{Finding}, settings::Settings)::Vector{Diagnostic}
+function diagnostics(findings::AbstractVector{Finding}, settings::Settings)::Vector{Diagnostic}
     reported = Diagnostic[]
     for finding in findings
         settings.confidence == Confidence.definite && finding.confidence == Confidence.possible && continue
@@ -83,7 +83,7 @@ loads(project::Union{Nothing, ProjectFacts}, settings::Settings)::Bool = !isnoth
 Loaded package of `project` with method sites in `files`, and its load errors and blind spots.
 Nothing loads outside package project, and when no enabled rule reads package.
 """
-function load_package(project::Union{Nothing, ProjectFacts}, settings::Settings, files::Vector{Facts.SyntaxFile})::Package.Loaded
+function load_package(project::Union{Nothing, ProjectFacts}, settings::Settings, files::AbstractVector{Facts.SyntaxFile})::Package.Loaded
     return loads(project, settings) ? Package.load(project, files) : Package.Loaded(nothing, Finding[], BlindSpot[])
 end
 
@@ -91,7 +91,7 @@ end
 method_entry(path::String)::String = "$path\nmethod store"
 
 """Key of method store entry of checked `path` with `package` in analyzed `files` in cache directory `cache`."""
-store_key(path::String, package::PackageFacts, files::Vector{Facts.SyntaxFile}, cache::String)::String =
+store_key(path::String, package::PackageFacts, files::AbstractVector{Facts.SyntaxFile}, cache::String)::String =
     Cache.method_key(path, something(project_root(path)), [file.path for file in files], Inference.shape(package), Base.load_path(), cache)
 
 """
@@ -100,7 +100,7 @@ Inference and effects facts of `package` in analyzed `files`, each with its blin
 checked `path`; `nothing` turns it off.
 Crash journal `directory` of relaunched process records each inference (`journaled`); `nothing` records none.
 """
-function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, inference::Bool, effects::Bool, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}, Union{Nothing, EffectsFacts}, Vector{BlindSpot}}
+function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files::AbstractVector{Facts.SyntaxFile}, inference::Bool, effects::Bool, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}, Union{Nothing, EffectsFacts}, Vector{BlindSpot}}
     (isnothing(package) || !inference) && return nothing, BlindSpot[], nothing, BlindSpot[]
     key = isnothing(cache) ? "" : store_key(path, package, files, cache)
     cached = isnothing(cache) ? nothing : something(Cache.lookup(Inference.Store, cache, method_entry(path), key), Inference.Store())
@@ -119,7 +119,7 @@ end
 Store `used` where each entry without effects record takes one: typed unit of `units` its record in `records`, other
 unit (no code) `nothing`. Stored entries keep theirs.
 """
-function with_records(used::Inference.Store, units::Inference.Units, records::Vector{Union{Nothing, Effects.UnitEffects}})::Inference.Store
+function with_records(used::Inference.Store, units::Inference.Units, records::AbstractVector{Union{Nothing, Effects.UnitEffects}})::Inference.Store
     bytes = Dict(Inference.entry_key(typed.site.method, typed.signature) => Effects.record_bytes(record) for (typed, record) in zip(units.typed, records))
     none = Effects.record_bytes(nothing)
     filled(key::String, entry::Inference.Entry)::Inference.Entry = Inference.Entry(entry.file, entry.methods, entry.staged, entry.inferred, get(bytes, key, none))
@@ -146,7 +146,7 @@ end
 External facts of `package` that `project` loads, with analyzed `files`, when `settings` enable `external` rule;
 `nothing` otherwise.
 """
-function external_facts(project::Union{Nothing, ProjectFacts}, package::Union{Nothing, PackageFacts}, files::Vector{Facts.SyntaxFile}, settings::Settings)::Union{Nothing, ExternalFacts}
+function external_facts(project::Union{Nothing, ProjectFacts}, package::Union{Nothing, PackageFacts}, files::AbstractVector{Facts.SyntaxFile}, settings::Settings)::Union{Nothing, ExternalFacts}
     return isnothing(package) || !wants(settings, Stage.external) ? nothing : External.external_facts(package, project.entry, files)
 end
 
@@ -201,7 +201,7 @@ end
 Key in cache directory `cache` of run on real `path` with `flags` and discovered `sources`, in process with `load_path`.
 Flags count by serialized bytes: `repr` names types relative to `Main` imports, which differ between processes.
 """
-function cache_key(path::String, flags::Flags, sources::Discovery.Sources, load_path::Vector{String}, cache::String)::String
+function cache_key(path::String, flags::Flags, sources::Discovery.Sources, load_path::AbstractVector{String}, cache::String)::String
     flags_hash = bytes2hex(sha256(sprint(serialize, flags)))
     return Cache.key(path, flags_hash, project_root(path), [file.path for file in sources.files], load_path, cache)
 end
@@ -235,7 +235,7 @@ end
 Settings and analysis that cache directory `cache` holds for run on `path` with `flags`, in process with `load_path`;
 `nothing` when cache misses. Relaunching process asks before it relaunches: hit loads no package.
 """
-function cached(path::String, flags::Flags, cache::String, load_path::Vector{String})::Union{Nothing, Tuple{Settings, Analysis}}
+function cached(path::String, flags::Flags, cache::String, load_path::AbstractVector{String})::Union{Nothing, Tuple{Settings, Analysis}}
     path = realpath(path)
     sources = Discovery.discover(path; environment = nothing)
     stored = Cache.lookup(Analysis, cache, path, cache_key(path, flags, sources, load_path, cache))

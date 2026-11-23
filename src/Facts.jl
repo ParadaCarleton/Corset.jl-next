@@ -106,14 +106,14 @@ struct RuleEntry
     stage::Stage.T
     fix_stage::Stage.T
     run::Function
-    function RuleEntry(name::Symbol, group::Group.T, footguns::Vector{Int}, stage::Stage.T, fix_stage::Stage.T, run::Function)::RuleEntry
+    function RuleEntry(name::Symbol, group::Group.T, footguns::AbstractVector{<:Integer}, stage::Stage.T, fix_stage::Stage.T, run::Function)::RuleEntry
         fix_stage >= stage || throw(ArgumentError("fix stage $fix_stage of `$name` comes before its stage $stage"))
         return new(name, group, footguns, stage, fix_stage, run)
     end
 end
 
 """Entry whose fixes need no facts beyond its findings' `stage`."""
-RuleEntry(name::Symbol, group::Group.T, footguns::Vector{Int}, stage::Stage.T, run::Function)::RuleEntry = RuleEntry(name, group, footguns, stage, stage, run)
+RuleEntry(name::Symbol, group::Group.T, footguns::AbstractVector{<:Integer}, stage::Stage.T, run::Function)::RuleEntry = RuleEntry(name, group, footguns, stage, stage, run)
 
 """Identifier node that binding site binds, and site kind."""
 struct BindingSite
@@ -555,7 +555,7 @@ function matches(file::SyntaxFile, indexed::IndexedPattern)::Vector{Match}
 end
 
 """Push match of `indexed` at `node` to `found` when pattern matches."""
-function try_match!(found::Vector{Match}, indexed::IndexedPattern, node::SyntaxNode)::Nothing
+function try_match!(found::AbstractVector{Match}, indexed::IndexedPattern, node::SyntaxNode)::Nothing
     result = Base.inferencebarrier(syntax_match)(indexed.pattern, node)
     result isa BindingSet && push!(found, Match(node, result))
     return nothing
@@ -565,7 +565,7 @@ end
 binding(match::Match, name::Symbol)::SyntaxNode = match.bindings[name].src
 
 """`range` of bytes in `text` without surrounding whitespace."""
-function trimmed(text::String, range::UnitRange{Int})::UnitRange{Int}
+function trimmed(text::String, range::UnitRange{<:Integer})::UnitRange{Int}
     bytes = codeunits(text)
     first, last = range.start, range.stop
     while first < last && bytes[first] in (UInt8(' '), UInt8('\t'), UInt8('\n'), UInt8('\r'))
@@ -755,7 +755,7 @@ tuple_parameters(type::Type)::Core.SimpleVector = Base.unwrap_unionall(type).par
 Type of argument `position` of `method`, wrapped in signature `where`: element type for `Vararg`, bound for type variable.
 `nothing` when method has no such argument.
 """
-function argument_type(method::Method, position::Int)::Union{Nothing, Type}
+function argument_type(method::Method, position::Integer)::Union{Nothing, Type}
     parameters = tuple_parameters(method.sig)
     length(parameters) > position || return nothing
     # Julia reduces `T where T <: Walk` to `Walk`, and drops type variables argument does not use.
@@ -807,7 +807,7 @@ function takes_docstring(file::SyntaxFile, definition::SyntaxNode)::Bool
 end
 
 """Byte ranges of comment lines directly above byte `first` in `text`, top first; blank line ends block."""
-function comment_lines_above(text::String, first::Int)::Vector{UnitRange{Int}}
+function comment_lines_above(text::String, first::Integer)::Vector{UnitRange{Int}}
     lines = UnitRange{Int}[]
     stop = something(findprev(==('\n'), text, prevind(text, first)), 0)
     while stop > 0
@@ -821,7 +821,7 @@ function comment_lines_above(text::String, first::Int)::Vector{UnitRange{Int}}
 end
 
 """Comment byte ranges of `file` that start inside `bytes`, in source order."""
-function comments_in(file::SyntaxFile, bytes::UnitRange{Int})::Vector{UnitRange{Int}}
+function comments_in(file::SyntaxFile, bytes::UnitRange{<:Integer})::Vector{UnitRange{Int}}
     start = searchsortedfirst(file.comments, bytes; by = first)
     stop = searchsortedlast(file.comments, last(bytes):last(bytes); by = first)
     return file.comments[start:stop]
@@ -891,7 +891,7 @@ end
 """Finding of `rule` with primary label at `node` of `file`."""
 function finding(
         rule::Symbol, file::SyntaxFile, node::SyntaxNode; kind::Symbol, confidence::Confidence.T, message::String,
-        label::String, why::String, fix::Union{Fix, Nothing}, causes::Vector{Label} = Label[],
+        label::String, why::String, fix::Union{Fix, Nothing}, causes::AbstractVector{Label} = Label[],
     )::Finding
     return Finding(rule, kind, confidence, message, Label(span(file, node), label), causes, why, fix)
 end
@@ -901,7 +901,7 @@ replace_fix(file::SyntaxFile, node::SyntaxNode, replacement::String, tier::Tier.
     Fix("replace with `$replacement`", [Edit(span(file, node), replacement)], tier)
 
 """First byte of line of `file` that holds `byte`."""
-line_start(file::SyntaxFile, byte::Int)::Int = something(findprev(==(UInt8('\n')), codeunits(file.text), byte - 1), 0) + 1
+line_start(file::SyntaxFile, byte::Integer)::Int = something(findprev(==(UInt8('\n')), codeunits(file.text), byte - 1), 0) + 1
 
 """
 Bytes of lines of `file` that `span` covers, newline excluded; `nothing` when other code shares them. Trailing line
@@ -917,7 +917,7 @@ function owned_lines(file::SyntaxFile, span::Span)::Union{Nothing, UnitRange{Int
 end
 
 """Edit deleting `lines` of `file` and newline after them; last line of file has none."""
-line_deletion(file::SyntaxFile, lines::UnitRange{Int})::Edit =
+line_deletion(file::SyntaxFile, lines::UnitRange{<:Integer})::Edit =
     Edit(Span(file.path, first(lines), min(last(lines) + 1, ncodeunits(file.text)), Precision.exact), "")
 
 """Fix with no edits; shown, never applied."""
@@ -934,7 +934,7 @@ const IRRATIONALS = (
 const BASE_IRRATIONALS = ("π", "ℯ", "γ", "φ")
 
 """Name of irrational constant float `value` spells to five significant digits; `nothing` when none."""
-function irrational_name(value::Float64)::Union{Nothing, String}
+function irrational_name(value::Real)::Union{Nothing, String}
     for (constant, name) in IRRATIONALS
         isapprox(value, Float64(constant); rtol = 1.0e-5) && return name
     end

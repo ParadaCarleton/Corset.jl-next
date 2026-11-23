@@ -55,7 +55,7 @@ function templates(instance::Core.MethodInstance)::Vector{Int}
 end
 
 """Whether `call` of typed `code` builds hard-coded `Array`: constructor in `FILLS`, `similar(Vector{T}, n)` or `Vector{T}(undef, n)`."""
-function constructs(code::Core.CodeInfo, call::Expr, parameters::Vector{CC.VarState})::Bool
+function constructs(code::Core.CodeInfo, call::Expr, parameters::AbstractVector{CC.VarState})::Bool
     callee = code_argextype(call.args[1], code, parameters)
     callee isa Core.Const || return false
     callee.val in FILLS && return true
@@ -69,7 +69,7 @@ end
 Template slot of construction `call` in typed `code`: first of `slots` that argument call reads (`zeros(length(xs))`),
 else first of `slots`.
 """
-function template_of(code::Core.CodeInfo, call::Expr, slots::Vector{Int})::Int
+function template_of(code::Core.CodeInfo, call::Expr, slots::AbstractVector{<:Integer})::Int
     for argument in call.args[2:end]
         argument isa Core.SSAValue || continue
         inner = statement_call(code.code[argument.id])
@@ -83,7 +83,7 @@ function template_of(code::Core.CodeInfo, call::Expr, slots::Vector{Int})::Int
 end
 
 """Hard-coded constructions of typed `code` with `slots` as templates."""
-function constructions(code::Core.CodeInfo, parameters::Vector{CC.VarState}, slots::Vector{Int})::Vector{Construction}
+function constructions(code::Core.CodeInfo, parameters::AbstractVector{CC.VarState}, slots::AbstractVector{<:Integer})::Vector{Construction}
     found = Construction[]
     for (index, statement) in enumerate(code.code)
         call = statement_call(statement)
@@ -97,9 +97,9 @@ function constructions(code::Core.CodeInfo, parameters::Vector{CC.VarState}, slo
 end
 
 """Replacements that give `chosen` stand-in array type of their template in `instance`."""
-function swaps(instance::Core.MethodInstance, chosen::Vector{Construction})::Vector{Swap}
+function swaps(instance::Core.MethodInstance, chosen::AbstractVector{Construction})::Vector{Swap}
     arguments = tuple_parameters(instance.specTypes)
-    wrapper(slot::Int)::UnionAll = Base.unwrap_unionall(arguments[slot]).name.wrapper
+    wrapper(slot::Integer)::UnionAll = Base.unwrap_unionall(arguments[slot]).name.wrapper
     return Swap[(index = construction.index, position = 1, value = Templated{wrapper(construction.template)}(construction.callee)) for construction in chosen]
 end
 
@@ -108,7 +108,7 @@ First call of typed `left` that takes value whose type differs in `baseline` and
 `code`; `nothing` when none. One value can be both: tuple of construction and input. Builtins (`tuple`, `getfield`)
 only move values.
 """
-function meeting(left::Core.CodeInfo, baseline::Core.CodeInfo, code::Core.CodeInfo, parameters::Vector{CC.VarState})::Union{Nothing, Int}
+function meeting(left::Core.CodeInfo, baseline::Core.CodeInfo, code::Core.CodeInfo, parameters::AbstractVector{CC.VarState})::Union{Nothing, Int}
     for (index, statement) in enumerate(left.code)
         call = statement_call(statement)
         isnothing(call) && continue
@@ -126,7 +126,7 @@ Changes typed `code` of `instance` makes by hard-coded constructions (`Change`),
 tests type (`Widening.type_branch`). Construction whose conversion makes statement throw is dropped: callee takes
 `Array` only there. Adds compiler edges of every inference scan runs to `edges`.
 """
-function changes!(edges::Vector{Any}, instance::Core.MethodInstance, code::Core.CodeInfo)::Tuple{Vector{Change}, Bool}
+function changes!(edges::AbstractVector{Any}, instance::Core.MethodInstance, code::Core.CodeInfo)::Tuple{Vector{Change}, Bool}
     parameters, slots = CC.sptypes_from_meth_instance(instance), templates(instance)
     isempty(slots) && return Change[], false
     found = constructions(code, parameters, slots)
