@@ -921,6 +921,14 @@ function hold_global(path::String, text::String)::Int
 end
 """Package function that closes stream global holds."""
 close_global()::Nothing = close(OPEN_STREAM[])
+"""Package call before stream escapes cannot reach it: throw there leaves stream open for sure."""
+function hold_late_global(path::String, text::String)::Int
+    stream = open(path)
+    parsed = parse(Int, text)
+    OPEN_STREAM[] = stream
+    close_global()
+    return parsed
+end
 """Release in `finally`."""
 function hold_finally!(guard::ReentrantLock, key::String)::Int
     lock(guard)

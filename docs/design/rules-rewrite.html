@@ -951,7 +951,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Statement may throw when compiler <code>nothrow</code> is off. Inside <code>try</code>, it has an edge to its catch block.</li>
 <li>Call that passes held resource to package function makes count unknown: helper can release it.</li>
 <li>Holder of fresh resource value hands it on too: tuple, <code>new</code>, <code>φ</code>, or mutable operand and result of call that takes it.</li>
-<li>Holder that names caller-visible place (argument, global) escapes value: any call that runs package code can release it.</li>
+<li>Holder that names caller-visible place (argument, global) escapes value: later call that runs package code can release it.</li>
 <li>One <code>Base</code> or <code>Core</code> method releases only through function operand it calls, so count stays exact.</li>
 <li>Release of resource that path does not hold makes holds of its kind unknown; its throw gives them <code>possible</code>.</li>
 <li>Release that throws leaves its resource free: <code>unlock</code> throws only when task holds none (<code>ReentrantLock</code>). Lock that breaks this is its own bug.</li>

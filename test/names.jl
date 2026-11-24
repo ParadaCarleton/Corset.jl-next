@@ -156,7 +156,7 @@ end
 """Resource kind and confidence of each hold that throw skips in fixture method `name`."""
 hold_shape(name::Symbol)::Vector{Tuple{EffectKind.T, Confidence.T}} = [(hold.kind, hold.confidence) for hold in effects(name).unguarded]
 
-"""Branch condition at end of 40 `xor` levels; each level uses value of level before twice."""
+# Branch condition at end of 40 `xor` levels; each level uses value of level before twice.
 @eval xor_chain(x::Int)::Bool = $(Expr(:block, :(y = x), (:(y = xor(y, y)) for _ in 1:40)..., :(y > 0)))
 
 @testset "dependence walk visits each value once" begin
@@ -182,6 +182,8 @@ end
     @test hold_shape(:hold_boxed) == [(EffectKind.io, POSSIBLE)]
     # Global holder escapes stream: package call without operands can release it.
     @test hold_shape(:hold_global) == [(EffectKind.io, POSSIBLE)]
+    # Escape after throwing call leaves that throw definite.
+    @test hold_shape(:hold_late_global) == [(EffectKind.io, DEFINITE)]
     # `trylock` forks path: success path holds lock at throw before result test.
     @test hold_shape(:hold_tried_late) == [(EffectKind.synchronization, DEFINITE)]
     # Release through other element load, or of lock path does not hold, leaves count in doubt.
