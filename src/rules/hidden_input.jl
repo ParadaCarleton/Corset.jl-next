@@ -31,7 +31,7 @@ Cache write passes: cache read is invisible to caller.
 Task-local storage and `ScopedValue` reads pass: logging reads both for every message.
 Finding takes weaker certainty of read and write: global that other method may write gives `possible` finding.
 Write to other path below same global gives `possible` finding, unless constant values settle both paths.
-Read through mutable holder that now holds written object gives `possible` finding: code can repoint holder.
+Read through mutable holder or non-constant global that now holds written object gives `possible` finding: code can repoint it.
 Read of one field of mutable object gives finding when other method writes other field: facts name objects, not fields.
 """
 module HiddenInput
@@ -70,39 +70,26 @@ function writers(effects::EffectsFacts, modules::AbstractVector{Module})::Writes
         ref isa GlobalRef || continue
         (access.kind == EffectKind.memory && ref.mod in modules && method.site.method.name !== :__init__) || continue
         push!(get!(Vector{Write}, found.by_root, ref), (method, access))
-        passed = objects(access.place)
+        passed = current_objects(access.place, true)
         isnothing(passed) && continue
         for object in passed.path
-            push!(get!(Vector{Write}, found.by_object, object), (method, access))
+            shares(object) && push!(get!(Vector{Write}, found.by_object, object), (method, access))
         end
     end
     return found
 end
 
-"""
-Objects `place` passes now in value of constant global, root value first and object at place last, and whether
-values settle path: no mutable holder on it, whose fields code can repoint. `nothing` for other root or element step.
-"""
-function objects(place::Place.Type)::Union{Nothing, @NamedTuple{path::Vector{Any}, settled::Bool}}
-    ref, steps = root_global(place), place_steps(place)
-    ref isa GlobalRef || return nothing
-    isnothing(steps) && return nothing
-    isconst(ref.mod, ref.name) || return nothing
-    found, settled = Any[getglobal(ref.mod, ref.name)], true
-    for step in steps
-        settled &= !ismutable(last(found))
-        next = step_child(last(found), step)
-        isnothing(next) && return nothing
-        push!(found, something(next))
-    end
-    return (path = found, settled = settled)
-end
+"""Whether write can share `object`: `===` compares value of `isbits` type by content, so it names no object."""
+shares(@nospecialize(object::Any))::Bool = !isbits(object)
+
+"""Whether `one` and `other` are one object that write can share (`shares`)."""
+same_object(@nospecialize(one::Any), @nospecialize(other::Any))::Bool = shares(one) && one === other
 
 """Whether object paths meet: both end on one object, or path of access that covers objects below ends on other path."""
 function meet(read::Access, loaded::AbstractVector, write::Access, written::AbstractVector)::Bool
-    last(loaded) === last(written) && return true
-    read.below && any(object -> object === last(loaded), written) && return true
-    return write.below && any(object -> object === last(written), loaded)
+    same_object(last(loaded), last(written)) && return true
+    read.below && any(object -> same_object(object, last(loaded)), written) && return true
+    return write.below && any(object -> same_object(object, last(written)), loaded)
 end
 
 """
@@ -124,12 +111,12 @@ end
 
 """
 Certainty that `write` changes object `read` loads; `nothing` when it cannot. Access covers object at its place, and
-objects below it when `below`. Constant values settle both paths (`objects`): `definite` when covered objects meet.
+objects below it when `below`. Constant values settle both paths (`current_objects`): `definite` when covered objects meet.
 Else on same root: `definite` when path of one starts other and covers rest; `possible` when paths part, since parted
 paths can reach one object. Else `possible` when current objects meet through mutable holder.
 """
 function overlap(read::Access, write::Access)::Union{Nothing, Confidence.T}
-    loaded, written = objects(read.place), objects(write.place)
+    loaded, written = current_objects(read.place, false), current_objects(write.place, true)
     (isnothing(loaded) || isnothing(written)) && return path_overlap(read, write, false)
     meets = meet(read, loaded.path, write, written.path)
     loaded.settled && written.settled && return meets ? Confidence.definite : nothing
@@ -139,10 +126,10 @@ end
 """Writes in `written` that can change object `access` loads: same root, or path through object read path passes."""
 function candidates(written::Writes, access::Access)::Vector{Write}
     found = copy(get(written.by_root, root_global(access.place), Write[]))
-    loaded = objects(access.place)
+    loaded = current_objects(access.place, false)
     isnothing(loaded) && return found
     for object in loaded.path
-        append!(found, get(written.by_object, object, Write[]))
+        shares(object) && append!(found, get(written.by_object, object, Write[]))
     end
     return found
 end

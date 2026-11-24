@@ -55,6 +55,19 @@ const CELLS = [Ref(1), Ref(2)]
 bump_copy!() = (cells = copy(CELLS); cells[1][] += 1; nothing)
 first_cell() = CELLS[1][]
 
+# Binding is not constant but now holds `SHARED`: write to `SHARED` may change read.
+const SHARED = Ref(0)
+current_shared::Base.RefValue{Int} = SHARED
+bump_shared!() = (SHARED[] += 1; nothing)
+shared_now() = current_shared[]
+
+# Method repoints holder: read through holder loads holder that method writes.
+const OUTER = Ref(Ref(0))
+const INNER = Ref(Ref(1))
+repoint!() = (OUTER[] = INNER[]; nothing)
+bump_inner!() = (INNER[][] += 1; nothing)
+outer_value() = OUTER[][]
+
 # Convenience method chooses default RNG; its caller hides that input.
 function jittered(points::Vector{Float64})
     return [jitter(point) for point in points]

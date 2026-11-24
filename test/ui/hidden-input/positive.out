@@ -143,3 +143,29 @@ error[hidden-input]: method reads `HiddenInputPositive.CELLS[…]`, which other 
    = fix: pass state as argument   [manual]
    = docs: corset explain hidden-input
 
+error[hidden-input]: method reads `HiddenInputPositive.current_shared`, which other method writes
+  --> src/HiddenInputPositive.jl:62:16
+   |
+61 | bump_shared!() = (SHARED[] += 1; nothing)
+   | ----------------------------------------- writes `HiddenInputPositive.SHARED`
+62 | shared_now() = current_shared[]
+   |                ^^^^^^^^^^^^^^ reads `HiddenInputPositive.current_shared`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = confidence: possible
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method reads `HiddenInputPositive.OUTER[…]`, which other method writes
+  --> src/HiddenInputPositive.jl:69:17
+   |
+67 | repoint!() = (OUTER[] = INNER[]; nothing)
+   | ----------------------------------------- writes `HiddenInputPositive.OUTER`
+68 | bump_inner!() = (INNER[][] += 1; nothing)
+69 | outer_value() = OUTER[][]
+   |                 ^^^^^^^^^ reads `HiddenInputPositive.OUTER[…]`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+

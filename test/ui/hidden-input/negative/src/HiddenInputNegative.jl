@@ -45,6 +45,17 @@ const PAIR = (Ref(1), Ref(2))
 set_first!(x::Int) = (PAIR[1][] = x; nothing)
 second_of_pair() = PAIR[2][]
 
+# Binding is not constant but holds cell no method writes.
+const QUIET = Ref(0)
+current_quiet::Base.RefValue{Int} = QUIET
+quiet_now() = current_quiet[]
+
+# Write to binding can rebind it, so it names no object; equal number in other cell is no shared object.
+level_count::Int = 0
+set_level_count!(count::Int) = (global level_count = count; nothing)
+const ZERO_CELL = Ref(0)
+zero_cell() = ZERO_CELL[]
+
 # Trailing optional RNG: caller can pass one.
 tail_draw(x::Float64, rng::AbstractRNG = Random.default_rng()) = x + randn(rng)
 

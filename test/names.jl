@@ -1,6 +1,6 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
-using Corset.Facts: Facts, MethodEffects, Access, Callee, Place, Root, Step, Confidence, EffectKind, BlindSpot, callee_name, place_text, root_global, step_child
+using Corset.Facts: Facts, MethodEffects, Access, Callee, Place, Root, Step, Confidence, EffectKind, BlindSpot, callee_name, place_text, root_global, step_child, current_objects
 using Corset.Inference: infer_package
 using Corset.Effects: Effects, record_bytes, unit_record, place_root, ALWAYS_THROWS
 using Supposition: Supposition, Data, @check
@@ -313,7 +313,26 @@ end
     @test all(stored -> Place.Deep(Root.Parameter(3)) in stored, values(walk.stored))
 end
 
+"""Globals for `current_objects`: constant cell, non-constant binding that holds it, unassigned binding."""
+module ObjectCases
+    const HELD = Ref(1)
+    held_now::Base.RefValue{Int} = HELD
+    global unset::Int
+end
+
+"""Place of `ObjectCases` global `name` with `steps`."""
+object_place(name::Symbol, steps::Step.Type...)::Place.Type = Place.At(Root.Global(GlobalRef(ObjectCases, name)), Step.Type[steps...])
+
 @testset "place helpers" begin
+    # Constant root settles path until mutable holder; non-constant root never does.
+    @test current_objects(object_place(:HELD), false) == (path = Any[ObjectCases.HELD], settled = true)
+    @test current_objects(object_place(:HELD, Step.Element()), false) == (path = Any[ObjectCases.HELD, 1], settled = false)
+    @test current_objects(object_place(:held_now), false) == (path = Any[ObjectCases.HELD], settled = false)
+    # Write to non-constant binding itself can rebind it.
+    @test isnothing(current_objects(object_place(:held_now), true)) && !isnothing(current_objects(object_place(:HELD), true))
+    @test isnothing(current_objects(object_place(:unset), false)) && isnothing(current_objects(object_place(:HELD, Step.Field(:missing)), false))
+    @test isnothing(current_objects(Place.Deep(Root.Global(GlobalRef(ObjectCases, :HELD))), false))
+    @test isnothing(current_objects(Place.At(Root.Parameter(2), Step.Type[]), false))
     # Moshi variants are immutable, so table hits compare by `===`; call `==` directly.
     @test Step.Position(1) == Step.Position(1) && Step.Position(1) != Step.Position(2)
     @test Place.Deep(Root.Parameter(2)) == Place.Deep(Root.Parameter(2)) && Place.Deep(Root.Parameter(2)) != Place.Deep(Root.Parameter(3))
