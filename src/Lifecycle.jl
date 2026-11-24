@@ -8,7 +8,7 @@ using ..Effects: UnitEffects
 array_key(array::ArrayLife)::Tuple{String, Int, Int} = (array.site.file, array.site.first_byte, array.site.last_byte)
 
 """Merge key of event over units: every field but path."""
-event_key(event::ArrayEvent)::Tuple = (event.span, event.kind, event.coverage, event.indices, event.callee, event.view, event.order)
+event_key(event::ArrayEvent)::Tuple = (event.span, event.kind, event.coverage, event.indices, event.callee, event.position, event.operator, event.view, event.order)
 
 """Rebind pair that every unit gives (`nothing` when one gives none); axes stay same only when they do in each."""
 function merged_rebind(pairs::AbstractVector{Union{Nothing, Rebind}})::Union{Nothing, Rebind}
@@ -33,7 +33,7 @@ function merged_array(units::AbstractVector{ArrayLife})::ArrayLife
     for key in collect(keys(events))
         event = events[key]
         (length(present[key]) < length(units) && event.path == ArrayPath.sure) || continue
-        events[key] = ArrayEvent(event.span, event.kind, event.coverage, event.indices, ArrayPath.branch, event.callee, event.view, event.order)
+        events[key] = ArrayEvent(event.span, event.kind, event.coverage, event.indices, ArrayPath.branch, event.callee, event.position, event.operator, event.view, event.order)
     end
     ordered = sort!(collect(values(events)); by = event -> (event.order, event.span.first_byte, event.span.last_byte, Int(event.kind)))
     dimensions = allequal(unit.dimensions for unit in units) ? first(units).dimensions : nothing

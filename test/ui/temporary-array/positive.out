@@ -1,0 +1,134 @@
+warning[temporary-array]: temporary array built only for one `sum`
+ --> src/TemporaryArrayPositive.jl:5:38
+  |
+5 | total_size(x::Vector{Float64}) = sum(abs.(x))
+  |                                  ------------ `sum` reads it once
+  |                                      ^^^^^^^ allocates every element here
+  |
+  = why: `sum` can compute each element when it needs it, without array
+  = fix: compute elements when `sum` needs them   [likely]
+  = docs: corset explain temporary-array
+  = note: warn from performance group, library preset
+  = note: opt out with `# corset: allow temporary-array -- <reason>`
+
+warning[temporary-array]: temporary array built only for one `maximum`
+ --> src/TemporaryArrayPositive.jl:7:42
+  |
+7 | largest_square(x::Vector{Int}) = maximum([v^2 for v in x])
+  |                                  ------------------------- `maximum` reads it once
+  |                                          ^^^^^^^^^^^^^^^^ allocates every element here
+  |
+  = why: `maximum` can compute each element when it needs it, without array
+  = fix: compute elements when `maximum` needs them   [likely]
+  = docs: corset explain temporary-array
+
+warning[temporary-array]: temporary array built only for one `count`
+ --> src/TemporaryArrayPositive.jl:9:44
+  |
+9 | count_negative(x::Vector{Float64}) = count(collect(v < 0 for v in x))
+  |                                      -------------------------------- `count` reads it once
+  |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^ allocates every element here
+  |
+  = why: `count` can compute each element when it needs it, without array
+  = fix: compute elements when `count` needs them   [likely]
+  = docs: corset explain temporary-array
+
+warning[temporary-array]: temporary array built only for one `sum`
+  --> src/TemporaryArrayPositive.jl:11:28
+   |
+11 | ranged_total(n::Int) = sum(collect(1:n))
+   |                        ----------------- `sum` reads it once
+   |                            ^^^^^^^^^^^^ allocates every element here
+   |
+   = why: `sum` can compute each element when it needs it, without array
+   = fix: compute elements when `sum` needs them   [likely]
+   = docs: corset explain temporary-array
+
+warning[temporary-array]: temporary array built only for one `sum`
+  --> src/TemporaryArrayPositive.jl:14:53
+   |
+14 | keyword_first(x::Vector{Float64}) = sum(init = 0.0, abs.(x))
+   |                                     ------------------------ `sum` reads it once
+   |                                                     ^^^^^^^ allocates every element here
+   |
+   = why: `sum` can compute each element when it needs it, without array
+   = fix: compute elements when `sum` needs them   [likely]
+   = docs: corset explain temporary-array
+
+warning[temporary-array]: temporary array built only for one `reduce`
+  --> src/TemporaryArrayPositive.jl:16:44
+   |
+16 | folded_squares(x::Vector{Int}) = reduce(+, [v^2 for v in x])
+   |                                  --------------------------- `reduce` reads it once
+   |                                            ^^^^^^^^^^^^^^^^ allocates every element here
+   |
+   = why: `reduce` can compute each element when it needs it, without array
+   = fix: compute elements when `reduce` needs them   [likely]
+   = docs: corset explain temporary-array
+
+warning[temporary-array]: temporary array built only for one `sum`
+  --> src/TemporaryArrayPositive.jl:19:39
+   |
+19 | abs_columns(A::Matrix{Float64}) = sum(abs.(A); dims = 1)
+   |                                   ---------------------- `sum` reads it once
+   |                                       ^^^^^^^ allocates every element here
+   |
+   = why: `sum` can compute each element when it needs it, without array
+   = fix: compute elements when `sum` needs them   [likely]
+   = docs: corset explain temporary-array
+
+warning[temporary-array]: temporary array built only for one `sum`
+  --> src/TemporaryArrayPositive.jl:22:41
+   |
+22 | squares_total(x::Vector{Float64}) = sum(x .^ 2)
+   |                                     ----------- `sum` reads it once
+   |                                         ^^^^^^ allocates every element here
+   |
+   = why: `sum` can compute each element when it needs it, without array
+   = fix: pass function and source (`sum(f, x)`), or generator (`sum(f(v) for v in x)`)   [manual]
+   = docs: corset explain temporary-array
+
+warning[temporary-array]: temporary array built only for one `reduce`
+  --> src/TemporaryArrayPositive.jl:24:40
+   |
+24 | folded(x::Vector{Float64}) = reduce(+, abs.(x))
+   |                              ------------------ `reduce` reads it once
+   |                                        ^^^^^^^ allocates every element here
+   |
+   = why: `reduce` can compute each element when it needs it, without array
+   = fix: pass function and source (`reduce(f, x)`), or generator (`reduce(f(v) for v in x)`)   [manual]
+   = docs: corset explain temporary-array
+
+warning[temporary-array]: temporary array built only for one `any`
+  --> src/TemporaryArrayPositive.jl:26:40
+   |
+26 | any_negative(x::Vector{Float64}) = any([v < 0 for v in x])
+   |                                    ----------------------- `any` reads it once
+   |                                        ^^^^^^^^^^^^^^^^^^ allocates every element here
+   |
+   = why: `any` can compute each element when it needs it, without array
+   = fix: pass function and source (`any(f, x)`) when element function has no effects: `any` stops at first decisive element   [manual]
+   = docs: corset explain temporary-array
+
+warning[temporary-array]: temporary array built only for one `sum`
+  --> src/TemporaryArrayPositive.jl:29:38
+   |
+29 | square_columns(A::Matrix{Int}) = sum([v^2 for v in A]; dims = 1)
+   |                                  ------------------------------- `sum` reads it once
+   |                                      ^^^^^^^^^^^^^^^^ allocates every element here
+   |
+   = why: `sum` can compute each element when it needs it, without array
+   = fix: pass function and source (`sum(f, x)`), or generator (`sum(f(v) for v in x)`)   [manual]
+   = docs: corset explain temporary-array
+
+warning[temporary-array]: temporary array built only for one `foldr`
+  --> src/TemporaryArrayPositive.jl:31:43
+   |
+31 | right_fold(x::Vector{Float64}) = foldr(+, [v^2 for v in x])
+   |                                  -------------------------- `foldr` reads it once
+   |                                           ^^^^^^^^^^^^^^^^ allocates every element here
+   |
+   = why: `foldr` can compute each element when it needs it, without array
+   = fix: pass function and source to `mapfoldr` (`mapfoldr(f, op, x)`) when source can reverse   [manual]
+   = docs: corset explain temporary-array
+

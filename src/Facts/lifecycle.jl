@@ -20,8 +20,9 @@ Path of event from its allocation (`lifecycle.md`, Paths): `sure` (runs once on 
 
 """
 Event on allocated array: statement span, kind, coverage, constant index tuple of `element` coverage, path, Base function
-statement calls (`nothing`: other callee or no call), whether event acts through view or wrapper of array (`view`), and
-source statement that orders events (`order`).
+statement calls (`nothing`: other callee or no call), first position of array among positional call operands (`nothing`:
+no call or splat), Base function call takes as first operand (`operator`: `vcat` in `reduce(vcat, a)`), whether event
+acts through view or wrapper of array (`view`), and source statement that orders events (`order`).
 """
 struct ArrayEvent
     span::Span
@@ -30,6 +31,8 @@ struct ArrayEvent
     indices::Vector{Int}
     path::ArrayPath.T
     callee::Union{Nothing, Symbol}
+    position::Union{Nothing, Int}
+    operator::Union{Nothing, Symbol}
     view::Bool
     order::Int
 end

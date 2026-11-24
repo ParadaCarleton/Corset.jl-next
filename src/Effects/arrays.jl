@@ -394,11 +394,19 @@ function rebind_pair(walk::Walk, flow::Flow, users::AbstractVector{<:AbstractVec
     return nothing
 end
 
-"""Base function that statement `index` of `walk` calls; `nothing` for other statement or callee."""
-function statement_callee(walk::Walk, index::Integer)::Union{Nothing, Symbol}
+"""
+Call at statement `index` of `walk` that uses `current`: Base function it calls, first position of `current` among its
+positional operands, and Base function it takes as first operand (`vcat` in `reduce(vcat, a)`). `nothing` for each part
+that statement lacks: other statement or callee, splat, operand that is no Base function.
+"""
+function statement_call(walk::Walk, index::Integer, current::Core.SSAValue)::Tuple{Union{Nothing, Symbol}, Union{Nothing, Int}, Union{Nothing, Symbol}}
     statement = walk.ir.stmts[index][:stmt]
-    (statement isa Expr && statement.head === :call) || return nothing
-    return base_name(first(call_parts(walk, statement)))
+    (statement isa Expr && statement.head === :call) || return (nothing, nothing, nothing)
+    callee, operands = call_parts(walk, statement)
+    isnothing(operands) && return (base_name(callee), nothing, nothing)
+    found = something(operands)
+    operator = isempty(found) ? nothing : base_name(constant_value(walk, first(found)))
+    return (base_name(callee), findfirst(operand -> operand === current, found), operator)
 end
 
 """
@@ -428,13 +436,13 @@ function array_life(walk::Walk, flow::Flow, users::AbstractVector{<:AbstractVect
                 continue
             end
             for (event, coverage, indices) in found
-                push!(events, (user, ArrayEvent(spans[user], event, coverage, indices, path_of(user), statement_callee(walk, user), view, lines[user])))
+                push!(events, (user, ArrayEvent(spans[user], event, coverage, indices, path_of(user), statement_call(walk, user, current)..., view, lines[user])))
             end
         end
     end
     for (write, step, start) in fill_loops(walk, flow, users, same, extent)
         filter!(((statement, _),) -> statement != write, events)
-        push!(events, (step, ArrayEvent(spans[start], ArrayEventKind.write, Coverage.whole, Int[], path_of(start), nothing, false, lines[step])))
+        push!(events, (step, ArrayEvent(spans[start], ArrayEventKind.write, Coverage.whole, Int[], path_of(start), nothing, nothing, nothing, false, lines[step])))
     end
     sort!(events; by = ((statement, event),) -> (event.order, statement))
     dimensions = isnothing(sizes) ? nothing : constant_dimensions(walk, something(sizes))
