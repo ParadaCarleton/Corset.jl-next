@@ -240,8 +240,9 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test all(name -> isempty(failing(name)), ("halved", "checked"))
     end
     @testset "engine infers only for rule whose findings or fixes read inference or effects" begin
-        # `effects` stage reads inference units, so its rules need inference too.
-        rules = [entry.name for entry in Corset.Rules.REGISTRY if entry.fix_stage in (Corset.Facts.Stage.inference, Corset.Facts.Stage.effects)]
+        # `effects` stage reads inference units and `lifecycle` reads effects, so their rules need inference too.
+        stages = (Corset.Facts.Stage.inference, Corset.Facts.Stage.effects, Corset.Facts.Stage.lifecycle)
+        rules = [entry.name for entry in Corset.Rules.REGISTRY if entry.fix_stage in stages]
         causes(level::Corset.Config.Level.T)::Set{String} = Set(
             spot.cause for spot in Corset.check(CASE; flags = Corset.Config.Flags(; levels = [string(rule) => level for rule in rules])).blind_spots
         )
