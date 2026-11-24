@@ -20,6 +20,10 @@ first_only() = (a = Vector{Int}(undef, 2); a[1] = 1; a[1])
 
 returned(n::Int) = Vector{Float64}(undef, n)
 
+# Call can return array itself: `fill!` through result writes array.
+settled(a::Vector{Float64}) = a
+settled_fill(n::Int) = (a = Vector{Float64}(undef, n); fill!(settled(a), 0.0); sum(a))
+
 # `@inbounds` view skips bounds check: it reads no index.
 unchecked(values::Vector{Float64}) = (indices = Vector{Int}(undef, 2); v = @inbounds view(values, indices); length(v))
 

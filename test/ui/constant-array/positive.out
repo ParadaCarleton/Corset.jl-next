@@ -34,9 +34,20 @@ warning[constant-array]: array holds one value in every element but allocates ea
   = docs: corset explain constant-array
 
 warning[constant-array]: array holds one value in every element but allocates each
-  --> src/ConstantArrayPositive.jl:13:22
+  --> src/ConstantArrayPositive.jl:12:36
    |
-13 | spread(n::Int) = sum(ones(n))
+12 | row_sums(a::Matrix{Float64}) = a * ones(size(a, 2))
+   |                                -------------------- only reads it
+   |                                    ^^^^^^^^^^^^^^^^ allocates every element here
+   |
+   = why: constant array needs no memory per element
+   = fix: replace with FillArrays.jl `Ones` and import it; add FillArrays.jl to package dependencies   [likely]
+   = docs: corset explain constant-array
+
+warning[constant-array]: array holds one value in every element but allocates each
+  --> src/ConstantArrayPositive.jl:16:22
+   |
+16 | spread(n::Int) = sum(ones(n))
    |                  ------------ only reads it
    |                      ^^^^^^^ allocates every element here
    |
@@ -45,9 +56,9 @@ warning[constant-array]: array holds one value in every element but allocates ea
    = docs: corset explain constant-array
 
 warning[constant-array]: array holds one value in every element but allocates each
-  --> src/ConstantArrayPositive.jl:22:21
+  --> src/ConstantArrayPositive.jl:25:21
    |
-22 | blank(n::Int) = sum(zeros(n))
+25 | blank(n::Int) = sum(zeros(n))
    |                 ------------- only reads it
    |                     ^^^^^^^^ allocates every element here
    |
