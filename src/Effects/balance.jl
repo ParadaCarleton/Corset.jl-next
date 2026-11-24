@@ -113,10 +113,14 @@ end
 """Whether `place` can name several objects: summary of elements (`Element` step) or whole subtree (`Deep`)."""
 summarized(place::Place.Type)::Bool = @match place begin
     Place.Deep(_) => true
-    Place.At(_, steps) => any(step -> (@match step begin
-        Step.Element() => true
-        _ => false
-    end), steps)
+    Place.At(_, steps) => any(
+        step -> (
+            @match step begin
+                Step.Element() => true
+                _ => false
+            end
+        ), steps
+    )
 end
 
 """
