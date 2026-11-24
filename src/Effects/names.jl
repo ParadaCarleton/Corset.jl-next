@@ -1,5 +1,7 @@
 # Name tier walk over one unit (`effects.md`, Name trust): roots, writes, reads and call facts.
 
+using ..StandIns: StandIns
+
 """
 Caller-visible places one IR value can be or lie beneath (`places`), places stored inside it (`inner`: fresh object
 that holds operands), whether value can be fresh object on some path (`fresh`), and whether it can hold fresh or
@@ -773,6 +775,9 @@ function generic_match(walk::Walk, @nospecialize(signature::Type), @nospecialize
     return length(matches) == 1 ? Confidence.definite : Confidence.possible
 end
 
+"""Whether compiler proves call statement `index` of `walk` with `callee` `effect_free`; claim of callee (`@assume_effects`) voids proof."""
+proven_call(walk::Walk, index::Integer, call::Expr, callee::Callee.Type)::Bool = walk.proven[index] && !callee_claims(walk, call, callee)
+
 """
 Whether method `callee` of call `call` dispatches to claims `:effect_free` (`claims_effect_free`); open callee claims
 none seen. Keyword call dispatches to keyword sorter, which hides claim of keyword body, so it counts as claiming.
@@ -786,9 +791,11 @@ end
 
 """
 Whether method of `match` claims `:effect_free` in code compiler infers for its instance; answers cached in `walk`.
-Generated method gives code per instance, so its answer is per instance.
+Generated method gives code per instance, so its answer is per instance. Stand-in claim only restores proof that
+coverage counters void, so it counts as none.
 """
 function match_claims(walk::Walk, match::Core.MethodMatch)::Bool
+    match.method.module === StandIns && return false
     key = Base.hasgenerator(match.method) ? CC.specialize_method(match) : match.method
     return get!(() -> claims_effect_free(match.method, CC.retrieve_code_info(CC.specialize_method(match), walk.world)), walk.claims, key)
 end

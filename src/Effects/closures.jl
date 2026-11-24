@@ -14,9 +14,8 @@ captured; writes below global stay on global. Writes keep fresh captured objects
 function closure_events(walk::Walk, call::Expr, index::Integer, @nospecialize(callee::Any), operands::AbstractVector{Any})::Tuple{Vector{Event}, Vector{ClosureWrite}}
     found, writes = Event[], ClosureWrite[]
     closures = HeldClosure[held for operand in invoked_operands(walk, call, callee, operands) for held in held_closures(walk, operand)]
-    # Compiler proof of call holds unless callee claims it (`@assume_effects`).
     isempty(closures) && return found, writes
-    walk.proven[index] && !callee_claims(walk, call, call_callee(walk, call)) && return found, writes
+    proven_call(walk, index, call, call_callee(walk, call)) && return found, writes
     for held in closures, write in closure_writes!(walk, held.type)
         confidence = write.exact ? Confidence.definite : Confidence.possible
         if write.target isa GlobalRef
