@@ -310,8 +310,11 @@ function end_claims(proof::Proof, @nospecialize(callee::Any), @nospecialize(oper
     return isnothing(count) ? Claims() : stepped(claims, count)
 end
 
-"""Claims of range between `bounds`: element indexes array both bounds index; origin of bounds otherwise."""
-function range_claims(proof::Proof, bounds::AbstractVector{Any})::Claims
+"""
+Claims of range between `bounds`: element indexes array both bounds index; origin of bounds otherwise. Constant bounds
+narrow literal vector (`[0.0, 1.0]` of `0.0:0.5:1.0`), so any element type passes.
+"""
+function range_claims(proof::Proof, bounds::AbstractVector)::Claims
     return prefixed(choice_claims(Claims[operand_claims(proof, bound) for bound in bounds]), 0)
 end
 

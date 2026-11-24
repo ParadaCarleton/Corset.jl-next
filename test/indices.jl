@@ -38,6 +38,7 @@ const Positive = OneBasedRangePositive
     @test Negative.first_at(evil) == -2 && Negative.last_forwarded(evil) == 7
     @test_throws ArgumentError Negative.guarded_at(evil)
     @test Negative.agreed_at(evil, copy(evil)) == -2
+    @test Negative.grid_total() == 1.5
     @test_throws DimensionMismatch Negative.agreed_at(evil, EvilArray(ints))
     @test Negative.vector_at(ints) == -2
     @test Negative.second(evil) == 0
