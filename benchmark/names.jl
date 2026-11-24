@@ -42,22 +42,24 @@ println("calls=", length(calls), " discarded=", count(call -> !call.used, calls)
 causes = Dict{String, Int}()
 foreach(spot -> causes[spot.cause] = get(causes, spot.cause, 0) + 1, spots)
 println("spots=", sort!(collect(causes); by = last, rev = true))
+# Location and source line of `span`: `path:line | text`.
+function source_line(span::Corset.Facts.Span)::String
+    text = read(span.file, String)
+    line = count(==(UInt8('\n')), codeunits(text)[1:(span.first_byte - 1)]) + 1
+    return string(relpath(span.file, root), ":", line, " | ", strip(split(text, '\n')[line]))
+end
 # Loop writes (F48) for quality gate audit: each with source line of write.
 loops = [write for found in methods for write in found.loop_writes]
 println("loop_writes=", length(loops), " definite=", count(write -> write.confidence == Confidence.definite, loops))
-for write in loops
-    text = read(write.write.file, String)
-    line = count(==(UInt8('\n')), codeunits(text)[1:(write.write.first_byte - 1)]) + 1
-    println("  ", write.confidence, " ", write.callee, " ", relpath(write.write.file, root), ":", line, " | ", strip(split(text, '\n')[line]))
-end
+foreach(write -> println("  ", write.confidence, " ", write.callee, " ", source_line(write.write)), loops)
 # Self-alias calls (F50) for quality gate audit.
 selves = [call for found in methods for call in found.self_aliases]
 println("self_aliases=", length(selves), " definite=", count(call -> call.confidence == Confidence.definite, selves))
-for call in selves
-    text = read(call.call.file, String)
-    line = count(==(UInt8('\n')), codeunits(text)[1:(call.call.first_byte - 1)]) + 1
-    println("  ", call.confidence, " ", call.callee, " ", relpath(call.call.file, root), ":", line, " | ", strip(split(text, '\n')[line]))
-end
+foreach(call -> println("  ", call.confidence, " ", call.callee, " ", source_line(call.call)), selves)
+# Stateful reuses (F51) for quality gate audit: later event, then earlier event.
+reuses = [reuse for found in methods for reuse in found.stateful_reuses]
+println("stateful_reuses=", length(reuses), " definite=", count(reuse -> reuse.confidence == Confidence.definite, reuses))
+foreach(reuse -> println("  ", reuse.confidence, " ", something(reuse.iterator, "-"), " ", source_line(reuse.later), " <- ", source_line(reuse.earlier)), reuses)
 """
 
 """Copy of registered package `name` at `version` in `work`, made writable, with library preset."""

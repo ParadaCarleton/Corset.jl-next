@@ -868,6 +868,7 @@ Code lives in <code>src/Effects/</code>.</p>
 </li>
 <li>Choice table: result is one of the operands, callable objects included, so it joins their values: <code>something</code>, <code>coalesce</code>, <code>max</code>, <code>min</code>, <code>ifelse</code>.</li>
 <li><code>convert</code> result is its operand, or new object as for other call.</li>
+<li><code>typeassert</code> result is its operand. Lowering adds <code>typeassert</code> on each return of method with return type.</li>
 <li>Constructor, tuple and vector literal results hold their operands: <code>Ref(x)</code> holds <code>x</code>. Literal (<code>[x]</code>, <code>T[x]</code>) converts element not of its element type, so it can hold new object. Package method on literal syntax (<code>SA[x]</code>) is package call.</li>
 <li>Iteration: result of <code>iterate</code> and <code>indexed_iterate</code> holds element of iterated operand. Element step for array, dictionary, set and tuple; <code>deep</code> for other iterator.</li>
 <li>Element table: result is element of container operand, or other operand (<code>get(d, k, default)</code>).
@@ -926,7 +927,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Facts keep reads of globals, special kinds and iteration starts. Plain argument loads stay out: every call reads its operands.</li>
 <li>RNG function without <code>AbstractRNG</code> operand: default RNG read and write.</li>
 <li><code>ScopedValue</code> read: <code>getindex</code> on <code>ScopedValue</code> or <code>ScopedValues.get</code>. Task-local state: <code>task_local_storage</code>, <code>current_task</code> fields.</li>
-<li>Iteration start: <code>iterate</code> without state, <code>first</code>, <code>only</code>, generic <code>isempty</code> and destructuring start their operand.</li>
+<li>Iteration start: <code>iterate</code> without state, <code>first</code>, <code>only</code> and destructuring start their operand. Generic <code>isempty</code> starts it when inferred <code>isdone</code> result can be <code>missing</code>.</li>
 <li>Consuming table: library functions that iterate their operand (<code>collect</code>, <code>sum</code>, <code>map</code>, <code>filter</code>, <code>foreach</code>, <code>reduce</code>, <code>any</code>, <code>all</code>, <code>count</code>). Call starts its iterator operand, and writes stateful iterator operand.</li>
 </ul>
 <h4>Effect kinds</h4>
@@ -971,7 +972,8 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Units of method merge by source statement: unit that may throw, writes or uses result decides.</li>
 <li>Per package method, F48: loop writes: span of loop start, span of write, writing function, confidence (<code>phase5.md</code>, row 7).</li>
 <li>Per package method, F50: self-alias calls: call span, writing function, confidence (<code>phase5.md</code>, row 7).</li>
-<li>Per unit, for <code>lifecycle</code> and statement rules (F51): allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.</li>
+<li>Per package method, F51: stateful reuses: earlier and later event spans, which events escape, iterator text, confidence (<code>phase5.md</code>, row 7).</li>
+<li>Per unit, for <code>lifecycle</code> rules: allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.</li>
 <li>Must-alias: two values with same single root and path, where root is one object per call (parameter, global, allocation outside loop).</li>
 <li>Escape: return; store into object or global; operand of <code>!</code> call that is not the written operand; operand of alias-table call or constructor whose result escapes.</li>
 <li>Element event carries index operand: constant or SSA value. <code>lifecycle</code> decides which elements writes cover (F33, F34).</li>
@@ -1432,7 +1434,7 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 <td>Alias rules</td>
 <td>F48, F50, F51</td>
 <td>5</td>
-<td>—</td>
+<td>#300, #301, #304; done</td>
 </tr>
 <tr>
 <td>8</td>
@@ -1534,11 +1536,23 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 <li><code>stateful-reuse</code> (F51): method restarts iterator whose type admits stateful iterator, or lets it escape after start.
 <ul>
 <li>Start: <code>iterate</code> without state, contract start (<code>first</code>, generic <code>isempty</code>) or consuming-table call.</li>
-<li>Restart: second start of same object on one path. Loop re-entry counts; <code>zip(itr, itr)</code> counts.</li>
+<li>Restart: second start of same object on one path. Loop re-entry counts; <code>zip(itr, itr)</code> starts <code>itr</code> twice where code consumes or returns it.</li>
+<li>Value that loop body defines is new object on each pass: path through its definition makes no pair.</li>
+<li>Load of unchanged container and key (<code>groups[1]</code> in loop) can give same iterator again: <code>possible</code>.</li>
 <li>Escape after start, or start after escape: return, store into object or global, operand of package call.</li>
+<li>Escape counts for tuple, <code>new</code> or constructor result that holds iterator: <code>(head, itr)</code> lets <code>itr</code> escape.</li>
+<li>Generic <code>isempty</code> starts only when <code>isdone</code> gives <code>missing</code>. <code>EachLine</code> and <code>Stateful</code> define <code>isdone</code>.</li>
+<li>Other <code>isempty</code> methods that can match argument type give <code>possible</code> start.</li>
+<li>Inferred result of <code>isdone</code> decides, package method included: <code>Missing</code> gives <code>definite</code> start, union with it <code>possible</code>.</li>
 <li>Parameter started once without escape: no finding.</li>
-<li>Multi-pass types: <code>AbstractArray</code>, <code>AbstractDict</code>, <code>AbstractSet</code>, <code>AbstractString</code>, <code>Tuple</code>, <code>NamedTuple</code>, <code>Number</code>, <code>AbstractChar</code>.</li>
-<li>Other abstract type admits stateful iterator. Concrete library type: exception table decides.</li>
+<li>Multi-pass types: <code>AbstractArray</code>, <code>AbstractDict</code>, <code>AbstractSet</code>, <code>AbstractString</code>, <code>Tuple</code>, <code>NamedTuple</code>, <code>Pair</code>, <code>Number</code>, <code>AbstractChar</code>.</li>
+<li>Type counts when it can hold both kinds: abstract type outside multi-pass types, or union of both kinds.</li>
+<li>Concrete type and exception-table stateful type are one kind. Restart there is deliberate: <code>first(eachline(io))</code>.</li>
+<li>Struct family (<code>Bag{T} where T</code>) is one kind, unless field has open parameter type (<code>inner::T</code>): iteration can pass to field.</li>
+<li>Parameter inside field type (<code>items::Vector{T}</code>), or parameter bounded by such family: <code>iterate</code> body decides kind. Pair with its start is blind spot.</li>
+<li>Consuming call that only specialized method serves (<code>minimum</code> of distribution): method body decides start. Pair with it is blind spot.</li>
+<li>Generic method and package method for other type both serve call: start is <code>possible</code>. Base methods keep iteration contract; multi-pass types restart harmlessly.</li>
+<li>Argument that admits <code>Iterators.Stateful</code> reaches generic method with it: package method that cannot take it keeps <code>definite</code>.</li>
 <li>Definite when starts and escape are in method code and objects must-alias; on in default preset. May-alias gives <code>possible</code>.</li>
 <li>Fix <code>manual</code>: <code>Iterators.peel</code>, thread <code>iterate</code> state, or narrow argument to multi-pass type.</li>
 </ul>

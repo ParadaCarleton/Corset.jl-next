@@ -97,6 +97,14 @@ drain(channel::Channel{Int})::Vector{Int} = collect(channel)
 take_one(channel::Channel{Int})::Vector{Int} = collect(Iterators.take(channel, 1))
 """Collect pairs from `channel` and vector: `zip` consumes channel."""
 zip_drain(channel::Channel{Int})::Vector{Tuple{Int, Int}} = collect(zip(channel, [2]))
+"""Whether zip of `channel` and vector is empty: `isdone` of each part gives `missing`, so `isempty` takes element."""
+zip_empty(channel::Channel{Int})::Bool = isempty(zip(channel, [2]))
+"""Whether zip of `channel` and `items` is empty: `isempty` takes element of channel; vector restarts unchanged."""
+zip_empty_items(channel::Channel{Int}, items::Vector{Int})::Bool = isempty(zip(channel, items))
+"""Collect pairs of `channel` and `items`: only channel is consumed."""
+zip_collect_items(channel::Channel{Int}, items::Vector{Int})::Vector{Tuple{Int, Int}} = collect(zip(channel, items))
+"""Stateful `isdone` gives `Bool`, channel `isdone` `missing`: `isempty` of zip may take element of each."""
+zip_maybe_empty(lines::Iterators.Stateful{Vector{Int}, Union{Nothing, Tuple{Int, Int}}}, channel::Channel{Int})::Bool = isempty(zip(lines, channel))
 """Collect elements of every channel: `flatten` consumes them."""
 flatten_drain(channels::Vector{Channel{Int}})::Vector{Int} = collect(Iterators.flatten(channels))
 """First element of `channel`: consumes it."""
@@ -265,6 +273,8 @@ finished(countdown::Countdown)::Bool = isempty(countdown)
 first_of(items::Vector{Int})::Int = first(items)
 """Sum of `items`: consuming function starts iteration."""
 total_of(items::Vector{Int})::Int = sum(items)
+"""Whether `itr` is empty: `isdone` result can be `missing`, so generic `isempty` may iterate."""
+emptiness(itr::Any)::Bool = isempty(itr)
 
 # Compiler effects and call facts.
 """Sum of `x` and `y`."""
@@ -541,5 +551,290 @@ end
         return nothing
     end
 end
+
+# Stateful reuse (F51): iterator started twice, or escaping after start.
+"""Loop after `first`: second start of argument any iterator can fill."""
+function reuse_first(itr::Any)::Any
+    head = first(itr)
+    for item in itr
+        head = item
+    end
+    return head
+end
+"""Loop after `isempty`: generic `isempty` is one of many methods, so start is possible."""
+function reuse_isempty(itr::Any)::Int
+    isempty(itr) && return 0
+    count = 0
+    for _ in itr
+        count += 1
+    end
+    return count
+end
+"""`first` inside loop: start runs again on each pass."""
+function reuse_loop(itr::Any, n::Int)::Int
+    found = 0
+    for _ in 1:n
+        found += first(itr)
+    end
+    return found
+end
+"""Zip of iterator with itself: one call starts it twice."""
+reuse_zip(itr::Any)::Int = count(pair -> pair[1] == pair[2], zip(itr, itr))
+"""Returned zip of iterator with itself: caller that consumes it starts iterator twice."""
+reuse_zip_returned(itr::Any)::Any = zip(itr, itr)
+"""`isempty` of zip iterates it when `isdone` of part gives `missing`: both parts start."""
+reuse_zip_empty(itr::Any)::Bool = isempty(zip(itr, itr))
+"""Twelve nested `zip(z, z)`: iterator starts twice, and joint starts stay few."""
+function reuse_zip_chain(itr::Any)::Any
+    z = zip(itr, itr)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    z = zip(z, z)
+    return z
+end
+"""Load of same element on each loop pass can give same iterator again."""
+function reuse_reload(groups::Vector{Any}, n::Int)::Int
+    total = 0
+    for _ in 1:n
+        itr = groups[1]
+        total += sum(itr)
+    end
+    return total
+end
+"""Zip result that code never consumes iterates nothing."""
+kept_zip_type(itr::Any)::Type = typeof(zip(itr, itr))
+"""Returned tuple holds fresh value twice, never iterator."""
+function kept_shared(make::Function, itr::Any)::Tuple{Any, Any}
+    part = make()
+    sum(itr)
+    return (part, part)
+end
+"""Discarded zip of iterator with itself iterates nothing."""
+function kept_zip(itr::Any)::Int
+    zip(itr, itr)
+    return sum(itr)
+end
+"""Return iterator with its first element: caller gets started iterator."""
+reuse_return(itr::Any)::Tuple{Any, Any} = (first(itr), itr)
+"""Asserted argument is argument itself: loop after `first` of it starts argument again."""
+function reuse_asserted(itr::Any)::Any
+    head = first(itr::Any)
+    for x in itr
+        head = x
+    end
+    return head
+end
+"""Hand argument to package function, then loop over it."""
+function reuse_handed(itr::Any)::Int
+    reuse_return(itr)
+    return sum(itr)
+end
+"""Store tuple that holds iterator, then loop over iterator."""
+function reuse_stored(box::Vector{Any}, itr::Any)::Int
+    push!(box, (itr, 1))
+    return sum(itr)
+end
+"""Fresh iterator in returned tuple after `first`: caller gets started iterator."""
+function reuse_fresh(make::Function)::Tuple{Any, Any}
+    itr = make()
+    head = first(itr)
+    return (head, itr)
+end
+"""Union of stateful and multi-pass iterator: loop after `first` depends on branch."""
+function reuse_mixed(io::IO, flag::Bool)::Int
+    itr = flag ? eachline(io) : readlines(io)
+    head = first(itr)
+    return count(line -> line != head, itr)
+end
+"""Each element starts twice in one pass of outer loop."""
+function reuse_inner(groups::Any)::Int
+    total = 0
+    for group in groups
+        head = first(group)
+        for item in group
+            total += item - head
+        end
+    end
+    return total
+end
+"""`isempty` on `eachline` result: `isdone` checks end of stream without reading line."""
+function kept_lines(io::IO)::Int
+    lines = eachline(io)
+    isempty(lines) && return 0
+    return count(_ -> true, lines)
+end
+"""Dictionary from fresh iterator: constructor holds elements, so iterator does not escape."""
+function kept_collected(make::Function)::Dict{Any, Int}
+    items = make()
+    isempty(items) && return Dict{Any, Int}()
+    return Dict{Any, Int}(item => 1 for item in items)
+end
+"""Header line, then other lines: restart of stateful kind is deliberate."""
+function kept_peeled(io::IO)::Int
+    lines = eachline(io)
+    header = first(lines)
+    return count(line -> line != header, lines)
+end
+"""Destructured elements: each pass starts new element."""
+function kept_destructured(entries::Any)::Int
+    total = 0
+    for (a, b) in entries
+        total += a + b
+    end
+    return total
+end
+"""Nested loop: inner loop starts new group on each outer pass."""
+function kept_nested(groups::Any)::Int
+    total = 0
+    for group in groups, item in group
+        total += item
+    end
+    return total
+end
+"""Vector after `isempty`: arrays start from first element each time."""
+kept_vector(items::Vector{Int})::Int = isempty(items) ? 0 : sum(items)
+"""Destructured and returned `iterate` result: protocol makes it tuple, though inference gives `Any`."""
+function kept_protocol(itr::Any)::Any
+    next = iterate(itr)
+    isnothing(next) && return nothing
+    value, _ = next
+    return (value, next)
+end
+"""Iterator struct of any parameters."""
+struct Bag{T}
+    items::Vector{T}
+end
+Base.iterate(bag::Bag, index::Int = 1) = index > length(bag.items) ? nothing : (bag.items[index], index + 1)
+"""Element of `Vector{Bag}`: field `Vector{T}` holds parameter, so `iterate` body decides kind. Blind spot, no finding."""
+function kept_family(bags::Vector{Bag})::Int
+    bag = bags[1]
+    return isempty(bag) ? 0 : count(_ -> true, bag)
+end
+"""Iterator that passes iteration to its field: kind follows field type."""
+struct Relay{T}
+    inner::T
+end
+Base.iterate(relay::Relay, state...) = iterate(relay.inner, state...)
+"""Element of `Vector{Relay}` can hold stateful iterator: second `first` restarts it."""
+function reuse_relay(relays::Vector{Relay})::Tuple{Any, Any}
+    relay = relays[1]
+    return (first(relay), first(relay))
+end
+"""`Pair` iterates its two fields whatever their types: one kind."""
+function kept_pair(pairs::Vector{Pair})::Tuple{Any, Any, Any, Any}
+    pair = pairs[1]
+    first_key, first_value = pair
+    second_key, second_value = pair
+    return (first_key, first_value, second_key, second_value)
+end
+"""`enumerate` of struct family element: wrapper bound has one kind, so wrapper has one kind."""
+function kept_enumerated(bags::Vector{Bag})::Int
+    bag = bags[1]
+    reuse_return(bag)
+    return count(_ -> true, enumerate(bag))
+end
+"""Abstract type with own `first`."""
+abstract type Shape end
+"""Only shape."""
+struct Square <: Shape end
+Base.first(::Shape)::Int = 0
+"""Package `first` serves abstract shape: its body decides start, so pair is blind spot."""
+function kept_dispatched(shapes::Vector{Shape})::Int
+    shape = shapes[1]
+    return first(shape) + first(shape)
+end
+"""Abstract iterator with own `first` and `iterate`."""
+abstract type Counter end
+"""Only counter."""
+struct Once <: Counter end
+Base.first(::Counter)::Int = 0
+Base.iterate(::Counter, state::Int = 0)::Union{Nothing, Tuple{Int, Int}} = state < 1 ? (state, state + 1) : nothing
+"""Package `first` gives blind spot; two `iterate` starts after it still pair."""
+function reuse_after_dispatched(counters::Vector{Counter})::Tuple{Any, Any, Any}
+    counter = counters[1]
+    return (first(counter), iterate(counter), iterate(counter))
+end
+"""Abstract source; generic `first` serves sources other than `Fixed`."""
+abstract type Source end
+"""Source with own `first`, which iterates nothing."""
+struct Fixed <: Source end
+Base.first(::Fixed)::Int = 0
+"""Abstract package range: its own `first` cannot take `Iterators.Stateful`, so generic `first` stays `definite`."""
+abstract type Interval end
+Base.first(::Interval)::Int = 0
+"""Generic `first` starts only sources other than `Fixed`: pair is `possible`."""
+function reuse_mixed_dispatch(sources::Vector{Source})::Tuple{Any, Any}
+    source = sources[1]
+    return (first(source), first(source))
+end
+"""Abstract iterator whose own `isdone` gives `missing`: generic `isempty` iterates it."""
+abstract type Drain end
+"""Only drain."""
+struct Sink <: Drain end
+Base.isdone(::Drain)::Missing = missing
+Base.iterate(::Drain, state::Int = 0)::Union{Nothing, Tuple{Int, Int}} = state < 1 ? (state, state + 1) : nothing
+"""`isempty` starts drain through package `isdone`; `iterate` starts it again."""
+function reuse_isdone(drains::Vector{Drain})::Any
+    drain = drains[1]
+    isempty(drain) && return nothing
+    return iterate(drain)
+end
+"""Function with own `map` method that takes any collection and iterates nothing."""
+marker(x::Any)::Any = x
+Base.map(::typeof(marker), ::Any)::Tuple{} = ()
+"""Package `map` takes `Any` collection, yet its body decides start: pair is blind spot."""
+function kept_marked(sources::Vector{Source})::Tuple{Tuple{}, Tuple{}}
+    source = sources[1]
+    return (map(marker, source), map(marker, source))
+end
+"""Struct whose second field takes any relay, after field of number relays: kind follows second field."""
+struct Twin{A <: Relay{<:Number}, B <: Relay}
+    numbers::A
+    relay::B
+end
+"""Relay whose field parameter is bounded by other parameter: bound resolves through it."""
+struct Chain{S, T <: S}
+    inner::T
+end
+"""Struct of two parameter fields: nested type that shares bounds tests classification cost."""
+struct Duo{A, B}
+    first::A
+    second::B
+end
+"""Field that struct declares as named tuple: multi-pass whatever its parameters."""
+struct Named{K, V}
+    items::NamedTuple{K, V}
+end
+"""Named tuple field escapes to package function, then iteration starts."""
+function kept_declared(named::Named)::Int
+    reuse_return(named.items)
+    return count(_ -> true, named.items)
+end
+"""Loop that threads `iterate` state: one start."""
+function kept_state(itr::Any)::Int
+    count, next = 0, iterate(itr)
+    while !isnothing(next)
+        count += 1
+        next = iterate(itr, next[2])
+    end
+    return count
+end
+"""Take element with `popfirst!`, then loop: write, not start."""
+function kept_popped(lines::Iterators.Stateful)::Int
+    popfirst!(lines)
+    return count(_ -> true, lines)
+end
+"""Starts on separate branches: one start per path."""
+kept_branches(itr::Any, flag::Bool)::Any = flag ? first(itr) : collect(itr)
+"""Package iterator type: concrete type outside stateful table."""
+kept_countdown(countdown::Countdown)::Int = isempty(countdown) ? 0 : length(collect(countdown))
 
 end

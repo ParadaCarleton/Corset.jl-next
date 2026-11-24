@@ -69,12 +69,6 @@ deeper(place::Place.Type, step::Step.Type)::Place.Type = @match place begin
     Place.Deep(_) => place
 end
 
-"""Root of `place`."""
-place_root(place::Place.Type)::Root.Type = @match place begin
-    Place.At(root, _) => root
-    Place.Deep(root) => root
-end
-
 """
 Value loaded one `step` below `value`: places one step deeper, and objects fresh value holds inside. Untracked object
 inside is fresh or unknown, so loaded value can be fresh and untracked too.
@@ -230,7 +224,7 @@ function holds_pointing(walk::Walk, @nospecialize(type::Any))::Bool
 end
 
 """
-Value of call `call` with result of `type`: field and element loads add step, alias functions keep operand places,
+Value of call `call` with result of `type`: type assertion gives operand, field and element loads add step, alias functions keep operand places,
 iteration and element functions give elements, constructors hold operands, others give fresh object.
 """
 function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
@@ -243,6 +237,8 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
         return literal_value(walk, callee === Base.vect ? operands : operands[2:end], type)
     end
     object = operand_value(walk, operands[1])
+    # Type assertion gives its operand, as on return of method with return type.
+    callee === typeassert && return object
     if callee in LOAD_BUILTINS || callee === getproperty
         step = callee === getfield || callee === getproperty ? (length(operands) >= 2 ? field_step(walk, operands[2]) : nothing) : Step.Element()
         return load_value(walk, object, step)
@@ -608,14 +604,31 @@ function exception_events(walk::Walk, @nospecialize(callee::Any), operands::Abst
             append!(found, value_events(walk, operand_value(walk, operand), EffectKind.rng_argument, true, false))
         end
         isempty(generators) && push!(found, Event(ELSEWHERE, false, EffectKind.default_rng, Confidence.definite, true), Event(ELSEWHERE, false, EffectKind.default_rng, Confidence.definite, false))
-    elseif callee === iterate && stateful_iterator(operand_type(walk, operands[1]))
-        append!(found, value_events(walk, operand_value(walk, operands[1]), EffectKind.memory, true, true))
+    elseif callee === iterate
+        append!(found, consumed_events(walk, operands[1]))
+    elseif callee === isempty && length(operands) == 1
+        # Generic `isempty` iterates when `isdone` can give `missing`: `zip` with stateful part consumes that part.
+        writes = consumed_events(walk, operands[1])
+        certainty = isempty(writes) ? nothing : isempty_start(walk, operand_type(walk, operands[1]))
+        isnothing(certainty) || append!(found, (Event(write.place, write.below, write.kind, max(write.confidence, certainty), true) for write in writes))
     elseif callee in CONSUMING_FUNCTIONS || callee === first || callee === only
-        for operand in operands
-            stateful_iterator(operand_type(walk, operand)) && append!(found, value_events(walk, operand_value(walk, operand), EffectKind.memory, true, true))
-        end
+        foreach(operand -> append!(found, consumed_events(walk, operand)), operands)
     end
     return found
+end
+
+"""
+Memory writes of iterating IR `operand` in `walk`: stateful value whole, but only stateful parts of `zip` or product
+that unit builds. Part that restarts, as caller vector, takes no write. `seen` visits shared part of `zip(z, z)` once.
+"""
+function consumed_events(walk::Walk, @nospecialize(operand::Any), seen::AbstractSet{Any} = Set{Any}())::Vector{Event}
+    key = underlying(walk, operand)
+    key in seen && return Event[]
+    push!(seen, key)
+    parts = joint_operands(walk, operand)
+    isnothing(parts) || return Event[event for part in parts for event in consumed_events(walk, part, seen)]
+    stateful_iterator(operand_type(walk, operand)) || return Event[]
+    return value_events(walk, operand_value(walk, operand), EffectKind.memory, true, true)
 end
 
 """
@@ -652,14 +665,26 @@ function read_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractV
     elseif callee in TASK_FUNCTIONS
         push!(found, Event(ELSEWHERE, false, EffectKind.task_local, Confidence.definite, false))
     end
-    if starts_iteration(walk, callee, operands)
-        append!(found, value_events(walk, object, EffectKind.iteration, false, false))
-    elseif callee in CONSUMING_FUNCTIONS || callee === first || callee === only
-        for operand in operands
-            callable(walk, operand) || append!(found, value_events(walk, operand_value(walk, operand), EffectKind.iteration, false, false))
-        end
+    for position in started_positions(walk, callee, operands)
+        append!(found, value_events(walk, operand_value(walk, operands[position]), EffectKind.iteration, false, false))
+    end
+    # `isdone` result can be `missing` or not: generic `isempty` may iterate.
+    if callee === isempty && length(operands) == 1 && isempty_start(walk, operand_type(walk, operands[1])) == Confidence.possible
+        starts = value_events(walk, operand_value(walk, operands[1]), EffectKind.iteration, false, false)
+        append!(found, (Event(start.place, start.below, start.kind, Confidence.possible, start.write) for start in starts))
     end
     return found
+end
+
+"""
+Positions of operands call of `callee` starts iterating (`effects.md`, Reads): first operand of `starts_iteration` call,
+each non-callable operand of consuming call, `first` or `only`.
+"""
+function started_positions(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Int}
+    Base.require_one_based_indexing(operands)
+    starts_iteration(walk, callee, operands) && return [1]
+    (callee in CONSUMING_FUNCTIONS || callee === first || callee === only) || return Int[]
+    return Int[position for position in eachindex(operands) if !callable(walk, operands[position])]
 end
 
 """Whether `place` starts at global binding."""
@@ -667,7 +692,7 @@ global_place(place::Place.Type)::Bool = !isnothing(root_global(place))
 
 """
 Whether call starts iteration of first operand without state: `iterate(x)`, destructuring `indexed_iterate(x, 1)`,
-`first`, `only`, or `isempty` by generic method.
+`first`, `only`, or generic `isempty` that surely iterates (`isempty_start`).
 """
 function starts_iteration(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Bool
     Base.require_one_based_indexing(operands)
@@ -675,8 +700,59 @@ function starts_iteration(walk::Walk, @nospecialize(callee::Any), operands::Abst
     callee === Base.indexed_iterate && return length(operands) == 2 && constant_value(walk, operands[2]) == 1
     callee in START_FUNCTIONS && length(operands) == 1 || return false
     callee === isempty || return true
-    matches = Base._methods_by_ftype(Tuple{typeof(isempty), operand_type(walk, operands[1])}, 1, walk.world)
-    return matches isa Vector && length(matches) == 1 && only(matches).method.sig == Tuple{typeof(isempty), Any}
+    return isempty_start(walk, operand_type(walk, operands[1])) == Confidence.definite
+end
+
+"""
+Certainty that `isempty` on value of `type` iterates it: generic `isempty` calls `iterate` when `isdone` gives `missing`.
+Both generic methods alone match gives `definite`, generic among others `possible`; `nothing` when one cannot match.
+"""
+function isempty_start(walk::Walk, @nospecialize(type::Any))::Union{Nothing, Confidence.T}
+    emptiness = generic_match(walk, Tuple{typeof(isempty), type}, Tuple{typeof(isempty), Any})
+    done = done_missing(walk, type)
+    return (isnothing(emptiness) || isnothing(done)) ? nothing : max(emptiness, done)
+end
+
+"""
+Certainty that `isdone` on value of `type` gives `missing`: inferred result decides, so package method counts too. `zip`
+and product give it when part does and no part is done, so every part sure gives `definite`, some part `possible`.
+"""
+done_missing(walk::Walk, @nospecialize(type::Any))::Union{Nothing, Confidence.T} = done_missing!(IdDict{Any, Union{Nothing, Confidence.T}}(), walk, type)
+
+"""`done_missing` of `type`; `memo` keeps answer per part type, so nested `zip(z, z)` visits each type once."""
+function done_missing!(memo::IdDict{Any, Union{Nothing, Confidence.T}}, walk::Walk, @nospecialize(type::Any))::Union{Nothing, Confidence.T}
+    haskey(memo, type) && return memo[type]
+    parts = joint_parts(type)
+    found = if isnothing(parts)
+        missing_result(Base.infer_return_type(Base.isdone, Tuple{type}; world = walk.world))  # corset: allow inference-dependent -- wide result gives `possible`
+    else
+        answers = Union{Nothing, Confidence.T}[done_missing!(memo, walk, part) for part in parts]
+        all(isnothing, answers) ? nothing : all(==(Confidence.definite), answers) ? Confidence.definite : Confidence.possible
+    end
+    memo[type] = found
+    return found
+end
+
+"""Part types of `zip` or product type; `nothing` for other type. Open part tuple gives one `Any` part."""
+function joint_parts(@nospecialize(type::Any))::Union{Nothing, Vector{Any}}
+    type isa Type || return nothing
+    type !== Union{} && type <: Union{Iterators.Zip, Iterators.ProductIterator} || return nothing
+    parts = type isa DataType ? only(type.parameters) : Any
+    return parts isa DataType && parts <: Tuple && !any(Base.isvarargtype, parts.parameters) ? Any[parts.parameters...] : Any[Any]
+end
+
+"""Certainty that call with inferred `result` type gives `missing`: `Missing` alone `definite`, union with it `possible`."""
+function missing_result(@nospecialize(result::Any))::Union{Nothing, Confidence.T}
+    typeintersect(result, Missing) === Union{} && return nothing
+    return result <: Missing ? Confidence.definite : Confidence.possible
+end
+
+"""Certainty that call of `signature` runs method of `generic` signature: `definite` alone, `possible` among others."""
+function generic_match(walk::Walk, @nospecialize(signature::Type), @nospecialize(generic::Type))::Union{Nothing, Confidence.T}
+    matches = Base._methods_by_ftype(signature, -1, walk.world)
+    matches isa Vector || return nothing
+    any(match -> match.method.sig == generic, matches) || return nothing
+    return length(matches) == 1 ? Confidence.definite : Confidence.possible
 end
 
 """

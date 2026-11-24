@@ -143,6 +143,12 @@ place_text(method::Method, place::Place.Type)::String = @match place begin
     Place.Deep(root) => root_text(method, root) * " or below"
 end
 
+"""Root of `place`."""
+place_root(place::Place.Type)::Root.Type = @match place begin
+    Place.At(root, _) => root
+    Place.Deep(root) => root
+end
+
 """Global binding `place` starts at; `nothing` for place at argument or elsewhere."""
 root_global(place::Place.Type)::Union{Nothing, GlobalRef} = @match place begin
     Place.At(Root.Global(ref), _) => ref
@@ -190,6 +196,21 @@ name of writing function, and confidence: same object to function in `ALIAS_BREA
 struct SelfAlias
     call::Span
     callee::String
+    confidence::Confidence.T
+end
+
+"""
+Iterator that package method starts twice, or lets escape after start (`effects` stage fact, F51): span of earlier and
+later event, whether each escapes (`false`: starts iteration), whether later event is earlier event on next loop pass,
+source name of iterator (`nothing`: no name), and confidence: definite starts of one object give `definite`.
+"""
+struct StatefulReuse
+    earlier::Span
+    later::Span
+    earlier_escapes::Bool
+    later_escapes::Bool
+    repeats::Bool
+    iterator::Union{Nothing, String}
     confidence::Confidence.T
 end
 
@@ -261,7 +282,8 @@ no_effect(call::CallFact)::Bool =
 """
 Effects of package method over its units (`effects.md`, Name trust): writes, reads, places its result can lie beneath
 (`aliases`), holds throws skip (`unguarded`), call statements in source order, writes to collection its loop iterates
-(`loop_writes`), calls that read memory they write (`self_aliases`), `complete` (no unit incomplete or cut), `effect_free` (compiler proves every unit writes nothing caller
+(`loop_writes`), calls that read memory they write (`self_aliases`), iterators it starts twice or lets escape
+after start (`stateful_reuses`), `complete` (no unit incomplete or cut), `effect_free` (compiler proves every unit writes nothing caller
 sees), and effects its `@assume_effects` claims.
 """
 struct MethodEffects
@@ -273,6 +295,7 @@ struct MethodEffects
     calls::Vector{CallFact}
     loop_writes::Vector{LoopWrite}
     self_aliases::Vector{SelfAlias}
+    stateful_reuses::Vector{StatefulReuse}
     complete::Bool
     effect_free::Bool
     claims::Vector{Symbol}
