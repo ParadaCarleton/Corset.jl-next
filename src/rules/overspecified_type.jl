@@ -116,7 +116,7 @@ end
 covariant(head::Union{Nothing, Type})::Bool = head === Union || (!isnothing(head) && Base.unwrap_unionall(head) <: Tuple)
 
 """Widened text of curly `node`: union of number types becomes its join; parameters widen, with `<:` inside invariant type."""
-function widened_curly!(mod::Module, file::SyntaxFile, node::SyntaxNode, found::AbstractVector{SyntaxNode})::String
+function widened_curly!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode)::String
     head, parameters = children_of(node)[1], children_of(node)[2:end]
     resolved = resolve_type(mod, file, head)
     resolved in (Type, Val) && return source(file, node)
@@ -128,18 +128,18 @@ function widened_curly!(mod::Module, file::SyntaxFile, node::SyntaxNode, found::
     texts = String[]
     for parameter in parameters
         before = length(found)
-        text = widened_text!(mod, file, parameter, found)
+        text = widened_text!(found, mod, file, parameter)
         changed = length(found) > before && !covariant(resolved) && kind_name(parameter) != "<:"
         push!(texts, changed ? "<:$text" : text)
     end
-    return "$(widened_text!(mod, file, head, found)){$(join(texts, ", "))}"
+    return "$(widened_text!(found, mod, file, head)){$(join(texts, ", "))}"
 end
 
 """Widened text of annotation `node` of `file` in `mod`; pushes each reported part to `found`."""
-function widened_text!(mod::Module, file::SyntaxFile, node::SyntaxNode, found::AbstractVector{SyntaxNode})::String
+function widened_text!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode)::String
     kind = kind_name(node)
-    kind == "curly" && return widened_curly!(mod, file, node, found)
-    kind == "<:" && length(children_of(node)) == 1 && return "<:" * widened_text!(mod, file, only(children_of(node)), found)
+    kind == "curly" && return widened_curly!(found, mod, file, node)
+    kind == "<:" && length(children_of(node)) == 1 && return "<:" * widened_text!(found, mod, file, only(children_of(node)))
     wider = replacement(mod, file, node)
     isnothing(wider) && return source(file, node)
     push!(found, node)
@@ -204,7 +204,7 @@ function findings(facts::FactSet)::Vector{Finding}
             annotation in seen && continue
             push!(seen, annotation)
             reported = SyntaxNode[]
-            wider = widened_text!(site.method.module, site.file, annotation, reported)
+            wider = widened_text!(reported, site.method.module, site.file, annotation)
             isempty(reported) || push!(pending, (annotation, wider, reported))
         end
         isempty(pending) && continue

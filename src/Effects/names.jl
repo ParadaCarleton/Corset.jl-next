@@ -340,14 +340,23 @@ function element_value(walk::Walk, call::Expr, @nospecialize(callee::Any), opera
     return called ? joined(found, joined(fresh_value(Set{Place.Type}(), true), deep_loaded(operand_value(walk, operands[1])))) : found
 end
 
+"""Type of `operand` without `Nothing` member: optional operand (`rng::Union{Nothing, AbstractRNG}`) has its other type."""
+function present_type(walk::Walk, @nospecialize(operand::Any))::Any
+    type = operand_type(walk, operand)
+    return type isa Union ? Base.typesplit(type, Nothing) : type
+end
+
 """Whether `operand` is callable by style guide order: function or type."""
-callable(walk::Walk, @nospecialize(operand::Any))::Bool = (type = operand_type(walk, operand); type <: Function || type <: Type)
+callable(walk::Walk, @nospecialize(operand::Any))::Bool = (type = present_type(walk, operand); type <: Function || type <: Type)
 
 """Whether `operand` type is `IO`."""
-io_operand(walk::Walk, @nospecialize(operand::Any))::Bool = operand_type(walk, operand) <: IO
+io_operand(walk::Walk, @nospecialize(operand::Any))::Bool = present_type(walk, operand) <: IO
 
 """Whether `operand` type is `AbstractRNG`."""
-rng_operand(walk::Walk, @nospecialize(operand::Any))::Bool = operand_type(walk, operand) <: AbstractRNG
+rng_operand(walk::Walk, @nospecialize(operand::Any))::Bool = present_type(walk, operand) <: AbstractRNG
+
+"""Whether `!` call cannot write `operand`: its type refers to no mutable object (`Normal(0, 1)` in `rand!(rng, d, x)`)."""
+immutable_operand(walk::Walk, @nospecialize(operand::Any))::Bool = !pointing(walk, operand_type(walk, operand))
 
 """
 Set every value and stored set of `walk` to root and `Deep` of each root it holds anywhere, fresh: sound and settled,
@@ -424,6 +433,9 @@ end
 """Whether `callee` is function whose name ends in `!`, builtins excepted."""
 bang_function(@nospecialize(callee::Any))::Bool = callee isa Function && !(callee isa Core.Builtin) && callee !== (!) && endswith(string(nameof(callee)), "!")
 
+"""Whether `callee` name ends in `!!`: it writes operand when it can, else returns new value (BangBang.jl)."""
+double_bang(@nospecialize(callee::Any))::Bool = bang_function(callee) && endswith(string(nameof(callee)), "!!")
+
 """
 Whether name trust lets calls of function that `method` adds to write operands (F53): `!` name, or Base function whose
 calls write subject of method (`subject_position`, `exception_events`): IO function on `IO`, RNG function on
@@ -456,19 +468,24 @@ end
 
 """
 Position of operand that `!` function `callee` writes among `operands` (`effects.md`, Writes, source 2): first operand
-after leading callable, `IO` and `AbstractRNG` operands, or position table entry. `nothing` when none is left.
+after leading callable, `IO`, `AbstractRNG` and immutable operands, first array of `ARRAY_FILLS` call, or position
+table entry. `nothing` when none is left.
 """
 function written_position(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Union{Nothing, Int}
     table = get(WRITE_POSITION, (nameof(callee), length(operands)), nothing)
     !isnothing(table) && library_owner(callee) === :LinearAlgebra && return table
-    return next_subject(walk, operands, 1)
+    filled = callee in ARRAY_FILLS ? findfirst(operand -> operand_type(walk, operand) <: AbstractArray, operands) : nothing
+    return isnothing(filled) ? next_subject(walk, operands, 1) : something(filled)
 end
 
-"""First position from `start` of `operands` whose operand is not callable, `IO` or `AbstractRNG`; `nothing` when none."""
+"""
+First position from `start` of `operands` whose operand `!` call can write: not callable, `IO`, `AbstractRNG` or
+immutable. `nothing` when none.
+"""
 function next_subject(walk::Walk, operands::AbstractVector{Any}, start::Integer)::Union{Nothing, Int}
     for position in start:lastindex(operands)
         operand = operands[position]
-        (callable(walk, operand) || io_operand(walk, operand) || rng_operand(walk, operand)) && continue
+        (callable(walk, operand) || io_operand(walk, operand) || rng_operand(walk, operand) || immutable_operand(walk, operand)) && continue
         return position
     end
     return nothing
@@ -575,6 +592,9 @@ function value_events(walk::Walk, value::Value, kind::EffectKind.T, write::Bool,
     return Event[Event(place, below, kind == EffectKind.memory ? place_kind(walk, place, kind) : kind, confidence, write) for place in value.places]
 end
 
+"""`events` as `possible`: run-time value decides whether write happens."""
+possible_events(events::AbstractVector{Event})::Vector{Event} = Event[Event(event.place, event.below, event.kind, Confidence.possible, event.write) for event in events]
+
 """Global state that no binding names: default RNG, unknown writes of `!` call without operand."""
 const ELSEWHERE = Place.At(Root.Elsewhere(), NO_STEPS)
 
@@ -662,16 +682,20 @@ function bang_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractV
     found, position, skipped = Event[], written_position(walk, callee, operands), false
     for operand in operands[1:(something(position, length(operands) + 1) - 1)]
         io, rng = io_operand(walk, operand), rng_operand(walk, operand)
-        skipped |= io || rng
-        io && append!(found, value_events(walk, operand_value(walk, operand), EffectKind.io, true, true))
-        rng && append!(found, value_events(walk, operand_value(walk, operand), EffectKind.rng_argument, true, true))
+        # Immutable operand counts as written one too: `kernel!(CPU(), 4)` writes no global state.
+        skipped |= io || rng || (!callable(walk, operand) && immutable_operand(walk, operand))
+        streams = io || rng ? value_events(walk, operand_value(walk, operand), io ? EffectKind.io : EffectKind.rng_argument, true, true) : Event[]
+        # Optional operand (`rng::Union{Nothing, AbstractRNG}`) takes write only when it is present.
+        append!(found, (type = operand_type(walk, operand); type isa Union && Nothing <: type) ? possible_events(streams) : streams)
     end
     if isnothing(position)
         places = isnothing(keywords) ? Set{Place.Type}() : held(keywords)
         append!(found, (Event(place, true, place_kind(walk, place, EffectKind.memory), Confidence.possible, true) for place in places))
         isempty(found) && !skipped && push!(found, Event(ELSEWHERE, true, EffectKind.memory, Confidence.definite, true))
     else
-        append!(found, value_events(walk, operand_value(walk, operands[something(position)]), EffectKind.memory, true, true))
+        written = value_events(walk, operand_value(walk, operands[something(position)]), EffectKind.memory, true, true)
+        # `!!` call writes operand only when it can (`push!!` on tuple returns new tuple).
+        append!(found, double_bang(callee) ? possible_events(written) : written)
     end
     return found
 end

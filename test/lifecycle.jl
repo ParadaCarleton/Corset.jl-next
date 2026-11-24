@@ -79,12 +79,18 @@ end
     @test only_events(:resized) == [(RESIZE, UNKNOWN, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
     # Collection that keeps array is escape of unknown extent.
     @test only_events(:stored) == [(ESCAPE, UNKNOWN, Int[], SURE, false)]
-    # `!` call can write array: package call after its first operand, library call after functors.
-    for name in (:functor_first, :mapped_functor, :reduced_functors)
+    # `!` call writes first operand it can write: immutable functor is skipped.
+    for name in (:functor_first, :reduced_functors)
+        @test only_events(name) == [(WRITE, UNKNOWN, Int[], SURE, false), (READ, WHOLE, Int[], SURE, false)]
+    end
+    @test only_events(:mapped_functor) == [(WRITE, WHOLE, Int[], SURE, false), (READ, WHOLE, Int[], SURE, false)]
+    # Mutable functor can be written: package call can write operands after it, library call writes subject after it.
+    for name in (:tallied_first, :tallied_map, :tallied_reduce)
         @test only_events(name) == [(ESCAPE, UNKNOWN, Int[], SURE, false), (READ, WHOLE, Int[], SURE, false)]
     end
     @test events(last(arrays(:second_output))) == [(ESCAPE, UNKNOWN, Int[], SURE, false), (READ, WHOLE, Int[], SURE, false)]
     @test all(==(6.0), (CASES.functor_first([1.0, 2.0]), CASES.mapped_functor([1.0, 2.0]), CASES.reduced_functors([1.0, 2.0])))
+    @test all(==(3.0), (CASES.tallied_first([1.0, 2.0]), CASES.tallied_map([1.0, 2.0]), CASES.tallied_reduce([1.0, 2.0])))
     @test CASES.second_output() == 6.0
     # Mapping gives both allocations of `twins` one span.
     @test allequal(array.site for array in arrays(:twins))

@@ -59,6 +59,7 @@ const PROVES = Base.JLOptions().code_coverage == 0 || Base.JLOptions().code_cove
     @test shape(effects(:push_value!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
     @test shape(effects(:map_into!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
     @test Set(shape(effects(:shuffle_with!).writes)) == Set([(parameter(2), true, EffectKind.rng_argument, DEFINITE), (parameter(3), true, MEMORY, DEFINITE)])
+    @test Set(shape(effects(:optional_jitter!).writes)) == Set([(parameter(2), true, EffectKind.rng_argument, POSSIBLE), (parameter(3), true, MEMORY, DEFINITE)])
     @test shape(effects(:reseed!).writes) == [(ELSEWHERE, true, MEMORY, DEFINITE)]
     @test shape(effects(:solve_upper!).writes) == [(parameter(3), true, MEMORY, DEFINITE)]
     @test shape(effects(:call_setter!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
