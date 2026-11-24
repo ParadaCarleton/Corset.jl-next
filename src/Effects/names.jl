@@ -470,11 +470,13 @@ end
 
 """
 Whether `callee` fills array operand: function of `ARRAY_FILLS`, or helper of `FILL_HELPER_NAMES` from package in
-`owners` (`Distributions.__rand!`).
+`owners` or its extension (`Distributions.__rand!`, `DistributionsTestExt.__rand!`).
 """
 function fill_call(@nospecialize(callee::Any), owners::AbstractSet{Base.PkgId})::Bool
     callee in ARRAY_FILLS && return true
-    return nameof(callee) in FILL_HELPER_NAMES && Base.PkgId(Base.moduleroot(parentmodule(callee))) in owners
+    nameof(callee) in FILL_HELPER_NAMES || return false
+    root = Base.moduleroot(parentmodule(callee))
+    return Base.PkgId(root) in owners || any(owner -> Base.get_extension(owner, nameof(root)) === root, owners)
 end
 
 """

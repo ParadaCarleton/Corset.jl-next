@@ -14,7 +14,7 @@ which writes `x` after sampler `s`.
 """
 const ARRAY_FILLS = Base.IdSet{Any}(Any[Random.rand!, Random.randn!, Random.randexp!])
 
-"""Helpers of `FILL_HELPER_OWNERS` package that keep `rand!(rng, s, x)` order (`fill_call`)."""
+"""Helpers of `FILL_HELPER_OWNERS` package or its extensions that keep `rand!(rng, s, x)` order (`fill_call`)."""
 const FILL_HELPER_NAMES = Set{Symbol}([:_rand!, :__rand!])
 
 """Packages whose `FILL_HELPER_NAMES` helpers fill array after sampler: Distributions."""
