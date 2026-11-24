@@ -269,6 +269,65 @@ struct UnprovenIndex
 end
 
 """
+Index argument contract (`effects` stage fact, F36): parameter `index` (its elements when `element`) indexes array
+parameter `array` at index position `position` of `count`, in indexing call `site`. Callers must pass index of that array.
+"""
+struct IndexContract
+    index::Int
+    element::Bool
+    array::Int
+    position::Int
+    count::Int
+    site::Span
+end
+
+"""
+Where index operand of package call comes from: index of array operand, parameter of caller, absolute number, or index
+of other array.
+"""
+@enumx IndexSource array parameter absolute other
+
+"""
+Index claim of call operand `operand` (its elements when `element`): index of operand `target` in `dimension` (0:
+linear), parameter `target` of caller (0: arithmetic of several), absolute number or index of other array (`target` 0).
+"""
+struct OperandIndex
+    operand::Int
+    element::Bool
+    source::IndexSource.T
+    target::Int
+    dimension::Int
+end
+
+"""Array operand of package call whose axes can start anywhere: position, dimension count (`nothing`: open), and caller parameter it is (0: other value)."""
+struct ArrayOperand
+    operand::Int
+    dimensions::Union{Nothing, Int}
+    parameter::Int
+end
+
+"""
+Package call with array operand whose axes can start anywhere (`effects` stage fact, F36): call span, signatures of
+package methods it can run, such array operands, and index claims of operands.
+"""
+struct IndexCall
+    site::Span
+    callees::Vector{Type}
+    arrays::Vector{ArrayOperand}
+    claims::Vector{OperandIndex}
+end
+
+"""Index facts of unit or method (F36): indices without proof, index argument contracts, and package calls that pass indices."""
+struct IndexFacts
+    unproven::Vector{UnprovenIndex}
+    contracts::Vector{IndexContract}
+    calls::Vector{IndexCall}
+end
+
+"""Index facts without entries."""
+IndexFacts()::IndexFacts = IndexFacts(UnprovenIndex[], IndexContract[], IndexCall[])
+
+"""
 Callee of call statement: `Methods` that dispatch reaches (none when no method matches: call throws), `Builtin` or
 intrinsic function, `Foreign` C function, or `Open` dispatch (Base contract, open or unresolved call).
 """
@@ -340,7 +399,7 @@ no_effect(call::CallFact)::Bool =
 Effects of package method over its units (`effects.md`, Name trust): writes, reads, places its result can lie beneath
 (`aliases`), holds throws skip (`unguarded`), call statements in source order, writes to collection its loop iterates
 (`loop_writes`), calls that read memory they write (`self_aliases`), iterators it starts twice or lets escape
-after start (`stateful_reuses`), indices without proof (`unproven_indices`), `complete` (no unit incomplete or cut), `effect_free` (compiler proves every unit writes nothing caller
+after start (`stateful_reuses`), index facts (`indices`), `complete` (no unit incomplete or cut), `effect_free` (compiler proves every unit writes nothing caller
 sees), `new_result` (some unit returns value other than `nothing`, argument, or value that holds argument or lies below it), `name_writes` (name
 trust lets calls of its function write: `!` name, or Base IO, synchronization, RNG or `iterate` function), and effects its
 `@assume_effects` claims.
@@ -355,7 +414,7 @@ struct MethodEffects
     loop_writes::Vector{LoopWrite}
     self_aliases::Vector{SelfAlias}
     stateful_reuses::Vector{StatefulReuse}
-    unproven_indices::Vector{UnprovenIndex}
+    indices::IndexFacts
     complete::Bool
     effect_free::Bool
     new_result::Bool

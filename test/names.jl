@@ -1,6 +1,6 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
-using Corset.Facts: Facts, MethodEffects, Access, Callee, Place, Root, Step, Confidence, EffectKind, BlindSpot, callee_name, place_text, root_global, subject_position, step_child, current_objects
+using Corset.Facts: Facts, MethodEffects, Access, Callee, Place, Root, Step, Confidence, EffectKind, BlindSpot, ArrayOperand, OperandIndex, IndexSource, callee_name, place_text, root_global, subject_position, step_child, current_objects
 using Corset.Inference: infer_package
 using Corset.Effects: Effects, record_bytes, unit_record, place_root, ALWAYS_THROWS
 using Supposition: Supposition, Data, @check
@@ -29,6 +29,9 @@ const CASES, PACKAGE, UNITS, FACTS, SPOTS, RECORDS, EDGES = case_facts()
 
 """Effects of fixture method `name`; fixture names are unique."""
 effects(name::Symbol)::MethodEffects = only(found for found in FACTS.methods if found.site.method.name == name)
+
+"""Whether `span` starts inside `outer`."""
+within(span::Facts.Span, outer::Facts.Span)::Bool = span.file == outer.file && outer.first_byte <= span.first_byte <= outer.last_byte
 
 """Place at parameter `position` (1 is called function) and `steps`."""
 parameter(position::Int, steps::Step.Type...)::Place.Type = Place.At(Root.Parameter(position), Step.Type[steps...])
@@ -132,10 +135,27 @@ loop_shape(name::Symbol)::Vector{Tuple{String, Confidence.T}} = [(write.callee, 
     @test !effects(:generated_store!).effect_free && !effects(:optional_store!).effect_free
     @test !effects(:generated_caller!).effect_free
     # Index proof infers generated method again with offset stand-in, branch one-based inference drops included.
-    @test [index.confidence for index in effects(:generated_head).unproven_indices] == [DEFINITE]
-    @test [index.confidence for index in effects(:generated_branch).unproven_indices] == [DEFINITE]
+    @test [index.confidence for index in effects(:generated_head).indices.unproven] == [DEFINITE]
+    @test [index.confidence for index in effects(:generated_branch).indices.unproven] == [DEFINITE]
     # Generator gives other code for offset stand-in: spans of first inference do not fit it.
-    @test count(spot -> spot.cause == Effects.OFFSET_UNMAPPED, SPOTS) == 1 && isempty(effects(:generated_shifting).unproven_indices)
+    @test count(spot -> spot.cause == Effects.OFFSET_UNMAPPED, SPOTS) == 1 && isempty(effects(:generated_shifting).indices.unproven)
+end
+
+@testset "index contract" begin
+    contract = only(effects(:picked_at).indices.contracts)
+    @test (contract.index, contract.element, contract.array, contract.position, contract.count) == (2, false, 1, 1, 1)
+    @test isempty(effects(:shifted_at).indices.contracts) && isempty(effects(:shifted_at).indices.unproven)
+    # No contract names index from several arguments, so coverage line counts it.
+    @test any(spot -> spot.cause == Effects.SEVERAL_ARGUMENTS && within(spot.span, effects(:shifted_at).site.span), SPOTS)
+    @test !any(spot -> spot.cause == Effects.SEVERAL_ARGUMENTS && within(spot.span, effects(:picked_at).site.span), SPOTS)
+    @test any(spot -> spot.cause == Effects.SEVERAL_ARGUMENTS && within(spot.span, effects(:forward_shifted).site.span), SPOTS)
+    call = only(effects(:literal_pick).indices.calls)
+    @test call.callees == [only(methods(CASES.picked_at)).sig] && call.arrays == [ArrayOperand(1, 1, 1)]
+    @test call.claims == [OperandIndex(2, false, IndexSource.absolute, 0, 0)]
+    # Index of array that call does not pass is index of other array.
+    @test !isempty(only(effects(:other_pick).indices.calls).claims) && all(claim -> claim.source == IndexSource.other, only(effects(:other_pick).indices.calls).claims)
+    # Axes agreement makes index of other array index of array operand.
+    @test OperandIndex(2, false, IndexSource.array, 1, 0) in only(effects(:agreed_pick).indices.calls).claims
 end
 
 @testset "offset inference journal" begin
@@ -438,7 +458,6 @@ end
     @test !call.used && !call.throws && call.terminates && isempty(call.kinds) && !call.stand_in && !call.open_dispatch && call.effect_free == PROVES
     @test only(fact for fact in effects(:discard_open).calls if fact.callee == Callee.Open()).open_dispatch
     # Call without effect and without exact span goes to coverage line.
-    within(span::Facts.Span, outer::Facts.Span)::Bool = span.file == outer.file && outer.first_byte <= span.first_byte <= outer.last_byte
     unspanned(name::Symbol)::Bool = any(spot -> spot.cause == Effects.UNSPANNED_CALL && within(spot.span, effects(name).site.span), SPOTS)
     @test unspanned(:discard_finally)
     @test unspanned(:discard_computed)

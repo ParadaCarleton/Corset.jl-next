@@ -35,6 +35,12 @@ const Positive = OneBasedRangePositive
     @test Negative.scaled_head(EvilArray(floats)) == 7.0
     @test_throws ArgumentError Negative.guarded_total(evil)
     @test Negative.ends(evil) == Negative.ends(ints) == 5
+    @test Negative.first_at(evil) == -2 && Negative.last_forwarded(evil) == 7
+    @test_throws ArgumentError Negative.guarded_at(evil)
+    @test Negative.agreed_at(evil, copy(evil)) == -2
+    @test_throws DimensionMismatch Negative.agreed_at(evil, EvilArray(ints))
+    @test Negative.vector_at(ints) == -2
+    @test Negative.second(evil) == 0
 end
 
 @testset "code without index proof fails on offset arrays" begin
@@ -54,6 +60,16 @@ end
     @test_throws BoundsError Positive.both_heads(evil, evil)
     @test_throws BoundsError Positive.capped_by(evil, EvilArray(ints), typemax(Int))
     @test_throws BoundsError Positive.corner(EvilArray(matrix))
+    @test_throws BoundsError Positive.first_pick(evil)
+    @test_throws BoundsError Positive.forwarded_first(evil)
+    @test_throws BoundsError Positive.cross_pick(evil, EvilArray(ints))
+    @test_throws BoundsError Positive.offset_pick(evil)
+    @test_throws BoundsError Positive.aliased_pick(evil)
+    @test_throws BoundsError Positive.renamed_pick(evil)
+    @test_throws BoundsError Positive.copied_pick(evil)
+    @test_throws BoundsError Positive.computed_pick(evil)
+    @test_throws BoundsError Positive.either_pick(evil, false)
+    @test_throws BoundsError Positive.tagged_first(evil)
 end
 
 using Corset.Effects: Effects, offset_type, offset_signature, OffsetArray
@@ -84,6 +100,16 @@ chained_sum(xs::T, ys::T, zs::S) where {T <: AbstractVector{Float64}, S <: T} = 
     # Lowered code keeps indexing that one-based stand-in drops.
     @test Effects.lowered_indexing(only(methods(Positive.offset_only))) && !Effects.lowered_indexing(only(methods(dense_sum)))
     @test Effects.lowered_indexing(only(methods(Positive.aliased_offset)))
+    # Slot read of alias is its own SSA statement before call (`%8 = _3; (%8)(xs, 1)`).
+    aliased = Tuple{typeof(Positive.aliased_pick), ArrayStandIn{Int, 1}}
+    @test Effects.lowered_passes(only(methods(Positive.aliased_pick)), aliased, Set{Module}([Positive]))
+    @test !Effects.lowered_passes(only(methods(dense_sum)), Tuple{typeof(dense_sum), dense}, Set{Module}([Positive]))
+    # Slot alias of array argument (`ys = xs`) passes it too.
+    @test Effects.lowered_passes(only(methods(Positive.renamed_pick)), Tuple{typeof(Positive.renamed_pick), ArrayStandIn{Int, 1}}, Set{Module}([Positive]))
+    @test Effects.lowered_passes(only(methods(Positive.copied_pick)), Tuple{typeof(Positive.copied_pick), ArrayStandIn{Int, 1}}, Set{Module}([Positive]))
+    @test Effects.lowered_passes(only(methods(Positive.computed_pick)), Tuple{typeof(Positive.computed_pick), ArrayStandIn{Int, 1}}, Set{Module}([Positive]))
+    # Callee slot that holds `copy` or computed function stays unresolved.
+    @test Effects.lowered_passes(only(methods(Positive.either_pick)), Tuple{typeof(Positive.either_pick), ArrayStandIn{Int, 1}, Bool}, Set{Module}([Positive]))
     # Arguments that share type variable change together.
     offset = OffsetArray{Float64, 1, plain}
     @test offset_signature(only(methods(same_sum)), Tuple{typeof(same_sum), plain, plain}) == Tuple{typeof(same_sum), offset, offset}

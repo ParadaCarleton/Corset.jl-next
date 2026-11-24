@@ -100,6 +100,29 @@ end
 # Caller proves index argument.
 at(xs::AbstractVector{Int}, i::Int) = xs[i]
 
+# Index from axes of array that callee indexes.
+first_at(xs::AbstractVector{Int}) = at(xs, firstindex(xs))
+
+# Method that passes index and array on: its callers prove index.
+forward(xs::AbstractVector{Int}, i::Int) = at(xs, i)
+last_forwarded(xs::AbstractVector{Int}) = forward(xs, lastindex(xs))
+
+# One-based guard before call.
+guarded_at(xs::AbstractVector{Int}) = (Base.require_one_based_indexing(xs); at(xs, 1))
+
+# Axes agreement: index of `ys` indexes `xs`.
+function agreed_at(xs::AbstractVector{Int}, ys::AbstractVector{Int})
+    axes(xs) == axes(ys) || throw(DimensionMismatch("axes differ"))
+    return at(xs, firstindex(ys))
+end
+
+# `Vector` axes start at 1.
+vector_at(xs::Vector{Int}) = at(xs, 1)
+
+# Arithmetic of two index arguments: no contract names either.
+shifted(xs::AbstractVector{Int}, i::Int, delta::Int) = xs[i + delta]
+second(xs::AbstractVector{Int}) = shifted(xs, firstindex(xs), 1)
+
 # `Vector` axes start at 1.
 head_of(xs::Vector{Int}) = xs[1]
 
