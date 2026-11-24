@@ -44,7 +44,7 @@ const INDEX_COLLECTIONS = Base.IdSet{Any}(Any[eachindex, keys, LinearIndices, Ca
 const INDEXING = IdDict{Any, Int}(getindex => 2, view => 2, Base.maybeview => 2, Base.dotview => 2, setindex! => 3)
 
 """Integer arithmetic whose result is absolute number when operands have origin."""
-const ARITHMETIC = Base.IdSet{Any}(Any[*, div, (÷), fld, cld, rem, mod, (>>), (>>>), (<<)])
+const INDEX_ARITHMETIC = Base.IdSet{Any}(Any[*, div, (÷), fld, cld, rem, mod, (>>), (>>>), (<<)])
 
 """Dimension count of array `type`, or `nothing` when open: free `N`, union members that differ, or no array."""
 function dimension_count(@nospecialize(type::Any))::Union{Nothing, Int}
@@ -257,7 +257,7 @@ function call_claims(proof::Proof, @nospecialize(callee::Any), operands::Abstrac
     callee in (prevind, nextind) && count == 2 && return operand_claims(proof, operands[2])
     callee in (+, -) && return sum_claims(proof, callee, operands)
     # `i ÷ 2` of index argument `i` is no index the caller proves: heap parent assumes one-based axes.
-    callee in ARITHMETIC && return isempty(origin(Claims[operand_claims(proof, operand) for operand in operands])) ? Claims() : Claims([Claim(Absolute(), 0, ())])
+    callee in INDEX_ARITHMETIC && return isempty(origin(Claims[operand_claims(proof, operand) for operand in operands])) ? Claims() : Claims([Claim(Absolute(), 0, ())])
     return Claims()
 end
 

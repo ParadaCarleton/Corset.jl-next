@@ -12,7 +12,7 @@ const COLLECTING = Base.IdSet{Any}(Any[collect, map])
 const COPYING = Base.IdSet{Any}(Any[copy, vcat, hcat])
 
 """Base arithmetic with two or more operands: result is new value. One operand can give it back (`*(A)`, `+(view)`)."""
-const ARITHMETIC = Base.IdSet{Any}(Any[+, -, *, /, (\)])
+const ARRAY_ARITHMETIC = Base.IdSet{Any}(Any[+, -, *, /, (\)])
 
 """Base reductions: result combines elements, never collection operand itself (`sum(a; dims)` builds new array)."""
 const REDUCTIONS = Base.IdSet{Any}(Any[sum, prod, maximum, minimum, extrema, any, all, count, reduce, foldl, foldr, mapreduce])
@@ -250,7 +250,7 @@ type meets `held`, and callee is no Base function that builds new array. `float(
 `pass(a) = a` return operand.
 """
 function can_return(@nospecialize(callee::Any), count::Integer, @nospecialize(result::Any), @nospecialize(held::Any))::Bool
-    (callee in COPYING || callee in COLLECTING || callee in REDUCTIONS || (callee in ARITHMETIC && count >= 2)) && return false
+    (callee in COPYING || callee in COLLECTING || callee in REDUCTIONS || (callee in ARRAY_ARITHMETIC && count >= 2)) && return false
     # `Array` and `BitArray` constructors copy array operand.
     callee isa Type && callee <: Union{Array, BitArray} && return false
     return typeintersect(result, held) !== Union{}

@@ -15,7 +15,7 @@ end
     isolated("hard_arrays.jl")
     isolated("guesses.jl")
     isolated("narrowing.jl")
-    isolated("boxes.jl")
+    isolated("own_code.jl")
     isolated("specialize.jl")
     isolated("names.jl")
     isolated("indices.jl")
