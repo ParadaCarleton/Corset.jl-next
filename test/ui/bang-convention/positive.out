@@ -11,32 +11,43 @@ error[bang-convention]: method of `normalize` writes `v`, but name has no `!`
   = note: deny from correctness group, library preset
   = note: opt out with `# corset: allow bang-convention -- <reason>`
 
+error[bang-convention]: method of `shifted` writes `x`, but name has no `!`
+  --> src/BangConventionPositive.jl:12:1
+   |
+12 | shifted(x::Vector{Float64}) = shift!(Shift(1.0), x)
+   | ^^^^^^^ name has no `!`
+   |                               --------------------- writes `x`
+   |
+   = why: caller reads name without `!` as promise that call changes nothing it can see
+   = fix: rename `shifted` to `shifted!`, with call sites   [manual]
+   = docs: corset explain bang-convention
+
 error[bang-convention]: method of `zero_head` writes `v`, but name has no `!`
- --> src/BangConventionPositive.jl:8:1
-  |
-8 | zero_head(v::Vector{Float64}) = (v[1:2] .= 0.0; v)
-  | ^^^^^^^^^ name has no `!`
-  | -------------------------------------------------- writes `v`
-  |
-  = why: caller reads name without `!` as promise that call changes nothing it can see
-  = fix: rename `zero_head` to `zero_head!`, with call sites   [manual]
-  = docs: corset explain bang-convention
+  --> src/BangConventionPositive.jl:15:1
+   |
+15 | zero_head(v::Vector{Float64}) = (v[1:2] .= 0.0; v)
+   | ^^^^^^^^^ name has no `!`
+   | -------------------------------------------------- writes `v`
+   |
+   = why: caller reads name without `!` as promise that call changes nothing it can see
+   = fix: rename `zero_head` to `zero_head!`, with call sites   [manual]
+   = docs: corset explain bang-convention
 
 error[bang-convention]: method of `zero_first` writes `rows[…]`, but name has no `!`
- --> src/BangConventionPositive.jl:9:1
-  |
-9 | zero_first(rows::Vector{Vector{Float64}}) = (rows[1] .= 0.0; rows)
-  | ^^^^^^^^^^ name has no `!`
-  | ------------------------------------------------------------------ writes `rows[…]`
-  |
-  = why: caller reads name without `!` as promise that call changes nothing it can see
-  = fix: rename `zero_first` to `zero_first!`, with call sites   [manual]
-  = docs: corset explain bang-convention
+  --> src/BangConventionPositive.jl:16:1
+   |
+16 | zero_first(rows::Vector{Vector{Float64}}) = (rows[1] .= 0.0; rows)
+   | ^^^^^^^^^^ name has no `!`
+   | ------------------------------------------------------------------ writes `rows[…]`
+   |
+   = why: caller reads name without `!` as promise that call changes nothing it can see
+   = fix: rename `zero_first` to `zero_first!`, with call sites   [manual]
+   = docs: corset explain bang-convention
 
 error[bang-convention]: method of `record` writes `BangConventionPositive.TOTAL`, but name has no `!`
-  --> src/BangConventionPositive.jl:13:1
+  --> src/BangConventionPositive.jl:20:1
    |
-13 | record(x::Int) = (TOTAL[] += x; nothing)
+20 | record(x::Int) = (TOTAL[] += x; nothing)
    | ^^^^^^ name has no `!`
    | ---------------------------------------- writes `BangConventionPositive.TOTAL`
    |
@@ -45,9 +56,9 @@ error[bang-convention]: method of `record` writes `BangConventionPositive.TOTAL`
    = docs: corset explain bang-convention
 
 error[bang-convention]: method of `append_one` writes `items`, but name has no `!`
-  --> src/BangConventionPositive.jl:17:1
+  --> src/BangConventionPositive.jl:24:1
    |
-17 | append_one(items::Vector{Int}) = (push!(items, 1); items)
+24 | append_one(items::Vector{Int}) = (push!(items, 1); items)
    | ^^^^^^^^^^ name has no `!`
    |                                   --------------- writes `items`
    |
@@ -56,9 +67,9 @@ error[bang-convention]: method of `append_one` writes `items`, but name has no `
    = docs: corset explain bang-convention
 
 error[bang-convention]: method of `length` writes `counter.hits`, but name has no `!`
-  --> src/BangConventionPositive.jl:23:1
+  --> src/BangConventionPositive.jl:30:1
    |
-23 | Base.length(counter::Counter) = (push!(counter.hits, 1); length(counter.hits))
+30 | Base.length(counter::Counter) = (push!(counter.hits, 1); length(counter.hits))
    | ^^^^^^^^^^^ name has no `!`
    |                                  ---------------------- writes `counter.hits`
    |
@@ -67,9 +78,9 @@ error[bang-convention]: method of `length` writes `counter.hits`, but name has n
    = docs: corset explain bang-convention
 
 error[bang-convention]: method of `show` writes `item`, but name has no `!`
-  --> src/BangConventionPositive.jl:29:1
+  --> src/BangConventionPositive.jl:36:1
    |
-29 | Base.show(io::IO, item::Item) = (item.shown += 1; print(io, "Item"))
+36 | Base.show(io::IO, item::Item) = (item.shown += 1; print(io, "Item"))
    | ^^^^^^^^^ name has no `!`
    | -------------------------------------------------------------------- writes `item`
    |
@@ -78,9 +89,9 @@ error[bang-convention]: method of `show` writes `item`, but name has no `!`
    = docs: corset explain bang-convention
 
 error[bang-convention]: method of `close` writes `resource`, but name has no `!`
-  --> src/BangConventionPositive.jl:35:1
+  --> src/BangConventionPositive.jl:42:1
    |
-35 | Base.close(resource::Resource) = (resource.open = false; nothing)
+42 | Base.close(resource::Resource) = (resource.open = false; nothing)
    | ^^^^^^^^^^ name has no `!`
    | ----------------------------------------------------------------- writes `resource`
    |
@@ -89,9 +100,9 @@ error[bang-convention]: method of `close` writes `resource`, but name has no `!`
    = docs: corset explain bang-convention
 
 error[bang-convention]: method of `scale!` writes nothing, but name ends in `!`
-  --> src/BangConventionPositive.jl:41:1
+  --> src/BangConventionPositive.jl:48:1
    |
-41 | scale!(point::Point, factor::Float64) = Point(point.x * factor)
+48 | scale!(point::Point, factor::Float64) = Point(point.x * factor)
    | ^^^^^^ `!` promises write
    | --------------------------------------------------------------- compiler proves no write; result is new value
    |
@@ -100,9 +111,9 @@ error[bang-convention]: method of `scale!` writes nothing, but name ends in `!`
    = docs: corset explain bang-convention
 
 error[bang-convention]: method of `empty!` writes nothing, but name ends in `!`
-  --> src/BangConventionPositive.jl:44:1
+  --> src/BangConventionPositive.jl:51:1
    |
-44 | Base.empty!(point::Point) = Point(0.0)
+51 | Base.empty!(point::Point) = Point(0.0)
    | ^^^^^^^^^^^ `!` promises write
    | -------------------------------------- compiler proves no write; result is new value
    |

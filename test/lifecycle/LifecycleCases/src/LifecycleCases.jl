@@ -55,6 +55,14 @@ struct Add end
 mapped_functor(x::Vector{Float64}) = (r = similar(x); map!(Scale(2.0), r, x); sum(r))
 reduced_functors(x::Vector{Float64}) = (r = zeros(1); Base.mapreducedim!(Scale(2.0), Add(), r, x); sum(r))
 
+# Mutable functor can be written operand: call can write it or operands after it.
+mutable struct Tally; count::Int; end
+(tally::Tally)(x::Float64) = (tally.count += 1; x)
+tallied!(tally::Tally, r::Vector{Float64}, x::Vector{Float64}) = (r .= tally.(x); r)
+tallied_first(x::Vector{Float64}) = (r = similar(x); tallied!(Tally(0), r, x); sum(r))
+tallied_map(x::Vector{Float64}) = (r = similar(x); map!(Tally(0), r, x); sum(r))
+tallied_reduce(x::Vector{Float64}) = (r = zeros(1); Base.mapreducedim!(Tally(0), Add(), r, x); sum(r))
+
 # Prefix writes cover whole array only when source has same extent; array as own source is read first.
 prefix_copy(n::Int) = (a = Vector{String}(undef, n); copyto!(a, ["x"]); a)
 source_copy(x::Vector{String}) = (a = similar(x); copyto!(a, x); a)

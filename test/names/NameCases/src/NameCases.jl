@@ -41,6 +41,9 @@ push_value!(items::Vector{Int}, value::Int)::Vector{Int} = push!(items, value)
 map_into!(target::Vector{Int}, source::Vector{Int})::Vector{Int} = map!(abs, target, source)
 """Shuffle `items` with `generator`: leading RNG operand is skipped and advanced."""
 shuffle_with!(generator::AbstractRNG, items::Vector{Int})::Vector{Int} = Random.shuffle!(generator, items)
+# Optional RNG advances only when present.
+jitter_with!(generator::Union{Nothing, AbstractRNG}, items::Vector{Float64}) = (isnothing(generator) || rand(generator); items .+= 1.0; items)
+optional_jitter!(generator::Union{Nothing, AbstractRNG}, items::Vector{Float64}) = jitter_with!(generator, items)
 """Reseed default RNG: `!` call without operand writes global state."""
 reseed!()::Nothing = (Random.seed!(); nothing)
 """Solve in place: `ldiv!(A, B)` writes `B`."""

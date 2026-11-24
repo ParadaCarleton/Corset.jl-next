@@ -935,8 +935,12 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Call to function whose name ends in <code>!</code>. Written operand follows Julia style guide argument order:
 <ul>
 <li>Skip leading callable (<code>Function</code>, <code>Type</code>), <code>IO</code> and <code>AbstractRNG</code> operands. First other operand is written: definite.</li>
+<li><code>Nothing</code> member of union drops first: <code>rng::Union{Nothing, AbstractRNG}</code> is RNG operand. Its write is <code>possible</code>.</li>
+<li>Skip operand of type that refers to no mutable object too: no call can write it. <code>rand!(rng, Normal(), x)</code> writes <code>x</code>.</li>
+<li>Random <code>rand!</code>, <code>randn!</code> and <code>randexp!</code> write first array operand: Distributions adds <code>rand!(rng, s, x)</code>.</li>
+<li><code>!!</code> function (BangBang.jl) writes operand when it can, else returns new value: <code>possible</code>.</li>
 <li>Skipped <code>IO</code> operand takes IO write; skipped <code>AbstractRNG</code> operand takes RNG argument write.</li>
-<li>No operand left: <code>possible</code> write on keyword values (<code>f!(; items)</code>); without keywords, definite write on unknown global state (<code>Random.seed!()</code>). Skipped <code>IO</code> or RNG operand counts as written operand: <code>take!(io)</code> writes <code>io</code> only.</li>
+<li>No operand left: <code>possible</code> write on keyword values (<code>f!(; items)</code>); without keywords, definite write on unknown global state (<code>Random.seed!()</code>). Skipped <code>IO</code>, RNG or immutable operand counts as written operand: <code>take!(io)</code> writes <code>io</code> only.</li>
 <li>Position table holds exceptions: <code>ldiv!(A, B)</code> and <code>lmul!(A, B)</code> write <code>B</code>.</li>
 <li><code>!</code> call stores its other operands into written operand: <code>push!(v, x)</code> puts <code>x</code> into <code>v</code>. Later load from <code>v</code> can give <code>x</code>, also when <code>v</code> is caller place.</li>
 </ul>
