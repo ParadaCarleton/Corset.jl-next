@@ -1,0 +1,106 @@
+warning[broadcast-rebind]: loop replaces buffer with new broadcast array each iteration
+ --> src/BroadcastRebindPositive.jl:8:13
+  |
+6 |     x = ones(4)
+  |         ------- buffer it replaces
+7 |     for _ in 1:n
+8 |         x = x .* 0.5
+  |             ^^^^^^^^ allocates new array each iteration
+  |
+  = why: in-place broadcast writes into buffer: one array serves whole loop
+  = fix: assign in place with `.=`: broadcast writes into buffer   [likely]
+  = docs: corset explain broadcast-rebind
+  = note: warn from performance group, library preset
+  = note: opt out with `# corset: allow broadcast-rebind -- <reason>`
+
+warning[broadcast-rebind]: loop replaces buffer with new broadcast array each iteration
+  --> src/BroadcastRebindPositive.jl:17:13
+   |
+14 |     y = copy(x)
+   |         ------- buffer it replaces
+...
+17 |         y = sqrt.(y)
+   |             ^^^^^^^^ allocates new array each iteration
+   |
+   = why: in-place broadcast writes into buffer: one array serves whole loop
+   = fix: assign in place with `.=`: broadcast writes into buffer   [likely]
+   = docs: corset explain broadcast-rebind
+
+warning[broadcast-rebind]: loop replaces buffer with new broadcast array each iteration
+  --> src/BroadcastRebindPositive.jl:29:13
+   |
+26 |     x = fill(2.0, 3)
+   |         ------------ buffer it replaces
+...
+29 |         x = x ./ 2
+   |             ^^^^^^ allocates new array each iteration
+   |
+   = why: in-place broadcast writes into buffer: one array serves whole loop
+   = fix: assign in place with `.=`: broadcast writes into buffer   [likely]
+   = docs: corset explain broadcast-rebind
+
+warning[broadcast-rebind]: loop replaces buffer with new broadcast array each iteration
+  --> src/BroadcastRebindPositive.jl:38:25
+   |
+36 |     x = ones(2)
+   |         ------- buffer it replaces
+37 |     for _ in 1:n
+38 |         x #= a = b =# = x .+ 1.0
+   |                         ^^^^^^^^ allocates new array each iteration
+   |
+   = why: in-place broadcast writes into buffer: one array serves whole loop
+   = fix: assign in place with `.=`: broadcast writes into buffer   [likely]
+   = docs: corset explain broadcast-rebind
+
+warning[broadcast-rebind]: loop replaces buffer with new broadcast array each iteration
+  --> src/BroadcastRebindPositive.jl:47:13
+   |
+45 |     x = ones(3)
+   |         ------- buffer it replaces
+46 |     for _ in 1:n
+47 |         x = @. x / 2
+   |             ^^^^^^^^ allocates new array each iteration
+   |
+   = why: in-place broadcast writes into buffer: one array serves whole loop
+   = fix: assign in place with `.=`: broadcast writes into buffer   [likely]
+   = docs: corset explain broadcast-rebind
+
+warning[broadcast-rebind]: loop replaces buffer with new broadcast array each iteration
+  --> src/BroadcastRebindPositive.jl:57:13
+   |
+54 |     x = ones(3)
+   |         ------- buffer it replaces
+...
+57 |         x = Base.materialize(Base.broadcasted(*, b, b))
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ allocates new array each iteration
+   |
+   = why: in-place broadcast writes into buffer: one array serves whole loop
+   = fix: assign in place with `.=`: broadcast writes into buffer   [manual]
+   = docs: corset explain broadcast-rebind
+
+warning[broadcast-rebind]: loop replaces buffer with new broadcast array each iteration
+  --> src/BroadcastRebindPositive.jl:66:13
+   |
+64 |     x, y = ones(2), zeros(2)
+   |            ------- buffer it replaces
+65 |     for _ in 1:n
+66 |         x = x .* 2
+   |             ^^^^^^ allocates new array each iteration
+   |
+   = why: in-place broadcast writes into buffer: one array serves whole loop
+   = fix: assign in place with `.=`: broadcast writes into buffer   [manual]
+   = docs: corset explain broadcast-rebind
+
+warning[broadcast-rebind]: loop replaces buffer with new broadcast array each iteration
+  --> src/BroadcastRebindPositive.jl:76:13
+   |
+73 |     start = ones(3)
+   |             ------- buffer it replaces
+...
+76 |         x = x .* 2
+   |             ^^^^^^ allocates new array each iteration
+   |
+   = why: in-place broadcast writes into buffer: one array serves whole loop
+   = fix: assign in place with `.=`: broadcast writes into buffer   [manual]
+   = docs: corset explain broadcast-rebind
+

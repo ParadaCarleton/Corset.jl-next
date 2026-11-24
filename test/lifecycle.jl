@@ -142,9 +142,12 @@ end
         earlier, later = arrays(name)
         @test isnothing(earlier.rebind) && later.kind == AllocationKind.broadcast
         @test something(later.rebind).earlier == earlier.site && something(later.rebind).same_axes == same_axes
+        @test something(later.rebind).same_type && something(later.rebind).exclusive
         @test events(earlier) == [(JOINED, UNKNOWN, Int[], LOOP, false), (JOINED, UNKNOWN, Int[], SURE, false)]
         @test events(later) == [(JOINED, UNKNOWN, Int[], SURE, false), (JOINED, UNKNOWN, Int[], BRANCH, false)]
     end
+    # Stored array: in-place broadcast would change it.
+    @test !something(only(array for array in arrays(:shared) if !isnothing(array.rebind)).rebind).exclusive
 end
 
 @testset "units merge per method" begin
@@ -153,15 +156,15 @@ end
     write = Facts.ArrayEvent(span(3), WRITE, ELEMENT, [1], SURE, :setindex!, 1, nothing, false, 1)
     life(dimensions::Vector{Int}, events::Vector{Facts.ArrayEvent}, rebind::Union{Nothing, Facts.Rebind})::ArrayLife =
         ArrayLife(span(1), AllocationKind.filled, dimensions, events, rebind)
-    merged = Corset.Lifecycle.merged_array([life([2], [event(SURE)], Facts.Rebind(span(9), true)), life([3], [event(LOOP), write], Facts.Rebind(span(9), false))])
+    merged = Corset.Lifecycle.merged_array([life([2], [event(SURE)], Facts.Rebind(span(9), true, true, false)), life([3], [event(LOOP), write], Facts.Rebind(span(9), false, true, true))])
     # Each event once with its worst path, in statement order; event that one unit lacks is `branch` at best.
     @test events(merged) == [(WRITE, ELEMENT, [1], BRANCH, false), (READ, WHOLE, Int[], LOOP, false)]
     @test events(Corset.Lifecycle.merged_array([life([2], [write], nothing), life([2], [write], nothing)])) == [(WRITE, ELEMENT, [1], SURE, false)]
     # Dimensions only when units agree.
-    @test isnothing(merged.dimensions) && merged.rebind == Facts.Rebind(span(9), false)
+    @test isnothing(merged.dimensions) && merged.rebind == Facts.Rebind(span(9), false, true, false)
     @test Corset.Lifecycle.merged_array([life([2], [event(BRANCH)], nothing), life([2], [event(SURE)], nothing)]).dimensions == [2]
-    @test isnothing(Corset.Lifecycle.merged_rebind(Union{Nothing, Facts.Rebind}[Facts.Rebind(span(9), true), nothing]))
-    @test isnothing(Corset.Lifecycle.merged_rebind(Union{Nothing, Facts.Rebind}[Facts.Rebind(span(9), true), Facts.Rebind(span(8), true)]))
+    @test isnothing(Corset.Lifecycle.merged_rebind(Union{Nothing, Facts.Rebind}[Facts.Rebind(span(9), true, true, true), nothing]))
+    @test isnothing(Corset.Lifecycle.merged_rebind(Union{Nothing, Facts.Rebind}[Facts.Rebind(span(9), true, true, true), Facts.Rebind(span(8), true, true, true)]))
 end
 
 @testset "holder types" begin

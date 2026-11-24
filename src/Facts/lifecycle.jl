@@ -38,12 +38,15 @@ struct ArrayEvent
 end
 
 """
-Rebind pair (F41): span of array before loop that loop `φ` joins with this broadcast, and whether every array operand
-of broadcast is that `φ` value (`same_axes`), so `.=` keeps axes.
+Rebind pair (F41): span of array before loop that loop `φ` joins with this broadcast; whether every array operand of
+broadcast is that `φ` value (`same_axes`), so `.=` keeps axes; whether both arrays have one concrete type (`same_type`);
+and whether loop alone sees them (`exclusive`): no code reads old array after rebind, and none escapes but by return.
 """
 struct Rebind
     earlier::Span
     same_axes::Bool
+    same_type::Bool
+    exclusive::Bool
 end
 
 """

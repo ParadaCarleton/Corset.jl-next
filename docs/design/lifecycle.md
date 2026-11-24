@@ -63,12 +63,25 @@ Each statement that uses allocation value gives one event, with statement span, 
   - Loop exits only through its header, and its exit block post-dominates allocation block.
 - Other loop write is `loop` write with unknown coverage.
 
+### Rebind
+
+Rebind pair: loop header `φ` joins allocation before loop with broadcast in loop body. `.=` keeps behavior when each holds:
+
+- `same_axes`: every array operand of broadcast is `φ` value; scalars may join.
+- `same_type`: allocation and broadcast have one concrete type.
+- `exclusive`: loop alone sees both arrays:
+  - Each loop that holds header also holds allocation, but header loop: one allocation per loop entry.
+  - Loop reaches no use of allocation but header `φ` and loop exit `φ` that joins only pair arrays.
+  - Use of allocation before loop is no view, lazy broadcast or escape; return is allowed.
+  - `φ` value: use in loop dominates broadcast, or is its operand. Use after loop needs no loop exit after broadcast.
+  - Broadcast value: use in loop is no view, join or escape but return.
+
 ### Facts
 
 - Per package method: `ArrayLife` per allocation: site span, kind, constant dimensions, events in order, rebind pair.
 - Units of method merge by allocation span. Events merge by all fields but path; path of merged event is worst over units.
 - Event that one unit lacks is `branch` at best: that unit skips it.
-- Dimensions and rebind pair stay only when all units agree.
+- Dimensions and rebind pair stay only when all units agree. Each rebind condition holds only when it holds in each unit.
 - Definite verdict reads `sure` events only. `branch`, `loop` or `view` event that can change verdict gives `possible`.
 
 ### Rules
@@ -78,7 +91,7 @@ Each statement that uses allocation value gives one event, with statement span, 
 - `unwritten-element` (F34): `filled` allocation with constant length. `sure` element writes cover part of it; then whole read. Kind `placeholder`. Always `possible`: fill value can be data (`e = zeros(n); e[1] = 1.0`). Fix `manual`.
 - `constant-array` (F39): `filled` allocation without write, resize, escape or join. Fix `likely`: swap call for FillArrays.jl `Fill`, `Zeros`, `Ones`, `Trues` or `Falses`, and import it above module code. Package adds FillArrays.jl dependency; callee that requires `Array` rejects lazy array. Site that is no call node gets `manual` fix; `slice-copy` checks its site the same way.
 - `slice-copy` (F40): `slice` allocation without write, resize, escape, join or `loop` read. Fix `likely`: `@view(…)` around slice; view aliases parent. Span without exact bytes: `manual`.
-- `broadcast-rebind` (F41): rebind pair whose loop allocation is `broadcast` of array operands that are earlier value or scalars. Fix: `x .= f.(y)`.
+- `broadcast-rebind` (F41): rebind pair with `same_axes`, `same_type` and `exclusive`. Fix `likely`: `x = f.(x)` → `x .= f.(x)`. Package call that keeps array but returns no array hides alias. Right side of other assignment: `manual`.
 - Fix tiers and messages: row 11.
 
 ### Tests

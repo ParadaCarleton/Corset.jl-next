@@ -358,9 +358,12 @@ end
 
 """Whether every array or tuple operand of broadcast that statement `index` materializes is `value`: result keeps its axes."""
 function same_axes(walk::Walk, index::Integer, value::Core.SSAValue)::Bool
-    pending = Any[only(something(call_of(walk, Core.SSAValue(index)))[2])]
+    pending, seen = Any[only(something(call_of(walk, Core.SSAValue(index)))[2])], Set{Any}()
     while !isempty(pending)
         operand = pop!(pending)
+        # Broadcast can reuse one inner broadcast many times: visit each once.
+        operand in seen && continue
+        push!(seen, operand)
         call = call_of(walk, operand)
         if !isnothing(call) && something(call)[1] === Base.broadcasted
             # First operand is function that broadcast applies.
@@ -372,11 +375,107 @@ function same_axes(walk::Walk, index::Integer, value::Core.SSAValue)::Bool
     return true
 end
 
+"""Statements of `broadcasted` calls that build broadcast which statement `index` materializes."""
+function broadcast_tree(walk::Walk, index::Integer)::Set{Int}
+    found, pending = Set{Int}(), Any[only(something(call_of(walk, Core.SSAValue(index)))[2])]
+    while !isempty(pending)
+        operand = underlying(walk, pop!(pending))
+        call = call_of(walk, operand)
+        (isnothing(call) || something(call)[1] !== Base.broadcasted) && continue
+        # Broadcast can reuse one inner broadcast many times: visit each once.
+        operand.id in found && continue
+        push!(found, operand.id)
+        # First operand is function that broadcast applies.
+        append!(pending, something(call)[2][2:end])
+    end
+    return found
+end
+
+"""Whether earlier allocation at statement `earlier` and broadcast at `index` have one concrete type: `.=` keeps it."""
+function same_type(walk::Walk, earlier::Integer, index::Integer)::Bool
+    type = CC.widenconst(walk.ir.stmts[index][:type])
+    return isconcretetype(type) && CC.widenconst(walk.ir.stmts[earlier][:type]) == type
+end
+
+"""
+Whether `allowed(user, found)` holds for each use of statement `value` through `π`, `identity` and `typeassert`: `found`
+is what `statement_event` gives for `user`.
+"""
+function uses_pass(allowed::F, walk::Walk, users::AbstractVector{<:AbstractVector{<:Integer}}, written::Base.IdSet{Any}, value::Integer)::Bool where {F <: Function}
+    pending, seen = [Core.SSAValue(value)], Set{Int}(value)
+    while !isempty(pending)
+        current = pop!(pending)
+        for user in users[current.id]
+            found = statement_event(walk, user, current, Extent(current, nothing, nothing, written))
+            if found === :same
+                user in seen || (push!(seen, user); push!(pending, Core.SSAValue(user)))
+            elseif !allowed(user, found)
+                return false
+            end
+        end
+    end
+    return true
+end
+
+"""
+Whether loop alone sees arrays of rebind pair at loop header `phi` (`lifecycle.md`, Rebind): `earlier` allocation runs
+once per loop entry, and loop reaches no use of it but joins; `φ` value has no use after broadcast at `index` in
+iteration; no array escapes but by return. Then `.=` keeps behavior.
+"""
+function exclusive(walk::Walk, flow::Flow, users::AbstractVector{<:AbstractVector{<:Integer}}, written::Base.IdSet{Any}, earlier::Integer, index::Integer, phi::Integer)::Bool
+    ir = walk.ir
+    block_of(statement::Integer)::Int = CC.block_for_inst(ir.cfg, statement)
+    header, start, body = block_of(phi), block_of(earlier), block_of(index)
+    # Loop around header that leaves out earlier allocation enters header loop again with same array.
+    all(loop -> loop == header || loop in flow.loops[start], flow.loops[header]) || return false
+    # Blocks that run after loop entry, before earlier allocation runs again.
+    after = delete!(reached([header], block -> block == start ? Int[] : ir.cfg.blocks[block].succs), start)
+    inside(statement::Integer)::Bool = header in flow.loops[block_of(statement)]
+    joins(statement::Integer)::Bool = ir.stmts[statement][:stmt] isa Core.PhiNode
+    domtree, tree = CC.construct_domtree(ir.cfg.blocks), broadcast_tree(walk, index)
+    before(user::Integer)::Bool = block_of(user) == body ? user < index : CC.dominates(domtree, block_of(user), body)
+    # Kept: view (`:derived`), escape but return, or join into `φC` node.
+    function kept(user::Integer, found::Union{Symbol, Classified})::Bool
+        found isa Symbol && return found === :derived
+        returned = ir.stmts[user][:stmt] isa Core.ReturnNode
+        return any(((kind, _, _),) -> kind == ArrayEventKind.joined || (kind == ArrayEventKind.escape && !returned), found)
+    end
+    # Loop exit `φ` that joins only arrays of pair holds last contents either way.
+    function exit_join(user::Integer)::Bool
+        inside(user) && return false
+        node = ir.stmts[user][:stmt]::Core.PhiNode
+        for position in eachindex(node.values)
+            isassigned(node.values, position) || return false
+            value = underlying(walk, node.values[position])
+            (value isa Core.SSAValue && value.id in (earlier, index, phi)) || return false
+        end
+        return true
+    end
+    earlier_passes = uses_pass(walk, users, written, earlier) do user, found
+        joins(user) && return (user == phi || exit_join(user))
+        # Loop sees contents that in-place broadcast writes; lazy broadcast before loop can run in it.
+        return !(block_of(user) in after) && found !== :lazy && !kept(user, found)
+    end
+    # Exit after broadcast leaves `φ` value as old array, which in-place broadcast overwrote.
+    later = delete!(reached([body], block -> block == header ? Int[] : ir.cfg.blocks[block].succs), header)
+    stale = any(block -> any(next -> !(header in flow.loops[next]), ir.cfg.blocks[block].succs), later)
+    phi_passes = uses_pass(walk, users, written, phi) do user, found
+        user in tree && return true
+        inside(user) || return !stale
+        return !joins(user) && before(user) && !kept(user, found)
+    end
+    later_passes = uses_pass(walk, users, written, index) do user, found
+        (user == phi || !inside(user)) && return true
+        return !joins(user) && !kept(user, found)
+    end
+    return earlier_passes && phi_passes && later_passes
+end
+
 """
 Rebind pair of broadcast allocation at statement `index` in `block` (F41): loop header `φ` node that joins it with
-array allocated before loop.
+array allocated before loop. `written` holds roots that `!` calls write (`written_roots`).
 """
-function rebind_pair(walk::Walk, flow::Flow, users::AbstractVector{<:AbstractVector{<:Integer}}, spans::AbstractVector{Span}, index::Integer, block::Integer)::Union{Nothing, Rebind}
+function rebind_pair(walk::Walk, flow::Flow, users::AbstractVector{<:AbstractVector{<:Integer}}, spans::AbstractVector{Span}, written::Base.IdSet{Any}, index::Integer, block::Integer)::Union{Nothing, Rebind}
     ir = walk.ir
     for user in users[index]
         node = ir.stmts[user][:stmt]
@@ -389,7 +488,7 @@ function rebind_pair(walk::Walk, flow::Flow, users::AbstractVector{<:AbstractVec
         earlier isa Core.SSAValue || continue
         isnothing(allocation(walk, earlier.id)) && continue
         header in flow.loops[CC.block_for_inst(ir.cfg, earlier.id)] && continue
-        return Rebind(spans[earlier.id], same_axes(walk, index, Core.SSAValue(user)))
+        return Rebind(spans[earlier.id], same_axes(walk, index, Core.SSAValue(user)), same_type(walk, earlier.id, index), exclusive(walk, flow, users, written, earlier.id, index, user))
     end
     return nothing
 end
@@ -446,7 +545,7 @@ function array_life(walk::Walk, flow::Flow, users::AbstractVector{<:AbstractVect
     end
     sort!(events; by = ((statement, event),) -> (event.order, statement))
     dimensions = isnothing(sizes) ? nothing : constant_dimensions(walk, something(sizes))
-    pair = kind == AllocationKind.broadcast ? rebind_pair(walk, flow, users, spans, index, block) : nothing
+    pair = kind == AllocationKind.broadcast ? rebind_pair(walk, flow, users, spans, written, index, block) : nothing
     return ArrayLife(spans[index], kind, dimensions, ArrayEvent[event for (_, event) in events], pair)
 end
 

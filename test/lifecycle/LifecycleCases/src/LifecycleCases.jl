@@ -61,5 +61,6 @@ branch_fill(x::Vector{String}) = (a = similar(x); for i in eachindex(a); isempty
 # Rebind pairs: broadcast in loop replaces array allocated before loop.
 rebound(x::Vector{Float64}, n::Int) = (y = zeros(length(x)); for _ in 1:n; y = y .+ x; end; y)
 scaled(x::Vector{Float64}, n::Int) = (y = copy(x); for _ in 1:n; y = 2 .* y; end; y)
+shared(n::Int) = (y = ones(2); kept = Vector{Float64}[]; for _ in 1:n; y = 2 .* y; push!(kept, y); end; kept)
 
 end

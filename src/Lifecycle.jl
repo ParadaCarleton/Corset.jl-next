@@ -10,12 +10,12 @@ array_key(array::ArrayLife)::Tuple{String, Int, Int} = (array.site.file, array.s
 """Merge key of event over units: every field but path."""
 event_key(event::ArrayEvent)::Tuple = (event.span, event.kind, event.coverage, event.indices, event.callee, event.position, event.operator, event.view, event.order)
 
-"""Rebind pair that every unit gives (`nothing` when one gives none); axes stay same only when they do in each."""
+"""Rebind pair that every unit gives (`nothing` when one gives none); each condition holds only when it does in each."""
 function merged_rebind(pairs::AbstractVector{Union{Nothing, Rebind}})::Union{Nothing, Rebind}
     any(isnothing, pairs) && return nothing
     earlier = unique(pair.earlier for pair in pairs)
     length(earlier) == 1 || return nothing
-    return Rebind(only(earlier), all(pair -> pair.same_axes, pairs))
+    return Rebind(only(earlier), all(pair -> pair.same_axes, pairs), all(pair -> pair.same_type, pairs), all(pair -> pair.exclusive, pairs))
 end
 
 """

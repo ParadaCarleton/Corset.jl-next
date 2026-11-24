@@ -1132,12 +1132,27 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 </li>
 <li>Other loop write is <code>loop</code> write with unknown coverage.</li>
 </ul>
+</div><div class="decision"><h3>Rebind</h3>
+<p>Rebind pair: loop header <code>φ</code> joins allocation before loop with broadcast in loop body. <code>.=</code> keeps behavior when each holds:</p>
+<ul>
+<li><code>same_axes</code>: every array operand of broadcast is <code>φ</code> value; scalars may join.</li>
+<li><code>same_type</code>: allocation and broadcast have one concrete type.</li>
+<li><code>exclusive</code>: loop alone sees both arrays:
+<ul>
+<li>Each loop that holds header also holds allocation, but header loop: one allocation per loop entry.</li>
+<li>Loop reaches no use of allocation but header <code>φ</code> and loop exit <code>φ</code> that joins only pair arrays.</li>
+<li>Use of allocation before loop is no view, lazy broadcast or escape; return is allowed.</li>
+<li><code>φ</code> value: use in loop dominates broadcast, or is its operand. Use after loop needs no loop exit after broadcast.</li>
+<li>Broadcast value: use in loop is no view, join or escape but return.</li>
+</ul>
+</li>
+</ul>
 </div><div class="decision"><h3>Facts</h3>
 <ul>
 <li>Per package method: <code>ArrayLife</code> per allocation: site span, kind, constant dimensions, events in order, rebind pair.</li>
 <li>Units of method merge by allocation span. Events merge by all fields but path; path of merged event is worst over units.</li>
 <li>Event that one unit lacks is <code>branch</code> at best: that unit skips it.</li>
-<li>Dimensions and rebind pair stay only when all units agree.</li>
+<li>Dimensions and rebind pair stay only when all units agree. Each rebind condition holds only when it holds in each unit.</li>
 <li>Definite verdict reads <code>sure</code> events only. <code>branch</code>, <code>loop</code> or <code>view</code> event that can change verdict gives <code>possible</code>.</li>
 </ul>
 </div><div class="decision"><h3>Rules</h3>
@@ -1147,7 +1162,7 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 <li><code>unwritten-element</code> (F34): <code>filled</code> allocation with constant length. <code>sure</code> element writes cover part of it; then whole read. Kind <code>placeholder</code>. Always <code>possible</code>: fill value can be data (<code>e = zeros(n); e[1] = 1.0</code>). Fix <code>manual</code>.</li>
 <li><code>constant-array</code> (F39): <code>filled</code> allocation without write, resize, escape or join. Fix <code>likely</code>: swap call for FillArrays.jl <code>Fill</code>, <code>Zeros</code>, <code>Ones</code>, <code>Trues</code> or <code>Falses</code>, and import it above module code. Package adds FillArrays.jl dependency; callee that requires <code>Array</code> rejects lazy array. Site that is no call node gets <code>manual</code> fix; <code>slice-copy</code> checks its site the same way.</li>
 <li><code>slice-copy</code> (F40): <code>slice</code> allocation without write, resize, escape, join or <code>loop</code> read. Fix <code>likely</code>: <code>@view(…)</code> around slice; view aliases parent. Span without exact bytes: <code>manual</code>.</li>
-<li><code>broadcast-rebind</code> (F41): rebind pair whose loop allocation is <code>broadcast</code> of array operands that are earlier value or scalars. Fix: <code>x .= f.(y)</code>.</li>
+<li><code>broadcast-rebind</code> (F41): rebind pair with <code>same_axes</code>, <code>same_type</code> and <code>exclusive</code>. Fix <code>likely</code>: <code>x = f.(x)</code> → <code>x .= f.(x)</code>. Package call that keeps array but returns no array hides alias. Right side of other assignment: <code>manual</code>.</li>
 <li>Fix tiers and messages: row 11.</li>
 </ul>
 </div><div class="decision"><h3>Tests</h3>

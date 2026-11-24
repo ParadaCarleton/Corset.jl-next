@@ -13,6 +13,7 @@ include("rules/bang_convention.jl")
 include("rules/banned.jl")
 include("rules/bracketed_range.jl")
 include("rules/broad_catch.jl")
+include("rules/broadcast_rebind.jl")
 include("rules/c_type.jl")
 include("rules/closed_struct.jl")
 include("rules/constant_array.jl")
@@ -85,6 +86,7 @@ const REGISTRY = RuleEntry[
     Banned.ENTRY,
     BracketedRange.ENTRY,
     BroadCatch.ENTRY,
+    BroadcastRebind.ENTRY,
     CType.ENTRY,
     ClosedStruct.ENTRY,
     ConstantArray.ENTRY,
