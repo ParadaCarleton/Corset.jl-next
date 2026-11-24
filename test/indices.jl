@@ -73,6 +73,7 @@ end
     @test_throws BoundsError Positive.tagged_first(evil)
     @test_throws BoundsError Positive.bumped(EvilArray(copy(ints)))
     @test_throws BoundsError Positive.shifted!(EvilArray(copy(ints)))
+    @test_throws BoundsError Positive.shifted_row!(EvilArray([1 2 3; 4 5 6; 7 8 9]))
 end
 
 using Corset.Effects: Effects, offset_type, offset_signature, OffsetArray
@@ -148,6 +149,7 @@ end
     # Other index value, other array or other line: each fact stays.
     @test Effects.one_per_element([(store, :xs, :j), (read, :xs, :i)], file) == [store, read]
     @test Effects.one_per_element([(store, :ys, :i), (read, :xs, :i)], file) == [store, read]
+    @test Effects.one_per_element([(store, :xs, (1, 2)), (read, :xs, (1, 3))], file) == [store, read]
     next_line = fact(12, 12, Precision.line, Confidence.definite)
     @test Effects.one_per_element([(next_line, :xs, :i), (read, :xs, :i)], file) == [next_line, read]
 end

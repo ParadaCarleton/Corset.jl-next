@@ -136,4 +136,10 @@ function shifted!(xs::AbstractVector{Int})
     return xs
 end
 
+# Store and read of other elements of matrix on one line: two findings.
+function shifted_row!(m::AbstractMatrix{Int})
+    m[1, 2] = m[1, 3]
+    return m
+end
+
 end

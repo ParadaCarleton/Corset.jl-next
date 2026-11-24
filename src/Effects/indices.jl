@@ -377,23 +377,23 @@ function index_facts(walk::Walk, method::Method, lines::AbstractVector{<:Integer
         several && push!(spots, BlindSpot(SEVERAL_ARGUMENTS, site))
         unproven_site = unproven(proof, domtree, guards, agreements, index)
         isnothing(unproven_site) && continue
-        array, operand, confidence = unproven_site
+        array, operand, operands, confidence = unproven_site
         source = underlying(walk, operand)
         cause = source isa Core.SSAValue ? span_of(source.id) : nothing
-        push!(found, (UnprovenIndex(site, cause == site ? nothing : cause, value_text(walk, method, array), confidence), array, operand))
+        push!(found, (UnprovenIndex(site, cause == site ? nothing : cause, value_text(walk, method, array), confidence), array, operands))
     end
     return IndexFacts(unique!(one_per_element(found, file)), unique!(contracts), calls), unique!(spots)
 end
 
 """
-Facts of `found` (fact, array value, index value) without repeats. Facts of same array value, index value and source
-line form group; fact repeats other of its group when its span `covers` span of other. Of two that cover each other,
-surer one stays, then earlier one. `x[i] += 1` reads and writes one element: one fact at read.
+Facts of `found` (fact, array value, index values) without repeats. Facts of same array value, index values and
+source line form group; fact repeats other of its group when its span `covers` span of other. Of two that cover each
+other, surer one stays, then earlier one. `x[i] += 1` reads and writes one element: one fact at read.
 """
 function one_per_element(found::AbstractVector{<:Tuple{UnprovenIndex, Any, Any}}, file::SyntaxFile)::Vector{UnprovenIndex}
     groups = Dict{Tuple{Any, Any, Int}, Vector{Int}}()
-    for (position, (fact, array, operand)) in pairs(found)
-        push!(get!(Vector{Int}, groups, (array, operand, Inference.line_span(file, fact.site).first_byte)), position)
+    for (position, (fact, array, operands)) in pairs(found)
+        push!(get!(Vector{Int}, groups, (array, operands, Inference.line_span(file, fact.site).first_byte)), position)
     end
     kept = trues(length(found))
     for members in values(groups), position in members
@@ -507,11 +507,11 @@ end
 selects_all(proof::Proof, @nospecialize(operand::Any))::Bool = operand_type(proof.walk, operand) <: Union{Colon, AbstractArray{Bool}}
 
 """
-Unproven index of indexing call at statement `index` in `proof`: array operand, index operand and certainty. Absolute
-index (literal, `length`, counter, index of other array) is `definite`; unknown source `possible`. Index argument and
-array after one-based guard pass.
+Unproven index of indexing call at statement `index` in `proof`: array operand, index operand, all index operands and
+certainty. Absolute index (literal, `length`, counter, index of other array) is `definite`; unknown source `possible`.
+Index argument and array after one-based guard pass.
 """
-function unproven(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tuple{Integer, Any}}, agreements::AbstractVector{<:Tuple{Integer, Any, Any}}, index::Integer)::Union{Nothing, Tuple{Any, Any, Confidence.T}}
+function unproven(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tuple{Integer, Any}}, agreements::AbstractVector{<:Tuple{Integer, Any, Any}}, index::Integer)::Union{Nothing, Tuple{Any, Any, Tuple, Confidence.T}}
     parts = offset_indexing(proof, domtree, guards, index)
     isnothing(parts) && return nothing
     array, array_root, block, indices, dimensions = parts
@@ -520,7 +520,7 @@ function unproven(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tu
         claims = operand_claims(proof, operand)
         any(claim -> proves(proof, domtree, agreements, claim, array_root, block, position, length(indices), dimensions), claims) && continue
         any(claim -> claim.root isa Trusted, claims) && continue
-        return (array, operand, isempty(claims) ? Confidence.possible : Confidence.definite)
+        return (array, operand, Tuple(indices), isempty(claims) ? Confidence.possible : Confidence.definite)
     end
     return nothing
 end
