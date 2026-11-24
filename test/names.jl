@@ -18,7 +18,7 @@ function case_facts()::Tuple{Module, Facts.PackageFacts, Corset.Inference.Units,
         pop!(LOAD_PATH)
     end
     _, _, units, _ = infer_package(loaded.facts, sources.files, nothing, nothing)
-    facts, spots, records = Effects.effects_facts(loaded.facts, units)
+    facts, spots, records = Effects.effects_facts(loaded.facts, units, nothing)
     return first(loaded.facts.modules), loaded.facts, units, facts, spots, records
 end
 
@@ -128,8 +128,27 @@ loop_shape(name::Symbol)::Vector{Tuple{String, Confidence.T}} = [(write.callee, 
     # Claim in generated code voids proof of method and of its direct caller.
     @test !effects(:generated_store!).effect_free && !effects(:optional_store!).effect_free
     @test !effects(:generated_caller!).effect_free
-    # Index proof skips generated method that takes array stand-in, dropped branch included: blind spot.
-    @test count(spot -> spot.cause == Effects.OFFSET_GENERATED, SPOTS) == 2
+    # Index proof infers generated method again with offset stand-in, branch one-based inference drops included.
+    @test [index.confidence for index in effects(:generated_head).unproven_indices] == [DEFINITE]
+    @test [index.confidence for index in effects(:generated_branch).unproven_indices] == [DEFINITE]
+    # Generator gives other code for offset stand-in: spans of first inference do not fit it.
+    @test count(spot -> spot.cause == Effects.OFFSET_UNMAPPED, SPOTS) == 1 && isempty(effects(:generated_shifting).unproven_indices)
+end
+
+@testset "offset inference journal" begin
+    typed = only(unit for unit in UNITS.typed if unit.site.method.name == :generated_head)
+    signature, world = something(Effects.offset_signature(typed.site.method, typed.signature)), Base.get_world_counter()
+    mktempdir() do directory
+        journal = Corset.Inference.open_journal(directory)
+        @test Effects.offset_inference(typed, signature, journal, world) isa Corset.Inference.Output
+        close(journal.io)
+        records = Corset.Inference.records(directory)
+        @test [record.finished for record in records] == [false, true] && endswith(first(records).label, "with offset stand-in")
+        # Start record that no finish record closes is crash: next run skips inference.
+        crashed = Corset.Inference.Journal(open(Corset.Inference.journal_file(directory), "a"), Set([first(records).key]))
+        @test Effects.offset_inference(typed, signature, crashed, world) == Effects.OFFSET_CRASHED
+        close(crashed.io)
+    end
 end
 
 @testset "loop writes" begin

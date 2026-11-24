@@ -108,9 +108,13 @@ function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files:
     store = isnothing(directory) ? cached : merge(something(cached, Inference.Store()), Inference.finished_store(Inference.records(directory)))
     # Effects run reads effects record of each stored unit, so entry without one infers again.
     effects && !isnothing(store) && filter!(pair -> !isempty(last(pair).effects), store)
-    infer(journal::Union{Nothing, Inference.Journal}) = Inference.infer_package(package, files, store, journal)
-    facts, spots, units, used = isnothing(directory) ? infer(nothing) : journaled(infer, directory)
-    effects_found, effects_spots, records = effects ? Effects.effects_facts(package, units) : (nothing, BlindSpot[], nothing)
+    # Effects stage runs under journal too: index proof infers again with offset stand-ins.
+    function stages(journal::Union{Nothing, Inference.Journal})::Tuple
+        facts, spots, units, used = Inference.infer_package(package, files, store, journal)
+        found = effects ? Effects.effects_facts(package, units, journal) : (nothing, BlindSpot[], nothing)
+        return facts, spots, units, used, found...
+    end
+    facts, spots, units, used, effects_found, effects_spots, records = isnothing(directory) ? stages(nothing) : journaled(stages, directory)
     isnothing(cache) || Cache.store!(cache, method_entry(path), key, isnothing(records) ? something(used) : with_records(something(used), units, records))
     return facts, spots, effects_found, effects_spots
 end
@@ -127,15 +131,15 @@ function with_records(used::Inference.Store, units::Inference.Units, records::Ab
 end
 
 """
-Facts that `infer` gives with journal of crash journal `directory`. Stderr goes to crash log meanwhile, so Julia abort
+Facts that `stages` gives with journal of crash journal `directory`. Stderr goes to crash log meanwhile, so Julia abort
 report of crash stays there; return or Julia exception copies log text of this run to stderr.
 """
-function journaled(infer::Function, directory::String)::Tuple
+function journaled(stages::Function, directory::String)::Tuple
     log = Inference.log_file(directory)
     start = isfile(log) ? filesize(log) : 0
     journal = Inference.open_journal(directory)
     try
-        return open(stream -> redirect_stderr(() -> infer(journal), stream), log, "a")
+        return open(stream -> redirect_stderr(() -> stages(journal), stream), log, "a")
     finally
         close(journal.io)
         write(stderr, open(stream -> (seek(stream, start); read(stream)), log))

@@ -100,7 +100,12 @@ function choice_claims(claims::AbstractVector{Claims})::Claims
     found = origin(claims)
     isempty(others) && return found
     trusted in found && (found = Claims([Claim(Absolute(), 0, ())]))
-    return union(intersect(others...), found)
+    # Loop, since splat `intersect(others...)` infers through code that `IteratorSize` methods of other sets invalidate.
+    shared = copy(first(others))
+    for operand in others
+        intersect!(shared, operand)
+    end
+    return union!(shared, found)
 end
 
 """State of index proof over one unit: claims per IR statement (`nothing`: not computed), same-axes root of values."""
@@ -518,8 +523,11 @@ end
 """Blind spot cause of unit that indexes but gives no code with offset stand-in."""
 const OFFSET_UNINFERRED = "offset stand-in gave no code"
 
-"""Blind spot cause of generated method that accepts offset stand-in: its generator does not run again with it."""
-const OFFSET_GENERATED = "generated method takes array stand-in"
+"""Blind spot cause of unit whose offset inference crashed process in earlier run of crash journal."""
+const OFFSET_CRASHED = "offset inference crashed process"
+
+"""Blind spot cause of generated method whose generator gives other code for offset stand-in: spans do not fit it."""
+const OFFSET_UNMAPPED = "generator gave other code for offset stand-in"
 
 """
 Groups of argument `positions` of `method` linked through type variables their declared types share. Variable bounded by
@@ -592,21 +600,43 @@ function lowered_indexing(method::Method)::Bool
 end
 
 """
-Unproven indices of unit `typed` with `walk` (`types.md`, Index proof), and blind spots: method infers again with offset
-stand-ins, and proof runs on that code. Method without indexing in typed or lowered code, and method that rejects offset
-stand-ins give none. Generated method that accepts offset stand-in gives blind spot `OFFSET_GENERATED`: one-based
-inference can drop its indexing branch. No code gives `OFFSET_UNINFERRED`.
+Offset inference of unit `typed` at `signature` in `world`, or blind spot cause: `OFFSET_CRASHED` when key crashed earlier
+run of `journal`, `OFFSET_UNINFERRED` when inference gives no code, `OFFSET_UNMAPPED` when generator gives other code
+than for unit. Journal records start and finish, as for first inference: generator can abort process on offset
+stand-in. `nothing` journal records none.
 """
-function unit_indices(typed::TypedCode, walk::Walk, interpreter::CC.NativeInterpreter)::Tuple{Vector{UnprovenIndex}, Vector{BlindSpot}}
+function offset_inference(typed::TypedCode, signature::Type, journal::Union{Nothing, Inference.Journal}, world::UInt)::Union{String, Inference.Output}
     method = typed.site.method
-    generated = Base.hasgenerator(method)
-    (generated || indexes_stand_in(walk) || lowered_indexing(method)) || return UnprovenIndex[], BlindSpot[]
+    key = "offset " * Inference.entry_key(method, signature)
+    isnothing(journal) || !(key in journal.crashed) || return OFFSET_CRASHED
+    isnothing(journal) || Inference.record!(journal, Inference.Record(key, Inference.method_label(method) * " with offset stand-in", false, nothing))
+    inferred = Inference.infer(method, signature)
+    # Spans of unit fit offset code only when both lower alike; generator runs again, so journal covers check.
+    mapped = isnothing(inferred) || !Base.hasgenerator(method) || same_lowered(typed.frame.linfo, first(inferred), world)
+    isnothing(journal) || Inference.record!(journal, Inference.Record(key, "", true, nothing))
+    isnothing(inferred) && return OFFSET_UNINFERRED
+    return mapped ? inferred : OFFSET_UNMAPPED
+end
+
+"""Whether instances `unit` and `offset` have equal lowered code in `world`; generated method runs its generator."""
+function same_lowered(unit::Core.MethodInstance, offset::Core.MethodInstance, world::UInt)::Bool
+    unit_code, offset_code = CC.retrieve_code_info(unit, world), CC.retrieve_code_info(offset, world)
+    return !isnothing(unit_code) && !isnothing(offset_code) && unit_code.code == offset_code.code
+end
+
+"""
+Unproven indices of unit `typed` with `walk` (`types.md`, Index proof), and blind spots: method infers again with offset
+stand-ins (`offset_inference` with `journal`), and proof runs on that code. Method without indexing in typed or lowered
+code, and method that rejects offset stand-ins give none. Generated method always infers again: one-based inference can
+drop its indexing branch.
+"""
+function unit_indices(typed::TypedCode, walk::Walk, interpreter::CC.NativeInterpreter, journal::Union{Nothing, Inference.Journal})::Tuple{Vector{UnprovenIndex}, Vector{BlindSpot}}
+    method = typed.site.method
+    (Base.hasgenerator(method) || indexes_stand_in(walk) || lowered_indexing(method)) || return UnprovenIndex[], BlindSpot[]
     signature = offset_signature(method, typed.signature)
     isnothing(signature) && return UnprovenIndex[], BlindSpot[]
-    # Generator can abort process on new argument types; crash journal guards first inference only.
-    generated && return UnprovenIndex[], [BlindSpot(OFFSET_GENERATED, typed.site.span)]
-    inferred = Inference.infer(method, signature)
-    isnothing(inferred) && return UnprovenIndex[], [BlindSpot(OFFSET_UNINFERRED, typed.site.span)]
+    inferred = offset_inference(typed, signature, journal, walk.world)
+    inferred isa String && return UnprovenIndex[], [BlindSpot(inferred, typed.site.span)]
     offset_walk, lines = frame_walk(last(inferred), method, walk.modules, interpreter, walk.world)
     walk_values!(offset_walk, 2 * length(offset_walk.ir.stmts) + 10)
     return unproven_indices(offset_walk, method, lines, typed.spans), BlindSpot[]

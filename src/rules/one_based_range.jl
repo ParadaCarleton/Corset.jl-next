@@ -68,6 +68,6 @@ function findings(facts::FactSet)::Vector{Finding}
     return found
 end
 
-const ENTRY = RuleEntry(NAME, Group.correctness, [36], Stage.effects, findings)
+const ENTRY = RuleEntry(NAME, Group.composability, [36], Stage.effects, findings)
 
 end

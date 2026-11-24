@@ -177,10 +177,13 @@ function instance(method::Method, signature::Type)::Union{Nothing, Core.MethodIn
 end
 
 """
-Unoptimized typed code of `method` on `signature`, its method instance, result type, compiler edges (callees result
-depends on), control flow with variable types per block, and inference frame; `nothing` when inference gives none.
+Output of `infer`: method instance, unoptimized typed code, result type, compiler edges (callees result depends on),
+control flow with variable types per block, and inference frame.
 """
-function infer(method::Method, signature::Type)::Union{Nothing, Tuple{Core.MethodInstance, Core.CodeInfo, Type, Vector{Any}, Narrowing.Flow, CC.InferenceState}}
+const Output = Tuple{Core.MethodInstance, Core.CodeInfo, Type, Vector{Any}, Narrowing.Flow, CC.InferenceState}
+
+"""Output of inference of `method` on `signature`; `nothing` when inference gives none."""
+function infer(method::Method, signature::Type)::Union{Nothing, Output}
     specialized = instance(method, signature)
     isnothing(specialized) && return nothing
     frame = CC.typeinf_frame(CC.NativeInterpreter(), specialized, false)

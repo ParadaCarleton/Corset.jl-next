@@ -161,7 +161,8 @@ Each index into array needs proof unless inferred `axes` type of array is `OneTo
 - Index argument stays caller's index through `i ± k`. Choice (`min`, `clamp`, range bound) of argument and literal is absolute: `x[1:i]` needs proof.
 - In choice, index argument matches any array: `min(i, lastindex(x))` indexes `x`, `min(i, firstindex(y))` indexes `y`.
 - Proof reads lowered and typed code for indexing: inference with one-based stand-in can drop branch on `firstindex(x) == 1`.
-- Generated method that accepts offset stand-in, or no code with offset stand-in: blind spot. Generator does not run again on new types.
+- Crash journal records offset inference: generator can abort process on new types. Crashed key gives blind spot, as does no code.
+- Generator that gives other code for offset stand-in: blind spot. Spans of first inference fit only same lowered code.
 - Arguments that share type variable (`x::T, y::T`) take offset stand-in together.
 - Midpoint `(lo + hi) ÷ 2` is no proof: sum of two indices overflows on axes near `typemin`.
 - Other arithmetic (`*`, `÷`, `mod`, shifts) gives absolute number: heap parent `i ÷ 2` assumes one-based axes.
