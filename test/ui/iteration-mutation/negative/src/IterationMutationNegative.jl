@@ -45,6 +45,14 @@ function copy_into!(target::Vector{Int}, source::Vector{Int})
     return target
 end
 
+# `.=` into indexed array writes array, not index operand that loop iterates.
+function zero_at!(values::Vector{Float64}, indices::Vector{Int})
+    for i in indices
+        values[indices] .= 0.0
+    end
+    return values
+end
+
 # Write after loop ends.
 function append_total!(xs::Vector{Int})
     total = 0

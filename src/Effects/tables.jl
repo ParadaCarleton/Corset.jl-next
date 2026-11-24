@@ -26,6 +26,12 @@ const ALIAS_FUNCTIONS = Base.IdSet{Any}(
 """Alias functions whose result is element or pointer, not view: iterating result never iterates operand (F48)."""
 const ELEMENT_ALIASES = Base.IdSet{Any}(Any[first, last, only, pointer, Base.cconvert, Base.unsafe_convert])
 
+"""Index functions of `.=` target (`a[i] .= x`) and `@views`: view of array, or element for scalar index (`view_call`)."""
+const DOT_VIEWS = Base.IdSet{Any}(Any[Base.dotview, Base.maybeview])
+
+"""View functions whose operands after first are indices: view lies beneath first operand and holds index operands."""
+const INDEX_VIEWS = Base.IdSet{Any}(Any[view, Base.dotview, Base.maybeview])
+
 """`!` functions that change size or key set of collection (Base docstrings): loop over it can skip or repeat elements (F48)."""
 const RESIZE_FUNCTIONS = Base.IdSet{Any}(
     Any[

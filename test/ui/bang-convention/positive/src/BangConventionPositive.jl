@@ -4,6 +4,10 @@ module BangConventionPositive
 # Writes argument without `!`.
 normalize(v::Vector{Float64}) = (v ./= sum(v); v)
 
+# `.=` into indexed argument writes it: view for range, element for scalar index.
+zero_head(v::Vector{Float64}) = (v[1:2] .= 0.0; v)
+zero_first(rows::Vector{Vector{Float64}}) = (rows[1] .= 0.0; rows)
+
 # Writes package global that other method reads.
 const TOTAL = Ref(0)
 record(x::Int) = (TOTAL[] += x; nothing)

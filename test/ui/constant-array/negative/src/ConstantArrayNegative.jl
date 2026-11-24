@@ -18,4 +18,16 @@ unary(n::Int) = (a = zeros(n, n); b = *(a); b[1, 1] = 1.0; sum(a))
 head(a::Vector{Float64}) = view(a, 1:2)
 headed(n::Int) = (a = zeros(n); head(a) .= 1.0; sum(a))
 
+block(x::Vector{Float64}) = (a = zeros(length(x) + 1); a[1:end-1] .= x; sum(a))
+
+function marked(groups::Vector{Vector{Int}}, n::Int)
+    seen = falses(n)
+    total = 0
+    for group in groups
+        total += count(view(seen, group))
+        seen[group] .= true
+    end
+    return total
+end
+
 end

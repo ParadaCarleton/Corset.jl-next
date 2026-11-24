@@ -24,6 +24,13 @@ returned(n::Int) = Vector{Float64}(undef, n)
 settled(a::Vector{Float64}) = a
 settled_fill(n::Int) = (a = Vector{Float64}(undef, n); fill!(settled(a), 0.0); sum(a))
 
+# `@inbounds` view skips bounds check: it reads no index.
+unchecked(values::Vector{Float64}) = (indices = Vector{Int}(undef, 2); v = @inbounds view(values, indices); length(v))
+
+# `.=` into every element of array writes it whole.
+spliced(x::Vector{Float64}) = (a = Vector{Float64}(undef, length(x)); a[1:end] .= x; sum(a))
+cleared(n::Int) = (a = Matrix{Float64}(undef, n, n); a[:, :] .= 0.0; sum(a))
+
 # `isassigned` tests element without read.
 assigned(n::Int) = (a = Vector{String}(undef, n); isassigned(a, 1))
 
