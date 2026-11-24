@@ -253,7 +253,9 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
     end
     if builds_new(callee, length(operands))
         # Copy keeps unset slots of reference elements unread: `copy(Vector{String}(undef, 2))` throws no `UndefRefError`.
-        slot_copy(callee) && !Base.allocatedinline(element_type(held)) && return [(ArrayEventKind.escape, Coverage.unknown, Int[])]
+        references = !(held isa DataType && Base.allocatedinline(element_type(held)))
+        reads = reads_slots(callee, Any[operand_type(walk, operand) for operand in operands], held)
+        slot_copy(callee) && references && !reads && return [(ArrayEventKind.escape, Coverage.unknown, Int[])]
         return passed(false)
     end
     # Other result can be operand itself (`float(a)`, package `pass(a) = a`) or hold it.
@@ -269,8 +271,26 @@ result type (`vcat` of stand-in) holds no operand then.
 builds_new(@nospecialize(callee::Any), count::Integer)::Bool =
     slot_copy(callee) || callee in COLLECTING || callee in REDUCTIONS || (callee in ARRAY_ARITHMETIC && count >= 2)
 
-"""Whether `callee` copies slots of array operand as they are: `copy`, `vcat`, `hcat`, `Array` and `BitArray` constructors."""
+"""Whether `callee` can copy slots of array operand as they are: `copy`, `vcat`, `hcat`, `Array` and `BitArray` constructors."""
 slot_copy(@nospecialize(callee::Any))::Bool = callee in COPYING || (callee isa Type && callee <: Union{Array, BitArray})
+
+"""
+Whether concatenation `callee` of operands of `types` reads slots of `Array` operand of type `held`. Julia 1.13 throws
+`UndefRefError` on unset slot for `vcat` with operand of two or more dimensions, `hcat` of vectors only or with operand
+of three or more dimensions, and operands of other element types. Unknown dimensions or array type: no read.
+"""
+function reads_slots(@nospecialize(callee::Any), types::AbstractVector, @nospecialize(held::Any))::Bool
+    (callee in (vcat, hcat) && held isa DataType && held <: Array) || return false
+    counts = Int[]
+    for type in types
+        type <: AbstractArray || continue
+        count = dimension_count(type)
+        (type isa DataType && type <: Array && !isnothing(count)) || return false
+        eltype(type) == eltype(held) || return true
+        push!(counts, something(count))
+    end
+    return callee === vcat ? maximum(counts) >= 2 : maximum(counts) >= 3 || all(==(1), counts)
+end
 
 """Whether index `operands` of `dotview` call cover every element of allocation of `extent`: all `Colon`, or one covering range."""
 function whole_view(walk::Walk, operands::AbstractVector{Any}, extent::Extent)::Bool

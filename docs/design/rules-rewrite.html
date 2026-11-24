@@ -1125,7 +1125,11 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 <li>Operand of non-<code>!</code> call escapes when result type can hold array: tuple, constructor, abstract result.</li>
 <li>Operand escapes when result type meets its type: call can return it (<code>float(a)</code>, package <code>pass(a) = a</code>). Unary <code>*(A)</code> returns <code>A</code>.</li>
 <li>Base copy, collect and reduction calls, <code>Array</code> constructors, and arithmetic with two or more operands, read operand whole. Result holds its elements, never operand itself, whatever result type: <code>vcat</code> of stand-in gives wrapper type.</li>
-<li><code>copy</code>, <code>vcat</code>, <code>hcat</code> and <code>Array</code> constructors keep unset slots of reference elements unread: operand of such type escapes.</li>
+<li><code>copy</code>, <code>vcat</code>, <code>hcat</code> and <code>Array</code> constructors can keep unset slots of reference elements unread: operand of such type escapes.
+<ul>
+<li>Concatenation of <code>Array</code> operands reads slots, as Julia 1.13 does: <code>vcat</code> with operand of two or more dimensions, <code>hcat</code> of vectors only or with operand of three or more dimensions, operands of other element types. Unknown dimensions or array type: escape, so no false definite finding.</li>
+</ul>
+</li>
 <li>Type can hold array when element or field type meets array type, at most 3 steps deep. Base storage (<code>Array</code>, <code>Dict</code>, <code>Set</code>) holds elements only; view or wrapper also holds fields (<code>SubArray</code> parent).</li>
 <li>Index operand keeps constant value. Non-constant index keeps nothing.</li>
 </ul>

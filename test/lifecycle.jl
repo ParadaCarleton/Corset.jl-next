@@ -209,3 +209,23 @@ include(joinpath(@__DIR__, "ui", "unwritten-element", "positive", "src", "Unwrit
     # Fill value counts as data in whole read.
     @test UnwrittenElementPositive.half_filled() == 3.0
 end
+
+@testset "concatenation slot reads match Julia" begin
+    a, m, t = Vector{String}(undef, 2), Matrix{String}(undef, 2, 2), Array{String, 3}(undef, 2, 2, 2)
+    cases = [
+        (vcat, (a,)), (vcat, (a, a)), (vcat, (a, "x")), (vcat, (m,)), (vcat, (m, m)), (vcat, (t, t)), (vcat, (Vector{Any}(undef, 2), a)),
+        (hcat, (a,)), (hcat, (a, a)), (hcat, (m,)), (hcat, (m, m)), (hcat, (m, a)), (hcat, (t, t)),
+    ]
+    for (callee, operands) in cases
+        throws = try
+            callee(operands...)
+            false
+        catch error
+            error isa UndefRefError || rethrow()
+            true
+        end
+        types = Any[typeof(operand) for operand in operands]
+        held = typeof(operands[findfirst(operand -> operand isa Array, operands)])
+        @test Effects.reads_slots(callee, types, held) == throws
+    end
+end

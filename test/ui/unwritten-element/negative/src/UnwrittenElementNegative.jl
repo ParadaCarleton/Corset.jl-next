@@ -37,6 +37,7 @@ assigned(n::Int) = (a = Vector{String}(undef, n); isassigned(a, 1))
 # Copy keeps unset reference slots without read.
 copied_slots() = (a = Vector{Any}(undef, 2); copy(a))
 joined_labels(n::Int) = (a = Vector{String}(undef, n); vcat(a, a))
+stacked_labels(n::Int) = (m = Matrix{String}(undef, n, n); hcat(m, m))
 
 full() = (a = zeros(2); a[1] = 1.0; a[2] = 2.0; sum(a))
 
