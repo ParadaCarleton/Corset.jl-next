@@ -1361,6 +1361,14 @@ Row 5 measure on winwsl (`benchmark/names.jl`): warm `effects` against cold `inf
 - #335: range `getindex` copies part of array.
 - #336: `bang-convention` passes macros and `iterate` writes to its state argument.
 - By design: kernel constructor `trace_kernel!(backend, n)` writes `backend` by name trust; global writes need `!`.
+- #340: Base copying calls read array operand whole. Generic `vcat` result type let `zeros` escape (#333 regression): `constant-array` lost `[values; zeros(T, n)]`.
+- #340: `copy`, `vcat` and `hcat` of `undef` reference array keep unset slots. Shape decides read; element promotion stays out, since it can run package code.
+- Name trust blamed `rule` in `stationary_step!(rng, parameters, rule, …, people)`: written argument comes last. Package reorders arguments.
+
+### Update index
+
+- `x[i] += 1` gave two `one-based-range` findings: `setindex!` maps to no syntax node, so its fact has line span.
+- #339: `effects` stage keeps one unproven fact per element: group by IR array, all index values and line.
 
 ### Constant redefinition
 
