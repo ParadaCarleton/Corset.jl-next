@@ -467,13 +467,19 @@ function library_owner(@nospecialize(callee::Any))::Union{Nothing, Symbol}
 end
 
 """
-Whether `!` call of `callee` on `operands` fills array operand: function of `ARRAY_FILLS`, or helper with its name after
-leading underscores (`__rand!`) that takes `AbstractRNG` operand.
+Whether `callee` fills array operand: function of `ARRAY_FILLS`, or helper of `FILL_HELPER_OWNERS` module with its name
+after leading underscores (`Distributions.__rand!`).
 """
-function fill_call(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Bool
+function fill_call(@nospecialize(callee::Any))::Bool
     callee in ARRAY_FILLS && return true
     name = Symbol(lstrip(string(nameof(callee)), '_'))
-    return any(fill -> nameof(fill) === name, ARRAY_FILLS) && any(operand -> rng_operand(walk, operand), operands)
+    any(fill -> nameof(fill) === name, ARRAY_FILLS) || return false
+    owner = parentmodule(callee)
+    while !(nameof(owner) in FILL_HELPER_OWNERS)
+        parentmodule(owner) === owner && return false
+        owner = parentmodule(owner)
+    end
+    return true
 end
 
 """
@@ -484,7 +490,7 @@ table entry. `nothing` when none is left.
 function written_position(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Union{Nothing, Int}
     table = get(WRITE_POSITION, (nameof(callee), length(operands)), nothing)
     !isnothing(table) && library_owner(callee) === :LinearAlgebra && return table
-    filled = fill_call(walk, callee, operands) ? findfirst(operand -> operand_type(walk, operand) <: AbstractArray, operands) : nothing
+    filled = fill_call(callee) ? findfirst(operand -> operand_type(walk, operand) <: AbstractArray, operands) : nothing
     return isnothing(filled) ? next_subject(walk, operands, 1) : something(filled)
 end
 

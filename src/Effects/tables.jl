@@ -10,9 +10,15 @@ const WRITE_POSITION = Dict{Tuple{Symbol, Int}, Int}((:ldiv!, 2) => 2, (:lmul!, 
 
 """
 Random `!` functions that fill array operand: written operand is first array. Distributions adds `rand!(rng, s, x)`,
-which writes `x` after sampler `s`, and helpers `_rand!` and `__rand!` in same order (`fill_call`).
+which writes `x` after sampler `s`.
 """
 const ARRAY_FILLS = Base.IdSet{Any}(Any[Random.rand!, Random.randn!, Random.randexp!])
+
+"""
+Modules whose helpers `_rand!` and `__rand!` keep `rand!(rng, s, x)` order (`fill_call`). Module of helper or any
+module above it counts.
+"""
+const FILL_HELPER_OWNERS = Set{Symbol}([:Distributions])
 
 """Package of LinearAlgebra standard library: owner check of table entries (`library_owner`)."""
 const LINEAR_ALGEBRA = Base.PkgId(Base.UUID("37e2e46d-f89d-539d-b4ee-838fcccc9c8e"), "LinearAlgebra")

@@ -1,6 +1,8 @@
 # runic: off
 module BangConventionPositive
 
+using Random: AbstractRNG
+
 # Writes argument without `!`.
 normalize(v::Vector{Float64}) = (v ./= sum(v); v)
 
@@ -15,9 +17,11 @@ shifted(x::Vector{Float64}) = shift!(Shift(1.0), x)
 zero_head(v::Vector{Float64}) = (v[1:2] .= 0.0; v)
 zero_first(rows::Vector{Vector{Float64}}) = (rows[1] .= 0.0; rows)
 
-# Helper named like `rand!` without RNG operand writes its first operand.
+# Helper named like `rand!` outside Distributions writes its first operand, RNG or not.
 _rand!(state::Base.RefValue{Int}, samples::Vector{Int}) = (state[] += sum(samples); state)
 update(state::Base.RefValue{Int}, samples::Vector{Int}) = _rand!(state, samples)
+_rand!(rng::AbstractRNG, state::Base.RefValue{Int}, samples::Vector{Int}) = (state[] += rand(rng, samples); state)
+update_with(rng::AbstractRNG, state::Base.RefValue{Int}, samples::Vector{Int}) = _rand!(rng, state, samples)
 
 # Writes package global that other method reads.
 const TOTAL = Ref(0)
