@@ -57,6 +57,7 @@ include("rules/short_circuit_statement.jl")
 include("rules/slice_copy.jl")
 include("rules/stateful_iterate.jl")
 include("rules/stateful_reuse.jl")
+include("rules/temporary_array.jl")
 include("rules/ternary_statement.jl")
 include("rules/threadid_buffer.jl")
 include("rules/type_disruption.jl")
@@ -128,6 +129,7 @@ const REGISTRY = RuleEntry[
     SliceCopy.ENTRY,
     StatefulIterate.ENTRY,
     StatefulReuse.ENTRY,
+    TemporaryArray.ENTRY,
     TernaryStatement.ENTRY,
     ThreadidBuffer.ENTRY,
     TypeDisruption.ENTRY,

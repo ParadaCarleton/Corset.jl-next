@@ -64,6 +64,12 @@ end
     @test only_events(:copied_head) == [(WRITE, ELEMENT, [1], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
     @test only_events(:shape_only) == [(SHAPE, UNKNOWN, Int[], SURE, false), (SHAPE, UNKNOWN, Int[], SURE, false)]
     @test [event.callee for event in only(arrays(:shape_only)).events] == [:length, :size]
+    @test [event.position for event in only(arrays(:shape_only)).events] == [1, 1]
+    @test only(only(arrays(:copied_into)).events).position == 2
+    @test only(only(arrays(:keyword_sum)).events).position == 1
+    # Operator through local alias is constant in IR.
+    @test only(only(arrays(:concatenated)).events).operator == :vcat
+    @test isnothing(only(only(arrays(:keyword_sum)).events).operator)
     @test only_events(:viewed) == [(WRITE, WHOLE, Int[], SURE, true), (READ, WHOLE, Int[], SURE, false)]
     @test only_events(:resized) == [(RESIZE, UNKNOWN, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
     # Collection that keeps array is escape of unknown extent.
@@ -109,6 +115,8 @@ end
     for name in (:fill_each, :fill_counted, :fill_cartesian)
         @test only_events(name) == shaped
     end
+    # Fill loop write is no call: it has no operand position.
+    @test isnothing(only(arrays(:fill_each)).events[2].position)
     for name in (:fill_source, :fill_extent)
         @test only_events(name) == shaped[2:3]
     end
@@ -141,8 +149,8 @@ end
 
 @testset "units merge per method" begin
     span(first_byte::Int)::Facts.Span = Facts.Span("case.jl", first_byte, first_byte, Facts.Precision.line)
-    event(path::ArrayPath.T)::Facts.ArrayEvent = Facts.ArrayEvent(span(5), READ, WHOLE, Int[], path, :sum, false, 2)
-    write = Facts.ArrayEvent(span(3), WRITE, ELEMENT, [1], SURE, :setindex!, false, 1)
+    event(path::ArrayPath.T)::Facts.ArrayEvent = Facts.ArrayEvent(span(5), READ, WHOLE, Int[], path, :sum, 1, nothing, false, 2)
+    write = Facts.ArrayEvent(span(3), WRITE, ELEMENT, [1], SURE, :setindex!, 1, nothing, false, 1)
     life(dimensions::Vector{Int}, events::Vector{Facts.ArrayEvent}, rebind::Union{Nothing, Facts.Rebind})::ArrayLife =
         ArrayLife(span(1), AllocationKind.filled, dimensions, events, rebind)
     merged = Corset.Lifecycle.merged_array([life([2], [event(SURE)], Facts.Rebind(span(9), true)), life([3], [event(LOOP), write], Facts.Rebind(span(9), false))])
