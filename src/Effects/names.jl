@@ -183,6 +183,18 @@ function index_step(walk::Walk, @nospecialize(callee::Any), operands::AbstractVe
     return !isnothing(found) && something(found) isa Int ? Step.Position(something(found)) : Step.Element()
 end
 
+"""
+Whether call of `callee` with `operands` gives view of its operands: `ALIAS_FUNCTIONS` callee, or `DOT_VIEWS` callee
+unless it indexes non-array or takes scalar indices, where it calls `getindex` (Base `maybeview`).
+"""
+function view_call(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Bool
+    Base.require_one_based_indexing(operands)
+    callee in ALIAS_FUNCTIONS && return true
+    (callee in DOT_VIEWS && !isempty(operands)) || return false
+    typeintersect(operand_type(walk, first(operands)), AbstractArray) === Union{} && return false
+    return !all(operand -> operand_type(walk, operand) <: Union{Number, Base.AbstractCartesianIndex}, @view(operands[2:end]))
+end
+
 """Value of IR statement `index` in `walk` from its operands (`effects.md`, Roots)."""
 function statement_value(walk::Walk, index::Integer)::Value
     pointing(walk, CC.widenconst(walk.ir.stmts[index][:type])) || return NO_VALUE
@@ -261,13 +273,17 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
         step = callee === getfield || callee === getproperty ? (length(operands) >= 2 ? field_step(walk, operands[2]) : nothing) : Step.Element()
         return load_value(walk, object, step)
     end
+    viewing = view_call(walk, callee, operands)
     # Range, array or `Colon` index copies part of array (`a[1:2]`): new array that holds elements of `a`.
     callee === getindex && slice(walk, operands) && return new_value(walk, operands, type)
-    callee in (getindex, first, last, only) && return load_value(walk, object, index_step(walk, callee, operands))
-    if callee in ALIAS_FUNCTIONS
+    (callee in (getindex, first, last, only) || (callee in DOT_VIEWS && !viewing)) && return load_value(walk, object, index_step(walk, callee, operands))
+    if viewing
+        # View lies beneath its array alone and holds index operands: `values[indices] .= 0` writes `values` only.
+        indexing = callee in INDEX_VIEWS
         # Result holds every operand at once (`zip(a, b)`): fresh operand leaves certainty of caller operand.
-        values = Value[operand_value(walk, operand) for operand in operands if !callable(walk, operand)]
+        values = Value[operand_value(walk, operand) for operand in (indexing ? operands[1:1] : operands) if !callable(walk, operand)]
         places, inner = reduce(union, (value.places for value in values); init = Set{Place.Type}()), reduce(union, (value.inner for value in values); init = Set{Place.Type}())
+        indexing && foreach(operand -> union!(inner, held(operand_value(walk, operand))), @view(operands[2:end]))
         return Value(places, inner, any(value -> value.fresh && !isempty(value.places), values), any(value -> value.untracked, values))
     end
     # Iteration result: tuple of element and state.
