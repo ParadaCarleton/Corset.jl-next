@@ -51,6 +51,9 @@ only_events(name::Symbol)::Vector{Tuple{ArrayEventKind.T, Coverage.T, Vector{Int
     @test only(arrays(:tuple_size)).dimensions == [2, 3]
     # Package call result is no allocation of caller; package method reports its own.
     @test !any(found -> found.site.method.name == :from_helper, FACTS.methods)
+    # Generated method lowers other code per unit: its arrays are blind spot.
+    @test !any(found -> found.site.method.name == :generated_sum, FACTS.methods) && CASES.generated_sum([1.0]) == 1.0
+    @test [spot.cause for spot in FACTS.blind_spots] == [Corset.Lifecycle.GENERATED_ARRAY]
     @test only_events(:helper) == [(ESCAPE, UNKNOWN, Int[], SURE, false)]
     @test all(found -> all(array -> issorted(event.order for event in array.events), found.arrays), FACTS.methods)
 end
@@ -81,6 +84,9 @@ end
     @test events(last(arrays(:second_output))) == [(ESCAPE, UNKNOWN, Int[], SURE, false), (READ, WHOLE, Int[], SURE, false)]
     @test all(==(6.0), (CASES.functor_first([1.0, 2.0]), CASES.mapped_functor([1.0, 2.0]), CASES.reduced_functors([1.0, 2.0])))
     @test CASES.second_output() == 6.0
+    # Mapping gives both allocations of `twins` one span.
+    @test allequal(array.site for array in arrays(:twins))
+    @test events.(arrays(:twins)) == [[(WRITE, WHOLE, Int[], SURE, false)], [(READ, WHOLE, Int[], SURE, false)]]
     @test only_events(:filled_whole) == [(WRITE, WHOLE, Int[], SURE, false), (READ, WHOLE, Int[], SURE, false)]
     @test first(only(arrays(:filled_whole)).events).callee == :fill!
     @test only_events(:unknown_write) == [(READ, WHOLE, Int[], SURE, false), (WRITE, UNKNOWN, Int[], SURE, false), (READ, ELEMENT, [1], SURE, false)]
@@ -162,11 +168,13 @@ end
     event(path::ArrayPath.T)::Facts.ArrayEvent = Facts.ArrayEvent(span(5), READ, WHOLE, Int[], path, :sum, 1, nothing, false, 2)
     write = Facts.ArrayEvent(span(3), WRITE, ELEMENT, [1], SURE, :setindex!, 1, nothing, false, 1)
     life(dimensions::Vector{Int}, events::Vector{Facts.ArrayEvent}, rebind::Union{Nothing, Facts.Rebind})::ArrayLife =
-        ArrayLife(span(1), AllocationKind.filled, dimensions, events, rebind)
+        ArrayLife(span(1), 1, AllocationKind.filled, dimensions, events, rebind)
     merged = Corset.Lifecycle.merged_array([life([2], [event(SURE)], Facts.Rebind(span(9), true, true, false)), life([3], [event(LOOP), write], Facts.Rebind(span(9), false, true, true))])
     # Each event once with its worst path, in statement order; event that one unit lacks is `branch` at best.
     @test events(merged) == [(WRITE, ELEMENT, [1], BRANCH, false), (READ, WHOLE, Int[], LOOP, false)]
     @test events(Corset.Lifecycle.merged_array([life([2], [write], nothing), life([2], [write], nothing)])) == [(WRITE, ELEMENT, [1], SURE, false)]
+    # Source statement tells apart allocations of one span, also when unit lacks one of them.
+    @test Corset.Lifecycle.array_key(life([2], [write], nothing)) != Corset.Lifecycle.array_key(ArrayLife(span(1), 2, AllocationKind.filled, [2], [write], nothing))
     # Dimensions only when units agree.
     @test isnothing(merged.dimensions) && merged.rebind == Facts.Rebind(span(9), false, true, false)
     @test Corset.Lifecycle.merged_array([life([2], [event(BRANCH)], nothing), life([2], [event(SURE)], nothing)]).dimensions == [2]

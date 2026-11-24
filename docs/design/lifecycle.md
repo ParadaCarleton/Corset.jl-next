@@ -80,8 +80,8 @@ Rebind pair: loop header `φ` joins allocation before loop with broadcast in loo
 
 ### Facts
 
-- Per package method: `ArrayLife` per allocation: site span, kind, constant dimensions, events in order, rebind pair.
-- Units of method merge by allocation span. Events merge by all fields but path; path of merged event is worst over units.
+- Per package method: `ArrayLife` per allocation: site span, source statement, kind, constant dimensions, events in order, rebind pair.
+- Units of method merge by allocation span and source statement: mapping can give two allocations one span. Array of generated method is `lifecycle` blind spot: its units lower other code. Events merge by all fields but path; path of merged event is worst over units.
 - Event that one unit lacks is `branch` at best: that unit skips it.
 - Dimensions and rebind pair stay only when all units agree. Each rebind condition holds only when it holds in each unit.
 - Definite verdict reads `sure` events only. `branch`, `loop` or `view` event that can change verdict gives `possible`.

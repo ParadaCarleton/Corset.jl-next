@@ -223,7 +223,7 @@ function analyze_loaded(path::String, settings::Settings, sources::Discovery.Sou
         [Diagnostic(problem, Level.deny, Package.LOAD_SOURCE) for problem in loaded.errors];
         [Diagnostic(problem, Level.deny, OptOuts.SOURCE) for problem in problems]
     ]
-    blind_spots = [sources.blind_spots; loaded.blind_spots; inference_spots; effects_spots]
+    blind_spots = [sources.blind_spots; loaded.blind_spots; inference_spots; effects_spots; isnothing(lifecycle) ? BlindSpot[] : lifecycle.blind_spots]
     return facts, Analysis(root, [file.path for file in sources.files], leveled, keys, checks, blind_spots)
 end
 
