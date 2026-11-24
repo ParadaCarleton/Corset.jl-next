@@ -31,6 +31,7 @@ normalize!(v::Vector{Float64}) = (v ./= sum(v); v)
 ## Limitations
 Fix is manual: rename definition, call sites and exports by hand.
 Constructor and callable object pass: their name cannot take `!`. `__init__` passes: it sets state once, at load.
+Macro passes: it owns expression it rewrites. `iterate` may write its state: loop passes state back and sees nothing else.
 Write that only may happen (`possible`) gives no finding.
 `spurious` needs compiler proof of no write for every unit. Method that always throws on stand-ins passes.
 """
@@ -82,6 +83,9 @@ function state_write(access::Access, method::Method, touched::AbstractDict{Globa
     return !cache_write(access, method, touched)
 end
 
+"""Whether `access` of method of `callee` writes `iterate` state: loop that passes state back owns it."""
+iteration_state(callee::Function, access::Access)::Bool = callee === iterate && place_root(access.place) == Root.Parameter(3)
+
 """Whether name trust covers `access` of `method`: write to subject of method of name-trust function (`name_writes`)."""
 function trusted_write(method::MethodEffects, access::Access)::Bool
     method.name_writes || return false
@@ -122,13 +126,15 @@ function findings(facts::FactSet)::Vector{Finding}
     touched = owners(effects, modules)
     for method in effects.methods
         callee = method_function(method.site.method)
-        (isnothing(callee) || startswith(string(nameof(callee)), '#') || nameof(callee) === :__init__) && continue
+        isnothing(callee) && continue
         name = string(nameof(callee))
+        (startswith(name, '#') || startswith(name, '@') || name == "__init__") && continue
         if method.name_writes && endswith(name, "!")
             (endswith(name, "!!") || nameof(callee) in HINTS) && continue
             method.effect_free && isempty(method.writes) && method.new_result && push!(found, spurious_finding(method, callee, modules))
         else
-            writes = sort([access for access in method.writes if state_write(access, method.site.method, touched) && !trusted_write(method, access)]; by = access -> access.cause.first_byte)
+            kept = [access for access in method.writes if state_write(access, method.site.method, touched) && !trusted_write(method, access) && !iteration_state(callee, access)]
+            writes = sort(kept; by = access -> access.cause.first_byte)
             isempty(writes) || push!(found, missing_finding(method, callee, first(writes), modules))
         end
     end

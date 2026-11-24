@@ -122,6 +122,7 @@ Port rules of local effect-rules stack onto name-tier facts.
 - F86 is definite only when compiler proves `effect_free` for every unit. Else name-trust none gives `possible`.
 - Method added to other module's `!` function: no rename fix. Writes nothing on any path: F86 finding, fix `manual`.
 - F86 exempts `sizehint!` (hint) and `!!` functions (mutate when possible, else return new value).
+- F53 exempts macros (own expression they rewrite) and `iterate` writes to its state argument (loop owns state).
 - Definite write gives `definite` finding. `possible` findings stay off until quality gate passes.
 - F86 passes method whose result is `nothing`, argument, or value that holds or lies below argument (`new_result` fact).
 - Method added to Base IO, synchronization, RNG function or `iterate` may write (`name_writes` fact).
