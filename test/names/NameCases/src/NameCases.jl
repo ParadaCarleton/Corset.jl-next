@@ -1022,6 +1022,37 @@ function hold_independent(guard::ReentrantLock, flag::Bool, other::Bool, key::St
     end
     return total + parse(Int, key)
 end
+"""Write line to `io`."""
+write_line(io::IO)::Nothing = (println(io, "x"); nothing)
+"""Stream that `φ` node holds: package call with chosen value can release it."""
+function hold_chosen(path::String, flag::Bool)::Nothing
+    stream = open(path)
+    target = flag ? stream : devnull
+    write_line(target)
+    close(stream)
+    return nothing
+end
+"""Scope for `hold_scoped`."""
+const HOLD_SCOPE = Base.ScopedValues.ScopedValue(0)
+"""Throw inside scope inside `try`: scope catches, then `finally` releases."""
+function hold_scoped(path::String)::Nothing
+    stream = open(path)
+    try
+        Base.ScopedValues.@with HOLD_SCOPE => 1 println(stream, HOLD_SCOPE[])
+    finally
+        close(stream)
+    end
+    return nothing
+end
+"""Five `trylock` calls: fifth forks past limit."""
+function hold_tries!(guard::ReentrantLock, key::String)::Int
+    trylock(guard)
+    trylock(guard)
+    trylock(guard)
+    trylock(guard)
+    trylock(guard)
+    return parse(Int, key)
+end
 """Failed `trylock` holds nothing; success side releases in `finally`."""
 function hold_tried_finally(guard::ReentrantLock, key::String)::Int
     trylock(guard) || return 0

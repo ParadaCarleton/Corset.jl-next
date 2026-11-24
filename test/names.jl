@@ -198,10 +198,34 @@ end
     @test hold_shape(:hold_independent) == [(EffectKind.synchronization, DEFINITE)]
     # Nested acquire and release can each throw while other lock is held; throw after both releases holds nothing.
     @test hold_shape(:hold_elements_balanced!) == [(EffectKind.synchronization, DEFINITE), (EffectKind.synchronization, DEFINITE)]
-    # Release in `finally`, function forms, same condition, `trylock` sides, loop pass, code that cannot throw.
-    for name in (:hold_finally!, :hold_forms, :hold_same_condition, :hold_tried_finally, :hold_polled, :hold_each!, :hold_safe, :hold_helper!)
+    # Package call that takes `φ` node of stream can release stream.
+    @test hold_shape(:hold_chosen) == [(EffectKind.io, POSSIBLE)]
+    # Forks past limit share path; second `trylock` throws while first holds.
+    @test hold_shape(:hold_tries!) == [(EffectKind.synchronization, DEFINITE)]
+    # Release in `finally` (scope inside `try` included), function forms, same condition, `trylock` sides, loop pass, code that cannot throw.
+    for name in (:hold_finally!, :hold_scoped, :hold_forms, :hold_same_condition, :hold_tried_finally, :hold_polled, :hold_each!, :hold_safe, :hold_helper!)
         @test isempty(hold_shape(name))
     end
+end
+
+@testset "place cover" begin
+    root, top = Root.Parameter(1), Place.At(Root.Parameter(1), Facts.NO_STEPS)
+    field = Effects.deeper(top, Step.Field(:guard))
+    @test Effects.covers(top, field) && !Effects.covers(field, top)
+    @test Effects.covers(Place.Deep(root), field) && !Effects.covers(Place.Deep(root), Place.Deep(Root.Parameter(2)))
+    @test !Effects.covers(top, Place.Deep(root))
+end
+
+@testset "path join past limit" begin
+    resource, paths = (7, EffectKind.synchronization), Effects.Path[]
+    # Five paths with other counts; one holds nothing.
+    for count in 0:4
+        counts = count == 0 ? Effects.Counts() : Effects.Counts(resource => Effects.Hold(count, count))
+        Effects.add_path!(paths, Effects.Path(counts, Dict{Any, Bool}(:flag => isodd(count)), Set{Any}(), false))
+    end
+    joined = only(paths)
+    @test joined.counts == Effects.Counts(resource => Effects.Hold(nothing, 1))
+    @test isempty(joined.conditions) && joined.dropped == Set{Any}([:flag]) && !joined.blurred
 end
 
 """Writing function and confidence of each self-alias call of fixture method `name`."""
