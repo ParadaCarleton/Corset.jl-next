@@ -99,6 +99,8 @@ Write sources, in order:
    - Invoking calls: direct call, and function that calls its function arguments (`foreach`, `map`, leading callable of `!` call).
    - Builtins, constructors, tuples, alias functions and stored operands of `!` calls never invoke it. Closure that only escapes writes nothing in its builder.
    - Call that compiler proves `effect_free` runs no closure that writes caller state (`hash(f)`). `@assume_effects` in method or its callee voids that proof.
+   - Closure body write below global binding, or assignment to global, writes that global. Keyword tuple of `Core.kwcall` passes its closures on.
+   - Call fact keeps closure write kinds apart from other writes of call, such as consumed stateful iterator. They count writes to fresh captured objects too.
 6. Other call: no write. Call of function value without name (callable argument or field) writes nothing too: Base names higher-order functions without `!` (`map`, `foreach`).
 
 - Value with more than one root gives `possible` write on each root: branch decides which object changes.

@@ -94,9 +94,12 @@ struct Event
     write::Bool
 end
 
-"""Write of closure method on captured field `field`, of `kind`; `exact` when local it writes through holds one object."""
-struct CapturedWrite
-    field::Int
+"""
+Write of closure method, of `kind`: `target` is position of captured field it writes through, or global binding it
+writes below. `exact` when local it writes through holds one object.
+"""
+struct ClosureWrite
+    target::Union{Int, GlobalRef}
     kind::EffectKind.T
     exact::Bool
 end
@@ -114,7 +117,7 @@ struct Walk
     stored::Dict{Place.Type, Set{Place.Type}}
     referent::IdDict{Any, Bool}
     modules::Set{Module}
-    closures::IdDict{Any, Vector{CapturedWrite}}
+    closures::IdDict{Any, Vector{ClosureWrite}}
     claims::IdDict{Union{Method, Core.MethodInstance}, Bool}
     world::UInt
 end
@@ -511,25 +514,29 @@ const ELSEWHERE = Place.At(Root.Elsewhere(), NO_STEPS)
 """Place of `stdout` binding, which printing without `IO` operand writes."""
 const STDOUT_PLACE = Place.At(Root.Global(GlobalRef(Base, :stdout)), NO_STEPS)
 
-"""Events of IR statement `index` in `walk` (`effects.md`, Writes and Reads)."""
-function statement_events(walk::Walk, index::Integer)::Vector{Event}
+"""
+Events of IR statement `index` in `walk` (`effects.md`, Writes and Reads), and writes of package closures call invokes
+(`closure_events`).
+"""
+function statement_events(walk::Walk, index::Integer)::Tuple{Vector{Event}, Vector{ClosureWrite}}
     statement = walk.ir.stmts[index][:stmt]
-    statement isa GlobalRef && return global_reads(walk, statement)
+    statement isa GlobalRef && return global_reads(walk, statement), ClosureWrite[]
     found = Event[]
     for reference in CC.userefs(statement)
         operand = reference[]
         operand isa GlobalRef && append!(found, global_reads(walk, operand))
     end
-    statement isa Expr || return found
+    statement isa Expr || return found, ClosureWrite[]
     if statement.head === :foreigncall
         count = length(statement.args[3]::Core.SimpleVector)
         for operand in statement.args[6:(5 + count)]
             append!(found, (Event(event.place, true, event.kind, Confidence.possible, true) for event in value_events(walk, operand_value(walk, operand), EffectKind.memory, true, true)))
         end
     elseif statement.head === :call
-        append!(found, call_events(walk, statement, index))
+        events, writes = call_events(walk, statement, index)
+        return append!(found, events), writes
     end
-    return found
+    return found, ClosureWrite[]
 end
 
 """Read of global `binding` (`effects.md`, Reads): non-constant binding, or constant whose value holds mutable object."""
@@ -540,12 +547,12 @@ function global_reads(walk::Walk, binding::GlobalRef)::Vector{Event}
 end
 
 """
-Events of call `call`, statement `index` (`effects.md`, Writes, sources 1 to 3, 5 and 6, and Reads). Call that
-compiler proves `effect_free` invokes no closure that writes caller state.
+Events of call `call`, statement `index` (`effects.md`, Writes, sources 1 to 3, 5 and 6, and Reads), and writes of
+package closures it invokes. Call that compiler proves `effect_free` invokes no closure that writes caller state.
 """
-function call_events(walk::Walk, call::Expr, index::Integer)::Vector{Event}
+function call_events(walk::Walk, call::Expr, index::Integer)::Tuple{Vector{Event}, Vector{ClosureWrite}}
     callee, operands = call_parts(walk, call)
-    isnothing(operands) && return splat_events(walk, callee, call)
+    isnothing(operands) && return splat_events(walk, callee, call), ClosureWrite[]
     found = Event[]
     if callee in STORE_BUILTINS
         append!(found, value_events(walk, operand_value(walk, operands[1]), EffectKind.memory, true, false))
@@ -561,9 +568,10 @@ function call_events(walk::Walk, call::Expr, index::Integer)::Vector{Event}
     else
         append!(found, exception_events(walk, callee, operands))
     end
-    append!(found, closure_events(walk, call, index, callee, operands))
+    closures, writes = closure_events(walk, call, index, callee, operands)
+    append!(found, closures)
     append!(found, read_events(walk, callee, operands))
-    return found
+    return found, writes
 end
 
 """Events of splatted call: `!` callee or exception callee writes every operand place, `possible`: splat hides positions."""
@@ -767,38 +775,6 @@ function generic_match(walk::Walk, @nospecialize(signature::Type), @nospecialize
     return length(matches) == 1 ? Confidence.definite : Confidence.possible
 end
 
-"""
-Writes of package closures that call `call`, statement `index`, of `callee` with `operands` can invoke (`effects.md`,
-Writes, source 5): closure body writes through captured fields map onto operands its `new` statement captured.
-"""
-function closure_events(walk::Walk, call::Expr, index::Integer, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Event}
-    found, closures = Event[], filter(!isnothing, Union{Nothing, Expr}[closure_new(walk, operand) for operand in invoked_operands(walk, call, callee, operands)])
-    isempty(closures) && return found
-    proven_call(walk, index, call, call_callee(walk, call)) && return found
-    for built in closures
-        for write in closure_writes!(walk, constant_value(walk, built.args[1])::DataType)
-            write.field + 1 <= length(built.args) || continue
-            events = value_events(walk, operand_value(walk, built.args[write.field + 1]), write.kind, true, true)
-            append!(found, write.exact ? events : [Event(event.place, event.below, event.kind, Confidence.possible, true) for event in events])
-        end
-    end
-    return found
-end
-
-"""
-Operands that call `call` of `callee` can invoke: called function, and operands of function that calls its function
-arguments. Builtin, constructor, tuple, alias and choice function return or store operands; `!` call stores
-operands after written one.
-"""
-function invoked_operands(walk::Walk, call::Expr, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Any}
-    Base.require_one_based_indexing(operands)
-    invoked = Any[call.args[1]]
-    constant_value(walk, call.args[1]) === Core.kwcall && length(call.args) >= 3 && push!(invoked, call.args[3])
-    (callee isa Core.Builtin || callee isa Type || callee === Core.tuple || callee in ALIAS_FUNCTIONS || callee in CHOICE_FUNCTIONS) && return invoked
-    written = bang_function(callee) ? written_position(walk, callee, operands) : nothing
-    return append!(invoked, operands[1:(something(written, length(operands) + 1) - 1)])
-end
-
 """Whether compiler proves call statement `index` of `walk` with `callee` `effect_free`; claim of callee (`@assume_effects`) voids proof."""
 proven_call(walk::Walk, index::Integer, call::Expr, callee::Callee.Type)::Bool = walk.proven[index] && !callee_claims(walk, call, callee)
 
@@ -822,115 +798,4 @@ function match_claims(walk::Walk, match::Core.MethodMatch)::Bool
     match.method.module === StandIns && return false
     key = Base.hasgenerator(match.method) ? CC.specialize_method(match) : match.method
     return get!(() -> claims_effect_free(match.method, CC.retrieve_code_info(CC.specialize_method(match), walk.world)), walk.claims, key)
-end
-
-"""`new` statement of package closure that IR `operand` holds; `nothing` for other operand."""
-function closure_new(walk::Walk, @nospecialize(operand::Any))::Union{Nothing, Expr}
-    operand isa Core.SSAValue || return nothing
-    built = walk.ir.stmts[operand.id][:stmt]
-    built isa Expr || return nothing
-    built.head === :new || return nothing
-    type = constant_value(walk, built.args[1])
-    return type isa DataType && type <: Function && parentmodule(type) in walk.modules ? built : nothing
-end
-
-"""
-Captured fields of closure `type` that its methods write, by field position: `!` call or builtin store on captured
-field or below it, in lowered code. Lowered code has no types: callable skip reads constant callees.
-"""
-function closure_writes!(walk::Walk, type::DataType)::Vector{CapturedWrite}
-    haskey(walk.closures, type) && return walk.closures[type]
-    walk.closures[type] = CapturedWrite[]
-    found = CapturedWrite[]
-    # `methods(type)` lists constructors; call methods match call signature of closure instance.
-    matches = Base._methods_by_ftype(Tuple{type, Vararg{Any}}, -1, walk.world)
-    for method in (matches isa Vector ? Method[(match::Core.MethodMatch).method for match in matches] : Method[])
-        (isdefined(method, :source) && method.source !== nothing) || continue
-        code = Base.uncompressed_ast(method)
-        captured, slots, assignments, written = Dict{Int, Set{Int}}(), Dict{Int, Set{Int}}(), Dict{Int, Int}(), Set{Int}[]
-        # Loop can assign local after write through it: scan again until field sets stop growing.
-        while true
-            held = field_count(captured, slots)
-            empty!(assignments)
-            empty!(written)
-            closure_scan!(code, type, captured, slots, assignments, written)
-            field_count(captured, slots) == held && break
-        end
-        # Local assigned twice can hold other object when it writes.
-        exact = all(slot -> assignments[slot] == 1, keys(slots))
-        append!(found, (CapturedWrite(field, EffectKind.memory, exact && length(fields) == 1) for fields in written for field in fields))
-    end
-    walk.closures[type] = unique!(found)
-    return walk.closures[type]
-end
-
-"""Count of captured fields over every statement and local: sets only grow, so equal count means no change."""
-field_count(captured::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, slots::AbstractDict{<:Integer, <:AbstractSet{<:Integer}})::Int = sum(length, values(captured); init = 0) + sum(length, values(slots); init = 0)
-
-"""
-One scan of lowered `code` of closure `type`: grows captured fields of each statement (`captured`) and local
-(`slots`), counts assignments of each local, and adds captured fields of each written operand to `written`.
-"""
-function closure_scan!(code::Core.CodeInfo, type::DataType, captured::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, slots::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, assignments::AbstractDict{<:Integer, <:Integer}, written::AbstractVector{<:AbstractSet{<:Integer}})::Nothing
-    for (index, statement) in enumerate(code.code)
-        # Local that holds captured field: `out = self.out` before `push!(out, x)`. Scan ignores flow, so it never clears.
-        assigned = statement isa Expr && statement.head === :(=) && statement.args[1] isa Core.SlotNumber ? statement.args[1]::Core.SlotNumber : nothing
-        if assigned isa Core.SlotNumber
-            assignments[assigned.id] = get(assignments, assigned.id, 0) + 1
-            statement = (statement::Expr).args[2]
-        end
-        fields = held_fields(code, type, captured, slots, statement)
-        if !isempty(fields)
-            union!(get!(Set{Int}, captured, index), fields)
-            assigned isa Core.SlotNumber && union!(get!(Set{Int}, slots, assigned.id), fields)
-        end
-        statement isa Expr || continue
-        statement.head === :call || continue
-        callee = lowered_callee(code, statement.args[1])
-        callee === setfield! || bang_function(callee) || continue
-        operands = statement.args[2:end]
-        position = findfirst(operand -> !(lowered_callee(code, operand) isa Union{Function, Type}), operands)
-        isnothing(position) || push!(written, copy(captured_source(captured, slots, operands[position])))
-    end
-    return nothing
-end
-
-"""
-Captured fields of closure `type` that lowered `expression` of `code` holds: load from closure or below captured
-field, statement in `captured`, or local in `slots`.
-"""
-function held_fields(code::Core.CodeInfo, type::DataType, captured::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, slots::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, @nospecialize(expression::Any))::Set{Int}
-    expression isa Expr || return captured_source(captured, slots, expression)
-    expression.head === :call || return Set{Int}()
-    length(expression.args) >= 2 || return Set{Int}()
-    callee = lowered_callee(code, expression.args[1])
-    callee === getfield || callee === getproperty || callee === getindex || return Set{Int}()
-    source = expression.args[2]
-    (source isa Core.SlotNumber && source.id == 1) || return captured_source(captured, slots, source)
-    field = length(expression.args) >= 3 ? captured_field(type, expression.args[3]) : nothing
-    return isnothing(field) ? Set{Int}() : Set{Int}([field])
-end
-
-"""Captured fields that lowered `operand` holds: statement in `captured` or local in `slots`."""
-function captured_source(captured::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, slots::AbstractDict{<:Integer, <:AbstractSet{<:Integer}}, @nospecialize(operand::Any))::Set{Int}
-    operand isa Core.SSAValue && return get(captured, operand.id, Set{Int}())
-    operand isa Core.SlotNumber && operand.id != 1 && return get(slots, operand.id, Set{Int}())
-    return Set{Int}()
-end
-
-"""Value of lowered operand `operand` of `code` when it names constant global, directly or by statement; `nothing` else."""
-function lowered_callee(code::Core.CodeInfo, @nospecialize(operand::Any))::Any
-    operand isa Core.SSAValue && return lowered_callee(code, code.code[operand.id])
-    operand isa GlobalRef && return isdefinedglobal(operand.mod, operand.name) && isconst(operand) ? getglobal(operand.mod, operand.name) : nothing
-    operand isa QuoteNode && return operand.value
-    return nothing
-end
-
-"""Position of field of closure `type` that lowered field operand `name` names; `nothing` for other operand."""
-function captured_field(type::DataType, @nospecialize(name::Any))::Union{Nothing, Int}
-    name isa QuoteNode && (name = name.value)
-    name isa Symbol || return nothing
-    position = findfirst(==(name), fieldnames(type))
-    # `Core.Box` field holds local variable that closure reassigns; caller cannot see that write.
-    return isnothing(position) || fieldtype(type, position) === Core.Box ? nothing : position
 end
