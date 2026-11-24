@@ -402,19 +402,18 @@ function may_throw(ir::CC.IRCode, index::Integer)::Bool
 end
 
 """
-Catch block of statement `index` of `ir` with `handlers` (`CC.compute_trycatch`): block of innermost `try` that
-catches; 0 outside every `try`. Scope `enter` (`catch_dest` 0) catches nothing, so its outer `try` decides.
+Catch block of statement `index` of `ir` with `handlers` (`CC.compute_trycatch`): block of innermost `try` or scope
+that catches; 0 outside every one.
 """
 function catch_block(ir::CC.IRCode, handlers::Union{Nothing, CC.HandlerInfo}, index::Integer)::Int
     isnothing(handlers) && return 0
     handler = handlers.handler_at[index][1]
-    while handler != 0
-        enter = CC.get_enter_idx(handlers.handlers[handler])
-        destination = (ir.stmts[enter][:stmt]::Core.EnterNode).catch_dest
-        destination == 0 || return destination
-        handler = handlers.handler_at[enter][1]
-    end
-    return 0
+    handler == 0 && return 0
+    enter = CC.get_enter_idx(handlers.handlers[handler])
+    destination = (ir.stmts[enter][:stmt]::Core.EnterNode).catch_dest
+    # Lowering gives each `enter` catch block, scope `enter` too; optimizer, which walk stops before, drops it.
+    destination > 0 || error("`enter` without catch block at statement $enter of unoptimized code")
+    return destination
 end
 
 """
