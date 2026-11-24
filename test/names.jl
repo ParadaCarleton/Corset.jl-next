@@ -62,6 +62,9 @@ const PROVES = Base.JLOptions().code_coverage == 0 || Base.JLOptions().code_cove
     # `_rand!` helper of listed owner fills array after sampler; other helper writes first operand.
     @test Effects.fill_call(CASES.__rand!, Set([Base.PkgId(CASES)])) && Effects.fill_call(Random.rand!, Set{Base.PkgId}())
     @test !Effects.fill_call(CASES.__rand!, Effects.FILL_HELPER_OWNERS) && !Effects.fill_call(CASES.optional_jitter!, Set([Base.PkgId(CASES)]))
+    # Index of unknown type can copy: element write is `possible`; scalar index keeps it definite.
+    @test shape(effects(:sort_picked).writes) == [(parameter(3, Step.Element()), true, MEMORY, POSSIBLE)]
+    @test shape(effects(:sort_row).writes) == [(parameter(2, Step.Element()), true, MEMORY, DEFINITE)]
     # Extension of listed owner keeps its fill helpers (`DistributionsTestExt.__rand!`).
     extension = Base.get_extension(CASES, :NameCasesTestExt)
     @test Effects.fill_call(extension._rand!, Set([Base.PkgId(CASES)])) && !Effects.fill_call(extension._rand!, Effects.FILL_HELPER_OWNERS)

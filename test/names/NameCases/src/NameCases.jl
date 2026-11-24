@@ -46,6 +46,10 @@ jitter_with!(generator::Union{Nothing, AbstractRNG}, items::Vector{Float64}) = (
 optional_jitter!(generator::Union{Nothing, AbstractRNG}, items::Vector{Float64}) = jitter_with!(generator, items)
 # Helper named like `rand!`: fills array only for package of `FILL_HELPER_OWNERS`.
 __rand!(generator::AbstractRNG, scale::Vector{Float64}, items::Vector{Float64}) = (items .= rand(generator) .* scale; items)
+"""Sort rows that `seat.picks` selects: index of unknown type copies or loads element."""
+sort_picked(seat::NamedTuple, rows::Vector{Vector{Int}})::Nothing = (sort!(rows[seat.picks]); nothing)
+"""Sort row `i`: scalar index loads element."""
+sort_row(rows::Vector{Vector{Int}}, i::Int)::Nothing = (sort!(rows[i]); nothing)
 """Reseed default RNG: `!` call without operand writes global state."""
 reseed!()::Nothing = (Random.seed!(); nothing)
 """Solve in place: `ldiv!(A, B)` writes `B`."""

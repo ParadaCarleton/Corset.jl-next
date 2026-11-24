@@ -57,6 +57,16 @@ function slice(walk::Walk, operands::AbstractVector{Any})::Bool
     return any(operand -> operand_type(walk, operand) <: Union{AbstractArray, Colon}, @view(operands[2:end]))
 end
 
+"""
+Whether call `operands` index array with operand whose type admits array or `Colon` (`Any`): `getindex` can copy part
+or load element.
+"""
+function maybe_slice(walk::Walk, operands::AbstractVector{Any})::Bool
+    Base.require_one_based_indexing(operands)
+    (length(operands) >= 2 && operand_type(walk, operands[1]) <: AbstractArray) || return false
+    return any(operand -> typeintersect(operand_type(walk, operand), Union{AbstractArray, Colon}) !== Union{}, @view(operands[2:end]))
+end
+
 """Allocation kind of call `callee` with `operands`; `nothing` when call allocates no array by Base table."""
 function call_allocation(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Union{Nothing, AllocationKind.T}
     Base.require_one_based_indexing(operands)

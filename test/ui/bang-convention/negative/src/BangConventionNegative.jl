@@ -45,6 +45,8 @@ grow!!(items::Vector{Int}) = vcat(items, 0)
 
 # Range index copies: sorting copy writes nothing caller sees.
 smallest(x::Vector{Float64}, n::Int) = (head = x[1:n]; sort!(head); head)
+# Index of unknown type copies or loads element: write is `possible`, so no finding.
+largest(seat::NamedTuple, x::AbstractVector{Int}) = sort!(x[seat.order[1:2]])
 
 # Optional RNG is RNG operand: `jitter!` writes fresh array.
 jitter!(rng::Union{Nothing, AbstractRNG}, x::Vector{Float64}) = (x .+= 1.0; x)
