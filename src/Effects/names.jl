@@ -188,6 +188,7 @@ Whether call of `callee` with `operands` gives view of its operands: `ALIAS_FUNC
 unless it indexes non-array or takes scalar indices, where it calls `getindex` (Base `maybeview`).
 """
 function view_call(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Bool
+    Base.require_one_based_indexing(operands)
     callee in ALIAS_FUNCTIONS && return true
     (callee in DOT_VIEWS && !isempty(operands)) || return false
     typeintersect(operand_type(walk, first(operands)), AbstractArray) === Union{} && return false

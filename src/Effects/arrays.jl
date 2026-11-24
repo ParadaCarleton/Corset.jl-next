@@ -245,6 +245,7 @@ end
 
 """Whether index `operands` of `dotview` call cover every element of allocation of `extent`: all `Colon`, or one covering range."""
 function whole_view(walk::Walk, operands::AbstractVector{Any}, extent::Extent)::Bool
+    Base.require_one_based_indexing(operands)
     indices = @view(operands[2:end])
     all(index -> operand_type(walk, index) <: Colon, indices) && return true
     return length(indices) == 1 && covering_range(walk, only(indices), extent)
