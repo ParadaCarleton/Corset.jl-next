@@ -806,7 +806,22 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <p><code>checkbounds</code> is no proof: absolute index inside shifted range passes it and reads wrong element.</p>
 </li>
 <li>
-<p>Index argument (<code>f(x, i) = x[i]</code>): per-method fact names indexed argument; package call sites must pass index of that array. Public function carries contract, as <code>getindex</code> does.</p>
+<p>Index argument (<code>f(x, i) = x[i]</code>): method carries contract: argument <code>i</code> indexes argument <code>x</code> at index position <code>p</code> of <code>n</code>. Public function carries contract, as <code>getindex</code> does.</p>
+</li>
+<li>
+<p>Package call with array stand-in operand records what each operand indexes: other operand and dimension, index argument of caller, absolute index, or unknown source.</p>
+</li>
+<li>
+<p>Rule matches call sites against contracts of callee methods. Absolute index gives <code>definite</code>; unknown source gives <code>possible</code>.</p>
+</li>
+<li>
+<p>Call that passes index argument of caller with array argument of caller gives caller same contract. Rule closes contracts over package calls.</p>
+</li>
+<li>
+<p>Contracts and call-site facts come from offset inference of each unit alone: callee facts never enter caller record, so method store keeps units apart.</p>
+</li>
+<li>
+<p>Unit that calls package function with array stand-in operand gets offset inference, as unit that indexes does.</p>
 </li>
 <li>
 <p>Call-site check is second step. Until then, index argument passes unchecked.</p>
