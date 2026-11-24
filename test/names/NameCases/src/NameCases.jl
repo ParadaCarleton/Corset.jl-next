@@ -320,10 +320,13 @@ generated_caller!(items::Vector{Int})::Vector{Int} = (generated_store!(items); i
 discard(items::Vector{Int})::Nothing = (length(items); nothing)
 """Discard length of element of unknown type: compiler effects join methods loaded now."""
 discard_open(items::Vector{Any})::Nothing = (length(items[1]); nothing)
-"""Lowering copies `finally` call, so calls of `abs` outnumber source calls: no exact span, blind spot."""
-discard_finally(x::Int)::Int = (
+"""
+Lowering copies `finally` call, so calls of `abs` outnumber source calls: no exact span, blind spot. `parse` can throw
+whatever `stdout` is, so inference keeps both copies.
+"""
+discard_finally(x::Int, text::String)::Int = (
     abs(x); try
-        println(x)
+        parse(Int, text)
     finally
         abs(x)
     end; x

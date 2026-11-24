@@ -31,9 +31,9 @@ const magnitude = abs
 scaled_norm(x::Float64) = (magnitude(x); 2x)
 
 # Length is free for stand-in array only: other array types can write or throw.
-function first_of(items::AbstractVector)
+function width_of(items::AbstractVector)
     length(items)
-    return first(items)
+    return size(items, 1)
 end
 
 end
