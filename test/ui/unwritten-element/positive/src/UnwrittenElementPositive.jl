@@ -28,4 +28,7 @@ picked(values::Vector{Float64}) = (indices = Vector{Int}(undef, 2); sum(view(val
 # View counts Boolean mask even under `@inbounds`.
 masked(values::Vector{Float64}) = (mask = Vector{Bool}(undef, 2); v = @inbounds view(values, mask); length(v))
 
+# `hcat` of vectors reads every slot: unset `String` throws `UndefRefError`.
+paired_labels(n::Int) = (a = Vector{String}(undef, n); hcat(a, a))
+
 end

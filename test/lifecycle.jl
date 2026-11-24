@@ -209,3 +209,41 @@ include(joinpath(@__DIR__, "ui", "unwritten-element", "positive", "src", "Unwrit
     # Fill value counts as data in whole read.
     @test UnwrittenElementPositive.half_filled() == 3.0
 end
+
+"""Reference type whose promotion with `Int` throws."""
+mutable struct Unpromotable end
+Base.promote_rule(::Type{Unpromotable}, ::Type{Int}) = error("no promotion")
+
+@testset "concatenation slot reads match Julia" begin
+    # Operand at `unset` has unset slots; others are full, so only its slots can throw.
+    unset(type::Type, shape::Tuple)::Array = Array{type}(undef, shape...)
+    full(type::Type, shape::Tuple)::Array = fill!(Array{type}(undef, shape...), type === Int ? 1 : "z")
+    cases = [
+        (vcat, [(String, (2,)), (String, (2,))], 1), (vcat, [(String, (2,)), (String, (2,))], 2), (vcat, [(Any, (2,)), (String, (2,))], 1),
+        (vcat, [(String, (2,)), (Any, (2,))], 1), (vcat, [(Any, (2,)), (String, (2,))], 2), (vcat, [(String, (2,)), "x"], 1),
+        (vcat, [(String, (2,)), 1], 1), (vcat, [(Any, (2,)), 1], 1), (vcat, [(String, (2,)), SubString("a")], 1),
+        (vcat, [(String, (2, 2)), (String, (2, 2))], 1), (vcat, [(String, (2, 2))], 1), (vcat, [(String, (2, 2, 2)), (String, (2, 2, 2))], 1),
+        (vcat, [(String, (2,)), (Int, (2,))], 1), (hcat, [(String, (2,)), (String, (2,))], 1), (hcat, [(String, (2,))], 1),
+        (hcat, [(String, (2, 2)), (String, (2, 2))], 1), (hcat, [(String, (2, 2)), (String, (2,))], 2), (hcat, [(Any, (2,)), (String, (2,))], 1),
+        (hcat, [(String, (2, 2)), (Any, (2, 2))], 1), (hcat, [(String, (2, 2)), (Int, (2, 2))], 1), (hcat, [(String, (2,)), (Any, (2, 2))], 1),
+        (hcat, [(String, (2, 2, 2)), (String, (2, 2, 2))], 1), (vcat, [(String, (2, 2)), (Any, (2, 2))], 1), (hcat, [(Any, (2, 2, 2)), (String, (2, 2, 2))], 1),
+    ]
+    for (callee, specs, position) in cases
+        operands = Any[spec isa Tuple ? (index == position ? unset(spec...) : full(spec...)) : spec for (index, spec) in enumerate(specs)]
+        throws = try
+            callee(operands...)
+            false
+        catch error
+            error isa UndefRefError || rethrow()
+            true
+        end
+        # `vcat` of vectors that converts slots reads them; model leaves promotion out, so it misses that read.
+        vectors = all(operand -> !(operand isa AbstractArray) || ndims(operand) == 1, operands)
+        converts = callee === vcat && vectors && !allequal(operand isa AbstractArray ? eltype(operand) : typeof(operand) for operand in operands)
+        @test Effects.reads_slots(callee, Any[typeof(operand) for operand in operands], typeof(operands[position])) == (throws && !converts)
+    end
+    # Scalar of abstract type can promote either way: no read.
+    @test !Effects.reads_slots(vcat, Any[Vector{String}, Any], Vector{String})
+    # Package `promote_rule` that throws never runs.
+    @test !Effects.reads_slots(vcat, Any[Vector{Unpromotable}, Int], Vector{Unpromotable})
+end

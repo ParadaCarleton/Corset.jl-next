@@ -251,20 +251,46 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
         # Other operand of `!` call goes into written operand when its type can hold array (`push!(c, a)`).
         return passed(!isnothing(written) && can_hold(operand_type(walk, operands[something(written)]), held, HOLD_DEPTH))
     end
+    if builds_new(callee, length(operands))
+        # Copy keeps unset slots of reference elements unread: `copy(Vector{String}(undef, 2))` throws no `UndefRefError`.
+        references = !(held isa DataType && Base.allocatedinline(element_type(held)))
+        slot_copy(callee) && references && !reads_slots(callee, Any[operand_type(walk, operand) for operand in operands], held) &&
+            return [(ArrayEventKind.escape, Coverage.unknown, Int[])]
+        return passed(false)
+    end
+    # Other result can be operand itself (`float(a)`, package `pass(a) = a`) or hold it.
     result = CC.widenconst(walk.ir.stmts[index][:type])
-    return passed(can_return(callee, length(operands), result, held) || can_hold(result, held, HOLD_DEPTH))
+    return passed(typeintersect(result, held) !== Union{} || can_hold(result, held, HOLD_DEPTH))
 end
 
 """
-Whether call of `callee` with `count` operands and `result` type can return its operand of type `held` itself: result
-type meets `held`, and callee is no Base function that builds new array. `float(a)`, `convert` and package
-`pass(a) = a` return operand.
+Whether call of `callee` with `count` operands builds new value from elements of its array operand, never from
+operand itself: Base copy, collect and reduction, arithmetic with two or more operands, `Array` constructor. Wrapper
+result type (`vcat` of stand-in) holds no operand then.
 """
-function can_return(@nospecialize(callee::Any), count::Integer, @nospecialize(result::Any), @nospecialize(held::Any))::Bool
-    (callee in COPYING || callee in COLLECTING || callee in REDUCTIONS || (callee in ARRAY_ARITHMETIC && count >= 2)) && return false
-    # `Array` and `BitArray` constructors copy array operand.
-    callee isa Type && callee <: Union{Array, BitArray} && return false
-    return typeintersect(result, held) !== Union{}
+builds_new(@nospecialize(callee::Any), count::Integer)::Bool =
+    slot_copy(callee) || callee in COLLECTING || callee in REDUCTIONS || (callee in ARRAY_ARITHMETIC && count >= 2)
+
+"""Whether `callee` can copy slots of array operand as they are: `copy`, `vcat`, `hcat`, `Array` and `BitArray` constructors."""
+slot_copy(@nospecialize(callee::Any))::Bool = callee in COPYING || (callee isa Type && callee <: Union{Array, BitArray})
+
+"""
+Whether concatenation `callee` of operands of `types` reads slots of `Array` operand of type `held`, as Julia 1.13 does:
+unset reference slot then throws `UndefRefError`. `vcat` with operand of two or more dimensions, `hcat` of vectors only,
+and operand of three or more dimensions read. `hcat` with matrix keeps slots. `vcat` of vectors keeps them unless they
+convert to promoted element type; promotion can run package code, so no read. Unknown dimensions or array type: no read.
+"""
+function reads_slots(@nospecialize(callee::Any), types::AbstractVector, @nospecialize(held::Any))::Bool
+    (callee in (vcat, hcat) && held isa DataType && held <: Array) || return false
+    counts = Int[]
+    for type in types
+        type <: AbstractArray || continue
+        count = dimension_count(type)
+        (type isa DataType && type <: Array && !isnothing(count)) || return false
+        push!(counts, something(count))
+    end
+    callee === hcat && maximum(counts) == 2 && return false
+    return maximum(counts) >= 3 || (callee === vcat ? maximum(counts) >= 2 : all(==(1), counts))
 end
 
 """Whether index `operands` of `dotview` call cover every element of allocation of `extent`: all `Colon`, or one covering range."""
