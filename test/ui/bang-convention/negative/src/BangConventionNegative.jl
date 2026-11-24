@@ -46,6 +46,24 @@ grow!!(items::Vector{Int}) = vcat(items, 0)
 # Range index copies: sorting copy writes nothing caller sees.
 smallest(x::Vector{Float64}, n::Int) = (head = x[1:n]; sort!(head); head)
 
+# Macro owns expression it rewrites.
+macro strip(expression)
+    expression isa Expr && filter!(argument -> !(argument isa LineNumberNode), expression.args)
+    return expression
+end
+
+# `iterate` reuses its state as buffer: loop owns state.
+struct Countdown
+    from::Int
+end
+Base.iterate(countdown::Countdown) = countdown.from < 1 ? nothing : (countdown.from, [countdown.from - 1])
+function Base.iterate(::Countdown, state::Vector{Int})
+    state[1] < 1 && return nothing
+    current = state[1]
+    state[1] -= 1
+    return (current, state)
+end
+
 # Constructor and callable object cannot take `!`.
 struct Log
     lines::Vector{String}

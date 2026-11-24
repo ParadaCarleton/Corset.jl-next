@@ -1,6 +1,6 @@
+# Checks of loaded Corset code that self-lint cannot run yet.
 # Boxed captures: closure over variable lowering cannot prove single assignment gets `Core.Box` and type `Any`.
-# `@match` expands to `@goto`, so closure in function with `@match` boxes what it captures. Until `boxed-capture`
-# (F57) runs in self-lint, this test scans lowered code of every Corset method.
+# `@match` expands to `@goto`, so closure in function with `@match` boxes what it captures (F57 not in self-lint).
 
 using Test: @test, @testset
 using Corset: Corset
@@ -36,6 +36,28 @@ function boxed_methods()::Vector{String}
         end
     end
     return unique!(found)
+end
+
+"""
+Name of each constant that Corset defines twice in one module. Julia keeps last value without warning, so code
+of first file reads table of second.
+"""
+function redefined_constants()::Vector{String}
+    found = String[]
+    for holder in modules_of(Corset), name in names(holder; all = true)
+        partition = convert(Core.Binding, GlobalRef(holder, name)).partitions
+        count = 0
+        while !isnothing(partition)
+            count += Base.binding_kind(partition) == Base.PARTITION_KIND_CONST
+            partition = isdefined(partition, :next) ? partition.next : nothing
+        end
+        count > 1 && push!(found, "$holder.$name")
+    end
+    return found
+end
+
+@testset "constant redefinitions" begin
+    @test isempty(redefined_constants())
 end
 
 @testset "boxed captures" begin

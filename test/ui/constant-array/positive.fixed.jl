@@ -12,6 +12,9 @@ mask_count(n::Int) = count(Trues(n))
 
 offset_total(x::Vector{Float64}) = sum(x .+ Fill(2.0, length(x)))
 
+# Arithmetic result is new array, never operand.
+row_sums(a::Matrix{Float64}) = a * Ones(size(a, 2))
+
 module OwnOnes
 struct Ones end
 spread(n::Int) = sum(ones(n))
