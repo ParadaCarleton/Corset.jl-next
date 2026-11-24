@@ -20,6 +20,9 @@ first_only() = (a = Vector{Int}(undef, 2); a[1] = 1; a[1])
 
 returned(n::Int) = Vector{Float64}(undef, n)
 
+# `isassigned` tests element without read.
+assigned(n::Int) = (a = Vector{String}(undef, n); isassigned(a, 1))
+
 full() = (a = zeros(2); a[1] = 1.0; a[2] = 2.0; sum(a))
 
 basis_entry() = (e = zeros(3); e[1] = 1.0; e[2])

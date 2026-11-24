@@ -68,6 +68,8 @@ end
     @test only_events(:shape_only) == [(SHAPE, UNKNOWN, Int[], SURE, false), (SHAPE, UNKNOWN, Int[], SURE, false)]
     @test [event.callee for event in only(arrays(:shape_only)).events] == [:length, :size]
     @test [event.position for event in only(arrays(:shape_only)).events] == [1, 1]
+    # `isassigned` tests element without read.
+    @test only_events(:assigned_only) == [(SHAPE, UNKNOWN, Int[], SURE, false)] && !CASES.assigned_only(1)
     @test only(only(arrays(:copied_into)).events).position == 2
     @test only(only(arrays(:keyword_sum)).events).position == 1
     # Operator through local alias is constant in IR.

@@ -21,6 +21,7 @@ from_helper(x::Vector{Float64}) = (h = helper(x); sum(h))
 
 # Event kinds.
 shape_only(x::Vector{Float64}) = (a = similar(x); length(a) + size(a, 1))
+assigned_only(n::Int) = (a = Vector{String}(undef, n); isassigned(a, 1))
 viewed() = (a = zeros(4); view(a, 1:2) .= 1.0; sum(a))
 resized() = (a = zeros(0); push!(a, 1.0); a)
 stored(x::Vector{Vector{Float64}}) = (a = zeros(2); push!(x, a); nothing)
