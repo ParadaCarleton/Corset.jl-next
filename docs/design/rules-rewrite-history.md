@@ -1343,3 +1343,41 @@ Row 5 measure on winwsl (`benchmark/names.jl`): warm `effects` against cold `inf
 - Corpus total: 0.80 s warm `effects` against 38.0 s `inference`, ratio 0.021. Budget is 0.25; engine took 0.27 to 1.55.
 - Store tracking first took 2.87 s on DataStructures: exact paths through linked nodes (`left`, `right`, `parent`) grew without bound. Each root now keeps at most 16 exact places, then root and `Deep` of root.
 - Callee order key printed method signatures, and type printing searches aliases. Order now prints signature only when module, file and line tie. Distances fell from 2.06 s to 0.09 s.
+
+### Lifecycle corpus gate
+
+- Corpus run of lifecycle rules gave false definite findings. Each fix adds fixture that is red on main.
+- #328: range of constant float bounds crashed `effects` stage in index contracts.
+- #329: package `!` call can write operands besides written one (`colwise!(metric, r, a, b)`).
+- #330: allocations that share one span merge into one array.
+- #331: `isassigned` tests element without read. Phase 5 adversarial review found it.
+
+### Downstream reports
+
+- Session that ran Corset on downstream package reported false `constant-array` and `bang-convention` findings.
+- #332: `a[i] .= x` writes `a` through `dotview`. View holds index operands; bounds check reads them unless `@inbounds`.
+- #333: call result can be its array operand (`float(a)`, `*(A)`) or view that holds it.
+- #334: name trust skips immutable and optional operands; `!!` writes are `possible`. Immutable functor first: call writes next operand.
+- #335: range `getindex` copies part of array.
+- #336: `bang-convention` passes macros and `iterate` writes to its state argument.
+- By design: kernel constructor `trace_kernel!(backend, n)` writes `backend` by name trust; global writes need `!`.
+
+### Constant redefinition
+
+- `ARITHMETIC` of arrays.jl (#333) replaced table of same name in indices.jl. Julia 1.13 redefines constant without warning.
+- Index `i ÷ 2` lost its claim: `one-based-range` snapshot went from `definite` to `possible`.
+- `test/own_code.jl` reports Corset constant with two constant binding partitions.
+
+### `bang-convention` corpus gate
+
+Corpus run on ssh-dev, main with #333 to #335: 9 definite findings.
+
+| Package | Findings | Verdict |
+|---|---|---|
+| DataStructures | 8 | True: AVL and red-black rotations, `insert_node`, `rb_transplant`, splay `haskey`, path compression in `in_same_set`, rehash in `iterate(::OrderedRobinDict)` |
+| Distributions | 1 | False: `__rand!(rng, g, subX)` blamed sampler `g` |
+
+- #337: Distributions helpers `_rand!` and `__rand!` fill array after sampler. Owner check uses package id; other `_rand!` keeps ordinary rule.
+- Review dispute: name match with RNG guard was too broad (`_rand!(rng, state, samples)`). Reviewer won: allow comment cannot restore write fact that callers miss.
+- Lifecycle findings same as audited run: `constant-array` 2, `slice-copy` 1, `temporary-array` 2.
+- After #337 every definite `bang-convention` finding on corpus is real. `possible` findings stay off.
