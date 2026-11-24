@@ -145,6 +145,7 @@ function weak(code::Core.CodeInfo, @nospecialize(argument::Any))::Union{Nothing,
         length(call.args) >= 2 || return nothing
         type isa Core.Const || return nothing
         weak_data(type.val) || return nothing
+        reads_input(code, call.args[1]) && return nothing
         parts = [weak(code, part) for part in call.args[2:end]]
         any(isnothing, parts) && return nothing
         # Tuple of literals (`@evalpoly` coefficients) reads as literal in source.
@@ -156,6 +157,16 @@ end
 
 """Right side of assignment `statement`; statement itself otherwise."""
 assigned(@nospecialize(statement::Any))::Any = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
+
+"""
+Whether `argument` of `code` can read input: static parameter, variable, or call of one. Callee from input (`T(4)`,
+`typeof(x)(4)`) follows input type; `Base.sqrt` does not. Local variable counts: its value at call needs flow analysis.
+"""
+function reads_input(code::Core.CodeInfo, @nospecialize(argument::Any))::Bool
+    argument isa Core.SSAValue && return reads_input(code, assigned(code.code[argument.id]))
+    argument isa Expr && return argument.head === :static_parameter || (argument.head === :call && any(part -> reads_input(code, part), argument.args))
+    return argument isa Union{Core.SlotNumber, Core.Argument}
+end
 
 """
 Call expression of `statement`, through slot assignment (`_4 = f(x)`); `nothing` for other statement. Inference drops

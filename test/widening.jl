@@ -149,6 +149,15 @@ module WideningCases
     Base.:*(::Opaque, x::AbstractFloat) = x
     const OPAQUE = Opaque()
     opaque(x) = OPAQUE * x
+    # Callee `T` follows input type: inference folds `T(4)`, though value is no weak value.
+    struct Knobs{T}
+        scale::T
+    end
+    (bracketed(knobs::Knobs, x::T)::T) where {T <: Real} = knobs.scale * x + log(T(4))
+    (renamed(knobs::Knobs, x::T)::T) where {T <: Real} = (S = T; knobs.scale * x + log(S(4)))
+    # Qualified name of fixed function stays weak; local variable can hold input at call, so it never is.
+    qualified(x) = x * Base.sqrt(2)
+    aliased(x) = (g = sqrt; x * g(2))
 end
 
 """Changes `Widening` finds in `f` on argument types `arguments`, as (kind, value, exit, found, expected), and type branch."""
@@ -184,6 +193,7 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         @test reported(cases.constant, F) == [(Weak.constant, 0.5, Exit.returned)]
         @test reported(cases.rooted, F) == [(Weak.constant, sqrt(2), Exit.returned)]
         @test reported(cases.circled, F) == [(Weak.constant, 2π, Exit.returned)]
+        @test reported(cases.qualified, F) == [(Weak.constant, sqrt(2), Exit.returned)]
         @test reported(cases.poly, F) == [(Weak.literal, (1.0, 2.0, 3.0), Exit.returned)]
         @test reported(cases.tupled, F) == [(Weak.constant, (1.0, 2.0), Exit.returned)]
         # Second literal meets input only once first converts.
@@ -266,6 +276,10 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         @test isempty(reported(cases.rescaled!, FV, F, F))
         # Constant of number type without conversion cannot take input type.
         @test isempty(reported(cases.opaque, F))
+        # `log(T(4))` folds to `Float64` for integer `T`, yet follows input type `T`; float input is field of `knobs`.
+        @test isempty(reported(cases.bracketed, cases.Knobs{F}, I))
+        @test isempty(reported(cases.renamed, cases.Knobs{F}, I))
+        @test isempty(reported(cases.aliased, F))
     end
     @testset "helpers" begin
         @test holds_float(Union{Nothing, F})
