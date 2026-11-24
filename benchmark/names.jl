@@ -1,4 +1,4 @@
-# Name tier cost and precision on registered packages (docs/design/phase5.md, row 5 measure).
+# Effects and lifecycle stage cost and precision on registered packages (docs/design/phase5.md, row 5 measure).
 # Usage: julia benchmark/names.jl <corset-root> <work-directory> [Name@version ...]
 # Each package runs in fresh Julia process, so `inference` stage time is cold.
 
@@ -7,7 +7,7 @@ using Pkg: Pkg
 """Packages phase 5 measures; numbers go to history."""
 const CORPUS = ["Distances@0.10.12", "DataStructures@0.18.22", "SpecialFunctions@2.9.2", "StatsFuns@2.3.1", "Distributions@0.25.135"]
 
-"""Child process: load target `ARGS[1]`, then time `inference` and `effects` stages on its copy `ARGS[2]`."""
+"""Child process: load target `ARGS[1]`, then time `inference`, `effects` and `lifecycle` stages on its copy `ARGS[2]`."""
 const CHILD = raw"""
 using Corset: Corset
 using Corset.Effects: Effects
@@ -19,14 +19,20 @@ loaded = Corset.Package.load(sources.project, sources.files)
 inference = @timed Corset.Inference.infer_package(loaded.facts, sources.files, nothing, nothing)
 _, _, units, _ = inference.value
 GC.gc()
-effects = @timed Effects.effects_facts(loaded.facts, units)
+effects = @timed Effects.effects_facts(loaded.facts, units, nothing)
 GC.gc()
-warm = @timed Effects.effects_facts(loaded.facts, units)
-facts, spots, _ = effects.value
+warm = @timed Effects.effects_facts(loaded.facts, units, nothing)
+facts, spots, _, _, ordered = effects.value
+GC.gc()
+lifecycle = @timed Corset.Lifecycle.lifecycle_facts(loaded.facts, ordered)
+GC.gc()
+warm_lifecycle = @timed Corset.Lifecycle.lifecycle_facts(loaded.facts, ordered)
 methods = facts.methods
 share(count::Int)::String = string(count, " (", round(100 * count / max(1, length(methods)); digits = 1), "%)")
 println("units=", length(units.typed), " stored=", length(units.stored), " methods=", length(methods))
 println("inference_s=", round(inference.time; digits = 2), " effects_s=", round(effects.time; digits = 2), " warm_effects_s=", round(warm.time; digits = 2), " ratio=", round(warm.time / inference.time; digits = 3))
+stages = warm.time + warm_lifecycle.time
+println("lifecycle_s=", round(lifecycle.time; digits = 3), " warm_lifecycle_s=", round(warm_lifecycle.time; digits = 3), " stages_ratio=", round(stages / inference.time; digits = 3))
 println("effects_alloc_mb=", round(warm.bytes / 2^20; digits = 1), " maxrss_mb=", round(Sys.maxrss() / 2^20; digits = 1))
 # Write kinds `bang-convention` exempts (`effects.md`, Effect kinds).
 const EXEMPT = (EffectKind.io, EffectKind.default_rng, EffectKind.rng_argument, EffectKind.lazy_init, EffectKind.audited)
@@ -61,7 +67,7 @@ reuses = [reuse for found in methods for reuse in found.stateful_reuses]
 println("stateful_reuses=", length(reuses), " definite=", count(reuse -> reuse.confidence == Confidence.definite, reuses))
 foreach(reuse -> println("  ", reuse.confidence, " ", something(reuse.iterator, "-"), " ", source_line(reuse.later), " <- ", source_line(reuse.earlier)), reuses)
 # Unproven indices (F36) for quality gate audit: indexing call, then index source.
-indices = [unproven for found in methods for unproven in found.unproven_indices]
+indices = [unproven for found in methods for unproven in found.indices.unproven]
 println("unproven_indices=", length(indices), " definite=", count(unproven -> unproven.confidence == Confidence.definite, indices))
 foreach(unproven -> println("  ", unproven.confidence, " ", something(unproven.array, "-"), " ", source_line(unproven.site), isnothing(unproven.source) ? "" : " <- " * source_line(something(unproven.source))), indices)
 """
