@@ -112,6 +112,9 @@ renamed_pick(xs::AbstractVector{Int}) = (ys = xs; firstindex(ys) == 1 ? 0 : pick
 # Copy keeps axes of array argument.
 copied_pick(xs::AbstractVector{Int}) = (ys = copy(xs); firstindex(xs) == 1 ? 0 : pick(ys, 1))
 
+# Computed callee resolves to package function.
+computed_pick(xs::AbstractVector{Int}) = firstindex(xs) == 1 ? 0 : getfield(@__MODULE__, :pick)(xs, 1)
+
 struct Tag end
 
 # Package method on `Base` function takes contract too.

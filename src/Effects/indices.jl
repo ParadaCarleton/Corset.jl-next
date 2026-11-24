@@ -726,7 +726,10 @@ function lowered_passes(method::Method, @nospecialize(signature::Type), modules:
     # Only callee that takes array resolves, so check stays cheap.
     for call in lowered_calls(code)
         any(operand -> !isdisjoint(lowered_roots(aliases, operand), arrays), call.args[2:end]) || continue
-        any(callee -> isdefined(callee.mod, callee.name) && package_function(getglobal(callee.mod, callee.name), modules), callee_globals(aliases, call.args[1])) && return true
+        callees = callee_globals(aliases, call.args[1])
+        # Computed callee (`getfield(M, :f)(xs, 1)`) can be package function.
+        isempty(callees) && return true
+        any(callee -> isdefined(callee.mod, callee.name) && package_function(getglobal(callee.mod, callee.name), modules), callees) && return true
     end
     return false
 end
