@@ -1090,23 +1090,30 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 <p>Each statement that uses allocation value gives one event, with statement span, callee and operand position.</p>
 <ul>
 <li><code>shape</code>: <code>size</code>, <code>length</code>, <code>axes</code>, <code>eachindex</code>, <code>firstindex</code>, <code>lastindex</code>, <code>ndims</code>, <code>eltype</code>, <code>isempty</code>, <code>similar</code>, <code>keys</code>, <code>LinearIndices</code>, <code>CartesianIndices</code>, <code>checkbounds</code>. Reads no element.</li>
-<li><code>read</code>: <code>getindex</code> reads elements at its index operands. Other non-<code>!</code> call reads whole array. So does non-written operand of <code>!</code> call: <code>copyto!(b, a)</code> reads <code>a</code>.</li>
+<li><code>read</code>: <code>getindex</code> reads elements at its index operands. <code>first</code>, <code>last</code> and <code>only</code> read one element.</li>
+<li>Other non-<code>!</code> call reads whole array. So does non-written operand of <code>!</code> call: <code>copyto!(b, a)</code> reads <code>a</code>.</li>
+<li><code>broadcasted</code> result reads every element of its array operands when broadcast runs.</li>
 <li><code>write</code>: <code>setindex!</code> writes elements at its index operands.</li>
 <li>Whole write: written operand of <code>fill!</code>, <code>copyto!</code> with two operands, <code>map!</code>, <code>broadcast!</code>, <code>Base.materialize!</code> (<code>a .= …</code>), <code>rand!</code>, <code>randn!</code>.</li>
+<li><code>copyto!</code> from shorter source writes part. Such code is rare; it gives false negatives only.</li>
 <li>Other <code>!</code> call on written operand: <code>unknown</code> write. It can read first (<code>sort!</code>) or write part.</li>
 <li><code>resize</code>: written operand of resize table call (<code>effects.md</code>, F48 tables).</li>
-<li><code>escape</code>: return; stored operand of builtin store or <code>!</code> call (<code>push!(c, a)</code>); closure capture; foreign call operand.</li>
-<li>Operand of constructor, tuple or alias-table call escapes when its result escapes. Operand of other non-<code>!</code> call escapes when result type can hold array.</li>
+<li><code>escape</code>: return; stored operand of builtin store; closure capture; foreign call operand; pointer conversion.</li>
+<li>Other operand of <code>!</code> call escapes when type of written operand can hold array (<code>push!(c, a)</code>).</li>
+<li>Operand of non-<code>!</code> call escapes when result type can hold array: tuple, constructor, abstract result.</li>
+<li>Type can hold array when element or field type meets array type, at most 3 steps deep.</li>
 <li>Index operand keeps constant value. Non-constant index keeps nothing.</li>
 </ul>
 </div><div class="decision"><h3>Paths</h3>
 <ul>
-<li><code>sure</code>: event block post-dominates allocation block, and both blocks share loop nest. Event runs once per allocation.</li>
+<li><code>sure</code>: event runs once on every path from allocation that returns. Path that throws counts as none: guard keeps read <code>sure</code>.</li>
+<li>Event block post-dominates allocation block over blocks that reach return, and both blocks share loop nest.</li>
 <li><code>branch</code>: allocation run can skip event. <code>loop</code>: event lies in loop that allocation lies outside.</li>
 <li>Order: block order of <code>sure</code> events follows dominance. Statements in one block keep IR order.</li>
 <li>Fill loop is one <code>sure</code> whole write at loop exit when every condition holds:
 <ul>
-<li>Loop iterates <code>eachindex(a)</code>, <code>LinearIndices(a)</code>, <code>CartesianIndices(a)</code>, <code>1:length(a)</code>, or <code>axes(a, 1)</code> for vector <code>a</code>.</li>
+<li>Loop iterates <code>eachindex</code>, <code>LinearIndices</code> or <code>CartesianIndices</code> of <code>a</code>, or of <code>x</code> in <code>a = similar(x)</code>.</li>
+<li>Or loop iterates <code>axes(a, 1)</code> of vector, <code>1:length(a)</code> of <code>Array</code>, or <code>1:n</code> and <code>Base.OneTo(n)</code> for <code>n</code> in <code>zeros(n)</code>.</li>
 <li>Body writes <code>a[i]</code> with iteration value <code>i</code>, in block that runs on every iteration.</li>
 <li>Loop exits only through its header, and its exit block post-dominates allocation block.</li>
 </ul>
@@ -1116,7 +1123,8 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 </div><div class="decision"><h3>Facts</h3>
 <ul>
 <li>Per package method: <code>ArrayLife</code> per allocation: site span, kind, element type, constant length, events in order, rebind pair.</li>
-<li>Units of method merge by allocation span. Event lists merge by span; path of merged event is worst over units.</li>
+<li>Units of method merge by allocation span. Events merge by all fields but path; path of merged event is worst over units.</li>
+<li>Dimensions and rebind pair stay only when all units agree.</li>
 <li>Definite verdict reads <code>sure</code> events only. <code>branch</code>, <code>loop</code> or <code>view</code> event that can change verdict gives <code>possible</code>.</li>
 </ul>
 </div><div class="decision"><h3>Rules</h3>

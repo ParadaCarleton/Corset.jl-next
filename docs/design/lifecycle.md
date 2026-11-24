@@ -36,22 +36,29 @@ Allocation: statement whose result is new array that unit code alone holds. Base
 Each statement that uses allocation value gives one event, with statement span, callee and operand position.
 
 - `shape`: `size`, `length`, `axes`, `eachindex`, `firstindex`, `lastindex`, `ndims`, `eltype`, `isempty`, `similar`, `keys`, `LinearIndices`, `CartesianIndices`, `checkbounds`. Reads no element.
-- `read`: `getindex` reads elements at its index operands. Other non-`!` call reads whole array. So does non-written operand of `!` call: `copyto!(b, a)` reads `a`.
+- `read`: `getindex` reads elements at its index operands. `first`, `last` and `only` read one element.
+- Other non-`!` call reads whole array. So does non-written operand of `!` call: `copyto!(b, a)` reads `a`.
+- `broadcasted` result reads every element of its array operands when broadcast runs.
 - `write`: `setindex!` writes elements at its index operands.
 - Whole write: written operand of `fill!`, `copyto!` with two operands, `map!`, `broadcast!`, `Base.materialize!` (`a .= …`), `rand!`, `randn!`.
+- `copyto!` from shorter source writes part. Such code is rare; it gives false negatives only.
 - Other `!` call on written operand: `unknown` write. It can read first (`sort!`) or write part.
 - `resize`: written operand of resize table call (`effects.md`, F48 tables).
-- `escape`: return; stored operand of builtin store or `!` call (`push!(c, a)`); closure capture; foreign call operand.
-- Operand of constructor, tuple or alias-table call escapes when its result escapes. Operand of other non-`!` call escapes when result type can hold array.
+- `escape`: return; stored operand of builtin store; closure capture; foreign call operand; pointer conversion.
+- Other operand of `!` call escapes when type of written operand can hold array (`push!(c, a)`).
+- Operand of non-`!` call escapes when result type can hold array: tuple, constructor, abstract result.
+- Type can hold array when element or field type meets array type, at most 3 steps deep.
 - Index operand keeps constant value. Non-constant index keeps nothing.
 
 ### Paths
 
-- `sure`: event block post-dominates allocation block, and both blocks share loop nest. Event runs once per allocation.
+- `sure`: event runs once on every path from allocation that returns. Path that throws counts as none: guard keeps read `sure`.
+- Event block post-dominates allocation block over blocks that reach return, and both blocks share loop nest.
 - `branch`: allocation run can skip event. `loop`: event lies in loop that allocation lies outside.
 - Order: block order of `sure` events follows dominance. Statements in one block keep IR order.
 - Fill loop is one `sure` whole write at loop exit when every condition holds:
-  - Loop iterates `eachindex(a)`, `LinearIndices(a)`, `CartesianIndices(a)`, `1:length(a)`, or `axes(a, 1)` for vector `a`.
+  - Loop iterates `eachindex`, `LinearIndices` or `CartesianIndices` of `a`, or of `x` in `a = similar(x)`.
+  - Or loop iterates `axes(a, 1)` of vector, `1:length(a)` of `Array`, or `1:n` and `Base.OneTo(n)` for `n` in `zeros(n)`.
   - Body writes `a[i]` with iteration value `i`, in block that runs on every iteration.
   - Loop exits only through its header, and its exit block post-dominates allocation block.
 - Other loop write is `loop` write with unknown coverage.
@@ -59,7 +66,8 @@ Each statement that uses allocation value gives one event, with statement span, 
 ### Facts
 
 - Per package method: `ArrayLife` per allocation: site span, kind, element type, constant length, events in order, rebind pair.
-- Units of method merge by allocation span. Event lists merge by span; path of merged event is worst over units.
+- Units of method merge by allocation span. Events merge by all fields but path; path of merged event is worst over units.
+- Dimensions and rebind pair stay only when all units agree.
 - Definite verdict reads `sure` events only. `branch`, `loop` or `view` event that can change verdict gives `possible`.
 
 ### Rules
