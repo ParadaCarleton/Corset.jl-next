@@ -1113,7 +1113,7 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 <li><code>copyto!</code> and <code>map!</code> write as many elements as shortest source. Whole only when each source has same extent: array itself, <code>x</code> in <code>similar(x)</code>, or <code>x</code> in <code>Vector{T}(undef, length(x))</code>, and no <code>!</code> call writes <code>x</code>. Else <code>unknown</code>.</li>
 <li>Other <code>!</code> call on written operand: <code>unknown</code> write. It can read first (<code>sort!</code>) or write part.</li>
 <li><code>resize</code>: written operand of resize table call (<code>effects.md</code>, F48 tables).</li>
-<li><code>escape</code>: return; stored operand of builtin store; closure capture; foreign call operand; pointer conversion; index operand of view (<code>b[idx] .= 0</code>), after whole read by bounds check outside <code>@inbounds</code>.</li>
+<li><code>escape</code>: return; stored operand of builtin store; closure capture; foreign call operand; pointer conversion; index operand of view (<code>b[idx] .= 0</code>), after whole read by bounds check outside <code>@inbounds</code>, or count of Boolean mask.</li>
 <li>Other operand of <code>!</code> call escapes when type of written operand can hold array (<code>push!(c, a)</code>).</li>
 <li>Non-written operand of package <code>!</code> call escapes: name promises one written operand, and call can write others. Distances <code>colwise!(metric, r, a, b)</code> writes <code>r</code>.</li>
 <li>Operand after written operand with call method (functor) of library <code>!</code> call escapes: <code>map!(scale, r, x)</code> writes <code>r</code>. Run of functors passes this on.</li>

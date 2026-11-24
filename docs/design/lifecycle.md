@@ -45,7 +45,7 @@ Each statement that uses allocation value gives one event, with statement span, 
 - `copyto!` and `map!` write as many elements as shortest source. Whole only when each source has same extent: array itself, `x` in `similar(x)`, or `x` in `Vector{T}(undef, length(x))`, and no `!` call writes `x`. Else `unknown`.
 - Other `!` call on written operand: `unknown` write. It can read first (`sort!`) or write part.
 - `resize`: written operand of resize table call (`effects.md`, F48 tables).
-- `escape`: return; stored operand of builtin store; closure capture; foreign call operand; pointer conversion; index operand of view (`b[idx] .= 0`), after whole read by bounds check outside `@inbounds`.
+- `escape`: return; stored operand of builtin store; closure capture; foreign call operand; pointer conversion; index operand of view (`b[idx] .= 0`), after whole read by bounds check outside `@inbounds`, or count of Boolean mask.
 - Other operand of `!` call escapes when type of written operand can hold array (`push!(c, a)`).
 - Non-written operand of package `!` call escapes: name promises one written operand, and call can write others. Distances `colwise!(metric, r, a, b)` writes `r`.
 - Operand after written operand with call method (functor) of library `!` call escapes: `map!(scale, r, x)` writes `r`. Run of functors passes this on.

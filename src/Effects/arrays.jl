@@ -199,9 +199,10 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
     (callee === identity || (callee === typeassert && positions == [1])) && return :same
     callee in SHAPE_FUNCTIONS && return [(ArrayEventKind.shape, Coverage.unknown, Int[])]
     callee === getindex && positions == [1] && return [(ArrayEventKind.read, element_coverage(walk, @view(operands[2:end]))...)]
-    # View holds its index operand: `values[indices] .= 0` writes `values` only. Bounds check reads it unless `@inbounds`.
+    # View holds its index operand: `values[indices] .= 0` writes `values` only. Bounds check reads it unless `@inbounds`;
+    # Boolean mask is counted even then.
     if callee in INDEX_VIEWS && positions != [1]
-        checked = iszero(walk.ir.stmts[index][:flag] & CC.IR_FLAG_INBOUNDS)
+        checked = iszero(walk.ir.stmts[index][:flag] & CC.IR_FLAG_INBOUNDS) || held <: AbstractArray{Bool}
         return [(checked ? EventShape[(ArrayEventKind.read, Coverage.whole, Int[])] : EventShape[]); (ArrayEventKind.escape, Coverage.unknown, Int[])]
     end
     # Target of `a[i] .= x`: element for scalar index, else view; view of every element is array itself.
