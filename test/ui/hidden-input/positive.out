@@ -68,13 +68,13 @@ error[hidden-input]: method draws from default RNG
    = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
    = docs: corset explain hidden-input
 
-error[hidden-input]: method reads `HiddenInputPositive.ALIASED`, which other method writes
+error[hidden-input]: method reads `HiddenInputPositive.ALIASED.stable`, which other method writes
   --> src/HiddenInputPositive.jl:35:13
    |
 34 | bump_aliased!() = (ALIASED.changing[] += 1; nothing)
    | ---------------------------------------------------- writes `HiddenInputPositive.ALIASED.changing`
 35 | aliased() = ALIASED.stable[]
-   |             ^^^^^^^^^^^^^^ reads `HiddenInputPositive.ALIASED`
+   |             ^^^^^^^^^^^^^^^^ reads `HiddenInputPositive.ALIASED.stable`
    |
    = why: result depends on state caller cannot see; caller that changes it affects every other caller
    = fix: pass state as argument   [manual]

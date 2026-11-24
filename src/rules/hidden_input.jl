@@ -36,8 +36,6 @@ Read of one field of mutable object gives finding when other method writes other
 module HiddenInput
 
 using ...Facts
-using Moshi.Match: @match
-using Random: AbstractRNG
 
 const NAME = Symbol("hidden-input")
 
@@ -63,19 +61,6 @@ function writers(effects::EffectsFacts, modules::AbstractVector{Module})::Vector
     return found
 end
 
-"""Object `step` names in `holder`; `nothing` for element step or field `holder` lacks."""
-child(@nospecialize(holder::Any), step::Step.Type)::Union{Nothing, Some{Any}} = @match step begin
-    Step.Field(name) => hasfield(typeof(holder), name) && isdefined(holder, name) ? Some{Any}(getfield(holder, name)) : nothing
-    Step.Position(position) => 1 <= position <= nfields(holder) && isdefined(holder, position) ? Some{Any}(getfield(holder, position)) : nothing
-    Step.Element() => nothing
-end
-
-"""Steps of `place`; `nothing` for place that covers everything below its root."""
-place_steps(place::Place.Type)::Union{Nothing, AbstractVector{Step.Type}} = @match place begin
-    Place.At(_, steps) => steps
-    Place.Deep(_) => nothing
-end
-
 """
 Objects `place` passes in value of constant global: root value first, object at place last. `nothing` when value
 cannot settle path: other root, element step, or mutable holder, whose fields code can repoint.
@@ -88,7 +73,7 @@ function objects(place::Place.Type)::Union{Nothing, Vector{Any}}
     found = Any[getglobal(ref.mod, ref.name)]
     for step in steps
         ismutable(last(found)) && return nothing
-        next = child(last(found), step)
+        next = step_child(last(found), step)
         isnothing(next) && return nothing
         push!(found, something(next))
     end
@@ -136,7 +121,7 @@ function rng_positions(method::Method)::Vector{Int}
     for position in 1:(length(parameters) - 1)
         declared = Base.unwrapva(parameters[position + 1])
         declared isa TypeVar && (declared = declared.ub)
-        declared !== Any && typeintersect(declared, AbstractRNG) !== Union{} && push!(found, position)
+        takes_rng(declared) && push!(found, position)
     end
     return found
 end

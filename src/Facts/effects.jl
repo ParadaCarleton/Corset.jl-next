@@ -1,6 +1,7 @@
 using Moshi.Data: @data
 using Moshi.Derive: @derive
 using Moshi.Match: @match
+using Random: AbstractRNG
 
 """Step of access path: named `Field`, tuple `Position`, or `Element` of array memory."""
 @data Step begin
@@ -148,6 +149,22 @@ place_root(place::Place.Type)::Root.Type = @match place begin
     Place.At(root, _) => root
     Place.Deep(root) => root
 end
+
+"""Object `step` names in `holder`; `nothing` for element step or field `holder` lacks."""
+step_child(@nospecialize(holder::Any), step::Step.Type)::Union{Nothing, Some{Any}} = @match step begin
+    Step.Field(name) => hasfield(typeof(holder), name) && isdefined(holder, name) ? Some{Any}(getfield(holder, name)) : nothing
+    Step.Position(position) => 1 <= position <= nfields(holder) && isdefined(holder, position) ? Some{Any}(getfield(holder, position)) : nothing
+    Step.Element() => nothing
+end
+
+"""Steps of `place`; `nothing` for place that covers everything below its root."""
+place_steps(place::Place.Type)::Union{Nothing, AbstractVector{Step.Type}} = @match place begin
+    Place.At(_, steps) => steps
+    Place.Deep(_) => nothing
+end
+
+"""Whether argument of declared `type` can hold random number generator; `Any` counts for none."""
+takes_rng(@nospecialize(type::Any))::Bool = type !== Any && typeintersect(type, AbstractRNG) !== Union{}
 
 """Global binding `place` starts at; `nothing` for place at argument or elsewhere."""
 root_global(place::Place.Type)::Union{Nothing, GlobalRef} = @match place begin
