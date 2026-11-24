@@ -52,6 +52,7 @@ Each statement that uses allocation value gives one event, with statement span, 
 - Operand of non-`!` call escapes when result type can hold array: tuple, constructor, abstract result.
 - Operand escapes when result type meets its type: call can return it (`float(a)`, package `pass(a) = a`). Unary `*(A)` returns `A`.
 - Base copy, collect and reduction calls, `Array` constructors, and arithmetic with two or more operands, read operand whole. Result holds its elements, never operand itself, whatever result type: `vcat` of stand-in gives wrapper type.
+- `copy`, `vcat`, `hcat` and `Array` constructors keep unset slots of reference elements unread: operand of such type escapes.
 - Type can hold array when element or field type meets array type, at most 3 steps deep. Base storage (`Array`, `Dict`, `Set`) holds elements only; view or wrapper also holds fields (`SubArray` parent).
 - Index operand keeps constant value. Non-constant index keeps nothing.
 

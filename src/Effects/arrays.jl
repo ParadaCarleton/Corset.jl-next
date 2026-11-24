@@ -251,7 +251,11 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
         # Other operand of `!` call goes into written operand when its type can hold array (`push!(c, a)`).
         return passed(!isnothing(written) && can_hold(operand_type(walk, operands[something(written)]), held, HOLD_DEPTH))
     end
-    builds_new(callee, length(operands)) && return passed(false)
+    if builds_new(callee, length(operands))
+        # Copy keeps unset slots of reference elements unread: `copy(Vector{String}(undef, 2))` throws no `UndefRefError`.
+        slot_copy(callee) && !Base.allocatedinline(element_type(held)) && return [(ArrayEventKind.escape, Coverage.unknown, Int[])]
+        return passed(false)
+    end
     # Other result can be operand itself (`float(a)`, package `pass(a) = a`) or hold it.
     result = CC.widenconst(walk.ir.stmts[index][:type])
     return passed(typeintersect(result, held) !== Union{} || can_hold(result, held, HOLD_DEPTH))
@@ -262,11 +266,11 @@ Whether call of `callee` with `count` operands builds new value from elements of
 operand itself: Base copy, collect and reduction, arithmetic with two or more operands, `Array` constructor. Wrapper
 result type (`vcat` of stand-in) holds no operand then.
 """
-function builds_new(@nospecialize(callee::Any), count::Integer)::Bool
-    (callee in COPYING || callee in COLLECTING || callee in REDUCTIONS || (callee in ARRAY_ARITHMETIC && count >= 2)) && return true
-    # `Array` and `BitArray` constructors copy array operand.
-    return callee isa Type && callee <: Union{Array, BitArray}
-end
+builds_new(@nospecialize(callee::Any), count::Integer)::Bool =
+    slot_copy(callee) || callee in COLLECTING || callee in REDUCTIONS || (callee in ARRAY_ARITHMETIC && count >= 2)
+
+"""Whether `callee` copies slots of array operand as they are: `copy`, `vcat`, `hcat`, `Array` and `BitArray` constructors."""
+slot_copy(@nospecialize(callee::Any))::Bool = callee in COPYING || (callee isa Type && callee <: Union{Array, BitArray})
 
 """Whether index `operands` of `dotview` call cover every element of allocation of `extent`: all `Colon`, or one covering range."""
 function whole_view(walk::Walk, operands::AbstractVector{Any}, extent::Extent)::Bool
