@@ -4,6 +4,13 @@ module BangConventionPositive
 # Writes argument without `!`.
 normalize(v::Vector{Float64}) = (v ./= sum(v); v)
 
+# Immutable first operand cannot change: `shift!` writes `x`.
+struct Shift
+    by::Float64
+end
+shift!(shift::Shift, x::Vector{Float64}) = (x .+= shift.by; x)
+shifted(x::Vector{Float64}) = shift!(Shift(1.0), x)
+
 # Writes package global that other method reads.
 const TOTAL = Ref(0)
 record(x::Int) = (TOTAL[] += x; nothing)
