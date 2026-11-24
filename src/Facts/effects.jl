@@ -1,6 +1,7 @@
 using Moshi.Data: @data
 using Moshi.Derive: @derive
 using Moshi.Match: @match
+using Random: AbstractRNG
 
 """Step of access path: named `Field`, tuple `Position`, or `Element` of array memory."""
 @data Step begin
@@ -148,6 +149,45 @@ place_root(place::Place.Type)::Root.Type = @match place begin
     Place.At(root, _) => root
     Place.Deep(root) => root
 end
+
+"""Object `step` names in `holder`; `nothing` for field `holder` lacks, or element step of other holder than `Ref`."""
+step_child(@nospecialize(holder::Any), step::Step.Type)::Union{Nothing, Some{Any}} = @match step begin
+    Step.Field(name) => hasfield(typeof(holder), name) && isdefined(holder, name) ? Some{Any}(getfield(holder, name)) : nothing
+    Step.Position(position) => 1 <= position <= nfields(holder) && isdefined(holder, position) ? Some{Any}(getfield(holder, position)) : nothing
+    # `Ref` holds one element: `r[]` loads it.
+    Step.Element() => holder isa Base.RefValue && isdefined(holder, :x) ? Some{Any}(holder.x) : nothing
+end
+
+"""
+Objects `place` passes now in value of global, root value first and object at place last, and whether values settle
+path: constant root, no mutable holder on it. Code can rebind other root or repoint holder. `nothing` for unknown value,
+and for `written` place that is non-constant global itself: write there can rebind global, so it names no object.
+"""
+function current_objects(place::Place.Type, written::Bool)::Union{Nothing, @NamedTuple{path::Vector{Any}, settled::Bool}}
+    ref, steps = root_global(place), place_steps(place)
+    ref isa GlobalRef || return nothing
+    isnothing(steps) && return nothing
+    isdefined(ref.mod, ref.name) || return nothing
+    fixed = isconst(ref.mod, ref.name)
+    written && !fixed && isempty(steps) && return nothing
+    found, settled = Any[getglobal(ref.mod, ref.name)], fixed
+    for step in steps
+        settled &= !ismutable(last(found))
+        next = step_child(last(found), step)
+        isnothing(next) && return nothing
+        push!(found, something(next))
+    end
+    return (path = found, settled = settled)
+end
+
+"""Steps of `place`; `nothing` for place that covers everything below its root."""
+place_steps(place::Place.Type)::Union{Nothing, AbstractVector{Step.Type}} = @match place begin
+    Place.At(_, steps) => steps
+    Place.Deep(_) => nothing
+end
+
+"""Whether argument of declared `type` can hold random number generator; `Any` counts for none."""
+takes_rng(@nospecialize(type::Any))::Bool = type !== Any && typeintersect(type, AbstractRNG) !== Union{}
 
 """Global binding `place` starts at; `nothing` for place at argument or elsewhere."""
 root_global(place::Place.Type)::Union{Nothing, GlobalRef} = @match place begin

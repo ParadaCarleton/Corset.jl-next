@@ -333,6 +333,8 @@ discard_finally(x::Int, text::String)::Int = (
 )
 """Computed callee has no name, so mapping cannot place call: blind spot."""
 discard_computed(x::Int)::Int = (getfield(Base, :abs)(x); x)
+"""Stand-in `size` claim is Corset's own, so proof of discarded call holds."""
+discard_size(items::AbstractVector)::Nothing = (size(items); nothing)
 
 # Loop writes (F48).
 """Repeat each item at end: loop over `items` grows it."""

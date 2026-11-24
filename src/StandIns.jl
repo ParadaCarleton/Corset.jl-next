@@ -197,7 +197,8 @@ Base.factorial(number::IntStandIn)::Int = factorial(Int(number))
 
 for wrapper in (ArrayStandIn, DenseStandIn)
     @eval begin
-        Base.size(array::$wrapper)::Tuple = size(array.data)
+        # Coverage counters void compiler proof; claim keeps `size` free with coverage on, as without it.
+        Base.@assume_effects :effect_free Base.size(array::$wrapper)::Tuple = size(array.data)
         Base.IndexStyle(::Type{<:$wrapper})::IndexLinear = IndexLinear()
         Base.@propagate_inbounds Base.getindex(array::$wrapper, index::Int) = array.data[index]
         Base.@propagate_inbounds Base.setindex!(array::$wrapper, element, index::Int) = (array.data[index] = element; array)
