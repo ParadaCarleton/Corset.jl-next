@@ -301,6 +301,8 @@ end
     @test !isempty(doubled.kinds) && isempty(doubled.closure_kinds)
     @test (parameter(2), true, MEMORY, DEFINITE) in shape(effects(:sort_logged!).writes)
     @test (global_place(:CLOSURE_CALLS), true, MEMORY, DEFINITE) in shape(effects(:counted_sum).writes)
+    @test !any(write -> write[1] == global_place(:CLOSURE_CALLS), shape(effects(:named_sum).writes))
+    @test (global_place(:CLOSURE_CALLS), true, MEMORY, DEFINITE) in shape(effects(:called_in_place).writes)
     @test (global_place(:tally_count), true, MEMORY, DEFINITE) in shape(effects(:tallied).writes)
     @test only(fact for fact in effects(:seen_once).calls if callee_name(fact.callee) == "filter").closure_definite == [MEMORY]
     # Block claim makes compiler trust it, so it proves nothing.

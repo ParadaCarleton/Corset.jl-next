@@ -81,6 +81,11 @@ sort_logged!(log::Vector{Int}, items::Vector{Int})::Vector{Int} = sort(items; by
 const CLOSURE_CALLS = Ref(0)
 """Sum through closure that writes global counter."""
 counted_sum(items::Vector{Int})::Int = sum(item -> (CLOSURE_CALLS[] += 1; item), items)
+"""Named function passed to `sum`: its name stands in for its body, so its write is no closure write."""
+counted_item(item::Int)::Int = (CLOSURE_CALLS[] += 1; item)
+named_sum(items::Vector{Int})::Int = sum(counted_item, items)
+"""Anonymous function called in place: its write is caller write."""
+called_in_place()::Int = (() -> (CLOSURE_CALLS[] += 1))()
 
 tally_count = 0
 function tallied(items::Vector{Int})::Vector{Int}

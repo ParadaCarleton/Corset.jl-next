@@ -33,6 +33,17 @@ error[impure-lambda]: anonymous function passed to `sort` writes state
    = fix: write loop, or use `foreach`   [manual]
    = docs: corset explain impure-lambda
 
+error[impure-lambda]: anonymous function passed to `sum` writes state
+  --> src/ImpureLambdaPositive.jl:20:33
+   |
+20 | total(items::Vector{Float64}) = sum(item -> (CALLS[] += 1; item), items)
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `sum` chooses order and number of calls
+   |                                     ---------------------------- writes state
+   |
+   = why: write depends on Base internals, and call that reads as query changes state
+   = fix: write loop, or use `foreach`   [manual]
+   = docs: corset explain impure-lambda
+
 error[impure-lambda]: anonymous function passed to `any` writes state
   --> src/ImpureLambdaPositive.jl:23:12
    |
