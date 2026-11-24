@@ -41,6 +41,7 @@ include("rules/mixed_return.jl")
 include("rules/module_inception.jl")
 include("rules/nan_compare.jl")
 include("rules/never_succeeds.jl")
+include("rules/one_based_range.jl")
 include("rules/one_letter.jl")
 include("rules/operator_consistency.jl")
 include("rules/orphan_task.jl")
@@ -108,6 +109,7 @@ const REGISTRY = RuleEntry[
     ModuleInception.ENTRY,
     NanCompare.ENTRY,
     NeverSucceeds.ENTRY,
+    OneBasedRange.ENTRY,
     OneLetter.ENTRY,
     OperatorConsistency.ENTRY,
     OrphanTask.ENTRY,

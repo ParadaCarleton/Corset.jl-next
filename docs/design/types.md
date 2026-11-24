@@ -152,17 +152,26 @@ Each index into array needs proof unless inferred `axes` type of array is `OneTo
 - Array stand-in stands for every caller array, offset arrays included. Its `OneTo` axes hide offsets: inference folds `firstindex(x)` into literal `1`.
 - So `effects` stage infers each method with array stand-in again, with offset stand-in (`OffsetArray` of array stand-in) in its place.
 - Proof runs on that code. Inferred `axes` type there decides: `view(x, 2:3)` has `OneTo` axes, `view(x, :)` keeps axes of `x`.
-- Method store keeps facts of second inference with unit record.
+- Method store keeps facts of second inference with unit record. Entry also reads package methods that second inference reached.
 
 - Index of `x`: value that stays in index range of `x`. Rule follows SSA values of typed code.
 - Sources: `eachindex(x)`, `axes(x)`, `keys(x)`, `pairs(x)`, `firstindex(x)`, `lastindex(x)`, `begin`, `end`, `LinearIndices(x)`, `CartesianIndices(x)`.
 - Base results that index `x`: `findfirst`, `findnext`, `findall`, `argmin`, `argmax`, `searchsorted*`, `sortperm`.
-- Closure: `i ± k`, `prevind`, `nextind`, `min`, `max`, `clamp`, midpoint `(lo + hi) ÷ 2`, range between indices of `x`, loop variable over such range.
+- Closure: `i ± k`, `prevind`, `nextind`, `min`, `max`, `clamp`, midpoint `lo + (hi - lo) ÷ 2`, range between indices of `x`, loop variable over such range.
+- Index argument stays caller's index through `i ± k`. Choice (`min`, `clamp`, range bound) of argument and literal is absolute: `x[1:i]` needs proof.
+- In choice, index argument matches any array: `min(i, lastindex(x))` indexes `x`, `min(i, firstindex(y))` indexes `y`.
+- Proof reads lowered and typed code for indexing: inference with one-based stand-in can drop branch on `firstindex(x) == 1`.
+- Crash journal records offset inference: generator can abort process on new types. Crashed key gives blind spot, as does no code.
+- Generator that gives other code for offset stand-in: blind spot. Spans of first inference fit only same lowered code.
+- Arguments that share type variable (`x::T, y::T`) take offset stand-in together.
+- Midpoint `(lo + hi) ÷ 2` is no proof: sum of two indices overflows on axes near `typemin`.
+- Other arithmetic (`*`, `÷`, `mod`, shifts) gives absolute number: heap parent `i ÷ 2` assumes one-based axes.
 - Two arrays: `eachindex(x, y)` throws on different axes, so it gives index of both. So does guard `axes(x) == axes(y) || throw(...)`.
 - Same axes: `similar(x)`, `similar(x, T)`, `copy(x)`, `zero(x)` and broadcast of `x` with scalars have axes of `x`. Index of `x` indexes them.
 - Guard `Base.require_one_based_indexing(x)` proves every index of `x` after it.
 - `checkbounds` is no proof: absolute index inside shifted range passes it and reads wrong element.
 - Index argument (`f(x, i) = x[i]`): per-method fact names indexed argument; package call sites must pass index of that array. Public function carries contract, as `getindex` does.
+- Call-site check is second step. Until then, index argument passes unchecked.
 - Absolute index (literal, `length`, `size`, `enumerate` counter, index of other array): `definite`.
 - Index of unknown source (stored indices, unchecked arithmetic): `possible`.
 - Stored indices into input array: copy input to `Vector` at construction, or guard. Both give proof.

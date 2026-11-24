@@ -48,12 +48,11 @@ end
 
 """Sum of `grid` entries by loop, by column sums and by corner."""
 function matrices(grid::AbstractMatrix{<:Real})::Real
-    rows, columns = size(grid)
     total = zero(eltype(grid))
-    for column in 1:columns, row in 1:rows
+    for column in axes(grid, 2), row in axes(grid, 1)
         total += grid[row, column]
     end
-    return total + sum(grid; dims = 1)[1] + grid[1, end] + sum(view(grid, :, 1))
+    return total + first(sum(grid; dims = 1)) + grid[begin, end] + sum(view(grid, :, firstindex(grid, 2)))
 end
 
 """Countdown from `start` to one."""

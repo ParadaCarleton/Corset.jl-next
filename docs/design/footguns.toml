@@ -405,8 +405,8 @@ area = "arrays"
 text = "Positional index assumes 1-based indices"
 example = "`1:length(A)` or `A[1]`: `OffsetArray` breaks both"
 group = "composability"
-stage = "inference"
-note = "Index into array needs proof unless inferred `axes` type is `OneTo` (`Array`, DataStructures `CircularDeque`); `types.md`, Index proof. Array stand-in has `OneTo` axes, so rule reads declared argument type for stand-in arguments."
+stage = "effects"
+note = "Index into array needs proof unless inferred `axes` type is `OneTo` (`Array`, DataStructures `CircularDeque`); `types.md`, Index proof. Array stand-in has `OneTo` axes, so `effects` stage infers again with offset stand-in."
 
 [[footgun]]
 id = 37

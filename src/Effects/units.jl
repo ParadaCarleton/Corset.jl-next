@@ -15,12 +15,12 @@ const DISPATCH_LIMIT = 3
 """
 Effects record of unit `typed` (`effects.md`, Units and IR): events of each IR statement, result aliases and call
 facts. `effect_free`: compiler proves unit writes nothing caller sees; stand-in signature, claim in method, or claim of
-direct callee gives no proof.
-Unit that always throws on stand-ins gives no verdict, only its blind spot.
+direct callee gives no proof. Crash `journal` records offset inference of index proof (`unit_indices`), whose compiler
+edges come second: `nothing` when it failed. Unit that always throws on stand-ins gives no verdict, only blind spot.
 """
-function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt)::UnitEffects
+function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt, journal::Union{Nothing, Inference.Journal})::Tuple{UnitEffects, Union{Nothing, Vector{Any}}}
     cut = isempty(typed.cuts) ? nothing : typed.spans[first(typed.cuts)]
-    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, false, cut)
+    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], UnprovenIndex[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, false, cut), Any[]
     walk, lines, used, claimed = unit_walk(typed, modules, interpreter, world)
     ir = walk.ir
     walk_values!(walk, 2 * length(ir.stmts) + 10)
@@ -47,9 +47,10 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
     effect_free = CC.is_effect_free(typed.frame.ipo_effects) && !claimed && !holds_stand_in(typed.signature) && !callee_claimed
     loops, loop_spots = loop_writes(walk, spans)
     reuses, reuse_spots = stateful_reuses(walk, typed.site.method, spans)
+    indices, index_spots, edges = unit_indices(typed, walk, interpreter, journal)
     unspanned = [BlindSpot(UNSPANNED_CALL, span) for ((line, span), fact) in calls if line in typed.unmapped && no_effect(fact)]
     unguarded = unguarded_holds(walk, spans)
-    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), unguarded, calls, loops, self_aliases(walk, spans), reuses, [loop_spots; reuse_spots; unspanned], effect_free, new_result, cut)
+    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), unguarded, calls, loops, self_aliases(walk, spans), reuses, indices, [loop_spots; reuse_spots; index_spots; unspanned], effect_free, new_result, cut), edges
 end
 
 """
@@ -71,13 +72,19 @@ end
 
 """
 Walk of unit `typed` before `walk_values!`, source line of each IR statement, use of each source line, and whether method
-claims `:effect_free`.
+claims `:effect_free` (`frame_walk`).
 """
-function unit_walk(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt)::Tuple{Walk, Vector{Int}, Vector{Bool}, Bool}
-    ir, lines, used = frame_ir(typed.frame, interpreter, Bool[call_statement(statement) for statement in typed.frame.src.code])
+unit_walk(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt)::Tuple{Walk, Vector{Int}, Vector{Bool}, Bool} = frame_walk(typed.frame, typed.site.method, modules, interpreter, world)
+
+"""
+Walk of inference `frame` of `method` before `walk_values!`, source line of each IR statement, use of each source line,
+and whether method claims `:effect_free`.
+"""
+function frame_walk(frame::CC.InferenceState, method::Method, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt)::Tuple{Walk, Vector{Int}, Vector{Bool}, Bool}
+    ir, lines, used = frame_ir(frame, interpreter, Bool[call_statement(statement) for statement in frame.src.code])
     # Source flags keep compiler `effect_free`, which `frame_ir` clears on kept calls. Claim in method voids proof.
     # Inferred flags reuse claim bits, so claim reads code before inference.
-    flags, claimed = typed.frame.src.ssaflags, claims_effect_free(typed.site.method, CC.retrieve_code_info(typed.frame.linfo, world))
+    flags, claimed = frame.src.ssaflags, claims_effect_free(method, CC.retrieve_code_info(frame.linfo, world))
     proven = Bool[!claimed && line in eachindex(flags) && flags[line] & CC.IR_FLAG_EFFECT_FREE != 0 for line in lines]
     walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{ClosureWrite}}(), IdDict{Union{Method, Core.MethodInstance}, Bool}(), world)
     return walk, lines, used, claimed
@@ -172,7 +179,7 @@ end
 Facts over all units of method, one per `key` in key order: definite in any unit decides. Key leads with source
 position of fact, so order is source order.
 """
-function surest(facts::AbstractVector{T}, key::F)::Vector{T} where {T <: Union{LoopWrite, SelfAlias, StatefulReuse, UnguardedHold}, F <: Function}
+function surest(facts::AbstractVector{T}, key::F)::Vector{T} where {T <: Union{LoopWrite, SelfAlias, StatefulReuse, UnguardedHold, UnprovenIndex}, F <: Function}
     found = Dict{Tuple{String, Int, Int, Int, String}, T}()
     for fact in facts
         slot = key(fact)
@@ -192,6 +199,9 @@ reuse_key(reuse::StatefulReuse)::Tuple{String, Int, Int, Int, String} = (reuse.l
 
 """Merge key of hold throw skips: throwing statement bytes, acquire start, resource kind."""
 hold_key(hold::UnguardedHold)::Tuple{String, Int, Int, Int, String} = (hold.throws.file, hold.throws.first_byte, hold.throws.last_byte, hold.acquire.first_byte, string(hold.kind))
+
+"""Merge key of unproven index: indexing call bytes."""
+index_key(unproven::UnprovenIndex)::Tuple{String, Int, Int, Int, String} = (unproven.site.file, unproven.site.first_byte, unproven.site.last_byte, 0, "")
 
 """Call facts of one method by source statement and span."""
 const Calls = Dict{Tuple{Int, Span}, CallFact}
@@ -241,9 +251,9 @@ end
 
 """
 Accesses of all units of one method: writes, reads, result aliases, holds throws skip, call facts, loop writes, self
-aliases, stateful reuses.
+aliases, stateful reuses, unproven indices.
 """
-const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{Place.Type}, Vector{UnguardedHold}, Calls, Vector{LoopWrite}, Vector{SelfAlias}, Vector{StatefulReuse}}
+const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{Place.Type}, Vector{UnguardedHold}, Calls, Vector{LoopWrite}, Vector{SelfAlias}, Vector{StatefulReuse}, Vector{UnprovenIndex}}
 
 """
 Facts of methods of `package` from effects `records` of units in inference order, and blind spots: worst over units of
@@ -257,7 +267,7 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
         isnothing(record) && continue
         append!(spots, record.spots)
         record.verdict || continue
-        writes, reads, aliases, unguarded, calls, loops, selves, reuses = get!(() -> (Access[], Access[], Place.Type[], UnguardedHold[], Calls(), LoopWrite[], SelfAlias[], StatefulReuse[]), found, method)
+        writes, reads, aliases, unguarded, calls, loops, selves, reuses, indices = get!(() -> (Access[], Access[], Place.Type[], UnguardedHold[], Calls(), LoopWrite[], SelfAlias[], StatefulReuse[], UnprovenIndex[]), found, method)
         append!(writes, record.writes)
         append!(reads, record.reads)
         append!(aliases, record.aliases)
@@ -266,6 +276,7 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
         append!(loops, record.loop_writes)
         append!(selves, record.self_aliases)
         append!(reuses, record.stateful_reuses)
+        append!(indices, record.unproven_indices)
         free[method] = get(free, method, true) && record.effect_free
         new_results[method] = get(new_results, method, false) || record.new_result
         isnothing(record.cut) || haskey(cuts, method) || (cuts[method] = something(record.cut))
@@ -273,12 +284,12 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
     methods = MethodEffects[]
     for site in package.methods
         haskey(found, site.method) || continue
-        writes, reads, aliases, unguarded, calls, loops, selves, reuses = found[site.method]
+        writes, reads, aliases, unguarded, calls, loops, selves, reuses, indices = found[site.method]
         complete = !(site.method in incomplete) && !haskey(cuts, site.method)
         effects = MethodEffects(
             site, worst(writes), worst(reads), text_order(unique!(aliases), repr), surest(unguarded, hold_key),
-            call_order(calls), surest(loops, loop_key), surest(selves, alias_key), surest(reuses, reuse_key), complete, free[site.method], new_results[site.method], name_writes(site.method),
-            claimed_effects(site.method),
+            call_order(calls), surest(loops, loop_key), surest(selves, alias_key), surest(reuses, reuse_key), surest(indices, index_key), complete, free[site.method], new_results[site.method],
+            name_writes(site.method), claimed_effects(site.method),
         )
         push!(methods, effects)
         # Write keeps its certainty with cut; only method without write goes to coverage line.
@@ -289,17 +300,20 @@ end
 
 """
 `effects` stage facts of `package` from inference `units`, blind spots, and effects record of each typed unit for method
-store: `nothing` for unit whose instance earlier unit holds. Stored units give their kept records.
+store: `nothing` for unit whose instance earlier unit holds. Stored units give their kept records. Last come compiler
+edges of offset inference per typed unit (`unit_effects`). Crash `journal` records offset inferences; `nothing` none.
 """
-function effects_facts(package::PackageFacts, units::Units)::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}}
+function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Inference.Journal})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}, Vector{Union{Nothing, Vector{Any}}}}
     world = Base.get_world_counter()
     interpreter, modules, seen = CC.NativeInterpreter(world), Set{Module}(package.modules), Base.IdSet{Core.MethodInstance}()
-    fresh = Union{Nothing, UnitEffects}[]
+    fresh, edges = Union{Nothing, UnitEffects}[], Union{Nothing, Vector{Any}}[]
     for typed in units.typed
-        push!(fresh, typed.frame.linfo in seen ? nothing : unit_effects(typed, modules, interpreter, world))
+        record, read = typed.frame.linfo in seen ? (nothing, Any[]) : unit_effects(typed, modules, interpreter, world, journal)
+        push!(fresh, record)
+        push!(edges, read)
         push!(seen, typed.frame.linfo)
     end
     stored = Union{Nothing, UnitEffects}[unit_record(unit.effects, world) for unit in units.stored]
     facts, spots = method_facts(package, units.incomplete, ordered_records(units, fresh, stored))
-    return facts, spots, fresh
+    return facts, spots, fresh, edges
 end

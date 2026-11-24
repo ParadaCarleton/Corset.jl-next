@@ -257,6 +257,18 @@ struct StatefulReuse
 end
 
 """
+Index into array argument with offset axes that has no proof it comes from those axes (`effects` stage fact, F36):
+span of indexing call, span where index comes from (`nothing`: literal, argument or compiler value), source name of
+array (`nothing`: no name), and confidence: absolute index or index of other array gives `definite`.
+"""
+struct UnprovenIndex
+    site::Span
+    source::Union{Nothing, Span}
+    array::Union{Nothing, String}
+    confidence::Confidence.T
+end
+
+"""
 Callee of call statement: `Methods` that dispatch reaches (none when no method matches: call throws), `Builtin` or
 intrinsic function, `Foreign` C function, or `Open` dispatch (Base contract, open or unresolved call).
 """
@@ -328,7 +340,7 @@ no_effect(call::CallFact)::Bool =
 Effects of package method over its units (`effects.md`, Name trust): writes, reads, places its result can lie beneath
 (`aliases`), holds throws skip (`unguarded`), call statements in source order, writes to collection its loop iterates
 (`loop_writes`), calls that read memory they write (`self_aliases`), iterators it starts twice or lets escape
-after start (`stateful_reuses`), `complete` (no unit incomplete or cut), `effect_free` (compiler proves every unit writes nothing caller
+after start (`stateful_reuses`), indices without proof (`unproven_indices`), `complete` (no unit incomplete or cut), `effect_free` (compiler proves every unit writes nothing caller
 sees), `new_result` (some unit returns value other than `nothing`, argument, or value that holds argument or lies below it), `name_writes` (name
 trust lets calls of its function write: `!` name, or Base IO, synchronization, RNG or `iterate` function), and effects its
 `@assume_effects` claims.
@@ -343,6 +355,7 @@ struct MethodEffects
     loop_writes::Vector{LoopWrite}
     self_aliases::Vector{SelfAlias}
     stateful_reuses::Vector{StatefulReuse}
+    unproven_indices::Vector{UnprovenIndex}
     complete::Bool
     effect_free::Bool
     new_result::Bool

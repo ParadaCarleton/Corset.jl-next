@@ -324,6 +324,16 @@ assumed_store!(items::Vector{Int})::Vector{Int} = (Base.@assume_effects :effect_
 thread_count_address()::Ptr{Cint} = cglobal((:jl_n_threads, "libjulia-internal"), Cint)
 """Generated method: its `Method` has no `source`."""
 @generated generated_double(x::Real) = :(x + x)
+"""Generated method that indexes array argument: generator runs again with offset stand-in."""
+@generated generated_head(xs::AbstractVector{Int}) = :(xs[1])
+"""Generated method whose indexing branch one-based inference drops: offset inference keeps it."""
+@generated generated_branch(xs::AbstractVector{Int}) = :(firstindex(xs) == 1 ? 0 : xs[1])
+"""Generated method whose code depends on array type: index only in code for offset array."""
+@generated generated_shifting(xs::AbstractVector{Int}) = nameof(xs) === :OffsetArray ? :(length(xs); xs[1]) : :(0)
+"""Offset stand-in takes `offset_helper` branch, which unit stand-in never takes."""
+offset_head(xs::AbstractVector{Int})::Int = Base.has_offset_axes(xs) ? offset_helper(xs) : xs[begin]
+"""Last element of `xs`."""
+offset_helper(xs::AbstractVector{Int})::Int = xs[end]
 """Store under block claim in generated code: compiler trusts claim, though `Method.source` holds none."""
 @generated function generated_store!(items::Vector{Int})
     return quote

@@ -178,8 +178,8 @@ Step that `getindex`, `first`, `last` or `only` call `callee` with `operands` lo
 into tuple, else any element. Compiler knows constant index, so position keeps objects of other positions apart.
 """
 function index_step(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Step.Type
-    (callee === getindex && length(operands) == 2 && operand_type(walk, operands[1]) <: Tuple) || return Step.Element()
-    found = constant(walk.ir, operands[2])
+    (callee === getindex && length(operands) == 2 && operand_type(walk, first(operands)) <: Tuple) || return Step.Element()
+    found = constant(walk.ir, last(operands))
     return !isnothing(found) && something(found) isa Int ? Step.Position(something(found)) : Step.Element()
 end
 

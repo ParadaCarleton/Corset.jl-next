@@ -108,34 +108,57 @@ function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files:
     store = isnothing(directory) ? cached : merge(something(cached, Inference.Store()), Inference.finished_store(Inference.records(directory)))
     # Effects run reads effects record of each stored unit, so entry without one infers again.
     effects && !isnothing(store) && filter!(pair -> !isempty(last(pair).effects), store)
-    infer(journal::Union{Nothing, Inference.Journal}) = Inference.infer_package(package, files, store, journal)
-    facts, spots, units, used = isnothing(directory) ? infer(nothing) : journaled(infer, directory)
-    effects_found, effects_spots, records = effects ? Effects.effects_facts(package, units) : (nothing, BlindSpot[], nothing)
-    isnothing(cache) || Cache.store!(cache, method_entry(path), key, isnothing(records) ? something(used) : with_records(something(used), units, records))
+    found = isnothing(directory) ? run_stages(package, files, store, effects, nothing) : journaled(journal -> run_stages(package, files, store, effects, journal), directory)
+    facts, spots, stored, effects_found, effects_spots = found
+    isnothing(cache) || Cache.store!(cache, method_entry(path), key, something(stored))
     return facts, spots, effects_found, effects_spots
 end
 
 """
-Store `used` where each entry without effects record takes one: typed unit of `units` its record in `records`, other
-unit (no code) `nothing`. Stored entries keep theirs.
+Facts and blind spots of `inference` stage on `package` with method `store`, store this run used, and facts and blind
+spots of `effects` stage when `effects`. Crash `journal` covers effects stage and store entries too: index proof infers
+again, and entries run generators.
 """
-function with_records(used::Inference.Store, units::Inference.Units, records::AbstractVector{Union{Nothing, Effects.UnitEffects}})::Inference.Store
-    bytes = Dict(Inference.entry_key(typed.site.method, typed.signature) => Effects.record_bytes(record) for (typed, record) in zip(units.typed, records))
-    none = Effects.record_bytes(nothing)
-    filled(key::String, entry::Inference.Entry)::Inference.Entry = Inference.Entry(entry.file, entry.methods, entry.staged, entry.inferred, get(bytes, key, none))
-    return Inference.Store(key => isempty(entry.effects) ? filled(key, entry) : entry for (key, entry) in used)
+function run_stages(package::PackageFacts, files::AbstractVector{Facts.SyntaxFile}, store::Union{Nothing, Inference.Store}, effects::Bool, journal::Union{Nothing, Inference.Journal})::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Inference.Store}, Union{Nothing, EffectsFacts}, Vector{BlindSpot}}
+    facts, spots, units, used = Inference.infer_package(package, files, store, journal)
+    effects || return facts, spots, used, nothing, BlindSpot[]
+    effects_found, effects_spots, records, edges = Effects.effects_facts(package, units, journal)
+    return facts, spots, isnothing(used) ? nothing : with_records(used, units, records, edges, files, package, journal), effects_found, effects_spots
 end
 
 """
-Facts that `infer` gives with journal of crash journal `directory`. Stderr goes to crash log meanwhile, so Julia abort
+Store `used` where each entry without effects record takes one: typed unit of `units` its record in `records`, other
+unit (no code) `nothing`. Filled entry also reads methods behind compiler `edges` of its effects stage; entry drops
+when they are unknown (`Inference.with_edges`). Generators run under crash `journal`. Stored entries keep theirs.
+"""
+function with_records(used::Inference.Store, units::Inference.Units, records::AbstractVector{Union{Nothing, Effects.UnitEffects}}, edges::AbstractVector{<:Union{Nothing, AbstractVector{Any}}}, files::AbstractVector{Facts.SyntaxFile}, package::PackageFacts, journal::Union{Nothing, Inference.Journal})::Inference.Store
+    bytes, read = Dict{String, Vector{UInt8}}(), Dict{String, Union{Nothing, Vector{Any}}}()
+    for (typed, record, unit_edges) in zip(units.typed, records, edges)
+        key = Inference.entry_key(typed.site.method, typed.signature)
+        # Unit that repeats method instance of earlier unit has no record of its own.
+        isnothing(record) && haskey(bytes, key) && continue
+        bytes[key], read[key] = Effects.record_bytes(record), unit_edges
+    end
+    none, by_path, modules = Effects.record_bytes(nothing), Dict(file.path => file for file in files), Set(package.modules)
+    filled(key::String, entry::Inference.Entry)::Union{Nothing, Inference.Entry} = Inference.with_edges(Inference.Entry(entry.file, entry.methods, entry.staged, entry.inferred, get(bytes, key, none)), get(read, key, Any[]), by_path, modules, journal)
+    store = Inference.Store()
+    for (key, entry) in used
+        kept = isempty(entry.effects) ? filled(key, entry) : entry
+        isnothing(kept) || (store[key] = kept)
+    end
+    return store
+end
+
+"""
+Facts that `stages` gives with journal of crash journal `directory`. Stderr goes to crash log meanwhile, so Julia abort
 report of crash stays there; return or Julia exception copies log text of this run to stderr.
 """
-function journaled(infer::Function, directory::String)::Tuple
+function journaled(stages::Function, directory::String)::Tuple
     log = Inference.log_file(directory)
     start = isfile(log) ? filesize(log) : 0
     journal = Inference.open_journal(directory)
     try
-        return open(stream -> redirect_stderr(() -> infer(journal), stream), log, "a")
+        return open(stream -> redirect_stderr(() -> stages(journal), stream), log, "a")
     finally
         close(journal.io)
         write(stderr, open(stream -> (seek(stream, start); read(stream)), log))

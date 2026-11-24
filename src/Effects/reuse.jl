@@ -210,7 +210,7 @@ function stateful_reuses(walk::Walk, method::Method, spans::AbstractVector{Span}
             push!(spots, BlindSpot(cause, spans[later.index]))
             continue
         end
-        push!(found, StatefulReuse(spans[earlier.index], spans[later.index], earlier.escapes, later.escapes, earlier === later, iterator_text(walk, method, started.operand), confidence))
+        push!(found, StatefulReuse(spans[earlier.index], spans[later.index], earlier.escapes, later.escapes, earlier === later, value_text(walk, method, started.operand), confidence))
         break
     end
     return unique!(found), unique!(spots)
@@ -398,8 +398,8 @@ function held_operands(walk::Walk, @nospecialize(statement::Any))::Vector{Any}
     return (holding && !isnothing(operands)) ? operands : Any[]
 end
 
-"""Source text of iterator `operand` of `walk` in `method`: its one caller place, else `nothing`."""
-function iterator_text(walk::Walk, method::Method, @nospecialize(operand::Any))::Union{Nothing, String}
+"""Source text of value `operand` of `walk` in `method`: its one caller place, else `nothing`."""
+function value_text(walk::Walk, method::Method, @nospecialize(operand::Any))::Union{Nothing, String}
     value = operand_value(walk, operand)
     (value.fresh || length(value.places) != 1) && return nothing
     return place_text(method, only(value.places))

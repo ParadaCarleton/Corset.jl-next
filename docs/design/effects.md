@@ -173,6 +173,7 @@ Facts keep hold count per resource at normal exit and at each statement that may
 - Per package method, F48: loop writes: span of loop start, span of write, writing function, confidence (`phase5.md`, row 7).
 - Per package method, F50: self-alias calls: call span, writing function, confidence (`phase5.md`, row 7).
 - Per package method, F51: stateful reuses: earlier and later event spans, which events escape, iterator text, confidence (`phase5.md`, row 7).
+- Per package method, F36: unproven indices: indexing call span, index source span, array text, confidence (`types.md`, Index proof).
 - Per unit, for `lifecycle` rules: allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.
 - Must-alias: two values with same single root and path, where root is one object per call (parameter, global, allocation outside loop).
 - Escape: return; store into object or global; operand of `!` call that is not the written operand; operand of alias-table call or constructor whose result escapes.

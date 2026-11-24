@@ -60,6 +60,7 @@ end
 - Cache check runs before package load: unchanged rerun loads nothing.
 - Native abort kills relaunched process, and Julia `try` cannot catch it: LLVM `UNREACHABLE` in Enzyme generator that inference runs on stand-in types.
 - Relaunched process keeps crash journal: store key of each method and signature before its inference, store entry after it. Inference writes stderr to crash log.
+- Offset inference of index proof (`types.md`) writes records too, with own key prefix and no entry.
 - Relaunching process supervises: relaunched process that dies by signal, with key in journal that has no entry, runs again. It prints one note per crash with log path.
 - Next run reads journal: entries serve as method store, so finished work stays done; crashed key gets no inference and becomes blind spot `inference crashed process`.
 - Run ends with internal error after 32 crashes. Julia exception never reruns: it stays internal error.
