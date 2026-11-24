@@ -978,7 +978,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <p>Facts keep every effect with its kind. Rules apply exemptions.</p>
 <ul>
 <li>Kinds: memory write, IO, default RNG, RNG argument, task-local state, <code>ScopedValue</code> read, lock and other synchronization, lazy init, iteration start.</li>
-<li><code>bang-convention</code> exempts IO, RNG and lazy init. <code>unused-call</code> counts every kind. <code>hidden-input</code> reads default RNG, task-local state, <code>ScopedValue</code> and mutable globals.</li>
+<li><code>bang-convention</code> exempts IO, RNG and lazy init, macros (own expression they rewrite) and <code>iterate</code> state writes (loop owns state). <code>unused-call</code> counts every kind. <code>hidden-input</code> reads default RNG, task-local state, <code>ScopedValue</code> and mutable globals.</li>
 <li>Kind comes from types along place path, root first: first <code>IO</code> gives IO, <code>AbstractRNG</code> gives RNG argument.</li>
 <li>Lock, <code>Condition</code> and <code>Semaphore</code> on path give synchronization. Path without such type gives memory write.</li>
 <li>Package <code>setfieldonce!</code> and package caches follow memo-cache rule above: cheap proof or opt-out.</li>
@@ -1765,6 +1765,7 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 <li>F86 is definite only when compiler proves <code>effect_free</code> for every unit. Else name-trust none gives <code>possible</code>.</li>
 <li>Method added to other module's <code>!</code> function: no rename fix. Writes nothing on any path: F86 finding, fix <code>manual</code>.</li>
 <li>F86 exempts <code>sizehint!</code> (hint) and <code>!!</code> functions (mutate when possible, else return new value).</li>
+<li>F53 exempts macros (own expression they rewrite) and <code>iterate</code> writes to its state argument (loop owns state).</li>
 <li>Definite write gives <code>definite</code> finding. <code>possible</code> findings stay off until quality gate passes.</li>
 <li>F86 passes method whose result is <code>nothing</code>, argument, or value that holds or lies below argument (<code>new_result</code> fact).</li>
 <li>Method added to Base IO, synchronization, RNG function or <code>iterate</code> may write (<code>name_writes</code> fact).</li>

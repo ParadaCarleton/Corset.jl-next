@@ -126,7 +126,7 @@ Write sources, in order:
 Facts keep every effect with its kind. Rules apply exemptions.
 
 - Kinds: memory write, IO, default RNG, RNG argument, task-local state, `ScopedValue` read, lock and other synchronization, lazy init, iteration start.
-- `bang-convention` exempts IO, RNG and lazy init. `unused-call` counts every kind. `hidden-input` reads default RNG, task-local state, `ScopedValue` and mutable globals.
+- `bang-convention` exempts IO, RNG and lazy init, macros (own expression they rewrite) and `iterate` state writes (loop owns state). `unused-call` counts every kind. `hidden-input` reads default RNG, task-local state, `ScopedValue` and mutable globals.
 - Kind comes from types along place path, root first: first `IO` gives IO, `AbstractRNG` gives RNG argument.
 - Lock, `Condition` and `Semaphore` on path give synchronization. Path without such type gives memory write.
 - Package `setfieldonce!` and package caches follow memo-cache rule above: cheap proof or opt-out.
