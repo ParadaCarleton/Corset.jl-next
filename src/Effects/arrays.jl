@@ -550,7 +550,7 @@ function array_life(walk::Walk, flow::Flow, users::AbstractVector{<:AbstractVect
     sort!(events; by = ((statement, event),) -> (event.order, statement))
     dimensions = isnothing(sizes) ? nothing : constant_dimensions(walk, something(sizes))
     pair = kind == AllocationKind.broadcast ? rebind_pair(walk, flow, users, spans, written, index, block) : nothing
-    return ArrayLife(spans[index], kind, dimensions, ArrayEvent[event for (_, event) in events], pair)
+    return ArrayLife(spans[index], lines[index], kind, dimensions, ArrayEvent[event for (_, event) in events], pair)
 end
 
 """Arrays that unit `walk` allocates (`lifecycle.md`), with source statement (`lines`) and span (`spans`) of each IR statement."""

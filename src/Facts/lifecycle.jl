@@ -50,11 +50,12 @@ struct Rebind
 end
 
 """
-Array that package method allocates: allocation span, kind, constant dimensions (`nothing`: unknown), events in source
-statement order, and rebind pair (`nothing`: none).
+Array that package method allocates: allocation span, source statement of allocation (`statement`: same in each unit),
+kind, constant dimensions (`nothing`: unknown), events in source statement order, and rebind pair (`nothing`: none).
 """
 struct ArrayLife
     site::Span
+    statement::Int
     kind::AllocationKind.T
     dimensions::Union{Nothing, Vector{Int}}
     events::Vector{ArrayEvent}
@@ -67,7 +68,8 @@ struct MethodArrays
     arrays::Vector{ArrayLife}
 end
 
-"""`lifecycle` stage facts: arrays of each package method that allocates one."""
+"""`lifecycle` stage facts: arrays of each package method that allocates one, and blind spots of stage."""
 struct LifecycleFacts
     methods::Vector{MethodArrays}
+    blind_spots::Vector{BlindSpot}
 end

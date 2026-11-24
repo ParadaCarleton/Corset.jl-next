@@ -16,6 +16,9 @@ tuple_size() = (t = zeros((2, 3)); sum(t))
 helper(x::Vector{Float64}) = x .+ 1.0
 from_helper(x::Vector{Float64}) = (h = helper(x); sum(h))
 
+# Generated method allocates: blind spot, no array.
+@generated generated_sum(x::Vector{Float64}) = :(a = zeros(2); sum(a) + sum(x))
+
 # Event kinds.
 shape_only(x::Vector{Float64}) = (a = similar(x); length(a) + size(a, 1))
 viewed() = (a = zeros(4); view(a, 1:2) .= 1.0; sum(a))
@@ -29,6 +32,8 @@ unknown_write(x::Vector{Float64}) = (a = copy(x); sort!(a); a[1])
 joined(flag::Bool) = (a = flag ? zeros(2) : ones(2); sum(a))
 captured(x::Vector{Float64}) = (a = zeros(2); map(y -> y + a[1], x))
 iterated() = (a = ones(2); s = 0.0; for y in a; s += y; end; s)
+# Identical allocations on one line stay two arrays.
+twins() = (a = Vector{Float64}(undef, 2); b = Vector{Float64}(undef, 2); fill!(a, 1.0); sum(b))
 
 # Package `!` call can write operands after first one.
 struct Scale; factor::Float64; end

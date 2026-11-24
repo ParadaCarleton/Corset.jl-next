@@ -1,11 +1,14 @@
 """`lifecycle` stage (`lifecycle.md`): arrays of each package method, merged over array events of its units."""
 module Lifecycle
 
-using ..Facts: ArrayEvent, ArrayLife, ArrayPath, LifecycleFacts, MethodArrays, PackageFacts, Rebind
+using ..Facts: ArrayEvent, ArrayLife, ArrayPath, BlindSpot, LifecycleFacts, MethodArrays, PackageFacts, Rebind
 using ..Effects: UnitEffects
 
-"""Merge key of array over units: allocation span bytes."""
-array_key(array::ArrayLife)::Tuple{String, Int, Int} = (array.site.file, array.site.first_byte, array.site.last_byte)
+"""Blind spot cause of array in generated method: units lower other code, so no statement names one array over them."""
+const GENERATED_ARRAY = "generated method allocates array"
+
+"""Merge key of array over units: allocation span bytes and source statement; mapping can give two allocations one span."""
+array_key(array::ArrayLife)::Tuple{String, Int, Int, Int} = (array.site.file, array.site.first_byte, array.site.last_byte, array.statement)
 
 """Merge key of event over units: every field but path."""
 event_key(event::ArrayEvent)::Tuple = (event.span, event.kind, event.coverage, event.indices, event.callee, event.position, event.operator, event.view, event.order)
@@ -37,18 +40,22 @@ function merged_array(units::AbstractVector{ArrayLife})::ArrayLife
     end
     ordered = sort!(collect(values(events)); by = event -> (event.order, event.span.first_byte, event.span.last_byte, Int(event.kind)))
     dimensions = allequal(unit.dimensions for unit in units) ? first(units).dimensions : nothing
-    return ArrayLife(first(units).site, first(units).kind, dimensions, ordered, merged_rebind(Union{Nothing, Rebind}[unit.rebind for unit in units]))
+    return ArrayLife(first(units).site, first(units).statement, first(units).kind, dimensions, ordered, merged_rebind(Union{Nothing, Rebind}[unit.rebind for unit in units]))
 end
 
 """
 `lifecycle` stage facts of `package` from effects records of its units with their methods, in inference order
-(`Effects.effects_facts`). Units without verdict give no arrays.
+(`Effects.effects_facts`). Units without verdict give no arrays. Arrays of generated method give one blind spot.
 """
 function lifecycle_facts(package::PackageFacts, records::AbstractVector{Pair{Method, Union{Nothing, UnitEffects}}})::LifecycleFacts
-    found = IdDict{Method, Dict{Tuple{String, Int, Int}, Vector{ArrayLife}}}()
+    found, generated = IdDict{Method, Dict{Tuple{String, Int, Int, Int}, Vector{ArrayLife}}}(), Base.IdSet{Method}()
     for (method, record) in records
-        (isnothing(record) || !record.verdict) && continue
-        arrays = get!(Dict{Tuple{String, Int, Int}, Vector{ArrayLife}}, found, method)
+        (isnothing(record) || !record.verdict || isempty(record.arrays)) && continue
+        if Base.hasgenerator(method)
+            push!(generated, method)
+            continue
+        end
+        arrays = get!(Dict{Tuple{String, Int, Int, Int}, Vector{ArrayLife}}, found, method)
         foreach(array -> push!(get!(Vector{ArrayLife}, arrays, array_key(array)), array), record.arrays)
     end
     methods = MethodArrays[]
@@ -57,7 +64,7 @@ function lifecycle_facts(package::PackageFacts, records::AbstractVector{Pair{Met
         (isnothing(arrays) || isempty(arrays)) && continue
         push!(methods, MethodArrays(site, ArrayLife[merged_array(arrays[key]) for key in sort!(collect(keys(arrays)))]))
     end
-    return LifecycleFacts(methods)
+    return LifecycleFacts(methods, BlindSpot[BlindSpot(GENERATED_ARRAY, site.span) for site in package.methods if site.method in generated])
 end
 
 end
