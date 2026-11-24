@@ -22,4 +22,10 @@ sorted_names() = (a = Vector{String}(undef, 2); sort!(a); a)
 
 maybe_name(flag::Bool) = (a = Vector{String}(undef, 1); flag ? a[1] : "none")
 
+# View checks bounds of index array: reads every index.
+picked(values::Vector{Float64}) = (indices = Vector{Int}(undef, 2); sum(view(values, indices)))
+
+# View counts Boolean mask even under `@inbounds`.
+masked(values::Vector{Float64}) = (mask = Vector{Bool}(undef, 2); v = @inbounds view(values, mask); length(v))
+
 end
