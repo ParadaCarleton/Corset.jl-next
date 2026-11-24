@@ -445,11 +445,40 @@ after leading callable, `IO` and `AbstractRNG` operands, or position table entry
 function written_position(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Union{Nothing, Int}
     table = get(WRITE_POSITION, (nameof(callee), length(operands)), nothing)
     !isnothing(table) && library_owner(callee) === :LinearAlgebra && return table
-    for (position, operand) in enumerate(operands)
+    return next_subject(walk, operands, 1)
+end
+
+"""First position from `start` of `operands` whose operand is not callable, `IO` or `AbstractRNG`; `nothing` when none."""
+function next_subject(walk::Walk, operands::AbstractVector{Any}, start::Integer)::Union{Nothing, Int}
+    for position in start:lastindex(operands)
+        operand = operands[position]
         (callable(walk, operand) || io_operand(walk, operand) || rng_operand(walk, operand)) && continue
         return position
     end
     return nothing
+end
+
+"""
+Positions that `!` call can write instead of `written`: each subject after run of functors from `written`. `map!`
+writes `r` in `map!(scale, r, x)`. Empty when operand at `written` has no call method.
+"""
+function functor_followers(walk::Walk, operands::AbstractVector{Any}, written::Integer)::Vector{Int}
+    followers, position = Int[], written
+    while functor(walk, operands[position])
+        found = next_subject(walk, operands, position + 1)
+        isnothing(found) && break
+        position = something(found)
+        push!(followers, position)
+    end
+    return followers
+end
+
+"""Whether value of `operand` type can have call method: functor type, its supertype, or type too wide to tell."""
+function functor(walk::Walk, @nospecialize(operand::Any))::Bool
+    type = operand_type(walk, operand)
+    (type isa Type && type !== Union{}) || return false
+    matches = Base._methods_by_ftype(Tuple{type, Vararg{Any}}, 1, walk.world)
+    return !(matches isa Vector && isempty(matches))
 end
 
 """Type of global `binding`: value type of constant, declared type otherwise."""

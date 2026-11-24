@@ -74,6 +74,13 @@ end
     @test only_events(:resized) == [(RESIZE, UNKNOWN, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
     # Collection that keeps array is escape of unknown extent.
     @test only_events(:stored) == [(ESCAPE, UNKNOWN, Int[], SURE, false)]
+    # `!` call can write array: package call after its first operand, library call after functors.
+    for name in (:functor_first, :mapped_functor, :reduced_functors)
+        @test only_events(name) == [(ESCAPE, UNKNOWN, Int[], SURE, false), (READ, WHOLE, Int[], SURE, false)]
+    end
+    @test events(last(arrays(:second_output))) == [(ESCAPE, UNKNOWN, Int[], SURE, false), (READ, WHOLE, Int[], SURE, false)]
+    @test all(==(6.0), (CASES.functor_first([1.0, 2.0]), CASES.mapped_functor([1.0, 2.0]), CASES.reduced_functors([1.0, 2.0])))
+    @test CASES.second_output() == 6.0
     @test only_events(:filled_whole) == [(WRITE, WHOLE, Int[], SURE, false), (READ, WHOLE, Int[], SURE, false)]
     @test first(only(arrays(:filled_whole)).events).callee == :fill!
     @test only_events(:unknown_write) == [(READ, WHOLE, Int[], SURE, false), (WRITE, UNKNOWN, Int[], SURE, false), (READ, ELEMENT, [1], SURE, false)]

@@ -24,4 +24,16 @@ full() = (a = zeros(2); a[1] = 1.0; a[2] = 2.0; sum(a))
 
 basis_entry() = (e = zeros(3); e[1] = 1.0; e[2])
 
+# Functor before array: `!` call can write array, as Distances `colwise!(metric, r, a, b)` does.
+abstract type Metric end
+struct Gap <: Metric end
+(::Gap)(a::Float64, b::Float64) = abs(a - b)
+function gaps!(metric::Metric, r::AbstractVector{Float64}, a::AbstractVector{Float64}, b::AbstractVector{Float64})
+    for i in eachindex(r, a, b)
+        r[i] = metric(a[i], b[i])
+    end
+    return r
+end
+gaps(metric::Metric, a::Vector{Float64}, b::Vector{Float64}) = (r = Vector{Float64}(undef, length(a)); gaps!(metric, r, a, b))
+
 end

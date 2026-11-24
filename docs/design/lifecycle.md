@@ -37,7 +37,7 @@ Each statement that uses allocation value gives one event, with statement span, 
 
 - `shape`: `size`, `length`, `axes`, `eachindex`, `firstindex`, `lastindex`, `ndims`, `eltype`, `isempty`, `similar`, `keys`, `LinearIndices`, `CartesianIndices`, `checkbounds`. Reads no element.
 - `read`: `getindex` reads elements at its index operands. `first`, `last` and `only` read one element.
-- Other non-`!` call reads whole array. So does non-written operand of `!` call: `copyto!(b, a)` reads `a`.
+- Other non-`!` call reads whole array. So does non-written operand of library `!` call: `copyto!(b, a)` reads `a`.
 - `broadcasted` result reads every element of its array operands when broadcast runs.
 - `write`: `setindex!` writes elements at its index operands.
 - Whole write: written operand of `fill!`, `copyto!` with two operands, `map!`, `broadcast!`, `Base.materialize!` (`a .= …`), `rand!`, `randn!`.
@@ -46,6 +46,8 @@ Each statement that uses allocation value gives one event, with statement span, 
 - `resize`: written operand of resize table call (`effects.md`, F48 tables).
 - `escape`: return; stored operand of builtin store; closure capture; foreign call operand; pointer conversion.
 - Other operand of `!` call escapes when type of written operand can hold array (`push!(c, a)`).
+- Non-written operand of package `!` call escapes: name promises one written operand, and call can write others. Distances `colwise!(metric, r, a, b)` writes `r`.
+- Operand after written operand with call method (functor) of library `!` call escapes: `map!(scale, r, x)` writes `r`. Run of functors passes this on.
 - Operand of non-`!` call escapes when result type can hold array: tuple, constructor, abstract result.
 - Type can hold array when element or field type meets array type, at most 3 steps deep.
 - Index operand keeps constant value. Non-constant index keeps nothing.

@@ -222,6 +222,10 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
                 (!(callee in PREFIX_WRITES) || all(operand -> same_extent(walk, operand, extent), sources))
             return [reads; (ArrayEventKind.write, whole ? Coverage.whole : Coverage.unknown, Int[]); stores]
         end
+        # Name promises write of one operand: package call can write others too (`colwise!(metric, r, a, b)`).
+        isnothing(library_owner(callee)) && return [(ArrayEventKind.escape, Coverage.unknown, Int[])]
+        # Library call writes subject after functors instead of functor (`map!(scale, r, x)`).
+        !isnothing(written) && any(in(positions), functor_followers(walk, operands, something(written))) && return [(ArrayEventKind.escape, Coverage.unknown, Int[])]
         # Other operand of `!` call goes into written operand when its type can hold array (`push!(c, a)`).
         return passed(!isnothing(written) && can_hold(operand_type(walk, operands[something(written)]), held, HOLD_DEPTH))
     end

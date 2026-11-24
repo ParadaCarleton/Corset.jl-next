@@ -30,6 +30,25 @@ joined(flag::Bool) = (a = flag ? zeros(2) : ones(2); sum(a))
 captured(x::Vector{Float64}) = (a = zeros(2); map(y -> y + a[1], x))
 iterated() = (a = ones(2); s = 0.0; for y in a; s += y; end; s)
 
+# Package `!` call can write operands after first one.
+struct Scale; factor::Float64; end
+(scale::Scale)(x::Float64) = scale.factor * x
+scaled!(scale::Scale, r::Vector{Float64}, x::Vector{Float64}) = (r .= scale.(x); r)
+functor_first(x::Vector{Float64}) = (r = similar(x); scaled!(Scale(2.0), r, x); sum(r))
+both_filled!(a::Vector{Float64}, b::Vector{Float64}) = (fill!(a, 1.0); fill!(b, 2.0); nothing)
+function second_output()
+    a = Vector{Float64}(undef, 2)
+    b = Vector{Float64}(undef, 3)
+    both_filled!(a, b)
+    return sum(b)
+end
+
+# Library `!` call writes subject after functors.
+struct Add end
+(::Add)(x::Float64, y::Float64) = x + y
+mapped_functor(x::Vector{Float64}) = (r = similar(x); map!(Scale(2.0), r, x); sum(r))
+reduced_functors(x::Vector{Float64}) = (r = zeros(1); Base.mapreducedim!(Scale(2.0), Add(), r, x); sum(r))
+
 # Prefix writes cover whole array only when source has same extent; array as own source is read first.
 prefix_copy(n::Int) = (a = Vector{String}(undef, n); copyto!(a, ["x"]); a)
 source_copy(x::Vector{String}) = (a = similar(x); copyto!(a, x); a)
