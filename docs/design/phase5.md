@@ -1,6 +1,6 @@
 # Phase 5 plan
 
-PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.md`, `stages.toml`. Phase exit: `plan.md`, phase 5 row.
+PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.md`, `lifecycle.md`, `stages.toml`. Phase exit: `plan.md`, phase 5 row.
 
 ### Order
 
@@ -129,14 +129,15 @@ Port rules of local effect-rules stack onto name-tier facts.
 
 ### 10 Lifecycle facts
 
-- `lifecycle` stage builds def-use per array from allocation sites, events, must-alias pairs and escapes of `effects`.
-- Callee reads and writes come from names: `!` call writes its written operand; other call reads operands.
-- Element events carry index operand; stage decides which elements writes cover.
-- Definite facts need straight-line pattern. Branch join gives `possible`.
+Design: `lifecycle.md`.
+
+- `effects` gives array events per unit (`src/Effects/arrays.jl`); unit record stores them.
+- `lifecycle` stage merges units into `ArrayLife` per allocation (`src/Lifecycle/`).
+- Fixture package `test/lifecycle/LifecycleCases` covers each allocation kind, event kind, path and fill-loop form.
 
 ### 11 Lifecycle rules
 
-`temporary-array` (F32), `unwritten-element` (F33, F34), `constant-array` (F39), `slice-copy` (F40), `broadcast-rebind` (F41). Split by rule if PR grows large.
+`temporary-array` (F32), `unwritten-element` (F33, F34), `constant-array` (F39), `slice-copy` (F40), `broadcast-rebind` (F41). Split by rule if PR grows large. Verdicts: `lifecycle.md`, Rules.
 
 ### Phase end
 

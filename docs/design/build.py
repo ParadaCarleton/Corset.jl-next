@@ -18,7 +18,7 @@ DESIGN = Path(__file__).resolve().parent
 GROUPS = ("correctness", "safety", "performance", "composability", "readability", "restriction")
 # (file or generated table, section id) in page order
 ORDER = [("principles.md", "principles"), ("footguns", "footguns"), ("pipeline.md", "pipeline"), ("stages", "stages"),
-         ("rules", "rules"), ("findings.md", "findings"), ("types.md", "types"), ("effects.md", "effects"),
+         ("rules", "rules"), ("findings.md", "findings"), ("types.md", "types"), ("effects.md", "effects"), ("lifecycle.md", "lifecycle"),
          ("architecture.md", "architecture"), ("plan.md", "plan"), ("phase5.md", "phase5"), ("glossary.md", "glossary")]
 
 

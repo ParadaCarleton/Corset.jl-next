@@ -137,7 +137,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
   <h1>Corset Rewrite Plan</h1>
   <p class="lede">Footguns, rules, shared analyses and decisions for rewrite of Corset. Source files: <code>docs/design/README.md</code> lists them. Legacy rule names live in <code>rules-rewrite-history.md</code>.</p>
   <div class="meta"><span><b>110</b> footguns</span><span><b>102</b> rules</span><span><b>7</b> analysis stages</span></div>
-  <nav class="note"><a href="#principles">principles</a> · <a href="#footguns">footguns</a> · <a href="#pipeline">pipeline</a> · <a href="#stages">stages</a> · <a href="#rules">rules</a> · <a href="#findings">findings</a> · <a href="#types">types</a> · <a href="#effects">effects</a> · <a href="#architecture">architecture</a> · <a href="#plan">plan</a> · <a href="#phase5">phase5</a> · <a href="#glossary">glossary</a></nav>
+  <nav class="note"><a href="#principles">principles</a> · <a href="#footguns">footguns</a> · <a href="#pipeline">pipeline</a> · <a href="#stages">stages</a> · <a href="#rules">rules</a> · <a href="#findings">findings</a> · <a href="#types">types</a> · <a href="#effects">effects</a> · <a href="#lifecycle">lifecycle</a> · <a href="#architecture">architecture</a> · <a href="#plan">plan</a> · <a href="#phase5">phase5</a> · <a href="#glossary">glossary</a></nav>
 </header>
 
 <section id="principles">
@@ -1003,6 +1003,113 @@ Code lives in <code>src/Effects/</code>.</p>
 </div>
 </section>
 
+<section id="lifecycle">
+<h2>Lifecycle</h2>
+<p>Array def-use per method: rows 10 and 11 of <code>phase5.md</code>.</p>
+<p><code>effects</code> stage finds array events per unit; it holds IR. <code>lifecycle</code> stage merges units and gives def-use per allocation.
+Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/arrays.jl</code> (events) and <code>src/Lifecycle/</code> (def-use).</p>
+<div class="decision"><h3>Allocations</h3>
+<p>Allocation: statement whose result is new array that unit code alone holds. Base table gives its kind:</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Calls</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>undef</code></td>
+<td><code>similar</code>; <code>Array</code>, <code>Vector</code>, <code>Matrix</code>, <code>BitArray</code> constructor with <code>undef</code> operand</td>
+</tr>
+<tr>
+<td><code>filled</code></td>
+<td><code>zeros</code>, <code>ones</code>, <code>fill</code>, <code>trues</code>, <code>falses</code></td>
+</tr>
+<tr>
+<td><code>broadcast</code></td>
+<td><code>Base.materialize</code> of <code>broadcasted</code> result: <code>f.(x)</code></td>
+</tr>
+<tr>
+<td><code>collected</code></td>
+<td><code>collect</code>, comprehension (<code>collect</code> of <code>Generator</code>), <code>map</code></td>
+</tr>
+<tr>
+<td><code>slice</code></td>
+<td><code>getindex</code> on array with range or <code>Colon</code> index operand: <code>A[:, i]</code>, <code>v[2:end]</code></td>
+</tr>
+<tr>
+<td><code>copied</code></td>
+<td><code>copy</code>, <code>vcat</code>, <code>hcat</code></td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>Package call result is no allocation: name trust tells nothing about whether result is new.</li>
+<li>Result type: <code>Array</code>, <code>BitArray</code>, or array stand-in (<code>similar</code> and broadcast of stand-in keep it). Stand-in stands for caller array type.</li>
+<li>Other result type (<code>SVector</code>, GPU array, <code>OffsetArray</code>) is no allocation: element and index rules differ.</li>
+<li>Constant dimension operands give length. Else length is unknown.</li>
+<li>Allocation in loop is new array each iteration. Its events count per iteration.</li>
+</ul>
+</div><div class="decision"><h3>Identity</h3>
+<ul>
+<li>Allocation value: SSA value of allocation, and <code>π</code> node or <code>typeassert</code> of it.</li>
+<li>View: alias-table result (<code>effects.md</code>, Roots) of allocation value. Events through view carry <code>view</code>; they never give coverage.</li>
+<li><code>φ</code> node that joins allocation value with other value ends identity: later uses are <code>unknown</code> events.</li>
+<li>Loop <code>φ</code> that joins allocation before loop with allocation in loop body gives rebind pair (F41).</li>
+</ul>
+</div><div class="decision"><h3>Events</h3>
+<p>Each statement that uses allocation value gives one event, with statement span, callee and operand position.</p>
+<ul>
+<li><code>shape</code>: <code>size</code>, <code>length</code>, <code>axes</code>, <code>eachindex</code>, <code>firstindex</code>, <code>lastindex</code>, <code>ndims</code>, <code>eltype</code>, <code>isempty</code>, <code>similar</code>, <code>keys</code>, <code>LinearIndices</code>, <code>CartesianIndices</code>, <code>checkbounds</code>. Reads no element.</li>
+<li><code>read</code>: <code>getindex</code> reads elements at its index operands. Other non-<code>!</code> call reads whole array. So does non-written operand of <code>!</code> call: <code>copyto!(b, a)</code> reads <code>a</code>.</li>
+<li><code>write</code>: <code>setindex!</code> writes elements at its index operands.</li>
+<li>Whole write: written operand of <code>fill!</code>, <code>copyto!</code> with two operands, <code>map!</code>, <code>broadcast!</code>, <code>Base.materialize!</code> (<code>a .= …</code>), <code>rand!</code>, <code>randn!</code>.</li>
+<li>Other <code>!</code> call on written operand: <code>unknown</code> write. It can read first (<code>sort!</code>) or write part.</li>
+<li><code>resize</code>: written operand of resize table call (<code>effects.md</code>, F48 tables).</li>
+<li><code>escape</code>: return; stored operand of builtin store or <code>!</code> call (<code>push!(c, a)</code>); closure capture; foreign call operand.</li>
+<li>Operand of constructor, tuple or alias-table call escapes when its result escapes. Operand of other non-<code>!</code> call escapes when result type can hold array.</li>
+<li>Index operand keeps constant value. Non-constant index keeps nothing.</li>
+</ul>
+</div><div class="decision"><h3>Paths</h3>
+<ul>
+<li><code>sure</code>: event block post-dominates allocation block, and both blocks share loop nest. Event runs once per allocation.</li>
+<li><code>branch</code>: allocation run can skip event. <code>loop</code>: event lies in loop that allocation lies outside.</li>
+<li>Order: block order of <code>sure</code> events follows dominance. Statements in one block keep IR order.</li>
+<li>Fill loop is one <code>sure</code> whole write at loop exit when every condition holds:
+<ul>
+<li>Loop iterates <code>eachindex(a)</code>, <code>LinearIndices(a)</code>, <code>CartesianIndices(a)</code>, <code>1:length(a)</code>, or <code>axes(a, 1)</code> for vector <code>a</code>.</li>
+<li>Body writes <code>a[i]</code> with iteration value <code>i</code>, in block that runs on every iteration.</li>
+<li>Loop exits only through its header, and its exit block post-dominates allocation block.</li>
+</ul>
+</li>
+<li>Other loop write is <code>loop</code> write with unknown coverage.</li>
+</ul>
+</div><div class="decision"><h3>Facts</h3>
+<ul>
+<li>Per package method: <code>ArrayLife</code> per allocation: site span, kind, element type, constant length, events in order, rebind pair.</li>
+<li>Units of method merge by allocation span. Event lists merge by span; path of merged event is worst over units.</li>
+<li>Definite verdict reads <code>sure</code> events only. <code>branch</code>, <code>loop</code> or <code>view</code> event that can change verdict gives <code>possible</code>.</li>
+</ul>
+</div><div class="decision"><h3>Rules</h3>
+<ul>
+<li><code>temporary-array</code> (F32): <code>broadcast</code> or <code>collected</code> allocation whose only events are shape reads and one <code>sure</code> read by consuming-table call. Fix: <code>sum(f.(x))</code> → <code>sum(f, x)</code>; <code>sum(collect(it))</code> → <code>sum(it)</code>.</li>
+<li><code>unwritten-element</code> (F33): <code>undef</code> allocation read before write. Read of element that no earlier <code>sure</code> write covers is definite.</li>
+<li><code>unwritten-element</code> (F34): <code>filled</code> allocation with constant length. <code>sure</code> element writes cover part of it; then whole read. Kind <code>placeholder</code>.</li>
+<li><code>constant-array</code> (F39): <code>filled</code> allocation without write, resize or escape. Fix: FillArrays.jl <code>Fill</code>, <code>Zeros</code>, <code>Ones</code>.</li>
+<li><code>slice-copy</code> (F40): <code>slice</code> allocation without write, resize or escape. Fix: <code>view</code> of same indices.</li>
+<li><code>broadcast-rebind</code> (F41): rebind pair whose loop allocation is <code>broadcast</code> of array operands that are earlier value or scalars. Fix: <code>x .= f.(y)</code>.</li>
+<li>Fix tiers and messages: row 11.</li>
+</ul>
+</div><div class="decision"><h3>Tests</h3>
+<ul>
+<li>Fixture package <code>test/lifecycle/LifecycleCases</code>: method per allocation kind, event kind, path and fill-loop form.</li>
+<li>Each fixture method states expected <code>ArrayLife</code> in test file.</li>
+<li>Runtime check: definite <code>undef</code> fixture of <code>String</code> elements throws <code>UndefRefError</code>. Fill-loop fixtures assign every element (<code>isassigned</code>).</li>
+</ul>
+</div>
+</section>
+
 <section id="architecture">
 <h2>Architecture</h2>
 <p>Code layout, process model, cache, tests, command line.</p>
@@ -1386,7 +1493,7 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 
 <section id="phase5">
 <h2>Phase 5 plan</h2>
-<p>PR plan for <code>effects</code> and <code>lifecycle</code> stages and their rules. Design: <code>effects.md</code>, <code>stages.toml</code>. Phase exit: <code>plan.md</code>, phase 5 row.</p>
+<p>PR plan for <code>effects</code> and <code>lifecycle</code> stages and their rules. Design: <code>effects.md</code>, <code>lifecycle.md</code>, <code>stages.toml</code>. Phase exit: <code>plan.md</code>, phase 5 row.</p>
 <div class="decision"><h3>Order</h3>
 <div class="scroll"><table>
 <thead>
@@ -1594,14 +1701,14 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 <li>Fix: rename definition and package call sites. First PR gives manual fix; rename fixer follows owner decision on tier.</li>
 </ul>
 </div><div class="decision"><h3>10 Lifecycle facts</h3>
+<p>Design: <code>lifecycle.md</code>.</p>
 <ul>
-<li><code>lifecycle</code> stage builds def-use per array from allocation sites, events, must-alias pairs and escapes of <code>effects</code>.</li>
-<li>Callee reads and writes come from names: <code>!</code> call writes its written operand; other call reads operands.</li>
-<li>Element events carry index operand; stage decides which elements writes cover.</li>
-<li>Definite facts need straight-line pattern. Branch join gives <code>possible</code>.</li>
+<li><code>effects</code> gives array events per unit (<code>src/Effects/arrays.jl</code>); unit record stores them.</li>
+<li><code>lifecycle</code> stage merges units into <code>ArrayLife</code> per allocation (<code>src/Lifecycle/</code>).</li>
+<li>Fixture package <code>test/lifecycle/LifecycleCases</code> covers each allocation kind, event kind, path and fill-loop form.</li>
 </ul>
 </div><div class="decision"><h3>11 Lifecycle rules</h3>
-<p><code>temporary-array</code> (F32), <code>unwritten-element</code> (F33, F34), <code>constant-array</code> (F39), <code>slice-copy</code> (F40), <code>broadcast-rebind</code> (F41). Split by rule if PR grows large.</p>
+<p><code>temporary-array</code> (F32), <code>unwritten-element</code> (F33, F34), <code>constant-array</code> (F39), <code>slice-copy</code> (F40), <code>broadcast-rebind</code> (F41). Split by rule if PR grows large. Verdicts: <code>lifecycle.md</code>, Rules.</p>
 </div><div class="decision"><h3>Phase end</h3>
 <ul>
 <li>Codex adversarial review of whole phase diff. Brief holds design parts and <code>src/</code> only. Log findings in history.</li>
@@ -1646,6 +1753,18 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 <tr>
 <td>fact</td>
 <td>Analysis output that rules read.</td>
+</tr>
+<tr>
+<td>allocation</td>
+<td>Statement that gives new <code>Array</code>, <code>BitArray</code> or array stand-in by Base table (<code>lifecycle.md</code>). Package call result is none.</td>
+</tr>
+<tr>
+<td>fill loop</td>
+<td>Loop over all indices of array that writes element at iteration index on every iteration. Counts as whole write.</td>
+</tr>
+<tr>
+<td>rebind pair</td>
+<td>Loop <code>φ</code> that joins array before loop with array that loop body allocates (F41).</td>
 </tr>
 <tr>
 <td>stand-in type</td>

@@ -9,6 +9,9 @@ Terms this design coins.
 | kind | Variant inside rule, with own message and fix. |
 | stage | Analysis step that computes facts once per run: `syntax`, `package`, `scope`, `inference`, `effects`, `lifecycle`, `external`. Rule belongs to last stage it reads. |
 | fact | Analysis output that rules read. |
+| allocation | Statement that gives new `Array`, `BitArray` or array stand-in by Base table (`lifecycle.md`). Package call result is none. |
+| fill loop | Loop over all indices of array that writes element at iteration index on every iteration. Counts as whole write. |
+| rebind pair | Loop `φ` that joins array before loop with array that loop body allocates (F41). |
 | stand-in type | Type Corset defines to stand for whatever type caller passes, so inference sees concrete type. |
 | generic argument | Annotation callers can fill with many types: `x::Real`, `x::T`. |
 | overspecified type | Annotation that names specific number type, `AbstractFloat`, or concrete container anywhere inside. |
