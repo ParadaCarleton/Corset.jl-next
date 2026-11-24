@@ -135,13 +135,22 @@ Facts keep hold count per resource at normal exit and at each statement that may
 
 - Primitive table: `lock`, `unlock`, `trylock` on lock; `acquire`, `release` on `Semaphore`; `open` with `IOStream` result; `close` on `IOStream`.
 - `lock(f, l)`, `open(f, path)` and `@lock l expr` release in `finally`, which dataflow balances.
-- Resource: one root of operand. Operand with several roots gives unknown count.
+- Resource: one caller place of operand, else IR value under `π` nodes. Value live into catch block names its `try` value.
 - Dataflow over CFG blocks, at most 4 paths per block. Branch on condition that path took before takes same side.
+- Join of paths with equal counts drops conditions they disagree on. Branch that can depend on dropped condition makes later facts `possible`.
+- Dependence: dropped value, `φ` node, call without `:consistent` proof, or non-constant global, through operands.
 - Statement may throw when compiler `nothrow` is off. Inside `try`, it has an edge to its catch block.
-- Call that passes held resource to other function makes count unknown: helper can release it.
+- Call that passes held resource to package function makes count unknown: helper can release it.
+- Holder of fresh resource value hands it on too: tuple, `new`, `φ`, or mutable operand and result of call that takes it.
+- Holder that names caller-visible place (argument, global) escapes value: later call that runs package code can release it.
+- One `Base` or `Core` method releases only through function operand it calls, so count stays exact.
+- Release of resource that path does not hold makes holds of its kind unknown; its throw gives them `possible`.
+- Release that throws leaves its resource free: `unlock` throws only when task holds none (`ReentrantLock`). Lock that breaks this is its own bug.
+- Place that summarizes several objects (array element) names none: each load is its own resource.
 - F98 fact: statement may throw outside every `try` while method holds resource. Exact count gives definite; unknown gives `possible`.
 - Helper that acquires (`hold!(q) = lock(q.lk)`) stays unseen: its caller gets no fact.
-- `trylock` gives unknown count.
+- `trylock` forks path: success side holds one more. Branch on result, or on its `!`, takes known side.
+- At most 4 forks per block entry path; later `trylock` gives unknown count.
 
 #### Compiler effects
 

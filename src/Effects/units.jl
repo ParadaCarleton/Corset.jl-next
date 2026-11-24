@@ -49,7 +49,8 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
     reuses, reuse_spots = stateful_reuses(walk, typed.site.method, spans)
     indices, index_spots, edges = unit_indices(typed, walk, interpreter, journal)
     unspanned = [BlindSpot(UNSPANNED_CALL, span) for ((line, span), fact) in calls if line in typed.unmapped && no_effect(fact)]
-    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), reuses, indices, [loop_spots; reuse_spots; index_spots; unspanned], effect_free, new_result, cut), edges
+    unguarded = unguarded_holds(walk, spans)
+    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), unguarded, calls, loops, self_aliases(walk, spans), reuses, indices, [loop_spots; reuse_spots; index_spots; unspanned], effect_free, new_result, cut), edges
 end
 
 """
@@ -178,7 +179,7 @@ end
 Facts over all units of method, one per `key` in key order: definite in any unit decides. Key leads with source
 position of fact, so order is source order.
 """
-function surest(facts::AbstractVector{T}, key::F)::Vector{T} where {T <: Union{LoopWrite, SelfAlias, StatefulReuse, UnprovenIndex}, F <: Function}
+function surest(facts::AbstractVector{T}, key::F)::Vector{T} where {T <: Union{LoopWrite, SelfAlias, StatefulReuse, UnguardedHold, UnprovenIndex}, F <: Function}
     found = Dict{Tuple{String, Int, Int, Int, String}, T}()
     for fact in facts
         slot = key(fact)
@@ -195,6 +196,9 @@ alias_key(call::SelfAlias)::Tuple{String, Int, Int, Int, String} = (call.call.fi
 
 """Merge key of stateful reuse: later event bytes, earlier event start, kinds of both events."""
 reuse_key(reuse::StatefulReuse)::Tuple{String, Int, Int, Int, String} = (reuse.later.file, reuse.later.first_byte, reuse.later.last_byte, reuse.earlier.first_byte, string(reuse.earlier_escapes, reuse.later_escapes))
+
+"""Merge key of hold throw skips: throwing statement bytes, acquire start, resource kind."""
+hold_key(hold::UnguardedHold)::Tuple{String, Int, Int, Int, String} = (hold.throws.file, hold.throws.first_byte, hold.throws.last_byte, hold.acquire.first_byte, string(hold.kind))
 
 """Merge key of unproven index: indexing call bytes."""
 index_key(unproven::UnprovenIndex)::Tuple{String, Int, Int, Int, String} = (unproven.site.file, unproven.site.first_byte, unproven.site.last_byte, 0, "")
@@ -283,7 +287,7 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
         writes, reads, aliases, unguarded, calls, loops, selves, reuses, indices = found[site.method]
         complete = !(site.method in incomplete) && !haskey(cuts, site.method)
         effects = MethodEffects(
-            site, worst(writes), worst(reads), text_order(unique!(aliases), repr), text_order(unique!(unguarded), repr),
+            site, worst(writes), worst(reads), text_order(unique!(aliases), repr), surest(unguarded, hold_key),
             call_order(calls), surest(loops, loop_key), surest(selves, alias_key), surest(reuses, reuse_key), surest(indices, index_key), complete, free[site.method], new_results[site.method],
             name_writes(site.method), claimed_effects(site.method),
         )
