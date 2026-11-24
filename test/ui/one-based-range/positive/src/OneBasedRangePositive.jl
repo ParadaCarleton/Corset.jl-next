@@ -122,4 +122,24 @@ struct Tag end
 Base.get(xs::AbstractVector{Int}, i::Int, ::Tag) = xs[i]
 tagged_first(xs::AbstractVector{Int}) = get(xs, 1, Tag())
 
+# Update reads and writes one element: one finding.
+function bumped(xs::AbstractVector{Int})
+    for i in 1:length(xs)
+        xs[i] += 1
+    end
+    return xs
+end
+
+# Store and read of other elements on one line: two findings.
+function shifted!(xs::AbstractVector{Int})
+    xs[1] = xs[2]
+    return xs
+end
+
+# Store and read of other elements of matrix on one line: two findings.
+function shifted_row!(m::AbstractMatrix{Int})
+    m[1, 2] = m[1, 3]
+    return m
+end
+
 end

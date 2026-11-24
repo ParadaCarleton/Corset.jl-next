@@ -8,7 +8,7 @@ Reports index into array argument with no proof that it lies in axes of that arr
 `nextind`, `min`, `max`, `clamp` or midpoint of such indices. `similar(x)`, `copy(x)` and broadcast of `x` with scalars
 share axes of `x`. Guard `Base.require_one_based_indexing(x)`, or `axes(x) == axes(y)` that throws otherwise, proves
 indices after it. Literal, `length`, `size` or `enumerate` counter, or index of other array, gives `definite`; index of
-unknown source gives `possible`.
+unknown source gives `possible`. Update `x[i] += 1` reads and writes one element: one finding.
 
 Index argument passes in its method: method takes contract that callers pass index of that array. Rule checks each
 package call against contracts of methods it can run, with same proof. Method that passes its own index and array

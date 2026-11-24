@@ -345,10 +345,11 @@ const ROUNDS = 16
 """
 Index facts of unit `walk` of `method` inferred with offset stand-ins (`types.md`, Index proof): indices into arrays
 with offset axes that have no proof, contracts of index arguments, and package calls that pass arrays with offset axes.
-`lines` gives source statement of each IR statement, `spans` span of each source statement. One unproven fact per
-indexing call: its first unproven index. Call compiler inserts gives none. Blind spots come from `index_contracts`.
+`lines` gives source statement of each IR statement, `spans` span of each source statement in `file`. One unproven fact
+per indexing call: its first unproven index; update reads and writes one element (`one_per_element`). Call compiler
+inserts gives none. Blind spots come from `index_contracts`.
 """
-function index_facts(walk::Walk, method::Method, lines::AbstractVector{<:Integer}, spans::AbstractVector{Span})::Tuple{IndexFacts, Vector{BlindSpot}}
+function index_facts(walk::Walk, method::Method, lines::AbstractVector{<:Integer}, spans::AbstractVector{Span}, file::SyntaxFile)::Tuple{IndexFacts, Vector{BlindSpot}}
     Base.require_one_based_indexing(lines, spans)
     span_of(index::Integer)::Union{Nothing, Span} = lines[index] in eachindex(spans) ? spans[lines[index]] : nothing
     count = length(walk.ir.stmts)
@@ -363,7 +364,7 @@ function index_facts(walk::Walk, method::Method, lines::AbstractVector{<:Integer
         changed || break
     end
     domtree, guards, agreements = CC.construct_domtree(walk.ir.cfg.blocks), one_based_guards(proof), axes_agreements(proof)
-    found, contracts, calls, spots = UnprovenIndex[], IndexContract[], IndexCall[], BlindSpot[]
+    found, contracts, calls, spots = Tuple{UnprovenIndex, Any, Any}[], IndexContract[], IndexCall[], BlindSpot[]
     for index in 1:count
         site = span_of(index)
         isnothing(site) && continue
@@ -376,13 +377,42 @@ function index_facts(walk::Walk, method::Method, lines::AbstractVector{<:Integer
         several && push!(spots, BlindSpot(SEVERAL_ARGUMENTS, site))
         unproven_site = unproven(proof, domtree, guards, agreements, index)
         isnothing(unproven_site) && continue
-        array, operand, confidence = unproven_site
+        array, operand, operands, confidence = unproven_site
         source = underlying(walk, operand)
         cause = source isa Core.SSAValue ? span_of(source.id) : nothing
-        push!(found, UnprovenIndex(site, cause == site ? nothing : cause, value_text(walk, method, array), confidence))
+        push!(found, (UnprovenIndex(site, cause == site ? nothing : cause, value_text(walk, method, array), confidence), array, operands))
     end
-    return IndexFacts(unique!(found), unique!(contracts), calls), unique!(spots)
+    return IndexFacts(unique!(one_per_element(found, file)), unique!(contracts), calls), unique!(spots)
 end
+
+"""
+Facts of `found` (fact, array value, index values) without repeats. Facts of same array value, index values and
+source line form group; fact repeats other of its group when its span `covers` span of other. Of two that cover each
+other, surer one stays, then earlier one. `x[i] += 1` reads and writes one element: one fact at read.
+"""
+function one_per_element(found::AbstractVector{<:Tuple{UnprovenIndex, Any, Any}}, file::SyntaxFile)::Vector{UnprovenIndex}
+    groups = Dict{Tuple{Any, Any, Int}, Vector{Int}}()
+    for (position, (fact, array, operands)) in pairs(found)
+        push!(get!(Vector{Int}, groups, (array, operands, Inference.line_span(file, fact.site).first_byte)), position)
+    end
+    kept = trues(length(found))
+    for members in values(groups), position in members
+        fact = first(found[position])
+        kept[position] = !any(members) do other
+            inner = first(found[other])
+            other == position && return false
+            covers(fact.site, inner.site) || return false
+            return !covers(inner.site, fact.site) || (inner.confidence, other) < (fact.confidence, position)
+        end
+    end
+    return UnprovenIndex[first(entry) for (entry, keep) in zip(found, kept) if keep]
+end
+
+"""
+Whether span `outer` covers span `inner` on its line. Line precision span covers whole line: lowering gives
+`setindex!` of `x[i] += 1` no syntax node. Exact span covers exact span inside it, and no line span.
+"""
+covers(outer::Span, inner::Span)::Bool = outer.precision == Precision.line || (inner.precision == Precision.exact && outer.first_byte <= inner.first_byte && inner.last_byte <= outer.last_byte)
 
 """Calls `Base.require_one_based_indexing(x...)` in `proof`: statement and root of each array it checks."""
 function one_based_guards(proof::Proof)::Vector{Tuple{Int, Any}}
@@ -477,11 +507,11 @@ end
 selects_all(proof::Proof, @nospecialize(operand::Any))::Bool = operand_type(proof.walk, operand) <: Union{Colon, AbstractArray{Bool}}
 
 """
-Unproven index of indexing call at statement `index` in `proof`: array operand, index operand and certainty. Absolute
-index (literal, `length`, counter, index of other array) is `definite`; unknown source `possible`. Index argument and
-array after one-based guard pass.
+Unproven index of indexing call at statement `index` in `proof`: array operand, index operand, all index operands and
+certainty. Absolute index (literal, `length`, counter, index of other array) is `definite`; unknown source `possible`.
+Index argument and array after one-based guard pass.
 """
-function unproven(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tuple{Integer, Any}}, agreements::AbstractVector{<:Tuple{Integer, Any, Any}}, index::Integer)::Union{Nothing, Tuple{Any, Any, Confidence.T}}
+function unproven(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tuple{Integer, Any}}, agreements::AbstractVector{<:Tuple{Integer, Any, Any}}, index::Integer)::Union{Nothing, Tuple{Any, Any, Tuple, Confidence.T}}
     parts = offset_indexing(proof, domtree, guards, index)
     isnothing(parts) && return nothing
     array, array_root, block, indices, dimensions = parts
@@ -490,7 +520,7 @@ function unproven(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tu
         claims = operand_claims(proof, operand)
         any(claim -> proves(proof, domtree, agreements, claim, array_root, block, position, length(indices), dimensions), claims) && continue
         any(claim -> claim.root isa Trusted, claims) && continue
-        return (array, operand, isempty(claims) ? Confidence.possible : Confidence.definite)
+        return (array, operand, Tuple(indices), isempty(claims) ? Confidence.possible : Confidence.definite)
     end
     return nothing
 end
@@ -860,5 +890,5 @@ function unit_indices(typed::TypedCode, walk::Walk, interpreter::CC.NativeInterp
     inferred isa String && return IndexFacts(), [BlindSpot(inferred, typed.site.span)], nothing
     offset_walk, lines = frame_walk(last(inferred), method, walk.modules, interpreter, walk.world)
     walk_values!(offset_walk, 2 * length(offset_walk.ir.stmts) + 10)
-    return index_facts(offset_walk, method, lines, typed.spans)..., inferred[4]
+    return index_facts(offset_walk, method, lines, typed.spans, typed.site.file)..., inferred[4]
 end

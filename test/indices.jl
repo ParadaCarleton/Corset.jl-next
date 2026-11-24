@@ -71,10 +71,15 @@ end
     @test_throws BoundsError Positive.computed_pick(evil)
     @test_throws BoundsError Positive.either_pick(evil, false)
     @test_throws BoundsError Positive.tagged_first(evil)
+    @test_throws BoundsError Positive.bumped(EvilArray(copy(ints)))
+    @test_throws BoundsError Positive.shifted!(EvilArray(copy(ints)))
+    @test_throws BoundsError Positive.shifted_row!(EvilArray([1 2 3; 4 5 6; 7 8 9]))
 end
 
 using Corset.Effects: Effects, offset_type, offset_signature, OffsetArray
 using Corset.StandIns: ArrayStandIn, DenseStandIn
+using Corset.Facts: Span, UnprovenIndex, Precision, Confidence, Role
+using Corset.Syntax: parse_file
 
 """Struct whose bound rejects offset array."""
 struct Dense{A <: DenseVector{Float64}}
@@ -130,4 +135,21 @@ end
     @test Effects.dimension_count(Array{Float64}) === nothing
     @test Effects.dimension_count(Union{Nothing, Vector{Int}}) === nothing
     @test Effects.dimension_count(Union{}) === nothing
+end
+
+@testset "one unproven index fact per element and line" begin
+    file = parse_file("cases.jl", "xs[i] += 1\nxs[i] += 1\n", Role.package)
+    fact(first_byte, last_byte, precision, confidence) = UnprovenIndex(Span("cases.jl", first_byte, last_byte, precision), nothing, "xs", confidence)
+    read, store = fact(1, 5, Precision.exact, Confidence.definite), fact(1, 1, Precision.line, Confidence.definite)
+    @test Effects.one_per_element([(store, :xs, :i), (read, :xs, :i)], file) == [read]
+    # Equal spans cover each other: surer fact stays, then earlier one.
+    possible = fact(1, 1, Precision.line, Confidence.possible)
+    @test Effects.one_per_element([(possible, :xs, :i), (store, :xs, :i)], file) == [store]
+    @test Effects.one_per_element([(store, :xs, :i), (store, :xs, :i)], file) == [store]
+    # Other index value, other array or other line: each fact stays.
+    @test Effects.one_per_element([(store, :xs, :j), (read, :xs, :i)], file) == [store, read]
+    @test Effects.one_per_element([(store, :ys, :i), (read, :xs, :i)], file) == [store, read]
+    @test Effects.one_per_element([(store, :xs, (1, 2)), (read, :xs, (1, 3))], file) == [store, read]
+    next_line = fact(12, 12, Precision.line, Confidence.definite)
+    @test Effects.one_per_element([(next_line, :xs, :i), (read, :xs, :i)], file) == [next_line, read]
 end
