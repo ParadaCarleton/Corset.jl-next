@@ -38,6 +38,7 @@ assigned(n::Int) = (a = Vector{String}(undef, n); isassigned(a, 1))
 copied_slots() = (a = Vector{Any}(undef, 2); copy(a))
 joined_labels(n::Int) = (a = Vector{String}(undef, n); vcat(a, a))
 stacked_labels(n::Int) = (m = Matrix{String}(undef, n, n); hcat(m, m))
+widened_labels(n::Int) = (a = Vector{Any}(undef, n); vcat(a, ["x", "y"]))
 
 full() = (a = zeros(2); a[1] = 1.0; a[2] = 2.0; sum(a))
 

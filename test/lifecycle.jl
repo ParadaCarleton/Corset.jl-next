@@ -211,12 +211,21 @@ include(joinpath(@__DIR__, "ui", "unwritten-element", "positive", "src", "Unwrit
 end
 
 @testset "concatenation slot reads match Julia" begin
-    a, m, t = Vector{String}(undef, 2), Matrix{String}(undef, 2, 2), Array{String, 3}(undef, 2, 2, 2)
+    # Operand at `unset` has unset slots; others are full, so only its slots can throw.
+    unset(type::Type, shape::Tuple)::Array = Array{type}(undef, shape...)
+    full(type::Type, shape::Tuple)::Array = fill!(Array{type}(undef, shape...), type === Int ? 1 : "z")
     cases = [
-        (vcat, (a,)), (vcat, (a, a)), (vcat, (a, "x")), (vcat, (m,)), (vcat, (m, m)), (vcat, (t, t)), (vcat, (Vector{Any}(undef, 2), a)),
-        (hcat, (a,)), (hcat, (a, a)), (hcat, (m,)), (hcat, (m, m)), (hcat, (m, a)), (hcat, (t, t)),
+        (vcat, [(String, (2,)), (String, (2,))], 1), (vcat, [(String, (2,)), (String, (2,))], 2), (vcat, [(Any, (2,)), (String, (2,))], 1),
+        (vcat, [(String, (2,)), (Any, (2,))], 1), (vcat, [(Any, (2,)), (String, (2,))], 2), (vcat, [(String, (2,)), "x"], 1),
+        (vcat, [(String, (2,)), 1], 1), (vcat, [(Any, (2,)), 1], 1), (vcat, [(String, (2,)), SubString("a")], 1),
+        (vcat, [(String, (2, 2)), (String, (2, 2))], 1), (vcat, [(String, (2, 2))], 1), (vcat, [(String, (2, 2, 2)), (String, (2, 2, 2))], 1),
+        (vcat, [(String, (2,)), (Int, (2,))], 1), (hcat, [(String, (2,)), (String, (2,))], 1), (hcat, [(String, (2,))], 1),
+        (hcat, [(String, (2, 2)), (String, (2, 2))], 1), (hcat, [(String, (2, 2)), (String, (2,))], 2), (hcat, [(Any, (2,)), (String, (2,))], 1),
+        (hcat, [(String, (2, 2)), (Any, (2, 2))], 1), (hcat, [(String, (2, 2)), (Int, (2, 2))], 1), (hcat, [(String, (2,)), (Any, (2, 2))], 1),
+        (hcat, [(String, (2, 2, 2)), (String, (2, 2, 2))], 1),
     ]
-    for (callee, operands) in cases
+    for (callee, specs, position) in cases
+        operands = Any[spec isa Tuple ? (index == position ? unset(spec...) : full(spec...)) : spec for (index, spec) in enumerate(specs)]
         throws = try
             callee(operands...)
             false
@@ -224,8 +233,8 @@ end
             error isa UndefRefError || rethrow()
             true
         end
-        types = Any[typeof(operand) for operand in operands]
-        held = typeof(operands[findfirst(operand -> operand isa Array, operands)])
-        @test Effects.reads_slots(callee, types, held) == throws
+        @test Effects.reads_slots(callee, Any[typeof(operand) for operand in operands], typeof(operands[position])) == throws
     end
+    # Scalar of abstract type can promote either way: no read.
+    @test !Effects.reads_slots(vcat, Any[Vector{String}, Any], Vector{String})
 end

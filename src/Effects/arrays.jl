@@ -254,8 +254,8 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
     if builds_new(callee, length(operands))
         # Copy keeps unset slots of reference elements unread: `copy(Vector{String}(undef, 2))` throws no `UndefRefError`.
         references = !(held isa DataType && Base.allocatedinline(element_type(held)))
-        reads = reads_slots(callee, Any[operand_type(walk, operand) for operand in operands], held)
-        slot_copy(callee) && references && !reads && return [(ArrayEventKind.escape, Coverage.unknown, Int[])]
+        slot_copy(callee) && references && !reads_slots(callee, Any[operand_type(walk, operand) for operand in operands], held) &&
+            return [(ArrayEventKind.escape, Coverage.unknown, Int[])]
         return passed(false)
     end
     # Other result can be operand itself (`float(a)`, package `pass(a) = a`) or hold it.
@@ -275,21 +275,28 @@ builds_new(@nospecialize(callee::Any), count::Integer)::Bool =
 slot_copy(@nospecialize(callee::Any))::Bool = callee in COPYING || (callee isa Type && callee <: Union{Array, BitArray})
 
 """
-Whether concatenation `callee` of operands of `types` reads slots of `Array` operand of type `held`. Julia 1.13 throws
-`UndefRefError` on unset slot for `vcat` with operand of two or more dimensions, `hcat` of vectors only or with operand
-of three or more dimensions, and operands of other element types. Unknown dimensions or array type: no read.
+Whether concatenation `callee` of operands of `types` reads slots of `Array` operand of type `held`, as Julia 1.13 does:
+unset reference slot then throws `UndefRefError`. `vcat` with operand of two or more dimensions, `hcat` of vectors only,
+operand of three or more dimensions, and conversion of `held` elements to promoted element type read. `hcat` with
+matrix keeps slots. Unknown dimensions, array type or scalar type: no read.
 """
 function reads_slots(@nospecialize(callee::Any), types::AbstractVector, @nospecialize(held::Any))::Bool
     (callee in (vcat, hcat) && held isa DataType && held <: Array) || return false
-    counts = Int[]
+    counts, elements = Int[], Any[]
     for type in types
-        type <: AbstractArray || continue
-        count = dimension_count(type)
-        (type isa DataType && type <: Array && !isnothing(count)) || return false
-        eltype(type) == eltype(held) || return true
-        push!(counts, something(count))
+        if type <: AbstractArray
+            count = dimension_count(type)
+            (type isa DataType && type <: Array && !isnothing(count)) || return false
+            push!(counts, something(count))
+            push!(elements, eltype(type))
+        else
+            isconcretetype(type) || return false
+            push!(elements, type)
+        end
     end
-    return callee === vcat ? maximum(counts) >= 2 : maximum(counts) >= 3 || all(==(1), counts)
+    callee === hcat && maximum(counts) == 2 && return false
+    callee === vcat && maximum(counts) >= 2 && return true
+    return maximum(counts) >= 3 || (callee === hcat && all(==(1), counts)) || eltype(held) != promote_type(elements...)
 end
 
 """Whether index `operands` of `dotview` call cover every element of allocation of `extent`: all `Colon`, or one covering range."""
