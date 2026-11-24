@@ -14,6 +14,12 @@ which writes `x` after sampler `s`.
 """
 const ARRAY_FILLS = Base.IdSet{Any}(Any[Random.rand!, Random.randn!, Random.randexp!])
 
+"""Helpers of `FILL_HELPER_OWNERS` package that keep `rand!(rng, s, x)` order (`fill_call`)."""
+const FILL_HELPER_NAMES = Set{Symbol}([:_rand!, :__rand!])
+
+"""Packages whose `FILL_HELPER_NAMES` helpers fill array after sampler: Distributions."""
+const FILL_HELPER_OWNERS = Set{Base.PkgId}([Base.PkgId(Base.UUID("31c24e10-a181-5473-b8eb-7969acd0382f"), "Distributions")])
+
 """Package of LinearAlgebra standard library: owner check of table entries (`library_owner`)."""
 const LINEAR_ALGEBRA = Base.PkgId(Base.UUID("37e2e46d-f89d-539d-b4ee-838fcccc9c8e"), "LinearAlgebra")
 

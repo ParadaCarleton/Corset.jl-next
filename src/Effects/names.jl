@@ -469,14 +469,23 @@ function library_owner(@nospecialize(callee::Any))::Union{Nothing, Symbol}
 end
 
 """
+Whether `callee` fills array operand: function of `ARRAY_FILLS`, or helper of `FILL_HELPER_NAMES` from package in
+`owners` (`Distributions.__rand!`).
+"""
+function fill_call(@nospecialize(callee::Any), owners::AbstractSet{Base.PkgId})::Bool
+    callee in ARRAY_FILLS && return true
+    return nameof(callee) in FILL_HELPER_NAMES && Base.PkgId(Base.moduleroot(parentmodule(callee))) in owners
+end
+
+"""
 Position of operand that `!` function `callee` writes among `operands` (`effects.md`, Writes, source 2): first operand
-after leading callable, `IO`, `AbstractRNG` and immutable operands, first array of `ARRAY_FILLS` call, or position
+after leading callable, `IO`, `AbstractRNG` and immutable operands, first array of `fill_call`, or position
 table entry. `nothing` when none is left.
 """
 function written_position(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Union{Nothing, Int}
     table = get(WRITE_POSITION, (nameof(callee), length(operands)), nothing)
     !isnothing(table) && library_owner(callee) === :LinearAlgebra && return table
-    filled = callee in ARRAY_FILLS ? findfirst(operand -> operand_type(walk, operand) <: AbstractArray, operands) : nothing
+    filled = fill_call(callee, FILL_HELPER_OWNERS) ? findfirst(operand -> operand_type(walk, operand) <: AbstractArray, operands) : nothing
     return isnothing(filled) ? next_subject(walk, operands, 1) : something(filled)
 end
 

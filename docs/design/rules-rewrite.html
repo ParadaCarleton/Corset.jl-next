@@ -937,7 +937,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Skip leading callable (<code>Function</code>, <code>Type</code>), <code>IO</code> and <code>AbstractRNG</code> operands. First other operand is written: definite.</li>
 <li><code>Nothing</code> member of union drops first: <code>rng::Union{Nothing, AbstractRNG}</code> is RNG operand. Its write is <code>possible</code>.</li>
 <li>Skip operand of type that refers to no mutable object too: no call can write it. <code>rand!(rng, Normal(), x)</code> writes <code>x</code>.</li>
-<li>Random <code>rand!</code>, <code>randn!</code> and <code>randexp!</code> write first array operand: Distributions adds <code>rand!(rng, s, x)</code>.</li>
+<li><code>rand!</code>, <code>randn!</code> and <code>randexp!</code> write first array operand: Distributions adds <code>rand!(rng, s, x)</code>. Distributions helpers <code>_rand!</code> and <code>__rand!</code> keep that order; other underscore helper follows ordinary rule.</li>
 <li><code>!!</code> function (BangBang.jl) writes operand when it can, else returns new value: <code>possible</code>.</li>
 <li>Skipped <code>IO</code> operand takes IO write; skipped <code>AbstractRNG</code> operand takes RNG argument write.</li>
 <li>No operand left: <code>possible</code> write on keyword values (<code>f!(; items)</code>); without keywords, definite write on unknown global state (<code>Random.seed!()</code>). Skipped <code>IO</code>, RNG or immutable operand counts as written operand: <code>take!(io)</code> writes <code>io</code> only.</li>

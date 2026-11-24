@@ -93,7 +93,7 @@ Write sources, in order:
    - Skip leading callable (`Function`, `Type`), `IO` and `AbstractRNG` operands. First other operand is written: definite.
    - `Nothing` member of union drops first: `rng::Union{Nothing, AbstractRNG}` is RNG operand. Its write is `possible`.
    - Skip operand of type that refers to no mutable object too: no call can write it. `rand!(rng, Normal(), x)` writes `x`.
-   - Random `rand!`, `randn!` and `randexp!` write first array operand: Distributions adds `rand!(rng, s, x)`.
+   - `rand!`, `randn!` and `randexp!` write first array operand: Distributions adds `rand!(rng, s, x)`. Distributions helpers `_rand!` and `__rand!` keep that order; other underscore helper follows ordinary rule.
    - `!!` function (BangBang.jl) writes operand when it can, else returns new value: `possible`.
    - Skipped `IO` operand takes IO write; skipped `AbstractRNG` operand takes RNG argument write.
    - No operand left: `possible` write on keyword values (`f!(; items)`); without keywords, definite write on unknown global state (`Random.seed!()`). Skipped `IO`, RNG or immutable operand counts as written operand: `take!(io)` writes `io` only.
