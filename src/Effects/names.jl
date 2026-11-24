@@ -467,13 +467,12 @@ function library_owner(@nospecialize(callee::Any))::Union{Nothing, Symbol}
 end
 
 """
-Whether `callee` fills array operand: function of `ARRAY_FILLS`, or helper of package in `owners` with its name after
-leading underscores (`Distributions.__rand!`).
+Whether `callee` fills array operand: function of `ARRAY_FILLS`, or helper of `FILL_HELPER_NAMES` from package in
+`owners` (`Distributions.__rand!`).
 """
 function fill_call(@nospecialize(callee::Any), owners::AbstractSet{Base.PkgId})::Bool
     callee in ARRAY_FILLS && return true
-    name = Symbol(lstrip(string(nameof(callee)), '_'))
-    return any(fill -> nameof(fill) === name, ARRAY_FILLS) && Base.PkgId(Base.moduleroot(parentmodule(callee))) in owners
+    return nameof(callee) in FILL_HELPER_NAMES && Base.PkgId(Base.moduleroot(parentmodule(callee))) in owners
 end
 
 """
