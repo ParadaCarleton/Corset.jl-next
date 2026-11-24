@@ -13,8 +13,8 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 | 5 | Name tier | `effects` stage on name trust and compiler effects replaces engine; engine and library summary cache leave | — | #298; done |
 | 6 | `stateful-iterate` | F109 | — | #297; done |
 | 7 | Alias rules | F48, F50, F51 | 5 | #300, #301, #304; done |
-| 8 | Effect rules | F54, F55, F56, F58, F98 | 5 | — |
-| 9 | `bang-convention` | F53, F86 | 5 | — |
+| 8 | Effect rules | F54, F55, F56, F58, F98 | 5 | F54 #315, F58 #316, F98 #318, F56 #319, F55 #320; done |
+| 9 | `bang-convention` | F53, F86 | 5 | #321 (manual fix); done |
 | 10 | Lifecycle facts | `lifecycle` stage | 5 | — |
 | 11 | Lifecycle rules | F32, F33, F34, F39, F40, F41 | 10 | — |
 
@@ -148,4 +148,4 @@ Port rules of local effect-rules stack onto name-tier facts.
 
 Owner decides before PR that names decision:
 
-- Row 9: fix tier of rename. Proposal: `breaking` for public or exported name; `likely` for other names.
+- Row 9 rename fixer: fix tier. Proposal: `breaking` for public or exported name; `likely` for other names.
