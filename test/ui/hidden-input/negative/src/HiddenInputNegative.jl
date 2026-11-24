@@ -40,6 +40,11 @@ const DATA = (stable = Ref(1), changing = Ref(1))
 bump_changing!() = (DATA.changing[] += 1; nothing)
 stable() = DATA.stable[]
 
+# Tuple positions settle cells: writer of first cell leaves second cell reader alone.
+const PAIR = (Ref(1), Ref(2))
+set_first!(x::Int) = (PAIR[1][] = x; nothing)
+second_of_pair() = PAIR[2][]
+
 # Trailing optional RNG: caller can pass one.
 tail_draw(x::Float64, rng::AbstractRNG = Random.default_rng()) = x + randn(rng)
 

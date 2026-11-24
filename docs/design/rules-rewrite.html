@@ -871,7 +871,8 @@ Code lives in <code>src/Effects/</code>.</p>
 <li><code>typeassert</code> result is its operand. Lowering adds <code>typeassert</code> on each return of method with return type.</li>
 <li>Constructor, tuple and vector literal results hold their operands: <code>Ref(x)</code> holds <code>x</code>. Literal (<code>[x]</code>, <code>T[x]</code>) converts element not of its element type, so it can hold new object. Package method on literal syntax (<code>SA[x]</code>) is package call.</li>
 <li>Iteration: result of <code>iterate</code> and <code>indexed_iterate</code> holds element of iterated operand. Element step for array, dictionary, set and tuple; <code>deep</code> for other iterator.</li>
-<li>Element table: result is element of container operand, or other operand (<code>get(d, k, default)</code>).
+<li>Element table: result is element of container operand, or other operand (<code>get(d, k, default)</code>).</li>
+<li><code>getindex</code> with constant integer index into tuple loads position step; other index loads element step.
 <ul>
 <li>Table: <code>get</code>, <code>get!</code>, <code>getkey</code>, <code>pop!</code>, <code>popfirst!</code>, <code>popat!</code>, <code>maximum</code>, <code>minimum</code>, <code>reduce</code>, <code>foldl</code>, <code>foldr</code>, <code>rand</code>, <code>take!</code>, <code>fetch</code>.</li>
 <li>Container: first operand, or second after leading callable or <code>AbstractRNG</code> (<code>get(f, d, k)</code>, <code>rand(rng, xs)</code>).</li>

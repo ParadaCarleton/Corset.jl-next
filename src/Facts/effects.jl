@@ -150,11 +150,12 @@ place_root(place::Place.Type)::Root.Type = @match place begin
     Place.Deep(root) => root
 end
 
-"""Object `step` names in `holder`; `nothing` for element step or field `holder` lacks."""
+"""Object `step` names in `holder`; `nothing` for field `holder` lacks, or element step of other holder than `Ref`."""
 step_child(@nospecialize(holder::Any), step::Step.Type)::Union{Nothing, Some{Any}} = @match step begin
     Step.Field(name) => hasfield(typeof(holder), name) && isdefined(holder, name) ? Some{Any}(getfield(holder, name)) : nothing
     Step.Position(position) => 1 <= position <= nfields(holder) && isdefined(holder, position) ? Some{Any}(getfield(holder, position)) : nothing
-    Step.Element() => nothing
+    # `Ref` holds one element: `r[]` loads it.
+    Step.Element() => holder isa Base.RefValue && isdefined(holder, :x) ? Some{Any}(holder.x) : nothing
 end
 
 """Steps of `place`; `nothing` for place that covers everything below its root."""

@@ -31,6 +31,7 @@ Cache write passes: cache read is invisible to caller.
 Task-local storage and `ScopedValue` reads pass: logging reads both for every message.
 Finding takes weaker certainty of read and write: global that other method may write gives `possible` finding.
 Write to other path below same global gives `possible` finding, unless constant values settle both paths.
+Read through mutable holder that now holds written object gives `possible` finding: code can repoint holder.
 Read of one field of mutable object gives finding when other method writes other field: facts name objects, not fields.
 """
 module HiddenInput
@@ -39,8 +40,20 @@ using ...Facts
 
 const NAME = Symbol("hidden-input")
 
-"""Write of package method with method; `writers` keeps them by global."""
+"""Write of package method with method."""
 const Write = Tuple{MethodEffects, Access}
+
+"""Writes of package methods to package globals, by root global and by each object their path passes now."""
+struct Writes
+    by_root::Dict{GlobalRef, Vector{Write}}
+    by_object::IdDict{Any, Vector{Write}}
+end
+
+"""Write that changes object read loads, with certainty; `nothing` for default RNG read."""
+const Match = Union{Nothing, Tuple{MethodEffects, Access, Confidence.T}}
+
+"""Hidden input of read, read access, and write that changes it."""
+const Hidden = Tuple{Union{Symbol, GlobalRef}, Access, Match}
 
 """Input `access` reads: `:default_rng`, package global (`GlobalRef`) in `modules`, or `nothing` for other read."""
 function input(access::Access, modules::AbstractVector{Module})::Union{Nothing, Symbol, GlobalRef}
@@ -50,63 +63,97 @@ function input(access::Access, modules::AbstractVector{Module})::Union{Nothing, 
 end
 
 """Writes of package methods to package globals. Write in `__init__` sets state once and counts for none."""
-function writers(effects::EffectsFacts, modules::AbstractVector{Module})::Vector{Write}
-    found = Write[]
+function writers(effects::EffectsFacts, modules::AbstractVector{Module})::Writes
+    found = Writes(Dict{GlobalRef, Vector{Write}}(), IdDict{Any, Vector{Write}}())
     for method in effects.methods, access in method.writes
         ref = root_global(access.place)
         ref isa GlobalRef || continue
         (access.kind == EffectKind.memory && ref.mod in modules && method.site.method.name !== :__init__) || continue
-        push!(found, (method, access))
+        push!(get!(Vector{Write}, found.by_root, ref), (method, access))
+        passed = objects(access.place)
+        isnothing(passed) && continue
+        for object in passed.path
+            push!(get!(Vector{Write}, found.by_object, object), (method, access))
+        end
     end
     return found
 end
 
 """
-Objects `place` passes in value of constant global: root value first, object at place last. `nothing` when value
-cannot settle path: other root, element step, or mutable holder, whose fields code can repoint.
+Objects `place` passes now in value of constant global, root value first and object at place last, and whether
+values settle path: no mutable holder on it, whose fields code can repoint. `nothing` for other root or element step.
 """
-function objects(place::Place.Type)::Union{Nothing, Vector{Any}}
+function objects(place::Place.Type)::Union{Nothing, @NamedTuple{path::Vector{Any}, settled::Bool}}
     ref, steps = root_global(place), place_steps(place)
     ref isa GlobalRef || return nothing
     isnothing(steps) && return nothing
     isconst(ref.mod, ref.name) || return nothing
-    found = Any[getglobal(ref.mod, ref.name)]
+    found, settled = Any[getglobal(ref.mod, ref.name)], true
     for step in steps
-        ismutable(last(found)) && return nothing
+        settled &= !ismutable(last(found))
         next = step_child(last(found), step)
         isnothing(next) && return nothing
         push!(found, something(next))
     end
-    return found
+    return (path = found, settled = settled)
+end
+
+"""Whether object paths meet: both end on one object, or path of access that covers objects below ends on other path."""
+function meet(read::Access, loaded::AbstractVector, write::Access, written::AbstractVector)::Bool
+    last(loaded) === last(written) && return true
+    read.below && any(object -> object === last(loaded), written) && return true
+    return write.below && any(object -> object === last(written), loaded)
+end
+
+"""
+Certainty that `write` changes object `read` loads when values cannot settle both paths; `nothing` when it cannot. On
+same root, paths compare; else `possible` when current objects `meets`.
+"""
+function path_overlap(read::Access, write::Access, meets::Bool)::Union{Nothing, Confidence.T}
+    place_root(read.place) == place_root(write.place) || return meets ? Confidence.possible : nothing
+    steps, others = place_steps(read.place), place_steps(write.place)
+    (isnothing(steps) || isnothing(others)) && return Confidence.possible
+    shared = 1:min(length(steps), length(others))
+    all(index -> steps[index] == others[index], shared) || return Confidence.possible
+    # Two element steps can name other elements.
+    any(index -> steps[index] == Step.Element(), shared) && return Confidence.possible
+    length(steps) == length(others) && return Confidence.definite
+    covered = length(steps) > length(others) ? write.below : read.below
+    return covered ? Confidence.definite : meets ? Confidence.possible : nothing
 end
 
 """
 Certainty that `write` changes object `read` loads; `nothing` when it cannot. Access covers object at its place, and
 objects below it when `below`. Constant values settle both paths (`objects`): `definite` when covered objects meet.
 Else on same root: `definite` when path of one starts other and covers rest; `possible` when paths part, since parted
-paths can reach one object.
+paths can reach one object. Else `possible` when current objects meet through mutable holder.
 """
 function overlap(read::Access, write::Access)::Union{Nothing, Confidence.T}
     loaded, written = objects(read.place), objects(write.place)
-    if !isnothing(loaded) && !isnothing(written)
-        meets = last(loaded) === last(written) || (read.below && any(object -> object === last(loaded), written)) || (write.below && any(object -> object === last(written), loaded))
-        return meets ? Confidence.definite : nothing
+    (isnothing(loaded) || isnothing(written)) && return path_overlap(read, write, false)
+    meets = meet(read, loaded.path, write, written.path)
+    loaded.settled && written.settled && return meets ? Confidence.definite : nothing
+    return path_overlap(read, write, meets)
+end
+
+"""Writes in `written` that can change object `access` loads: same root, or path through object read path passes."""
+function candidates(written::Writes, access::Access)::Vector{Write}
+    found = copy(get(written.by_root, root_global(access.place), Write[]))
+    loaded = objects(access.place)
+    isnothing(loaded) && return found
+    for object in loaded.path
+        append!(found, get(written.by_object, object, Write[]))
     end
-    place_root(read.place) == place_root(write.place) || return nothing
-    steps, others = place_steps(read.place), place_steps(write.place)
-    (isnothing(steps) || isnothing(others)) && return Confidence.possible
-    all(index -> steps[index] == others[index], 1:min(length(steps), length(others))) || return Confidence.possible
-    length(steps) == length(others) && return Confidence.definite
-    return (length(steps) > length(others) ? write.below : read.below) ? Confidence.definite : nothing
+    return found
 end
 
 """
 Write in `written` that changes object `access` loads (`overlap`), with weaker certainty of write and overlap; most
 certain first. `nothing` when none does.
 """
-function writer(written::AbstractVector{Write}, access::Access)::Union{Nothing, Tuple{MethodEffects, Access, Confidence.T}}
+function writer(written::Writes, access::Access)::Match
     found = nothing
-    for (method, write) in written
+    for (method, write) in candidates(written, access)
         meets = overlap(access, write)
         isnothing(meets) && continue
         certainty = max(write.confidence, meets)
@@ -134,10 +181,11 @@ function draws_from(method::MethodEffects, position::Integer)::Bool
 end
 
 """
-Whether caller of `method` can pass RNG instead: package method of same function in `methods` draws from its RNG
-argument (`draws_from`), and drops to argument types that accept every call of `method` without it.
+Whether caller of `method` can pass RNG instead: `method` takes no RNG argument, and package method of same function
+in `methods` draws from its RNG argument (`draws_from`) and drops to argument types that accept every call of `method`.
 """
 function chooses_rng(method::Method, methods::AbstractVector{MethodEffects})::Bool
+    isempty(rng_positions(method)) || return false
     parameters = tuple_parameters(method.sig)
     arguments = Base.rewrap_unionall(Tuple{parameters[2:end]...}, method.sig)
     for other in methods
@@ -164,12 +212,22 @@ function package_callees(method::MethodEffects, cause::Span, modules::AbstractVe
 end
 
 """
-Whether `access` of `method` reads hidden input `read`: default RNG caller cannot replace (`chooses_rng`), or global
-memory other method writes (`writer`) and method itself does not. `choices` keeps RNG answer per method.
+Reads of `method` that take hidden input, certain read first: default RNG caller cannot replace (`chooses_rng`), or
+global memory other method writes (`writer`) and method itself does not.
 """
-function hidden(method::MethodEffects, read::Union{Symbol, GlobalRef}, access::Access, written::AbstractVector{Write}, effects::EffectsFacts, choices::IdDict{Method, Bool})::Bool
-    read isa GlobalRef || return !get!(() -> chooses_rng(method.site.method, effects.methods), choices, method.site.method)
-    return all(write -> isnothing(overlap(access, write)), method.writes) && !isnothing(writer(written, access))
+function hidden_reads(method::MethodEffects, written::Writes, effects::EffectsFacts, modules::AbstractVector{Module})::Vector{Hidden}
+    found, chooses = Hidden[], nothing
+    for access in sort(method.reads; by = access -> access.confidence)
+        read = input(access, modules)
+        if read isa Symbol
+            isnothing(chooses) && (chooses = chooses_rng(method.site.method, effects.methods))
+            chooses || push!(found, (read, access, nothing))
+        elseif read isa GlobalRef && all(write -> isnothing(overlap(access, write)), method.writes)
+            match = writer(written, access)
+            isnothing(match) || push!(found, (read, access, match))
+        end
+    end
+    return found
 end
 
 """Findings for each package method that reads default RNG or package state, one per input; certain read first."""
@@ -177,35 +235,31 @@ function findings(facts::FactSet)::Vector{Finding}
     effects, package = facts.effects, facts.package
     (isnothing(effects) || isnothing(package)) && return Finding[]
     modules, found = package.modules, Finding[]
-    written, choices = writers(effects, modules), IdDict{Method, Bool}()
+    written = writers(effects, modules)
+    reads = [hidden_reads(method, written, effects, modules) for method in effects.methods]
     # Callee that reads same hidden input reports it.
     hides = IdDict{Method, Set{Union{Symbol, GlobalRef}}}()
-    for method in effects.methods, access in method.reads
-        read = input(access, modules)
-        if !isnothing(read) && hidden(method, read, access, written, effects, choices)
-            push!(get!(Set{Union{Symbol, GlobalRef}}, hides, method.site.method), read)
-        end
+    for (method, entries) in zip(effects.methods, reads), entry in entries
+        push!(get!(Set{Union{Symbol, GlobalRef}}, hides, method.site.method), first(entry))
     end
-    for method in effects.methods
-        reads = Dict{Union{Symbol, GlobalRef}, Access}()
-        for access in sort(method.reads; by = access -> access.confidence)
-            read = input(access, modules)
-            (isnothing(read) || haskey(reads, read) || !hidden(method, read, access, written, effects, choices)) && continue
+    for (method, entries) in zip(effects.methods, reads)
+        kept = Dict{Union{Symbol, GlobalRef}, Hidden}()
+        for entry in entries
+            read, access = entry[1], entry[2]
+            haskey(kept, read) && continue
             any(callee -> haskey(hides, callee) && read in hides[callee], package_callees(method, access.cause, modules)) && continue
-            reads[read] = access
+            kept[read] = entry
         end
-        for (read, access) in sort!(collect(reads); by = pair -> (last(pair).cause.first_byte, string(first(pair))))
-            push!(found, input_finding(method, read, access, written))
+        for entry in sort!(collect(values(kept)); by = entry -> (entry[2].cause.first_byte, string(entry[1])))
+            push!(found, input_finding(method, entry))
         end
     end
     return found
 end
 
-"""
-Finding for `read` of `method` at `access`; global read names method that writes it (`written`) and takes weaker
-certainty of read and write.
-"""
-function input_finding(method::MethodEffects, read::Union{Symbol, GlobalRef}, access::Access, written::AbstractVector{Write})::Finding
+"""Finding for hidden read `entry` of `method`; global read names method that writes it and takes weaker certainty."""
+function input_finding(method::MethodEffects, entry::Hidden)::Finding
+    read, access, match = entry
     if read === :default_rng
         takes = !isempty(rng_positions(method.site.method))
         return Finding(
@@ -215,7 +269,7 @@ function input_finding(method::MethodEffects, read::Union{Symbol, GlobalRef}, ac
             manual_fix(takes ? "pass RNG argument to each draw" : "take `rng::AbstractRNG` argument and pass it to each draw"),
         )
     end
-    writing, write, certainty = something(writer(written, access))
+    writing, write, certainty = something(match)
     text = place_text(method.site.method, access.place)
     return Finding(
         NAME, :global, max(access.confidence, certainty), "method reads `$text`, which other method writes", Label(access.cause, "reads `$text`"),
