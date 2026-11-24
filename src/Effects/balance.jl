@@ -124,16 +124,56 @@ summarized(place::Place.Type)::Bool = @match place begin
 end
 
 """
-Whether IR `operand` of `walk` can reach `resource`: same IR value, or caller place at or above resource place, or
-above place of resource value (`locks` reaches load `locks[1]`).
+Whether IR `operand` of `walk` can reach `resource`: root that can hold resource value (`value_holders`, kept per value
+in `holders`), or caller place at or above resource place, or above place of resource value (`locks` reaches `locks[1]`).
 """
-function reaches(walk::Walk, @nospecialize(operand::Any), resource::Resource)::Bool
+function reaches(walk::Walk, @nospecialize(operand::Any), resource::Resource, holders::AbstractDict{Int, Set{Any}})::Bool
     identity = first(resource)
-    identity isa Int && resource_root(walk, operand) == Core.SSAValue(identity) && return true
+    identity isa Int && resource_root(walk, operand) in get!(() -> value_holders(walk, identity), holders, identity) && return true
     targets = identity isa Int ? walk.values[identity].places : Set{Place.Type}([identity])
     value = operand_value(walk, operand)
     return any(place -> any(target -> covers(place, target), targets), Iterators.flatten((value.places, value.inner)))
 end
+
+"""
+Roots of `walk` that can hold resource value `identity`: value itself, result of tuple, `new`, holding call
+(`held_operands`) or `φ` node that takes such root, and result and mutable operands of call that takes such root: call
+can store root there. Stream and lock calls (`IO_FUNCTIONS`, `SYNC_FUNCTIONS`) store their operands nowhere.
+"""
+function value_holders(walk::Walk, identity::Int)::Set{Any}
+    holders = Set{Any}(Any[Core.SSAValue(identity)])
+    changed = true
+    while changed
+        changed = false
+        for index in eachindex(walk.ir.stmts)
+            reached = holder_roots(walk, index, holders)
+            changed |= !issubset(reached, holders)
+            union!(holders, reached)
+        end
+    end
+    return holders
+end
+
+"""Roots that statement `index` of `walk` makes hold value that one of `holders` holds (`value_holders`)."""
+function holder_roots(walk::Walk, index::Integer, holders::AbstractSet)::Vector{Any}
+    statement = walk.ir.stmts[index][:stmt]
+    holds(@nospecialize(operand::Any))::Bool = resource_root(walk, operand) in holders
+    if statement isa Core.PhiNode
+        return any(position -> isassigned(statement.values, position) && holds(statement.values[position]), eachindex(statement.values)) ? Any[Core.SSAValue(index)] : Any[]
+    end
+    statement isa Expr || return Any[]
+    any(holds, held_operands(walk, statement)) && return Any[Core.SSAValue(index)]
+    statement.head === :call || return Any[]
+    callee, operands = call_parts(walk, statement)
+    (isnothing(operands) || !any(holds, operands)) && return Any[]
+    (callee in IO_FUNCTIONS || callee in SYNC_FUNCTIONS) && return Any[]
+    roots = Any[resource_root(walk, operand) for operand in operands if may_hold(operand_type(walk, operand))]
+    may_hold(operand_type(walk, Core.SSAValue(index))) && push!(roots, Core.SSAValue(index))
+    return Any[root for root in roots if root isa Union{Core.SSAValue, Core.Argument}]
+end
+
+"""Whether value of `type` can hold other object: neither plain (`PLAIN`) nor concrete bits type."""
+may_hold(@nospecialize(type::Any))::Bool = !(type <: PLAIN) && !(isconcretetype(type) && isbitstype(type))
 
 """Whether object at `place` holds object at `other`: same place, `Deep` of its root, or exact path that `other` extends."""
 function covers(place::Place.Type, other::Place.Type)::Bool
@@ -155,9 +195,10 @@ end
 
 """
 Resources of `counts` that call or allocation statement `index` of `walk` hands on: callee can release them. Trusted
-call (`trusted_call`) hands on only what its function operands reach; `trusted` keeps answer per statement.
+call (`trusted_call`) hands on only what its function operands reach; `trusted` keeps answer per statement, `holders`
+roots per resource value (`reaches`).
 """
-function handed(walk::Walk, index::Integer, counts::Counts, trusted::AbstractDict{<:Integer, Bool})::Vector{Resource}
+function handed(walk::Walk, index::Integer, counts::Counts, trusted::AbstractDict{<:Integer, Bool}, holders::AbstractDict{Int, Set{Any}})::Vector{Resource}
     isempty(counts) && return Resource[]
     statement = walk.ir.stmts[index][:stmt]
     (statement isa Expr && statement.head in (:call, :new)) || return Resource[]
@@ -168,7 +209,7 @@ function handed(walk::Walk, index::Integer, counts::Counts, trusted::AbstractDic
             operands = Any[operand for operand in arguments if callable(walk, operand)]
         end
     end
-    return Resource[resource for resource in keys(counts) if any(operand -> reaches(walk, operand, resource), operands)]
+    return Resource[resource for resource in keys(counts) if any(operand -> reaches(walk, operand, resource, holders), operands)]
 end
 
 """Make count of `resource` in `counts` unknown, if path holds it."""
@@ -323,7 +364,7 @@ per resource, `definite` first, stays.
 function unguarded_holds(walk::Walk, spans::AbstractVector{Span})::Vector{UnguardedHold}
     ir = walk.ir
     blocks, handlers = ir.cfg.blocks, CC.compute_trycatch(ir)
-    entries, trusted = [Path[] for _ in blocks], Dict{Int, Bool}()
+    entries, trusted, holders = [Path[] for _ in blocks], Dict{Int, Bool}(), Dict{Int, Set{Any}}()
     push!(entries[1], Path(Counts(), Dict{Any, Bool}(), Set{Any}(), false))
     pending, found = BitSet(1), Dict{Resource, Tuple{Confidence.T, Int, Int}}()
     while !isempty(pending)
@@ -340,7 +381,7 @@ function unguarded_holds(walk::Walk, spans::AbstractVector{Span})::Vector{Unguar
                     change = hold_change(walk, index)
                     target = isnothing(change) ? nothing : first(change)
                     untracked = !isnothing(change) && something(last(change), 0) < 0 && !haskey(state, target)
-                    foreach(resource -> resource == target || forget!(state, resource), handed(walk, index, state, trusted))
+                    foreach(resource -> resource == target || forget!(state, resource), handed(walk, index, state, trusted, holders))
                     if may_throw(ir, index) && !isempty(state)
                         destination = catch_block(ir, handlers, index)
                         if destination == 0

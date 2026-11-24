@@ -902,6 +902,14 @@ function hold_handed!(guard::ReentrantLock, key::String)::Int
 end
 """Package function that reads lock state."""
 hold_note(guard::ReentrantLock)::Nothing = println(islocked(guard))
+"""Tuple carries fresh stream to package function that can close it: count after call is unknown."""
+function hold_boxed(path::String, text::String)::Int
+    stream = open(path)
+    close_boxed((stream,))
+    return parse(Int, text)
+end
+"""Package function that closes stream tuple holds."""
+close_boxed(box::Tuple{IOStream})::Nothing = close(box[1])
 """Release in `finally`."""
 function hold_finally!(guard::ReentrantLock, key::String)::Int
     lock(guard)
