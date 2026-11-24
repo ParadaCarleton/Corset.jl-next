@@ -275,9 +275,12 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
     viewing = view_call(walk, callee, operands)
     (callee in (getindex, first, last, only) || (callee in DOT_VIEWS && !viewing)) && return load_value(walk, object, index_step(walk, callee, operands))
     if viewing
+        # View lies beneath its array alone and holds index operands: `values[indices] .= 0` writes `values` only.
+        indexing = callee in INDEX_VIEWS
         # Result holds every operand at once (`zip(a, b)`): fresh operand leaves certainty of caller operand.
-        values = Value[operand_value(walk, operand) for operand in operands if !callable(walk, operand)]
+        values = Value[operand_value(walk, operand) for operand in (indexing ? operands[1:1] : operands) if !callable(walk, operand)]
         places, inner = reduce(union, (value.places for value in values); init = Set{Place.Type}()), reduce(union, (value.inner for value in values); init = Set{Place.Type}())
+        indexing && foreach(operand -> union!(inner, held(operand_value(walk, operand))), @view(operands[2:end]))
         return Value(places, inner, any(value -> value.fresh && !isempty(value.places), values), any(value -> value.untracked, values))
     end
     # Iteration result: tuple of element and state.
