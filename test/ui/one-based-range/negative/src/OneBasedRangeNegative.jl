@@ -148,6 +148,9 @@ function guarded_total(xs::AbstractVector{Int})
     return s
 end
 
+# Float range with constant bounds indexes nothing.
+grid_total() = sum(0.0:0.5:1.0)
+
 # Ends of tuple of indices are indices.
 function ends(xs::AbstractVector{Int})
     bounds = (firstindex(xs), lastindex(xs))
