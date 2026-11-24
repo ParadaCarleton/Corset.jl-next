@@ -145,13 +145,11 @@ function weak(code::Core.CodeInfo, @nospecialize(argument::Any))::Union{Nothing,
         length(call.args) >= 2 || return nothing
         type isa Core.Const || return nothing
         weak_data(type.val) || return nothing
-        # Callee from input (`T(4)`, `typeof(x)(4)`) follows input type, though inference folds call.
-        callee = resolved(code, call.args[1])
-        callee isa GlobalRef || return nothing
+        reads_input!(Set{Int}(), code, call.args[1]) && return nothing
         parts = [weak(code, part) for part in call.args[2:end]]
         any(isnothing, parts) && return nothing
         # Tuple of literals (`@evalpoly` coefficients) reads as literal in source.
-        tupled = callee == GlobalRef(Core, :tuple) && all(part -> last(something(part)) == Weak.literal, parts)
+        tupled = resolved(code, call.args[1]) == GlobalRef(Core, :tuple) && all(part -> last(something(part)) == Weak.literal, parts)
         return type.val, tupled ? Weak.literal : Weak.constant
     end
     return nothing
@@ -159,6 +157,20 @@ end
 
 """Right side of assignment `statement`; statement itself otherwise."""
 assigned(@nospecialize(statement::Any))::Any = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
+
+"""
+Whether `argument` of `code` reads input: static parameter, method argument, or call or variable built from one. Callee
+from input (`T(4)`, `typeof(x)(4)`) follows input type; `Base.sqrt` and `g = sqrt` do not. Adds followed slots to `visited`.
+"""
+function reads_input!(visited::Set{Int}, code::Core.CodeInfo, @nospecialize(argument::Any))::Bool
+    argument isa Core.SSAValue && return reads_input!(visited, code, assigned(code.code[argument.id]))
+    argument isa Expr && return argument.head === :static_parameter || (argument.head === :call && any(part -> reads_input!(visited, code, part), argument.args))
+    argument isa Core.SlotNumber || return argument isa Core.Argument
+    argument.id <= code.nargs && return true
+    argument.id in visited && return false
+    push!(visited, argument.id)
+    return any(statement -> statement isa Expr && statement.head === :(=) && statement.args[1] == argument && reads_input!(visited, code, statement.args[2]), code.code)
+end
 
 """
 Call expression of `statement`, through slot assignment (`_4 = f(x)`); `nothing` for other statement. Inference drops
