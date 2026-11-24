@@ -21,6 +21,7 @@ include("Inference.jl")
 include("Launch.jl")
 include("Cache.jl")
 include("Effects/Effects.jl")
+include("Lifecycle.jl")
 include("External.jl")
 include("Fixes.jl")
 include("OptOuts.jl")
@@ -69,11 +70,11 @@ function workload(directory::String)::Nothing
 end
 
 """
-Run `external` stage and every rule on `package`, `inference` and `effects` facts of analyzed `files`, their `entries`,
-module file `entry` and `project`.
+Run `external` stage and every rule on `package`, `inference`, `effects` and `lifecycle` facts of analyzed `files`,
+their `entries`, module file `entry` and `project`.
 """
-function package_rules(package::Facts.PackageFacts, inference::Union{Nothing, Facts.InferenceFacts}, effects::Union{Nothing, Facts.EffectsFacts}, files::AbstractVector{Facts.SyntaxFile}, entries::AbstractVector{String}, entry::String, project::Union{Nothing, Facts.ProjectFacts})::Nothing
-    Engine.run_rules(Facts.FactSet(files, entries, Facts.Ban[], project, package, inference, effects, External.external_facts(package, entry, files)))
+function package_rules(package::Facts.PackageFacts, inference::Union{Nothing, Facts.InferenceFacts}, effects::Union{Nothing, Facts.EffectsFacts}, lifecycle::Union{Nothing, Facts.LifecycleFacts}, files::AbstractVector{Facts.SyntaxFile}, entries::AbstractVector{String}, entry::String, project::Union{Nothing, Facts.ProjectFacts})::Nothing
+    Engine.run_rules(Facts.FactSet(files, entries, Facts.Ban[], project, package, inference, effects, lifecycle, External.external_facts(package, entry, files)))
     return nothing
 end
 
@@ -85,18 +86,18 @@ types. Own project also keys temporary environment, as relaunching process does 
 function package_workload()::Nothing
     root = dirname(@__DIR__)
     own = Discovery.discover(root; environment = joinpath(root, "Project.toml"))
-    package_rules(Package.package_facts(Package.module_tree(Corset), own.files), nothing, nothing, own.files, own.entries, own.project.entry, own.project)
+    package_rules(Package.package_facts(Package.module_tree(Corset), own.files), nothing, nothing, nothing, own.files, own.entries, own.project.entry, own.project)
     Launch.cache_key(own.project)
     path = joinpath(@__DIR__, "PackageSample.jl")
     files = [Syntax.parse_file(path, read(path, String), Facts.Role.package)]
     package = Package.package_facts([PackageSample], files)
     # Second run takes method store from first, as rerun of `corset check` does.
     mktempdir() do cache
-        Engine.stage_facts(path, package, files, true, true, cache, nothing)
+        Engine.stage_facts(path, package, files, true, true, true, cache, nothing)
         store = Cache.lookup(Inference.Store, cache, Engine.method_entry(path), Engine.store_key(path, package, files, cache))
         isempty(something(store, Inference.Store())) && error("precompile workload: inference stage stored no sample method")
-        inference, _, effects, _ = Engine.stage_facts(path, package, files, true, true, cache, nothing)
-        package_rules(package, inference, effects, files, [path], path, nothing)
+        inference, _, effects, _, lifecycle = Engine.stage_facts(path, package, files, true, true, true, cache, nothing)
+        package_rules(package, inference, effects, lifecycle, files, [path], path, nothing)
     end
     return nothing
 end

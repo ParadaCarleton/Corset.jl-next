@@ -1047,7 +1047,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <h2>Lifecycle</h2>
 <p>Array def-use per method: rows 10 and 11 of <code>phase5.md</code>.</p>
 <p><code>effects</code> stage finds array events per unit; it holds IR. <code>lifecycle</code> stage merges units and gives def-use per allocation.
-Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/arrays.jl</code> (events) and <code>src/Lifecycle/</code> (def-use).</p>
+Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/arrays.jl</code> (events) and <code>src/Lifecycle.jl</code> (merge over units).</p>
 <div class="decision"><h3>Allocations</h3>
 <p>Allocation: statement whose result is new array that unit code alone holds. Base table gives its kind:</p>
 <div class="scroll"><table>
@@ -1099,7 +1099,7 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 <li>Loop <code>φ</code> that joins allocation before loop with allocation in loop body gives rebind pair (F41).</li>
 </ul>
 </div><div class="decision"><h3>Events</h3>
-<p>Each statement that uses allocation value gives one event, with statement span, callee and operand position.</p>
+<p>Each statement that uses allocation value gives one event, with statement span, callee and operand position. <code>!</code> call that takes array as written and source operand gives read, then write (<code>map!(f, a, a)</code>), or write, then escape when it stores array itself (<code>fill!(a, a)</code>).</p>
 <ul>
 <li><code>shape</code>: <code>size</code>, <code>length</code>, <code>axes</code>, <code>eachindex</code>, <code>firstindex</code>, <code>lastindex</code>, <code>ndims</code>, <code>eltype</code>, <code>isempty</code>, <code>similar</code>, <code>keys</code>, <code>LinearIndices</code>, <code>CartesianIndices</code>, <code>checkbounds</code>. Reads no element.</li>
 <li><code>read</code>: <code>getindex</code> reads elements at its index operands. <code>first</code>, <code>last</code> and <code>only</code> read one element.</li>
@@ -1107,7 +1107,7 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 <li><code>broadcasted</code> result reads every element of its array operands when broadcast runs.</li>
 <li><code>write</code>: <code>setindex!</code> writes elements at its index operands.</li>
 <li>Whole write: written operand of <code>fill!</code>, <code>copyto!</code> with two operands, <code>map!</code>, <code>broadcast!</code>, <code>Base.materialize!</code> (<code>a .= …</code>), <code>rand!</code>, <code>randn!</code>.</li>
-<li><code>copyto!</code> from shorter source writes part. Such code is rare; it gives false negatives only.</li>
+<li><code>copyto!</code> and <code>map!</code> write as many elements as shortest source. Whole only when each source has same extent: array itself, <code>x</code> in <code>similar(x)</code>, or <code>x</code> in <code>Vector{T}(undef, length(x))</code>, and no <code>!</code> call writes <code>x</code>. Else <code>unknown</code>.</li>
 <li>Other <code>!</code> call on written operand: <code>unknown</code> write. It can read first (<code>sort!</code>) or write part.</li>
 <li><code>resize</code>: written operand of resize table call (<code>effects.md</code>, F48 tables).</li>
 <li><code>escape</code>: return; stored operand of builtin store; closure capture; foreign call operand; pointer conversion.</li>
@@ -1124,7 +1124,7 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 <li>Order: block order of <code>sure</code> events follows dominance. Statements in one block keep IR order.</li>
 <li>Fill loop is one <code>sure</code> whole write at loop exit when every condition holds:
 <ul>
-<li>Loop iterates <code>eachindex</code>, <code>LinearIndices</code> or <code>CartesianIndices</code> of <code>a</code>, or of <code>x</code> in <code>a = similar(x)</code>.</li>
+<li>Loop iterates <code>eachindex</code>, <code>LinearIndices</code> or <code>CartesianIndices</code> of <code>a</code>, or of <code>x</code> in <code>a = similar(x)</code> when no <code>!</code> call writes <code>x</code>.</li>
 <li>Or loop iterates <code>axes(a, 1)</code> of vector, <code>1:length(a)</code> of <code>Array</code>, or <code>1:n</code> and <code>Base.OneTo(n)</code> for <code>n</code> in <code>zeros(n)</code>.</li>
 <li>Body writes <code>a[i]</code> with iteration value <code>i</code>, in block that runs on every iteration.</li>
 <li>Loop exits only through its header, and its exit block post-dominates allocation block.</li>
@@ -1134,8 +1134,9 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 </ul>
 </div><div class="decision"><h3>Facts</h3>
 <ul>
-<li>Per package method: <code>ArrayLife</code> per allocation: site span, kind, element type, constant length, events in order, rebind pair.</li>
+<li>Per package method: <code>ArrayLife</code> per allocation: site span, kind, constant dimensions, events in order, rebind pair.</li>
 <li>Units of method merge by allocation span. Events merge by all fields but path; path of merged event is worst over units.</li>
+<li>Event that one unit lacks is <code>branch</code> at best: that unit skips it.</li>
 <li>Dimensions and rebind pair stay only when all units agree.</li>
 <li>Definite verdict reads <code>sure</code> events only. <code>branch</code>, <code>loop</code> or <code>view</code> event that can change verdict gives <code>possible</code>.</li>
 </ul>
@@ -1753,7 +1754,7 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 <p>Design: <code>lifecycle.md</code>.</p>
 <ul>
 <li><code>effects</code> gives array events per unit (<code>src/Effects/arrays.jl</code>); unit record stores them.</li>
-<li><code>lifecycle</code> stage merges units into <code>ArrayLife</code> per allocation (<code>src/Lifecycle/</code>).</li>
+<li><code>lifecycle</code> stage merges units into <code>ArrayLife</code> per allocation (<code>src/Lifecycle.jl</code>).</li>
 <li>Fixture package <code>test/lifecycle/LifecycleCases</code> covers each allocation kind, event kind, path and fill-loop form.</li>
 </ul>
 </div><div class="decision"><h3>11 Lifecycle rules</h3>
