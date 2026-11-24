@@ -14,6 +14,7 @@ shifted(n::Int) = (a = zeros(n); a .+= 1.0; sum(a))
 settled(a::Matrix{Float64}) = a
 settled_write(n::Int) = (r = settled(zeros(n, n)); r[1, 1] = 1.0; sum(r))
 floated(n::Int) = (a = zeros(n); b = float(a); b[1] = 1.0; sum(a))
+unary(n::Int) = (a = zeros(n, n); b = *(a); b[1, 1] = 1.0; sum(a))
 head(a::Vector{Float64}) = view(a, 1:2)
 headed(n::Int) = (a = zeros(n); head(a) .= 1.0; sum(a))
 

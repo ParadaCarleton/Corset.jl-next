@@ -11,8 +11,11 @@ const COLLECTING = Base.IdSet{Any}(Any[collect, map])
 """Base functions whose result is new array that copies operands."""
 const COPYING = Base.IdSet{Any}(Any[copy, vcat, hcat])
 
-"""Base arithmetic and reductions: result is new value, never array operand itself (`+(a)` and `sum(a; dims)` copy)."""
-const COMPUTING = Base.IdSet{Any}(Any[+, -, *, /, (\), sum, prod, maximum, minimum, extrema, any, all, count, reduce, foldl, foldr, mapreduce])
+"""Base arithmetic with two or more operands: result is new value. One operand can give it back (`*(A)`, `+(view)`)."""
+const ARITHMETIC = Base.IdSet{Any}(Any[+, -, *, /, (\)])
+
+"""Base reductions: result combines elements, never collection operand itself (`sum(a; dims)` builds new array)."""
+const REDUCTIONS = Base.IdSet{Any}(Any[sum, prod, maximum, minimum, extrema, any, all, count, reduce, foldl, foldr, mapreduce])
 
 """Functions that read shape of array operand, never its elements (`lifecycle.md`, Events)."""
 const SHAPE_FUNCTIONS = Base.IdSet{Any}(
@@ -238,15 +241,16 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
         return passed(!isnothing(written) && can_hold(operand_type(walk, operands[something(written)]), held, HOLD_DEPTH))
     end
     result = CC.widenconst(walk.ir.stmts[index][:type])
-    return passed(can_return(callee, result, held) || can_hold(result, held, HOLD_DEPTH))
+    return passed(can_return(callee, length(operands), result, held) || can_hold(result, held, HOLD_DEPTH))
 end
 
 """
-Whether call of `callee` with `result` type can return its operand of type `held` itself: result type meets `held`,
-and callee is no Base function that builds new array. `float(a)`, `convert` and package `pass(a) = a` return operand.
+Whether call of `callee` with `count` operands and `result` type can return its operand of type `held` itself: result
+type meets `held`, and callee is no Base function that builds new array. `float(a)`, `convert` and package
+`pass(a) = a` return operand.
 """
-function can_return(@nospecialize(callee::Any), @nospecialize(result::Any), @nospecialize(held::Any))::Bool
-    (callee in COPYING || callee in COLLECTING || callee in COMPUTING) && return false
+function can_return(@nospecialize(callee::Any), count::Integer, @nospecialize(result::Any), @nospecialize(held::Any))::Bool
+    (callee in COPYING || callee in COLLECTING || callee in REDUCTIONS || (callee in ARITHMETIC && count >= 2)) && return false
     # `Array` and `BitArray` constructors copy array operand.
     callee isa Type && callee <: Union{Array, BitArray} && return false
     return typeintersect(result, held) !== Union{}
