@@ -35,7 +35,7 @@ Allocation: statement whose result is new array that unit code alone holds. Base
 
 Each statement that uses allocation value gives one event, with statement span, callee and operand position. Position counts positional operands only: `kwcall` keywords drop out. Event keeps Base function that call takes as first operand: `vcat` in `reduce(vcat, a)`. `!` call that takes array as written and source operand gives read, then write (`map!(f, a, a)`), or write, then escape when it stores array itself (`fill!(a, a)`). `!` call that reads old elements of array it writes (`sort!`, `reverse!`, `unique!`, `map!(f, a)`) gives read, then write.
 
-- `shape`: `size`, `length`, `axes`, `eachindex`, `firstindex`, `lastindex`, `ndims`, `eltype`, `isempty`, `similar`, `keys`, `LinearIndices`, `CartesianIndices`, `checkbounds`. Reads no element.
+- `shape`: `size`, `length`, `axes`, `eachindex`, `firstindex`, `lastindex`, `ndims`, `eltype`, `isempty`, `similar`, `keys`, `LinearIndices`, `CartesianIndices`, `checkbounds`, `isassigned`, `sizeof`, `strides`, `stride`, `===`, `isa`, `typeof`, `isdefined`. Reads no element.
 - `read`: `getindex` reads elements at its index operands. `first`, `last` and `only` read one element.
 - Other non-`!` call reads whole array. So does non-written operand of library `!` call: `copyto!(b, a)` reads `a`.
 - `broadcasted` result reads every element of its array operands when broadcast runs.

@@ -13,7 +13,7 @@ const COPYING = Base.IdSet{Any}(Any[copy, vcat, hcat])
 
 """Functions that read shape of array operand, never its elements (`lifecycle.md`, Events)."""
 const SHAPE_FUNCTIONS = Base.IdSet{Any}(
-    Any[size, length, axes, eachindex, firstindex, lastindex, ndims, eltype, isempty, similar, keys, LinearIndices, CartesianIndices, checkbounds, ===, isa, typeof, isdefined],
+    Any[size, length, axes, eachindex, firstindex, lastindex, ndims, eltype, isempty, similar, keys, LinearIndices, CartesianIndices, checkbounds, isassigned, sizeof, strides, stride, ===, isa, typeof, isdefined],
 )
 
 """`!` functions that write every element of written operand. `copyto!` counts with two operands only."""
