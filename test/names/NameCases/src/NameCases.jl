@@ -312,6 +312,8 @@ discard(items::Vector{Int})::Nothing = (length(items); nothing)
 discard_open(items::Vector{Any})::Nothing = (length(items[1]); nothing)
 """Lowering copies `finally` call, so calls of `abs` outnumber source calls: no exact span, blind spot."""
 discard_finally(x::Int)::Int = (abs(x); try println(x) finally abs(x) end; x)
+"""Computed callee has no name, so mapping cannot place call: blind spot."""
+discard_computed(x::Int)::Int = (getfield(Base, :abs)(x); x)
 
 # Loop writes (F48).
 """Repeat each item at end: loop over `items` grows it."""

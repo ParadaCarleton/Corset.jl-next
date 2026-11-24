@@ -23,8 +23,8 @@ end
 Nodes of unused call statements of `code` that `nodes` leaves without node, by statement, among discarded call
 statements `candidates` by line. Statements of one callee and argument count on one line map in evaluation order:
 inner call ends first. Counts must agree, so unreached statements, which inference wraps in `Core.Const`, count too.
-Second result holds statements whose counts disagree (`finally` body lowers twice). TypedSyntax.jl maps no statement
-whose value code drops.
+Second result holds statements mapping cannot place: counts disagree (`finally` body lowers twice), or callee has no
+name (`getfield(Base, :abs)(x)`) on line with free candidate. TypedSyntax.jl maps no statement whose value code drops.
 """
 function discarded_nodes(file::SyntaxFile, code::Core.CodeInfo, nodes::AbstractVector{Union{Nothing, SyntaxNode}}, lines::AbstractVector{<:Integer}, candidates::AbstractDict{<:Integer, <:AbstractVector{SyntaxNode}})::Tuple{Dict{Int, SyntaxNode}, BitSet}
     Base.require_one_based_indexing(nodes, lines)
@@ -39,7 +39,11 @@ function discarded_nodes(file::SyntaxFile, code::Core.CodeInfo, nodes::AbstractV
         (isnothing(nodes[index]) && lines[index] > 0) || continue
         statement = unwrapped.code[index]::Expr
         name = callee_name(unwrapped, statement)
-        isnothing(name) || push!(get!(Vector{Int}, groups, (lines[index], name, length(statement.args) - 1)), index)
+        if isnothing(name)
+            any(node -> !(node in taken), get(candidates, lines[index], SyntaxNode[])) && push!(unmapped, index)
+        else
+            push!(get!(Vector{Int}, groups, (lines[index], name, length(statement.args) - 1)), index)
+        end
     end
     for ((line, name, arguments), indexes) in groups
         spelled = [node for node in get(candidates, line, SyntaxNode[]) if !(node in taken) && spells_call(file, node, name, arguments)]
