@@ -145,7 +145,7 @@ function weak(code::Core.CodeInfo, @nospecialize(argument::Any))::Union{Nothing,
         length(call.args) >= 2 || return nothing
         type isa Core.Const || return nothing
         weak_data(type.val) || return nothing
-        reads_input!(Set{Int}(), code, call.args[1]) && return nothing
+        reads_input(code, call.args[1]) && return nothing
         parts = [weak(code, part) for part in call.args[2:end]]
         any(isnothing, parts) && return nothing
         # Tuple of literals (`@evalpoly` coefficients) reads as literal in source.
@@ -159,17 +159,13 @@ end
 assigned(@nospecialize(statement::Any))::Any = statement isa Expr && statement.head === :(=) ? statement.args[2] : statement
 
 """
-Whether `argument` of `code` reads input: static parameter, method argument, or call or variable built from one. Callee
-from input (`T(4)`, `typeof(x)(4)`) follows input type; `Base.sqrt` and `g = sqrt` do not. Adds followed slots to `visited`.
+Whether `argument` of `code` can read input: static parameter, variable, or call of one. Callee from input (`T(4)`,
+`typeof(x)(4)`) follows input type; `Base.sqrt` does not. Local variable counts: its value at call needs flow analysis.
 """
-function reads_input!(visited::Set{Int}, code::Core.CodeInfo, @nospecialize(argument::Any))::Bool
-    argument isa Core.SSAValue && return reads_input!(visited, code, assigned(code.code[argument.id]))
-    argument isa Expr && return argument.head === :static_parameter || (argument.head === :call && any(part -> reads_input!(visited, code, part), argument.args))
-    argument isa Core.SlotNumber || return argument isa Core.Argument
-    argument.id <= code.nargs && return true
-    argument.id in visited && return false
-    push!(visited, argument.id)
-    return any(statement -> statement isa Expr && statement.head === :(=) && statement.args[1] == argument && reads_input!(visited, code, statement.args[2]), code.code)
+function reads_input(code::Core.CodeInfo, @nospecialize(argument::Any))::Bool
+    argument isa Core.SSAValue && return reads_input(code, assigned(code.code[argument.id]))
+    argument isa Expr && return argument.head === :static_parameter || (argument.head === :call && any(part -> reads_input(code, part), argument.args))
+    return argument isa Union{Core.SlotNumber, Core.Argument}
 end
 
 """
