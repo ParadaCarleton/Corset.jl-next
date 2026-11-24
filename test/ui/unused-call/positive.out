@@ -40,11 +40,11 @@ error[unused-call]: call to `magnitude` has no effect
    = fix: assign result, or delete call   [manual]
    = docs: corset explain unused-call
 
-error[unused-call]: call to `require_one_based_indexing` has no effect
+error[unused-call]: call to `length` has no effect
   --> src/UnusedCallPositive.jl:35:5
    |
-35 |     Base.require_one_based_indexing(items)
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ result dropped; call writes nothing and cannot throw
+35 |     length(items)
+   |     ^^^^^^^^^^^^^ result dropped; call writes nothing and cannot throw
    |
    = why: call does nothing but compute value, and code drops value; assignment is probably missing
    = confidence: possible

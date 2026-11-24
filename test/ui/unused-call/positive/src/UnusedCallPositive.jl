@@ -30,10 +30,10 @@ end
 const magnitude = abs
 scaled_norm(x::Float64) = (magnitude(x); 2x)
 
-# Check passes for stand-in array only: other array types can throw.
+# Length is free for stand-in array only: other array types can write or throw.
 function first_of(items::AbstractVector)
-    Base.require_one_based_indexing(items)
-    return items[1]
+    length(items)
+    return first(items)
 end
 
 end
