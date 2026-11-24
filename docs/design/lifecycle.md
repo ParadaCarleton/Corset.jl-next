@@ -3,7 +3,7 @@
 Array def-use per method: rows 10 and 11 of `phase5.md`.
 
 `effects` stage finds array events per unit; it holds IR. `lifecycle` stage merges units and gives def-use per allocation.
-Rules read `lifecycle` facts only. Code lives in `src/Effects/arrays.jl` (events) and `src/Lifecycle/` (def-use).
+Rules read `lifecycle` facts only. Code lives in `src/Effects/arrays.jl` (events) and `src/Lifecycle.jl` (merge over units).
 
 ### Allocations
 
@@ -33,7 +33,7 @@ Allocation: statement whose result is new array that unit code alone holds. Base
 
 ### Events
 
-Each statement that uses allocation value gives one event, with statement span, callee and operand position.
+Each statement that uses allocation value gives one event, with statement span, callee and operand position. `!` call that takes array as written and source operand gives read, then write (`map!(f, a, a)`), or write, then escape when it stores array itself (`fill!(a, a)`).
 
 - `shape`: `size`, `length`, `axes`, `eachindex`, `firstindex`, `lastindex`, `ndims`, `eltype`, `isempty`, `similar`, `keys`, `LinearIndices`, `CartesianIndices`, `checkbounds`. Reads no element.
 - `read`: `getindex` reads elements at its index operands. `first`, `last` and `only` read one element.
@@ -41,7 +41,7 @@ Each statement that uses allocation value gives one event, with statement span, 
 - `broadcasted` result reads every element of its array operands when broadcast runs.
 - `write`: `setindex!` writes elements at its index operands.
 - Whole write: written operand of `fill!`, `copyto!` with two operands, `map!`, `broadcast!`, `Base.materialize!` (`a .= …`), `rand!`, `randn!`.
-- `copyto!` from shorter source writes part. Such code is rare; it gives false negatives only.
+- `copyto!` and `map!` write as many elements as shortest source. Whole only when each source has same extent: array itself, `x` in `similar(x)`, or `x` in `Vector{T}(undef, length(x))`, and no `!` call writes `x`. Else `unknown`.
 - Other `!` call on written operand: `unknown` write. It can read first (`sort!`) or write part.
 - `resize`: written operand of resize table call (`effects.md`, F48 tables).
 - `escape`: return; stored operand of builtin store; closure capture; foreign call operand; pointer conversion.
@@ -57,7 +57,7 @@ Each statement that uses allocation value gives one event, with statement span, 
 - `branch`: allocation run can skip event. `loop`: event lies in loop that allocation lies outside.
 - Order: block order of `sure` events follows dominance. Statements in one block keep IR order.
 - Fill loop is one `sure` whole write at loop exit when every condition holds:
-  - Loop iterates `eachindex`, `LinearIndices` or `CartesianIndices` of `a`, or of `x` in `a = similar(x)`.
+  - Loop iterates `eachindex`, `LinearIndices` or `CartesianIndices` of `a`, or of `x` in `a = similar(x)` when no `!` call writes `x`.
   - Or loop iterates `axes(a, 1)` of vector, `1:length(a)` of `Array`, or `1:n` and `Base.OneTo(n)` for `n` in `zeros(n)`.
   - Body writes `a[i]` with iteration value `i`, in block that runs on every iteration.
   - Loop exits only through its header, and its exit block post-dominates allocation block.
@@ -65,8 +65,9 @@ Each statement that uses allocation value gives one event, with statement span, 
 
 ### Facts
 
-- Per package method: `ArrayLife` per allocation: site span, kind, element type, constant length, events in order, rebind pair.
+- Per package method: `ArrayLife` per allocation: site span, kind, constant dimensions, events in order, rebind pair.
 - Units of method merge by allocation span. Events merge by all fields but path; path of merged event is worst over units.
+- Event that one unit lacks is `branch` at best: that unit skips it.
 - Dimensions and rebind pair stay only when all units agree.
 - Definite verdict reads `sure` events only. `branch`, `loop` or `view` event that can change verdict gives `possible`.
 

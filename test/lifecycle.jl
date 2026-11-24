@@ -1,0 +1,164 @@
+using Test: @test, @test_throws, @testset
+using Corset: Corset
+using Corset.Facts: Facts, ArrayLife, AllocationKind, ArrayEventKind, Coverage, ArrayPath
+using Corset.Inference: infer_package
+using Corset.Effects: Effects
+using Corset.Lifecycle: lifecycle_facts
+
+const CASE = joinpath(@__DIR__, "lifecycle", "LifecycleCases")
+
+"""Fixture module and `lifecycle` stage facts of `LifecycleCases`."""
+function case_facts()::Tuple{Module, Facts.LifecycleFacts}
+    sources = Corset.Discovery.discover(CASE; environment = nothing)
+    push!(LOAD_PATH, CASE)
+    loaded = try
+        Corset.Package.load(sources.project, sources.files)
+    finally
+        pop!(LOAD_PATH)
+    end
+    _, _, units, _ = infer_package(loaded.facts, sources.files, nothing, nothing)
+    _, _, _, _, ordered = Effects.effects_facts(loaded.facts, units, nothing)
+    return first(loaded.facts.modules), lifecycle_facts(loaded.facts, ordered)
+end
+
+const CASES, FACTS = case_facts()
+
+"""Arrays that fixture method `name` allocates; fixture names are unique."""
+arrays(name::Symbol)::Vector{ArrayLife} = only(found for found in FACTS.methods if found.site.method.name == name).arrays
+
+"""Kind, coverage, indices, path and view flag of each event of `array`."""
+events(array::ArrayLife)::Vector{Tuple{ArrayEventKind.T, Coverage.T, Vector{Int}, ArrayPath.T, Bool}} =
+    [(event.kind, event.coverage, event.indices, event.path, event.view) for event in array.events]
+
+const SHAPE, READ, WRITE, RESIZE, ESCAPE, JOINED = ArrayEventKind.shape, ArrayEventKind.read, ArrayEventKind.write, ArrayEventKind.resize, ArrayEventKind.escape, ArrayEventKind.joined
+const WHOLE, ELEMENT, UNKNOWN = Coverage.whole, Coverage.element, Coverage.unknown
+const SURE, BRANCH, LOOP = ArrayPath.sure, ArrayPath.branch, ArrayPath.loop
+
+"""Events of only array that fixture method `name` allocates."""
+only_events(name::Symbol)::Vector{Tuple{ArrayEventKind.T, Coverage.T, Vector{Int}, ArrayPath.T, Bool}} = events(only(arrays(name)))
+
+@testset "allocation kinds and dimensions" begin
+    kinds = [
+        :undef_read => AllocationKind.undef, :similar_sum => AllocationKind.undef, :filled_constant => AllocationKind.filled,
+        :broadcast_sum => AllocationKind.broadcast, :collected_sum => AllocationKind.collected, :slice_sum => AllocationKind.slice,
+        :copied_head => AllocationKind.copied, :filled_whole => AllocationKind.undef,
+    ]
+    for (name, kind) in kinds
+        @test only(arrays(name)).kind == kind
+    end
+    @test only(arrays(:filled_constant)).dimensions == [3] && only(arrays(:filled_whole)).dimensions == [3]
+    @test only(arrays(:resized)).dimensions == [0] && isnothing(only(arrays(:similar_sum)).dimensions)
+    @test only(arrays(:tuple_size)).dimensions == [2, 3]
+    # Package call result is no allocation of caller; package method reports its own.
+    @test !any(found -> found.site.method.name == :from_helper, FACTS.methods)
+    @test only_events(:helper) == [(ESCAPE, UNKNOWN, Int[], SURE, false)]
+    @test all(found -> all(array -> issorted(event.order for event in array.events), found.arrays), FACTS.methods)
+end
+
+@testset "event kinds" begin
+    @test only_events(:undef_read) == [(WRITE, ELEMENT, [1], SURE, false), (READ, ELEMENT, [2], SURE, false)]
+    @test only_events(:filled_constant) == [(WRITE, ELEMENT, [1], SURE, false), (READ, WHOLE, Int[], SURE, false)]
+    for name in (:similar_sum, :broadcast_sum, :collected_sum, :slice_sum, :copied_into, :guarded_read)
+        @test only_events(name) == [(READ, WHOLE, Int[], SURE, false)]
+    end
+    @test only_events(:copied_head) == [(WRITE, ELEMENT, [1], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    @test only_events(:shape_only) == [(SHAPE, UNKNOWN, Int[], SURE, false), (SHAPE, UNKNOWN, Int[], SURE, false)]
+    @test [event.callee for event in only(arrays(:shape_only)).events] == [:length, :size]
+    @test only_events(:viewed) == [(WRITE, WHOLE, Int[], SURE, true), (READ, WHOLE, Int[], SURE, false)]
+    @test only_events(:resized) == [(RESIZE, UNKNOWN, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    # Collection that keeps array is escape of unknown extent.
+    @test only_events(:stored) == [(ESCAPE, UNKNOWN, Int[], SURE, false)]
+    @test only_events(:filled_whole) == [(WRITE, WHOLE, Int[], SURE, false), (READ, WHOLE, Int[], SURE, false)]
+    @test first(only(arrays(:filled_whole)).events).callee == :fill!
+    @test only_events(:unknown_write) == [(WRITE, UNKNOWN, Int[], SURE, false), (READ, ELEMENT, [1], SURE, false)]
+    @test [events(array) for array in arrays(:joined)] == [[(JOINED, UNKNOWN, Int[], SURE, false)], [(JOINED, UNKNOWN, Int[], SURE, false)]]
+    captured, mapped = arrays(:captured)
+    # Closure captures array: it escapes, so later uses through closure stay unseen.
+    @test events(captured) == [(READ, WHOLE, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    @test mapped.kind == AllocationKind.collected && events(mapped) == [(ESCAPE, UNKNOWN, Int[], SURE, false)]
+end
+
+@testset "prefix writes" begin
+    @test only_events(:prefix_copy) == [(WRITE, UNKNOWN, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    for name in (:source_copy, :counted_map)
+        @test only_events(name) == [(WRITE, WHOLE, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    end
+    @test only_events(:self_map) == [(READ, WHOLE, Int[], SURE, false), (WRITE, WHOLE, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    # `fill!` stores array in itself without reading elements; source that `pop!` shrinks proves no extent.
+    @test only_events(:self_fill) == [(WRITE, WHOLE, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    @test only_events(:shrunk_copy) == [(WRITE, UNKNOWN, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    @test isassigned(CASES.self_fill(), 2) && !isassigned(CASES.shrunk_copy(["a", "b"]), 2)
+    # Runtime: short source leaves tail unassigned; array as own source reads unassigned element.
+    @test !isassigned(CASES.prefix_copy(3), 2) && isassigned(CASES.source_copy(["a", "b"]), 2) && isassigned(CASES.counted_map(["a", "b"]), 2)
+    @test_throws UndefRefError CASES.self_map(2)
+end
+
+@testset "paths" begin
+    @test only_events(:iterated) == [(READ, WHOLE, Int[], SURE, false), (READ, WHOLE, Int[], LOOP, false)]
+    @test only_events(:branch_write) == [(WRITE, ELEMENT, [1], BRANCH, false), (READ, WHOLE, Int[], SURE, false)]
+    @test only_events(:loop_read) == [(READ, WHOLE, Int[], LOOP, false)]
+end
+
+@testset "fill loops" begin
+    shaped = [(SHAPE, UNKNOWN, Int[], SURE, false), (WRITE, WHOLE, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    for name in (:fill_each, :fill_counted, :fill_cartesian)
+        @test only_events(name) == shaped
+    end
+    for name in (:fill_source, :fill_extent)
+        @test only_events(name) == shaped[2:3]
+    end
+    # Source that `pop!` shrinks covers fewer elements than allocation.
+    for name in (:partial_fill, :shrunk_fill)
+        @test only_events(name) == [(WRITE, UNKNOWN, Int[], LOOP, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    end
+    for name in (:break_fill, :branch_fill)
+        @test only_events(name) == [(SHAPE, UNKNOWN, Int[], SURE, false), (WRITE, UNKNOWN, Int[], LOOP, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    end
+    # Fill loop writes every element; loop that can skip one leaves it unassigned.
+    assigned(array::AbstractArray)::Bool = all(index -> isassigned(array, index), eachindex(array))
+    strings = ["a", "b", "c"]
+    @test assigned(CASES.fill_each(strings)) && assigned(CASES.fill_source(view(strings, 1:2))) && assigned(CASES.fill_extent(3))
+    @test assigned(CASES.fill_counted(strings)) && assigned(CASES.fill_cartesian(["a" "b"; "c" "d"]))
+    @test !isassigned(CASES.partial_fill(3), 1) && !isassigned(CASES.shrunk_fill(["a", "b"]), 2)
+    @test !isassigned(CASES.break_fill(["a", "", "c"]), 2) && !isassigned(CASES.branch_fill(["a", "", "c"]), 2)
+    @test_throws UndefRefError CASES.undef_read(2)
+end
+
+@testset "rebind pairs" begin
+    for (name, same_axes) in (:rebound => false, :scaled => true)
+        earlier, later = arrays(name)
+        @test isnothing(earlier.rebind) && later.kind == AllocationKind.broadcast
+        @test something(later.rebind).earlier == earlier.site && something(later.rebind).same_axes == same_axes
+        @test events(earlier) == [(JOINED, UNKNOWN, Int[], LOOP, false), (JOINED, UNKNOWN, Int[], SURE, false)]
+        @test events(later) == [(JOINED, UNKNOWN, Int[], SURE, false), (JOINED, UNKNOWN, Int[], BRANCH, false)]
+    end
+end
+
+@testset "units merge per method" begin
+    span(first_byte::Int)::Facts.Span = Facts.Span("case.jl", first_byte, first_byte, Facts.Precision.line)
+    event(path::ArrayPath.T)::Facts.ArrayEvent = Facts.ArrayEvent(span(5), READ, WHOLE, Int[], path, :sum, false, 2)
+    write = Facts.ArrayEvent(span(3), WRITE, ELEMENT, [1], SURE, :setindex!, false, 1)
+    life(dimensions::Vector{Int}, events::Vector{Facts.ArrayEvent}, rebind::Union{Nothing, Facts.Rebind})::ArrayLife =
+        ArrayLife(span(1), AllocationKind.filled, dimensions, events, rebind)
+    merged = Corset.Lifecycle.merged_array([life([2], [event(SURE)], Facts.Rebind(span(9), true)), life([3], [event(LOOP), write], Facts.Rebind(span(9), false))])
+    # Each event once with its worst path, in statement order; event that one unit lacks is `branch` at best.
+    @test events(merged) == [(WRITE, ELEMENT, [1], BRANCH, false), (READ, WHOLE, Int[], LOOP, false)]
+    @test events(Corset.Lifecycle.merged_array([life([2], [write], nothing), life([2], [write], nothing)])) == [(WRITE, ELEMENT, [1], SURE, false)]
+    # Dimensions only when units agree.
+    @test isnothing(merged.dimensions) && merged.rebind == Facts.Rebind(span(9), false)
+    @test Corset.Lifecycle.merged_array([life([2], [event(BRANCH)], nothing), life([2], [event(SURE)], nothing)]).dimensions == [2]
+    @test isnothing(Corset.Lifecycle.merged_rebind(Union{Nothing, Facts.Rebind}[Facts.Rebind(span(9), true), nothing]))
+    @test isnothing(Corset.Lifecycle.merged_rebind(Union{Nothing, Facts.Rebind}[Facts.Rebind(span(9), true), Facts.Rebind(span(8), true)]))
+end
+
+@testset "holder types" begin
+    held = Vector{Float64}
+    @test Effects.can_hold(Vector{Vector{Float64}}, held, Effects.HOLD_DEPTH) && Effects.can_hold(Any, held, Effects.HOLD_DEPTH)
+    @test Effects.can_hold(Union{Nothing, Tuple{Vector{Float64}, Int}}, held, Effects.HOLD_DEPTH)
+    @test !Effects.can_hold(Vector{Float64}, held, Effects.HOLD_DEPTH) && !Effects.can_hold(Tuple{Int, String}, held, Effects.HOLD_DEPTH)
+    @test !Effects.can_hold(Union{}, held, Effects.HOLD_DEPTH) && !Effects.can_hold(Type{Vector{Float64}}, held, Effects.HOLD_DEPTH)
+    # Open-length tuple holds what its element type holds.
+    @test Effects.can_hold(Tuple{Vararg{Vector{Float64}}}, held, Effects.HOLD_DEPTH) && !Effects.can_hold(Tuple{Vararg{Int}}, held, Effects.HOLD_DEPTH)
+    # Past depth limit, holder can hold anything.
+    @test Effects.can_hold(Tuple{Tuple{Tuple{Tuple{String}}}}, held, Effects.HOLD_DEPTH)
+end

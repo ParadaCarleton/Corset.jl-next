@@ -1,0 +1,5 @@
+name = "LifecycleCases"
+uuid = "bd4302a9-fb58-4125-a3ad-c2fff8aae94a"
+
+[preferences.Corset]
+kind = "library"

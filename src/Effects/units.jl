@@ -20,7 +20,7 @@ edges come second: `nothing` when it failed. Unit that always throws on stand-in
 """
 function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt, journal::Union{Nothing, Inference.Journal})::Tuple{UnitEffects, Union{Nothing, Vector{Any}}}
     cut = isempty(typed.cuts) ? nothing : typed.spans[first(typed.cuts)]
-    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], IndexFacts(), [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, false, cut), Any[]
+    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], IndexFacts(), ArrayLife[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, false, cut), Any[]
     walk, lines, used, claimed = unit_walk(typed, modules, interpreter, world)
     ir = walk.ir
     walk_values!(walk, 2 * length(ir.stmts) + 10)
@@ -50,7 +50,7 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
     indices, index_spots, edges = unit_indices(typed, walk, interpreter, journal)
     unspanned = [BlindSpot(UNSPANNED_CALL, span) for ((line, span), fact) in calls if line in typed.unmapped && no_effect(fact)]
     unguarded = unguarded_holds(walk, spans)
-    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), unguarded, calls, loops, self_aliases(walk, spans), reuses, indices, [loop_spots; reuse_spots; index_spots; unspanned], effect_free, new_result, cut), edges
+    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), unguarded, calls, loops, self_aliases(walk, spans), reuses, indices, unit_arrays(walk, lines, spans), [loop_spots; reuse_spots; index_spots; unspanned], effect_free, new_result, cut), edges
 end
 
 """
@@ -312,9 +312,10 @@ end
 """
 `effects` stage facts of `package` from inference `units`, blind spots, and effects record of each typed unit for method
 store: `nothing` for unit whose instance earlier unit holds. Stored units give their kept records. Last come compiler
-edges of offset inference per typed unit (`unit_effects`). Crash `journal` records offset inferences; `nothing` none.
+edges of offset inference per typed unit (`unit_effects`), then records of all units in inference order with their
+methods (`ordered_records`). Crash `journal` records offset inferences; `nothing` none.
 """
-function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Inference.Journal})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}, Vector{Union{Nothing, Vector{Any}}}}
+function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Inference.Journal})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}, Vector{Union{Nothing, Vector{Any}}}, Vector{Pair{Method, Union{Nothing, UnitEffects}}}}
     world = Base.get_world_counter()
     interpreter, modules, seen = CC.NativeInterpreter(world), Set{Module}(package.modules), Base.IdSet{Core.MethodInstance}()
     fresh, edges = Union{Nothing, UnitEffects}[], Union{Nothing, Vector{Any}}[]
@@ -325,6 +326,7 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
         push!(seen, typed.frame.linfo)
     end
     stored = Union{Nothing, UnitEffects}[unit_record(unit.effects, world) for unit in units.stored]
-    facts, spots = method_facts(package, units.incomplete, ordered_records(units, fresh, stored))
-    return facts, spots, fresh, edges
+    ordered = ordered_records(units, fresh, stored)
+    facts, spots = method_facts(package, units.incomplete, ordered)
+    return facts, spots, fresh, edges, ordered
 end

@@ -19,6 +19,7 @@ end
     isolated("specialize.jl")
     isolated("names.jl")
     isolated("indices.jl")
+    isolated("lifecycle.jl")
     isolated("registry.jl")
     isolated("ui.jl")
     isolated("properties.jl")

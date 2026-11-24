@@ -132,7 +132,7 @@ Port rules of local effect-rules stack onto name-tier facts.
 Design: `lifecycle.md`.
 
 - `effects` gives array events per unit (`src/Effects/arrays.jl`); unit record stores them.
-- `lifecycle` stage merges units into `ArrayLife` per allocation (`src/Lifecycle/`).
+- `lifecycle` stage merges units into `ArrayLife` per allocation (`src/Lifecycle.jl`).
 - Fixture package `test/lifecycle/LifecycleCases` covers each allocation kind, event kind, path and fill-loop form.
 
 ### 11 Lifecycle rules
