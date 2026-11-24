@@ -50,7 +50,8 @@ Each statement that uses allocation value gives one event, with statement span, 
 - Non-written operand of package `!` call escapes: name promises one written operand, and call can write others. Distances `colwise!(metric, r, a, b)` writes `r`.
 - Operand after written operand with call method (functor) of library `!` call escapes: `map!(scale, r, x)` writes `r`. Run of functors passes this on.
 - Operand of non-`!` call escapes when result type can hold array: tuple, constructor, abstract result.
-- Operand escapes when result type meets its type: call can return it (`float(a)`, package `pass(a) = a`). Base copy, collect and reduction calls, and arithmetic with two or more operands, build new value. Unary `*(A)` returns `A`.
+- Operand escapes when result type meets its type: call can return it (`float(a)`, package `pass(a) = a`). Unary `*(A)` returns `A`.
+- Base copy, collect and reduction calls, `Array` constructors, and arithmetic with two or more operands, read operand whole. Result holds its elements, never operand itself, whatever result type: `vcat` of stand-in gives wrapper type.
 - Type can hold array when element or field type meets array type, at most 3 steps deep. Base storage (`Array`, `Dict`, `Set`) holds elements only; view or wrapper also holds fields (`SubArray` parent).
 - Index operand keeps constant value. Non-constant index keeps nothing.
 

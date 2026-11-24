@@ -45,9 +45,20 @@ warning[constant-array]: array holds one value in every element but allocates ea
    = docs: corset explain constant-array
 
 warning[constant-array]: array holds one value in every element but allocates each
-  --> src/ConstantArrayPositive.jl:16:22
+  --> src/ConstantArrayPositive.jl:15:76
    |
-16 | spread(n::Int) = sum(ones(n))
+15 | padded(values::AbstractVector{T}, slots::Int) where {T <: Real} = [values; zeros(T, slots - length(values))]
+   |                                                                   ------------------------------------------ only reads it
+   |                                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ allocates every element here
+   |
+   = why: constant array needs no memory per element
+   = fix: replace with FillArrays.jl `Zeros` and import it; add FillArrays.jl to package dependencies   [likely]
+   = docs: corset explain constant-array
+
+warning[constant-array]: array holds one value in every element but allocates each
+  --> src/ConstantArrayPositive.jl:19:22
+   |
+19 | spread(n::Int) = sum(ones(n))
    |                  ------------ only reads it
    |                      ^^^^^^^ allocates every element here
    |
@@ -56,9 +67,9 @@ warning[constant-array]: array holds one value in every element but allocates ea
    = docs: corset explain constant-array
 
 warning[constant-array]: array holds one value in every element but allocates each
-  --> src/ConstantArrayPositive.jl:25:21
+  --> src/ConstantArrayPositive.jl:28:21
    |
-25 | blank(n::Int) = sum(zeros(n))
+28 | blank(n::Int) = sum(zeros(n))
    |                 ------------- only reads it
    |                     ^^^^^^^^ allocates every element here
    |

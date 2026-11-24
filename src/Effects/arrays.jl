@@ -251,20 +251,21 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
         # Other operand of `!` call goes into written operand when its type can hold array (`push!(c, a)`).
         return passed(!isnothing(written) && can_hold(operand_type(walk, operands[something(written)]), held, HOLD_DEPTH))
     end
+    builds_new(callee, length(operands)) && return passed(false)
+    # Other result can be operand itself (`float(a)`, package `pass(a) = a`) or hold it.
     result = CC.widenconst(walk.ir.stmts[index][:type])
-    return passed(can_return(callee, length(operands), result, held) || can_hold(result, held, HOLD_DEPTH))
+    return passed(typeintersect(result, held) !== Union{} || can_hold(result, held, HOLD_DEPTH))
 end
 
 """
-Whether call of `callee` with `count` operands and `result` type can return its operand of type `held` itself: result
-type meets `held`, and callee is no Base function that builds new array. `float(a)`, `convert` and package
-`pass(a) = a` return operand.
+Whether call of `callee` with `count` operands builds new value from elements of its array operand, never from
+operand itself: Base copy, collect and reduction, arithmetic with two or more operands, `Array` constructor. Wrapper
+result type (`vcat` of stand-in) holds no operand then.
 """
-function can_return(@nospecialize(callee::Any), count::Integer, @nospecialize(result::Any), @nospecialize(held::Any))::Bool
-    (callee in COPYING || callee in COLLECTING || callee in REDUCTIONS || (callee in ARRAY_ARITHMETIC && count >= 2)) && return false
+function builds_new(@nospecialize(callee::Any), count::Integer)::Bool
+    (callee in COPYING || callee in COLLECTING || callee in REDUCTIONS || (callee in ARRAY_ARITHMETIC && count >= 2)) && return true
     # `Array` and `BitArray` constructors copy array operand.
-    callee isa Type && callee <: Union{Array, BitArray} && return false
-    return typeintersect(result, held) !== Union{}
+    return callee isa Type && callee <: Union{Array, BitArray}
 end
 
 """Whether index `operands` of `dotview` call cover every element of allocation of `extent`: all `Colon`, or one covering range."""
