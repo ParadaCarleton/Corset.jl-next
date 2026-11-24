@@ -929,6 +929,18 @@ function hold_late_global(path::String, text::String)::Int
     close_global()
     return parsed
 end
+"""Second store on own branch escapes stream before package call that can close it."""
+function hold_branch_global(path::String, text::String, direct::Bool)::Int
+    stream = open(path)
+    if direct
+        OPEN_STREAM[] = stream
+        close(stream)
+        return 0
+    end
+    OPEN_STREAM[] = stream
+    close_global()
+    return parse(Int, text)
+end
 """Release in `finally`."""
 function hold_finally!(guard::ReentrantLock, key::String)::Int
     lock(guard)

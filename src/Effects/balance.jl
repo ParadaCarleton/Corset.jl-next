@@ -81,7 +81,8 @@ Function form (`lock(f, l)`, `open(f, path)`) releases inside callee. `trylock` 
 """
 function hold_change(walk::Walk, index::Integer)::Union{Nothing, Change}
     statement = walk.ir.stmts[index][:stmt]
-    (statement isa Expr && statement.head === :call) || return nothing
+    statement isa Expr || return nothing
+    statement.head === :call || return nothing
     callee, operands = call_parts(walk, statement)
     (isnothing(operands) || isempty(operands) || callable(walk, operands[1])) && return nothing
     callee === open && return operand_type(walk, Core.SSAValue(index)) <: IOStream ? (index, EffectKind.io) => 1 : nothing
@@ -105,7 +106,8 @@ end
 """Operand of call statement `index` of `walk` to `callee` with one operand; `nothing` for other statement."""
 function only_operand(walk::Walk, index::Integer, @nospecialize(callee::Any))::Union{Nothing, Some{Any}}
     statement = walk.ir.stmts[index][:stmt]
-    (statement isa Expr && statement.head === :call) || return nothing
+    statement isa Expr || return nothing
+    statement.head === :call || return nothing
     called, operands = call_parts(walk, statement)
     return called === callee && !isnothing(operands) && length(operands) == 1 ? Some{Any}(operands[1]) : nothing
 end
@@ -129,7 +131,7 @@ takes it: code elsewhere can reach value after them, so package call they can ru
 """
 struct ValueReach
     holders::Set{Any}
-    escapes::Vector{Int}
+    escapes::BitSet
 end
 
 """Reach of fresh resource values of one walk, kept per value; `users` of each root, built on first use, serve all."""
@@ -139,10 +141,10 @@ mutable struct Reaches
 end
 
 """Reaches of walk before any value asks."""
-Reaches() = Reaches(nothing, Dict{Int, ValueReach}())
+Reaches()::Reaches = Reaches(nothing, Dict{Int, ValueReach}())
 
 """Reach of resource value `identity` of `walk` that `reaches` keeps; computes and keeps it first time."""
-function value_reach!(reaches::Reaches, walk::Walk, identity::Int)::ValueReach
+function value_reach!(reaches::Reaches, walk::Walk, identity::Integer)::ValueReach
     haskey(reaches.values, identity) && return reaches.values[identity]
     isnothing(reaches.users) && (reaches.users = root_users(walk))
     return reaches.values[identity] = value_reach(walk, identity, something(reaches.users))
@@ -162,14 +164,15 @@ Reach of resource value `identity` of `walk` with statement `users` of each root
 holding call (`held_operands`) or `φ` node that takes holder, and result and mutable operands of call that takes holder:
 call can store holder there. Stream and lock calls (`IO_FUNCTIONS`, `SYNC_FUNCTIONS`) store their operands nowhere.
 """
-function value_reach(walk::Walk, identity::Int, users::AbstractDict{Any, Vector{Int}})::ValueReach
-    holders, pending, escapes = Set{Any}(Any[Core.SSAValue(identity)]), Any[Core.SSAValue(identity)], Int[]
+function value_reach(walk::Walk, identity::Integer, users::AbstractDict{Any, <:AbstractVector{<:Integer}})::ValueReach
+    holders, pending, escapes = Set{Any}(Any[Core.SSAValue(identity)]), Any[Core.SSAValue(identity)], BitSet()
     while !isempty(pending)
         for index in get(users, pop!(pending), Int[]), root in holder_roots(walk, index, holders)
+            # Each store escapes on own path, even into root earlier store already reached.
+            (root isa Core.SSAValue && isempty(walk.values[root.id].places)) || push!(escapes, index)
             root in holders && continue
             push!(holders, root)
             push!(pending, root)
-            (root isa Core.SSAValue && isempty(walk.values[root.id].places)) || push!(escapes, index)
         end
     end
     return ValueReach(holders, escapes)
@@ -250,7 +253,8 @@ holders per resource value. Call that can run package code hands on resource val
 function handed(walk::Walk, index::Integer, counts::Counts, trusted::AbstractDict{<:Integer, Bool}, reach::Reaches)::Vector{Resource}
     isempty(counts) && return Resource[]
     statement = walk.ir.stmts[index][:stmt]
-    (statement isa Expr && statement.head in (:call, :new)) || return Resource[]
+    statement isa Expr || return Resource[]
+    statement.head in (:call, :new) || return Resource[]
     operands, runs = statement.head === :new ? statement.args[2:end] : statement.args, statement.head === :call
     if statement.head === :call
         callee, arguments = call_parts(walk, statement)
@@ -260,7 +264,12 @@ function handed(walk::Walk, index::Integer, counts::Counts, trusted::AbstractDic
         end
     end
     escaped(resource::Resource)::Bool = first(resource) isa Int && any(escape -> may_run_before(walk.ir.cfg, escape, index), value_reach!(reach, walk, first(resource)).escapes)
-    return Resource[resource for resource in keys(counts) if (runs && escaped(resource)) || any(operand -> reaches(walk, operand, resource, reach), operands)]
+    # Loop, not comprehension: comprehension would capture `operands` and `runs`, which code above assigns twice.
+    found = Resource[]
+    for resource in keys(counts)
+        ((runs && escaped(resource)) || any(operand -> reaches(walk, operand, resource, reach), operands)) && push!(found, resource)
+    end
+    return found
 end
 
 """Make count of `resource` in `counts` unknown, if path holds it."""
@@ -330,9 +339,12 @@ end
 
 """One path for all `paths`: joined counts, conditions all agree on; conditions some path knew or dropped stay dropped."""
 function joined_path(paths::AbstractVector{Path})::Path
-    conditions = reduce(agreed, [path.conditions for path in paths])
-    known = union(Set{Any}(), (keys(path.conditions) for path in paths)..., (path.dropped for path in paths)...)
-    return Path(reduce(join_counts, [path.counts for path in paths]), conditions, setdiff(known, keys(conditions)), any(path -> path.blurred, paths))
+    conditions, dropped = reduce(agreed, [path.conditions for path in paths]), Set{Any}()
+    # Typed loop: `union` of splatted key sets iterates abstract sets, which package methods invalidate.
+    for path in paths, known in (keys(path.conditions), path.dropped), condition in known
+        haskey(conditions, condition) || push!(dropped, condition)
+    end
+    return Path(reduce(join_counts, [path.counts for path in paths]), conditions, dropped, any(path -> path.blurred, paths))
 end
 
 """
@@ -363,7 +375,7 @@ Whether branch `condition` of `ir` can depend on conditions in `dropped`, within
 non-constant global, or operand that can depend. Adds each SSA value it walks to `visited`; walked value adds nothing,
 so shared operands cost one visit.
 """
-function may_depend!(ir::CC.IRCode, @nospecialize(condition::Any), dropped::AbstractSet, depth::Integer, visited::AbstractSet{Int})::Bool
+function may_depend!(ir::CC.IRCode, @nospecialize(condition::Any), dropped::AbstractSet, depth::Integer, visited::AbstractSet{<:Integer})::Bool
     isempty(dropped) && return false
     condition in dropped && return true
     condition isa GlobalRef && return !isconst(condition)

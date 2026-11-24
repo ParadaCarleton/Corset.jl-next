@@ -184,6 +184,8 @@ end
     @test hold_shape(:hold_global) == [(EffectKind.io, POSSIBLE)]
     # Escape after throwing call leaves that throw definite.
     @test hold_shape(:hold_late_global) == [(EffectKind.io, DEFINITE)]
+    # Store on other branch leaves escape on this branch counted.
+    @test hold_shape(:hold_branch_global) == [(EffectKind.io, POSSIBLE)]
     # `trylock` forks path: success path holds lock at throw before result test.
     @test hold_shape(:hold_tried_late) == [(EffectKind.synchronization, DEFINITE)]
     # Release through other element load, or of lock path does not hold, leaves count in doubt.
