@@ -49,7 +49,9 @@ end
         path = joinpath(directory, name)
         # Parsed statements only: docstring examples may show `using`.
         file = Corset.Syntax.parse_file(path, read(path, String), Role.package)
-        @test [Corset.Facts.source(file, node) for kind in ("using", "import") for node in Corset.Facts.forms(file, kind)] == ["using ...Facts"]
+        imports = [Corset.Facts.source(file, node) for kind in ("using", "import") for node in Corset.Facts.forms(file, kind)]
+        # Rules reach other stages only through Facts; FillArrays.jl holds plain lazy arrays.
+        @test first(imports) == "using ...Facts" && all(statement -> startswith(statement, "using FillArrays: "), imports[2:end])
     end
 end
 

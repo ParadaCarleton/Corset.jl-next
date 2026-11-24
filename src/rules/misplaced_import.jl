@@ -36,28 +36,16 @@ using ...Facts
 
 const NAME = Symbol("misplaced-import")
 
-"""First statement of module body in `file` that holds `byte`; top-level statement when no `module` form holds it."""
-function first_statement(file::SyntaxFile, byte::Integer)::SyntaxNode
-    holders = filter(node -> span(file, node).first_byte <= byte <= span(file, node).last_byte, forms(file, "module"))
-    body = isempty(holders) ? file.tree : last(children_of(last(holders)))
-    return first(children_of(body))
-end
-
 """
 Fix moving `statement` of `file` to new line above first statement of module code that holds `use` in `target`.
 Statement must own its lines, and that first statement must start its line; trailing comment moves with statement.
 """
 function move_fix(file::SyntaxFile, statement::Span, target::SyntaxFile, use::Span)::Fix
-    lines = owned_lines(file, statement)
-    anchor = span(target, first_statement(target, use.first_byte))
-    start = line_start(target, anchor.first_byte)
-    indent = target.text[start:prevind(target.text, anchor.first_byte)]
     destination = basename(target.path)
-    # One-line `module M; …; end` has no line to insert above inside module.
-    (isnothing(lines) || !isempty(strip(indent))) && return manual_fix("move import to own line at top of `$destination`")
-    moved = rstrip(file.text[statement.first_byte:last(lines)])
-    inserted = Span(target.path, start, start - 1, Precision.exact)
-    return Fix("move to top of `$destination`", [line_deletion(file, lines), Edit(inserted, "$indent$moved\n")], Tier.likely)
+    lines = owned_lines(file, statement)
+    inserted = isnothing(lines) ? nothing : module_top_insertion(target, use.first_byte, rstrip(file.text[statement.first_byte:last(lines)]))
+    isnothing(inserted) && return manual_fix("move import to own line at top of `$destination`")
+    return Fix("move to top of `$destination`", [line_deletion(file, something(lines)), inserted], Tier.likely)
 end
 
 """Finding for `imported` when only one file other than its own uses its names; `nothing` otherwise."""

@@ -37,7 +37,8 @@ end
     # Fix spanning two files applies whole or not at all; overlap in either file skips it.
     moved(bytes) = Fix("t", [edit(bytes, bytes, ""), Edit(Span("g.jl", 1, 0, Precision.exact), "x")], Tier.safe)
     @test Corset.Fixes.applicable_edits([sample_finding(1:1; fix = moved(1)), sample_finding(1:1; fix = moved(1))], Tier.safe) == moved(1).edits
-    @test length(Corset.Fixes.applicable_edits([sample_finding(1:1; fix = moved(1)), sample_finding(3:3; fix = moved(3))], Tier.safe)) == 4
+    # Equal insertion of two fixes (same import) applies once.
+    @test Corset.Fixes.applicable_edits([sample_finding(1:1; fix = moved(1)), sample_finding(3:3; fix = moved(3))], Tier.safe) == [moved(1).edits; edit(3, 3, "")]
 end
 
 @testset "explicit import with use outside analyzed files gives no fact" begin

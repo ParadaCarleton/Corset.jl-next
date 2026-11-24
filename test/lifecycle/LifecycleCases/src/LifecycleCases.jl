@@ -35,6 +35,8 @@ counted_map(x::Vector{String}) = (a = Vector{String}(undef, length(x)); map!(upp
 self_map(n::Int) = (a = Vector{String}(undef, n); map!(identity, a, a); a)
 self_fill() = (a = Vector{Any}(undef, 2); fill!(a, a); a)
 shrunk_copy(x::Vector{String}) = (a = similar(x); pop!(x); copyto!(a, x); a)
+sorted(n::Int) = (a = Vector{String}(undef, n); sort!(a); a)
+mapped_in_place(n::Int) = (a = Vector{String}(undef, n); map!(uppercase, a); a)
 
 # Paths.
 branch_write(flag::Bool) = (a = zeros(2); flag && (a[1] = 1.0); sum(a))

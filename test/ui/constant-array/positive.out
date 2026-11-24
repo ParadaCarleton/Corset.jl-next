@@ -1,0 +1,57 @@
+warning[constant-array]: array holds one value in every element but allocates each
+ --> src/ConstantArrayPositive.jl:5:37
+  |
+5 | weighted(x::Vector{Float64}) = x' * ones(length(x))
+  |                                -------------------- only reads it
+  |                                     ^^^^^^^^^^^^^^^ allocates every element here
+  |
+  = why: constant array needs no memory per element
+  = fix: replace with FillArrays.jl `Ones` and import it; add FillArrays.jl to package dependencies   [likely]
+  = docs: corset explain constant-array
+  = note: warn from performance group, library preset
+  = note: opt out with `# corset: allow constant-array -- <reason>`
+
+warning[constant-array]: array holds one value in every element but allocates each
+ --> src/ConstantArrayPositive.jl:7:28
+  |
+7 | mask_count(n::Int) = count(trues(n))
+  |                      --------------- only reads it
+  |                            ^^^^^^^^ allocates every element here
+  |
+  = why: constant array needs no memory per element
+  = fix: replace with FillArrays.jl `Trues` and import it; add FillArrays.jl to package dependencies   [likely]
+  = docs: corset explain constant-array
+
+warning[constant-array]: array holds one value in every element but allocates each
+ --> src/ConstantArrayPositive.jl:9:45
+  |
+9 | offset_total(x::Vector{Float64}) = sum(x .+ fill(2.0, length(x)))
+  |                                        ------------------------- only reads it
+  |                                             ^^^^^^^^^^^^^^^^^^^^ allocates every element here
+  |
+  = why: constant array needs no memory per element
+  = fix: replace with FillArrays.jl `Fill` and import it; add FillArrays.jl to package dependencies   [likely]
+  = docs: corset explain constant-array
+
+warning[constant-array]: array holds one value in every element but allocates each
+  --> src/ConstantArrayPositive.jl:13:22
+   |
+13 | spread(n::Int) = sum(ones(n))
+   |                  ------------ only reads it
+   |                      ^^^^^^^ allocates every element here
+   |
+   = why: constant array needs no memory per element
+   = fix: use FillArrays.jl `Zeros`, `Ones`, `Fill`, `Trues` or `Falses`, and add FillArrays.jl to package dependencies   [manual]
+   = docs: corset explain constant-array
+
+warning[constant-array]: array holds one value in every element but allocates each
+  --> src/ConstantArrayPositive.jl:22:21
+   |
+22 | blank(n::Int) = sum(zeros(n))
+   |                 ------------- only reads it
+   |                     ^^^^^^^^ allocates every element here
+   |
+   = why: constant array needs no memory per element
+   = fix: replace with FillArrays.jl `Zeros`   [likely]
+   = docs: corset explain constant-array
+

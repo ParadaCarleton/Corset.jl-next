@@ -10,6 +10,7 @@ overlap(left::Edit, right::Edit)::Bool =
 """
 Edits of `findings` in every file whose fix tier is at most `tier`; `manual` fixes never apply.
 Fix whose edits overlap edit chosen earlier, in any file, is skipped whole; next fix run applies it.
+Edit equal to one chosen earlier applies once: two fixes can add same import.
 """
 function applicable_edits(findings::AbstractVector{Finding}, tier::Tier.T)::Vector{Edit}
     allowed = tier == Tier.manual ? Tier.breaking : tier
@@ -17,7 +18,7 @@ function applicable_edits(findings::AbstractVector{Finding}, tier::Tier.T)::Vect
     for finding in findings
         (isnothing(finding.fix) || finding.fix.tier > allowed) && continue
         edits = finding.fix.edits
-        any(edit -> any(other -> overlap(edit, other), chosen), edits) || append!(chosen, edits)
+        any(edit -> any(other -> overlap(edit, other), chosen), edits) || append!(chosen, filter(edit -> !(edit in chosen), edits))
     end
     return chosen
 end

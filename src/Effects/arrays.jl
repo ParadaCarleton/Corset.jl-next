@@ -25,6 +25,9 @@ const PREFIX_WRITES = Base.IdSet{Any}(Any[copyto!, map!])
 """`!` functions that read elements of source operands; other `!` functions store source operand itself (`fill!(a, a)`)."""
 const READING_WRITES = Base.IdSet{Any}(Any[copyto!, map!, broadcast!, Base.materialize!, append!, prepend!])
 
+"""`!` functions that read old elements of array they write (`sort!(a)`): unset element throws or gives garbage."""
+const CONSUMING_WRITES = Base.IdSet{Any}(Any[sort!, reverse!, permute!, invpermute!, unique!, filter!, replace!, keepat!])
+
 """Functions whose iteration covers every index of each array operand (fill loop)."""
 const INDEX_RANGES = Base.IdSet{Any}(Any[eachindex, LinearIndices, CartesianIndices])
 
@@ -45,7 +48,7 @@ allocated_type(@nospecialize(type::Any))::Bool = type isa Type && type !== Union
 function slice(walk::Walk, operands::AbstractVector{Any})::Bool
     Base.require_one_based_indexing(operands)
     (length(operands) >= 2 && operand_type(walk, operands[1]) <: AbstractArray) || return false
-    return any(operand -> operand_type(walk, operand) <: Union{AbstractArray, Colon}, operands[2:end])
+    return any(operand -> operand_type(walk, operand) <: Union{AbstractArray, Colon}, @view(operands[2:end]))
 end
 
 """Allocation kind of call `callee` with `operands`; `nothing` when call allocates no array by Base table."""
@@ -80,7 +83,7 @@ function size_operands(walk::Walk, kind::AllocationKind.T, @nospecialize(callee:
     kind in (AllocationKind.undef, AllocationKind.filled) || return nothing
     Base.require_one_based_indexing(operands)
     skipped = callee === similar || callee === fill ? 1 : 0
-    found = Any[operand for operand in operands[(skipped + 1):end] if !(operand_type(walk, operand) <: Union{Type, UndefInitializer})]
+    found = Any[operand for operand in @view(operands[(skipped + 1):end]) if !(operand_type(walk, operand) <: Union{Type, UndefInitializer})]
     return callee === similar && isempty(found) ? nothing : found
 end
 
@@ -195,10 +198,11 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
     held = operand_type(walk, operands[first(positions)])
     (callee === identity || (callee === typeassert && positions == [1])) && return :same
     callee in SHAPE_FUNCTIONS && return [(ArrayEventKind.shape, Coverage.unknown, Int[])]
-    callee === getindex && positions == [1] && return [(ArrayEventKind.read, element_coverage(walk, operands[2:end])...)]
-    callee === setindex! && positions == [1] && return [(ArrayEventKind.write, element_coverage(walk, operands[3:end])...)]
+    callee === getindex && positions == [1] && return [(ArrayEventKind.read, element_coverage(walk, @view(operands[2:end]))...)]
+    callee === setindex! && positions == [1] && return [(ArrayEventKind.write, element_coverage(walk, @view(operands[3:end]))...)]
     callee in (first, last, only) && return [(ArrayEventKind.read, Coverage.unknown, Int[])]
-    callee in (pointer, Base.cconvert, Base.unsafe_convert) && return [(ArrayEventKind.escape, Coverage.unknown, Int[])]
+    # `String(v)` takes memory of byte vector `v`, as pointer conversion exposes it.
+    callee in (pointer, Base.cconvert, Base.unsafe_convert, String) && return [(ArrayEventKind.escape, Coverage.unknown, Int[])]
     # Broadcast reads every element of its operands when it runs.
     callee === Base.broadcasted && return :lazy
     callee in ALIAS_FUNCTIONS && return :derived
@@ -208,10 +212,12 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
         if !isnothing(written) && written in positions
             # Array as source too: `map!(f, a, a)` reads it before it writes; `fill!(a, a)` stores it.
             reading = callee in READING_WRITES
-            reads = length(positions) > 1 && reading ? EventShape[(ArrayEventKind.read, Coverage.whole, Int[])] : EventShape[]
+            sources = @view(operands[(something(written) + 1):end])
+            # `sort!(a)`, and `map!(f, a)` without other source, read old elements of `a`.
+            consuming = callee in CONSUMING_WRITES || (callee === map! && isempty(sources))
+            reads = consuming || (length(positions) > 1 && reading) ? EventShape[(ArrayEventKind.read, Coverage.whole, Int[])] : EventShape[]
             stores = length(positions) > 1 && !reading ? EventShape[(ArrayEventKind.escape, Coverage.unknown, Int[])] : EventShape[]
             callee in RESIZE_FUNCTIONS && return [reads; (ArrayEventKind.resize, Coverage.unknown, Int[]); stores]
-            sources = operands[(something(written) + 1):end]
             whole = callee in WHOLE_WRITES && (callee !== copyto! || length(operands) == 2) &&
                 (!(callee in PREFIX_WRITES) || all(operand -> same_extent(walk, operand, extent), sources))
             return [reads; (ArrayEventKind.write, whole ? Coverage.whole : Coverage.unknown, Int[]); stores]

@@ -1099,7 +1099,7 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 <li>Loop <code>φ</code> that joins allocation before loop with allocation in loop body gives rebind pair (F41).</li>
 </ul>
 </div><div class="decision"><h3>Events</h3>
-<p>Each statement that uses allocation value gives one event, with statement span, callee and operand position. <code>!</code> call that takes array as written and source operand gives read, then write (<code>map!(f, a, a)</code>), or write, then escape when it stores array itself (<code>fill!(a, a)</code>).</p>
+<p>Each statement that uses allocation value gives one event, with statement span, callee and operand position. <code>!</code> call that takes array as written and source operand gives read, then write (<code>map!(f, a, a)</code>), or write, then escape when it stores array itself (<code>fill!(a, a)</code>). <code>!</code> call that reads old elements of array it writes (<code>sort!</code>, <code>reverse!</code>, <code>unique!</code>, <code>map!(f, a)</code>) gives read, then write.</p>
 <ul>
 <li><code>shape</code>: <code>size</code>, <code>length</code>, <code>axes</code>, <code>eachindex</code>, <code>firstindex</code>, <code>lastindex</code>, <code>ndims</code>, <code>eltype</code>, <code>isempty</code>, <code>similar</code>, <code>keys</code>, <code>LinearIndices</code>, <code>CartesianIndices</code>, <code>checkbounds</code>. Reads no element.</li>
 <li><code>read</code>: <code>getindex</code> reads elements at its index operands. <code>first</code>, <code>last</code> and <code>only</code> read one element.</li>
@@ -1143,10 +1143,10 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 </div><div class="decision"><h3>Rules</h3>
 <ul>
 <li><code>temporary-array</code> (F32): <code>broadcast</code> or <code>collected</code> allocation whose only events are shape reads and one <code>sure</code> read by consuming-table call. Fix: <code>sum(f.(x))</code> → <code>sum(f, x)</code>; <code>sum(collect(it))</code> → <code>sum(it)</code>.</li>
-<li><code>unwritten-element</code> (F33): <code>undef</code> allocation read before write. Read of element that no earlier <code>sure</code> write covers is definite.</li>
-<li><code>unwritten-element</code> (F34): <code>filled</code> allocation with constant length. <code>sure</code> element writes cover part of it; then whole read. Kind <code>placeholder</code>.</li>
-<li><code>constant-array</code> (F39): <code>filled</code> allocation without write, resize or escape. Fix: FillArrays.jl <code>Fill</code>, <code>Zeros</code>, <code>Ones</code>.</li>
-<li><code>slice-copy</code> (F40): <code>slice</code> allocation without write, resize or escape. Fix: <code>view</code> of same indices.</li>
+<li><code>unwritten-element</code> (F33): <code>undef</code> allocation read before write. <code>sure</code> read of element that no earlier <code>sure</code> write covers is definite; read that path can skip is possible. Fix <code>manual</code>.</li>
+<li><code>unwritten-element</code> (F34): <code>filled</code> allocation with constant length. <code>sure</code> element writes cover part of it; then whole read. Kind <code>placeholder</code>. Always <code>possible</code>: fill value can be data (<code>e = zeros(n); e[1] = 1.0</code>). Fix <code>manual</code>.</li>
+<li><code>constant-array</code> (F39): <code>filled</code> allocation without write, resize, escape or join. Fix <code>likely</code>: swap call for FillArrays.jl <code>Fill</code>, <code>Zeros</code>, <code>Ones</code>, <code>Trues</code> or <code>Falses</code>, and import it above module code. Package adds FillArrays.jl dependency; callee that requires <code>Array</code> rejects lazy array. Site that is no call node gets <code>manual</code> fix; <code>slice-copy</code> checks its site the same way.</li>
+<li><code>slice-copy</code> (F40): <code>slice</code> allocation without write, resize, escape, join or <code>loop</code> read. Fix <code>likely</code>: <code>@view(…)</code> around slice; view aliases parent. Span without exact bytes: <code>manual</code>.</li>
 <li><code>broadcast-rebind</code> (F41): rebind pair whose loop allocation is <code>broadcast</code> of array operands that are earlier value or scalars. Fix: <code>x .= f.(y)</code>.</li>
 <li>Fix tiers and messages: row 11.</li>
 </ul>

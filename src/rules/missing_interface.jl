@@ -35,6 +35,7 @@ Iterator whose `IteratorSize` inference cannot settle to one trait passes, as tr
 module MissingInterface
 
 using ...Facts
+using FillArrays: Fill
 
 const NAME = Symbol("missing-interface")
 
@@ -85,7 +86,7 @@ function string_gaps(type::Type, name::String)::Vector{String}
     body, gaps = Base.unwrap_unionall(type), String[]
     # Loop: comprehension over type value compiles once per value.
     for (callee, count) in STRING_METHODS
-        implemented(callee, call(callee, type, body, fill(Int, count)...), AbstractString) || push!(gaps, call_text(callee, name, fill("::Int", count)))
+        implemented(callee, call(callee, type, body, ntuple(_ -> Int, count)...), AbstractString) || push!(gaps, call_text(callee, name, Fill("::Int", count)))
     end
     return gaps
 end

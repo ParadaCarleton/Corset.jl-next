@@ -172,7 +172,7 @@ binding names overlaps none.
 function place_overlap(target::Place.Type, place::Place.Type, below::Bool)::Overlap.T
     (place_root(target) == place_root(place) && place_root(place) != Root.Elsewhere()) || return Overlap.none
     return @match (target, place) begin
-        (Place.At(_, steps), Place.At(_, others)) => (steps == others || (below && length(steps) < length(others) && steps == others[1:length(steps)])) ? Overlap.exact : Overlap.none
+        (Place.At(_, steps), Place.At(_, others)) => (steps == others || (below && length(steps) < length(others) && steps == @view(others[1:length(steps)]))) ? Overlap.exact : Overlap.none
         _ => Overlap.unknown
     end
 end

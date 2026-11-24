@@ -70,7 +70,7 @@ end
     @test only_events(:stored) == [(ESCAPE, UNKNOWN, Int[], SURE, false)]
     @test only_events(:filled_whole) == [(WRITE, WHOLE, Int[], SURE, false), (READ, WHOLE, Int[], SURE, false)]
     @test first(only(arrays(:filled_whole)).events).callee == :fill!
-    @test only_events(:unknown_write) == [(WRITE, UNKNOWN, Int[], SURE, false), (READ, ELEMENT, [1], SURE, false)]
+    @test only_events(:unknown_write) == [(READ, WHOLE, Int[], SURE, false), (WRITE, UNKNOWN, Int[], SURE, false), (READ, ELEMENT, [1], SURE, false)]
     @test [events(array) for array in arrays(:joined)] == [[(JOINED, UNKNOWN, Int[], SURE, false)], [(JOINED, UNKNOWN, Int[], SURE, false)]]
     captured, mapped = arrays(:captured)
     # Closure captures array: it escapes, so later uses through closure stay unseen.
@@ -87,6 +87,11 @@ end
     # `fill!` stores array in itself without reading elements; source that `pop!` shrinks proves no extent.
     @test only_events(:self_fill) == [(WRITE, WHOLE, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
     @test only_events(:shrunk_copy) == [(WRITE, UNKNOWN, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    # `sort!` and one-array `map!` read old elements before they write.
+    @test only_events(:sorted) == [(READ, WHOLE, Int[], SURE, false), (WRITE, UNKNOWN, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    @test only_events(:mapped_in_place) == [(READ, WHOLE, Int[], SURE, false), (WRITE, WHOLE, Int[], SURE, false), (ESCAPE, UNKNOWN, Int[], SURE, false)]
+    @test_throws UndefRefError CASES.sorted(2)
+    @test_throws UndefRefError CASES.mapped_in_place(2)
     @test isassigned(CASES.self_fill(), 2) && !isassigned(CASES.shrunk_copy(["a", "b"]), 2)
     # Runtime: short source leaves tail unassigned; array as own source reads unassigned element.
     @test !isassigned(CASES.prefix_copy(3), 2) && isassigned(CASES.source_copy(["a", "b"]), 2) && isassigned(CASES.counted_map(["a", "b"]), 2)
@@ -161,4 +166,12 @@ end
     @test Effects.can_hold(Tuple{Vararg{Vector{Float64}}}, held, Effects.HOLD_DEPTH) && !Effects.can_hold(Tuple{Vararg{Int}}, held, Effects.HOLD_DEPTH)
     # Past depth limit, holder can hold anything.
     @test Effects.can_hold(Tuple{Tuple{Tuple{Tuple{String}}}}, held, Effects.HOLD_DEPTH)
+end
+
+include(joinpath(@__DIR__, "ui", "unwritten-element", "positive", "src", "UnwrittenElementPositive.jl"))
+
+@testset "unwritten-element fixtures misbehave at runtime" begin
+    @test_throws UndefRefError UnwrittenElementPositive.second_name(2)
+    # Fill value counts as data in whole read.
+    @test UnwrittenElementPositive.half_filled() == 3.0
 end

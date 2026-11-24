@@ -40,7 +40,7 @@ const TEST_MACROS = ("@test", "@test_broken", "@test_skip")
 function test_atol(node::SyntaxNode)::Bool
     call = parent_of(node)
     (isnothing(call) || base_macro(call) ∉ TEST_MACROS || children_of(call)[2] !== node) && return false
-    return any(argument -> kind_name(argument) == "=" && leaf_value(children_of(argument)[1]) == "atol", children_of(call)[3:end])
+    return any(argument -> kind_name(argument) == "=" && leaf_value(children_of(argument)[1]) == "atol", @view(children_of(call)[3:end]))
 end
 
 """Findings for approximate comparisons against literal zero without absolute tolerance."""

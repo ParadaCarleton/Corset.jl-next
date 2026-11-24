@@ -220,7 +220,7 @@ end
 function nested(one::IteratorEvent, other::IteratorEvent)::Bool
     one.index == other.index || return false
     shorter = min(length(one.position), length(other.position))
-    return length(one.position) != length(other.position) && one.position[1:shorter] == other.position[1:shorter]
+    return length(one.position) != length(other.position) && @view(one.position[1:shorter]) == @view(other.position[1:shorter])
 end
 
 """

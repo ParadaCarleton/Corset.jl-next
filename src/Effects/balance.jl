@@ -234,7 +234,7 @@ function covers(place::Place.Type, other::Place.Type)::Bool
     return @match (place, other) begin
         (Place.Deep(root), Place.At(other_root, _)) => root == other_root
         (Place.Deep(root), Place.Deep(other_root)) => root == other_root
-        (Place.At(root, steps), Place.At(other_root, other_steps)) => root == other_root && length(steps) <= length(other_steps) && steps == other_steps[1:length(steps)]
+        (Place.At(root, steps), Place.At(other_root, other_steps)) => root == other_root && length(steps) <= length(other_steps) && steps == @view(other_steps[1:length(steps)])
         _ => false
     end
 end

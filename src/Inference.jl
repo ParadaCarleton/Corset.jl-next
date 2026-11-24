@@ -158,7 +158,7 @@ function untyped(site::MethodSite)::Bool
     parts = isnothing(site.node) ? nothing : signature(site.node)
     isnothing(parts) && return false
     # Keyword group comes last, and method for omitted default values declares fewer arguments, so slice leaves out both.
-    return any(untyped_argument, parts.arguments[1:(length(Facts.tuple_parameters(site.method.sig)) - 1)])
+    return any(untyped_argument, @view(parts.arguments[1:(length(Facts.tuple_parameters(site.method.sig)) - 1)]))
 end
 
 """
