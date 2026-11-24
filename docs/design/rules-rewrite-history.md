@@ -1351,6 +1351,7 @@ Row 5 measure on winwsl (`benchmark/names.jl`): warm `effects` against cold `inf
 - #329: package `!` call can write operands besides written one (`colwise!(metric, r, a, b)`).
 - #330: allocations that share one span merge into one array.
 - #331: `isassigned` tests element without read. Phase 5 adversarial review found it.
+- Corpus run after #340 (job 4270): SpecialFunctions regains `sum(B[2:end])` (`slice-copy`) and `prod([… for i in 1:r])` (`temporary-array`). Both true.
 
 ### Downstream reports
 
@@ -1369,6 +1370,7 @@ Row 5 measure on winwsl (`benchmark/names.jl`): warm `effects` against cold `inf
 
 - `x[i] += 1` gave two `one-based-range` findings: `setindex!` maps to no syntax node, so its fact has line span.
 - #339: `effects` stage keeps one unproven fact per element: group by IR array, all index values and line.
+- Corpus run after #339: Distributions `r[j] += …` (`mixturemodel.jl:357`) gives one finding.
 
 ### Constant redefinition
 
@@ -1388,4 +1390,5 @@ Corpus run on ssh-dev, main with #333 to #335: 9 definite findings.
 - #337: Distributions helpers `_rand!` and `__rand!` fill array after sampler. Owner check uses package id; other `_rand!` keeps ordinary rule.
 - Review dispute: name match with RNG guard was too broad (`_rand!(rng, state, samples)`). Reviewer won: allow comment cannot restore write fact that callers miss.
 - Lifecycle findings same as audited run: `constant-array` 2, `slice-copy` 1, `temporary-array` 2.
-- After #337 every definite `bang-convention` finding on corpus is real. `possible` findings stay off.
+- After #337 one false finding stayed: `DistributionsTestExt` defines its own `__rand!`, and extension module has its own package id.
+- #341: fill helpers of owner package extensions keep sampler order (`Base.get_extension`). `possible` findings stay off.
