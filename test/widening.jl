@@ -149,6 +149,11 @@ module WideningCases
     Base.:*(::Opaque, x::AbstractFloat) = x
     const OPAQUE = Opaque()
     opaque(x) = OPAQUE * x
+    # Callee `T` follows input type: inference folds `T(4)`, though value is no weak value.
+    struct Knobs{T}
+        scale::T
+    end
+    (bracketed(knobs::Knobs, x::T)::T) where {T <: Real} = knobs.scale * x + log(T(4))
 end
 
 """Changes `Widening` finds in `f` on argument types `arguments`, as (kind, value, exit, found, expected), and type branch."""
@@ -266,6 +271,8 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         @test isempty(reported(cases.rescaled!, FV, F, F))
         # Constant of number type without conversion cannot take input type.
         @test isempty(reported(cases.opaque, F))
+        # `log(T(4))` folds to `Float64` for integer `T`, yet follows input type `T`; float input is field of `knobs`.
+        @test isempty(reported(cases.bracketed, cases.Knobs{F}, I))
     end
     @testset "helpers" begin
         @test holds_float(Union{Nothing, F})

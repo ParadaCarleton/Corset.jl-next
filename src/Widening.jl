@@ -145,10 +145,13 @@ function weak(code::Core.CodeInfo, @nospecialize(argument::Any))::Union{Nothing,
         length(call.args) >= 2 || return nothing
         type isa Core.Const || return nothing
         weak_data(type.val) || return nothing
+        # Callee from input (`T(4)`, `typeof(x)(4)`) follows input type, though inference folds call.
+        callee = resolved(code, call.args[1])
+        callee isa GlobalRef || return nothing
         parts = [weak(code, part) for part in call.args[2:end]]
         any(isnothing, parts) && return nothing
         # Tuple of literals (`@evalpoly` coefficients) reads as literal in source.
-        tupled = resolved(code, call.args[1]) == GlobalRef(Core, :tuple) && all(part -> last(something(part)) == Weak.literal, parts)
+        tupled = callee == GlobalRef(Core, :tuple) && all(part -> last(something(part)) == Weak.literal, parts)
         return type.val, tupled ? Weak.literal : Weak.constant
     end
     return nothing

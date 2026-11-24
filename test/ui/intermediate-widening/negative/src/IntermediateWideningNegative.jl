@@ -9,4 +9,13 @@ scaled(x::AbstractFloat) = x * 0.5
 # Integer input takes no part.
 following(xs::AbstractVector{<:Real}, i::Integer) = xs[2i]
 
+struct Knobs{T <: Real}
+    scale::T
+end
+# Callee `T` takes input type, so `log(T(4))` is no weak value; field of `knobs` widens.
+function bracket(knobs::Knobs, x::T)::NTuple{2, T} where {T <: Real}
+    lower = log(knobs.scale * x / 2)
+    return lower, lower + log(T(4))
+end
+
 end
