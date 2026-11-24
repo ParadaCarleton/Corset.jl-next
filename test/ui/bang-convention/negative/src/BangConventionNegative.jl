@@ -47,15 +47,10 @@ grow!!(items::Vector{Int}) = vcat(items, 0)
 jitter!(rng::Union{Nothing, AbstractRNG}, x::Vector{Float64}) = (x .+= 1.0; x)
 jittered(rng::Union{Nothing, AbstractRNG}, n::Int) = jitter!(rng, zeros(n))
 
-# `rand!` and Distributions helper `__rand!` write array after sampler.
+# `rand!` writes array after sampler, as Distributions orders it.
 abstract type Sampler end
 Random.rand!(rng::AbstractRNG, s::Sampler, x::AbstractVector{Float64}) = (x .= 1.0; x)
 sampled(rng::AbstractRNG, s::Sampler, n::Int) = Random.rand!(rng, s, zeros(n))
-module Distributions
-using Random: AbstractRNG
-__rand!(rng::AbstractRNG, s, x::AbstractVector{Float64}) = (x .= 2.0; x)
-end
-helped(rng::AbstractRNG, s::Sampler, n::Int) = Distributions.__rand!(rng, s, zeros(n))
 
 # `!!` call writes operand only when it can.
 mutable struct Tally

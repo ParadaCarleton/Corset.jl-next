@@ -44,6 +44,8 @@ shuffle_with!(generator::AbstractRNG, items::Vector{Int})::Vector{Int} = Random.
 # Optional RNG advances only when present.
 jitter_with!(generator::Union{Nothing, AbstractRNG}, items::Vector{Float64}) = (isnothing(generator) || rand(generator); items .+= 1.0; items)
 optional_jitter!(generator::Union{Nothing, AbstractRNG}, items::Vector{Float64}) = jitter_with!(generator, items)
+# Helper named like `rand!`: fills array only for package of `FILL_HELPER_OWNERS`.
+__rand!(generator::AbstractRNG, scale::Vector{Float64}, items::Vector{Float64}) = (items .= rand(generator) .* scale; items)
 """Reseed default RNG: `!` call without operand writes global state."""
 reseed!()::Nothing = (Random.seed!(); nothing)
 """Solve in place: `ldiv!(A, B)` writes `B`."""

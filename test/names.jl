@@ -4,7 +4,7 @@ using Corset.Facts: Facts, MethodEffects, Access, Callee, Place, Root, Step, Con
 using Corset.Inference: infer_package
 using Corset.Effects: Effects, record_bytes, unit_record, place_root, ALWAYS_THROWS
 using Supposition: Supposition, Data, @check
-using Random: Xoshiro
+using Random: Random, Xoshiro
 
 const CASE = joinpath(@__DIR__, "names", "NameCases")
 
@@ -59,6 +59,9 @@ const PROVES = Base.JLOptions().code_coverage == 0 || Base.JLOptions().code_cove
     @test shape(effects(:push_value!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
     @test shape(effects(:map_into!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
     @test Set(shape(effects(:shuffle_with!).writes)) == Set([(parameter(2), true, EffectKind.rng_argument, DEFINITE), (parameter(3), true, MEMORY, DEFINITE)])
+    # `_rand!` helper of listed owner fills array after sampler; other helper writes first operand.
+    @test Effects.fill_call(CASES.__rand!, Set([Base.PkgId(CASES)])) && Effects.fill_call(Random.rand!, Set{Base.PkgId}())
+    @test !Effects.fill_call(CASES.__rand!, Effects.FILL_HELPER_OWNERS) && !Effects.fill_call(CASES.optional_jitter!, Set([Base.PkgId(CASES)]))
     @test Set(shape(effects(:optional_jitter!).writes)) == Set([(parameter(2), true, EffectKind.rng_argument, POSSIBLE), (parameter(3), true, MEMORY, DEFINITE)])
     @test shape(effects(:reseed!).writes) == [(ELSEWHERE, true, MEMORY, DEFINITE)]
     @test shape(effects(:solve_upper!).writes) == [(parameter(3), true, MEMORY, DEFINITE)]
