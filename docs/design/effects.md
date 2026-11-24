@@ -70,6 +70,7 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
 - Constructor, tuple and vector literal results hold their operands: `Ref(x)` holds `x`. Literal (`[x]`, `T[x]`) converts element not of its element type, so it can hold new object. Package method on literal syntax (`SA[x]`) is package call.
 - Iteration: result of `iterate` and `indexed_iterate` holds element of iterated operand. Element step for array, dictionary, set and tuple; `deep` for other iterator.
 - Element table: result is element of container operand, or other operand (`get(d, k, default)`).
+- `getindex` with constant integer index into tuple loads position step; other index loads element step.
   - Table: `get`, `get!`, `getkey`, `pop!`, `popfirst!`, `popat!`, `maximum`, `minimum`, `reduce`, `foldl`, `foldr`, `rand`, `take!`, `fetch`.
   - Container: first operand, or second after leading callable or `AbstractRNG` (`get(f, d, k)`, `rand(rng, xs)`).
   - Lookup default: third operand of `get`, `get!`, `getkey`, `pop!`, `popat!` without leading callable.
