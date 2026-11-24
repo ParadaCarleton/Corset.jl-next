@@ -274,6 +274,8 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
         return load_value(walk, object, step)
     end
     viewing = view_call(walk, callee, operands)
+    # Range, array or `Colon` index copies part of array (`a[1:2]`): new array that holds elements of `a`.
+    callee === getindex && slice(walk, operands) && return new_value(walk, operands, type)
     (callee in (getindex, first, last, only) || (callee in DOT_VIEWS && !viewing)) && return load_value(walk, object, index_step(walk, callee, operands))
     if viewing
         # View lies beneath its array alone and holds index operands: `values[indices] .= 0` writes `values` only.

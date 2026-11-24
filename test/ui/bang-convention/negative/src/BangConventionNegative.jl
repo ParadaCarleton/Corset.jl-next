@@ -43,6 +43,9 @@ reset!(point::Tuple{Float64}) = point
 # `!!` mutates when possible, else returns new value.
 grow!!(items::Vector{Int}) = vcat(items, 0)
 
+# Range index copies: sorting copy writes nothing caller sees.
+smallest(x::Vector{Float64}, n::Int) = (head = x[1:n]; sort!(head); head)
+
 # Optional RNG is RNG operand: `jitter!` writes fresh array.
 jitter!(rng::Union{Nothing, AbstractRNG}, x::Vector{Float64}) = (x .+= 1.0; x)
 jittered(rng::Union{Nothing, AbstractRNG}, n::Int) = jitter!(rng, zeros(n))
