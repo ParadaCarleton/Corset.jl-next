@@ -1,0 +1,171 @@
+error[hidden-input]: method reads `HiddenInputPositive.SCALE`, which other method writes
+  --> src/HiddenInputPositive.jl:10:22
+   |
+ 8 | set_scale!(scale::Float64) = (SCALE[] = scale; nothing)
+   | ------------------------------------------------------- writes `HiddenInputPositive.SCALE`
+ 9 | 
+10 | scaled(x::Float64) = SCALE[] * x
+   |                      ^^^^^^^ reads `HiddenInputPositive.SCALE`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+   = note: deny from correctness group, library preset
+   = note: opt out with `# corset: allow hidden-input -- <reason>`
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:12:25
+   |
+12 | noisy(x::Float64) = x + randn()
+   | ------------------------------- takes no RNG argument
+   |                         ^^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:21:29
+   |
+21 | ignored(rng::AbstractRNG) = rand()
+   | ---------------------------------- takes RNG argument but draws without it
+   |                             ^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: pass RNG argument to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:24:34
+   |
+24 | ignored_pair(rng::AbstractRNG) = rand()
+   | --------------------------------------- takes RNG argument but draws without it
+   |                                  ^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: pass RNG argument to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:29:16
+   |
+29 | pick(x::Int) = rand()
+   | --------------------- takes no RNG argument
+   |                ^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:32:34
+   |
+32 | twin(rng::AbstractRNG, x::Int) = rand()
+   | --------------------------------------- takes RNG argument but draws without it
+   |                                  ^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: pass RNG argument to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:33:16
+   |
+33 | twin(x::Int) = rand()
+   | --------------------- takes no RNG argument
+   |                ^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method reads `HiddenInputPositive.ALIASED.stable`, which other method writes
+  --> src/HiddenInputPositive.jl:39:13
+   |
+38 | bump_aliased!() = (ALIASED.changing[] += 1; nothing)
+   | ---------------------------------------------------- writes `HiddenInputPositive.ALIASED.changing`
+39 | aliased() = ALIASED.stable[]
+   |             ^^^^^^^^^^^^^^^^ reads `HiddenInputPositive.ALIASED.stable`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method reads `HiddenInputPositive.HOLDER[…]`, which other method writes
+  --> src/HiddenInputPositive.jl:45:10
+   |
+44 | bump_held!() = (HELD[] += 1; nothing)
+   | ------------------------------------- writes `HiddenInputPositive.HELD`
+45 | held() = HOLDER[][]
+   |          ^^^^^^^^^^ reads `HiddenInputPositive.HOLDER[…]`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = confidence: possible
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method reads `HiddenInputPositive.settings.count`, which other method writes
+  --> src/HiddenInputPositive.jl:50:19
+   |
+49 | set_count!(count::Int) = (settings.count[] = count; nothing)
+   | ------------------------------------------------------------ writes `HiddenInputPositive.settings.count`
+50 | current_count() = settings.count[]
+   |                   ^^^^^^^^^^^^^^^^ reads `HiddenInputPositive.settings.count`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method reads `HiddenInputPositive.settings.label`, which other method writes
+  --> src/HiddenInputPositive.jl:51:19
+   |
+49 | set_count!(count::Int) = (settings.count[] = count; nothing)
+   | ------------------------------------------------------------ writes `HiddenInputPositive.settings.count`
+50 | current_count() = settings.count[]
+51 | current_label() = settings.label[]
+   |                   ^^^^^^^^^^^^^^^^ reads `HiddenInputPositive.settings.label`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = confidence: possible
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method reads `HiddenInputPositive.CELLS[…]`, which other method writes
+  --> src/HiddenInputPositive.jl:56:16
+   |
+55 | bump_copy!() = (cells = copy(CELLS); cells[1][] += 1; nothing)
+   | -------------------------------------------------------------- writes `HiddenInputPositive.CELLS or below`
+56 | first_cell() = CELLS[1][]
+   |                ^^^^^^^^^^ reads `HiddenInputPositive.CELLS[…]`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = confidence: possible
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method reads `HiddenInputPositive.current_shared`, which other method writes
+  --> src/HiddenInputPositive.jl:62:16
+   |
+61 | bump_shared!() = (SHARED[] += 1; nothing)
+   | ----------------------------------------- writes `HiddenInputPositive.SHARED`
+62 | shared_now() = current_shared[]
+   |                ^^^^^^^^^^^^^^ reads `HiddenInputPositive.current_shared`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = confidence: possible
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method reads `HiddenInputPositive.OUTER[…]`, which other method writes
+  --> src/HiddenInputPositive.jl:69:17
+   |
+67 | repoint!() = (OUTER[] = INNER[]; nothing)
+   | ----------------------------------------- writes `HiddenInputPositive.OUTER`
+68 | bump_inner!() = (INNER[][] += 1; nothing)
+69 | outer_value() = OUTER[][]
+   |                 ^^^^^^^^^ reads `HiddenInputPositive.OUTER[…]`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+

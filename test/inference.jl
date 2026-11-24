@@ -176,6 +176,17 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         twice = typed("bumped_twice", FloatStandIn)
         uses = twice.site.file
         @test call_span(twice, :+).precision == Precision.line && line(uses, call_span(twice, :+).first_byte) == 2
+        # TypedSyntax.jl maps no discarded call; lone discarded statement on its line that spells call gets exact span.
+        dropped = typed("dropped", FloatStandIn)
+        @test text(call_span(dropped, :abs)) == "abs(x)"
+        @test count(span -> span.precision == Precision.line && line(FILE, span.first_byte) == line_of("function dropped") + 2, dropped.spans) >= 2
+        # Two discarded calls of one callee on one line map in evaluation order.
+        sums = [span for span in dropped.spans if span.precision == Precision.exact && text(span) == "abs(x) + 1"]
+        @test length(sums) == 2 && sums[1].first_byte < sums[2].first_byte
+        unreached = call_span(typed("dropped_unreached", Int), :abs)
+        # Reached call is first on line, right after opening parenthesis.
+        @test text(unreached) == "abs(x)" && FILE.text[unreached.first_byte - 1] == '(' && line(FILE, unreached.first_byte) == line_of("dropped_unreached")
+        @test text(call_span(typed("dropped_qualified", FloatStandIn), :abs)) == "Base.abs(x)"
     end
     @testset "calls of one callee map in evaluation order" begin
         code = typed("twice", FloatStandIn)
