@@ -1,5 +1,7 @@
 # Name tier walk over one unit (`effects.md`, Name trust): roots, writes, reads and call facts.
 
+using ..StandIns: StandIns
+
 """
 Caller-visible places one IR value can be or lie beneath (`places`), places stored inside it (`inner`: fresh object
 that holds operands), whether value can be fresh object on some path (`fresh`), and whether it can hold fresh or
@@ -771,9 +773,8 @@ Writes, source 5): closure body writes through captured fields map onto operands
 """
 function closure_events(walk::Walk, call::Expr, index::Integer, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Event}
     found, closures = Event[], filter(!isnothing, Union{Nothing, Expr}[closure_new(walk, operand) for operand in invoked_operands(walk, call, callee, operands)])
-    # Compiler proof of call holds unless callee claims it (`@assume_effects`).
     isempty(closures) && return found
-    walk.proven[index] && !callee_claims(walk, call, call_callee(walk, call)) && return found
+    proven_call(walk, index, call, call_callee(walk, call)) && return found
     for built in closures
         for write in closure_writes!(walk, constant_value(walk, built.args[1])::DataType)
             write.field + 1 <= length(built.args) || continue
@@ -798,6 +799,9 @@ function invoked_operands(walk::Walk, call::Expr, @nospecialize(callee::Any), op
     return append!(invoked, operands[1:(something(written, length(operands) + 1) - 1)])
 end
 
+"""Whether compiler proves call statement `index` of `walk` with `callee` `effect_free`; claim of callee (`@assume_effects`) voids proof."""
+proven_call(walk::Walk, index::Integer, call::Expr, callee::Callee.Type)::Bool = walk.proven[index] && !callee_claims(walk, call, callee)
+
 """
 Whether method `callee` of call `call` dispatches to claims `:effect_free` (`claims_effect_free`); open callee claims
 none seen. Keyword call dispatches to keyword sorter, which hides claim of keyword body, so it counts as claiming.
@@ -811,9 +815,11 @@ end
 
 """
 Whether method of `match` claims `:effect_free` in code compiler infers for its instance; answers cached in `walk`.
-Generated method gives code per instance, so its answer is per instance.
+Generated method gives code per instance, so its answer is per instance. Stand-in claim only restores proof that
+coverage counters void, so it counts as none.
 """
 function match_claims(walk::Walk, match::Core.MethodMatch)::Bool
+    match.method.module === StandIns && return false
     key = Base.hasgenerator(match.method) ? CC.specialize_method(match) : match.method
     return get!(() -> claims_effect_free(match.method, CC.retrieve_code_info(CC.specialize_method(match), walk.world)), walk.claims, key)
 end

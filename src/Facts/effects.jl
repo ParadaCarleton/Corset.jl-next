@@ -293,20 +293,31 @@ end
 
 """
 Call statement of package method (`effects` stage fact, F54, F56, F86): span, callee, kinds of writes call makes at any
-certainty, and kinds of its definite writes (`definite`). Compiler effects give `throws` (may throw) and `terminates`.
-`used`: code reads result. `stand_in`: operand type holds stand-in, so compiler effects describe stand-in only. Units of
-method merge: any unit that may throw, writes or uses result decides.
+certainty, and kinds of its definite writes (`definite`). Compiler effects give `effect_free` (proof of no write caller
+sees; claim of callee voids it), `throws` (may throw) and `terminates`. `used`: code reads result. `stand_in`: operand
+type holds stand-in, so compiler effects describe stand-in only. `open_dispatch`: operand types are not concrete, so
+compiler effects join methods loaded now. Units of method merge: any unit that may throw, writes, uses result or lacks
+proof decides.
 """
 struct CallFact
     span::Span
     callee::Callee.Type
     kinds::Vector{EffectKind.T}
     definite::Vector{EffectKind.T}
+    effect_free::Bool
     throws::Bool
     terminates::Bool
     used::Bool
     stand_in::Bool
+    open_dispatch::Bool
 end
+
+"""
+Whether `call` has no effect: code drops its result, and compiler proves it writes nothing, cannot throw and terminates.
+Name trust must see no write either. `Core.donotdelete` is exempt.
+"""
+no_effect(call::CallFact)::Bool =
+    !call.used && call.effect_free && isempty(call.kinds) && !call.throws && call.terminates && call.callee != Callee.Builtin(Core.donotdelete)
 
 """
 Effects of package method over its units (`effects.md`, Name trust): writes, reads, places its result can lie beneath

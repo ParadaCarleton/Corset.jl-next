@@ -957,6 +957,9 @@ Code lives in <code>src/Effects/</code>.</p>
 <ul>
 <li>Compiler effects come free with unit inference.</li>
 <li><code>unused-call</code> (F54) needs compiler proof: discarded call with <code>effect_free</code>, <code>nothrow</code> and <code>terminates</code>. Name trust never proves none for it.</li>
+<li>Discarded source call without effect that mapping cannot place goes to coverage line (<code>finally</code> body lowers twice). Calls lowering inserts do not.</li>
+<li>Call fact keeps proof per call. Claim of callee voids <code>effect_free</code>. Operand types that are not concrete give open dispatch: <code>possible</code>.</li>
+<li>Coverage counters void proof, so CI tracks coverage of <code>src</code> only.</li>
 <li><code>@assume_effects</code> makes compiler trust a claim. Call to package method with claim takes no proof from its flags.</li>
 <li>Claim check reads code compiler infers. Generated method gives its generated code per instance.</li>
 <li>Claim deeper in callees stays unseen. <code>false-effects</code> reports a false claim in package that owns it.</li>
@@ -1113,7 +1116,7 @@ Build holds file lock. Next run removes lock of dead process at once when lock i
 </div><div class="decision"><h3>Tests</h3>
 <ul>
 <li>UI tests, as in Clippy: <code>test/ui/&lt;rule&gt;/&lt;case&gt;.jl</code> with snapshot of full rendered output and fixed source. Bless command updates snapshots; CI fails on diff.</li>
-<li>Each footgun: positive case, negative case, fix case.</li>
+<li>Each footgun: positive case, negative case, fix case. Manual fix has no edits: positive snapshot shows its text.</li>
 <li>Property tests (Supposition.jl) on programs built from UI case statements, with expressions spliced into value positions so fixes nest. Fixed code parses and lowers when original did. On code Julia accepts, fix removes its finding and adds none; <code>duplicate-statement</code> compares neighbors and is exempt. Fix runs converge. Equivalent <code>safe</code> fix keeps parsed meaning.</li>
 <li>Differential run: <code>safe</code> fix behaves same before and after on executed fixture. Not built yet.</li>
 <li>Reference comparison: JET, fatou, LintApp.jl, ReLint.jl on fixtures, with allowlist.</li>

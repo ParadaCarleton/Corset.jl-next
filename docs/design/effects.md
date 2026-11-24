@@ -145,6 +145,9 @@ Facts keep hold count per resource at normal exit and at each statement that may
 
 - Compiler effects come free with unit inference.
 - `unused-call` (F54) needs compiler proof: discarded call with `effect_free`, `nothrow` and `terminates`. Name trust never proves none for it.
+- Discarded source call without effect that mapping cannot place goes to coverage line (`finally` body lowers twice). Calls lowering inserts do not.
+- Call fact keeps proof per call. Claim of callee voids `effect_free`. Operand types that are not concrete give open dispatch: `possible`.
+- Coverage counters void proof, so CI tracks coverage of `src` only.
 - `@assume_effects` makes compiler trust a claim. Call to package method with claim takes no proof from its flags.
 - Claim check reads code compiler infers. Generated method gives its generated code per instance.
 - Claim deeper in callees stays unseen. `false-effects` reports a false claim in package that owns it.
