@@ -43,6 +43,9 @@ reset!(point::Tuple{Float64}) = point
 # `!!` mutates when possible, else returns new value.
 grow!!(items::Vector{Int}) = vcat(items, 0)
 
+# Range index copies: sorting copy writes nothing caller sees.
+smallest(x::Vector{Float64}, n::Int) = (head = x[1:n]; sort!(head); head)
+
 # Constructor and callable object cannot take `!`.
 struct Log
     lines::Vector{String}

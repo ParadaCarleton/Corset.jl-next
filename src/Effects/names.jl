@@ -261,6 +261,8 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
         step = callee === getfield || callee === getproperty ? (length(operands) >= 2 ? field_step(walk, operands[2]) : nothing) : Step.Element()
         return load_value(walk, object, step)
     end
+    # Range, array or `Colon` index copies part of array (`a[1:2]`): new array that holds elements of `a`.
+    callee === getindex && slice(walk, operands) && return new_value(walk, operands, type)
     callee in (getindex, first, last, only) && return load_value(walk, object, index_step(walk, callee, operands))
     if callee in ALIAS_FUNCTIONS
         # Result holds every operand at once (`zip(a, b)`): fresh operand leaves certainty of caller operand.

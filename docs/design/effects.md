@@ -71,6 +71,7 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
 - Iteration: result of `iterate` and `indexed_iterate` holds element of iterated operand. Element step for array, dictionary, set and tuple; `deep` for other iterator.
 - Element table: result is element of container operand, or other operand (`get(d, k, default)`).
 - `getindex` with constant integer index into tuple loads position step; other index loads element step.
+- `getindex` of array with range, array or `Colon` index copies part (`a[1:2]`): new object, as `copy`.
   - Table: `get`, `get!`, `getkey`, `pop!`, `popfirst!`, `popat!`, `maximum`, `minimum`, `reduce`, `foldl`, `foldr`, `rand`, `take!`, `fetch`.
   - Container: first operand, or second after leading callable or `AbstractRNG` (`get(f, d, k)`, `rand(rng, xs)`).
   - Lookup default: third operand of `get`, `get!`, `getkey`, `pop!`, `popat!` without leading callable.
