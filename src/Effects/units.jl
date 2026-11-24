@@ -12,12 +12,12 @@ const DISPATCH_LIMIT = 3
 """
 Effects record of unit `typed` (`effects.md`, Units and IR): events of each IR statement, result aliases and call
 facts. `effect_free`: compiler proves unit writes nothing caller sees; stand-in signature, claim in method, or claim of
-direct callee gives no proof. Crash `journal` records offset inference of index proof (`unit_indices`).
-Unit that always throws on stand-ins gives no verdict, only its blind spot.
+direct callee gives no proof. Crash `journal` records offset inference of index proof (`unit_indices`), whose compiler
+edges come second. Unit that always throws on stand-ins gives no verdict, only its blind spot.
 """
-function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt, journal::Union{Nothing, Inference.Journal})::UnitEffects
+function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt, journal::Union{Nothing, Inference.Journal})::Tuple{UnitEffects, Vector{Any}}
     cut = isempty(typed.cuts) ? nothing : typed.spans[first(typed.cuts)]
-    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], UnprovenIndex[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, cut)
+    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], UnprovenIndex[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, cut), Any[]
     walk, lines, used, claimed = unit_walk(typed, modules, interpreter, world)
     ir = walk.ir
     walk_values!(walk, 2 * length(ir.stmts) + 10)
@@ -40,8 +40,8 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
     effect_free = CC.is_effect_free(typed.frame.ipo_effects) && !claimed && !holds_stand_in(typed.signature) && !callee_claimed
     loops, loop_spots = loop_writes(walk, spans)
     reuses, reuse_spots = stateful_reuses(walk, typed.site.method, spans)
-    indices, index_spots = unit_indices(typed, walk, interpreter, journal)
-    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), reuses, indices, [loop_spots; reuse_spots; index_spots], effect_free, cut)
+    indices, index_spots, edges = unit_indices(typed, walk, interpreter, journal)
+    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), reuses, indices, [loop_spots; reuse_spots; index_spots], effect_free, cut), edges
 end
 
 """
@@ -253,15 +253,17 @@ end
 store: `nothing` for unit whose instance earlier unit holds. Stored units give their kept records. Crash `journal`
 records offset inferences; `nothing` records none.
 """
-function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Inference.Journal})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}}
+function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Inference.Journal})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}, Vector{Vector{Any}}}
     world = Base.get_world_counter()
     interpreter, modules, seen = CC.NativeInterpreter(world), Set{Module}(package.modules), Base.IdSet{Core.MethodInstance}()
-    fresh = Union{Nothing, UnitEffects}[]
+    fresh, edges = Union{Nothing, UnitEffects}[], Vector{Any}[]
     for typed in units.typed
-        push!(fresh, typed.frame.linfo in seen ? nothing : unit_effects(typed, modules, interpreter, world, journal))
+        record, read = typed.frame.linfo in seen ? (nothing, Any[]) : unit_effects(typed, modules, interpreter, world, journal)
+        push!(fresh, record)
+        push!(edges, read)
         push!(seen, typed.frame.linfo)
     end
     stored = Union{Nothing, UnitEffects}[unit_record(unit.effects, world) for unit in units.stored]
     facts, spots = method_facts(package, units.incomplete, ordered_records(units, fresh, stored))
-    return facts, spots, fresh
+    return facts, spots, fresh, edges
 end

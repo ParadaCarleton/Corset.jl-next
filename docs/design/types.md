@@ -152,7 +152,7 @@ Each index into array needs proof unless inferred `axes` type of array is `OneTo
 - Array stand-in stands for every caller array, offset arrays included. Its `OneTo` axes hide offsets: inference folds `firstindex(x)` into literal `1`.
 - So `effects` stage infers each method with array stand-in again, with offset stand-in (`OffsetArray` of array stand-in) in its place.
 - Proof runs on that code. Inferred `axes` type there decides: `view(x, 2:3)` has `OneTo` axes, `view(x, :)` keeps axes of `x`.
-- Method store keeps facts of second inference with unit record.
+- Method store keeps facts of second inference with unit record. Entry also reads package methods that second inference reached.
 
 - Index of `x`: value that stays in index range of `x`. Rule follows SSA values of typed code.
 - Sources: `eachindex(x)`, `axes(x)`, `keys(x)`, `pairs(x)`, `firstindex(x)`, `lastindex(x)`, `begin`, `end`, `LinearIndices(x)`, `CartesianIndices(x)`.

@@ -1,4 +1,4 @@
-error[one-based-range]: index into `xs` has no proof that it comes from its axes
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
  --> src/OneBasedRangePositive.jl:8:14
   |
 7 |     for i in 1:length(xs)
@@ -9,10 +9,10 @@ error[one-based-range]: index into `xs` has no proof that it comes from its axes
   = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
   = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
   = docs: corset explain one-based-range
-  = note: deny from correctness group, library preset
+  = note: warn from composability group, library preset
   = note: opt out with `# corset: allow one-based-range -- <reason>`
 
-error[one-based-range]: index into `xs` has no proof that it comes from its axes
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:14:33
    |
 14 | head(xs::AbstractVector{Int}) = xs[1]
@@ -22,7 +22,7 @@ error[one-based-range]: index into `xs` has no proof that it comes from its axes
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
-error[one-based-range]: index into `out` has no proof that it comes from its axes
+warning[one-based-range]: index into `out` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:19:9
    |
 18 |     for (i, x) in enumerate(xs)
@@ -34,7 +34,7 @@ error[one-based-range]: index into `out` has no proof that it comes from its axe
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
-error[one-based-range]: index into `ys` has no proof that it comes from its axes
+warning[one-based-range]: index into `ys` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:27:9
    |
 26 |     for i in eachindex(xs)
@@ -46,7 +46,7 @@ error[one-based-range]: index into `ys` has no proof that it comes from its axes
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
-error[one-based-range]: index into `m` has no proof that it comes from its axes
+warning[one-based-range]: index into `m` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:36:14
    |
 35 |     for i in 1:size(m, 1)
@@ -58,7 +58,7 @@ error[one-based-range]: index into `m` has no proof that it comes from its axes
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
-error[one-based-range]: index into `xs` has no proof that it comes from its axes
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:49:20
    |
 48 |     for i in picks.at
@@ -71,7 +71,7 @@ error[one-based-range]: index into `xs` has no proof that it comes from its axes
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
-error[one-based-range]: index into `xs` has no proof that it comes from its axes
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:55:46
    |
 55 | parent_of(xs::AbstractVector{Int}, i::Int) = xs[i ÷ 2]
@@ -82,7 +82,7 @@ error[one-based-range]: index into `xs` has no proof that it comes from its axes
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
-error[one-based-range]: index into `xs` has no proof that it comes from its axes
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:62:12
    |
 61 |         mid = (lo + hi) ÷ 2
@@ -95,7 +95,7 @@ error[one-based-range]: index into `xs` has no proof that it comes from its axes
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
-error[one-based-range]: index into `xs` has no proof that it comes from its axes
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:72:43
    |
 72 | prefix(xs::AbstractVector{Int}, n::Int) = xs[1:n]
@@ -106,7 +106,7 @@ error[one-based-range]: index into `xs` has no proof that it comes from its axes
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
-error[one-based-range]: index into `xs` has no proof that it comes from its axes
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:75:66
    |
 75 | offset_only(xs::AbstractVector{Int}) = firstindex(xs) == 1 ? 0 : xs[1]
@@ -116,7 +116,7 @@ error[one-based-range]: index into `xs` has no proof that it comes from its axes
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
-error[one-based-range]: index into `xs` has no proof that it comes from its axes
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:78:88
    |
 78 | aliased_offset(xs::AbstractVector{Int}) = (index = getindex; firstindex(xs) == 1 ? 0 : index(xs, 1))
@@ -126,7 +126,7 @@ error[one-based-range]: index into `xs` has no proof that it comes from its axes
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
-error[one-based-range]: index into `xs` has no proof that it comes from its axes
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:81:61
    |
 81 | both_heads(xs::T, ys::T) where {T <: AbstractVector{Int}} = xs[1] + ys[1]
@@ -136,7 +136,7 @@ error[one-based-range]: index into `xs` has no proof that it comes from its axes
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
-error[one-based-range]: index into `ys` has no proof that it comes from its axes
+warning[one-based-range]: index into `ys` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:81:69
    |
 81 | both_heads(xs::T, ys::T) where {T <: AbstractVector{Int}} = xs[1] + ys[1]
@@ -146,7 +146,7 @@ error[one-based-range]: index into `ys` has no proof that it comes from its axes
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
-error[one-based-range]: index into `xs` has no proof that it comes from its axes
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
   --> src/OneBasedRangePositive.jl:84:71
    |
 84 | capped_by(xs::AbstractVector{Int}, ys::AbstractVector{Int}, i::Int) = xs[min(i, firstindex(ys))]

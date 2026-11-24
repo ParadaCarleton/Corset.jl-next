@@ -755,7 +755,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <p>Proof runs on that code. Inferred <code>axes</code> type there decides: <code>view(x, 2:3)</code> has <code>OneTo</code> axes, <code>view(x, :)</code> keeps axes of <code>x</code>.</p>
 </li>
 <li>
-<p>Method store keeps facts of second inference with unit record.</p>
+<p>Method store keeps facts of second inference with unit record. Entry also reads package methods that second inference reached.</p>
 </li>
 <li>
 <p>Index of <code>x</code>: value that stays in index range of <code>x</code>. Rule follows SSA values of typed code.</p>

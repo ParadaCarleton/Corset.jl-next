@@ -111,23 +111,35 @@ function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files:
     # Effects stage runs under journal too: index proof infers again with offset stand-ins.
     function stages(journal::Union{Nothing, Inference.Journal})::Tuple
         facts, spots, units, used = Inference.infer_package(package, files, store, journal)
-        found = effects ? Effects.effects_facts(package, units, journal) : (nothing, BlindSpot[], nothing)
+        found = effects ? Effects.effects_facts(package, units, journal) : (nothing, BlindSpot[], nothing, nothing)
         return facts, spots, units, used, found...
     end
-    facts, spots, units, used, effects_found, effects_spots, records = isnothing(directory) ? stages(nothing) : journaled(stages, directory)
-    isnothing(cache) || Cache.store!(cache, method_entry(path), key, isnothing(records) ? something(used) : with_records(something(used), units, records))
+    facts, spots, units, used, effects_found, effects_spots, records, edges = isnothing(directory) ? stages(nothing) : journaled(stages, directory)
+    isnothing(cache) || Cache.store!(cache, method_entry(path), key, isnothing(records) ? something(used) : with_records(something(used), units, records, something(edges), files, package))
     return facts, spots, effects_found, effects_spots
 end
 
 """
 Store `used` where each entry without effects record takes one: typed unit of `units` its record in `records`, other
-unit (no code) `nothing`. Stored entries keep theirs.
+unit (no code) `nothing`. Filled entry also reads methods behind compiler `edges` of its effects stage; entry whose
+edges walk gives none drops (`Inference.with_edges`). Stored entries keep theirs.
 """
-function with_records(used::Inference.Store, units::Inference.Units, records::AbstractVector{Union{Nothing, Effects.UnitEffects}})::Inference.Store
-    bytes = Dict(Inference.entry_key(typed.site.method, typed.signature) => Effects.record_bytes(record) for (typed, record) in zip(units.typed, records))
-    none = Effects.record_bytes(nothing)
-    filled(key::String, entry::Inference.Entry)::Inference.Entry = Inference.Entry(entry.file, entry.methods, entry.staged, entry.inferred, get(bytes, key, none))
-    return Inference.Store(key => isempty(entry.effects) ? filled(key, entry) : entry for (key, entry) in used)
+function with_records(used::Inference.Store, units::Inference.Units, records::AbstractVector{Union{Nothing, Effects.UnitEffects}}, edges::AbstractVector{<:AbstractVector{Any}}, files::AbstractVector{Facts.SyntaxFile}, package::PackageFacts)::Inference.Store
+    bytes, read = Dict{String, Vector{UInt8}}(), Dict{String, Vector{Any}}()
+    for (typed, record, unit_edges) in zip(units.typed, records, edges)
+        key = Inference.entry_key(typed.site.method, typed.signature)
+        # Unit that repeats method instance of earlier unit has no record of its own.
+        isnothing(record) && haskey(bytes, key) && continue
+        bytes[key], read[key] = Effects.record_bytes(record), unit_edges
+    end
+    none, by_path, modules = Effects.record_bytes(nothing), Dict(file.path => file for file in files), Set(package.modules)
+    filled(key::String, entry::Inference.Entry)::Union{Nothing, Inference.Entry} = Inference.with_edges(Inference.Entry(entry.file, entry.methods, entry.staged, entry.inferred, get(bytes, key, none)), get(read, key, Any[]), by_path, modules)
+    store = Inference.Store()
+    for (key, entry) in used
+        kept = isempty(entry.effects) ? filled(key, entry) : entry
+        isnothing(kept) || (store[key] = kept)
+    end
+    return store
 end
 
 """

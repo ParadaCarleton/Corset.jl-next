@@ -756,14 +756,33 @@ function entry!(named::IdDict{Any, Bool}, ids::IdDict{Method, String}, codes::Ab
     else
         push!(found, site.method)
     end
-    methods = Dict(get!(() -> method_id(method), ids, method) => method for method in found)
-    digests = [id => get!(() -> code_digest(method), codes, id) for (id, method) in methods]
-    records = Staged[]
-    for specialized in generated
-        method, key = specialized.def::Method, entry_key(specialized.def::Method, specialized.specTypes)
-        push!(records, Staged(get!(() -> method_id(method), ids, method), serialized(specialized.specTypes), key, get!(() -> staged_digest(specialized), codes, key)))
-    end
+    digests, records = method_digests(ids, codes, found), Staged[staged_record(ids, codes, specialized) for specialized in generated]
     return Entry(site.file.path => hashes[site.file.path], digests, records, serialized(inferred), UInt8[])
+end
+
+"""Digest of each method in `found` by id, once per id; `ids` and `codes` cache ids and digests."""
+function method_digests(ids::IdDict{Method, String}, codes::AbstractDict{String, String}, found::AbstractVector{Method})::Vector{Pair{String, String}}
+    methods = Dict(get!(() -> method_id(method), ids, method) => method for method in found)
+    return [id => get!(() -> code_digest(method), codes, id) for (id, method) in methods]
+end
+
+"""Store record of generator instance `specialized`; `ids` and `codes` cache method ids and digests."""
+function staged_record(ids::IdDict{Method, String}, codes::AbstractDict{String, String}, specialized::Core.MethodInstance)::Staged
+    method, key = specialized.def::Method, entry_key(specialized.def::Method, specialized.specTypes)
+    return Staged(get!(() -> method_id(method), ids, method), serialized(specialized.specTypes), key, get!(() -> staged_digest(specialized), codes, key))
+end
+
+"""
+`entry` that also reads package methods and generator instances of inference behind compiler `edges`; `nothing` when
+walk gives none (`dependency_methods!`). Offset inference of effects stage can read methods unit inference never reached.
+"""
+function with_edges(entry::Entry, edges::AbstractVector{Any}, files::AbstractDict{String, SyntaxFile}, modules::AbstractSet{Module})::Union{Nothing, Entry}
+    isempty(edges) && return entry
+    read = dependency_methods!(IdDict{Any, Bool}(), edges, files, modules)
+    isnothing(read) && return nothing
+    (found, generated), ids, codes = read, IdDict{Method, String}(), Dict{String, String}()
+    digests = unique!(append!(copy(entry.methods), method_digests(ids, codes, found)))
+    return Entry(entry.file, digests, append!(copy(entry.staged), (staged_record(ids, codes, specialized) for specialized in generated)), entry.inferred, entry.effects)
 end
 
 """Serialized bytes of `data`, as store entry holds it."""

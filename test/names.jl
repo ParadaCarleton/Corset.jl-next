@@ -8,8 +8,11 @@ using Random: Xoshiro
 
 const CASE = joinpath(@__DIR__, "names", "NameCases")
 
-"""Fixture module, package facts, inference units, effects facts, blind spots and unit records of `NameCases`."""
-function case_facts()::Tuple{Module, Facts.PackageFacts, Corset.Inference.Units, Facts.EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, Effects.UnitEffects}}}
+"""
+Fixture module, package facts, inference units, effects facts, blind spots, unit records and offset inference edges
+of `NameCases`.
+"""
+function case_facts()::Tuple{Module, Facts.PackageFacts, Corset.Inference.Units, Facts.EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, Effects.UnitEffects}}, Vector{Vector{Any}}}
     sources = Corset.Discovery.discover(CASE; environment = nothing)
     push!(LOAD_PATH, CASE)
     loaded = try
@@ -18,11 +21,11 @@ function case_facts()::Tuple{Module, Facts.PackageFacts, Corset.Inference.Units,
         pop!(LOAD_PATH)
     end
     _, _, units, _ = infer_package(loaded.facts, sources.files, nothing, nothing)
-    facts, spots, records = Effects.effects_facts(loaded.facts, units, nothing)
-    return first(loaded.facts.modules), loaded.facts, units, facts, spots, records
+    facts, spots, records, edges = Effects.effects_facts(loaded.facts, units, nothing)
+    return first(loaded.facts.modules), loaded.facts, units, facts, spots, records, edges
 end
 
-const CASES, PACKAGE, UNITS, FACTS, SPOTS, RECORDS = case_facts()
+const CASES, PACKAGE, UNITS, FACTS, SPOTS, RECORDS, EDGES = case_facts()
 
 """Effects of fixture method `name`; fixture names are unique."""
 effects(name::Symbol)::MethodEffects = only(found for found in FACTS.methods if found.site.method.name == name)
@@ -149,6 +152,21 @@ end
         @test Effects.offset_inference(typed, signature, crashed, world) == Effects.OFFSET_CRASHED
         close(crashed.io)
     end
+end
+
+@testset "offset inference edges" begin
+    position = only(index for (index, unit) in enumerate(UNITS.typed) if unit.site.method.name == :offset_head)
+    reaches_helper(edges::AbstractVector{Any})::Bool = any(edges) do edge
+        instance = Corset.Inference.edge_instance(edge)
+        return !isnothing(instance) && instance.def isa Method && instance.def.name === :offset_helper
+    end
+    # Only offset inference takes branch to `offset_helper`, so store entry must read it through effects stage edges.
+    @test !reaches_helper(UNITS.typed[position].frame.edges) && reaches_helper(EDGES[position])
+    files = Dict(file.path => file for file in Corset.Discovery.discover(CASE; environment = nothing).files)
+    entry = Corset.Inference.Entry("file" => "hash", Pair{String, String}[], Corset.Inference.Staged[], UInt8[], UInt8[])
+    extended = something(Corset.Inference.with_edges(entry, EDGES[position], files, Set(PACKAGE.modules)))
+    @test Corset.Inference.method_id(only(methods(CASES.offset_helper))) in first.(extended.methods)
+    @test Corset.Inference.with_edges(entry, Any[], files, Set(PACKAGE.modules)) === entry
 end
 
 @testset "loop writes" begin

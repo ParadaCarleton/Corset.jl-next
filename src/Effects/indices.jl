@@ -630,14 +630,14 @@ stand-ins (`offset_inference` with `journal`), and proof runs on that code. Meth
 code, and method that rejects offset stand-ins give none. Generated method always infers again: one-based inference can
 drop its indexing branch.
 """
-function unit_indices(typed::TypedCode, walk::Walk, interpreter::CC.NativeInterpreter, journal::Union{Nothing, Inference.Journal})::Tuple{Vector{UnprovenIndex}, Vector{BlindSpot}}
+function unit_indices(typed::TypedCode, walk::Walk, interpreter::CC.NativeInterpreter, journal::Union{Nothing, Inference.Journal})::Tuple{Vector{UnprovenIndex}, Vector{BlindSpot}, Vector{Any}}
     method = typed.site.method
-    (Base.hasgenerator(method) || indexes_stand_in(walk) || lowered_indexing(method)) || return UnprovenIndex[], BlindSpot[]
+    (Base.hasgenerator(method) || indexes_stand_in(walk) || lowered_indexing(method)) || return UnprovenIndex[], BlindSpot[], Any[]
     signature = offset_signature(method, typed.signature)
-    isnothing(signature) && return UnprovenIndex[], BlindSpot[]
+    isnothing(signature) && return UnprovenIndex[], BlindSpot[], Any[]
     inferred = offset_inference(typed, signature, journal, walk.world)
-    inferred isa String && return UnprovenIndex[], [BlindSpot(inferred, typed.site.span)]
+    inferred isa String && return UnprovenIndex[], [BlindSpot(inferred, typed.site.span)], Any[]
     offset_walk, lines = frame_walk(last(inferred), method, walk.modules, interpreter, walk.world)
     walk_values!(offset_walk, 2 * length(offset_walk.ir.stmts) + 10)
-    return unproven_indices(offset_walk, method, lines, typed.spans), BlindSpot[]
+    return unproven_indices(offset_walk, method, lines, typed.spans), BlindSpot[], inferred[4]
 end
