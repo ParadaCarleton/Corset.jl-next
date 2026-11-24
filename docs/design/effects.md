@@ -64,6 +64,8 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
 - Alias table: library functions whose result can be an operand or lie beneath it. Result keeps places of each non-callable operand.
   - Table: `view`, `reshape`, `vec`, `parent`, `transpose`, `adjoint`, `keys`, `values`, `pairs`, `first`, `last`, `only`, `identity`, `skipmissing`, iterator wrappers (`zip`, `enumerate`, `Iterators.*`).
   - Pointer conversions before foreign call: `pointer`, `cconvert`, `unsafe_convert`.
+  - `.=` target (`a[i] .= x`) and `@views`: `dotview` and `maybeview` give view for array with non-scalar index. Else they call `getindex`: element step.
+  - `view`, `dotview` and `maybeview` result lies beneath array operand only. It holds index operands: `values[indices] .= 0` writes `values`.
 - Choice table: result is one of the operands, callable objects included, so it joins their values: `something`, `coalesce`, `max`, `min`, `ifelse`.
 - `convert` result is its operand, or new object as for other call.
 - `typeassert` result is its operand. Lowering adds `typeassert` on each return of method with return type.
