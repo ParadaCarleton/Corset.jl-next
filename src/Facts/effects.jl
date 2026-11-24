@@ -295,17 +295,20 @@ end
 
 """
 Call statement of package method (`effects` stage fact, F54, F56, F86): span, callee, kinds of writes call makes at any
-certainty, and kinds of its definite writes (`definite`). Compiler effects give `effect_free` (proof of no write caller
-sees; claim of callee voids it), `throws` (may throw) and `terminates`. `used`: code reads result. `stand_in`: operand
-type holds stand-in, so compiler effects describe stand-in only. `open_dispatch`: operand types are not concrete, so
-compiler effects join methods loaded now. Units of method merge: any unit that may throw, writes, uses result or lacks
-proof decides.
+certainty, and kinds of its definite writes (`definite`). `closure_kinds` and `closure_definite` hold same for writes of
+package closures call invokes, writes to fresh captured objects included. Compiler effects give `effect_free` (proof of
+no write caller sees; claim of callee voids it), `throws` (may throw) and `terminates`. `used`: code reads result.
+`stand_in`: operand type holds stand-in, so compiler effects describe stand-in only. `open_dispatch`: operand types are
+not concrete, so compiler effects join methods loaded now. Units of method merge: any unit that may throw, writes, uses
+result or lacks proof decides.
 """
 struct CallFact
     span::Span
     callee::Callee.Type
     kinds::Vector{EffectKind.T}
     definite::Vector{EffectKind.T}
+    closure_kinds::Vector{EffectKind.T}
+    closure_definite::Vector{EffectKind.T}
     effect_free::Bool
     throws::Bool
     terminates::Bool
@@ -326,7 +329,9 @@ Effects of package method over its units (`effects.md`, Name trust): writes, rea
 (`aliases`), holds throws skip (`unguarded`), call statements in source order, writes to collection its loop iterates
 (`loop_writes`), calls that read memory they write (`self_aliases`), iterators it starts twice or lets escape
 after start (`stateful_reuses`), `complete` (no unit incomplete or cut), `effect_free` (compiler proves every unit writes nothing caller
-sees), and effects its `@assume_effects` claims.
+sees), `new_result` (some unit returns value other than `nothing`, argument, or value that holds argument or lies below it), `name_writes` (name
+trust lets calls of its function write: `!` name, or Base IO, synchronization, RNG or `iterate` function), and effects its
+`@assume_effects` claims.
 """
 struct MethodEffects
     site::MethodSite
@@ -340,6 +345,8 @@ struct MethodEffects
     stateful_reuses::Vector{StatefulReuse}
     complete::Bool
     effect_free::Bool
+    new_result::Bool
+    name_writes::Bool
     claims::Vector{Symbol}
 end
 

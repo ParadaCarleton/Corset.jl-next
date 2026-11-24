@@ -59,20 +59,20 @@ model(::Type{IntStandIn})::Type{Int32} = Int32
 gives `Vector{Float32}`.
 Function stand-in has no model and stays.
 """
-model_type(@nospecialize(type::Any))::Any = modeled(type, IdDict{TypeVar, TypeVar}())
+model_type(@nospecialize(type::Any))::Any = modeled!(IdDict{TypeVar, TypeVar}(), type)
 
 """`model_type` of `type`; `variables` maps each type variable to one with modeled bounds (`P <: ArrayStandIn` of view)."""
-function modeled(@nospecialize(type::Any), variables::IdDict{TypeVar, TypeVar})::Any
+function modeled!(variables::IdDict{TypeVar, TypeVar}, @nospecialize(type::Any))::Any
     type isa TypeVar && return get(variables, type, type)
     type in NUMBERS && return model(type)
-    type isa Union && return Union{modeled(type.a, variables), modeled(type.b, variables)}
+    type isa Union && return Union{modeled!(variables, type.a), modeled!(variables, type.b)}
     if type isa UnionAll
-        variable = TypeVar(type.var.name, modeled(type.var.lb, variables), modeled(type.var.ub, variables))
+        variable = TypeVar(type.var.name, modeled!(variables, type.var.lb), modeled!(variables, type.var.ub))
         variables[type.var] = variable
-        return UnionAll(variable, modeled(type.body, variables))
+        return UnionAll(variable, modeled!(variables, type.body))
     end
     type isa DataType || return type
-    parameters = Any[modeled(parameter, variables) for parameter in type.parameters]
+    parameters = Any[modeled!(variables, parameter) for parameter in type.parameters]
     type <: Union{ArrayStandIn, DenseStandIn} && return Array{parameters...}
     return isempty(parameters) ? type : type.name.wrapper{parameters...}
 end

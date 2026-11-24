@@ -1,6 +1,6 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
-using Corset.Facts: Facts, MethodEffects, Access, Callee, Place, Root, Step, Confidence, EffectKind, BlindSpot, callee_name, place_text, root_global, step_child, current_objects
+using Corset.Facts: Facts, MethodEffects, Access, Callee, Place, Root, Step, Confidence, EffectKind, BlindSpot, callee_name, place_text, root_global, subject_position, step_child, current_objects
 using Corset.Inference: infer_package
 using Corset.Effects: Effects, record_bytes, unit_record, place_root, ALWAYS_THROWS
 using Supposition: Supposition, Data, @check
@@ -85,9 +85,9 @@ const PROVES = Base.JLOptions().code_coverage == 0 || Base.JLOptions().code_cove
     # Load from fresh vector can give fresh object, so write is possible.
     @test shape(effects(:fill_wrapped!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
     @test (Place.Deep(Root.Parameter(2)), true, MEMORY, POSSIBLE) in shape(effects(:push_all!).writes)
-    @test shape(effects(:collect_local!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
-    @test shape(effects(:swap_local!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
-    @test shape(effects(:loop_local!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
+    @test shape(effects(:collect_local!).writes) == [(global_place(:SEEN), true, MEMORY, DEFINITE), (parameter(2), true, MEMORY, DEFINITE)]
+    @test shape(effects(:swap_local!).writes) == [(global_place(:SEEN), true, MEMORY, DEFINITE), (parameter(2), true, MEMORY, POSSIBLE)]
+    @test shape(effects(:loop_local!).writes) == [(global_place(:SEEN), true, MEMORY, DEFINITE), (parameter(2), true, MEMORY, POSSIBLE)]
     @test isempty(effects(:thread_count_address).writes)
 end
 
@@ -380,7 +380,16 @@ end
     @test push.used && push.kinds == [MEMORY] && push.definite == [MEMORY]
     # Closure operand lends its writes to call that can call it.
     each = only(fact for fact in effects(:collect_into!).calls if callee_name(fact.callee) == "foreach")
-    @test each.kinds == [MEMORY] && each.definite == [MEMORY]
+    @test each.kinds == [MEMORY] && each.definite == [MEMORY] && each.closure_kinds == [MEMORY] && each.closure_definite == [MEMORY]
+    @test isempty(push.closure_kinds)
+    doubled = only(fact for fact in effects(:doubled_rest).calls if callee_name(fact.callee) == "map")
+    @test !isempty(doubled.kinds) && isempty(doubled.closure_kinds)
+    @test (parameter(2), true, MEMORY, DEFINITE) in shape(effects(:sort_logged!).writes)
+    @test (global_place(:CLOSURE_CALLS), true, MEMORY, DEFINITE) in shape(effects(:counted_sum).writes)
+    @test !any(write -> write[1] == global_place(:CLOSURE_CALLS), shape(effects(:named_sum).writes))
+    @test (global_place(:CLOSURE_CALLS), true, MEMORY, DEFINITE) in shape(effects(:called_in_place).writes)
+    @test (global_place(:tally_count), true, MEMORY, DEFINITE) in shape(effects(:tallied).writes)
+    @test only(fact for fact in effects(:seen_once).calls if callee_name(fact.callee) == "filter").closure_definite == [MEMORY]
     # Block claim makes compiler trust it, so it proves nothing.
     @test !effects(:assumed_store!).effect_free
     @test any(fact -> fact.callee == Callee.Foreign(), effects(:zero_bytes!).calls)
@@ -433,6 +442,25 @@ object_place(name::Symbol, steps::Step.Type...)::Place.Type = Place.At(Root.Glob
     @test place_text(method, Place.Deep(Root.Global(counter))) == "NameCases.COUNTER or below"
     @test place_text(method, ELSEWHERE) == "global state"
     @test place_text(only(methods(CASES.make_callback(Int[]))), Place.At(Root.Parameter(1), Step.Type[])) == "closure"
+end
+
+"""Method whose subject follows callable argument, as `lock(f, l)`."""
+subject_after_callable(f::Function, gate::Vector{Int})::Nothing = nothing
+"""Method whose arguments are all callable."""
+only_callables(f::Function, type::Type)::Nothing = nothing
+
+@testset "result and name facts" begin
+    @test effects(:add).new_result && !effects(:add).name_writes
+    # Argument, value below argument, value that holds argument, and `nothing` give no new value.
+    @test !any(name -> effects(name).new_result, (:returned_point, :first_view, :wrap, :discard))
+    @test effects(:bump!).name_writes && effects(:set_value!).name_writes
+    # `!` alone negates, and constructor without operands builds fresh object: neither writes.
+    @test isempty(effects(:kept_some).writes) && isempty(effects(:buffered).writes)
+    # Callers trust `iterate` to write stateful iterator only: methods on package iterators may not write.
+    @test !any(method -> method.name_writes, (method for method in FACTS.methods if method.site.method.name === :iterate))
+    # Subject is first argument not declared callable.
+    @test subject_position(only(methods(subject_after_callable))) == 2
+    @test isnothing(subject_position(only(methods(only_callables))))
 end
 
 @testset "unit record round trip" begin

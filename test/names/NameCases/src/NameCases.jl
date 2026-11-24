@@ -73,6 +73,29 @@ zero_bytes!(items::Vector{UInt8})::Nothing = (ccall(:memset, Ptr{Cvoid}, (Ptr{UI
 # Closure: call that takes or calls closure writes through captured fields.
 """Collect `items` into `out` through closure."""
 collect_into!(out::Vector{Int}, items::Vector{Int})::Nothing = (foreach(item -> push!(out, item), items); nothing)
+"""Map pure closure over stateful iterator: consumed iterator is write of call, not of closure."""
+doubled_rest(rest::Iterators.Stateful{Vector{Int}})::Vector{Int} = map(item -> 2item, rest)
+"""Sort by keyword closure that writes argument: keyword tuple passes closure to `sort`."""
+sort_logged!(log::Vector{Int}, items::Vector{Int})::Vector{Int} = sort(items; by = item -> (push!(log, item); item))
+"""Counter that closure body writes."""
+const CLOSURE_CALLS = Ref(0)
+"""Sum through closure that writes global counter."""
+counted_sum(items::Vector{Int})::Int = sum(item -> (CLOSURE_CALLS[] += 1; item), items)
+"""Named function passed to `sum`: its name stands in for its body, so its write is no closure write."""
+counted_item(item::Int)::Int = (CLOSURE_CALLS[] += 1; item)
+named_sum(items::Vector{Int})::Int = sum(counted_item, items)
+"""Anonymous function called in place: its write is caller write."""
+called_in_place()::Int = (() -> (CLOSURE_CALLS[] += 1))()
+
+tally_count = 0
+function tallied(items::Vector{Int})::Vector{Int}
+    return map(items) do item
+        global tally_count += 1
+        item
+    end
+end
+"""Filter through closure that writes set it captures: fresh set gives no write, call fact keeps closure write."""
+seen_once(items::Vector{Int})::Vector{Int} = (seen = Set{Int}(); filter(item -> item in seen ? false : (push!(seen, item); true), items))
 """Build writing closure without calling it."""
 make_callback(items::Vector{Int}) = () -> push!(items, 1)
 """Pass writing closure through alias function: `identity` never calls it."""
@@ -279,6 +302,12 @@ emptiness(itr::Any)::Bool = isempty(itr)
 # Compiler effects and call facts.
 """Sum of `x` and `y`."""
 add(x::Int, y::Int)::Int = x + y
+"""Negated predicate `!isnothing` writes nothing: `!` negates."""
+kept_some(items::Vector{Union{Nothing, Int}})::Vector{Union{Nothing, Int}} = filter(!isnothing, items)
+"""Buffer that constructor builds holds nothing caller sees."""
+buffered(x::Int)::Vector{UInt8} = (buffer = IOBuffer(); print(buffer, x); take!(buffer))
+"""Immutable argument returned unchanged: no new value."""
+returned_point(point::Tuple{Float64})::Tuple{Float64} = point
 """Run writing closure under block claim: claim voids compiler proof of call."""
 assumed_foreach!(out::Vector{Int}, items::Vector{Int})::Nothing = Base.@assume_effects :effect_free foreach(item -> push!(out, item), items)
 """Call `f` under false claim: compiler trusts claim at each call."""

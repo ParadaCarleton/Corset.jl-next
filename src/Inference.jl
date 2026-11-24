@@ -731,6 +731,7 @@ function method_index(files::AbstractDict{String, SyntaxFile})::Tuple{Dict{Strin
     return Dict(id => method for (method, id) in ids), ids
 end
 
+# corset: allow bang-convention -- memo of code digests; result never changes
 """
 Entry `store` holds under `key` when file of method keeps its hash in `hashes`, each method entry read keeps its code,
 and each generator it read gives same code. `index` finds methods by id; `codes` caches digests by id or staged key.
@@ -848,6 +849,7 @@ function shape(package::PackageFacts)::Vector{String}
     return unique!(parts)
 end
 
+# corset: allow bang-convention -- crash journal records progress; caller reads it only after crash
 """
 Run of inference stage: facts, blind spots, units (typed code of signatures it inferred, and units store served), and
 store of entries it used.
