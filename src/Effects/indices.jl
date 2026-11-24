@@ -191,7 +191,7 @@ function shared_root(proof::Proof, @nospecialize(callee::Any), operands::Abstrac
         isempty(operands) && return nothing
         operand_type(proof.walk, operands[1]) <: AbstractArray || return nothing
         # `similar(x, T)` keeps axes; `similar(x, n)` makes new ones.
-        all(operand -> operand_type(proof.walk, operand) <: Type, operands[2:end]) || return nothing
+        all(operand -> operand_type(proof.walk, operand) <: Type, @view(operands[2:end])) || return nothing
         return Some{Any}(root(proof, operands[1]))
     end
     callee === Broadcast.materialize || return nothing
@@ -725,7 +725,7 @@ function lowered_passes(method::Method, @nospecialize(signature::Type), modules:
     aliases = lowered_aliases(code)
     # Only callee that takes array resolves, so check stays cheap.
     for call in lowered_calls(code)
-        any(operand -> !isdisjoint(lowered_roots(aliases, operand), arrays), call.args[2:end]) || continue
+        any(operand -> !isdisjoint(lowered_roots(aliases, operand), arrays), @view(call.args[2:end])) || continue
         callees = callee_globals(aliases, call.args[1], method.nargs)
         # Callee that can be call result or argument (`getfield(M, :f)(xs, 1)`) can be package function.
         isnothing(callees) && return true
@@ -772,7 +772,7 @@ function lowered_roots(aliases::AbstractDict{Any, <:AbstractSet{Any}}, @nospecia
     operand isa Core.SSAValue && return get(aliases, operand, Set{Any}())
     operand isa Expr || return Set{Any}()
     operand.head === :call || return Set{Any}()
-    return Set{Any}([COMPUTED; Any[root for argument in operand.args[2:end] for root in lowered_roots(aliases, argument) if root isa Core.SlotNumber]])
+    return Set{Any}([COMPUTED; Any[root for argument in @view(operand.args[2:end]) for root in lowered_roots(aliases, argument) if root isa Core.SlotNumber]])
 end
 
 """Call expressions of lowered `code`: call statements and calls whose value slot assignment takes (`_4 = f(x)`)."""

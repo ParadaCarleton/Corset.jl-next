@@ -17,7 +17,7 @@ export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban,
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, tuple_parameters, lowered_value, argument_type, subject_position, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
-export takes_docstring, comment_lines_above, comments_in, discarded, literal, line_start, owned_lines, line_deletion
+export takes_docstring, comment_lines_above, comments_in, discarded, literal, line_start, owned_lines, line_deletion, module_top_insertion
 export negation, exits, terms, exit_guard, later_term, returning_function, CONDITION, operand, body_text, negated, none_text, Branch, if_text, statement_indent
 
 """Span precision: `exact` bytes, or `line` when only line is known."""
@@ -951,6 +951,21 @@ replace_fix(file::SyntaxFile, node::SyntaxNode, replacement::String, tier::Tier.
 
 """First byte of line of `file` that holds `byte`."""
 line_start(file::SyntaxFile, byte::Integer)::Int = something(findprev(==(UInt8('\n')), codeunits(file.text), byte - 1), 0) + 1
+
+"""
+Insertion of `line` on new line above first statement of module code in `file` that holds `byte`, with its indent;
+top-level statement when no `module` form holds `byte`. `nothing` when that statement does not start its line.
+"""
+function module_top_insertion(file::SyntaxFile, byte::Integer, line::AbstractString)::Union{Nothing, Edit}
+    holders = filter(node -> span(file, node).first_byte <= byte <= span(file, node).last_byte, forms(file, "module"))
+    body = isempty(holders) ? file.tree : last(children_of(last(holders)))
+    anchor = span(file, first(children_of(body)))
+    start = line_start(file, anchor.first_byte)
+    indent = file.text[start:prevind(file.text, anchor.first_byte)]
+    # One-line `module M; …; end` has no line to insert above inside module.
+    isempty(strip(indent)) || return nothing
+    return Edit(Span(file.path, start, start - 1, Precision.exact), "$indent$line\n")
+end
 
 """
 Bytes of lines of `file` that `span` covers, newline excluded; `nothing` when other code shares them. Trailing line

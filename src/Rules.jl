@@ -15,6 +15,7 @@ include("rules/bracketed_range.jl")
 include("rules/broad_catch.jl")
 include("rules/c_type.jl")
 include("rules/closed_struct.jl")
+include("rules/constant_array.jl")
 include("rules/docstring.jl")
 include("rules/double_include.jl")
 include("rules/duplicate_statement.jl")
@@ -53,6 +54,7 @@ include("rules/repeated_concat.jl")
 include("rules/self_alias.jl")
 include("rules/shadowed_base.jl")
 include("rules/short_circuit_statement.jl")
+include("rules/slice_copy.jl")
 include("rules/stateful_iterate.jl")
 include("rules/stateful_reuse.jl")
 include("rules/ternary_statement.jl")
@@ -65,6 +67,7 @@ include("rules/untyped_empty.jl")
 include("rules/unused_call.jl")
 include("rules/unused_import.jl")
 include("rules/unused_literal.jl")
+include("rules/unwritten_element.jl")
 include("rules/where_binding.jl")
 include("rules/wide_struct.jl")
 include("rules/world_age.jl")
@@ -83,6 +86,7 @@ const REGISTRY = RuleEntry[
     BroadCatch.ENTRY,
     CType.ENTRY,
     ClosedStruct.ENTRY,
+    ConstantArray.ENTRY,
     Docstring.ENTRY,
     DoubleInclude.ENTRY,
     DuplicateStatement.ENTRY,
@@ -121,6 +125,7 @@ const REGISTRY = RuleEntry[
     SelfAlias.ENTRY,
     ShadowedBase.ENTRY,
     ShortCircuitStatement.ENTRY,
+    SliceCopy.ENTRY,
     StatefulIterate.ENTRY,
     StatefulReuse.ENTRY,
     TernaryStatement.ENTRY,
@@ -133,6 +138,7 @@ const REGISTRY = RuleEntry[
     UnusedCall.ENTRY,
     UnusedImport.ENTRY,
     UnusedLiteral.ENTRY,
+    UnwrittenElement.ENTRY,
     WhereBinding.ENTRY,
     WideStruct.ENTRY,
     WorldAge.ENTRY,

@@ -33,7 +33,7 @@ Allocation: statement whose result is new array that unit code alone holds. Base
 
 ### Events
 
-Each statement that uses allocation value gives one event, with statement span, callee and operand position. `!` call that takes array as written and source operand gives read, then write (`map!(f, a, a)`), or write, then escape when it stores array itself (`fill!(a, a)`).
+Each statement that uses allocation value gives one event, with statement span, callee and operand position. `!` call that takes array as written and source operand gives read, then write (`map!(f, a, a)`), or write, then escape when it stores array itself (`fill!(a, a)`). `!` call that reads old elements of array it writes (`sort!`, `reverse!`, `unique!`, `map!(f, a)`) gives read, then write.
 
 - `shape`: `size`, `length`, `axes`, `eachindex`, `firstindex`, `lastindex`, `ndims`, `eltype`, `isempty`, `similar`, `keys`, `LinearIndices`, `CartesianIndices`, `checkbounds`. Reads no element.
 - `read`: `getindex` reads elements at its index operands. `first`, `last` and `only` read one element.
@@ -74,10 +74,10 @@ Each statement that uses allocation value gives one event, with statement span, 
 ### Rules
 
 - `temporary-array` (F32): `broadcast` or `collected` allocation whose only events are shape reads and one `sure` read by consuming-table call. Fix: `sum(f.(x))` → `sum(f, x)`; `sum(collect(it))` → `sum(it)`.
-- `unwritten-element` (F33): `undef` allocation read before write. Read of element that no earlier `sure` write covers is definite.
-- `unwritten-element` (F34): `filled` allocation with constant length. `sure` element writes cover part of it; then whole read. Kind `placeholder`.
-- `constant-array` (F39): `filled` allocation without write, resize or escape. Fix: FillArrays.jl `Fill`, `Zeros`, `Ones`.
-- `slice-copy` (F40): `slice` allocation without write, resize or escape. Fix: `view` of same indices.
+- `unwritten-element` (F33): `undef` allocation read before write. `sure` read of element that no earlier `sure` write covers is definite; read that path can skip is possible. Fix `manual`.
+- `unwritten-element` (F34): `filled` allocation with constant length. `sure` element writes cover part of it; then whole read. Kind `placeholder`. Always `possible`: fill value can be data (`e = zeros(n); e[1] = 1.0`). Fix `manual`.
+- `constant-array` (F39): `filled` allocation without write, resize, escape or join. Fix `likely`: swap call for FillArrays.jl `Fill`, `Zeros`, `Ones`, `Trues` or `Falses`, and import it above module code. Package adds FillArrays.jl dependency; callee that requires `Array` rejects lazy array. Site that is no call node gets `manual` fix; `slice-copy` checks its site the same way.
+- `slice-copy` (F40): `slice` allocation without write, resize, escape, join or `loop` read. Fix `likely`: `@view(…)` around slice; view aliases parent. Span without exact bytes: `manual`.
 - `broadcast-rebind` (F41): rebind pair whose loop allocation is `broadcast` of array operands that are earlier value or scalars. Fix: `x .= f.(y)`.
 - Fix tiers and messages: row 11.
 

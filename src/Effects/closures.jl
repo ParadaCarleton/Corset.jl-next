@@ -151,7 +151,7 @@ function closure_scan!(code::Core.CodeInfo, type::DataType, captured::AbstractDi
         statement.head === :call || continue
         callee = lowered_constant(code, statement.args[1])
         callee === setfield! || bang_function(callee) || continue
-        operands = statement.args[2:end]
+        operands = @view(statement.args[2:end])
         position = findfirst(operand -> !(lowered_constant(code, operand) isa Union{Function, Type}), operands)
         isnothing(position) && continue
         push!(written, copy(captured_source(captured, slots, operands[position])))

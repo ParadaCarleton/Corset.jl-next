@@ -1,0 +1,36 @@
+warning[slice-copy]: slice copies elements that method only reads
+ --> src/SliceCopyPositive.jl:5:48
+  |
+5 | column_total(A::Matrix{Float64}, j::Int) = sum(A[:, j])
+  |                                            ------------ only reads copy
+  |                                                ^^^^^^^ copies elements here
+  |
+  = why: copy allocates new array; view reads same elements in place
+  = fix: wrap slice in `@view(…)`: view reads same elements without copy   [likely]
+  = docs: corset explain slice-copy
+  = note: warn from performance group, library preset
+  = note: opt out with `# corset: allow slice-copy -- <reason>`
+
+warning[slice-copy]: slice copies elements that method only reads
+ --> src/SliceCopyPositive.jl:7:40
+  |
+7 | tail_max(x::Vector{Float64}) = maximum(x[2:end])
+  |                                ----------------- only reads copy
+  |                                        ^^^^^^^^ copies elements here
+  |
+  = why: copy allocates new array; view reads same elements in place
+  = fix: wrap slice in `@view(…)`: view reads same elements without copy   [likely]
+  = docs: corset explain slice-copy
+
+warning[slice-copy]: slice copies elements that method only reads
+  --> src/SliceCopyPositive.jl:10:14
+   |
+10 |     picked = x[indices]
+   |              ^^^^^^^^^^ copies elements here
+11 |     return sum(picked) / length(picked)
+   |            ----------- only reads copy
+   |
+   = why: copy allocates new array; view reads same elements in place
+   = fix: wrap slice in `@view(…)`: view reads same elements without copy   [likely]
+   = docs: corset explain slice-copy
+
