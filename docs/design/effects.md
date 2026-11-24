@@ -139,6 +139,7 @@ Facts keep hold count per resource at normal exit and at each statement that may
 - Statement may throw when compiler `nothrow` is off. Inside `try`, it has an edge to its catch block.
 - Call that passes held resource to package function makes count unknown: helper can release it.
 - Holder of fresh resource value hands it on too: tuple, `new`, `φ`, or mutable operand and result of call that takes it.
+- Holder that names caller-visible place (argument, global) escapes value: any call that runs package code can release it.
 - One `Base` or `Core` method releases only through function operand it calls, so count stays exact.
 - Release of resource that path does not hold makes holds of its kind unknown; its throw gives them `possible`.
 - Release that throws leaves its resource free: `unlock` throws only when task holds none (`ReentrantLock`). Lock that breaks this is its own bug.

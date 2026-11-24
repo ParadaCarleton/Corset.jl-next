@@ -180,6 +180,8 @@ end
     @test hold_shape(:hold_handed!) == [(EffectKind.synchronization, POSSIBLE)]
     # Holder of fresh stream (tuple) that package function takes hands stream on too.
     @test hold_shape(:hold_boxed) == [(EffectKind.io, POSSIBLE)]
+    # Global holder escapes stream: package call without operands can release it.
+    @test hold_shape(:hold_global) == [(EffectKind.io, POSSIBLE)]
     # `trylock` forks path: success path holds lock at throw before result test.
     @test hold_shape(:hold_tried_late) == [(EffectKind.synchronization, DEFINITE)]
     # Release through other element load, or of lock path does not hold, leaves count in doubt.

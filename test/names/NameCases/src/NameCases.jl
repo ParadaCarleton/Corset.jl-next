@@ -910,6 +910,17 @@ function hold_boxed(path::String, text::String)::Int
 end
 """Package function that closes stream tuple holds."""
 close_boxed(box::Tuple{IOStream})::Nothing = close(box[1])
+"""Stream that package code can reach after `hold_global` stores it."""
+const OPEN_STREAM = Ref{IOStream}()
+"""Global holds fresh stream: package call without operands can close it, so count after call is unknown."""
+function hold_global(path::String, text::String)::Int
+    stream = open(path)
+    OPEN_STREAM[] = stream
+    close_global()
+    return parse(Int, text)
+end
+"""Package function that closes stream global holds."""
+close_global()::Nothing = close(OPEN_STREAM[])
 """Release in `finally`."""
 function hold_finally!(guard::ReentrantLock, key::String)::Int
     lock(guard)
