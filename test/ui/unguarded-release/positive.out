@@ -1,132 +1,87 @@
-error[unguarded-release]: `unlock(cache_lock)` is skipped when code before it throws
- --> positive.jl:5:5
+error[unguarded-release]: lock stays held when this statement throws
+ --> src/UnguardedReleasePositive.jl:6:18
   |
-3 |     lock(cache_lock)
+5 |     lock(cache_lock)
   |     ---------------- acquired here
-4 |     cache[key] = value
-5 |     unlock(cache_lock)
-  |     ^^^^^^^^^^^^^^^^^^ skipped on exception
+6 |     cache[key] = parse(Int, key)
+  |                  ^^^^^^^^^^^^^^^ may throw while lock is held
   |
-  = why: exception between them leaves lock held; next `lock` call waits forever
-  = fix: use `lock(cache_lock) do … end`   [manual]
+  = why: throw skips release; lock or semaphore slot stays held, so next caller waits forever
+  = fix: hold with `lock(l) do … end` or `@lock l expr`, or release in `finally`   [manual]
   = docs: corset explain unguarded-release
   = note: deny from correctness group, library preset
   = note: opt out with `# corset: allow unguarded-release -- <reason>`
 
-error[unguarded-release]: `Base.unlock(cache_lock)` is skipped when code before it throws
-  --> positive.jl:12:5
+error[unguarded-release]: lock stays held when this statement throws
+  --> src/UnguardedReleasePositive.jl:13:12
    |
-10 |     Base.lock(cache_lock)
-   |     --------------------- acquired here
-11 |     cache[key] = value
-12 |     Base.unlock(cache_lock)
-   |     ^^^^^^^^^^^^^^^^^^^^^^^ skipped on exception
-   |
-   = why: exception between them leaves lock held; next `lock` call waits forever
-   = fix: use `Base.lock(cache_lock) do … end`   [manual]
-   = docs: corset explain unguarded-release
-
-error[unguarded-release]: `unlock(state.locks[  1 ])` is skipped when code before it throws
-  --> positive.jl:20:5
-   |
-18 |     lock(state.locks[ 1 ])
-   |     ---------------------- acquired here
-19 |     state.count += 1
-20 |     unlock(state.locks[  1 ])
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^ skipped on exception
-   |
-   = why: exception between them leaves lock held; next `lock` call waits forever
-   = fix: use `lock(state.locks[ 1 ]) do … end`   [manual]
-   = docs: corset explain unguarded-release
-
-error[unguarded-release]: `release(slots)` is skipped when code before it throws
-  --> positive.jl:27:5
-   |
-25 |     acquire(slots)
-   |     -------------- acquired here
-26 |     work()
-27 |     release(slots)
-   |     ^^^^^^^^^^^^^^ skipped on exception
-   |
-   = why: exception between them keeps semaphore slot; later `acquire` calls wait for it forever
-   = fix: wrap code after `acquire(slots)` in `try … finally release(slots) end`   [manual]
-   = docs: corset explain unguarded-release
-
-error[unguarded-release]: `Base.release(slots)` is skipped when code before it throws
-  --> positive.jl:34:5
-   |
-32 |     Base.acquire(slots)
+12 |     Base.acquire(slots)
    |     ------------------- acquired here
-33 |     work()
-34 |     Base.release(slots)
-   |     ^^^^^^^^^^^^^^^^^^^ skipped on exception
+13 |     text = read(path, String)
+   |            ^^^^^^^^^^^^^^^^^^ may throw while lock is held
    |
-   = why: exception between them keeps semaphore slot; later `acquire` calls wait for it forever
-   = fix: wrap code after `Base.acquire(slots)` in `try … finally Base.release(slots) end`   [manual]
+   = why: throw skips release; lock or semaphore slot stays held, so next caller waits forever
+   = fix: hold with `lock(l) do … end` or `@lock l expr`, or release in `finally`   [manual]
    = docs: corset explain unguarded-release
 
-error[unguarded-release]: `close(io)` is skipped when code before it throws
-  --> positive.jl:41:5
+error[unguarded-release]: file stays open when this statement throws
+  --> src/UnguardedReleasePositive.jl:20:5
    |
-39 |     io = open(path, "w")
-   |     -------------------- acquired here
-40 |     write(io, data)
-41 |     close(io)
-   |     ^^^^^^^^^ skipped on exception
+19 |     io = open(path, "w")
+   |     -------------------- opened here
+20 |     write(io, data)
+   |     ^^^^^^^^^^^^^^^ may throw while file is open
    |
-   = why: exception between them leaves file open until garbage collector finalizes it
-   = fix: use `open(path, "w") do io … end`   [manual]
+   = why: throw skips `close`; file stays open until garbage collector finalizes it
+   = fix: use `open(path) do io … end`, or close in `finally`   [manual]
    = docs: corset explain unguarded-release
 
-error[unguarded-release]: `Base.close(io)` is skipped when code before it throws
-  --> positive.jl:48:5
+error[unguarded-release]: lock stays held when this statement throws
+  --> src/UnguardedReleasePositive.jl:28:22
    |
-46 |     io = Base.open(path, "w")
-   |     ------------------------- acquired here
-47 |     write(io, data)
-48 |     Base.close(io)
-   |     ^^^^^^^^^^^^^^ skipped on exception
+27 |     if trylock(cache_lock)
+   |        ------------------- acquired here
+28 |         cache[key] = parse(Int, key)
+   |                      ^^^^^^^^^^^^^^^ may throw while lock is held
    |
-   = why: exception between them leaves file open until garbage collector finalizes it
-   = fix: use `Base.open(path, "w") do io … end`   [manual]
+   = why: throw skips release; lock or semaphore slot stays held, so next caller waits forever
+   = fix: hold with `lock(l) do … end` or `@lock l expr`, or release in `finally`   [manual]
    = docs: corset explain unguarded-release
 
-error[unguarded-release]: `unlock(cache_lock)` is skipped when code before it throws
-  --> positive.jl:57:9
+error[unguarded-release]: lock stays held when this statement throws
+  --> src/UnguardedReleasePositive.jl:41:9
    |
-55 |         lock(cache_lock)
+37 |         lock(cache_lock)
    |         ---------------- acquired here
-56 |         work()
-57 |         unlock(cache_lock)
-   |         ^^^^^^^^^^^^^^^^^^ skipped on exception
+...
+41 |         println("done")
+   |         ^^^^^^^^^^^^^^^ may throw while lock is held
    |
-   = why: exception between them leaves lock held; next `lock` call waits forever
-   = fix: use `lock(cache_lock) do … end`   [manual]
+   = why: throw skips release; lock or semaphore slot stays held, so next caller waits forever
+   = fix: hold with `lock(l) do … end` or `@lock l expr`, or release in `finally`   [manual]
    = docs: corset explain unguarded-release
 
-error[unguarded-release]: `unlock(cache_lock)` is skipped when code before it throws
-  --> positive.jl:73:5
+error[unguarded-release]: file stays open when this statement throws
+  --> src/UnguardedReleasePositive.jl:51:70
    |
-71 |     lock(cache_lock)
+51 | opened(path::String, text::String)::Opened = Opened(open(path, "a"), parse(Int, text))
+   | -------------------------------------------------------------------------------------- opened here
+   |                                                                      ^^^^^^^^^^^^^^^^ may throw while file is open
+   |
+   = why: throw skips `close`; file stays open until garbage collector finalizes it
+   = fix: use `open(path) do io … end`, or close in `finally`   [manual]
+   = docs: corset explain unguarded-release
+
+error[unguarded-release]: lock stays held when this statement throws
+  --> src/UnguardedReleasePositive.jl:56:5
+   |
+55 |     lock(cache_lock)
    |     ---------------- acquired here
-72 |     work()
-73 |     unlock(cache_lock)
-   |     ^^^^^^^^^^^^^^^^^^ skipped on exception
+56 |     record(cache_lock, key)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^ may throw while lock is held
    |
-   = why: exception between them leaves lock held; next `lock` call waits forever
-   = fix: use `lock(cache_lock) do … end`   [manual]
-   = docs: corset explain unguarded-release
-
-error[unguarded-release]: `unlock(registry_lock)` is skipped when code before it throws
-  --> positive.jl:79:1
-   |
-77 | lock(registry_lock)
-   | ------------------- acquired here
-78 | register(item)
-79 | unlock(registry_lock)
-   | ^^^^^^^^^^^^^^^^^^^^^ skipped on exception
-   |
-   = why: exception between them leaves lock held; next `lock` call waits forever
-   = fix: use `lock(registry_lock) do … end`   [manual]
+   = why: throw skips release; lock or semaphore slot stays held, so next caller waits forever
+   = confidence: possible
+   = fix: hold with `lock(l) do … end` or `@lock l expr`, or release in `finally`   [manual]
    = docs: corset explain unguarded-release
 

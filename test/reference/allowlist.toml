@@ -34,7 +34,7 @@ corset = "unreachable"
 
 [[relint]]
 rule = "unlock"
-allow = "flags every `unlock`; `unguarded-release` reports unlock outside `finally` only"
+allow = "flags every `unlock`; `unguarded-release` reports throw while lock is held outside `try` only"
 
 [[relint]]
 rule = "return type annotation"

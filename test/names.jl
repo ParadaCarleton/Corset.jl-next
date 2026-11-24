@@ -153,6 +153,81 @@ end
     @test resume.callee == "push!" && resume.loop.first_byte > resume.write.first_byte
 end
 
+"""Resource kind and confidence of each hold that throw skips in fixture method `name`."""
+hold_shape(name::Symbol)::Vector{Tuple{EffectKind.T, Confidence.T}} = [(hold.kind, hold.confidence) for hold in effects(name).unguarded]
+
+# Branch condition at end of 40 `xor` levels; each level uses value of level before twice.
+@eval xor_chain(x::Int)::Bool = $(Expr(:block, :(y = x), (:(y = xor(y, y)) for _ in 1:40)..., :(y > 0)))
+
+@testset "dependence walk visits each value once" begin
+    # Walk without memo takes 2^40 paths through shared operands.
+    ir = first(only(Base.code_ircode(xor_chain, (Int,))))
+    condition = Core.SSAValue(findlast(statement -> statement isa Expr, ir.stmts.stmt))
+    visited = Set{Int}()
+    @test !Effects.may_depend!(visited, ir, condition, Set{Any}([Core.Argument(3)]), 64)
+    @test 40 <= length(visited) <= length(ir.stmts)
+end
+
+@testset "release balance" begin
+    # Throw while lock, slot or file is held, outside every `try`: exact count gives `definite`.
+    @test hold_shape(:hold_lock!) == [(EffectKind.synchronization, DEFINITE)]
+    @test hold_shape(:hold_slot) == [(EffectKind.synchronization, DEFINITE)]
+    @test hold_shape(:hold_file) == [(EffectKind.io, DEFINITE)]
+    @test hold_shape(:hold_tried!) == [(EffectKind.synchronization, DEFINITE)]
+    held = only(effects(:hold_lock!).unguarded)
+    @test held.throws.first_byte > held.acquire.first_byte
+    # Package function that takes held lock makes count unknown.
+    @test hold_shape(:hold_handed!) == [(EffectKind.synchronization, POSSIBLE)]
+    # Holder of fresh stream (tuple) that package function takes hands stream on too.
+    @test hold_shape(:hold_boxed) == [(EffectKind.io, POSSIBLE)]
+    # Global holder escapes stream: package call without operands can release it.
+    @test hold_shape(:hold_global) == [(EffectKind.io, POSSIBLE)]
+    # Escape after throwing call leaves that throw definite.
+    @test hold_shape(:hold_late_global) == [(EffectKind.io, DEFINITE)]
+    # Store on other branch leaves escape on this branch counted.
+    @test hold_shape(:hold_branch_global) == [(EffectKind.io, POSSIBLE)]
+    # `trylock` forks path: success path holds lock at throw before result test.
+    @test hold_shape(:hold_tried_late) == [(EffectKind.synchronization, DEFINITE)]
+    # Release through other element load, or of lock path does not hold, leaves count in doubt.
+    @test hold_shape(:hold_elements!) == [(EffectKind.synchronization, POSSIBLE)]
+    @test hold_shape(:hold_other!) == [(EffectKind.synchronization, POSSIBLE)]
+    # Join drops conditions of paths with equal counts; branch on dropped condition blurs path, so fact is `possible`.
+    @test hold_shape(:hold_correlated) == [(EffectKind.synchronization, POSSIBLE)]
+    @test hold_shape(:hold_negated) == [(EffectKind.synchronization, POSSIBLE)]
+    # Branch on argument that join kept apart from dropped condition keeps exact count.
+    @test hold_shape(:hold_independent) == [(EffectKind.synchronization, DEFINITE)]
+    # Nested acquire and release can each throw while other lock is held; throw after both releases holds nothing.
+    @test hold_shape(:hold_elements_balanced!) == [(EffectKind.synchronization, DEFINITE), (EffectKind.synchronization, DEFINITE)]
+    # Package call that takes `φ` node of stream can release stream.
+    @test hold_shape(:hold_chosen) == [(EffectKind.io, POSSIBLE)]
+    # Forks past limit share path; second `trylock` throws while first holds.
+    @test hold_shape(:hold_tries!) == [(EffectKind.synchronization, DEFINITE)]
+    # Release in `finally` (scope inside `try` included), function forms, same condition, `trylock` sides, loop pass, code that cannot throw.
+    for name in (:hold_finally!, :hold_scoped, :hold_forms, :hold_same_condition, :hold_tried_finally, :hold_polled, :hold_each!, :hold_safe, :hold_helper!)
+        @test isempty(hold_shape(name))
+    end
+end
+
+@testset "place cover" begin
+    root, top = Root.Parameter(1), Place.At(Root.Parameter(1), Facts.NO_STEPS)
+    field = Effects.deeper(top, Step.Field(:guard))
+    @test Effects.covers(top, field) && !Effects.covers(field, top)
+    @test Effects.covers(Place.Deep(root), field) && !Effects.covers(Place.Deep(root), Place.Deep(Root.Parameter(2)))
+    @test !Effects.covers(top, Place.Deep(root))
+end
+
+@testset "path join past limit" begin
+    resource, paths = (7, EffectKind.synchronization), Effects.Path[]
+    # Five paths with other counts; one holds nothing.
+    for count in 0:4
+        counts = count == 0 ? Effects.Counts() : Effects.Counts(resource => Effects.Hold(count, count))
+        Effects.add_path!(paths, Effects.Path(counts, Dict{Any, Bool}(:flag => isodd(count)), Set{Any}(), false))
+    end
+    joined = only(paths)
+    @test joined.counts == Effects.Counts(resource => Effects.Hold(nothing, 1))
+    @test isempty(joined.conditions) && joined.dropped == Set{Any}([:flag]) && !joined.blurred
+end
+
 """Writing function and confidence of each self-alias call of fixture method `name`."""
 alias_shape(name::Symbol)::Vector{Tuple{String, Confidence.T}} = [(call.callee, call.confidence) for call in effects(name).self_aliases]
 

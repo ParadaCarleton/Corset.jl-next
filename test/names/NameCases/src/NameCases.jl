@@ -877,4 +877,259 @@ kept_branches(itr::Any, flag::Bool)::Any = flag ? first(itr) : collect(itr)
 """Package iterator type: concrete type outside stateful table."""
 kept_countdown(countdown::Countdown)::Int = isempty(countdown) ? 0 : length(collect(countdown))
 
+"""Lock held over call that may throw."""
+function hold_lock!(cache::Dict{String, Int}, guard::ReentrantLock, key::String)::Nothing
+    lock(guard)
+    cache[key] = parse(Int, key)
+    unlock(guard)
+    return nothing
+end
+"""Semaphore slot held over read."""
+function hold_slot(slots::Base.Semaphore, path::String)::String
+    Base.acquire(slots)
+    text = read(path, String)
+    Base.release(slots)
+    return text
+end
+"""File open over write; `Base` method that takes file keeps count exact."""
+function hold_file(path::String, data::Vector{UInt8})::Nothing
+    io = open(path, "w")
+    write(io, data)
+    close(io)
+    return nothing
+end
+"""Success side of `trylock` holds."""
+function hold_tried!(guard::ReentrantLock, key::String)::Int
+    total = 0
+    if trylock(guard)
+        total = parse(Int, key)
+        unlock(guard)
+    end
+    return total
+end
+"""`trylock` result tested after throwing call: success path holds lock there."""
+function hold_tried_late(guard::ReentrantLock, key::String)::Int
+    tried = trylock(guard)
+    total = parse(Int, key)
+    tried && unlock(guard)
+    return total
+end
+"""Release through other element load may name other lock: count after it is unknown."""
+function hold_elements!(guards::Vector{ReentrantLock}, key::String)::Int
+    first_guard, second_guard = guards[1], guards[2]
+    lock(first_guard)
+    unlock(second_guard)
+    return parse(Int, key)
+end
+"""Two element loads lock and release in turn: each load is own resource, so counts balance before throw."""
+function hold_elements_balanced!(guards::Vector{ReentrantLock}, key::String)::Int
+    first_guard, second_guard = guards[1], guards[2]
+    lock(first_guard)
+    lock(second_guard)
+    unlock(first_guard)
+    unlock(second_guard)
+    return parse(Int, key)
+end
+"""Release of lock path does not hold can throw while other lock is held."""
+function hold_other!(held::ReentrantLock, other::ReentrantLock, key::String)::Int
+    lock(held)
+    unlock(other)
+    total = parse(Int, key)
+    unlock(held)
+    return total
+end
+"""Package function takes held lock and can release it: count after call is unknown."""
+function hold_handed!(guard::ReentrantLock, key::String)::Int
+    lock(guard)
+    hold_note(guard)
+    total = parse(Int, key)
+    unlock(guard)
+    return total
+end
+"""Package function that reads lock state."""
+hold_note(guard::ReentrantLock)::Nothing = println(islocked(guard))
+"""Tuple carries fresh stream to package function that can close it: count after call is unknown."""
+function hold_boxed(path::String, text::String)::Int
+    stream = open(path)
+    close_boxed((stream,))
+    return parse(Int, text)
+end
+"""Package function that closes stream tuple holds."""
+close_boxed(box::Tuple{IOStream})::Nothing = close(box[1])
+"""Stream that package code can reach after `hold_global` stores it."""
+const OPEN_STREAM = Ref{IOStream}()
+"""Global holds fresh stream: package call without operands can close it, so count after call is unknown."""
+function hold_global(path::String, text::String)::Int
+    stream = open(path)
+    OPEN_STREAM[] = stream
+    close_global()
+    return parse(Int, text)
+end
+"""Package function that closes stream global holds."""
+close_global()::Nothing = close(OPEN_STREAM[])
+"""Package call before stream escapes cannot reach it: throw there leaves stream open for sure."""
+function hold_late_global(path::String, text::String)::Int
+    stream = open(path)
+    parsed = parse(Int, text)
+    OPEN_STREAM[] = stream
+    close_global()
+    return parsed
+end
+"""Second store on own branch escapes stream before package call that can close it."""
+function hold_branch_global(path::String, text::String, direct::Bool)::Int
+    stream = open(path)
+    if direct
+        OPEN_STREAM[] = stream
+        close(stream)
+        return 0
+    end
+    OPEN_STREAM[] = stream
+    close_global()
+    return parse(Int, text)
+end
+"""Release in `finally`."""
+function hold_finally!(guard::ReentrantLock, key::String)::Int
+    lock(guard)
+    try
+        return parse(Int, key)
+    finally
+        unlock(guard)
+    end
+end
+"""Function forms release inside callee."""
+function hold_forms(guard::ReentrantLock, path::String, data::Vector{UInt8})::Int
+    total = lock(() -> parse(Int, path), guard)
+    open(io -> write(io, data), path, "w")
+    return total
+end
+"""Lock and release on same condition: path that holds knows condition."""
+function hold_same_condition(guard::ReentrantLock, shared::Bool, key::String)::Int
+    shared && lock(guard)
+    total = 1
+    shared && unlock(guard)
+    return total + parse(Int, key)
+end
+"""Paths that acquire under different conditions join; later branches on those conditions cannot pair their sides."""
+function hold_correlated(guard::ReentrantLock, first::Bool, second::Bool, key::String)::Int
+    lock(guard)
+    if first
+        lock(guard)
+    elseif second
+        lock(guard)
+    end
+    if first
+        unlock(guard)
+    elseif second
+        unlock(guard)
+    end
+    unlock(guard)
+    return parse(Int, key)
+end
+"""Both sides hold twice, so join drops condition; branches on its negations cannot pair their sides."""
+function hold_negated(guard::ReentrantLock, flag::Bool, key::String)::Int
+    lock(guard)
+    if flag
+        lock(guard)
+    else
+        lock(guard)
+    end
+    if !flag
+        unlock(guard)
+    end
+    if !!flag
+        unlock(guard)
+    end
+    unlock(guard)
+    return parse(Int, key)
+end
+"""Branch on argument join never dropped keeps exact count after join of other condition."""
+function hold_independent(guard::ReentrantLock, flag::Bool, other::Bool, key::String)::Int
+    lock(guard)
+    total = flag ? 1 : 2
+    if other
+        total += 1
+    end
+    return total + parse(Int, key)
+end
+"""Write line to `io`."""
+write_line(io::IO)::Nothing = (println(io, "x"); nothing)
+"""Stream that `φ` node holds: package call with chosen value can release it."""
+function hold_chosen(path::String, flag::Bool)::Nothing
+    stream = open(path)
+    target = flag ? stream : devnull
+    write_line(target)
+    close(stream)
+    return nothing
+end
+"""Scope for `hold_scoped`."""
+const HOLD_SCOPE = Base.ScopedValues.ScopedValue(0)
+"""Throw inside scope inside `try`: scope catches, then `finally` releases."""
+function hold_scoped(path::String)::Nothing
+    stream = open(path)
+    try
+        Base.ScopedValues.@with HOLD_SCOPE => 1 println(stream, HOLD_SCOPE[])
+    finally
+        close(stream)
+    end
+    return nothing
+end
+"""Five `trylock` calls: fifth forks past limit."""
+function hold_tries!(guard::ReentrantLock, key::String)::Int
+    trylock(guard)
+    trylock(guard)
+    trylock(guard)
+    trylock(guard)
+    trylock(guard)
+    return parse(Int, key)
+end
+"""Failed `trylock` holds nothing; success side releases in `finally`."""
+function hold_tried_finally(guard::ReentrantLock, key::String)::Int
+    trylock(guard) || return 0
+    try
+        return parse(Int, key)
+    finally
+        unlock(guard)
+    end
+end
+"""Negated `trylock` returns on failure; throw after balanced `if` holds nothing."""
+function hold_polled(guard::ReentrantLock, key::String)::Int
+    if !trylock(guard)
+        return 0
+    end
+    try
+        parse(Int, key)
+    finally
+        unlock(guard)
+    end
+    return parse(Int, key)
+end
+"""Lock per loop pass, released in `finally`."""
+function hold_each!(guards::Vector{ReentrantLock}, keys::Vector{String})::Nothing
+    for (guard, key) in zip(guards, keys)
+        lock(guard)
+        try
+            parse(Int, key)
+        finally
+            unlock(guard)
+        end
+    end
+    return nothing
+end
+"""Code between acquire and release cannot throw."""
+function hold_safe(guard::ReentrantLock, count::Int)::Int
+    lock(guard)
+    total = count + 1
+    unlock(guard)
+    return total
+end
+"""Helper that acquires for caller stays unseen."""
+hold_take!(guard::ReentrantLock)::Nothing = lock(guard)
+"""Caller of acquiring helper releases unknown hold."""
+function hold_helper!(guard::ReentrantLock, key::String)::Int
+    hold_take!(guard)
+    total = parse(Int, key)
+    unlock(guard)
+    return total
+end
+
 end
