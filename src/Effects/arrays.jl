@@ -278,7 +278,7 @@ slot_copy(@nospecialize(callee::Any))::Bool = callee in COPYING || (callee isa T
 Whether concatenation `callee` of operands of `types` reads slots of `Array` operand of type `held`, as Julia 1.13 does:
 unset reference slot then throws `UndefRefError`. `vcat` with operand of two or more dimensions, `hcat` of vectors only,
 operand of three or more dimensions, and conversion of `held` elements to promoted element type read. `hcat` with
-matrix keeps slots. Unknown dimensions, array type or scalar type: no read.
+matrix keeps slots. Unknown dimensions, array type, scalar type or promotion: no read.
 """
 function reads_slots(@nospecialize(callee::Any), types::AbstractVector, @nospecialize(held::Any))::Bool
     (callee in (vcat, hcat) && held isa DataType && held <: Array) || return false
@@ -296,7 +296,20 @@ function reads_slots(@nospecialize(callee::Any), types::AbstractVector, @nospeci
     end
     callee === hcat && maximum(counts) == 2 && return false
     callee === vcat && maximum(counts) >= 2 && return true
-    return maximum(counts) >= 3 || (callee === hcat && all(==(1), counts)) || eltype(held) != promote_type(elements...)
+    (maximum(counts) >= 3 || (callee === hcat && all(==(1), counts))) && return true
+    promoted = promoted_type(elements)
+    return !isnothing(promoted) && eltype(held) != promoted
+end
+
+"""
+Type that `promote_type` gives for `elements`, by inference: package `promote_rule` never runs, so one that throws
+cannot stop stage. `nothing` when inference gives no single type.
+"""
+function promoted_type(elements::AbstractVector)::Any
+    result = CC.return_type(promote_type, Tuple{Any[Type{element} for element in elements]...})
+    (result isa DataType && result.name === Base.typename(Type)) || return nothing
+    promoted = only(result.parameters)
+    return promoted isa TypeVar ? nothing : promoted
 end
 
 """Whether index `operands` of `dotview` call cover every element of allocation of `extent`: all `Colon`, or one covering range."""

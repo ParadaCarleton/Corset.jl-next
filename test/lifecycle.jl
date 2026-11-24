@@ -210,6 +210,10 @@ include(joinpath(@__DIR__, "ui", "unwritten-element", "positive", "src", "Unwrit
     @test UnwrittenElementPositive.half_filled() == 3.0
 end
 
+"""Reference type whose promotion with `Int` throws."""
+mutable struct Unpromotable end
+Base.promote_rule(::Type{Unpromotable}, ::Type{Int}) = error("no promotion")
+
 @testset "concatenation slot reads match Julia" begin
     # Operand at `unset` has unset slots; others are full, so only its slots can throw.
     unset(type::Type, shape::Tuple)::Array = Array{type}(undef, shape...)
@@ -237,4 +241,7 @@ end
     end
     # Scalar of abstract type can promote either way: no read.
     @test !Effects.reads_slots(vcat, Any[Vector{String}, Any], Vector{String})
+    # Package `promote_rule` that throws never runs: promotion is unknown, so no read.
+    @test !Effects.reads_slots(vcat, Any[Vector{Unpromotable}, Int], Vector{Unpromotable})
+    @test isnothing(Effects.promoted_type(Any[Unpromotable, Int])) && Effects.promoted_type(Any[String, Int]) === Any
 end
