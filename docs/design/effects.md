@@ -88,7 +88,7 @@ Write sources, in order:
 1. Builtin store: `setfield!`, `setglobal!`, `memoryrefset!`, `swapfield!`, `modifyfield!`, `replacefield!`, `setfieldonce!`. Definite write on roots of target. Pointer store intrinsics (`pointerset`) write target or below.
 2. Call to function whose name ends in `!`. Written operand follows Julia style guide argument order:
    - Skip leading callable (`Function`, `Type`), `IO` and `AbstractRNG` operands. First other operand is written: definite.
-   - `Nothing` member of union drops first: `rng::Union{Nothing, AbstractRNG}` is RNG operand.
+   - `Nothing` member of union drops first: `rng::Union{Nothing, AbstractRNG}` is RNG operand. Its write is `possible`.
    - Skip operand of type that refers to no mutable object too: no call can write it. `rand!(rng, Normal(), x)` writes `x`.
    - Random `rand!`, `randn!` and `randexp!` write first array operand: Distributions adds `rand!(rng, s, x)`.
    - `!!` function (BangBang.jl) writes operand when it can, else returns new value: `possible`.

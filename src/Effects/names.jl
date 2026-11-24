@@ -576,6 +576,9 @@ function value_events(walk::Walk, value::Value, kind::EffectKind.T, write::Bool,
     return Event[Event(place, below, kind == EffectKind.memory ? place_kind(walk, place, kind) : kind, confidence, write) for place in value.places]
 end
 
+"""`events` as `possible`: run-time value decides whether write happens."""
+possible_events(events::AbstractVector{Event})::Vector{Event} = Event[Event(event.place, event.below, event.kind, Confidence.possible, event.write) for event in events]
+
 """Global state that no binding names: default RNG, unknown writes of `!` call without operand."""
 const ELSEWHERE = Place.At(Root.Elsewhere(), NO_STEPS)
 
@@ -665,8 +668,9 @@ function bang_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractV
         io, rng = io_operand(walk, operand), rng_operand(walk, operand)
         # Immutable operand counts as written one too: `kernel!(CPU(), 4)` writes no global state.
         skipped |= io || rng || (!callable(walk, operand) && immutable_operand(walk, operand))
-        io && append!(found, value_events(walk, operand_value(walk, operand), EffectKind.io, true, true))
-        rng && append!(found, value_events(walk, operand_value(walk, operand), EffectKind.rng_argument, true, true))
+        streams = io || rng ? value_events(walk, operand_value(walk, operand), io ? EffectKind.io : EffectKind.rng_argument, true, true) : Event[]
+        # Optional operand (`rng::Union{Nothing, AbstractRNG}`) takes write only when it is present.
+        append!(found, (type = operand_type(walk, operand); type isa Union && Nothing <: type) ? possible_events(streams) : streams)
     end
     if isnothing(position)
         places = isnothing(keywords) ? Set{Place.Type}() : held(keywords)
@@ -675,7 +679,7 @@ function bang_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractV
     else
         written = value_events(walk, operand_value(walk, operands[something(position)]), EffectKind.memory, true, true)
         # `!!` call writes operand only when it can (`push!!` on tuple returns new tuple).
-        append!(found, double_bang(callee) ? Event[Event(event.place, event.below, event.kind, Confidence.possible, event.write) for event in written] : written)
+        append!(found, double_bang(callee) ? possible_events(written) : written)
     end
     return found
 end
