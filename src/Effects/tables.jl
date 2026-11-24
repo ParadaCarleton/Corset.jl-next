@@ -9,10 +9,10 @@ using Random: Random, AbstractRNG
 const WRITE_POSITION = Dict{Tuple{Symbol, Int}, Int}((:ldiv!, 2) => 2, (:lmul!, 2) => 2)
 
 """
-Random `!` functions that fill array operand: written operand is first array. Distributions adds `rand!(rng, s, x)`,
-which writes `x` after sampler `s`.
+Names of `!` functions that fill array operand: written operand is first array. Distributions adds `rand!(rng, s, x)`,
+which writes `x` after sampler `s`, and helpers `_rand!` and `__rand!` in same order.
 """
-const ARRAY_FILLS = Base.IdSet{Any}(Any[Random.rand!, Random.randn!, Random.randexp!])
+const FILL_NAMES = Set{Symbol}([:rand!, :randn!, :randexp!])
 
 """Package of LinearAlgebra standard library: owner check of table entries (`library_owner`)."""
 const LINEAR_ALGEBRA = Base.PkgId(Base.UUID("37e2e46d-f89d-539d-b4ee-838fcccc9c8e"), "LinearAlgebra")

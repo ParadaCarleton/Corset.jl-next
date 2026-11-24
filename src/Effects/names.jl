@@ -466,15 +466,18 @@ function library_owner(@nospecialize(callee::Any))::Union{Nothing, Symbol}
     return nothing
 end
 
+"""Whether `callee` fills array operand: name in `FILL_NAMES`, after leading underscores of internal helper (`_rand!`)."""
+fill_call(@nospecialize(callee::Any))::Bool = Symbol(lstrip(string(nameof(callee)), '_')) in FILL_NAMES
+
 """
 Position of operand that `!` function `callee` writes among `operands` (`effects.md`, Writes, source 2): first operand
-after leading callable, `IO`, `AbstractRNG` and immutable operands, first array of `ARRAY_FILLS` call, or position
+after leading callable, `IO`, `AbstractRNG` and immutable operands, first array of `fill_call`, or position
 table entry. `nothing` when none is left.
 """
 function written_position(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Union{Nothing, Int}
     table = get(WRITE_POSITION, (nameof(callee), length(operands)), nothing)
     !isnothing(table) && library_owner(callee) === :LinearAlgebra && return table
-    filled = callee in ARRAY_FILLS ? findfirst(operand -> operand_type(walk, operand) <: AbstractArray, operands) : nothing
+    filled = fill_call(callee) ? findfirst(operand -> operand_type(walk, operand) <: AbstractArray, operands) : nothing
     return isnothing(filled) ? next_subject(walk, operands, 1) : something(filled)
 end
 
