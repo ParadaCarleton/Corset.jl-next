@@ -700,6 +700,7 @@ function shape(package::PackageFacts)::Vector{String}
     return unique!(parts)
 end
 
+# corset: allow bang-convention -- crash journal records progress; caller reads it only after crash
 """
 Run of inference stage: facts, blind spots, units (typed code of signatures it inferred, and units store served), and
 store of entries it used.

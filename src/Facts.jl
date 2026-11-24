@@ -15,7 +15,7 @@ export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, W
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
 export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, StatefulIterate, InferenceFacts, Step, Root, Place, Access, UnguardedHold, LoopWrite, SelfAlias, StatefulReuse, UnprovenIndex, Callee, callee_name, callee_methods, place_text, place_root, place_steps, step_child, current_objects, takes_rng, root_global, CallFact, no_effect, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
-export name_span, tuple_parameters, lowered_value, argument_type, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
+export name_span, tuple_parameters, lowered_value, argument_type, subject_position, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
 export takes_docstring, comment_lines_above, comments_in, discarded, literal, line_start, owned_lines, line_deletion
 export negation, exits, terms, exit_guard, later_term, returning_function, CONDITION, operand, body_text, negated, none_text, Branch, if_text, statement_indent
@@ -796,6 +796,17 @@ function argument_type(method::Method, position::Integer)::Union{Nothing, Type}
     length(parameters) > position || return nothing
     # Julia reduces `T where T <: Walk` to `Walk`, and drops type variables argument does not use.
     return Base.rewrap_unionall(Base.unwrapva(parameters[position + 1]), method.sig)
+end
+
+"""
+Argument of `method` that name trust can let call write (`effects.md`, Writes, source 3): first argument not declared
+callable (stream, lock, RNG, iterator), by position (1 is first after callee). `nothing` when each is callable.
+"""
+function subject_position(method::Method)::Union{Nothing, Int}
+    for position in 1:(length(tuple_parameters(method.sig)) - 1)
+        something(argument_type(method, position)) <: Base.Callable || return position
+    end
+    return nothing
 end
 
 """Return type inference finds for `trait(x)` over values `x` of struct `type`: `Base.HasLength` for `Base.IteratorSize`."""

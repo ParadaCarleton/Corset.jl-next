@@ -9,6 +9,7 @@ include("rules/and_or_precedence.jl")
 include("rules/annotation.jl")
 include("rules/approx_zero.jl")
 include("rules/baked_state.jl")
+include("rules/bang_convention.jl")
 include("rules/banned.jl")
 include("rules/bracketed_range.jl")
 include("rules/broad_catch.jl")
@@ -23,6 +24,7 @@ include("rules/file_length.jl")
 include("rules/guard_result.jl")
 include("rules/hidden_input.jl")
 include("rules/implicit_import.jl")
+include("rules/impure_lambda.jl")
 include("rules/inference_dependent.jl")
 include("rules/intermediate_widening.jl")
 include("rules/internal_access.jl")
@@ -75,6 +77,7 @@ const REGISTRY = RuleEntry[
     Annotation.ENTRY,
     ApproxZero.ENTRY,
     BakedState.ENTRY,
+    BangConvention.ENTRY,
     Banned.ENTRY,
     BracketedRange.ENTRY,
     BroadCatch.ENTRY,
@@ -89,6 +92,7 @@ const REGISTRY = RuleEntry[
     GuardResult.ENTRY,
     HiddenInput.ENTRY,
     ImplicitImport.ENTRY,
+    ImpureLambda.ENTRY,
     InferenceDependent.ENTRY,
     IntermediateWidening.ENTRY,
     InternalAccess.ENTRY,

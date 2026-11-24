@@ -66,7 +66,7 @@ const WIDER_TYPES = IdDict{Any, Type}(first(entry) => getglobal(Base, Symbol(las
 const CONTAINERS = Dict{Core.TypeName, Type}(Array.body.body.name => AbstractArray, Dict.body.body.name => AbstractDict, Set.body.name => AbstractSet)
 
 """
-Type `type` with every listed type widened, as `widened_text` widens annotation: Base number types, containers, and
+Type `type` with every listed type widened, as `widened_text!` widens annotation: Base number types, containers, and
 upper bounds of `<:` parameters. Changed parameter of invariant type becomes `<:` parameter. Aliases widen too.
 """
 function widened_type(@nospecialize(type::Any))::Any
@@ -116,7 +116,7 @@ end
 covariant(head::Union{Nothing, Type})::Bool = head === Union || (!isnothing(head) && Base.unwrap_unionall(head) <: Tuple)
 
 """Widened text of curly `node`: union of number types becomes its join; parameters widen, with `<:` inside invariant type."""
-function widened_curly(mod::Module, file::SyntaxFile, node::SyntaxNode, found::AbstractVector{SyntaxNode})::String
+function widened_curly!(mod::Module, file::SyntaxFile, node::SyntaxNode, found::AbstractVector{SyntaxNode})::String
     head, parameters = children_of(node)[1], children_of(node)[2:end]
     resolved = resolve_type(mod, file, head)
     resolved in (Type, Val) && return source(file, node)
@@ -128,18 +128,18 @@ function widened_curly(mod::Module, file::SyntaxFile, node::SyntaxNode, found::A
     texts = String[]
     for parameter in parameters
         before = length(found)
-        text = widened_text(mod, file, parameter, found)
+        text = widened_text!(mod, file, parameter, found)
         changed = length(found) > before && !covariant(resolved) && kind_name(parameter) != "<:"
         push!(texts, changed ? "<:$text" : text)
     end
-    return "$(widened_text(mod, file, head, found)){$(join(texts, ", "))}"
+    return "$(widened_text!(mod, file, head, found)){$(join(texts, ", "))}"
 end
 
 """Widened text of annotation `node` of `file` in `mod`; pushes each reported part to `found`."""
-function widened_text(mod::Module, file::SyntaxFile, node::SyntaxNode, found::AbstractVector{SyntaxNode})::String
+function widened_text!(mod::Module, file::SyntaxFile, node::SyntaxNode, found::AbstractVector{SyntaxNode})::String
     kind = kind_name(node)
-    kind == "curly" && return widened_curly(mod, file, node, found)
-    kind == "<:" && length(children_of(node)) == 1 && return "<:" * widened_text(mod, file, only(children_of(node)), found)
+    kind == "curly" && return widened_curly!(mod, file, node, found)
+    kind == "<:" && length(children_of(node)) == 1 && return "<:" * widened_text!(mod, file, only(children_of(node)), found)
     wider = replacement(mod, file, node)
     isnothing(wider) && return source(file, node)
     push!(found, node)
@@ -204,7 +204,7 @@ function findings(facts::FactSet)::Vector{Finding}
             annotation in seen && continue
             push!(seen, annotation)
             reported = SyntaxNode[]
-            wider = widened_text(site.method.module, site.file, annotation, reported)
+            wider = widened_text!(site.method.module, site.file, annotation, reported)
             isempty(reported) || push!(pending, (annotation, wider, reported))
         end
         isempty(pending) && continue

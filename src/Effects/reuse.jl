@@ -32,6 +32,7 @@ Kind of iterator that type gives: `multi` restarts at each start, `stateful` adv
 """
 @enumx Pass multi stateful open blind
 
+# corset: allow bang-convention -- memo of type answers; result never changes
 """
 Kind of iterator of `type`, joined over union members; `nothing` and `missing` iterate nothing. Members of both kinds,
 or `open` member, give `open`; else `blind` member gives `blind`. Type variable takes kind of its bound. `memo` holds
@@ -338,6 +339,7 @@ function loaded_operands(walk::Walk, @nospecialize(statement::Any))::Union{Nothi
     return loads ? operands : nothing
 end
 
+# corset: allow bang-convention -- memo of reach answers; result never changes
 """
 Whether event `later` can run after event `earlier` of `walk` on one path that enters no block of `avoid`: later
 statement in same block, later operand path of same statement, or block that successors of earlier block reach.

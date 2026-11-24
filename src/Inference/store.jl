@@ -100,6 +100,7 @@ function method_index(files::AbstractDict{String, SyntaxFile})::Tuple{Dict{Strin
     return Dict(id => method for (method, id) in ids), ids
 end
 
+# corset: allow bang-convention -- memo of code digests; result never changes
 """
 Entry `store` holds under `key` when file of method keeps its hash in `hashes`, each method entry read keeps its code,
 and each generator it read gives same code. `index` finds methods by id; `codes` caches digests by id or staged key.

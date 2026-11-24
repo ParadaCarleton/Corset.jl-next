@@ -72,26 +72,26 @@ end
 `type` with float stand-in replaced by `Float64`, parameters, variable bounds and union members included (as
 `holds_float` reads them); `nothing` when parameter bound rejects `Float64`. Meeting test swaps input to it.
 """
-swapped(@nospecialize(type::Any))::Any = swapped(type, IdDict{TypeVar, TypeVar}())
+swapped(@nospecialize(type::Any))::Any = swapped!(IdDict{TypeVar, TypeVar}(), type)
 
 """`swapped` of `type`; `variables` maps each type variable to one with swapped bounds."""
-function swapped(@nospecialize(type::Any), variables::IdDict{TypeVar, TypeVar})::Any
+function swapped!(variables::IdDict{TypeVar, TypeVar}, @nospecialize(type::Any))::Any
     type === FloatStandIn && return Float64
     type isa TypeVar && return get(variables, type, type)
     if type isa Union
-        members = (swapped(type.a, variables), swapped(type.b, variables))
+        members = (swapped!(variables, type.a), swapped!(variables, type.b))
         return any(isnothing, members) ? nothing : Union{members...}
     end
     if type isa UnionAll
-        bounds = (swapped(type.var.lb, variables), swapped(type.var.ub, variables))
+        bounds = (swapped!(variables, type.var.lb), swapped!(variables, type.var.ub))
         any(isnothing, bounds) && return nothing
         variable = variables[type.var] = TypeVar(type.var.name, bounds...)
-        body = swapped(type.body, variables)
+        body = swapped!(variables, type.body)
         return isnothing(body) ? nothing : UnionAll(variable, body)
     end
     type isa DataType || return type
     isempty(type.parameters) && return type
-    parameters = Any[swapped(parameter, variables) for parameter in type.parameters]
+    parameters = Any[swapped!(variables, parameter) for parameter in type.parameters]
     # `nothing` is valid parameter value (`Ref{nothing}`), so failed parameter must stop here.
     any(isnothing, parameters) && return nothing
     return try

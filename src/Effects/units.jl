@@ -20,23 +20,27 @@ edges come second: `nothing` when it failed. Unit that always throws on stand-in
 """
 function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt, journal::Union{Nothing, Inference.Journal})::Tuple{UnitEffects, Union{Nothing, Vector{Any}}}
     cut = isempty(typed.cuts) ? nothing : typed.spans[first(typed.cuts)]
-    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], UnprovenIndex[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, cut), Any[]
+    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], UnprovenIndex[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, false, cut), Any[]
     walk, lines, used, claimed = unit_walk(typed, modules, interpreter, world)
     ir = walk.ir
     walk_values!(walk, 2 * length(ir.stmts) + 10)
     users = statement_users(ir)
-    writes, reads, aliases, calls, callee_claimed = Access[], Access[], Set{Place.Type}(), UnitCalls(), false
+    writes, reads, aliases, calls, callee_claimed, new_result = Access[], Access[], Set{Place.Type}(), UnitCalls(), false, false
     spans = Span[line in eachindex(typed.spans) ? typed.spans[line] : typed.site.span for line in lines]
     for index in 1:length(ir.stmts)
         line, span = lines[index], spans[index]
-        events = statement_events(walk, index)
+        events, invoked = statement_events(walk, index)
         foreach(event -> push!(event.write ? writes : reads, Access(event.place, event.below, event.kind, event.confidence, span)), events)
         statement = ir.stmts[index][:stmt]
-        statement isa Core.ReturnNode && isdefined(statement, :val) && union!(aliases, held(operand_value(walk, statement.val)))
+        if statement isa Core.ReturnNode && isdefined(statement, :val)
+            returned = operand_value(walk, statement.val)
+            union!(aliases, held(returned))
+            new_result |= returns_new(walk, statement.val, returned)
+        end
         statement isa Expr || continue
         statement.head in (:call, :foreigncall) || continue
         # Compiler trusts claim of direct callee too (`@assume_effects`); keyword call hides its callee, so it counts.
-        fact = call_fact(walk, index, events, span, iszero(line) ? !isempty(users[index]) : used[line])
+        fact = call_fact(walk, index, events, invoked, span, iszero(line) ? !isempty(users[index]) : used[line])
         callee_claimed |= statement.head === :call && callee_claims(walk, statement, fact.callee)
         push!(calls, (line, span) => fact)
     end
@@ -45,7 +49,24 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
     reuses, reuse_spots = stateful_reuses(walk, typed.site.method, spans)
     indices, index_spots, edges = unit_indices(typed, walk, interpreter, journal)
     unspanned = [BlindSpot(UNSPANNED_CALL, span) for ((line, span), fact) in calls if line in typed.unmapped && no_effect(fact)]
-    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), reuses, indices, [loop_spots; reuse_spots; index_spots; unspanned], effect_free, cut), edges
+    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), reuses, indices, [loop_spots; reuse_spots; index_spots; unspanned], effect_free, new_result, cut), edges
+end
+
+"""
+Whether returned `operand` of `walk`, of `value`, gives caller new value (F86): not `nothing`, and neither argument
+nor value that holds argument or lies below it.
+"""
+function returns_new(walk::Walk, @nospecialize(operand::Any), value::Value)::Bool
+    operand_type(walk, operand) <: Nothing && return false
+    root = underlying(walk, operand)
+    root isa Core.Argument && root.n >= 2 && return false
+    return !any(place -> argument_root(place_root(place)), held(value))
+end
+
+"""Whether `root` is argument of method; first parameter is called function."""
+argument_root(root::Root.Type)::Bool = @match root begin
+    Root.Parameter(position) => position >= 2
+    _ => false
 end
 
 """
@@ -64,26 +85,36 @@ function frame_walk(frame::CC.InferenceState, method::Method, modules::AbstractS
     # Inferred flags reuse claim bits, so claim reads code before inference.
     flags, claimed = frame.src.ssaflags, claims_effect_free(method, CC.retrieve_code_info(frame.linfo, world))
     proven = Bool[!claimed && line in eachindex(flags) && flags[line] & CC.IR_FLAG_EFFECT_FREE != 0 for line in lines]
-    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{CapturedWrite}}(), IdDict{Union{Method, Core.MethodInstance}, Bool}(), world)
+    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{ClosureWrite}}(), IdDict{Union{Method, Core.MethodInstance}, Bool}(), world)
     return walk, lines, used, claimed
 end
 
 """
 Fact of call statement `index` in `walk` with its `events` (`CallFact`): write kinds include writes of package closures
-it takes or calls. Compiler flags give `effect_free`, `throws` and `terminates`. Builtin and foreign callee have no
-dispatch to open.
+it takes or calls. Closure kinds come from closure `writes`, fresh captured objects included. Compiler flags give
+`effect_free`, `throws` and `terminates`. Builtin and foreign callee have no dispatch to open.
 """
-function call_fact(walk::Walk, index::Integer, events::AbstractVector{Event}, span::Span, used::Bool)::CallFact
+function call_fact(walk::Walk, index::Integer, events::AbstractVector{Event}, writes::AbstractVector{ClosureWrite}, span::Span, used::Bool)::CallFact
     statement = walk.ir.stmts[index][:stmt]::Expr
     operands, callee = call_operands(statement), call_callee(walk, statement)
-    kinds = sort!(unique!([event.kind for event in events if event.write]))
-    definite = sort!(unique!([event.kind for event in events if event.write && event.confidence == Confidence.definite]))
     flag = walk.ir.stmts[index][:flag]
     stand_in = any(operand -> holds_stand_in(operand_type(walk, operand)), operands)
     dispatched = statement.head === :call && !(constant_value(walk, statement.args[1]) isa Core.Builtin)
     open_dispatch = dispatched && !Base.isdispatchtuple(Tuple{Any[operand_type(walk, operand) for operand in statement.args]...})
     throws, terminates = flag & CC.IR_FLAG_NOTHROW == 0, flag & CC.IR_FLAG_TERMINATES != 0
-    return CallFact(span, callee, kinds, definite, proven_call(walk, index, statement, callee), throws, terminates, used, stand_in, open_dispatch)
+    proven = proven_call(walk, index, statement, callee)
+    return CallFact(span, callee, write_kinds(events)..., closure_kinds(writes)..., proven, throws, terminates, used, stand_in, open_dispatch)
+end
+
+"""Kinds of closure `writes` at any certainty, and kinds of exact writes."""
+function closure_kinds(writes::AbstractVector{ClosureWrite})::Tuple{Vector{EffectKind.T}, Vector{EffectKind.T}}
+    return sort!(unique!([write.kind for write in writes])), sort!(unique!([write.kind for write in writes if write.exact]))
+end
+
+"""Kinds of writes among `events` at any certainty, and kinds of definite writes."""
+function write_kinds(events::AbstractVector{Event})::Tuple{Vector{EffectKind.T}, Vector{EffectKind.T}}
+    writes = [event for event in events if event.write]
+    return sort!(unique!([event.kind for event in writes])), sort!(unique!([event.kind for event in writes if event.confidence == Confidence.definite]))
 end
 
 """Operands of call `statement`, callee first; foreign call gives its argument operands."""
@@ -181,9 +212,11 @@ end
 """Fact of call statement over two units of method: unit that may throw, writes, uses result or lacks proof decides."""
 function merge_calls(first::CallFact, second::CallFact)::CallFact
     kinds, definite = sort!(union(first.kinds, second.kinds)), sort!(union(first.definite, second.definite))
+    closure_kinds, closure_definite = sort!(union(first.closure_kinds, second.closure_kinds)), sort!(union(first.closure_definite, second.closure_definite))
     return CallFact(
-        first.span, merge_callees(first.callee, second.callee), kinds, definite, first.effect_free && second.effect_free, first.throws || second.throws,
-        first.terminates && second.terminates, first.used || second.used, first.stand_in || second.stand_in, first.open_dispatch || second.open_dispatch,
+        first.span, merge_callees(first.callee, second.callee), kinds, definite, closure_kinds, closure_definite, first.effect_free && second.effect_free,
+        first.throws || second.throws, first.terminates && second.terminates, first.used || second.used, first.stand_in || second.stand_in,
+        first.open_dispatch || second.open_dispatch,
     )
 end
 
@@ -225,7 +258,7 @@ blind spot `CUT`. Method is effect-free when compiler proves every unit effect-f
 """
 function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, records::AbstractVector{Pair{Method, Union{Nothing, UnitEffects}}})::Tuple{EffectsFacts, Vector{BlindSpot}}
     spots = BlindSpot[]
-    found, free, cuts = IdDict{Method, Collected}(), IdDict{Method, Bool}(), IdDict{Method, Span}()
+    found, free, cuts, new_results = IdDict{Method, Collected}(), IdDict{Method, Bool}(), IdDict{Method, Span}(), IdDict{Method, Bool}()
     for (method, record) in records
         isnothing(record) && continue
         append!(spots, record.spots)
@@ -241,6 +274,7 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
         append!(reuses, record.stateful_reuses)
         append!(indices, record.unproven_indices)
         free[method] = get(free, method, true) && record.effect_free
+        new_results[method] = get(new_results, method, false) || record.new_result
         isnothing(record.cut) || haskey(cuts, method) || (cuts[method] = something(record.cut))
     end
     methods = MethodEffects[]
@@ -250,7 +284,8 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
         complete = !(site.method in incomplete) && !haskey(cuts, site.method)
         effects = MethodEffects(
             site, worst(writes), worst(reads), text_order(unique!(aliases), repr), text_order(unique!(unguarded), repr),
-            call_order(calls), surest(loops, loop_key), surest(selves, alias_key), surest(reuses, reuse_key), surest(indices, index_key), complete, free[site.method], claimed_effects(site.method),
+            call_order(calls), surest(loops, loop_key), surest(selves, alias_key), surest(reuses, reuse_key), surest(indices, index_key), complete, free[site.method], new_results[site.method],
+            name_writes(site.method), claimed_effects(site.method),
         )
         push!(methods, effects)
         # Write keeps its certainty with cut; only method without write goes to coverage line.
