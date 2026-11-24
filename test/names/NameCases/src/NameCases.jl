@@ -279,6 +279,12 @@ emptiness(itr::Any)::Bool = isempty(itr)
 # Compiler effects and call facts.
 """Sum of `x` and `y`."""
 add(x::Int, y::Int)::Int = x + y
+"""Negated predicate `!isnothing` writes nothing: `!` negates."""
+kept_some(items::Vector{Union{Nothing, Int}})::Vector{Union{Nothing, Int}} = filter(!isnothing, items)
+"""Buffer that constructor builds holds nothing caller sees."""
+buffered(x::Int)::Vector{UInt8} = (buffer = IOBuffer(); print(buffer, x); take!(buffer))
+"""Immutable argument returned unchanged: no new value."""
+returned_point(point::Tuple{Float64})::Tuple{Float64} = point
 """Run writing closure under block claim: claim voids compiler proof of call."""
 assumed_foreach!(out::Vector{Int}, items::Vector{Int})::Nothing = Base.@assume_effects :effect_free foreach(item -> push!(out, item), items)
 """Call `f` under false claim: compiler trusts claim at each call."""

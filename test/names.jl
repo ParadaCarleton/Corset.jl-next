@@ -328,6 +328,17 @@ end
     @test place_text(only(methods(CASES.make_callback(Int[]))), Place.At(Root.Parameter(1), Step.Type[])) == "closure"
 end
 
+@testset "result and name facts" begin
+    @test effects(:add).new_result && !effects(:add).name_writes
+    # Argument, value below argument, value that holds argument, and `nothing` give no new value.
+    @test !any(name -> effects(name).new_result, (:returned_point, :first_view, :wrap, :discard))
+    @test effects(:bump!).name_writes && effects(:set_value!).name_writes
+    # `!` alone negates, and constructor without operands builds fresh object: neither writes.
+    @test isempty(effects(:kept_some).writes) && isempty(effects(:buffered).writes)
+    # Base `iterate` may write stateful iterator, so name trust lets its methods write.
+    @test all(method -> method.name_writes, (method for method in FACTS.methods if method.site.method.name === :iterate))
+end
+
 @testset "unit record round trip" begin
     world = Base.get_world_counter()
     @test length(RECORDS) == length(UNITS.typed)

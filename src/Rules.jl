@@ -9,6 +9,7 @@ include("rules/and_or_precedence.jl")
 include("rules/annotation.jl")
 include("rules/approx_zero.jl")
 include("rules/baked_state.jl")
+include("rules/bang_convention.jl")
 include("rules/banned.jl")
 include("rules/bracketed_range.jl")
 include("rules/broad_catch.jl")
@@ -72,6 +73,7 @@ const REGISTRY = RuleEntry[
     Annotation.ENTRY,
     ApproxZero.ENTRY,
     BakedState.ENTRY,
+    BangConvention.ENTRY,
     Banned.ENTRY,
     BracketedRange.ENTRY,
     BroadCatch.ENTRY,

@@ -50,7 +50,7 @@ end
 abstract_parameter(parameter::Type)::Bool = parameter !== Any && parameter !== Union{} && !isconcretetype(parameter)
 
 """Findings for abstract parameters of invariant types in argument annotations of `site`, keyed on parameter node in `seen`."""
-function site_findings(site::MethodSite, seen::Base.IdSet{SyntaxNode})::Vector{Finding}
+function site_findings!(site::MethodSite, seen::Base.IdSet{SyntaxNode})::Vector{Finding}
     parts = isnothing(site.node) ? nothing : signature(site.node)
     isnothing(parts) && return Finding[]
     file, mod, bound = site.file, site.method.module, type_variables(site.method.sig)
@@ -85,7 +85,7 @@ function findings(facts::FactSet)::Vector{Finding}
     isnothing(package) && return Finding[]
     # Default arguments give one definition several methods; each parameter node reports once.
     seen = Base.IdSet{SyntaxNode}()
-    return reduce(vcat, (site_findings(site, seen) for site in package.methods); init = Finding[])
+    return reduce(vcat, (site_findings!(site, seen) for site in package.methods); init = Finding[])
 end
 
 const ENTRY = RuleEntry(NAME, Group.correctness, [14], Stage.package, findings)
