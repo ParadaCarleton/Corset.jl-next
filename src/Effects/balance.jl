@@ -193,6 +193,7 @@ function may_run_before(cfg::CC.CFG, from::Integer, to::Integer)::Bool
     return false
 end
 
+# corset: allow bang-convention -- memo of reach answers; result never changes
 """
 Whether IR `operand` of `walk` can reach `resource`: root that can hold resource value (`value_reach`, kept per value in
 `reach`), or caller place at or above resource place, or above place of resource value (`locks` reaches `locks[1]`).
@@ -358,7 +359,7 @@ function path_successors(ir::CC.IRCode, block::Integer, path::Path)::Vector{Pair
         condition = terminator.cond
         value = condition isa Bool ? condition : get(path.conditions, condition, nothing)
         isnothing(value) || return [(something(value) ? block + 1 : terminator.dest) => copy_path(path)]
-        blurred = path.blurred || may_depend!(ir, condition, path.dropped, DEPEND_DEPTH, Set{Int}())
+        blurred = path.blurred || may_depend!(Set{Int}(), ir, condition, path.dropped, DEPEND_DEPTH)
         taken(side::Bool)::Path = Path(copy(path.counts), merge(path.conditions, Dict{Any, Bool}(condition => side)), setdiff(path.dropped, (condition,)), blurred)
         return [block + 1 => taken(true), terminator.dest => taken(false)]
     end
@@ -375,7 +376,7 @@ Whether branch `condition` of `ir` can depend on conditions in `dropped`, within
 non-constant global, or operand that can depend. Adds each SSA value it walks to `visited`; walked value adds nothing,
 so shared operands cost one visit.
 """
-function may_depend!(ir::CC.IRCode, @nospecialize(condition::Any), dropped::AbstractSet, depth::Integer, visited::AbstractSet{<:Integer})::Bool
+function may_depend!(visited::AbstractSet{<:Integer}, ir::CC.IRCode, @nospecialize(condition::Any), dropped::AbstractSet, depth::Integer)::Bool
     isempty(dropped) && return false
     condition in dropped && return true
     condition isa GlobalRef && return !isconst(condition)
@@ -388,7 +389,7 @@ function may_depend!(ir::CC.IRCode, @nospecialize(condition::Any), dropped::Abst
     statement isa Union{Core.PhiNode, Core.PhiCNode, Core.UpsilonNode} && return true
     calls = statement isa Expr && statement.head in (:call, :invoke, :foreigncall)
     calls && ir.stmts[condition.id][:flag] & CC.IR_FLAG_CONSISTENT == 0 && return true
-    return any(reference -> may_depend!(ir, reference[], dropped, depth - 1, visited), CC.userefs(statement))
+    return any(reference -> may_depend!(visited, ir, reference[], dropped, depth - 1), CC.userefs(statement))
 end
 
 """Heads of IR expressions that can throw: calls and allocations. Flag `nothrow` decides whether each one does."""

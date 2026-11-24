@@ -164,7 +164,7 @@ hold_shape(name::Symbol)::Vector{Tuple{EffectKind.T, Confidence.T}} = [(hold.kin
     ir = first(only(Base.code_ircode(xor_chain, (Int,))))
     condition = Core.SSAValue(findlast(statement -> statement isa Expr, ir.stmts.stmt))
     visited = Set{Int}()
-    @test !Effects.may_depend!(ir, condition, Set{Any}([Core.Argument(3)]), 64, visited)
+    @test !Effects.may_depend!(visited, ir, condition, Set{Any}([Core.Argument(3)]), 64)
     @test 40 <= length(visited) <= length(ir.stmts)
 end
 
