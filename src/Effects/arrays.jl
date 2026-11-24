@@ -11,6 +11,9 @@ const COLLECTING = Base.IdSet{Any}(Any[collect, map])
 """Base functions whose result is new array that copies operands."""
 const COPYING = Base.IdSet{Any}(Any[copy, vcat, hcat])
 
+"""Base arithmetic and reductions: result is new value, never array operand itself (`+(a)` and `sum(a; dims)` copy)."""
+const COMPUTING = Base.IdSet{Any}(Any[+, -, *, /, (\), sum, prod, maximum, minimum, extrema, any, all, count, reduce, foldl, foldr, mapreduce])
+
 """Functions that read shape of array operand, never its elements (`lifecycle.md`, Events)."""
 const SHAPE_FUNCTIONS = Base.IdSet{Any}(
     Any[size, length, axes, eachindex, firstindex, lastindex, ndims, eltype, isempty, similar, keys, LinearIndices, CartesianIndices, checkbounds, isassigned, sizeof, strides, stride, ===, isa, typeof, isdefined],
@@ -146,6 +149,9 @@ function element_coverage(walk::Walk, operands::AbstractVector{Any})::Tuple{Cove
     return (Coverage.element, Int[index for index in indices])
 end
 
+"""Base collections whose fields hold storage of their elements alone; other collection can hold more (view holds parent)."""
+const STORAGE = Union{Array, BitArray, GenericMemory, Dict, IdDict, Set, Base.IdSet}
+
 """
 Whether value of type `holder` can hold object of type `held` inside: element or field type that meets `held`, at
 most `depth` steps deep. Union holds what a member holds; abstract or other holder can hold anything.
@@ -157,13 +163,15 @@ function can_hold(@nospecialize(holder::Any), @nospecialize(held::Any), depth::I
     # `Type{T}` is abstract but holds no array, so this check comes first.
     (isbitstype(holder) || holder <: Union{AbstractString, Symbol, Module, Type}) && return false
     Base.isabstracttype(holder) && return true
-    inner = if holder <: Union{AbstractArray, AbstractDict, AbstractSet}
-        Any[element_type(holder)]
+    elements = holder <: Union{AbstractArray, AbstractDict, AbstractSet} ? Any[element_type(holder)] : Any[]
+    inner = if holder <: STORAGE
+        elements
     elseif holder <: Tuple
         # Open-length tuple (`Tuple{Vararg{T}}`) has no field count; its element type stands for every field.
         Any[Base.unwrapva(parameter) for parameter in holder.parameters]
     else
-        Any[fieldtype(holder, index) for index in 1:fieldcount(holder)]
+        # View or wrapper holds its parent in field (`SubArray`).
+        Any[elements; Any[fieldtype(holder, index) for index in 1:fieldcount(holder)]]
     end
     return any(type -> typeintersect(type, held) !== Union{} || can_hold(type, held, depth - 1), inner)
 end
@@ -229,7 +237,19 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
         # Other operand of `!` call goes into written operand when its type can hold array (`push!(c, a)`).
         return passed(!isnothing(written) && can_hold(operand_type(walk, operands[something(written)]), held, HOLD_DEPTH))
     end
-    return passed(can_hold(CC.widenconst(walk.ir.stmts[index][:type]), held, HOLD_DEPTH))
+    result = CC.widenconst(walk.ir.stmts[index][:type])
+    return passed(can_return(callee, result, held) || can_hold(result, held, HOLD_DEPTH))
+end
+
+"""
+Whether call of `callee` with `result` type can return its operand of type `held` itself: result type meets `held`,
+and callee is no Base function that builds new array. `float(a)`, `convert` and package `pass(a) = a` return operand.
+"""
+function can_return(@nospecialize(callee::Any), @nospecialize(result::Any), @nospecialize(held::Any))::Bool
+    (callee in COPYING || callee in COLLECTING || callee in COMPUTING) && return false
+    # `Array` and `BitArray` constructors copy array operand.
+    callee isa Type && callee <: Union{Array, BitArray} && return false
+    return typeintersect(result, held) !== Union{}
 end
 
 """Event of array that call takes as operand: `escape` when call can keep it, else whole `read`."""

@@ -1115,7 +1115,8 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 <li>Non-written operand of package <code>!</code> call escapes: name promises one written operand, and call can write others. Distances <code>colwise!(metric, r, a, b)</code> writes <code>r</code>.</li>
 <li>Operand after written operand with call method (functor) of library <code>!</code> call escapes: <code>map!(scale, r, x)</code> writes <code>r</code>. Run of functors passes this on.</li>
 <li>Operand of non-<code>!</code> call escapes when result type can hold array: tuple, constructor, abstract result.</li>
-<li>Type can hold array when element or field type meets array type, at most 3 steps deep.</li>
+<li>Operand escapes when result type meets its type: call can return it (<code>float(a)</code>, package <code>pass(a) = a</code>). Base copy, collect, arithmetic and reduction calls build new value.</li>
+<li>Type can hold array when element or field type meets array type, at most 3 steps deep. Base storage (<code>Array</code>, <code>Dict</code>, <code>Set</code>) holds elements only; view or wrapper also holds fields (<code>SubArray</code> parent).</li>
 <li>Index operand keeps constant value. Non-constant index keeps nothing.</li>
 </ul>
 </div><div class="decision"><h3>Paths</h3>
