@@ -199,6 +199,11 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
     (callee === identity || (callee === typeassert && positions == [1])) && return :same
     callee in SHAPE_FUNCTIONS && return [(ArrayEventKind.shape, Coverage.unknown, Int[])]
     callee === getindex && positions == [1] && return [(ArrayEventKind.read, element_coverage(walk, @view(operands[2:end]))...)]
+    # Target of `a[i] .= x`: element for scalar index, else view; view of every element is array itself.
+    if callee in DOT_VIEWS && positions == [1]
+        view_call(walk, callee, operands) || return [(ArrayEventKind.read, element_coverage(walk, @view(operands[2:end]))...)]
+        return whole_view(walk, operands, extent) ? :same : :derived
+    end
     callee === setindex! && positions == [1] && return [(ArrayEventKind.write, element_coverage(walk, @view(operands[3:end]))...)]
     callee in (first, last, only) && return [(ArrayEventKind.read, Coverage.unknown, Int[])]
     # `String(v)` takes memory of byte vector `v`, as pointer conversion exposes it.
@@ -230,6 +235,13 @@ function call_event(walk::Walk, index::Integer, @nospecialize(callee::Any), oper
         return passed(!isnothing(written) && can_hold(operand_type(walk, operands[something(written)]), held, HOLD_DEPTH))
     end
     return passed(can_hold(CC.widenconst(walk.ir.stmts[index][:type]), held, HOLD_DEPTH))
+end
+
+"""Whether index `operands` of `dotview` call cover every element of allocation of `extent`: all `Colon`, or one covering range."""
+function whole_view(walk::Walk, operands::AbstractVector{Any}, extent::Extent)::Bool
+    indices = @view(operands[2:end])
+    all(index -> operand_type(walk, index) <: Colon, indices) && return true
+    return length(indices) == 1 && covering_range(walk, only(indices), extent)
 end
 
 """Event of array that call takes as operand: `escape` when call can keep it, else whole `read`."""
@@ -283,7 +295,7 @@ end
 """
 Range operand of loop whose iteration covers every element of allocation of `extent` (fill loop): index function of
 array (`eachindex`, `LinearIndices`, `CartesianIndices`) or of source that it copies axes of, `axes(a, 1)` of vector,
-`1:length(a)` of `Array`, or `1:n` with `n` its one size operand.
+`1:length(a)` or `1:lastindex(a)` of `Array`, or `1:n` with `n` its one size operand.
 """
 function covering_range(walk::Walk, @nospecialize(range::Any), extent::Extent)::Bool
     call = call_of(walk, range)
@@ -302,7 +314,7 @@ function covering_range(walk::Walk, @nospecialize(range::Any), extent::Extent)::
     counted = call_of(walk, stop)
     isnothing(counted) && return false
     counter, counted_operands = something(counted)
-    return counter === length && operand_type(walk, value) <: Union{Array, BitArray} && any(covers, counted_operands)
+    return counter in (length, lastindex) && operand_type(walk, value) <: Union{Array, BitArray} && any(covers, counted_operands)
 end
 
 """

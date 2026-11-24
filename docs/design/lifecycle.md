@@ -28,6 +28,7 @@ Allocation: statement whose result is new array that unit code alone holds. Base
 
 - Allocation value: SSA value of allocation, and `π` node or `typeassert` of it.
 - View: alias-table result (`effects.md`, Roots) of allocation value. Events through view carry `view`; they never give coverage.
+- `.=` target over every element (`a[:] .= x`, `a[1:end] .= x`) is allocation value. Fill loop ranges below cover.
 - `φ` node that joins allocation value with other value ends identity: later uses are `unknown` events.
 - Loop `φ` that joins allocation before loop with allocation in loop body gives rebind pair (F41).
 
@@ -36,7 +37,7 @@ Allocation: statement whose result is new array that unit code alone holds. Base
 Each statement that uses allocation value gives one event, with statement span, callee and operand position. Position counts positional operands only: `kwcall` keywords drop out. Event keeps Base function that call takes as first operand: `vcat` in `reduce(vcat, a)`. `!` call that takes array as written and source operand gives read, then write (`map!(f, a, a)`), or write, then escape when it stores array itself (`fill!(a, a)`). `!` call that reads old elements of array it writes (`sort!`, `reverse!`, `unique!`, `map!(f, a)`) gives read, then write.
 
 - `shape`: `size`, `length`, `axes`, `eachindex`, `firstindex`, `lastindex`, `ndims`, `eltype`, `isempty`, `similar`, `keys`, `LinearIndices`, `CartesianIndices`, `checkbounds`, `isassigned`, `sizeof`, `strides`, `stride`, `===`, `isa`, `typeof`, `isdefined`. Reads no element.
-- `read`: `getindex` reads elements at its index operands. `first`, `last` and `only` read one element.
+- `read`: `getindex` reads elements at its index operands. `first`, `last` and `only` read one element. `dotview` with scalar index reads element as `getindex`.
 - Other non-`!` call reads whole array. So does non-written operand of library `!` call: `copyto!(b, a)` reads `a`.
 - `broadcasted` result reads every element of its array operands when broadcast runs.
 - `write`: `setindex!` writes elements at its index operands.
@@ -60,7 +61,7 @@ Each statement that uses allocation value gives one event, with statement span, 
 - Order: block order of `sure` events follows dominance. Statements in one block keep IR order.
 - Fill loop is one `sure` whole write at loop exit when every condition holds:
   - Loop iterates `eachindex`, `LinearIndices` or `CartesianIndices` of `a`, or of `x` in `a = similar(x)` when no `!` call writes `x`.
-  - Or loop iterates `axes(a, 1)` of vector, `1:length(a)` of `Array`, or `1:n` and `Base.OneTo(n)` for `n` in `zeros(n)`.
+  - Or loop iterates `axes(a, 1)` of vector, `1:length(a)` or `1:lastindex(a)` of `Array`, or `1:n` and `Base.OneTo(n)` for `n` in `zeros(n)`.
   - Body writes `a[i]` with iteration value `i`, in block that runs on every iteration.
   - Loop exits only through its header, and its exit block post-dominates allocation block.
 - Other loop write is `loop` write with unknown coverage.

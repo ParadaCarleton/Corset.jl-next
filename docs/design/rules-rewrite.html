@@ -903,6 +903,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <ul>
 <li>Table: <code>view</code>, <code>reshape</code>, <code>vec</code>, <code>parent</code>, <code>transpose</code>, <code>adjoint</code>, <code>keys</code>, <code>values</code>, <code>pairs</code>, <code>first</code>, <code>last</code>, <code>only</code>, <code>identity</code>, <code>skipmissing</code>, iterator wrappers (<code>zip</code>, <code>enumerate</code>, <code>Iterators.*</code>).</li>
 <li>Pointer conversions before foreign call: <code>pointer</code>, <code>cconvert</code>, <code>unsafe_convert</code>.</li>
+<li><code>.=</code> target (<code>a[i] .= x</code>) and <code>@views</code>: <code>dotview</code> and <code>maybeview</code> give view for array with non-scalar index. Else they call <code>getindex</code>: element step.</li>
 </ul>
 </li>
 <li>Choice table: result is one of the operands, callable objects included, so it joins their values: <code>something</code>, <code>coalesce</code>, <code>max</code>, <code>min</code>, <code>ifelse</code>.</li>
@@ -1095,6 +1096,7 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 <ul>
 <li>Allocation value: SSA value of allocation, and <code>π</code> node or <code>typeassert</code> of it.</li>
 <li>View: alias-table result (<code>effects.md</code>, Roots) of allocation value. Events through view carry <code>view</code>; they never give coverage.</li>
+<li><code>.=</code> target over every element (<code>a[:] .= x</code>, <code>a[1:end] .= x</code>) is allocation value. Fill loop ranges below cover.</li>
 <li><code>φ</code> node that joins allocation value with other value ends identity: later uses are <code>unknown</code> events.</li>
 <li>Loop <code>φ</code> that joins allocation before loop with allocation in loop body gives rebind pair (F41).</li>
 </ul>
@@ -1102,7 +1104,7 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 <p>Each statement that uses allocation value gives one event, with statement span, callee and operand position. Position counts positional operands only: <code>kwcall</code> keywords drop out. Event keeps Base function that call takes as first operand: <code>vcat</code> in <code>reduce(vcat, a)</code>. <code>!</code> call that takes array as written and source operand gives read, then write (<code>map!(f, a, a)</code>), or write, then escape when it stores array itself (<code>fill!(a, a)</code>). <code>!</code> call that reads old elements of array it writes (<code>sort!</code>, <code>reverse!</code>, <code>unique!</code>, <code>map!(f, a)</code>) gives read, then write.</p>
 <ul>
 <li><code>shape</code>: <code>size</code>, <code>length</code>, <code>axes</code>, <code>eachindex</code>, <code>firstindex</code>, <code>lastindex</code>, <code>ndims</code>, <code>eltype</code>, <code>isempty</code>, <code>similar</code>, <code>keys</code>, <code>LinearIndices</code>, <code>CartesianIndices</code>, <code>checkbounds</code>, <code>isassigned</code>, <code>sizeof</code>, <code>strides</code>, <code>stride</code>, <code>===</code>, <code>isa</code>, <code>typeof</code>, <code>isdefined</code>. Reads no element.</li>
-<li><code>read</code>: <code>getindex</code> reads elements at its index operands. <code>first</code>, <code>last</code> and <code>only</code> read one element.</li>
+<li><code>read</code>: <code>getindex</code> reads elements at its index operands. <code>first</code>, <code>last</code> and <code>only</code> read one element. <code>dotview</code> with scalar index reads element as <code>getindex</code>.</li>
 <li>Other non-<code>!</code> call reads whole array. So does non-written operand of library <code>!</code> call: <code>copyto!(b, a)</code> reads <code>a</code>.</li>
 <li><code>broadcasted</code> result reads every element of its array operands when broadcast runs.</li>
 <li><code>write</code>: <code>setindex!</code> writes elements at its index operands.</li>
@@ -1127,7 +1129,7 @@ Rules read <code>lifecycle</code> facts only. Code lives in <code>src/Effects/ar
 <li>Fill loop is one <code>sure</code> whole write at loop exit when every condition holds:
 <ul>
 <li>Loop iterates <code>eachindex</code>, <code>LinearIndices</code> or <code>CartesianIndices</code> of <code>a</code>, or of <code>x</code> in <code>a = similar(x)</code> when no <code>!</code> call writes <code>x</code>.</li>
-<li>Or loop iterates <code>axes(a, 1)</code> of vector, <code>1:length(a)</code> of <code>Array</code>, or <code>1:n</code> and <code>Base.OneTo(n)</code> for <code>n</code> in <code>zeros(n)</code>.</li>
+<li>Or loop iterates <code>axes(a, 1)</code> of vector, <code>1:length(a)</code> or <code>1:lastindex(a)</code> of <code>Array</code>, or <code>1:n</code> and <code>Base.OneTo(n)</code> for <code>n</code> in <code>zeros(n)</code>.</li>
 <li>Body writes <code>a[i]</code> with iteration value <code>i</code>, in block that runs on every iteration.</li>
 <li>Loop exits only through its header, and its exit block post-dominates allocation block.</li>
 </ul>
