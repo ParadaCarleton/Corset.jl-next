@@ -130,4 +130,10 @@ function bumped(xs::AbstractVector{Int})
     return xs
 end
 
+# Store and read of other elements on one line: two findings.
+function shifted!(xs::AbstractVector{Int})
+    xs[1] = xs[2]
+    return xs
+end
+
 end

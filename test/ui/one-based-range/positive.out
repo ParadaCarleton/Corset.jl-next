@@ -309,3 +309,23 @@ warning[one-based-range]: index into `xs` has no proof that it comes from its ax
     = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
     = docs: corset explain one-based-range
 
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
+   --> src/OneBasedRangePositive.jl:135:5
+    |
+135 |     xs[1] = xs[2]
+    |     ^^^^^^^^^^^^^ index without proof
+    |
+    = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+    = docs: corset explain one-based-range
+
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
+   --> src/OneBasedRangePositive.jl:135:13
+    |
+135 |     xs[1] = xs[2]
+    |             ^^^^^ index without proof
+    |
+    = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+    = docs: corset explain one-based-range
+

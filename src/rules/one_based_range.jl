@@ -60,39 +60,14 @@ const FIX = "take index from `eachindex`, `axes`, `firstindex` or `begin`, or gu
 function findings(facts::FactSet)::Vector{Finding}
     effects = facts.effects
     isnothing(effects) && return Finding[]
-    found, texts = Finding[], Dict(file.path => file.text for file in facts.files)
-    for method in effects.methods, (position, unproven) in pairs(method.indices.unproven)
-        repeated(method.indices.unproven, position, texts) && continue
+    found = Finding[]
+    for method in effects.methods, unproven in method.indices.unproven
         array = isnothing(unproven.array) ? "array" : "`$(unproven.array)`"
         causes = isnothing(unproven.source) ? Label[] : [Label(something(unproven.source), "index comes from here")]
         message = "index into $array has no proof that it comes from its axes"
         push!(found, Finding(NAME, :unproven, unproven.confidence, message, Label(unproven.site, "index without proof"), causes, REASON, manual_fix(FIX)))
     end
     return append!(found, call_findings(effects.methods))
-end
-
-"""
-Whether unproven index at `position` of `unproven` repeats other one: same array and index source, and its span holds
-other span (`holds`), or equals span of earlier one. `r[j] += x` reads and writes `r[j]`: one finding.
-"""
-function repeated(unproven::AbstractVector{UnprovenIndex}, position::Integer, texts::AbstractDict{String, String})::Bool
-    current = unproven[position]
-    return any(pairs(unproven)) do (other_position, other)
-        other_position == position && return false
-        (isequal(other.array, current.array) && isequal(other.source, current.source)) || return false
-        current.site == other.site && return other_position < position
-        return holds(current.site, other.site, texts)
-    end
-end
-
-"""
-Whether span `outer` holds span `inner`. Line precision span holds its whole line of `texts[outer.file]`: lowering
-gives `setindex!` of `x[i] += 1` no syntax node.
-"""
-function holds(outer::Span, inner::Span, texts::AbstractDict{String, String})::Bool
-    (outer.file == inner.file && outer.first_byte <= inner.first_byte) || return false
-    outer.precision == Precision.line || return inner.last_byte <= outer.last_byte
-    return UInt8('\n') ∉ view(codeunits(texts[outer.file]), outer.first_byte:inner.last_byte)
 end
 
 """Findings for each package call that passes index without proof that it comes from array it indexes in callee."""

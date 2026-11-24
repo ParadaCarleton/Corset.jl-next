@@ -345,10 +345,11 @@ const ROUNDS = 16
 """
 Index facts of unit `walk` of `method` inferred with offset stand-ins (`types.md`, Index proof): indices into arrays
 with offset axes that have no proof, contracts of index arguments, and package calls that pass arrays with offset axes.
-`lines` gives source statement of each IR statement, `spans` span of each source statement. One unproven fact per
-indexing call: its first unproven index. Call compiler inserts gives none. Blind spots come from `index_contracts`.
+`lines` gives source statement of each IR statement, `spans` span of each source statement in `file`. One unproven fact
+per indexing call: its first unproven index; update reads and writes one element (`one_per_element`). Call compiler
+inserts gives none. Blind spots come from `index_contracts`.
 """
-function index_facts(walk::Walk, method::Method, lines::AbstractVector{<:Integer}, spans::AbstractVector{Span})::Tuple{IndexFacts, Vector{BlindSpot}}
+function index_facts(walk::Walk, method::Method, lines::AbstractVector{<:Integer}, spans::AbstractVector{Span}, file::SyntaxFile)::Tuple{IndexFacts, Vector{BlindSpot}}
     Base.require_one_based_indexing(lines, spans)
     span_of(index::Integer)::Union{Nothing, Span} = lines[index] in eachindex(spans) ? spans[lines[index]] : nothing
     count = length(walk.ir.stmts)
@@ -363,7 +364,7 @@ function index_facts(walk::Walk, method::Method, lines::AbstractVector{<:Integer
         changed || break
     end
     domtree, guards, agreements = CC.construct_domtree(walk.ir.cfg.blocks), one_based_guards(proof), axes_agreements(proof)
-    found, contracts, calls, spots = UnprovenIndex[], IndexContract[], IndexCall[], BlindSpot[]
+    found, contracts, calls, spots = Tuple{UnprovenIndex, Any, Any}[], IndexContract[], IndexCall[], BlindSpot[]
     for index in 1:count
         site = span_of(index)
         isnothing(site) && continue
@@ -379,9 +380,36 @@ function index_facts(walk::Walk, method::Method, lines::AbstractVector{<:Integer
         array, operand, confidence = unproven_site
         source = underlying(walk, operand)
         cause = source isa Core.SSAValue ? span_of(source.id) : nothing
-        push!(found, UnprovenIndex(site, cause == site ? nothing : cause, value_text(walk, method, array), confidence))
+        push!(found, (UnprovenIndex(site, cause == site ? nothing : cause, value_text(walk, method, array), confidence), array, operand))
     end
-    return IndexFacts(unique!(found), unique!(contracts), calls), unique!(spots)
+    return IndexFacts(unique!(one_per_element(found, file)), unique!(contracts), calls), unique!(spots)
+end
+
+"""
+Facts of `found` (fact, array value, index value) without repeats: fact repeats other fact of same array and index
+value when its span holds span of other (`holds`). `x[i] += 1` reads and writes one element: one fact at read.
+"""
+function one_per_element(found::AbstractVector{Tuple{UnprovenIndex, Any, Any}}, file::SyntaxFile)::Vector{UnprovenIndex}
+    groups = Dict{Tuple{Any, Any}, Vector{UnprovenIndex}}()
+    for (fact, array, operand) in found
+        push!(get!(Vector{UnprovenIndex}, groups, (array, operand)), fact)
+    end
+    kept = UnprovenIndex[]
+    for (fact, array, operand) in found
+        any(other -> other != fact && holds(fact.site, other.site, file), groups[(array, operand)]) || push!(kept, fact)
+    end
+    return kept
+end
+
+"""
+Whether span `outer` of `file` holds span `inner`. Line precision span holds its whole line: lowering gives
+`setindex!` of `x[i] += 1` no syntax node.
+"""
+function holds(outer::Span, inner::Span, file::SyntaxFile)::Bool
+    outer.file == inner.file == file.path || error("index span outside method file $(file.path): $(outer.file), $(inner.file)")
+    outer.first_byte <= inner.first_byte || return false
+    outer.precision == Precision.line || return inner.last_byte <= outer.last_byte
+    return UInt8('\n') ∉ view(codeunits(file.text), outer.first_byte:inner.last_byte)
 end
 
 """Calls `Base.require_one_based_indexing(x...)` in `proof`: statement and root of each array it checks."""
@@ -860,5 +888,5 @@ function unit_indices(typed::TypedCode, walk::Walk, interpreter::CC.NativeInterp
     inferred isa String && return IndexFacts(), [BlindSpot(inferred, typed.site.span)], nothing
     offset_walk, lines = frame_walk(last(inferred), method, walk.modules, interpreter, walk.world)
     walk_values!(offset_walk, 2 * length(offset_walk.ir.stmts) + 10)
-    return index_facts(offset_walk, method, lines, typed.spans)..., inferred[4]
+    return index_facts(offset_walk, method, lines, typed.spans, typed.site.file)..., inferred[4]
 end

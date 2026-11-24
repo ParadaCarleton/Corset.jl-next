@@ -72,6 +72,7 @@ end
     @test_throws BoundsError Positive.either_pick(evil, false)
     @test_throws BoundsError Positive.tagged_first(evil)
     @test_throws BoundsError Positive.bumped(EvilArray(copy(ints)))
+    @test_throws BoundsError Positive.shifted!(EvilArray(copy(ints)))
 end
 
 using Corset.Effects: Effects, offset_type, offset_signature, OffsetArray
