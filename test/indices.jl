@@ -71,6 +71,7 @@ end
     @test_throws BoundsError Positive.computed_pick(evil)
     @test_throws BoundsError Positive.either_pick(evil, false)
     @test_throws BoundsError Positive.tagged_first(evil)
+    @test_throws BoundsError Positive.bumped(EvilArray(copy(ints)))
 end
 
 using Corset.Effects: Effects, offset_type, offset_signature, OffsetArray

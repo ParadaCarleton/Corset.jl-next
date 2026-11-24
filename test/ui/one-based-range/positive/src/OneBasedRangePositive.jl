@@ -122,4 +122,12 @@ struct Tag end
 Base.get(xs::AbstractVector{Int}, i::Int, ::Tag) = xs[i]
 tagged_first(xs::AbstractVector{Int}) = get(xs, 1, Tag())
 
+# Update reads and writes one element: one finding.
+function bumped(xs::AbstractVector{Int})
+    for i in 1:length(xs)
+        xs[i] += 1
+    end
+    return xs
+end
+
 end

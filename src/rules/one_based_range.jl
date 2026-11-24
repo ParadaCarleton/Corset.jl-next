@@ -8,7 +8,7 @@ Reports index into array argument with no proof that it lies in axes of that arr
 `nextind`, `min`, `max`, `clamp` or midpoint of such indices. `similar(x)`, `copy(x)` and broadcast of `x` with scalars
 share axes of `x`. Guard `Base.require_one_based_indexing(x)`, or `axes(x) == axes(y)` that throws otherwise, proves
 indices after it. Literal, `length`, `size` or `enumerate` counter, or index of other array, gives `definite`; index of
-unknown source gives `possible`.
+unknown source gives `possible`. Update `x[i] += 1` reads and writes one element: one finding.
 
 Index argument passes in its method: method takes contract that callers pass index of that array. Rule checks each
 package call against contracts of methods it can run, with same proof. Method that passes its own index and array
@@ -60,14 +60,39 @@ const FIX = "take index from `eachindex`, `axes`, `firstindex` or `begin`, or gu
 function findings(facts::FactSet)::Vector{Finding}
     effects = facts.effects
     isnothing(effects) && return Finding[]
-    found = Finding[]
-    for method in effects.methods, unproven in method.indices.unproven
+    found, texts = Finding[], Dict(file.path => file.text for file in facts.files)
+    for method in effects.methods, (position, unproven) in pairs(method.indices.unproven)
+        repeated(method.indices.unproven, position, texts) && continue
         array = isnothing(unproven.array) ? "array" : "`$(unproven.array)`"
         causes = isnothing(unproven.source) ? Label[] : [Label(something(unproven.source), "index comes from here")]
         message = "index into $array has no proof that it comes from its axes"
         push!(found, Finding(NAME, :unproven, unproven.confidence, message, Label(unproven.site, "index without proof"), causes, REASON, manual_fix(FIX)))
     end
     return append!(found, call_findings(effects.methods))
+end
+
+"""
+Whether unproven index at `position` of `unproven` repeats other one: same array and index source, and its span holds
+other span (`holds`), or equals span of earlier one. `r[j] += x` reads and writes `r[j]`: one finding.
+"""
+function repeated(unproven::AbstractVector{UnprovenIndex}, position::Integer, texts::AbstractDict{String, String})::Bool
+    current = unproven[position]
+    return any(pairs(unproven)) do (other_position, other)
+        other_position == position && return false
+        (isequal(other.array, current.array) && isequal(other.source, current.source)) || return false
+        current.site == other.site && return other_position < position
+        return holds(current.site, other.site, texts)
+    end
+end
+
+"""
+Whether span `outer` holds span `inner`. Line precision span holds its whole line of `texts[outer.file]`: lowering
+gives `setindex!` of `x[i] += 1` no syntax node.
+"""
+function holds(outer::Span, inner::Span, texts::AbstractDict{String, String})::Bool
+    (outer.file == inner.file && outer.first_byte <= inner.first_byte) || return false
+    outer.precision == Precision.line || return inner.last_byte <= outer.last_byte
+    return UInt8('\n') ∉ view(codeunits(texts[outer.file]), outer.first_byte:inner.last_byte)
 end
 
 """Findings for each package call that passes index without proof that it comes from array it indexes in callee."""
