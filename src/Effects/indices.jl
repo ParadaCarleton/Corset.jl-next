@@ -386,31 +386,31 @@ function index_facts(walk::Walk, method::Method, lines::AbstractVector{<:Integer
 end
 
 """
-Facts of `found` (fact, array value, index value) without repeats: fact repeats other fact of same array and index
-value when its span holds span of other (`holds`). `x[i] += 1` reads and writes one element: one fact at read.
+Facts of `found` (fact, array value, index value) without repeats. Facts of same array value, index value and source
+line form group; fact repeats other of its group when its span `covers` span of other, and earlier one stays when
+both cover each other. `x[i] += 1` reads and writes one element: one fact at read.
 """
-function one_per_element(found::AbstractVector{Tuple{UnprovenIndex, Any, Any}}, file::SyntaxFile)::Vector{UnprovenIndex}
-    groups = Dict{Tuple{Any, Any}, Vector{UnprovenIndex}}()
-    for (fact, array, operand) in found
-        push!(get!(Vector{UnprovenIndex}, groups, (array, operand)), fact)
+function one_per_element(found::AbstractVector{<:Tuple{UnprovenIndex, Any, Any}}, file::SyntaxFile)::Vector{UnprovenIndex}
+    groups = Dict{Tuple{Any, Any, Int}, Vector{Int}}()
+    for (position, (fact, array, operand)) in pairs(found)
+        push!(get!(Vector{Int}, groups, (array, operand, Inference.line_span(file, fact.site).first_byte)), position)
     end
-    kept = UnprovenIndex[]
-    for (fact, array, operand) in found
-        any(other -> other != fact && holds(fact.site, other.site, file), groups[(array, operand)]) || push!(kept, fact)
+    kept = trues(length(found))
+    for members in values(groups), position in members
+        site = first(found[position]).site
+        kept[position] = !any(members) do other
+            inner = first(found[other]).site
+            return other != position && covers(site, inner) && (!covers(inner, site) || other < position)
+        end
     end
-    return kept
+    return UnprovenIndex[first(entry) for (entry, keep) in zip(found, kept) if keep]
 end
 
 """
-Whether span `outer` of `file` holds span `inner`. Line precision span holds its whole line: lowering gives
-`setindex!` of `x[i] += 1` no syntax node.
+Whether span `outer` covers span `inner` on its line. Line precision span covers whole line: lowering gives
+`setindex!` of `x[i] += 1` no syntax node. Exact span covers exact span inside it, and no line span.
 """
-function holds(outer::Span, inner::Span, file::SyntaxFile)::Bool
-    outer.file == inner.file == file.path || error("index span outside method file $(file.path): $(outer.file), $(inner.file)")
-    outer.first_byte <= inner.first_byte || return false
-    outer.precision == Precision.line || return inner.last_byte <= outer.last_byte
-    return UInt8('\n') ∉ view(codeunits(file.text), outer.first_byte:inner.last_byte)
-end
+covers(outer::Span, inner::Span)::Bool = outer.precision == Precision.line || (inner.precision == Precision.exact && outer.first_byte <= inner.first_byte && inner.last_byte <= outer.last_byte)
 
 """Calls `Base.require_one_based_indexing(x...)` in `proof`: statement and root of each array it checks."""
 function one_based_guards(proof::Proof)::Vector{Tuple{Int, Any}}
