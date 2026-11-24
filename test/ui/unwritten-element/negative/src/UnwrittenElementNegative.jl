@@ -20,6 +20,9 @@ first_only() = (a = Vector{Int}(undef, 2); a[1] = 1; a[1])
 
 returned(n::Int) = Vector{Float64}(undef, n)
 
+# `@inbounds` view skips bounds check: it reads no index.
+unchecked(values::Vector{Float64}) = (indices = Vector{Int}(undef, 2); v = @inbounds view(values, indices); length(v))
+
 # `.=` into every element of array writes it whole.
 spliced(x::Vector{Float64}) = (a = Vector{Float64}(undef, length(x)); a[1:end] .= x; sum(a))
 cleared(n::Int) = (a = Matrix{Float64}(undef, n, n); a[:, :] .= 0.0; sum(a))
