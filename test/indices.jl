@@ -68,6 +68,7 @@ end
     @test_throws BoundsError Positive.renamed_pick(evil)
     @test_throws BoundsError Positive.copied_pick(evil)
     @test_throws BoundsError Positive.computed_pick(evil)
+    @test_throws BoundsError Positive.either_pick(evil, false)
     @test_throws BoundsError Positive.tagged_first(evil)
 end
 
@@ -107,6 +108,8 @@ chained_sum(xs::T, ys::T, zs::S) where {T <: AbstractVector{Float64}, S <: T} = 
     @test Effects.lowered_passes(only(methods(Positive.renamed_pick)), Tuple{typeof(Positive.renamed_pick), ArrayStandIn{Int, 1}}, Set{Module}([Positive]))
     @test Effects.lowered_passes(only(methods(Positive.copied_pick)), Tuple{typeof(Positive.copied_pick), ArrayStandIn{Int, 1}}, Set{Module}([Positive]))
     @test Effects.lowered_passes(only(methods(Positive.computed_pick)), Tuple{typeof(Positive.computed_pick), ArrayStandIn{Int, 1}}, Set{Module}([Positive]))
+    # Callee slot that holds `copy` or computed function stays unresolved.
+    @test Effects.lowered_passes(only(methods(Positive.either_pick)), Tuple{typeof(Positive.either_pick), ArrayStandIn{Int, 1}, Bool}, Set{Module}([Positive]))
     # Arguments that share type variable change together.
     offset = OffsetArray{Float64, 1, plain}
     @test offset_signature(only(methods(same_sum)), Tuple{typeof(same_sum), plain, plain}) == Tuple{typeof(same_sum), offset, offset}

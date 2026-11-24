@@ -175,7 +175,7 @@ Each index into array needs proof unless inferred `axes` type of array is `OneTo
 - Rule matches call sites against contracts of callee methods. Index argument of caller passes. Absolute index or index of other array gives `definite`; unknown source gives `possible`.
 - Call that passes index argument of caller with array argument of caller gives caller same contract. Rule closes contracts over package calls.
 - Contracts and call-site facts come from offset inference of each unit alone: callee facts never enter caller record, so method store keeps units apart.
-- Unit that calls package function with array stand-in operand gets offset inference, as unit that indexes does. Package method on `Base` function counts. Lowered code counts too: one-based inference can drop call. Slot aliases (`g = f`, `ys = xs`) count, and call result holds arrays of its operands (`copy(xs)`). Computed callee counts as package function.
+- Unit that calls package function with array stand-in operand gets offset inference, as unit that indexes does. Package method on `Base` function counts. Lowered code counts too: one-based inference can drop call. Slot aliases (`g = f`, `ys = xs`) count, and call result holds arrays of its operands (`copy(xs)`). Callee with one alternative that no global names (call result as `getfield(M, :f)`, or argument) counts as package function.
 - Absolute index (literal, `length`, `size`, `enumerate` counter, index of other array): `definite`.
 - Index of unknown source (stored indices, unchecked arithmetic): `possible`.
 - Stored indices into input array: copy input to `Vector` at construction, or guard. Both give proof.

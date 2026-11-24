@@ -114,6 +114,7 @@ copied_pick(xs::AbstractVector{Int}) = (ys = copy(xs); firstindex(xs) == 1 ? 0 :
 
 # Computed callee resolves to package function.
 computed_pick(xs::AbstractVector{Int}) = firstindex(xs) == 1 ? 0 : getfield(@__MODULE__, :pick)(xs, 1)
+either_pick(xs::AbstractVector{Int}, flag::Bool) = (g = flag ? copy : getfield(@__MODULE__, :pick); firstindex(xs) == 1 ? 0 : g(xs, 1))
 
 struct Tag end
 

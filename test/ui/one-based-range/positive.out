@@ -273,11 +273,24 @@ warning[one-based-range]: argument 2 of call has no proof that it comes from axe
     = docs: corset explain one-based-range
 
 warning[one-based-range]: argument 2 of call has no proof that it comes from axes of argument 1
-   --> src/OneBasedRangePositive.jl:122:41
+   --> src/OneBasedRangePositive.jl:117:127
     |
-121 | Base.get(xs::AbstractVector{Int}, i::Int, ::Tag) = xs[i]
+ 93 | pick(xs::AbstractVector{Int}, i::Int) = xs[i]
+    |                                         ----- it indexes array here
+...
+117 | either_pick(xs::AbstractVector{Int}, flag::Bool) = (g = flag ? copy : getfield(@__MODULE__, :pick); firstindex(xs) == 1 ? 0 : g(xs, 1))
+    |                                                                                                                               ^^^^^^^^ index without proof
+    |
+    = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+    = docs: corset explain one-based-range
+
+warning[one-based-range]: argument 2 of call has no proof that it comes from axes of argument 1
+   --> src/OneBasedRangePositive.jl:123:41
+    |
+122 | Base.get(xs::AbstractVector{Int}, i::Int, ::Tag) = xs[i]
     |                                                    ----- it indexes array here
-122 | tagged_first(xs::AbstractVector{Int}) = get(xs, 1, Tag())
+123 | tagged_first(xs::AbstractVector{Int}) = get(xs, 1, Tag())
     |                                         ^^^^^^^^^^^^^^^^^ index without proof
     |
     = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element

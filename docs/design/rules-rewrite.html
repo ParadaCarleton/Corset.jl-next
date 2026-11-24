@@ -821,7 +821,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <p>Contracts and call-site facts come from offset inference of each unit alone: callee facts never enter caller record, so method store keeps units apart.</p>
 </li>
 <li>
-<p>Unit that calls package function with array stand-in operand gets offset inference, as unit that indexes does. Package method on <code>Base</code> function counts. Lowered code counts too: one-based inference can drop call. Slot aliases (<code>g = f</code>, <code>ys = xs</code>) count, and call result holds arrays of its operands (<code>copy(xs)</code>). Computed callee counts as package function.</p>
+<p>Unit that calls package function with array stand-in operand gets offset inference, as unit that indexes does. Package method on <code>Base</code> function counts. Lowered code counts too: one-based inference can drop call. Slot aliases (<code>g = f</code>, <code>ys = xs</code>) count, and call result holds arrays of its operands (<code>copy(xs)</code>). Callee with one alternative that no global names (call result as <code>getfield(M, :f)</code>, or argument) counts as package function.</p>
 </li>
 <li>
 <p>Absolute index (literal, <code>length</code>, <code>size</code>, <code>enumerate</code> counter, index of other array): <code>definite</code>.</p>

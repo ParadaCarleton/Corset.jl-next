@@ -726,9 +726,9 @@ function lowered_passes(method::Method, @nospecialize(signature::Type), modules:
     # Only callee that takes array resolves, so check stays cheap.
     for call in lowered_calls(code)
         any(operand -> !isdisjoint(lowered_roots(aliases, operand), arrays), call.args[2:end]) || continue
-        callees = callee_globals(aliases, call.args[1])
-        # Computed callee (`getfield(M, :f)(xs, 1)`) can be package function.
-        isempty(callees) && return true
+        callees = callee_globals(aliases, call.args[1], method.nargs)
+        # Callee that can be call result or argument (`getfield(M, :f)(xs, 1)`) can be package function.
+        isnothing(callees) && return true
         any(callee -> isdefined(callee.mod, callee.name) && package_function(getglobal(callee.mod, callee.name), modules), callees) && return true
     end
     return false
@@ -737,7 +737,7 @@ end
 """
 Globals and slots that each slot or SSA value of lowered `code` can hold: function alias (`g = getindex`) and array
 alias (`ys = xs`) through slot assignments, slot reads and SSA values. Call result holds slots of its operands, since
-it can keep their axes (`copy(xs)`). Rounds run until no set grows, so loops count.
+it can keep their axes (`copy(xs)`), and `COMPUTED`. Rounds run until no set grows, so loops count.
 """
 function lowered_aliases(code::AbstractVector{Any})::Dict{Any, Set{Any}}
     aliases = Dict{Any, Set{Any}}()
@@ -756,23 +756,39 @@ function lowered_aliases(code::AbstractVector{Any})::Dict{Any, Set{Any}}
     return aliases
 end
 
-"""Globals and slots that lowered `operand` can hold through `aliases` (`lowered_aliases`); slot holds itself too."""
+"""Root that call result holds in `lowered_aliases`: value that no global names, as `getfield(M, :f)` gives."""
+struct Computed end
+
+"""Only `Computed` value."""
+const COMPUTED = Computed()
+
+"""
+Globals and slots that lowered `operand` can hold through `aliases` (`lowered_aliases`), and `COMPUTED` for call
+result; slot holds itself too.
+"""
 function lowered_roots(aliases::AbstractDict{Any, <:AbstractSet{Any}}, @nospecialize(operand::Any))::Set{Any}
     operand isa GlobalRef && return Set{Any}([operand])
     operand isa Core.SlotNumber && return union(Set{Any}([operand]), get(aliases, operand, Set{Any}()))
     operand isa Core.SSAValue && return get(aliases, operand, Set{Any}())
     operand isa Expr || return Set{Any}()
     operand.head === :call || return Set{Any}()
-    return Set{Any}(root for argument in operand.args[2:end] for root in lowered_roots(aliases, argument) if root isa Core.SlotNumber)
+    return Set{Any}([COMPUTED; Any[root for argument in operand.args[2:end] for root in lowered_roots(aliases, argument) if root isa Core.SlotNumber]])
 end
 
 """Call expressions of lowered `code`: call statements and calls whose value slot assignment takes (`_4 = f(x)`)."""
 lowered_calls(code::AbstractVector{Any})::Vector{Expr} =
     Expr[call for statement in code for call in (statement isa Expr && statement.head === :(=) ? statement.args[2] : statement,) if call isa Expr && call.head === :call]
 
-"""Globals that lowered `callee` operand can be, through `aliases` (`lowered_aliases`)."""
-callee_globals(aliases::AbstractDict{Any, <:AbstractSet{Any}}, @nospecialize(callee::Any))::Set{GlobalRef} =
-    Set{GlobalRef}(root for root in lowered_roots(aliases, callee) if root isa GlobalRef)
+"""
+Globals that lowered `callee` operand can be, through `aliases` (`lowered_aliases`); `nothing` when one alternative is
+no global: call result, one of `arguments` first slots, or value that aliases do not follow.
+"""
+function callee_globals(aliases::AbstractDict{Any, <:AbstractSet{Any}}, @nospecialize(callee::Any), arguments::Integer)::Union{Nothing, Set{GlobalRef}}
+    roots = lowered_roots(aliases, callee)
+    globals = Set{GlobalRef}(root for root in roots if root isa GlobalRef)
+    isempty(globals) && return nothing
+    return any(root -> root === COMPUTED || (root isa Core.SlotNumber && root.id <= arguments), roots) ? nothing : globals
+end
 
 """Whether signature `parameter` is array type that holds stand-in."""
 array_stand_in_type(@nospecialize(parameter::Any))::Bool = parameter isa Type && parameter <: AbstractArray && holds_stand_in(parameter)
@@ -794,7 +810,8 @@ function lowered_indexing(method::Method)::Bool
     code = Base.uncompressed_ast(method).code
     aliases = lowered_aliases(code)
     indexing(callee::GlobalRef)::Bool = isdefined(callee.mod, callee.name) && haskey(INDEXING, getglobal(callee.mod, callee.name))
-    return any(call -> any(indexing, callee_globals(aliases, call.args[1])), lowered_calls(code))
+    # Unresolved callee counts as no indexing: function argument `f(xs)` would infer every higher-order method again.
+    return any(call -> any(indexing, something(callee_globals(aliases, call.args[1], method.nargs), Set{GlobalRef}())), lowered_calls(code))
 end
 
 # corset: allow bang-convention -- crash journal records progress; caller reads it only after crash
