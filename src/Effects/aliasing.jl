@@ -62,7 +62,7 @@ function same_object(walk::Walk, @nospecialize(first::Any), @nospecialize(second
     return same_place(walk, first, second)
 end
 
-"""Whether IR `operand`, after `π` nodes and `identity` calls, is result of view call (`ALIAS_FUNCTIONS`)."""
+"""Whether IR `operand`, after `π` nodes, `identity` and `typeassert` calls, is result of view call (`ALIAS_FUNCTIONS`)."""
 function view_result(walk::Walk, @nospecialize(operand::Any))::Bool
     value = underlying(walk, operand)
     value isa Core.SSAValue || return false
@@ -72,13 +72,13 @@ function view_result(walk::Walk, @nospecialize(operand::Any))::Bool
     return call_parts(walk, statement)[1] in ALIAS_FUNCTIONS
 end
 
-"""IR value that `operand` passes on unchanged through `π` nodes and `identity` calls, or `operand` itself."""
+"""IR value that `operand` passes on unchanged through `π` nodes, `identity` and `typeassert` calls, or `operand` itself."""
 function underlying(walk::Walk, @nospecialize(operand::Any))::Any
     while operand isa Core.SSAValue
         statement = walk.ir.stmts[operand.id][:stmt]
         if statement isa Core.PiNode
             operand = statement.val
-        elseif statement isa Expr && statement.head === :call && call_parts(walk, statement)[1] === identity
+        elseif statement isa Expr && statement.head === :call && call_parts(walk, statement)[1] in (identity, typeassert)
             operand = statement.args[2]
         else
             break

@@ -12,7 +12,7 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 | 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | #251 (per-environment key), #254 (per-entry key); frozen |
 | 5 | Name tier | `effects` stage on name trust and compiler effects replaces engine; engine and library summary cache leave | — | #298; done |
 | 6 | `stateful-iterate` | F109 | — | #297; done |
-| 7 | Alias rules | F48, F50, F51 | 5 | — |
+| 7 | Alias rules | F48, F50, F51 | 5 | #300, #301, #304; done |
 | 8 | Effect rules | F54, F55, F56, F58, F98 | 5 | — |
 | 9 | `bang-convention` | F53, F86 | 5 | — |
 | 10 | Lifecycle facts | `lifecycle` stage | 5 | — |
@@ -83,11 +83,23 @@ Rules read per-unit statement events and must-alias pairs.
   - Fix `manual`: pass copy of read operand, or write into other container.
 - `stateful-reuse` (F51): method restarts iterator whose type admits stateful iterator, or lets it escape after start.
   - Start: `iterate` without state, contract start (`first`, generic `isempty`) or consuming-table call.
-  - Restart: second start of same object on one path. Loop re-entry counts; `zip(itr, itr)` counts.
+  - Restart: second start of same object on one path. Loop re-entry counts; `zip(itr, itr)` starts `itr` twice where code consumes or returns it.
+  - Value that loop body defines is new object on each pass: path through its definition makes no pair.
+  - Load of unchanged container and key (`groups[1]` in loop) can give same iterator again: `possible`.
   - Escape after start, or start after escape: return, store into object or global, operand of package call.
+  - Escape counts for tuple, `new` or constructor result that holds iterator: `(head, itr)` lets `itr` escape.
+  - Generic `isempty` starts only when `isdone` gives `missing`. `EachLine` and `Stateful` define `isdone`.
+  - Other `isempty` methods that can match argument type give `possible` start.
+  - Inferred result of `isdone` decides, package method included: `Missing` gives `definite` start, union with it `possible`.
   - Parameter started once without escape: no finding.
-  - Multi-pass types: `AbstractArray`, `AbstractDict`, `AbstractSet`, `AbstractString`, `Tuple`, `NamedTuple`, `Number`, `AbstractChar`.
-  - Other abstract type admits stateful iterator. Concrete library type: exception table decides.
+  - Multi-pass types: `AbstractArray`, `AbstractDict`, `AbstractSet`, `AbstractString`, `Tuple`, `NamedTuple`, `Pair`, `Number`, `AbstractChar`.
+  - Type counts when it can hold both kinds: abstract type outside multi-pass types, or union of both kinds.
+  - Concrete type and exception-table stateful type are one kind. Restart there is deliberate: `first(eachline(io))`.
+  - Struct family (`Bag{T} where T`) is one kind, unless field has open parameter type (`inner::T`): iteration can pass to field.
+  - Parameter inside field type (`items::Vector{T}`), or parameter bounded by such family: `iterate` body decides kind. Pair with its start is blind spot.
+  - Consuming call that only specialized method serves (`minimum` of distribution): method body decides start. Pair with it is blind spot.
+  - Generic method and package method for other type both serve call: start is `possible`. Base methods keep iteration contract; multi-pass types restart harmlessly.
+  - Argument that admits `Iterators.Stateful` reaches generic method with it: package method that cannot take it keeps `definite`.
   - Definite when starts and escape are in method code and objects must-alias; on in default preset. May-alias gives `possible`.
   - Fix `manual`: `Iterators.peel`, thread `iterate` state, or narrow argument to multi-pass type.
 

@@ -66,6 +66,7 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
   - Pointer conversions before foreign call: `pointer`, `cconvert`, `unsafe_convert`.
 - Choice table: result is one of the operands, callable objects included, so it joins their values: `something`, `coalesce`, `max`, `min`, `ifelse`.
 - `convert` result is its operand, or new object as for other call.
+- `typeassert` result is its operand. Lowering adds `typeassert` on each return of method with return type.
 - Constructor, tuple and vector literal results hold their operands: `Ref(x)` holds `x`. Literal (`[x]`, `T[x]`) converts element not of its element type, so it can hold new object. Package method on literal syntax (`SA[x]`) is package call.
 - Iteration: result of `iterate` and `indexed_iterate` holds element of iterated operand. Element step for array, dictionary, set and tuple; `deep` for other iterator.
 - Element table: result is element of container operand, or other operand (`get(d, k, default)`).
@@ -112,7 +113,7 @@ Write sources, in order:
 - Facts keep reads of globals, special kinds and iteration starts. Plain argument loads stay out: every call reads its operands.
 - RNG function without `AbstractRNG` operand: default RNG read and write.
 - `ScopedValue` read: `getindex` on `ScopedValue` or `ScopedValues.get`. Task-local state: `task_local_storage`, `current_task` fields.
-- Iteration start: `iterate` without state, `first`, `only`, generic `isempty` and destructuring start their operand.
+- Iteration start: `iterate` without state, `first`, `only` and destructuring start their operand. Generic `isempty` starts it when inferred `isdone` result can be `missing`.
 - Consuming table: library functions that iterate their operand (`collect`, `sum`, `map`, `filter`, `foreach`, `reduce`, `any`, `all`, `count`). Call starts its iterator operand, and writes stateful iterator operand.
 
 #### Effect kinds
@@ -156,7 +157,8 @@ Facts keep hold count per resource at normal exit and at each statement that may
 - Units of method merge by source statement: unit that may throw, writes or uses result decides.
 - Per package method, F48: loop writes: span of loop start, span of write, writing function, confidence (`phase5.md`, row 7).
 - Per package method, F50: self-alias calls: call span, writing function, confidence (`phase5.md`, row 7).
-- Per unit, for `lifecycle` and statement rules (F51): allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.
+- Per package method, F51: stateful reuses: earlier and later event spans, which events escape, iterator text, confidence (`phase5.md`, row 7).
+- Per unit, for `lifecycle` rules: allocation sites, read, write and start events per statement in control-flow order, must-alias pairs, escapes.
 - Must-alias: two values with same single root and path, where root is one object per call (parameter, global, allocation outside loop).
 - Escape: return; store into object or global; operand of `!` call that is not the written operand; operand of alias-table call or constructor whose result escapes.
 - Element event carries index operand: constant or SSA value. `lifecycle` decides which elements writes cover (F33, F34).

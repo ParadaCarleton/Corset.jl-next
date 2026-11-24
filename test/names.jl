@@ -175,6 +175,78 @@ alias_shape(name::Symbol)::Vector{Tuple{String, Confidence.T}} = [(call.callee, 
     end
 end
 
+"""Escape kinds, iterator text and confidence of each stateful reuse of fixture method `name`."""
+reuse_shape(name::Symbol)::Vector{Tuple{Bool, Bool, Union{Nothing, String}, Confidence.T}} = [(reuse.earlier_escapes, reuse.later_escapes, reuse.iterator, reuse.confidence) for reuse in effects(name).stateful_reuses]
+
+@testset "stateful reuses" begin
+    # Second start of one argument: `first` then loop, `first` inside loop (restarts each pass), zip with itself.
+    @test reuse_shape(:reuse_first) == [(false, false, "itr", DEFINITE)]
+    @test reuse_shape(:reuse_loop) == [(false, false, "itr", DEFINITE)]
+    @test only(effects(:reuse_loop).stateful_reuses).repeats
+    @test reuse_shape(:reuse_zip) == [(false, false, "itr", DEFINITE)]
+    joint = only(effects(:reuse_zip).stateful_reuses)
+    @test !joint.repeats && joint.earlier == joint.later
+    # Caller consumes returned zip; load of same element on each pass can give same iterator.
+    @test reuse_shape(:reuse_zip_returned) == [(false, false, "itr", DEFINITE)]
+    # `isempty` of zip asks `isdone` of each part; part of any type can give `missing`.
+    @test reuse_shape(:reuse_zip_empty) == [(false, false, "itr", POSSIBLE)]
+    # Nested `zip(z, z)`: each operand starts at most twice per statement, so events grow with chain length only.
+    @test reuse_shape(:reuse_zip_chain) == [(false, false, "itr", DEFINITE)]
+    chain = only(typed for typed in UNITS.typed if typed.site.method.name == :reuse_zip_chain)
+    walk = first(Effects.unit_walk(chain, Set{Module}(PACKAGE.modules), Core.Compiler.NativeInterpreter(), Base.get_world_counter()))
+    @test sum(index -> length(Effects.iterator_events(walk, index)), 1:length(walk.ir.stmts)) <= 64
+    # Shared part type of nested `zip(z, z)` answers once: 40 levels stay fast.
+    nested = foldl((type, _) -> Iterators.Zip{Tuple{type, type}}, 1:40; init = Vector{Int})
+    @test Effects.done_missing(walk, nested) == DEFINITE
+    # Struct whose field has open parameter type can hold stateful iterator.
+    @test reuse_shape(:reuse_relay) == [(false, false, "relays[…]", DEFINITE)]
+    # Package `first` of abstract type can iterate field: blind spot, no finding.
+    @test any(spot -> spot.cause == Effects.SPECIALIZED_START, SPOTS)
+    @test reuse_shape(:reuse_after_dispatched) == [(false, false, "counters[…]", DEFINITE)]
+    @test reuse_shape(:reuse_mixed_dispatch) == [(false, false, "sources[…]", POSSIBLE)]
+    @test reuse_shape(:reuse_isdone) == [(false, false, "drains[…]", DEFINITE)]
+    @test Effects.missing_result(Missing) == DEFINITE && Effects.missing_result(Union{Bool, Missing}) == POSSIBLE
+    @test isnothing(Effects.missing_result(Bool)) && isnothing(Effects.missing_result(Union{}))
+    # Parameter inside field type: `iterate` body decides kind.
+    @test any(spot -> spot.cause == Effects.NESTED_PARAMETER, SPOTS)
+    # Field of open parameter is open; parameter inside field type is blind; wrapper of blind family is blind at any depth.
+    Pass = Effects.Pass
+    kinds = [CASES.Twin => Pass.open, CASES.Relay => Pass.open, CASES.Bag => Pass.blind, CASES.Bag{Int} => Pass.multi, CASES.Relay{<:Number} => Pass.multi]
+    append!(kinds, [CASES.Relay{<:CASES.Bag} => Pass.blind, CASES.Relay{<:CASES.Relay{<:CASES.Bag}} => Pass.blind, Union{CASES.Bag, Vector{Int}} => Pass.blind])
+    # Bound that is other parameter resolves through it.
+    push!(kinds, CASES.Chain => Pass.open)
+    for (type, kind) in kinds
+        @test Effects.pass_kind(type) == kind
+    end
+    # Shared bounds of 16 nested levels answer once: about 8 KB, against 88 MB without memo.
+    deep = foldl((type, _) -> CASES.Duo{<:type, <:type}, 1:16; init = Vector{Int})
+    warm_bytes(type::Type)::Int = (Effects.pass_kind(type); @allocated Effects.pass_kind(type))
+    @test Effects.pass_kind(deep) == Pass.multi && warm_bytes(deep) < 1_000_000
+    reload = only(effects(:reuse_reload).stateful_reuses)
+    @test (reload.repeats, reload.confidence) == (true, POSSIBLE)
+    # Element of outer loop starts twice in one pass.
+    inner = only(effects(:reuse_inner).stateful_reuses)
+    @test (inner.earlier_escapes, inner.later_escapes, inner.repeats, inner.confidence) == (false, false, false, DEFINITE)
+    # `isempty` on argument of any type: other `isempty` methods can serve it.
+    @test reuse_shape(:reuse_isempty) == [(false, false, "itr", POSSIBLE)]
+    # `typeassert` gives its operand: annotated return value and asserted argument are argument itself.
+    @test reuse_shape(:reuse_asserted) == [(false, false, "itr", DEFINITE)]
+    # Escape after start; start after escape to package function.
+    @test reuse_shape(:reuse_return) == [(false, true, "itr", DEFINITE)]
+    @test reuse_shape(:reuse_handed) == [(true, false, "itr", DEFINITE)]
+    # Stored tuple holds iterator: start after escape of its holder.
+    @test reuse_shape(:reuse_stored) == [(true, false, "itr", DEFINITE)]
+    # Fresh iterator in returned tuple; union of stateful and multi-pass iterator. Neither has caller name.
+    @test reuse_shape(:reuse_fresh) == [(false, true, nothing, DEFINITE)]
+    @test reuse_shape(:reuse_mixed) == [(false, false, nothing, DEFINITE)]
+    # Multi-pass type, unconsumed `zip`, tuple of fresh value, container built from iterator, threaded state, `popfirst!` write, separate branches, concrete package iterator, stateful kind
+    # (`isdone` on `eachline` result, deliberate header skip), new object on each loop pass, `iterate` result, struct family, package `first`, declared field: none.
+    kept = (:kept_vector, :kept_zip, :kept_zip_type, :kept_shared, :kept_collected, :kept_state, :kept_popped, :kept_branches, :kept_countdown, :kept_lines, :kept_peeled, :kept_destructured, :kept_nested)
+    for name in (kept..., :kept_protocol, :kept_family, :kept_dispatched, :kept_declared, :kept_pair, :kept_enumerated, :kept_marked)
+        @test isempty(reuse_shape(name))
+    end
+end
+
 @testset "exception table" begin
     @test shape(effects(:print_value).writes) == [(parameter(2), true, EffectKind.io, DEFINITE)]
     @test shape(effects(:shout).writes) == [(Place.At(Root.Global(GlobalRef(Base, :stdout)), Step.Type[]), true, EffectKind.io, DEFINITE)]
@@ -184,9 +256,11 @@ end
     @test shape(effects(:hold).writes) == [(parameter(2), false, EffectKind.synchronization, DEFINITE)]
     @test shape(effects(:take_next).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
     @test (parameter(2), false, EffectKind.iteration, DEFINITE) in shape(effects(:take_next).reads)
-    for name in (:drain, :take_one, :zip_drain, :flatten_drain, :first_of_channel)
+    # Vector part of `zip` restarts unchanged: no write.
+    for name in (:drain, :take_one, :zip_drain, :flatten_drain, :first_of_channel, :zip_empty, :zip_empty_items, :zip_collect_items)
         @test shape(effects(name).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
     end
+    @test shape(effects(:zip_maybe_empty).writes) == [(parameter(2), true, MEMORY, POSSIBLE), (parameter(3), true, MEMORY, POSSIBLE)]
 end
 
 @testset "aliases and globals" begin
@@ -207,6 +281,7 @@ end
     @test (parameter(2), false, EffectKind.iteration, DEFINITE) in shape(effects(:finished).reads)
     @test shape(effects(:first_of).reads) == [(parameter(2), false, EffectKind.iteration, DEFINITE)]
     @test shape(effects(:total_of).reads) == [(parameter(2), false, EffectKind.iteration, DEFINITE)]
+    @test shape(effects(:emptiness).reads) == [(parameter(2), false, EffectKind.iteration, POSSIBLE)]
     # Plain argument loads stay out of facts.
     @test isempty(effects(:set_value!).reads)
 end
