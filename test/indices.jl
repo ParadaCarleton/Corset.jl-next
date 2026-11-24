@@ -141,9 +141,10 @@ end
     fact(first_byte, last_byte, precision, confidence) = UnprovenIndex(Span("cases.jl", first_byte, last_byte, precision), nothing, "xs", confidence)
     read, store = fact(1, 5, Precision.exact, Confidence.definite), fact(1, 1, Precision.line, Confidence.definite)
     @test Effects.one_per_element([(store, :xs, :i), (read, :xs, :i)], file) == [read]
-    # Equal spans cover each other: earlier fact stays.
+    # Equal spans cover each other: surer fact stays, then earlier one.
     possible = fact(1, 1, Precision.line, Confidence.possible)
-    @test Effects.one_per_element([(possible, :xs, :i), (store, :xs, :i)], file) == [possible]
+    @test Effects.one_per_element([(possible, :xs, :i), (store, :xs, :i)], file) == [store]
+    @test Effects.one_per_element([(store, :xs, :i), (store, :xs, :i)], file) == [store]
     # Other index value, other array or other line: each fact stays.
     @test Effects.one_per_element([(store, :xs, :j), (read, :xs, :i)], file) == [store, read]
     @test Effects.one_per_element([(store, :ys, :i), (read, :xs, :i)], file) == [store, read]

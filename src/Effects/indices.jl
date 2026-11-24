@@ -387,8 +387,8 @@ end
 
 """
 Facts of `found` (fact, array value, index value) without repeats. Facts of same array value, index value and source
-line form group; fact repeats other of its group when its span `covers` span of other, and earlier one stays when
-both cover each other. `x[i] += 1` reads and writes one element: one fact at read.
+line form group; fact repeats other of its group when its span `covers` span of other. Of two that cover each other,
+surer one stays, then earlier one. `x[i] += 1` reads and writes one element: one fact at read.
 """
 function one_per_element(found::AbstractVector{<:Tuple{UnprovenIndex, Any, Any}}, file::SyntaxFile)::Vector{UnprovenIndex}
     groups = Dict{Tuple{Any, Any, Int}, Vector{Int}}()
@@ -397,10 +397,12 @@ function one_per_element(found::AbstractVector{<:Tuple{UnprovenIndex, Any, Any}}
     end
     kept = trues(length(found))
     for members in values(groups), position in members
-        site = first(found[position]).site
+        fact = first(found[position])
         kept[position] = !any(members) do other
-            inner = first(found[other]).site
-            return other != position && covers(site, inner) && (!covers(inner, site) || other < position)
+            inner = first(found[other])
+            other == position && return false
+            covers(fact.site, inner.site) || return false
+            return !covers(inner.site, fact.site) || (inner.confidence, other) < (fact.confidence, position)
         end
     end
     return UnprovenIndex[first(entry) for (entry, keep) in zip(found, kept) if keep]
