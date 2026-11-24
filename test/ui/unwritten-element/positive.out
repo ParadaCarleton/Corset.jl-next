@@ -82,3 +82,14 @@ error[unwritten-element]: reads element before any write
    = fix: write every element first (`fill!`, `copyto!`, or loop over `eachindex`), or allocate with `zeros`, `fill` or `map`   [manual]
    = docs: corset explain unwritten-element
 
+error[unwritten-element]: reads element before any write
+  --> src/UnwrittenElementPositive.jl:26:73
+   |
+26 | picked(values::Vector{Float64}) = (indices = Vector{Int}(undef, 2); sum(view(values, indices)))
+   |                                              --------------------- allocates without values here
+   |                                                                         ^^^^^^^^^^^^^^^^^^^^^ reads unwritten element
+   |
+   = why: `undef` element holds garbage bits, or throws `UndefRefError` for non-bits element
+   = fix: write every element first (`fill!`, `copyto!`, or loop over `eachindex`), or allocate with `zeros`, `fill` or `map`   [manual]
+   = docs: corset explain unwritten-element
+
