@@ -64,7 +64,7 @@ function nan_links(file::SyntaxFile)::Vector{Link}
         infix, parts = infix_operator(node), children_of(node)
         operator = something(infix, call_head(node), "")
         haskey(KINDS, plain(operator)) || continue
-        operands = isnothing(infix) ? collect(parts[2:end]) : [parts[1], parts[3]]
+        operands = isnothing(infix) ? collect(@view(parts[2:end])) : [parts[1], parts[3]]
         isnothing(infix) && (length(operands) > 2 || any(part -> kind_name(part) == "parameters", operands)) && continue
         any(is_nan, operands) && push!(found, (; node, operator, operands, chained = false))
     end

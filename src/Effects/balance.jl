@@ -340,12 +340,12 @@ end
 
 """One path for all `paths`: joined counts, conditions all agree on; conditions some path knew or dropped stay dropped."""
 function joined_path(paths::AbstractVector{Path})::Path
-    conditions, dropped = reduce(agreed, [path.conditions for path in paths]), Set{Any}()
+    conditions, dropped = mapreduce(path -> path.conditions, agreed, paths), Set{Any}()
     # Typed loop: `union` of splatted key sets iterates abstract sets, which package methods invalidate.
     for path in paths, known in (keys(path.conditions), path.dropped), condition in known
         haskey(conditions, condition) || push!(dropped, condition)
     end
-    return Path(reduce(join_counts, [path.counts for path in paths]), conditions, dropped, any(path -> path.blurred, paths))
+    return Path(mapreduce(path -> path.counts, join_counts, paths), conditions, dropped, any(path -> path.blurred, paths))
 end
 
 """

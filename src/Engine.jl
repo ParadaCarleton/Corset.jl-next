@@ -275,7 +275,7 @@ end
 """Report of `analyzed` under `settings`; baseline at project root hides known findings."""
 function report(settings::Settings, analyzed::Analysis)::Report
     covered, stale = Baseline.cover(Baseline.read_baseline(analyzed.root), analyzed.keys)
-    reported = [analyzed.leveled[.!covered]; analyzed.problems]
+    reported = [@view(analyzed.leveled[.!covered]); analyzed.problems]
     sort!(reported; by = diagnostic -> (diagnostic.finding.primary.span.file, diagnostic.finding.primary.span.first_byte, diagnostic.finding.rule))
     sources = Dict(file => read(file, String) for file in analyzed.files)
     # Load error, cause label and blind spot can point at file checked path leaves out.
