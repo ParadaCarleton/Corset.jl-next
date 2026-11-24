@@ -569,10 +569,11 @@ note = "Method whose body only throws (`pop!(::SortedSet) = error(...)`) is exem
 [[footgun]]
 id = 55
 area = "effects"
-text = "Hidden input: mutable global, `ScopedValue`, global RNG"
+text = "Hidden input: default RNG, or package global other method writes"
 example = "`rand()` in package code"
 group = "correctness"
 stage = "effects"
+note = "Task-local storage and `ScopedValue` pass: caller sets both, and logging reads both for every message."
 
 [[footgun]]
 id = 56

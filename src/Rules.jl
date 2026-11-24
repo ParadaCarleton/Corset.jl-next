@@ -21,6 +21,7 @@ include("rules/false_effects.jl")
 include("rules/field_prefix.jl")
 include("rules/file_length.jl")
 include("rules/guard_result.jl")
+include("rules/hidden_input.jl")
 include("rules/implicit_import.jl")
 include("rules/inference_dependent.jl")
 include("rules/intermediate_widening.jl")
@@ -58,6 +59,7 @@ include("rules/unguarded_release.jl")
 include("rules/unreachable.jl")
 include("rules/untested_extension.jl")
 include("rules/untyped_empty.jl")
+include("rules/unused_call.jl")
 include("rules/unused_import.jl")
 include("rules/unused_literal.jl")
 include("rules/where_binding.jl")
@@ -84,6 +86,7 @@ const REGISTRY = RuleEntry[
     FieldPrefix.ENTRY,
     FileLength.ENTRY,
     GuardResult.ENTRY,
+    HiddenInput.ENTRY,
     ImplicitImport.ENTRY,
     InferenceDependent.ENTRY,
     IntermediateWidening.ENTRY,
@@ -121,6 +124,7 @@ const REGISTRY = RuleEntry[
     Unreachable.ENTRY,
     UntestedExtension.ENTRY,
     UntypedEmpty.ENTRY,
+    UnusedCall.ENTRY,
     UnusedImport.ENTRY,
     UnusedLiteral.ENTRY,
     WhereBinding.ENTRY,

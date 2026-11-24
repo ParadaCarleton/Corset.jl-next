@@ -67,7 +67,7 @@ end
 ### Tests
 
 - UI tests, as in Clippy: `test/ui/<rule>/<case>.jl` with snapshot of full rendered output and fixed source. Bless command updates snapshots; CI fails on diff.
-- Each footgun: positive case, negative case, fix case.
+- Each footgun: positive case, negative case, fix case. Manual fix has no edits: positive snapshot shows its text.
 - Property tests (Supposition.jl) on programs built from UI case statements, with expressions spliced into value positions so fixes nest. Fixed code parses and lowers when original did. On code Julia accepts, fix removes its finding and adds none; `duplicate-statement` compares neighbors and is exempt. Fix runs converge. Equivalent `safe` fix keeps parsed meaning.
 - Differential run: `safe` fix behaves same before and after on executed fixture. Not built yet.
 - Reference comparison: JET, fatou, LintApp.jl, ReLint.jl on fixtures, with allowlist.
