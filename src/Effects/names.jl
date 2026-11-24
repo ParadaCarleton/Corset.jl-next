@@ -167,6 +167,16 @@ function field_step(walk::Walk, @nospecialize(field::Any))::Union{Nothing, Step.
     return name isa Int ? Step.Position(name) : nothing
 end
 
+"""
+Step that `getindex`, `first`, `last` or `only` call `callee` with `operands` loads: tuple position for constant index
+into tuple, else any element. Compiler knows constant index, so position keeps objects of other positions apart.
+"""
+function index_step(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Step.Type
+    (callee === getindex && length(operands) == 2 && operand_type(walk, operands[1]) <: Tuple) || return Step.Element()
+    found = constant(walk.ir, operands[2])
+    return !isnothing(found) && something(found) isa Int ? Step.Position(something(found)) : Step.Element()
+end
+
 """Value of IR statement `index` in `walk` from its operands (`effects.md`, Roots)."""
 function statement_value(walk::Walk, index::Integer)::Value
     pointing(walk, CC.widenconst(walk.ir.stmts[index][:type])) || return NO_VALUE
@@ -243,7 +253,7 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
         step = callee === getfield || callee === getproperty ? (length(operands) >= 2 ? field_step(walk, operands[2]) : nothing) : Step.Element()
         return load_value(walk, object, step)
     end
-    callee in (getindex, first, last, only) && return load_value(walk, object, Step.Element())
+    callee in (getindex, first, last, only) && return load_value(walk, object, index_step(walk, callee, operands))
     if callee in ALIAS_FUNCTIONS
         # Result holds every operand at once (`zip(a, b)`): fresh operand leaves certainty of caller operand.
         values = Value[operand_value(walk, operand) for operand in operands if !callable(walk, operand)]

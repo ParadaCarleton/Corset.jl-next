@@ -108,7 +108,7 @@ Rules read per-unit statement events and must-alias pairs.
 Port rules of local effect-rules stack onto name-tier facts.
 
 - `unused-call` (F54): discarded call that compiler proves `effect_free`, `nothrow` and terminating.
-- `hidden-input` (F55): reads default RNG, task-local state, `ScopedValue` or mutable global.
+- `hidden-input` (F55): reads default RNG, or package global other package method writes.
 - `impure-lambda` (F56): anonymous function captures mutable state.
 - `false-effects` (F58): write and read events contradict package `@assume_effects` claim.
 - `unguarded-release` (F98): effects version reads hold counts; delete syntax version in same PR.
