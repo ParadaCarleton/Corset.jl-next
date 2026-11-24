@@ -25,9 +25,9 @@ const CC = Core.Compiler
 
 """
 Typed code of package method on one signature: method site, signature, unoptimized typed statements, inferred result
-type, span of each statement, inference frame (`effects` stage builds IR from it), provenance of each argument, callee
-first (`argument_provenance`), and stand-in cuts (`cuts!`). Span is exact where syntax node spells statement
-(`statement_nodes`); line precision elsewhere. Code stays inside stage and `effects`; method store keeps `Inferred`.
+type, span of each statement, discarded call statements without exact span (`discarded_nodes`), inference frame
+(`effects` stage builds IR from it), provenance of each argument, callee first (`argument_provenance`), and stand-in
+cuts (`cuts!`). Span is exact where syntax node spells statement (`statement_nodes`); line precision elsewhere. Code stays inside stage and `effects`; method store keeps `Inferred`.
 """
 struct TypedCode
     site::MethodSite
@@ -35,6 +35,7 @@ struct TypedCode
     code::Core.CodeInfo
     result::Type
     spans::Vector{Span}
+    unmapped::BitSet
     frame::CC.InferenceState
     provenance::Vector{Provenance.T}
     cuts::Vector{Int}
@@ -220,8 +221,10 @@ end
 Whether `node` spells call to `name` with `arguments` positional arguments; callee lowering inserts passes. Product
 `2x` spells call to `*`.
 """
-function spells(file::SyntaxFile, node::SyntaxNode, name::Symbol, arguments::Integer)::Bool
-    name in LOWERED && return true
+spells(file::SyntaxFile, node::SyntaxNode, name::Symbol, arguments::Integer)::Bool = name in LOWERED || spells_call(file, node, name, arguments)
+
+"""Whether `node` spells call to `name` with `arguments` positional arguments in source, lowered callee too."""
+function spells_call(file::SyntaxFile, node::SyntaxNode, name::Symbol, arguments::Integer)::Bool
     kind_name(node) == "juxtapose" && return name === :* && length(children_of(node)) == arguments
     kind_name(node) == "call" || return false
     positional = count(part -> kind_name(part) != "parameters", call_arguments(node))
@@ -285,30 +288,39 @@ function broadcast_node(code::Core.CodeInfo, nodes::AbstractVector{Union{Nothing
     return nothing
 end
 
+include("Inference/discarded.jl")
+
 """
-Span of each statement of `code`: span of its node in `nodes` (`statement_nodes`); else start of debuginfo line, when
-that line lies in definition; else method site span. Statement without own line takes line of statement before it.
-Code from macro of same file carries line of macro body, outside definition, so it gets method site span.
+Span of each statement of `code`: span of its node in `nodes` (`statement_nodes`), or of discarded call statement
+(`discarded_nodes`); else start of debuginfo line, when that line lies in definition; else method site span. Statement
+without own line takes line of statement before it. Code from macro of same file carries line of macro body, outside
+definition, so it gets method site span. Second result holds discarded call statements mapping cannot place.
 """
-function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodSite, starts::AbstractVector{<:Integer}, nodes::AbstractVector{Union{Nothing, SyntaxNode}})::Vector{Span}
+function spans(code::Core.CodeInfo, instance::Core.MethodInstance, site::MethodSite, starts::AbstractVector{<:Integer}, nodes::AbstractVector{Union{Nothing, SyntaxNode}})::Tuple{Vector{Span}, BitSet}
     # Debuginfo line number indexes `starts`.
     Base.require_one_based_indexing(nodes, starts)
     path = site.file.path
-    lines = isnothing(site.node) ? eachindex(starts) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
-    found, line = Span[], 0
+    inside = isnothing(site.node) ? eachindex(starts) : searchsortedlast(starts, site.span.first_byte):searchsortedlast(starts, site.span.last_byte)
+    lines, line = zeros(Int, length(nodes)), 0
     # Lowering gives method for omitted defaults first body line, though definition line holds defaults and forwarding call.
     wrapper = forwards(site)
-    for (index, node) in enumerate(nodes)
+    for index in eachindex(nodes)
         scopes = Base.IRShow.buildLineInfoNode(code.debuginfo, instance, index)
         if !isempty(scopes)
             # Outermost scope is method itself, even for code from macro of other file; corpus run found no exception.
             string(first(scopes).file) == path || error("debuginfo of $(site.method) starts outside its file: $(first(scopes).file)")
             scope_line = wrapper ? site.method.line : first(scopes).line
-            line = scope_line in lines ? Int(scope_line) : 0
+            line = scope_line in inside ? Int(scope_line) : 0
         end
+        lines[index] = line
+    end
+    discarded, unmapped = discarded_nodes(site.file, code, nodes, lines, discarded_calls(site, starts))
+    found = Span[]
+    for (index, line) in enumerate(lines)
+        node = something(nodes[index], get(discarded, index, nothing), Some(nothing))
         push!(found, !isnothing(node) ? Facts.span(site.file, node) : line > 0 ? Span(path, starts[line], starts[line], Precision.line) : site.span)
     end
-    return found
+    return found, unmapped
 end
 
 """
@@ -894,7 +906,7 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
                 nodes = statement_nodes(code, mappings(code, instance, site), site.file)
                 opted = [position for position in 1:(site.method.nargs - 1) if explicit_any(site, code.slotnames[position + 1])]
                 provenance = argument_provenance(site.method, call_signature, stand_in, opted)
-                push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes), frame, provenance, Int[]))
+                push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes)..., frame, provenance, Int[]))
                 # Failures need unit spans; cuts need failures.
                 failures, stand_in_only = failures!(edges, helpers, last(typed), by_path)
                 append!(last(typed).cuts, cuts!(declared, site.method, call_signature, code, stand_in_only))

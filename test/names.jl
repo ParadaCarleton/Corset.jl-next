@@ -1,6 +1,6 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
-using Corset.Facts: Facts, MethodEffects, Access, Callee, Place, Root, Step, Confidence, EffectKind, BlindSpot, callee_name, place_text, root_global, subject_position
+using Corset.Facts: Facts, MethodEffects, Access, Callee, Place, Root, Step, Confidence, EffectKind, BlindSpot, callee_name, place_text, root_global, subject_position, step_child, current_objects
 using Corset.Inference: infer_package
 using Corset.Effects: Effects, record_bytes, unit_record, place_root, ALWAYS_THROWS
 using Supposition: Supposition, Data, @check
@@ -85,9 +85,9 @@ const PROVES = Base.JLOptions().code_coverage == 0 || Base.JLOptions().code_cove
     # Load from fresh vector can give fresh object, so write is possible.
     @test shape(effects(:fill_wrapped!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
     @test (Place.Deep(Root.Parameter(2)), true, MEMORY, POSSIBLE) in shape(effects(:push_all!).writes)
-    @test shape(effects(:collect_local!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
-    @test shape(effects(:swap_local!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
-    @test shape(effects(:loop_local!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
+    @test shape(effects(:collect_local!).writes) == [(global_place(:SEEN), true, MEMORY, DEFINITE), (parameter(2), true, MEMORY, DEFINITE)]
+    @test shape(effects(:swap_local!).writes) == [(global_place(:SEEN), true, MEMORY, DEFINITE), (parameter(2), true, MEMORY, POSSIBLE)]
+    @test shape(effects(:loop_local!).writes) == [(global_place(:SEEN), true, MEMORY, DEFINITE), (parameter(2), true, MEMORY, POSSIBLE)]
     @test isempty(effects(:thread_count_address).writes)
 end
 
@@ -290,12 +290,31 @@ end
     @test effects(:add).effect_free == PROVES && isempty(effects(:add).writes) && isempty(effects(:add).reads)
     @test !effects(:push_value!).effect_free && effects(:add).complete
     call = only(fact for fact in effects(:discard).calls if callee_name(fact.callee) == "length")
-    @test !call.used && !call.throws && call.terminates && isempty(call.kinds) && !call.stand_in
+    @test !call.used && !call.throws && call.terminates && isempty(call.kinds) && !call.stand_in && !call.open_dispatch && call.effect_free == PROVES
+    @test only(fact for fact in effects(:discard_open).calls if fact.callee == Callee.Open()).open_dispatch
+    # Call without effect and without exact span goes to coverage line.
+    within(span::Facts.Span, outer::Facts.Span)::Bool = span.file == outer.file && outer.first_byte <= span.first_byte <= outer.last_byte
+    unspanned(name::Symbol)::Bool = any(spot -> spot.cause == Effects.UNSPANNED_CALL && within(spot.span, effects(name).site.span), SPOTS)
+    @test unspanned(:discard_finally)
+    @test unspanned(:discard_computed)
+    @test !unspanned(:discard)
+    @test only(fact for fact in effects(:discard_size).calls if callee_name(fact.callee) == "size").effect_free == PROVES
+    # Claim of callee voids proof of call.
+    @test !only(fact for fact in effects(:claimed_caller!).calls if callee_name(fact.callee) == "run_claimed").effect_free
     push = only(fact for fact in effects(:push_value!).calls if callee_name(fact.callee) == "push!")
     @test push.used && push.kinds == [MEMORY] && push.definite == [MEMORY]
     # Closure operand lends its writes to call that can call it.
     each = only(fact for fact in effects(:collect_into!).calls if callee_name(fact.callee) == "foreach")
-    @test each.kinds == [MEMORY] && each.definite == [MEMORY]
+    @test each.kinds == [MEMORY] && each.definite == [MEMORY] && each.closure_kinds == [MEMORY] && each.closure_definite == [MEMORY]
+    @test isempty(push.closure_kinds)
+    doubled = only(fact for fact in effects(:doubled_rest).calls if callee_name(fact.callee) == "map")
+    @test !isempty(doubled.kinds) && isempty(doubled.closure_kinds)
+    @test (parameter(2), true, MEMORY, DEFINITE) in shape(effects(:sort_logged!).writes)
+    @test (global_place(:CLOSURE_CALLS), true, MEMORY, DEFINITE) in shape(effects(:counted_sum).writes)
+    @test !any(write -> write[1] == global_place(:CLOSURE_CALLS), shape(effects(:named_sum).writes))
+    @test (global_place(:CLOSURE_CALLS), true, MEMORY, DEFINITE) in shape(effects(:called_in_place).writes)
+    @test (global_place(:tally_count), true, MEMORY, DEFINITE) in shape(effects(:tallied).writes)
+    @test only(fact for fact in effects(:seen_once).calls if callee_name(fact.callee) == "filter").closure_definite == [MEMORY]
     # Block claim makes compiler trust it, so it proves nothing.
     @test !effects(:assumed_store!).effect_free
     @test any(fact -> fact.callee == Callee.Foreign(), effects(:zero_bytes!).calls)
@@ -313,7 +332,26 @@ end
     @test all(stored -> Place.Deep(Root.Parameter(3)) in stored, values(walk.stored))
 end
 
+"""Globals for `current_objects`: constant cell, non-constant binding that holds it, unassigned binding."""
+module ObjectCases
+    const HELD = Ref(1)
+    held_now::Base.RefValue{Int} = HELD
+    global unset::Int
+end
+
+"""Place of `ObjectCases` global `name` with `steps`."""
+object_place(name::Symbol, steps::Step.Type...)::Place.Type = Place.At(Root.Global(GlobalRef(ObjectCases, name)), Step.Type[steps...])
+
 @testset "place helpers" begin
+    # Constant root settles path until mutable holder; non-constant root never does.
+    @test current_objects(object_place(:HELD), false) == (path = Any[ObjectCases.HELD], settled = true)
+    @test current_objects(object_place(:HELD, Step.Element()), false) == (path = Any[ObjectCases.HELD, 1], settled = false)
+    @test current_objects(object_place(:held_now), false) == (path = Any[ObjectCases.HELD], settled = false)
+    # Write to non-constant binding itself can rebind it.
+    @test isnothing(current_objects(object_place(:held_now), true)) && !isnothing(current_objects(object_place(:HELD), true))
+    @test isnothing(current_objects(object_place(:unset), false)) && isnothing(current_objects(object_place(:HELD, Step.Field(:missing)), false))
+    @test isnothing(current_objects(Place.Deep(Root.Global(GlobalRef(ObjectCases, :HELD))), false))
+    @test isnothing(current_objects(Place.At(Root.Parameter(2), Step.Type[]), false))
     # Moshi variants are immutable, so table hits compare by `===`; call `==` directly.
     @test Step.Position(1) == Step.Position(1) && Step.Position(1) != Step.Position(2)
     @test Place.Deep(Root.Parameter(2)) == Place.Deep(Root.Parameter(2)) && Place.Deep(Root.Parameter(2)) != Place.Deep(Root.Parameter(3))
@@ -321,6 +359,9 @@ end
     @test_throws ArgumentError Facts.NO_STEPS.steps
     counter = GlobalRef(CASES, :COUNTER)
     @test root_global(Place.Deep(Root.Global(counter))) == counter && isnothing(root_global(parameter(2)))
+    @test step_child((1, 2), Step.Position(2)) == Some{Any}(2) && isnothing(step_child((1, 2), Step.Position(3)))
+    @test step_child((a = 1,), Step.Field(:a)) == Some{Any}(1) && isnothing(step_child((a = 1,), Step.Field(:b))) && isnothing(step_child([1], Step.Element()))
+    @test step_child(Ref(2), Step.Element()) == Some{Any}(2) && isnothing(step_child(Ref{Vector{Int}}(), Step.Element()))
     method = only(methods(CASES.set_inner!))
     @test place_text(method, parameter(2, Step.Field(:box), Step.Element(), Step.Position(1))) == "holder.box[…][1]"
     @test place_text(method, Place.Deep(Root.Global(counter))) == "NameCases.COUNTER or below"

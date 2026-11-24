@@ -569,19 +569,20 @@ note = "Method whose body only throws (`pop!(::SortedSet) = error(...)`) is exem
 [[footgun]]
 id = 55
 area = "effects"
-text = "Hidden input: mutable global, `ScopedValue`, global RNG"
+text = "Hidden input: default RNG, or package global other method writes"
 example = "`rand()` in package code"
 group = "correctness"
 stage = "effects"
+note = "Task-local storage and `ScopedValue` pass: caller sets both, and logging reads both for every message."
 
 [[footgun]]
 id = 56
 area = "effects"
-text = "Anonymous function impure: captures mutable state"
-example = "`filter(x -> x in seen, xs)`, `seen::Set`"
+text = "Anonymous function passed to query function writes state"
+example = "`filter(x -> x in seen ? false : (push!(seen, x); true), xs)`"
 group = "correctness"
 stage = "effects"
-note = "Named functions follow `!` convention; anonymous ones stay pure. Read-only capture counts."
+note = "Named functions follow `!` convention; anonymous ones stay pure. Read-only capture passes: nothing changes during call."
 
 [[footgun]]
 id = 57

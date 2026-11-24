@@ -73,6 +73,29 @@ zero_bytes!(items::Vector{UInt8})::Nothing = (ccall(:memset, Ptr{Cvoid}, (Ptr{UI
 # Closure: call that takes or calls closure writes through captured fields.
 """Collect `items` into `out` through closure."""
 collect_into!(out::Vector{Int}, items::Vector{Int})::Nothing = (foreach(item -> push!(out, item), items); nothing)
+"""Map pure closure over stateful iterator: consumed iterator is write of call, not of closure."""
+doubled_rest(rest::Iterators.Stateful{Vector{Int}})::Vector{Int} = map(item -> 2item, rest)
+"""Sort by keyword closure that writes argument: keyword tuple passes closure to `sort`."""
+sort_logged!(log::Vector{Int}, items::Vector{Int})::Vector{Int} = sort(items; by = item -> (push!(log, item); item))
+"""Counter that closure body writes."""
+const CLOSURE_CALLS = Ref(0)
+"""Sum through closure that writes global counter."""
+counted_sum(items::Vector{Int})::Int = sum(item -> (CLOSURE_CALLS[] += 1; item), items)
+"""Named function passed to `sum`: its name stands in for its body, so its write is no closure write."""
+counted_item(item::Int)::Int = (CLOSURE_CALLS[] += 1; item)
+named_sum(items::Vector{Int})::Int = sum(counted_item, items)
+"""Anonymous function called in place: its write is caller write."""
+called_in_place()::Int = (() -> (CLOSURE_CALLS[] += 1))()
+
+tally_count = 0
+function tallied(items::Vector{Int})::Vector{Int}
+    return map(items) do item
+        global tally_count += 1
+        item
+    end
+end
+"""Filter through closure that writes set it captures: fresh set gives no write, call fact keeps closure write."""
+seen_once(items::Vector{Int})::Vector{Int} = (seen = Set{Int}(); filter(item -> item in seen ? false : (push!(seen, item); true), items))
 """Build writing closure without calling it."""
 make_callback(items::Vector{Int}) = () -> push!(items, 1)
 """Pass writing closure through alias function: `identity` never calls it."""
@@ -324,6 +347,23 @@ end
 generated_caller!(items::Vector{Int})::Vector{Int} = (generated_store!(items); items)
 """Discard length of `items`."""
 discard(items::Vector{Int})::Nothing = (length(items); nothing)
+"""Discard length of element of unknown type: compiler effects join methods loaded now."""
+discard_open(items::Vector{Any})::Nothing = (length(items[1]); nothing)
+"""
+Lowering copies `finally` call, so calls of `abs` outnumber source calls: no exact span, blind spot. `parse` can throw
+whatever `stdout` is, so inference keeps both copies.
+"""
+discard_finally(x::Int, text::String)::Int = (
+    abs(x); try
+        parse(Int, text)
+    finally
+        abs(x)
+    end; x
+)
+"""Computed callee has no name, so mapping cannot place call: blind spot."""
+discard_computed(x::Int)::Int = (getfield(Base, :abs)(x); x)
+"""Stand-in `size` claim is Corset's own, so proof of discarded call holds."""
+discard_size(items::AbstractVector)::Nothing = (size(items); nothing)
 
 # Loop writes (F48).
 """Repeat each item at end: loop over `items` grows it."""

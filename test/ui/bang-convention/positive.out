@@ -27,7 +27,7 @@ error[bang-convention]: method of `append_one` writes `items`, but name has no `
    |
 13 | append_one(items::Vector{Int}) = (push!(items, 1); items)
    | ^^^^^^^^^^ name has no `!`
-   | --------------------------------------------------------- writes `items`
+   |                                   --------------- writes `items`
    |
    = why: caller reads name without `!` as promise that call changes nothing it can see
    = fix: rename `append_one` to `append_one!`, with call sites   [manual]
@@ -38,7 +38,7 @@ error[bang-convention]: method of `length` writes `counter.hits`, but name has n
    |
 19 | Base.length(counter::Counter) = (push!(counter.hits, 1); length(counter.hits))
    | ^^^^^^^^^^^ name has no `!`
-   | ------------------------------------------------------------------------------ writes `counter.hits`
+   |                                  ---------------------- writes `counter.hits`
    |
    = why: caller reads name without `!` as promise that call changes nothing it can see
    = fix: copy argument before write, or move write to `!` function   [manual]

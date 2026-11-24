@@ -70,6 +70,7 @@ Each SSA value gets a set of roots: the caller-visible objects it can hold or li
 - Constructor, tuple and vector literal results hold their operands: `Ref(x)` holds `x`. Literal (`[x]`, `T[x]`) converts element not of its element type, so it can hold new object. Package method on literal syntax (`SA[x]`) is package call.
 - Iteration: result of `iterate` and `indexed_iterate` holds element of iterated operand. Element step for array, dictionary, set and tuple; `deep` for other iterator.
 - Element table: result is element of container operand, or other operand (`get(d, k, default)`).
+- `getindex` with constant integer index into tuple loads position step; other index loads element step.
   - Table: `get`, `get!`, `getkey`, `pop!`, `popfirst!`, `popat!`, `maximum`, `minimum`, `reduce`, `foldl`, `foldr`, `rand`, `take!`, `fetch`.
   - Container: first operand, or second after leading callable or `AbstractRNG` (`get(f, d, k)`, `rand(rng, xs)`).
   - Lookup default: third operand of `get`, `get!`, `getkey`, `pop!`, `popat!` without leading callable.
@@ -98,6 +99,8 @@ Write sources, in order:
    - Invoking calls: direct call, and function that calls its function arguments (`foreach`, `map`, leading callable of `!` call).
    - Builtins, constructors, tuples, alias functions and stored operands of `!` calls never invoke it. Closure that only escapes writes nothing in its builder.
    - Call that compiler proves `effect_free` runs no closure that writes caller state (`hash(f)`). `@assume_effects` in method or its callee voids that proof.
+   - Closure body write below global binding, or assignment to global, writes that global. Keyword tuple of `Core.kwcall` passes its closures on.
+   - Call fact keeps closure write kinds apart from other writes of call, such as consumed stateful iterator. They count writes to fresh captured objects too.
 6. Other call: no write. Call of function value without name (callable argument or field) writes nothing too: Base names higher-order functions without `!` (`map`, `foreach`).
 
 - Value with more than one root gives `possible` write on each root: branch decides which object changes.
@@ -144,6 +147,9 @@ Facts keep hold count per resource at normal exit and at each statement that may
 
 - Compiler effects come free with unit inference.
 - `unused-call` (F54) needs compiler proof: discarded call with `effect_free`, `nothrow` and `terminates`. Name trust never proves none for it.
+- Discarded source call without effect that mapping cannot place goes to coverage line (`finally` body lowers twice). Calls lowering inserts do not.
+- Call fact keeps proof per call. Claim of callee voids `effect_free`. Operand types that are not concrete give open dispatch: `possible`.
+- Coverage counters void proof, so CI tracks coverage of `src` only.
 - `@assume_effects` makes compiler trust a claim. Call to package method with claim takes no proof from its flags.
 - Claim check reads code compiler infers. Generated method gives its generated code per instance.
 - Claim deeper in callees stays unseen. `false-effects` reports a false claim in package that owns it.

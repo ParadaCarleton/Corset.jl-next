@@ -6,6 +6,9 @@ const ALWAYS_THROWS = "always throws on stand-ins"
 """Blind spot cause of method whose facts hold no write on path stand-ins cut (`effects.md`, Stand-in cuts)."""
 const CUT = "stand-in cuts path"
 
+"""Blind spot cause of discarded call without effect that mapping cannot place: `unused-call` cannot name it."""
+const UNSPANNED_CALL = "call without effect lacks exact span"
+
 """Most methods call statement callee joins: compiler `max_methods`. More gives open callee."""
 const DISPATCH_LIMIT = 3
 
@@ -26,7 +29,7 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
     spans = Span[line in eachindex(typed.spans) ? typed.spans[line] : typed.site.span for line in lines]
     for index in 1:length(ir.stmts)
         line, span = lines[index], spans[index]
-        events = statement_events(walk, index)
+        events, invoked = statement_events(walk, index)
         foreach(event -> push!(event.write ? writes : reads, Access(event.place, event.below, event.kind, event.confidence, span)), events)
         statement = ir.stmts[index][:stmt]
         if statement isa Core.ReturnNode && isdefined(statement, :val)
@@ -37,14 +40,15 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
         statement isa Expr || continue
         statement.head in (:call, :foreigncall) || continue
         # Compiler trusts claim of direct callee too (`@assume_effects`); keyword call hides its callee, so it counts.
-        fact = call_fact(walk, index, events, span, iszero(line) ? !isempty(users[index]) : used[line])
+        fact = call_fact(walk, index, events, invoked, span, iszero(line) ? !isempty(users[index]) : used[line])
         callee_claimed |= statement.head === :call && callee_claims(walk, statement, fact.callee)
         push!(calls, (line, span) => fact)
     end
     effect_free = CC.is_effect_free(typed.frame.ipo_effects) && !claimed && !holds_stand_in(typed.signature) && !callee_claimed
     loops, loop_spots = loop_writes(walk, spans)
     reuses, reuse_spots = stateful_reuses(walk, typed.site.method, spans)
-    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), reuses, [loop_spots; reuse_spots], effect_free, new_result, cut)
+    unspanned = [BlindSpot(UNSPANNED_CALL, span) for ((line, span), fact) in calls if line in typed.unmapped && no_effect(fact)]
+    return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), UnguardedHold[], calls, loops, self_aliases(walk, spans), reuses, [loop_spots; reuse_spots; unspanned], effect_free, new_result, cut)
 end
 
 """
@@ -74,22 +78,36 @@ function unit_walk(typed::TypedCode, modules::AbstractSet{Module}, interpreter::
     # Inferred flags reuse claim bits, so claim reads code before inference.
     flags, claimed = typed.frame.src.ssaflags, claims_effect_free(typed.site.method, CC.retrieve_code_info(typed.frame.linfo, world))
     proven = Bool[!claimed && line in eachindex(flags) && flags[line] & CC.IR_FLAG_EFFECT_FREE != 0 for line in lines]
-    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{CapturedWrite}}(), IdDict{Union{Method, Core.MethodInstance}, Bool}(), world)
+    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{ClosureWrite}}(), IdDict{Union{Method, Core.MethodInstance}, Bool}(), world)
     return walk, lines, used, claimed
 end
 
 """
 Fact of call statement `index` in `walk` with its `events` (`CallFact`): write kinds include writes of package closures
-it takes or calls. Compiler flags give `throws` and `terminates`.
+it takes or calls. Closure kinds come from closure `writes`, fresh captured objects included. Compiler flags give
+`effect_free`, `throws` and `terminates`. Builtin and foreign callee have no dispatch to open.
 """
-function call_fact(walk::Walk, index::Integer, events::AbstractVector{Event}, span::Span, used::Bool)::CallFact
+function call_fact(walk::Walk, index::Integer, events::AbstractVector{Event}, writes::AbstractVector{ClosureWrite}, span::Span, used::Bool)::CallFact
     statement = walk.ir.stmts[index][:stmt]::Expr
-    operands = call_operands(statement)
-    kinds = sort!(unique!([event.kind for event in events if event.write]))
-    definite = sort!(unique!([event.kind for event in events if event.write && event.confidence == Confidence.definite]))
+    operands, callee = call_operands(statement), call_callee(walk, statement)
     flag = walk.ir.stmts[index][:flag]
     stand_in = any(operand -> holds_stand_in(operand_type(walk, operand)), operands)
-    return CallFact(span, call_callee(walk, statement), kinds, definite, flag & CC.IR_FLAG_NOTHROW == 0, flag & CC.IR_FLAG_TERMINATES != 0, used, stand_in)
+    dispatched = statement.head === :call && !(constant_value(walk, statement.args[1]) isa Core.Builtin)
+    open_dispatch = dispatched && !Base.isdispatchtuple(Tuple{Any[operand_type(walk, operand) for operand in statement.args]...})
+    throws, terminates = flag & CC.IR_FLAG_NOTHROW == 0, flag & CC.IR_FLAG_TERMINATES != 0
+    proven = proven_call(walk, index, statement, callee)
+    return CallFact(span, callee, write_kinds(events)..., closure_kinds(writes)..., proven, throws, terminates, used, stand_in, open_dispatch)
+end
+
+"""Kinds of closure `writes` at any certainty, and kinds of exact writes."""
+function closure_kinds(writes::AbstractVector{ClosureWrite})::Tuple{Vector{EffectKind.T}, Vector{EffectKind.T}}
+    return sort!(unique!([write.kind for write in writes])), sort!(unique!([write.kind for write in writes if write.exact]))
+end
+
+"""Kinds of writes among `events` at any certainty, and kinds of definite writes."""
+function write_kinds(events::AbstractVector{Event})::Tuple{Vector{EffectKind.T}, Vector{EffectKind.T}}
+    writes = [event for event in events if event.write]
+    return sort!(unique!([event.kind for event in writes])), sort!(unique!([event.kind for event in writes if event.confidence == Confidence.definite]))
 end
 
 """Operands of call `statement`, callee first; foreign call gives its argument operands."""
@@ -181,10 +199,15 @@ function merge_callees(first::Callee.Type, second::Callee.Type)::Callee.Type
     return isnothing(left) || isnothing(right) ? Callee.Open() : methods_callee([left; right])
 end
 
-"""Fact of call statement over two units of method: unit that may throw, writes or uses result decides."""
+"""Fact of call statement over two units of method: unit that may throw, writes, uses result or lacks proof decides."""
 function merge_calls(first::CallFact, second::CallFact)::CallFact
     kinds, definite = sort!(union(first.kinds, second.kinds)), sort!(union(first.definite, second.definite))
-    return CallFact(first.span, merge_callees(first.callee, second.callee), kinds, definite, first.throws || second.throws, first.terminates && second.terminates, first.used || second.used, first.stand_in || second.stand_in)
+    closure_kinds, closure_definite = sort!(union(first.closure_kinds, second.closure_kinds)), sort!(union(first.closure_definite, second.closure_definite))
+    return CallFact(
+        first.span, merge_callees(first.callee, second.callee), kinds, definite, closure_kinds, closure_definite, first.effect_free && second.effect_free,
+        first.throws || second.throws, first.terminates && second.terminates, first.used || second.used, first.stand_in || second.stand_in,
+        first.open_dispatch || second.open_dispatch,
+    )
 end
 
 """Add call facts `found` of unit to `calls` of its method (`merge_calls`)."""
