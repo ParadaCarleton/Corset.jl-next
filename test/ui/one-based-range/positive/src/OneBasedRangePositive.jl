@@ -89,4 +89,33 @@ function corner(m::AbstractMatrix{Float64})
     return m[rows, columns]
 end
 
+# Callee indexes `xs` with its index argument: literal comes from no axes.
+pick(xs::AbstractVector{Int}, i::Int) = xs[i]
+first_pick(xs::AbstractVector{Int}) = pick(xs, 1)
+
+# Method that passes index and array on takes contract of its callee.
+forward(xs::AbstractVector{Int}, i::Int) = pick(xs, i)
+forwarded_first(xs::AbstractVector{Int}) = forward(xs, 1)
+
+# Index of array that call does not pass: axes can differ.
+cross_pick(xs::AbstractVector{Int}, ys::AbstractVector{Int}) = pick(xs, firstindex(ys))
+
+# Call in branch that only offset axes reach.
+offset_pick(xs::AbstractVector{Int}) = firstindex(xs) == 1 ? 0 : pick(xs, 1)
+
+# Alias of package function in branch that only offset axes reach.
+aliased_pick(xs::AbstractVector{Int}) = (chosen = pick; firstindex(xs) == 1 ? 0 : chosen(xs, 1))
+
+# Alias of array argument in branch that only offset axes reach.
+renamed_pick(xs::AbstractVector{Int}) = (ys = xs; firstindex(ys) == 1 ? 0 : pick(ys, 1))
+
+# Copy keeps axes of array argument.
+copied_pick(xs::AbstractVector{Int}) = (ys = copy(xs); firstindex(xs) == 1 ? 0 : pick(ys, 1))
+
+struct Tag end
+
+# Package method on `Base` function takes contract too.
+Base.get(xs::AbstractVector{Int}, i::Int, ::Tag) = xs[i]
+tagged_first(xs::AbstractVector{Int}) = get(xs, 1, Tag())
+
 end

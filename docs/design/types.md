@@ -170,13 +170,12 @@ Each index into array needs proof unless inferred `axes` type of array is `OneTo
 - Same axes: `similar(x)`, `similar(x, T)`, `copy(x)`, `zero(x)` and broadcast of `x` with scalars have axes of `x`. Index of `x` indexes them.
 - Guard `Base.require_one_based_indexing(x)` proves every index of `x` after it.
 - `checkbounds` is no proof: absolute index inside shifted range passes it and reads wrong element.
-- Index argument (`f(x, i) = x[i]`): method carries contract: argument `i` indexes argument `x` at index position `p` of `n`. Public function carries contract, as `getindex` does.
-- Package call with array stand-in operand records what each operand indexes: other operand and dimension, index argument of caller, absolute index, or unknown source.
-- Rule matches call sites against contracts of callee methods. Absolute index gives `definite`; unknown source gives `possible`.
+- Index argument (`f(x, i) = x[i]`): method carries contract: argument `i` indexes argument `x` at index position `p` of `n`. Public function carries contract, as `getindex` does. Arithmetic of several index arguments (`x[i + delta]`, `f(x, i + delta)`) carries no contract: blind spot.
+- Package call with array stand-in operand records what each operand indexes: other operand and dimension (axes agreement included), index argument of caller, absolute index, index of other array, or unknown source.
+- Rule matches call sites against contracts of callee methods. Index argument of caller passes. Absolute index or index of other array gives `definite`; unknown source gives `possible`.
 - Call that passes index argument of caller with array argument of caller gives caller same contract. Rule closes contracts over package calls.
 - Contracts and call-site facts come from offset inference of each unit alone: callee facts never enter caller record, so method store keeps units apart.
-- Unit that calls package function with array stand-in operand gets offset inference, as unit that indexes does.
-- Call-site check is second step. Until then, index argument passes unchecked.
+- Unit that calls package function with array stand-in operand gets offset inference, as unit that indexes does. Package method on `Base` function counts. Lowered code counts too: one-based inference can drop call. Slot aliases (`g = f`, `ys = xs`) count, and call result holds arrays of its operands (`copy(xs)`).
 - Absolute index (literal, `length`, `size`, `enumerate` counter, index of other array): `definite`.
 - Index of unknown source (stored indices, unchecked arithmetic): `possible`.
 - Stored indices into input array: copy input to `Vector` at construction, or guard. Both give proof.

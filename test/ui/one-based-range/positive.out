@@ -169,3 +169,92 @@ warning[one-based-range]: index into `m` has no proof that it comes from its axe
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
+warning[one-based-range]: argument 2 of call has no proof that it comes from axes of argument 1
+  --> src/OneBasedRangePositive.jl:94:39
+   |
+93 | pick(xs::AbstractVector{Int}, i::Int) = xs[i]
+   |                                         ----- it indexes array here
+94 | first_pick(xs::AbstractVector{Int}) = pick(xs, 1)
+   |                                       ^^^^^^^^^^^ index without proof
+   |
+   = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+   = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+   = docs: corset explain one-based-range
+
+warning[one-based-range]: argument 2 of call has no proof that it comes from axes of argument 1
+  --> src/OneBasedRangePositive.jl:98:44
+   |
+93 | pick(xs::AbstractVector{Int}, i::Int) = xs[i]
+   |                                         ----- it indexes array here
+...
+98 | forwarded_first(xs::AbstractVector{Int}) = forward(xs, 1)
+   |                                            ^^^^^^^^^^^^^^ index without proof
+   |
+   = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+   = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+   = docs: corset explain one-based-range
+
+warning[one-based-range]: argument 2 of call has no proof that it comes from axes of argument 1
+   --> src/OneBasedRangePositive.jl:101:64
+    |
+ 93 | pick(xs::AbstractVector{Int}, i::Int) = xs[i]
+    |                                         ----- it indexes array here
+...
+101 | cross_pick(xs::AbstractVector{Int}, ys::AbstractVector{Int}) = pick(xs, firstindex(ys))
+    |                                                                ^^^^^^^^^^^^^^^^^^^^^^^^ index without proof
+    |
+    = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+    = docs: corset explain one-based-range
+
+warning[one-based-range]: argument 2 of call has no proof that it comes from axes of argument 1
+   --> src/OneBasedRangePositive.jl:104:66
+    |
+ 93 | pick(xs::AbstractVector{Int}, i::Int) = xs[i]
+    |                                         ----- it indexes array here
+...
+104 | offset_pick(xs::AbstractVector{Int}) = firstindex(xs) == 1 ? 0 : pick(xs, 1)
+    |                                                                  ^^^^^^^^^^^ index without proof
+    |
+    = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+    = docs: corset explain one-based-range
+
+warning[one-based-range]: argument 2 of call has no proof that it comes from axes of argument 1
+   --> src/OneBasedRangePositive.jl:107:83
+    |
+ 93 | pick(xs::AbstractVector{Int}, i::Int) = xs[i]
+    |                                         ----- it indexes array here
+...
+107 | aliased_pick(xs::AbstractVector{Int}) = (chosen = pick; firstindex(xs) == 1 ? 0 : chosen(xs, 1))
+    |                                                                                   ^^^^^^^^^^^^^ index without proof
+    |
+    = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+    = docs: corset explain one-based-range
+
+warning[one-based-range]: argument 2 of call has no proof that it comes from axes of argument 1
+   --> src/OneBasedRangePositive.jl:110:77
+    |
+ 93 | pick(xs::AbstractVector{Int}, i::Int) = xs[i]
+    |                                         ----- it indexes array here
+...
+110 | renamed_pick(xs::AbstractVector{Int}) = (ys = xs; firstindex(ys) == 1 ? 0 : pick(ys, 1))
+    |                                                                             ^^^^^^^^^^^ index without proof
+    |
+    = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+    = docs: corset explain one-based-range
+
+warning[one-based-range]: argument 2 of call has no proof that it comes from axes of argument 1
+   --> src/OneBasedRangePositive.jl:116:41
+    |
+115 | Base.get(xs::AbstractVector{Int}, i::Int, ::Tag) = xs[i]
+    |                                                    ----- it indexes array here
+116 | tagged_first(xs::AbstractVector{Int}) = get(xs, 1, Tag())
+    |                                         ^^^^^^^^^^^^^^^^^ index without proof
+    |
+    = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+    = docs: corset explain one-based-range
+

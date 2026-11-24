@@ -20,7 +20,7 @@ edges come second: `nothing` when it failed. Unit that always throws on stand-in
 """
 function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt, journal::Union{Nothing, Inference.Journal})::Tuple{UnitEffects, Union{Nothing, Vector{Any}}}
     cut = isempty(typed.cuts) ? nothing : typed.spans[first(typed.cuts)]
-    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], UnprovenIndex[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, false, cut), Any[]
+    typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], IndexFacts(), [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, false, cut), Any[]
     walk, lines, used, claimed = unit_walk(typed, modules, interpreter, world)
     ir = walk.ir
     walk_values!(walk, 2 * length(ir.stmts) + 10)
@@ -200,6 +200,17 @@ reuse_key(reuse::StatefulReuse)::Tuple{String, Int, Int, Int, String} = (reuse.l
 """Merge key of hold throw skips: throwing statement bytes, acquire start, resource kind."""
 hold_key(hold::UnguardedHold)::Tuple{String, Int, Int, Int, String} = (hold.throws.file, hold.throws.first_byte, hold.throws.last_byte, hold.acquire.first_byte, string(hold.kind))
 
+"""Index facts of method from facts of its units: surest unproven index per call, each contract and call once."""
+function merged_indices(units::AbstractVector{IndexFacts})::IndexFacts
+    unproven, contracts, calls = UnprovenIndex[], IndexContract[], IndexCall[]
+    for unit in units
+        append!(unproven, unit.unproven)
+        append!(contracts, unit.contracts)
+        append!(calls, unit.calls)
+    end
+    return IndexFacts(surest(unproven, index_key), unique!(contracts), unique!(call -> (call.site, call.callees, call.arrays, call.claims), calls))
+end
+
 """Merge key of unproven index: indexing call bytes."""
 index_key(unproven::UnprovenIndex)::Tuple{String, Int, Int, Int, String} = (unproven.site.file, unproven.site.first_byte, unproven.site.last_byte, 0, "")
 
@@ -251,9 +262,9 @@ end
 
 """
 Accesses of all units of one method: writes, reads, result aliases, holds throws skip, call facts, loop writes, self
-aliases, stateful reuses, unproven indices.
+aliases, stateful reuses, index facts.
 """
-const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{Place.Type}, Vector{UnguardedHold}, Calls, Vector{LoopWrite}, Vector{SelfAlias}, Vector{StatefulReuse}, Vector{UnprovenIndex}}
+const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{Place.Type}, Vector{UnguardedHold}, Calls, Vector{LoopWrite}, Vector{SelfAlias}, Vector{StatefulReuse}, Vector{IndexFacts}}
 
 """
 Facts of methods of `package` from effects `records` of units in inference order, and blind spots: worst over units of
@@ -267,7 +278,7 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
         isnothing(record) && continue
         append!(spots, record.spots)
         record.verdict || continue
-        writes, reads, aliases, unguarded, calls, loops, selves, reuses, indices = get!(() -> (Access[], Access[], Place.Type[], UnguardedHold[], Calls(), LoopWrite[], SelfAlias[], StatefulReuse[], UnprovenIndex[]), found, method)
+        writes, reads, aliases, unguarded, calls, loops, selves, reuses, indices = get!(() -> (Access[], Access[], Place.Type[], UnguardedHold[], Calls(), LoopWrite[], SelfAlias[], StatefulReuse[], IndexFacts[]), found, method)
         append!(writes, record.writes)
         append!(reads, record.reads)
         append!(aliases, record.aliases)
@@ -276,7 +287,7 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
         append!(loops, record.loop_writes)
         append!(selves, record.self_aliases)
         append!(reuses, record.stateful_reuses)
-        append!(indices, record.unproven_indices)
+        push!(indices, record.indices)
         free[method] = get(free, method, true) && record.effect_free
         new_results[method] = get(new_results, method, false) || record.new_result
         isnothing(record.cut) || haskey(cuts, method) || (cuts[method] = something(record.cut))
@@ -288,7 +299,7 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
         complete = !(site.method in incomplete) && !haskey(cuts, site.method)
         effects = MethodEffects(
             site, worst(writes), worst(reads), text_order(unique!(aliases), repr), surest(unguarded, hold_key),
-            call_order(calls), surest(loops, loop_key), surest(selves, alias_key), surest(reuses, reuse_key), surest(indices, index_key), complete, free[site.method], new_results[site.method],
+            call_order(calls), surest(loops, loop_key), surest(selves, alias_key), surest(reuses, reuse_key), merged_indices(indices), complete, free[site.method], new_results[site.method],
             name_writes(site.method), claimed_effects(site.method),
         )
         push!(methods, effects)

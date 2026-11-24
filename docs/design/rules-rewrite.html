@@ -806,13 +806,13 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <p><code>checkbounds</code> is no proof: absolute index inside shifted range passes it and reads wrong element.</p>
 </li>
 <li>
-<p>Index argument (<code>f(x, i) = x[i]</code>): method carries contract: argument <code>i</code> indexes argument <code>x</code> at index position <code>p</code> of <code>n</code>. Public function carries contract, as <code>getindex</code> does.</p>
+<p>Index argument (<code>f(x, i) = x[i]</code>): method carries contract: argument <code>i</code> indexes argument <code>x</code> at index position <code>p</code> of <code>n</code>. Public function carries contract, as <code>getindex</code> does. Arithmetic of several index arguments (<code>x[i + delta]</code>, <code>f(x, i + delta)</code>) carries no contract: blind spot.</p>
 </li>
 <li>
-<p>Package call with array stand-in operand records what each operand indexes: other operand and dimension, index argument of caller, absolute index, or unknown source.</p>
+<p>Package call with array stand-in operand records what each operand indexes: other operand and dimension (axes agreement included), index argument of caller, absolute index, index of other array, or unknown source.</p>
 </li>
 <li>
-<p>Rule matches call sites against contracts of callee methods. Absolute index gives <code>definite</code>; unknown source gives <code>possible</code>.</p>
+<p>Rule matches call sites against contracts of callee methods. Index argument of caller passes. Absolute index or index of other array gives <code>definite</code>; unknown source gives <code>possible</code>.</p>
 </li>
 <li>
 <p>Call that passes index argument of caller with array argument of caller gives caller same contract. Rule closes contracts over package calls.</p>
@@ -821,10 +821,7 @@ Each ban holds <code>reason</code> and one target: Argus <code>pattern</code>, o
 <p>Contracts and call-site facts come from offset inference of each unit alone: callee facts never enter caller record, so method store keeps units apart.</p>
 </li>
 <li>
-<p>Unit that calls package function with array stand-in operand gets offset inference, as unit that indexes does.</p>
-</li>
-<li>
-<p>Call-site check is second step. Until then, index argument passes unchecked.</p>
+<p>Unit that calls package function with array stand-in operand gets offset inference, as unit that indexes does. Package method on <code>Base</code> function counts. Lowered code counts too: one-based inference can drop call. Slot aliases (<code>g = f</code>, <code>ys = xs</code>) count, and call result holds arrays of its operands (<code>copy(xs)</code>).</p>
 </li>
 <li>
 <p>Absolute index (literal, <code>length</code>, <code>size</code>, <code>enumerate</code> counter, index of other array): <code>definite</code>.</p>

@@ -334,6 +334,21 @@ thread_count_address()::Ptr{Cint} = cglobal((:jl_n_threads, "libjulia-internal")
 offset_head(xs::AbstractVector{Int})::Int = Base.has_offset_axes(xs) ? offset_helper(xs) : xs[begin]
 """Last element of `xs`."""
 offset_helper(xs::AbstractVector{Int})::Int = xs[end]
+"""Element `i` of `xs`: contract that callers pass index of `xs`."""
+picked_at(xs::AbstractVector{Float64}, i::Int)::Float64 = xs[i]
+"""Literal index passed to `picked_at`."""
+literal_pick(xs::AbstractVector{Float64})::Float64 = picked_at(xs, 1)
+"""Index of array that call does not pass."""
+other_pick(xs::AbstractVector{Float64}, ys::AbstractVector{Float64})::Float64 = picked_at(xs, firstindex(ys))
+"""Arithmetic of two index arguments: no contract names either."""
+shifted_at(xs::AbstractVector{Float64}, i::Int, delta::Int)::Float64 = xs[i + delta]
+"""Package call with index from two arguments: callee contract checks neither."""
+forward_shifted(xs::AbstractVector{Float64}, i::Int, delta::Int)::Float64 = picked_at(xs, i + delta)
+"""Index of `ys` after agreement of axes: it indexes `xs`."""
+function agreed_pick(xs::AbstractVector{Float64}, ys::AbstractVector{Float64})::Float64
+    axes(xs) == axes(ys) || throw(DimensionMismatch("axes differ"))
+    return picked_at(xs, firstindex(ys))
+end
 """Store under block claim in generated code: compiler trusts claim, though `Method.source` holds none."""
 @generated function generated_store!(items::Vector{Int})
     return quote

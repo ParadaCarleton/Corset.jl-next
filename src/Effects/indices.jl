@@ -6,11 +6,16 @@ using OffsetArrays: OffsetArray
 """Root of absolute index: literal, `length`, `size`, `enumerate` counter. It indexes no array."""
 struct Absolute end
 
-"""Root of index argument: caller proves it, so method trusts it."""
-struct Trusted end
+"""
+Root of index argument `argument` (position among method parameters): caller proves it, so method trusts it. Argument
+0: arithmetic of several index arguments (`i + delta`), so no contract names one.
+"""
+struct Trusted
+    argument::Int
+end
 
 """
-Claim that part of IR value indexes array `root` (`underlying` value with same axes; `Absolute()` or `Trusted()`).
+Claim that part of IR value indexes array `root` (`underlying` value with same axes; `Absolute` or `Trusted`).
 `dimension`: 0 for linear or Cartesian index, `d` for dimension `d`. `path` leads from value to index: 0 takes element,
 `k > 0` takes tuple field `k`.
 """
@@ -80,14 +85,22 @@ prefixed(claims::AbstractSet{Claim}, step::Integer)::Claims = Claims(Claim(claim
 scalar(claims::AbstractSet{Claim})::Claims = Claims(claim for claim in claims if isempty(claim.path))
 
 """
-Origin claim of arithmetic on operands with `claims`: `Trusted` when one operand is index argument, `Absolute` when all
-have origin; none when one operand has unknown origin.
+Origin claim of arithmetic on operands with `claims`: `Trusted` when one operand is index argument (`Trusted(0)` for
+several), `Absolute` when all have origin; none when one operand has unknown origin.
 """
 function origin(claims::AbstractVector{Claims})::Claims
     any(isempty ∘ scalar, claims) && return Claims()
-    any(operand -> Claim(Trusted(), 0, ()) in operand, claims) && return Claims([Claim(Trusted(), 0, ())])
-    return Claims([Claim(Absolute(), 0, ())])
+    # Loop: nested generator iterates `Iterators.Flatten`, whose size methods packages invalidate.
+    trusted = Claims()
+    for operand in claims, claim in scalar(operand)
+        claim.root isa Trusted && push!(trusted, claim)
+    end
+    isempty(trusted) && return Claims([Claim(Absolute(), 0, ())])
+    return length(trusted) == 1 ? trusted : Claims([Claim(Trusted(0), 0, ())])
 end
+
+"""Whether `claims` hold claim of index argument (`Trusted`)."""
+trusted_index(claims::AbstractSet{Claim})::Bool = any(claim -> claim.root isa Trusted, scalar(claims))
 
 """
 Claims of value that is one of operands with `claims` (`min`, range bound): array claims every operand shares, where
@@ -95,11 +108,10 @@ index argument matches any array (`min(i, lastindex(x))` indexes `x`). `Trusted`
 argument: absolute operand can be result (`1:i`).
 """
 function choice_claims(claims::AbstractVector{Claims})::Claims
-    trusted = Claim(Trusted(), 0, ())
-    others = Claims[real_claims(scalar(operand)) for operand in claims if !(trusted in operand && isempty(real_claims(scalar(operand))))]
+    others = Claims[real_claims(scalar(operand)) for operand in claims if !(trusted_index(operand) && isempty(real_claims(scalar(operand))))]
     found = origin(claims)
     isempty(others) && return found
-    trusted in found && (found = Claims([Claim(Absolute(), 0, ())]))
+    trusted_index(found) && (found = Claims([Claim(Absolute(), 0, ())]))
     # Loop, since splat `intersect(others...)` infers through code that `IteratorSize` methods of other sets invalidate.
     shared = copy(first(others))
     for operand in others
@@ -127,8 +139,8 @@ function operand_claims(proof::Proof, @nospecialize(operand::Any))::Claims
     operand isa Core.SSAValue && return something(proof.claims[operand.id], Claims())
     type = operand_type(proof.walk, operand)
     if operand isa Core.Argument
-        type <: Union{Integer, CartesianIndex} && return Claims([Claim(Trusted(), 0, ())])
-        type <: Union{AbstractArray{<:Integer}, AbstractArray{<:CartesianIndex}} && return Claims([Claim(Trusted(), 0, (0,))])
+        type <: Union{Integer, CartesianIndex} && return Claims([Claim(Trusted(operand.n - 1), 0, ())])
+        type <: Union{AbstractArray{<:Integer}, AbstractArray{<:CartesianIndex}} && return Claims([Claim(Trusted(operand.n - 1), 0, (0,))])
         return Claims()
     end
     constant = constant_value(proof.walk, operand)
@@ -328,11 +340,12 @@ end
 const ROUNDS = 16
 
 """
-Indices into arrays with offset axes that have no proof, in unit `walk` of `method` inferred with offset stand-ins
-(`types.md`, Index proof). `lines` gives source statement of each IR statement, `spans` span of each source statement.
-One fact per indexing call: its first unproven index. Call compiler inserts gives none.
+Index facts of unit `walk` of `method` inferred with offset stand-ins (`types.md`, Index proof): indices into arrays
+with offset axes that have no proof, contracts of index arguments, and package calls that pass arrays with offset axes.
+`lines` gives source statement of each IR statement, `spans` span of each source statement. One unproven fact per
+indexing call: its first unproven index. Call compiler inserts gives none. Blind spots come from `index_contracts`.
 """
-function unproven_indices(walk::Walk, method::Method, lines::AbstractVector{<:Integer}, spans::AbstractVector{Span})::Vector{UnprovenIndex}
+function index_facts(walk::Walk, method::Method, lines::AbstractVector{<:Integer}, spans::AbstractVector{Span})::Tuple{IndexFacts, Vector{BlindSpot}}
     Base.require_one_based_indexing(lines, spans)
     span_of(index::Integer)::Union{Nothing, Span} = lines[index] in eachindex(spans) ? spans[lines[index]] : nothing
     count = length(walk.ir.stmts)
@@ -347,16 +360,25 @@ function unproven_indices(walk::Walk, method::Method, lines::AbstractVector{<:In
         changed || break
     end
     domtree, guards, agreements = CC.construct_domtree(walk.ir.cfg.blocks), one_based_guards(proof), axes_agreements(proof)
-    found = UnprovenIndex[]
+    found, contracts, calls, spots = UnprovenIndex[], IndexContract[], IndexCall[], BlindSpot[]
     for index in 1:count
-        site, unproven_site = span_of(index), unproven(proof, domtree, guards, agreements, index)
-        (isnothing(site) || isnothing(unproven_site)) && continue
+        site = span_of(index)
+        isnothing(site) && continue
+        site_contracts, site_spots = index_contracts(proof, domtree, guards, agreements, index, site)
+        append!(contracts, site_contracts); append!(spots, site_spots)
+        call = index_call(proof, domtree, guards, agreements, index)
+        isnothing(call) || push!(calls, IndexCall(site, call...))
+        # Index from several arguments to package call: callee contract names one argument, so it checks none.
+        several = !isnothing(call) && any(claim -> claim.source == IndexSource.parameter && claim.target == 0, last(something(call)))
+        several && push!(spots, BlindSpot(SEVERAL_ARGUMENTS, site))
+        unproven_site = unproven(proof, domtree, guards, agreements, index)
+        isnothing(unproven_site) && continue
         array, operand, confidence = unproven_site
         source = underlying(walk, operand)
         cause = source isa Core.SSAValue ? span_of(source.id) : nothing
         push!(found, UnprovenIndex(site, cause == site ? nothing : cause, value_text(walk, method, array), confidence))
     end
-    return unique!(found)
+    return IndexFacts(unique!(found), unique!(contracts), calls), unique!(spots)
 end
 
 """Calls `Base.require_one_based_indexing(x...)` in `proof`: statement and root of each array it checks."""
@@ -425,11 +447,10 @@ function throws(ir::CC.IRCode, block::Integer)::Bool
 end
 
 """
-Unproven index of indexing call at statement `index` in `proof`: array operand, index operand and certainty. Absolute
-index (literal, `length`, counter, index of other array) is `definite`; unknown source `possible`. Index argument and
-array after one-based guard pass.
+Indexing call at statement `index` of `proof` into array whose axes can start anywhere, with no one-based guard
+(`guards`, `domtree`) before it: array operand, its root, block of call, index operands and dimension count of array.
 """
-function unproven(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tuple{Integer, Any}}, agreements::AbstractVector{<:Tuple{Integer, Any, Any}}, index::Integer)::Union{Nothing, Tuple{Any, Any, Confidence.T}}
+function offset_indexing(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tuple{Integer, Any}}, index::Integer)::Union{Nothing, Tuple{Any, Any, Int, Vector{Any}, Union{Nothing, Int}}}
     parts = call_of(proof.walk, Core.SSAValue(index))
     isnothing(parts) && return nothing
     callee, operands = parts
@@ -439,17 +460,107 @@ function unproven(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tu
     type = operand_type(proof.walk, array)
     # Array of declared abstract type (field `data::AbstractVector`) has no stand-in; rule checks stand-ins only.
     (holds_stand_in(type) && offset_axes!(proof.offsets, type)) || return nothing
-    array_root, block = root(proof, array), CC.block_for_inst(proof.walk.ir.cfg, index)
-    any(((at, checked),) -> checked == array_root && dominates_statement(proof.walk.ir, domtree, at, index), guards) && return nothing
-    indices, dimensions = operands[start:end], dimension_count(type)
+    array_root = root(proof, array)
+    guarded(proof, domtree, guards, array_root, index) && return nothing
+    return array, array_root, CC.block_for_inst(proof.walk.ir.cfg, index), operands[start:end], dimension_count(type)
+end
+
+"""Whether one-based guard of `guards` checks array `array_root` before statement `index` of `proof` on every path."""
+function guarded(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tuple{Integer, Any}}, @nospecialize(array_root::Any), index::Integer)::Bool
+    return any(((at, checked),) -> checked == array_root && dominates_statement(proof.walk.ir, domtree, at, index), guards)
+end
+
+"""Whether index `operand` of `proof` selects no element by position: colon or `Bool` mask."""
+selects_all(proof::Proof, @nospecialize(operand::Any))::Bool = operand_type(proof.walk, operand) <: Union{Colon, AbstractArray{Bool}}
+
+"""
+Unproven index of indexing call at statement `index` in `proof`: array operand, index operand and certainty. Absolute
+index (literal, `length`, counter, index of other array) is `definite`; unknown source `possible`. Index argument and
+array after one-based guard pass.
+"""
+function unproven(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tuple{Integer, Any}}, agreements::AbstractVector{<:Tuple{Integer, Any, Any}}, index::Integer)::Union{Nothing, Tuple{Any, Any, Confidence.T}}
+    parts = offset_indexing(proof, domtree, guards, index)
+    isnothing(parts) && return nothing
+    array, array_root, block, indices, dimensions = parts
     for (position, operand) in enumerate(indices)
-        operand_type(proof.walk, operand) <: Union{Colon, AbstractArray{Bool}} && continue
+        selects_all(proof, operand) && continue
         claims = operand_claims(proof, operand)
         any(claim -> proves(proof, domtree, agreements, claim, array_root, block, position, length(indices), dimensions), claims) && continue
         any(claim -> claim.root isa Trusted, claims) && continue
         return (array, operand, isempty(claims) ? Confidence.possible : Confidence.definite)
     end
     return nothing
+end
+
+"""Blind spot cause of index from arithmetic of several arguments: contract names one argument, so callers check none."""
+const SEVERAL_ARGUMENTS = "index from several arguments"
+
+"""
+Contracts that indexing call at statement `index` of `proof`, span `site`, asks of callers: index argument without
+other proof indexes array argument (`types.md`, Index proof). Index from several arguments gives blind spot instead.
+"""
+function index_contracts(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tuple{Integer, Any}}, agreements::AbstractVector{<:Tuple{Integer, Any, Any}}, index::Integer, site::Span)::Tuple{Vector{IndexContract}, Vector{BlindSpot}}
+    parts = offset_indexing(proof, domtree, guards, index)
+    isnothing(parts) && return IndexContract[], BlindSpot[]
+    _, array_root, block, indices, dimensions = parts
+    array_root isa Core.Argument || return IndexContract[], BlindSpot[]
+    found, spots = IndexContract[], BlindSpot[]
+    for (position, operand) in enumerate(indices)
+        selects_all(proof, operand) && continue
+        claims = operand_claims(proof, operand)
+        any(claim -> proves(proof, domtree, agreements, claim, array_root, block, position, length(indices), dimensions), claims) && continue
+        for claim in claims
+            source = claim.root
+            source isa Trusted || continue
+            source.argument == 0 && (push!(spots, BlindSpot(SEVERAL_ARGUMENTS, site)); continue)
+            claim.path in ((), (0,)) || continue
+            push!(found, IndexContract(source.argument, claim.path == (0,), array_root.n - 1, position, length(indices), site))
+        end
+    end
+    return found, spots
+end
+
+"""
+Package call at statement `index` of `proof` with array operand whose axes can start anywhere and no one-based guard
+before it (`IndexCall` parts): signatures of package methods it can run, such array operands, and index claims of
+operands. Index of array with axes of no array operand is index of other array. Keyword call runs keyword sorter, whose
+parameters differ from body: it gives none.
+"""
+function index_call(proof::Proof, domtree::CC.DomTree, guards::AbstractVector{<:Tuple{Integer, Any}}, agreements::AbstractVector{<:Tuple{Integer, Any, Any}}, index::Integer)::Union{Nothing, Tuple{Vector{Type}, Vector{ArrayOperand}, Vector{OperandIndex}}}
+    statement = proof.walk.ir.stmts[index][:stmt]
+    statement isa Expr || return nothing
+    statement.head === :call || return nothing
+    constant_value(proof.walk, statement.args[1]) === Core.kwcall && return nothing
+    _, operands = call_parts(proof.walk, statement)
+    isnothing(operands) && return nothing
+    matches = call_matches(proof.walk, statement)
+    isnothing(matches) && return nothing
+    callees = Type[match.method.sig for match in matches if match.method.module in proof.walk.modules]
+    isempty(callees) && return nothing
+    arrays = ArrayOperand[]
+    for (position, operand) in enumerate(operands)
+        type = operand_type(proof.walk, operand)
+        (holds_stand_in(type) && offset_axes!(proof.offsets, type)) || continue
+        array_root = root(proof, operand)
+        guarded(proof, domtree, guards, array_root, index) && continue
+        push!(arrays, ArrayOperand(position, dimension_count(type), array_root isa Core.Argument ? array_root.n - 1 : 0))
+    end
+    isempty(arrays) && return nothing
+    claims, block = OperandIndex[], CC.block_for_inst(proof.walk.ir.cfg, index)
+    for (position, operand) in enumerate(operands), claim in operand_claims(proof, operand)
+        claim.path in ((), (0,)) || continue
+        element, source = claim.path == (0,), claim.root
+        if source isa Trusted
+            push!(claims, OperandIndex(position, element, IndexSource.parameter, source.argument, 0))
+        elseif source isa Absolute
+            push!(claims, OperandIndex(position, element, IndexSource.absolute, 0, 0))
+        else
+            indexed = [array.operand for array in arrays if same_axes(domtree, agreements, source, root(proof, operands[array.operand]), block)]
+            isempty(indexed) && push!(claims, OperandIndex(position, element, IndexSource.other, 0, claim.dimension))
+            append!(claims, (OperandIndex(position, element, IndexSource.array, target, claim.dimension) for target in indexed))
+        end
+    end
+    return callees, arrays, unique!(claims)
 end
 
 """Whether statement `guard` of `ir` runs before statement `index` on every path."""
@@ -466,11 +577,13 @@ same axes, index or range of indices, and dimension that position addresses.
 function proves(proof::Proof, domtree::CC.DomTree, agreements::AbstractVector{<:Tuple{Integer, Any, Any}}, claim::Claim, @nospecialize(array_root::Any), block::Integer, position::Integer, count::Integer, dimensions::Union{Nothing, Integer})::Bool
     claim.path in ((), (0,)) || return false
     dimension_matches = count == 1 ? claim.dimension == 0 || (claim.dimension == 1 && dimensions == 1) : claim.dimension == position
-    dimension_matches || return false
-    claim.root == array_root && return true
-    return any(agreements) do (agree, left, right)
-        Set{Any}([left, right]) == Set{Any}([claim.root, array_root]) && CC.dominates(domtree, agree, block)
-    end
+    return dimension_matches && same_axes(domtree, agreements, claim.root, array_root, block)
+end
+
+"""Whether array roots `left` and `right` share axes in `block`: same root, or axes agreement of `agreements` runs first."""
+function same_axes(domtree::CC.DomTree, agreements::AbstractVector{<:Tuple{Integer, Any, Any}}, @nospecialize(left::Any), @nospecialize(right::Any), block::Integer)::Bool
+    left == right && return true
+    return any(((agree, one, other),) -> Set{Any}([one, other]) == Set{Any}([left, right]) && CC.dominates(domtree, agree, block), agreements)
 end
 
 """
@@ -581,24 +694,104 @@ function indexes_stand_in(walk::Walk)::Bool
 end
 
 """
+Whether typed code of `walk` calls with array stand-in operand function that can run package method (method package
+adds to `Base` function included): call may owe index contract.
+"""
+function passes_stand_in(walk::Walk)::Bool
+    for index in 1:length(walk.ir.stmts)
+        statement = walk.ir.stmts[index][:stmt]
+        statement isa Expr || continue
+        statement.head === :call || continue
+        _, operands = call_parts(walk, statement)
+        isnothing(operands) && continue
+        any(operand -> (type = operand_type(walk, operand); type <: AbstractArray && holds_stand_in(type)), operands) || continue
+        matches = call_matches(walk, statement)
+        !isnothing(matches) && any(match -> match.method.module in walk.modules, matches) && return true
+    end
+    return false
+end
+
+"""
+Whether lowered code of `method` passes array argument whose `signature` type holds stand-in to function of `modules`
+or function they add method to. Typed code can miss call, as `lowered_indexing` explains. Aliases (`g = f`, `ys = xs`)
+count.
+"""
+function lowered_passes(method::Method, @nospecialize(signature::Type), modules::AbstractSet{Module})::Bool
+    isdefined(method, :source) || return true
+    parameters = (Base.unwrap_unionall(signature)::DataType).parameters
+    arrays = Set{Any}(Core.SlotNumber(position) for position in eachindex(parameters) if array_stand_in_type(parameters[position]))
+    isempty(arrays) && return false
+    code = Base.uncompressed_ast(method).code
+    aliases = lowered_aliases(code)
+    # Only callee that takes array resolves, so check stays cheap.
+    for call in lowered_calls(code)
+        any(operand -> !isdisjoint(lowered_roots(aliases, operand), arrays), call.args[2:end]) || continue
+        any(callee -> isdefined(callee.mod, callee.name) && package_function(getglobal(callee.mod, callee.name), modules), callee_globals(aliases, call.args[1])) && return true
+    end
+    return false
+end
+
+"""
+Globals and slots that each slot or SSA value of lowered `code` can hold: function alias (`g = getindex`) and array
+alias (`ys = xs`) through slot assignments, slot reads and SSA values. Call result holds slots of its operands, since
+it can keep their axes (`copy(xs)`). Rounds run until no set grows, so loops count.
+"""
+function lowered_aliases(code::AbstractVector{Any})::Dict{Any, Set{Any}}
+    aliases = Dict{Any, Set{Any}}()
+    grown = true
+    while grown
+        grown = false
+        for (index, statement) in enumerate(code)
+            target = statement isa Expr && statement.head === :(=) ? statement.args[1] : Core.SSAValue(index)
+            found = lowered_roots(aliases, statement isa Expr && statement.head === :(=) ? statement.args[2] : statement)
+            isempty(found) && continue
+            held = get!(Set{Any}, aliases, target)
+            issubset(found, held) && continue
+            union!(held, found); grown = true
+        end
+    end
+    return aliases
+end
+
+"""Globals and slots that lowered `operand` can hold through `aliases` (`lowered_aliases`); slot holds itself too."""
+function lowered_roots(aliases::AbstractDict{Any, <:AbstractSet{Any}}, @nospecialize(operand::Any))::Set{Any}
+    operand isa GlobalRef && return Set{Any}([operand])
+    operand isa Core.SlotNumber && return union(Set{Any}([operand]), get(aliases, operand, Set{Any}()))
+    operand isa Core.SSAValue && return get(aliases, operand, Set{Any}())
+    operand isa Expr || return Set{Any}()
+    operand.head === :call || return Set{Any}()
+    return Set{Any}(root for argument in operand.args[2:end] for root in lowered_roots(aliases, argument) if root isa Core.SlotNumber)
+end
+
+"""Call expressions of lowered `code`: call statements and calls whose value slot assignment takes (`_4 = f(x)`)."""
+lowered_calls(code::AbstractVector{Any})::Vector{Expr} =
+    Expr[call for statement in code for call in (statement isa Expr && statement.head === :(=) ? statement.args[2] : statement,) if call isa Expr && call.head === :call]
+
+"""Globals that lowered `callee` operand can be, through `aliases` (`lowered_aliases`)."""
+callee_globals(aliases::AbstractDict{Any, <:AbstractSet{Any}}, @nospecialize(callee::Any))::Set{GlobalRef} =
+    Set{GlobalRef}(root for root in lowered_roots(aliases, callee) if root isa GlobalRef)
+
+"""Whether signature `parameter` is array type that holds stand-in."""
+array_stand_in_type(@nospecialize(parameter::Any))::Bool = parameter isa Type && parameter <: AbstractArray && holds_stand_in(parameter)
+
+"""Whether `callee` is function of `modules`, or function they add method to."""
+function package_function(@nospecialize(callee::Any), modules::AbstractSet{Module})::Bool
+    callee isa Function || return false
+    parentmodule(callee) in modules && return true
+    return any(method -> method.module in modules, methods(callee))
+end
+
+"""
 Whether lowered code of `method` calls indexing function (`INDEXING`). Typed code can miss it: inference with one-based
 stand-in drops branch on `firstindex(x) == 1`. Alias (`g = getindex`) counts.
 """
 function lowered_indexing(method::Method)::Bool
     # Method without source (built from `CodeInfo`) can index: infer again.
     isdefined(method, :source) || return true
-    # Alias (`g = getindex`) holds indexing function in slot or SSA value.
-    aliases = Set{Any}()
-    indexing(value::Any)::Bool = (value isa GlobalRef && isdefined(value.mod, value.name) && haskey(INDEXING, getglobal(value.mod, value.name))) || value in aliases
-    for (index, statement) in enumerate(Base.uncompressed_ast(method).code)
-        if statement isa Expr && statement.head === :(=)
-            indexing(statement.args[2]) && push!(aliases, statement.args[1])
-            statement = statement.args[2]
-        end
-        indexing(statement) && push!(aliases, Core.SSAValue(index))
-        statement isa Expr && statement.head === :call && indexing(statement.args[1]) && return true
-    end
-    return false
+    code = Base.uncompressed_ast(method).code
+    aliases = lowered_aliases(code)
+    indexing(callee::GlobalRef)::Bool = isdefined(callee.mod, callee.name) && haskey(INDEXING, getglobal(callee.mod, callee.name))
+    return any(call -> any(indexing, callee_globals(aliases, call.args[1])), lowered_calls(code))
 end
 
 # corset: allow bang-convention -- crash journal records progress; caller reads it only after crash
@@ -628,20 +821,21 @@ function same_lowered(unit::Core.MethodInstance, offset::Core.MethodInstance, wo
 end
 
 """
-Unproven indices of unit `typed` with `walk` (`types.md`, Index proof), and blind spots: method infers again with offset
-stand-ins (`offset_inference` with `journal`), and proof runs on that code. Method without indexing in typed or lowered
-code, and method that rejects offset stand-ins give none. Generated method always infers again: one-based inference can
+Index facts of unit `typed` with `walk` (`index_facts`), and blind spots: method infers again with offset
+stand-ins (`offset_inference` with `journal`), and proof runs on that code. Method without indexing or package call
+with array stand-in, in typed or lowered code, and method that rejects offset stand-ins give none. Generated method always infers again: one-based inference can
 drop its indexing branch.
 """
-function unit_indices(typed::TypedCode, walk::Walk, interpreter::CC.NativeInterpreter, journal::Union{Nothing, Inference.Journal})::Tuple{Vector{UnprovenIndex}, Vector{BlindSpot}, Union{Nothing, Vector{Any}}}
+function unit_indices(typed::TypedCode, walk::Walk, interpreter::CC.NativeInterpreter, journal::Union{Nothing, Inference.Journal})::Tuple{IndexFacts, Vector{BlindSpot}, Union{Nothing, Vector{Any}}}
     method = typed.site.method
-    (Base.hasgenerator(method) || indexes_stand_in(walk) || lowered_indexing(method)) || return UnprovenIndex[], BlindSpot[], Any[]
+    reaches = indexes_stand_in(walk) || passes_stand_in(walk) || lowered_indexing(method) || lowered_passes(method, typed.signature, walk.modules)
+    (Base.hasgenerator(method) || reaches) || return IndexFacts(), BlindSpot[], Any[]
     signature = offset_signature(method, typed.signature)
-    isnothing(signature) && return UnprovenIndex[], BlindSpot[], Any[]
+    isnothing(signature) && return IndexFacts(), BlindSpot[], Any[]
     inferred = offset_inference(typed, signature, journal, walk.world)
     # Failed offset inference leaves its callees unknown, so store cannot check record: no edges.
-    inferred isa String && return UnprovenIndex[], [BlindSpot(inferred, typed.site.span)], nothing
+    inferred isa String && return IndexFacts(), [BlindSpot(inferred, typed.site.span)], nothing
     offset_walk, lines = frame_walk(last(inferred), method, walk.modules, interpreter, walk.world)
     walk_values!(offset_walk, 2 * length(offset_walk.ir.stmts) + 10)
-    return unproven_indices(offset_walk, method, lines, typed.spans), BlindSpot[], inferred[4]
+    return index_facts(offset_walk, method, lines, typed.spans)..., inferred[4]
 end
