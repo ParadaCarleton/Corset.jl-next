@@ -53,7 +53,8 @@ Each statement that uses allocation value gives one event, with statement span, 
 - Operand escapes when result type meets its type: call can return it (`float(a)`, package `pass(a) = a`). Unary `*(A)` returns `A`.
 - Base copy, collect and reduction calls, `Array` constructors, and arithmetic with two or more operands, read operand whole. Result holds its elements, never operand itself, whatever result type: `vcat` of stand-in gives wrapper type.
 - `copy`, `vcat`, `hcat` and `Array` constructors can keep unset slots of reference elements unread: operand of such type escapes.
-  - Concatenation of `Array` operands reads slots, as Julia 1.13 does: `vcat` with operand of two or more dimensions, `hcat` of vectors only, operand of three or more dimensions, and conversion to promoted element type. `hcat` with matrix keeps slots. Unknown dimensions, array type or scalar type: escape, so no false definite finding.
+  - Concatenation of `Array` operands reads slots, as Julia 1.13 does: `vcat` with operand of two or more dimensions, `hcat` of vectors only, operand of three or more dimensions. `hcat` with matrix keeps slots. Unknown dimensions or array type: escape, so no false definite finding.
+  - `vcat` of vectors reads slots that convert to promoted element type. Promotion can run package code (`promote_rule`), so Corset misses that read.
 - Type can hold array when element or field type meets array type, at most 3 steps deep. Base storage (`Array`, `Dict`, `Set`) holds elements only; view or wrapper also holds fields (`SubArray` parent).
 - Index operand keeps constant value. Non-constant index keeps nothing.
 
