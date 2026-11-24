@@ -15,8 +15,8 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 | 7 | Alias rules | F48, F50, F51 | 5 | #300, #301, #304; done |
 | 8 | Effect rules | F54, F55, F56, F58, F98 | 5 | F54 #315, F58 #316, F98 #318, F56 #319, F55 #320; done |
 | 9 | `bang-convention` | F53, F86 | 5 | #321 (manual fix); done |
-| 10 | Lifecycle facts | `lifecycle` stage | 5 | — |
-| 11 | Lifecycle rules | F32, F33, F34, F39, F40, F41 | 10 | — |
+| 10 | Lifecycle facts | `lifecycle` stage | 5 | #324; done |
+| 11 | Lifecycle rules | F32, F33, F34, F39, F40, F41 | 10 | F33, F34, F39, F40 #325; F32 #326; F41 #327; done |
 
 - One PR per row; split a rule row by rule when it grows large. Status gets PR number at merge.
 - Rule rows merge in any order after row 5. Bug rules go first: F48, F50, F98, F58, F54.
