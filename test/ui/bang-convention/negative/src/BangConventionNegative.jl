@@ -19,11 +19,17 @@ draw(rng::AbstractRNG) = rand(rng)
 const SQUARES = Dict{Int, Int}()
 square(n::Int) = get!(() -> n^2, SQUARES, n)
 
-# Base IO function promises write.
-mutable struct Resource
-    open::Bool
+# Base IO function may write its `IO` stream.
+mutable struct Sink <: IO
+    count::Int
 end
-Base.close(resource::Resource) = (resource.open = false; nothing)
+Base.write(sink::Sink, byte::UInt8) = (sink.count += 1; 1)
+
+# Name trust lets `lock` write its lock, after callable argument.
+mutable struct Gate
+    held::Bool
+end
+Base.lock(f::Function, gate::Gate) = (gate.held = true; f())
 
 # `__init__` sets state once, at load.
 const WORKERS = Ref(1)

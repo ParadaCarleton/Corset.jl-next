@@ -44,10 +44,32 @@ error[bang-convention]: method of `length` writes `counter.hits`, but name has n
    = fix: copy argument before write, or move write to `!` function   [manual]
    = docs: corset explain bang-convention
 
-error[bang-convention]: method of `scale!` writes nothing, but name ends in `!`
+error[bang-convention]: method of `show` writes `item`, but name has no `!`
   --> src/BangConventionPositive.jl:25:1
    |
-25 | scale!(point::Point, factor::Float64) = Point(point.x * factor)
+25 | Base.show(io::IO, item::Item) = (item.shown += 1; print(io, "Item"))
+   | ^^^^^^^^^ name has no `!`
+   | -------------------------------------------------------------------- writes `item`
+   |
+   = why: caller reads name without `!` as promise that call changes nothing it can see
+   = fix: copy argument before write, or move write to `!` function   [manual]
+   = docs: corset explain bang-convention
+
+error[bang-convention]: method of `close` writes `resource`, but name has no `!`
+  --> src/BangConventionPositive.jl:31:1
+   |
+31 | Base.close(resource::Resource) = (resource.open = false; nothing)
+   | ^^^^^^^^^^ name has no `!`
+   | ----------------------------------------------------------------- writes `resource`
+   |
+   = why: caller reads name without `!` as promise that call changes nothing it can see
+   = fix: copy argument before write, or move write to `!` function   [manual]
+   = docs: corset explain bang-convention
+
+error[bang-convention]: method of `scale!` writes nothing, but name ends in `!`
+  --> src/BangConventionPositive.jl:37:1
+   |
+37 | scale!(point::Point, factor::Float64) = Point(point.x * factor)
    | ^^^^^^ `!` promises write
    | --------------------------------------------------------------- compiler proves no write; result is new value
    |
@@ -56,9 +78,9 @@ error[bang-convention]: method of `scale!` writes nothing, but name ends in `!`
    = docs: corset explain bang-convention
 
 error[bang-convention]: method of `empty!` writes nothing, but name ends in `!`
-  --> src/BangConventionPositive.jl:28:1
+  --> src/BangConventionPositive.jl:40:1
    |
-28 | Base.empty!(point::Point) = Point(0.0)
+40 | Base.empty!(point::Point) = Point(0.0)
    | ^^^^^^^^^^^ `!` promises write
    | -------------------------------------- compiler proves no write; result is new value
    |

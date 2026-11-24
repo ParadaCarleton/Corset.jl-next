@@ -7,7 +7,9 @@ Reports package method whose function name has no `!`, but whose code writes cal
 - task-local storage.
 IO, RNG, synchronization and iteration writes need no `!`.
 Write to non-public package global that no other package method reads or writes is cache: it needs no `!`.
-Method added to Base IO, synchronization, RNG function or `iterate` passes: name trust lets these functions write.
+Method added to Base function may write its subject (first argument not declared callable) when callers trust name
+for it: IO function on `IO`, RNG function on `AbstractRNG`, `iterate` on stateful iterator, synchronization function.
+Other writes there need `!` as above: `close` on type that is not `IO` writes what callers cannot see.
 Reports package method of `!` function that compiler proves writes nothing, and whose result is new value (`spurious`).
 Result `nothing`, argument, or value that holds or lies below argument passes: hook, or method with nothing to change.
 `!!` functions (mutate when possible) and `sizehint!` (hint) pass.
@@ -80,6 +82,13 @@ function state_write(access::Access, method::Method, touched::AbstractDict{Globa
     return !cache_write(access, method, touched)
 end
 
+"""Whether name trust covers `access` of `method`: write to subject of method of name-trust function (`name_writes`)."""
+function trusted_write(method::MethodEffects, access::Access)::Bool
+    method.name_writes || return false
+    position = subject_position(method.site.method)
+    return !isnothing(position) && place_root(access.place) == Root.Parameter(something(position) + 1)
+end
+
 """Fix for method of `callee`: rename for package function, manual change of method for function of other module."""
 function rename_fix(callee::Function, modules::AbstractVector{Module}, own::String, other::String)::Fix
     return manual_fix(parentmodule(callee) in modules ? own : other)
@@ -115,11 +124,12 @@ function findings(facts::FactSet)::Vector{Finding}
         callee = method_function(method.site.method)
         (isnothing(callee) || startswith(string(nameof(callee)), '#') || nameof(callee) === :__init__) && continue
         name = string(nameof(callee))
-        if !method.name_writes
-            writes = sort([access for access in method.writes if state_write(access, method.site.method, touched)]; by = access -> access.cause.first_byte)
-            isempty(writes) || push!(found, missing_finding(method, callee, first(writes), modules))
-        elseif endswith(name, "!") && !endswith(name, "!!") && !(nameof(callee) in HINTS)
+        if method.name_writes && endswith(name, "!")
+            (endswith(name, "!!") || nameof(callee) in HINTS) && continue
             method.effect_free && isempty(method.writes) && method.new_result && push!(found, spurious_finding(method, callee, modules))
+        else
+            writes = sort([access for access in method.writes if state_write(access, method.site.method, touched) && !trusted_write(method, access)]; by = access -> access.cause.first_byte)
+            isempty(writes) || push!(found, missing_finding(method, callee, first(writes), modules))
         end
     end
     return found

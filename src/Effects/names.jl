@@ -394,14 +394,22 @@ end
 bang_function(@nospecialize(callee::Any))::Bool = callee isa Function && !(callee isa Core.Builtin) && callee !== (!) && endswith(string(nameof(callee)), "!")
 
 """
-Whether name trust lets calls of function that `method` adds to write operands (F53): `!` name, or Base IO,
-synchronization, RNG or `iterate` function. Constructor and callable object give false.
+Whether name trust lets calls of function that `method` adds to write operands (F53): `!` name, or Base function whose
+calls write subject of method (`subject_position`, `exception_events`): IO function on `IO`, RNG function on
+`AbstractRNG`, `iterate` on stateful iterator, synchronization function. Constructor and callable object give false.
 """
 function name_writes(method::Method)::Bool
     type = Base.unwrap_unionall(method.sig).parameters[1]
     (type isa DataType && isdefined(type, :instance)) || return false
     callee = type.instance
-    return bang_function(callee) || callee in IO_FUNCTIONS || callee in SYNC_FUNCTIONS || callee in RNG_FUNCTIONS || callee === iterate
+    bang_function(callee) && return true
+    position = subject_position(method)
+    isnothing(position) && return false
+    subject = something(argument_type(method, position))
+    callee in IO_FUNCTIONS && return subject <: IO
+    callee in RNG_FUNCTIONS && return subject <: AbstractRNG
+    callee === iterate && return stateful_iterator(subject)
+    return callee in SYNC_FUNCTIONS
 end
 
 """

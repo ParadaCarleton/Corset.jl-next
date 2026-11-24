@@ -18,6 +18,18 @@ struct Counter
 end
 Base.length(counter::Counter) = (push!(counter.hits, 1); length(counter.hits))
 
+# Method of Base IO function may write its stream only.
+mutable struct Item
+    shown::Int
+end
+Base.show(io::IO, item::Item) = (item.shown += 1; print(io, "Item"))
+
+# Base IO function on type that is not `IO`: callers see no write.
+mutable struct Resource
+    open::Bool
+end
+Base.close(resource::Resource) = (resource.open = false; nothing)
+
 # `!` function returns new value and writes nothing.
 struct Point
     x::Float64
