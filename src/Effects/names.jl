@@ -135,6 +135,7 @@ end
 """Type of statement or operand `operand` in `walk`, widened."""
 operand_type(walk::Walk, @nospecialize(operand::Any))::Any = value_type(walk.ir, operand)
 
+# corset: allow bang-convention -- memo of type answers in walk; result never changes
 """Whether value of `type` can point to caller-visible object; `ScopedValue` points to its scoped state."""
 pointing(walk::Walk, @nospecialize(type::Any))::Bool = referent!(walk.referent, type) || (type isa Type && type !== Union{} && type <: Base.ScopedValues.ScopedValue)
 
@@ -244,7 +245,9 @@ iteration and element functions give elements, constructors hold operands, other
 """
 function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
     callee, operands = call_parts(walk, call)
-    (isnothing(operands) || isempty(operands)) && return fresh_value(Set{Place.Type}(), true)
+    isnothing(operands) && return fresh_value(Set{Place.Type}(), true)
+    # Constructor without operands builds new object that holds nothing (`IOBuffer()`).
+    isempty(operands) && return fresh_value(Set{Place.Type}(), !(callee isa Type))
     # Array literal: `[a, b]` (`vect`), or `T[a, b]` (element type operand, then elements).
     if (callee === getindex && operand_type(walk, operands[1]) <: Type) || callee === Base.vect
         # Package method on literal syntax (`SA[x]`) is package call.
@@ -403,7 +406,26 @@ function store_target(walk::Walk, index::Integer)::Union{Nothing, Tuple{Any, Val
 end
 
 """Whether `callee` is function whose name ends in `!`, builtins excepted."""
-bang_function(@nospecialize(callee::Any))::Bool = callee isa Function && !(callee isa Core.Builtin) && endswith(string(nameof(callee)), "!")
+bang_function(@nospecialize(callee::Any))::Bool = callee isa Function && !(callee isa Core.Builtin) && callee !== (!) && endswith(string(nameof(callee)), "!")
+
+"""
+Whether name trust lets calls of function that `method` adds to write operands (F53): `!` name, or Base function whose
+calls write subject of method (`subject_position`, `exception_events`): IO function on `IO`, RNG function on
+`AbstractRNG`, `iterate` on stateful iterator, synchronization function. Constructor and callable object give false.
+"""
+function name_writes(method::Method)::Bool
+    type = Base.unwrap_unionall(method.sig).parameters[1]
+    (type isa DataType && isdefined(type, :instance)) || return false
+    callee = type.instance
+    bang_function(callee) && return true
+    position = subject_position(method)
+    isnothing(position) && return false
+    subject = something(argument_type(method, position))
+    callee in IO_FUNCTIONS && return subject <: IO
+    callee in RNG_FUNCTIONS && return subject <: AbstractRNG
+    callee === iterate && return stateful_iterator(subject)
+    return callee in SYNC_FUNCTIONS
+end
 
 """
 Library that owns function `callee`, for tables of functions Corset never loads: `:Base`, `:LinearAlgebra` (root module
@@ -539,6 +561,7 @@ function statement_events(walk::Walk, index::Integer)::Tuple{Vector{Event}, Vect
     return found, ClosureWrite[]
 end
 
+# corset: allow bang-convention -- memo of type answers in walk; result never changes
 """Read of global `binding` (`effects.md`, Reads): non-constant binding, or constant whose value holds mutable object."""
 function global_reads(walk::Walk, binding::GlobalRef)::Vector{Event}
     isconst(binding) && !referent!(walk.referent, binding_type(binding)) && return Event[]
@@ -586,19 +609,22 @@ keyword_value(walk::Walk, call::Expr)::Union{Nothing, Value} = constant_value(wa
 
 """
 Events of `!` call (`effects.md`, Writes, source 2): skipped `IO` and RNG operands, then written operand. Without
-written operand, `possible` write on places keyword tuple holds, else on global state.
+written operand, `possible` write on places keyword tuple holds, else on global state. Skipped operand counts as written
+one: `take!(io)` writes `io` only.
 """
 function bang_events(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any}, keywords::Union{Nothing, Value})::Vector{Event}
     Base.require_one_based_indexing(operands)
-    found, position = Event[], written_position(walk, callee, operands)
+    found, position, skipped = Event[], written_position(walk, callee, operands), false
     for operand in operands[1:(something(position, length(operands) + 1) - 1)]
-        io_operand(walk, operand) && append!(found, value_events(walk, operand_value(walk, operand), EffectKind.io, true, true))
-        rng_operand(walk, operand) && append!(found, value_events(walk, operand_value(walk, operand), EffectKind.rng_argument, true, true))
+        io, rng = io_operand(walk, operand), rng_operand(walk, operand)
+        skipped |= io || rng
+        io && append!(found, value_events(walk, operand_value(walk, operand), EffectKind.io, true, true))
+        rng && append!(found, value_events(walk, operand_value(walk, operand), EffectKind.rng_argument, true, true))
     end
     if isnothing(position)
         places = isnothing(keywords) ? Set{Place.Type}() : held(keywords)
         append!(found, (Event(place, true, place_kind(walk, place, EffectKind.memory), Confidence.possible, true) for place in places))
-        isempty(found) && push!(found, Event(ELSEWHERE, true, EffectKind.memory, Confidence.definite, true))
+        isempty(found) && !skipped && push!(found, Event(ELSEWHERE, true, EffectKind.memory, Confidence.definite, true))
     else
         append!(found, value_events(walk, operand_value(walk, operands[something(position)]), EffectKind.memory, true, true))
     end
@@ -641,12 +667,15 @@ end
 Memory writes of iterating IR `operand` in `walk`: stateful value whole, but only stateful parts of `zip` or product
 that unit builds. Part that restarts, as caller vector, takes no write. `seen` visits shared part of `zip(z, z)` once.
 """
-function consumed_events(walk::Walk, @nospecialize(operand::Any), seen::AbstractSet{Any} = Set{Any}())::Vector{Event}
+consumed_events(walk::Walk, @nospecialize(operand::Any))::Vector{Event} = consumed_events!(Set{Any}(), walk, operand)
+
+"""`consumed_events` that adds visited operands to `seen`."""
+function consumed_events!(seen::AbstractSet{Any}, walk::Walk, @nospecialize(operand::Any))::Vector{Event}
     key = underlying(walk, operand)
     key in seen && return Event[]
     push!(seen, key)
     parts = joint_operands(walk, operand)
-    isnothing(parts) || return Event[event for part in parts for event in consumed_events(walk, part, seen)]
+    isnothing(parts) || return Event[event for part in parts for event in consumed_events!(seen, walk, part)]
     stateful_iterator(operand_type(walk, operand)) || return Event[]
     return value_events(walk, operand_value(walk, operand), EffectKind.memory, true, true)
 end
@@ -789,6 +818,7 @@ function callee_claims(walk::Walk, call::Expr, callee::Callee.Type)::Bool
     return !isnothing(matches) && any(match -> match_claims(walk, match), matches)
 end
 
+# corset: allow bang-convention -- memo of claim answers in walk; result never changes
 """
 Whether method of `match` claims `:effect_free` in code compiler infers for its instance; answers cached in `walk`.
 Generated method gives code per instance, so its answer is per instance. Stand-in claim only restores proof that

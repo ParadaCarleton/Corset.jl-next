@@ -564,7 +564,7 @@ text = "`!` function writes nothing; callers drop its result"
 example = "`normalize!(v)` returns new vector"
 group = "correctness"
 stage = "effects"
-note = "Method whose body only throws (`pop!(::SortedSet) = error(...)`) is exempt."
+note = "Method whose body only throws (`pop!(::SortedSet) = error(...)`) is exempt. Result `nothing` or argument passes: hook, or method with nothing to change."
 
 [[footgun]]
 id = 55

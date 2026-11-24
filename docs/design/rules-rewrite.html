@@ -238,7 +238,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <tr data-group="correctness"><td>F52</td><td>containers</td><td><code>missing</code> reaches condition</td><td><code>if x &gt; 0</code> with <code>x::Union{Missing, Int}</code></td><td><span class="chip g-correctness">correctness</span></td><td>inference</td><td></td></tr>
 <tr data-group="correctness"><td>F53</td><td>effects</td><td>Function writes argument or global without <code>!</code></td><td><code>normalize(v)</code> changes <code>v</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td></td></tr>
 <tr data-group="correctness"><td>F54</td><td>effects</td><td>Call has no effect and result is unused</td><td><code>f(x)</code> returns <code>nothing</code>, writes nothing</td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td></td></tr>
-<tr data-group="correctness"><td>F86</td><td>effects</td><td><code>!</code> function writes nothing; callers drop its result</td><td><code>normalize!(v)</code> returns new vector</td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>Method whose body only throws (<code>pop!(::SortedSet) = error(...)</code>) is exempt.</td></tr>
+<tr data-group="correctness"><td>F86</td><td>effects</td><td><code>!</code> function writes nothing; callers drop its result</td><td><code>normalize!(v)</code> returns new vector</td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>Method whose body only throws (<code>pop!(::SortedSet) = error(...)</code>) is exempt. Result <code>nothing</code> or argument passes: hook, or method with nothing to change.</td></tr>
 <tr data-group="correctness"><td>F55</td><td>effects</td><td>Hidden input: default RNG, or package global other method writes</td><td><code>rand()</code> in package code</td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>Task-local storage and <code>ScopedValue</code> pass: caller sets both, and logging reads both for every message.</td></tr>
 <tr data-group="correctness"><td>F56</td><td>effects</td><td>Anonymous function passed to query function writes state</td><td><code>filter(x -&gt; x in seen ? false : (push!(seen, x); true), xs)</code></td><td><span class="chip g-correctness">correctness</span></td><td>effects</td><td>Named functions follow <code>!</code> convention; anonymous ones stay pure. Read-only capture passes: nothing changes during call.</td></tr>
 <tr data-group="performance"><td>F57</td><td>effects</td><td>Closure rebinds captured variable; <code>Core.Box</code></td><td><code>n = 0; f = () -&gt; (n += 1)</code></td><td><span class="chip g-performance">performance</span></td><td>scope</td><td>Label or <code>@goto</code> in function boxes every capture too; Moshi <code>@match</code> expands to both. Detect <code>Core.Box</code> in lowered code.</td></tr>
@@ -894,7 +894,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <ul>
 <li>Skip leading callable (<code>Function</code>, <code>Type</code>), <code>IO</code> and <code>AbstractRNG</code> operands. First other operand is written: definite.</li>
 <li>Skipped <code>IO</code> operand takes IO write; skipped <code>AbstractRNG</code> operand takes RNG argument write.</li>
-<li>No operand left: <code>possible</code> write on keyword values (<code>f!(; items)</code>); without keywords, definite write on unknown global state (<code>Random.seed!()</code>).</li>
+<li>No operand left: <code>possible</code> write on keyword values (<code>f!(; items)</code>); without keywords, definite write on unknown global state (<code>Random.seed!()</code>). Skipped <code>IO</code> or RNG operand counts as written operand: <code>take!(io)</code> writes <code>io</code> only.</li>
 <li>Position table holds exceptions: <code>ldiv!(A, B)</code> and <code>lmul!(A, B)</code> write <code>B</code>.</li>
 <li><code>!</code> call stores its other operands into written operand: <code>push!(v, x)</code> puts <code>x</code> into <code>v</code>. Later load from <code>v</code> can give <code>x</code>, also when <code>v</code> is caller place.</li>
 </ul>
@@ -1580,7 +1580,9 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 <li>Method added to other module's <code>!</code> function: no rename fix. Writes nothing on any path: F86 finding, fix <code>manual</code>.</li>
 <li>F86 exempts <code>sizehint!</code> (hint) and <code>!!</code> functions (mutate when possible, else return new value).</li>
 <li>Definite write gives <code>definite</code> finding. <code>possible</code> findings stay off until quality gate passes.</li>
-<li>Fix: rename definition and package call sites.</li>
+<li>F86 passes method whose result is <code>nothing</code>, argument, or value that holds or lies below argument (<code>new_result</code> fact).</li>
+<li>Method added to Base IO, synchronization, RNG function or <code>iterate</code> may write (<code>name_writes</code> fact).</li>
+<li>Fix: rename definition and package call sites. First PR gives manual fix; rename fixer follows owner decision on tier.</li>
 </ul>
 </div><div class="decision"><h3>10 Lifecycle facts</h3>
 <ul>

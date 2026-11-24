@@ -6,6 +6,7 @@ struct HeldClosure
     captures::Vector{Any}
 end
 
+# corset: allow bang-convention -- memo of closure writes in walk; result never changes
 """
 Events of package closures that call `call`, statement `index`, of `callee` with `operands` can invoke (`effects.md`,
 Writes, source 5), and their writes. Closure body writes through captured fields map onto operands its `new` statement

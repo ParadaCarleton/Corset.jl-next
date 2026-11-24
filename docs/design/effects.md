@@ -89,7 +89,7 @@ Write sources, in order:
 2. Call to function whose name ends in `!`. Written operand follows Julia style guide argument order:
    - Skip leading callable (`Function`, `Type`), `IO` and `AbstractRNG` operands. First other operand is written: definite.
    - Skipped `IO` operand takes IO write; skipped `AbstractRNG` operand takes RNG argument write.
-   - No operand left: `possible` write on keyword values (`f!(; items)`); without keywords, definite write on unknown global state (`Random.seed!()`).
+   - No operand left: `possible` write on keyword values (`f!(; items)`); without keywords, definite write on unknown global state (`Random.seed!()`). Skipped `IO` or RNG operand counts as written operand: `take!(io)` writes `io` only.
    - Position table holds exceptions: `ldiv!(A, B)` and `lmul!(A, B)` write `B`.
    - `!` call stores its other operands into written operand: `push!(v, x)` puts `x` into `v`. Later load from `v` can give `x`, also when `v` is caller place.
 3. Exception table: library functions without `!` that write. Iteration of stateful types (`Iterators.Stateful`, `Channel`, `EachLine`, `Iterators` wrappers of them), IO functions on `IO` operand, locks and conditions, task switches, RNG functions.

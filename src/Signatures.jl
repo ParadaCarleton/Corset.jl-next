@@ -161,7 +161,7 @@ function struct_stand_ins(structs::AbstractVector{<:Type})::Vector{Type}
 end
 
 """Choices for argument `parameter` of `signature`; records position in `bare` when no stand-in fits."""
-function choices(parameter::Any, position::Integer, signature::Type, structs::AbstractVector{<:Type}, bare::AbstractVector{<:Integer})::Vector{Any}
+function choices!(parameter::Any, position::Integer, signature::Type, structs::AbstractVector{<:Type}, bare::AbstractVector{<:Integer})::Vector{Any}
     element = Base.unwrapva(parameter)
     # Free type variable keeps whole signature generic, so its arguments keep declared types.
     found = signature isa UnionAll ? Type[] : stand_ins(element, structs)
@@ -200,7 +200,7 @@ function method_signatures(method::Method, structs::AbstractVector{<:Type})::Met
         options = Vector{Any}[Any[first(parameters)]]
         # Loop instead of generator: closure capturing `signature` compiles once per method (`fitting`).
         for position in 2:length(parameters)
-            push!(options, choices(parameters[position], position - 1, signature, structs, bare))
+            push!(options, choices!(parameters[position], position - 1, signature, structs, bare))
         end
         found, more = combinations(options, LIMIT - length(signatures))
         over_limit |= more

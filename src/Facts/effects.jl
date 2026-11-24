@@ -327,7 +327,9 @@ Effects of package method over its units (`effects.md`, Name trust): writes, rea
 (`aliases`), holds throws skip (`unguarded`), call statements in source order, writes to collection its loop iterates
 (`loop_writes`), calls that read memory they write (`self_aliases`), iterators it starts twice or lets escape
 after start (`stateful_reuses`), `complete` (no unit incomplete or cut), `effect_free` (compiler proves every unit writes nothing caller
-sees), and effects its `@assume_effects` claims.
+sees), `new_result` (some unit returns value other than `nothing`, argument, or value that holds argument or lies below it), `name_writes` (name
+trust lets calls of its function write: `!` name, or Base IO, synchronization, RNG or `iterate` function), and effects its
+`@assume_effects` claims.
 """
 struct MethodEffects
     site::MethodSite
@@ -341,6 +343,8 @@ struct MethodEffects
     stateful_reuses::Vector{StatefulReuse}
     complete::Bool
     effect_free::Bool
+    new_result::Bool
+    name_writes::Bool
     claims::Vector{Symbol}
 end
 
