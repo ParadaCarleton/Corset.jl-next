@@ -13,9 +13,9 @@ const DISPATCH_LIMIT = 3
 Effects record of unit `typed` (`effects.md`, Units and IR): events of each IR statement, result aliases and call
 facts. `effect_free`: compiler proves unit writes nothing caller sees; stand-in signature, claim in method, or claim of
 direct callee gives no proof. Crash `journal` records offset inference of index proof (`unit_indices`), whose compiler
-edges come second. Unit that always throws on stand-ins gives no verdict, only its blind spot.
+edges come second: `nothing` when it failed. Unit that always throws on stand-ins gives no verdict, only blind spot.
 """
-function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt, journal::Union{Nothing, Inference.Journal})::Tuple{UnitEffects, Vector{Any}}
+function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt, journal::Union{Nothing, Inference.Journal})::Tuple{UnitEffects, Union{Nothing, Vector{Any}}}
     cut = isempty(typed.cuts) ? nothing : typed.spans[first(typed.cuts)]
     typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], UnprovenIndex[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, cut), Any[]
     walk, lines, used, claimed = unit_walk(typed, modules, interpreter, world)
@@ -250,13 +250,13 @@ end
 
 """
 `effects` stage facts of `package` from inference `units`, blind spots, and effects record of each typed unit for method
-store: `nothing` for unit whose instance earlier unit holds. Stored units give their kept records. Crash `journal`
-records offset inferences; `nothing` records none.
+store: `nothing` for unit whose instance earlier unit holds. Stored units give their kept records. Last come compiler
+edges of offset inference per typed unit (`unit_effects`). Crash `journal` records offset inferences; `nothing` none.
 """
-function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Inference.Journal})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}, Vector{Vector{Any}}}
+function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Inference.Journal})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}, Vector{Union{Nothing, Vector{Any}}}}
     world = Base.get_world_counter()
     interpreter, modules, seen = CC.NativeInterpreter(world), Set{Module}(package.modules), Base.IdSet{Core.MethodInstance}()
-    fresh, edges = Union{Nothing, UnitEffects}[], Vector{Any}[]
+    fresh, edges = Union{Nothing, UnitEffects}[], Union{Nothing, Vector{Any}}[]
     for typed in units.typed
         record, read = typed.frame.linfo in seen ? (nothing, Any[]) : unit_effects(typed, modules, interpreter, world, journal)
         push!(fresh, record)

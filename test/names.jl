@@ -12,7 +12,7 @@ const CASE = joinpath(@__DIR__, "names", "NameCases")
 Fixture module, package facts, inference units, effects facts, blind spots, unit records and offset inference edges
 of `NameCases`.
 """
-function case_facts()::Tuple{Module, Facts.PackageFacts, Corset.Inference.Units, Facts.EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, Effects.UnitEffects}}, Vector{Vector{Any}}}
+function case_facts()::Tuple{Module, Facts.PackageFacts, Corset.Inference.Units, Facts.EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, Effects.UnitEffects}}, Vector{Union{Nothing, Vector{Any}}}}
     sources = Corset.Discovery.discover(CASE; environment = nothing)
     push!(LOAD_PATH, CASE)
     loaded = try
@@ -164,9 +164,40 @@ end
     @test !reaches_helper(UNITS.typed[position].frame.edges) && reaches_helper(EDGES[position])
     files = Dict(file.path => file for file in Corset.Discovery.discover(CASE; environment = nothing).files)
     entry = Corset.Inference.Entry("file" => "hash", Pair{String, String}[], Corset.Inference.Staged[], UInt8[], UInt8[])
-    extended = something(Corset.Inference.with_edges(entry, EDGES[position], files, Set(PACKAGE.modules)))
+    extended = something(Corset.Inference.with_edges(entry, EDGES[position], files, Set(PACKAGE.modules), nothing))
     @test Corset.Inference.method_id(only(methods(CASES.offset_helper))) in first.(extended.methods)
-    @test Corset.Inference.with_edges(entry, Any[], files, Set(PACKAGE.modules)) === entry
+    @test Corset.Inference.with_edges(entry, Any[], files, Set(PACKAGE.modules), nothing) === entry
+    # Failed offset inference leaves callees unknown: store keeps no entry, so fixed callee gets offset inference again.
+    typed, world = UNITS.typed[position], Base.get_world_counter()
+    offset_key = "offset " * Corset.Inference.entry_key(typed.site.method, something(Effects.offset_signature(typed.site.method, typed.signature)))
+    mktempdir() do directory
+        crashed = Corset.Inference.Journal(open(Corset.Inference.journal_file(directory), "a"), Set([offset_key]))
+        record, unknown = Effects.unit_effects(typed, Set(PACKAGE.modules), Effects.CC.NativeInterpreter(world), world, crashed)
+        close(crashed.io)
+        @test isnothing(unknown) && any(spot -> spot.cause == Effects.OFFSET_CRASHED, record.spots)
+    end
+    @test isnothing(Corset.Inference.with_edges(entry, nothing, files, Set(PACKAGE.modules), nothing))
+    key = Corset.Inference.entry_key(typed.site.method, typed.signature)
+    used, failed = Corset.Inference.Store(key => entry), copy(EDGES)
+    failed[position] = nothing
+    @test haskey(Corset.Engine.with_records(used, UNITS, RECORDS, EDGES, collect(values(files)), PACKAGE, nothing), key)
+    @test isempty(Corset.Engine.with_records(used, UNITS, RECORDS, failed, collect(values(files)), PACKAGE, nothing))
+end
+
+@testset "generator digest journal" begin
+    typed = only(unit for unit in UNITS.typed if unit.site.method.name == :generated_head)
+    specialized = something(Corset.Inference.instance(typed.site.method, typed.signature))
+    staged_key = Corset.Inference.entry_key(specialized.def, specialized.specTypes)
+    mktempdir() do directory
+        journal = Corset.Inference.open_journal(directory)
+        @test Corset.Inference.journaled_digest(journal, specialized, staged_key) == Corset.Inference.staged_digest(specialized)
+        close(journal.io)
+        @test [(record.key, record.finished) for record in Corset.Inference.records(directory)] == [("staged " * staged_key, false), ("staged " * staged_key, true)]
+        # Generator that aborted earlier run gives no digest, so entry that needs it drops.
+        crashed = Corset.Inference.Journal(open(Corset.Inference.journal_file(directory), "a"), Set(["staged " * staged_key]))
+        @test isnothing(Corset.Inference.staged_record(IdDict{Method, String}(), Dict{String, String}(), specialized, crashed))
+        close(crashed.io)
+    end
 end
 
 @testset "loop writes" begin
