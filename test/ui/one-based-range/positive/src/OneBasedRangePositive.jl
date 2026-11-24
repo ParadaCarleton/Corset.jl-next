@@ -83,4 +83,10 @@ both_heads(xs::T, ys::T) where {T <: AbstractVector{Int}} = xs[1] + ys[1]
 # Index argument capped by index of other array: axes can differ.
 capped_by(xs::AbstractVector{Int}, ys::AbstractVector{Int}, i::Int) = xs[min(i, firstindex(ys))]
 
+# `size` without dimension is absolute in each field.
+function corner(m::AbstractMatrix{Float64})
+    rows, columns = size(m)
+    return m[rows, columns]
+end
+
 end

@@ -236,6 +236,7 @@ function call_claims(proof::Proof, @nospecialize(callee::Any), operands::Abstrac
     # `@simd` loop reads element `i` of iterated range through `simd_index`.
     callee === Base.simd_index && return stepped(operand_claims(proof, first_operand), 0)
     callee === zip && return union(Claims(), (prefixed(prefixed(stepped(operand_claims(proof, operand), 0), position), 0) for (position, operand) in enumerate(operands))...)
+    callee === tuple && return union(Claims(), (prefixed(operand_claims(proof, operand), position) for (position, operand) in enumerate(operands))...)
     # `Base.OneTo(n)` starts at 1 whatever `n` is.
     callee isa Type && callee <: Base.OneTo && return Claims([Claim(Absolute(), 0, (0,))])
     callee === (:) && return range_claims(proof, count == 3 ? [first_operand, operands[3]] : operands)
@@ -288,12 +289,13 @@ function field_claims(proof::Proof, @nospecialize(operand::Any), @nospecialize(f
     return destructured ? prefixed(found, 1) : found
 end
 
-"""Claims of `first(x)` or `last(x)`: tuple or pair gives field, collection gives element."""
+"""Claims of `first(x)` or `last(x)`: tuple or pair gives field, collection gives element. Tuple of open length gives none for `last`."""
 function end_claims(proof::Proof, @nospecialize(callee::Any), @nospecialize(operand::Any))::Claims
-    claims = operand_claims(proof, operand)
-    operand_type(proof.walk, operand) <: Union{Tuple, Pair} || return stepped(claims, 0)
+    claims, type = operand_claims(proof, operand), operand_type(proof.walk, operand)
+    type <: Union{Tuple, Pair} || return stepped(claims, 0)
     callee === first && return stepped(claims, 1)
-    return Claims()
+    count = type <: Pair ? 2 : type isa DataType && !Base.isvatuple(type) ? fieldcount(type) : nothing
+    return isnothing(count) ? Claims() : stepped(claims, count)
 end
 
 """Claims of range between `bounds`: element indexes array both bounds index; origin of bounds otherwise."""
@@ -599,6 +601,7 @@ function lowered_indexing(method::Method)::Bool
     return false
 end
 
+# corset: allow bang-convention -- crash journal records progress; caller reads it only after crash
 """
 Offset inference of unit `typed` at `signature` in `world`, or blind spot cause: `OFFSET_CRASHED` when key crashed earlier
 run of `journal`, `OFFSET_UNINFERRED` when inference gives no code, `OFFSET_UNMAPPED` when generator gives other code

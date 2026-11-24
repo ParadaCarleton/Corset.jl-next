@@ -32,6 +32,9 @@ const Positive = OneBasedRangePositive
     @test Negative.column_sums(EvilArray(matrix)) == Negative.column_sums(matrix) == [4.0, 6.0]
     @test sum(Negative.slice(evil, firstindex(evil), firstindex(evil) + 1)) == sum(Negative.slice(ints, 1, 2)) == -2
     @test Negative.capped(evil, typemax(Int)) == Negative.capped(ints, typemax(Int)) == 7
+    @test Negative.scaled_head(EvilArray(floats)) == 7.0
+    @test_throws ArgumentError Negative.guarded_total(evil)
+    @test Negative.ends(evil) == Negative.ends(ints) == 5
 end
 
 @testset "code without index proof fails on offset arrays" begin
@@ -50,6 +53,7 @@ end
     @test_throws BoundsError Positive.aliased_offset(evil)
     @test_throws BoundsError Positive.both_heads(evil, evil)
     @test_throws BoundsError Positive.capped_by(evil, EvilArray(ints), typemax(Int))
+    @test_throws BoundsError Positive.corner(EvilArray(matrix))
 end
 
 using Corset.Effects: Effects, offset_type, offset_signature, OffsetArray

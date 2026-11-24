@@ -157,3 +157,15 @@ warning[one-based-range]: index into `xs` has no proof that it comes from its ax
    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
    = docs: corset explain one-based-range
 
+warning[one-based-range]: index into `m` has no proof that it comes from its axes
+  --> src/OneBasedRangePositive.jl:89:12
+   |
+88 |     rows, columns = size(m)
+   |     ----------------------- index comes from here
+89 |     return m[rows, columns]
+   |            ^^^^^^^^^^^^^^^^ index without proof
+   |
+   = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+   = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+   = docs: corset explain one-based-range
+

@@ -149,6 +149,7 @@ function method_digests(ids::IdDict{Method, String}, codes::AbstractDict{String,
     return [id => get!(() -> code_digest(method), codes, id) for (id, method) in methods]
 end
 
+# corset: allow bang-convention -- memo of method ids and digests; crash journal records progress
 """
 Store record of generator instance `specialized`; `ids` and `codes` cache method ids and digests. Generator runs under
 crash `journal` (`journaled_digest`); `nothing` when earlier run crashed there.
@@ -160,6 +161,7 @@ function staged_record(ids::IdDict{Method, String}, codes::AbstractDict{String, 
     return Staged(get!(() -> method_id(method), ids, method), serialized(specialized.specTypes), key, code)
 end
 
+# corset: allow bang-convention -- memo of code digests; crash journal records progress
 """`journaled_digest` of `specialized` that `codes` keeps under staged `key`; crashed key keeps none."""
 function cached_digest(codes::AbstractDict{String, String}, journal::Union{Nothing, Journal}, specialized::Core.MethodInstance, key::String)::Union{Nothing, String}
     haskey(codes, key) && return codes[key]
@@ -168,6 +170,7 @@ function cached_digest(codes::AbstractDict{String, String}, journal::Union{Nothi
     return code
 end
 
+# corset: allow bang-convention -- crash journal records progress; caller reads it only after crash
 """
 `staged_digest` of `specialized` between start and finish records of `"staged "` plus staged `key` in crash `journal`:
 generator can abort process. `nothing` when earlier run crashed there.

@@ -109,4 +109,26 @@ slice(xs::AbstractVector{Int}, lo::Int, hi::Int) = xs[lo:hi]
 # Index argument capped by last index of same array.
 capped(xs::AbstractVector{Int}, i::Int) = xs[min(i, lastindex(xs))]
 
+# Broadcast of `xs` with scalar has axes of `xs`.
+function scaled_head(xs::AbstractVector{Float64})
+    ys = xs .* 2.0 .+ 1.0
+    return ys[firstindex(xs)]
+end
+
+# Guard proves indices in blocks after it.
+function guarded_total(xs::AbstractVector{Int})
+    Base.require_one_based_indexing(xs)
+    s = 0
+    for i in 1:length(xs)
+        s += xs[i]
+    end
+    return s
+end
+
+# Ends of tuple of indices are indices.
+function ends(xs::AbstractVector{Int})
+    bounds = (firstindex(xs), lastindex(xs))
+    return xs[first(bounds)] + xs[last(bounds)]
+end
+
 end
