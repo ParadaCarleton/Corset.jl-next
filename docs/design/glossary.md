@@ -16,8 +16,8 @@ Terms this design coins.
 | generic argument | Annotation callers can fill with many types: `x::Real`, `x::T`. |
 | overspecified type | Annotation that names specific number type, `AbstractFloat`, or concrete container anywhere inside. |
 | escaping value | Value that leaves method: returned, or written to argument or global. |
-| confidence | `definite`: problem exists. `possible`: compiler cannot resolve doubt either. |
-| blind spot | Doubt compiler resolves but Corset cannot. Counted on coverage line; never finding. |
+| confidence | `definite`: problem exists. `possible`: run-time values decide whether problem exists. |
+| blind spot | Answer that code and types decide, but Corset misses. Counted on coverage line; never finding. |
 | level | `allow`, `warn` or `deny` per group or rule. |
 | diagnostic | Finding with level applied; what Corset reports. |
 | fix tier | Risk of fix to callers: `safe`, `likely`, `breaking`, `manual`. |

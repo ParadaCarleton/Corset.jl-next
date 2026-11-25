@@ -29,5 +29,6 @@ Only support the latest Julia release.
 
 ## Confidence
 
-Doubt test: can Julia compiler resolve doubt? No: doubt is in code; report finding (`possible`, or rule of its own). Yes, but Corset cannot: blind spot; count it on coverage line only.
+Run-time values decide answer (`y = flag ? a : b; push!(y, 1)` changes `a` or `b`): report `possible` finding, or rule of its own.
+Code and types decide answer, but Corset misses it (generator threw): blind spot. Count it on coverage line only.
 Details and examples: docs/design/findings.md, "Confidence and blind spots".

@@ -148,7 +148,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <li>Every decision is revisable. Evidence from corpus runs and users outranks earlier reasoning; see design reviews in <code>plan.md</code>.</li>
 <li>Compute each expensive step once per run. Share output with every rule.</li>
 <li>Footguns are source of truth. Rules group footguns by analysis they read. User-facing group is metadata only.</li>
-<li>Give each finding confidence: <code>definite</code> (problem exists) or <code>possible</code> (compiler cannot resolve doubt either). One setting filters them. Corset blind spots go to coverage line only (<code>findings.md</code>).</li>
+<li>Give each finding confidence: <code>definite</code> (problem exists) or <code>possible</code> (run-time values decide). One setting filters them. Corset blind spots go to coverage line only (<code>findings.md</code>).</li>
 <li>Map every finding back to source bytes. Fixers edit lossless syntax tree.</li>
 <li>Rule is small query over shared facts. Analysis stages compute every fact once per run; rule only reads them.</li>
 <li>Each fact has one producer. Rule never guesses later-stage fact (type, mutability, effect, ADT variant) from syntax; it waits for that stage.</li>
@@ -437,29 +437,29 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <p>Safety test: does fix turn silent mistake into error, failed check or failed test? <code>broad-catch</code> fix rethrows unexpected errors; <code>unchecked-enum</code> fix gets exhaustiveness check.</p>
 </div><div class="decision"><h3>Confidence and blind spots</h3>
 <p><code>confidence</code> sets lowest confidence finding needs to be reported. <code>definite</code> (default) reports definite findings only; <code>possible</code> reports both. <code>likely</code> can join between them later.</p>
-<p>Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and method table when it compiles call. It never sees run-time values, foreign code or methods added later.</p>
+<p>Source of answer decides report. Run-time values, foreign code and methods added later stay unknown until program runs. Code, types and method table are known before run.</p>
 <div class="scroll"><table>
 <thead>
 <tr>
-<th>Compiler</th>
+<th>Answer comes from</th>
 <th>Corset</th>
 <th>Report</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>resolves; problem exists</td>
+<td>code, types, method table</td>
 <td>proves problem</td>
 <td><code>definite</code> finding</td>
 </tr>
 <tr>
-<td>cannot resolve</td>
-<td>cannot resolve</td>
+<td>run-time values, foreign code, methods added later</td>
+<td>cannot know answer</td>
 <td>finding: <code>possible</code>, or rule of its own</td>
 </tr>
 <tr>
-<td>resolves</td>
-<td>cannot resolve</td>
+<td>code, types, method table</td>
+<td>misses answer</td>
 <td>blind spot: coverage line only</td>
 </tr>
 </tbody>
@@ -1868,11 +1868,11 @@ Measure on corpus: <code>effects</code> stage time against <code>inference</code
 </tr>
 <tr>
 <td>confidence</td>
-<td><code>definite</code>: problem exists. <code>possible</code>: compiler cannot resolve doubt either.</td>
+<td><code>definite</code>: problem exists. <code>possible</code>: run-time values decide whether problem exists.</td>
 </tr>
 <tr>
 <td>blind spot</td>
-<td>Doubt compiler resolves but Corset cannot. Counted on coverage line; never finding.</td>
+<td>Answer that code and types decide, but Corset misses. Counted on coverage line; never finding.</td>
 </tr>
 <tr>
 <td>level</td>

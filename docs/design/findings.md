@@ -26,13 +26,13 @@ Safety test: does fix turn silent mistake into error, failed check or failed tes
 
 `confidence` sets lowest confidence finding needs to be reported. `definite` (default) reports definite findings only; `possible` reports both. `likely` can join between them later.
 
-Doubt test: can Julia compiler resolve doubt? Compiler sees code, types and method table when it compiles call. It never sees run-time values, foreign code or methods added later.
+Source of answer decides report. Run-time values, foreign code and methods added later stay unknown until program runs. Code, types and method table are known before run.
 
-| Compiler | Corset | Report |
+| Answer comes from | Corset | Report |
 |---|---|---|
-| resolves; problem exists | proves problem | `definite` finding |
-| cannot resolve | cannot resolve | finding: `possible`, or rule of its own |
-| resolves | cannot resolve | blind spot: coverage line only |
+| code, types, method table | proves problem | `definite` finding |
+| run-time values, foreign code, methods added later | cannot know answer | finding: `possible`, or rule of its own |
+| code, types, method table | misses answer | blind spot: coverage line only |
 
 - Finding: value from branch (`y = flag ? a : b`) reaches `push!`. Run-time `flag` decides which object changes: `bang-convention` reports `possible` on each.
 - Finding: public function returns union from dependency. Unknown callers decide: `possible`.
