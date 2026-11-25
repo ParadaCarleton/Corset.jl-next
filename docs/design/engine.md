@@ -36,6 +36,9 @@ Engine code lives in `src/Effects/engine/`, module `Effects.Summaries`.
 - `unknown`: object open call can return that no operand names, global included. Write to it is `possible` global write.
 - Current task is `unknown` without doubt: write to its fields is certain global write.
 - One `unknown` origin stands for every outside object, so values stored into it take `code` doubt.
+- Callee object outside its caller places maps to `unknown` and to each object caller stored into it. Each keeps doubt of its chain, at least `code`.
+- Such caller object also maps to `deep` of its root: callee may reach below it.
+- Task state access (`task_local`, `default_rng`, `scoped_read`) on `Elsewhere` stays on `unknown`: it names current task. Every other kind reaches those objects.
 - Path: field name or element. Path follows declared field types.
 - Path collapses to `deep` at step into concrete type it already passed (recursive type), at third abstract step in a row, or past 8 steps.
 - Place says where access lands; certainty says whether it happens. `deep w` is coarse place: write below it still changes `w`.

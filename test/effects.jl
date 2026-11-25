@@ -12,7 +12,7 @@ using Corset.Effects.Summaries:
     Callback, Callees, Variant, root_summary!, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut!, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body!, root_calls!, merge_calls, merge_callees, load!, store!, store_backing!,
-    beneath, map_nodes!, exact_path, extend, load_any, keyword_types, over_budget
+    beneath, map_nodes!, exact_path, extend, load_any, keyword_types, over_budget, outside_targets!, unknown
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
@@ -1075,6 +1075,22 @@ four_way(x::Symbol) = x
         store!(chained, Targets(Origin.Allocation(late) => NO_DOUBT), Step.Field(:y), Targets(Origin.Caller(parameter(5)) => NO_DOUBT))
         @test beneath(chained, Targets(Origin.Allocation(late) => CODE_DOUBT, Origin.Allocation(early) => NO_DOUBT))[Origin.Caller(parameter(5))] == NO_DOUBT
     end
+    # Outside object keeps doubt of its chain, at least `code`: blind store stays blind; sources join. Each link is work.
+    outside = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
+    store!(outside, unknown(NO_DOUBT), Step.Field(:y), Targets(Origin.Caller(parameter(2)) => BLIND_DOUBT, Origin.Allocation(20) => NO_DOUBT))
+    store!(outside, Targets(Origin.Allocation(20) => NO_DOUBT), Step.Field(:z), Targets(Origin.Caller(parameter(3)) => sourced(4)))
+    work = outside.work
+    sourced_code = Doubt(Level.code, INHERENT | parameter_source(4))
+    @test outside_targets!(outside) == Targets(
+        Origin.Unknown() => NO_DOUBT, Origin.Allocation(20) => CODE_DOUBT,
+        Origin.Caller(parameter(2)) => BLIND_DOUBT, Origin.Caller(Place.Deep(Root.Parameter(2))) => BLIND_DOUBT,
+        Origin.Caller(parameter(3)) => sourced_code, Origin.Caller(Place.Deep(Root.Parameter(3))) => sourced_code,
+    )
+    @test outside.work == work + 3
+    # Flow past limit stops walk: round is partial, so summary opens with `BUDGET` cause.
+    spent = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, 0)
+    store!(spent, unknown(NO_DOUBT), Step.Field(:y), Targets(Origin.Allocation(20) => NO_DOUBT))
+    @test over_budget(spent) && outside_targets!(spent) == unknown(NO_DOUBT)
     # Callee `deep` write changes argument; object in slot of fresh argument may stay unchanged: blind.
     @test deep(flow, Targets(Origin.Caller(parameter(2)) => NO_DOUBT)) == Targets(Origin.Caller(Place.Deep(Root.Parameter(2))) => NO_DOUBT)
     wrapper = Targets(Origin.Allocation(9) => NO_DOUBT)
@@ -1657,6 +1673,49 @@ function other_result!(v::Vector{Int})::Nothing
     return nothing
 end
 
+"""Stores `v` in task storage, loads it back by same key and pushes: writes `v`."""
+function stash_push!(v::Vector{Int})::Nothing
+    task_local_storage(:effects_stash, v)
+    push!(task_local_storage(:effects_stash)::Vector{Int}, 1)
+    return nothing
+end
+
+"""Pushes into vector in task storage."""
+push_stash!()::Nothing = (push!(task_local_storage(:effects_stash)::Vector{Int}, 1); nothing)
+
+"""Stores `v` in task storage, then pushes through callee: writes `v`."""
+function stash_call!(v::Vector{Int})::Nothing
+    task_local_storage(:effects_stash, v)
+    push_stash!()
+    return nothing
+end
+
+"""Pushes into `v`, then into vector in task storage: `v` stays inside caller places."""
+own_then_stash!(v::Vector{Int})::Nothing = (push!(v, 1); push_stash!(); nothing)
+"""Stores `v` in task storage, then sets other task-local entry: changes task storage, never `v`."""
+stash_remember!(v::Vector{Int})::Nothing = (task_local_storage(:effects_stash, v); remember!(1); nothing)
+"""Sums vector in task storage: starts its iteration."""
+function sum_stash()::Int
+    total = 0
+    for item in task_local_storage(:effects_stash)::Vector{Int}
+        total += item
+    end
+    return total
+end
+"""Stores `items` in task storage, then sums them through callee: may start iteration of `items`."""
+stash_sum!(items::Vector{Int})::Int = (task_local_storage(:effects_stash, items); sum_stash())
+"""Assigns `v` into `Ref` in task storage."""
+assign_stash!(v::Vector{Int})::Nothing = ((task_local_storage(:effects_stash)::Base.RefValue{Vector{Int}})[] = v; nothing)
+"""Stores `holder` in task storage, assigns `v` into it through callee, then returns `holder[]`: may return `v`."""
+function stash_assign!(holder::Base.RefValue{Vector{Int}}, v::Vector{Int})::Vector{Int}
+    task_local_storage(:effects_stash, holder)
+    assign_stash!(v)
+    return holder[]
+end
+
+"""Whether `summary` writes memory on or below parameter `position` in `code` doubt."""
+writes_in_doubt(summary::Summary, position::Int)::Bool = any(kind == EffectKind.memory && root_of(place) == Root.Parameter(position) && level_of(effect.doubt) == Level.code for ((place, _, kind), effect) in summary.writes)
+
 """Scoped value: read of current task scope."""
 const LEVEL = ScopedValue(1)
 level() = LEVEL[]
@@ -1691,6 +1750,19 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     @test EffectKind.default_rng in kinds_at(rolled.reads, elsewhere)
     # Unknown object merges every outside object: vector stored into it stays in doubt when other task loads it.
     @test level_of(doubts(summary_of(other_result!, Vector{Int}).writes)[top(2)]) == Level.code
+    # Callee object outside caller places may be any object caller stored outside: result and callee write alike.
+    @test writes_in_doubt(summary_of(stash_push!, Vector{Int}), 2)
+    @test writes_in_doubt(summary_of(stash_call!, Vector{Int}), 2)
+    owned = summary_of(own_then_stash!, Vector{Int})
+    @test doubts(owned.writes)[top(2)] == NO_DOUBT && !writes_in_doubt(owned, 2)
+    # Callee store into caller object outside lands in its own slots: later load through `holder` finds `v`.
+    @test haskey(summary_of(stash_assign!, Base.RefValue{Vector{Int}}, Vector{Int}).result, Node.Placed(parameter(3)))
+    # Outside state access stays on unknown object: task-local write never lands on object caller stored outside.
+    stashed = summary_of(stash_remember!, Vector{Int})
+    @test any(kind == EffectKind.task_local && root_of(place) == Root.Elsewhere() for (place, _, kind) in keys(stashed.writes))
+    @test !any(kind == EffectKind.task_local && root_of(place) == Root.Parameter(2) for (place, _, kind) in keys(stashed.writes))
+    # Access to object, such as iteration start, reaches object caller stored outside.
+    @test any(kind == EffectKind.iteration && root_of(place) == Root.Parameter(2) for (place, _, kind) in keys(summary_of(stash_sum!, Vector{Int}).reads))
     remembered = summary_of(remember!, Int)
     @test kinds_at(remembered.writes, elsewhere) == Set([EffectKind.task_local])
     # Audited method covers its root only: global read inside it keeps own kind.

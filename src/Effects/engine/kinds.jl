@@ -40,6 +40,9 @@ function special_kind(@nospecialize(type::Any))::Union{Nothing, EffectKind.T}
     return nothing
 end
 
+"""Kinds of access to `Task` state (`site_kind`). On `Elsewhere` they name current task, never object caller stored outside."""
+const TASK_KINDS = (EffectKind.default_rng, EffectKind.scoped_read, EffectKind.task_local)
+
 """
 Kind of access to `field` of object of type `holder` at access statement (`engine.md`, Effect kinds): audited field,
 `Task` state (RNG, scope, other), else kind of holder type itself. `nothing` field: access to whole object or memory.

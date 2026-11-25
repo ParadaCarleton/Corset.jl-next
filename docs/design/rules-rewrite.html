@@ -1084,6 +1084,9 @@ Code lives in <code>src/Effects/</code>.</p>
 <li><code>unknown</code>: object open call can return that no operand names, global included. Write to it is <code>possible</code> global write.</li>
 <li>Current task is <code>unknown</code> without doubt: write to its fields is certain global write.</li>
 <li>One <code>unknown</code> origin stands for every outside object, so values stored into it take <code>code</code> doubt.</li>
+<li>Callee object outside its caller places maps to <code>unknown</code> and to each object caller stored into it. Each keeps doubt of its chain, at least <code>code</code>.</li>
+<li>Such caller object also maps to <code>deep</code> of its root: callee may reach below it.</li>
+<li>Task state access (<code>task_local</code>, <code>default_rng</code>, <code>scoped_read</code>) on <code>Elsewhere</code> stays on <code>unknown</code>: it names current task. Every other kind reaches those objects.</li>
 <li>Path: field name or element. Path follows declared field types.</li>
 <li>Path collapses to <code>deep</code> at step into concrete type it already passed (recursive type), at third abstract step in a row, or past 8 steps.</li>
 <li>Place says where access lands; certainty says whether it happens. <code>deep w</code> is coarse place: write below it still changes <code>w</code>.</li>

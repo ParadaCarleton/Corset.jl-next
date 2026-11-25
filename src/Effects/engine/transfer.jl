@@ -553,7 +553,7 @@ end
 
 """
 Targets of callee place `place` from argument targets `arguments` (`engine.md`, Calls, step 3). Global places map to
-same global; `Elsewhere` to unknown object; `Deep` to every object below root, blind.
+same global; `Elsewhere` to objects outside caller places (`outside_targets!`); `Deep` to every object below root, blind.
 """
 function map_place!(flow::Flow, place::Place.Type, arguments::AbstractVector{Targets})::Targets
     Base.require_one_based_indexing(arguments)
@@ -562,8 +562,7 @@ function map_place!(flow::Flow, place::Place.Type, arguments::AbstractVector{Tar
         Place.At(Root.Global(binding), steps) => foldl((objects, step) -> load!(flow, objects, step), steps; init = global_targets(flow, binding))
         Place.Deep(Root.Parameter(position)) => deep(flow, arguments[position])
         Place.Deep(Root.Global(binding)) => deep(flow, global_targets(flow, binding))
-        # Unknown object has no place below it.
-        _ => unknown(NO_DOUBT)
+        _ => outside_targets!(flow)
     end
 end
 
@@ -592,6 +591,30 @@ end
 collapsed(origin::Origin.Type)::Origin.Type = @match origin begin
     Origin.Caller(Place.At(root, _)) => Origin.Caller(Place.Deep(root))
     _ => origin
+end
+
+"""
+Targets of callee object outside its caller places: unknown object, and each object stored into it, directly or below.
+Each keeps doubt of its chain, at least `code`: callee may load any of them. Walk revisits object whose doubt changes, as
+`beneath` does; it charges each link it follows to `flow.work` and stops past limit. Caller object keeps own origin, so
+later loads see callee stores into it, and adds `Deep` of its root (`collapsed`): callee may reach below it.
+"""
+function outside_targets!(flow::Flow)::Targets
+    reached, pending = unknown(NO_DOUBT), [Origin.Unknown()]
+    while !isempty(pending) && !over_budget(flow)
+        origin = pop!(pending)
+        foreach_content(flow, origin) do targets
+            flow.work += length(targets)
+            for (target, doubt) in targets
+                add!(reached, target, most(most(doubt, CODE_DOUBT), reached[origin])) && push!(pending, target)
+            end
+        end
+    end
+    found = copy(reached)
+    for (origin, doubt) in reached
+        add!(found, collapsed(origin), doubt)
+    end
+    return found
 end
 
 """
@@ -629,7 +652,7 @@ function map_node!(flow::Flow, node::Node.Type, site::CallSite)::Targets
     return @match node begin
         Node.Placed(place) => site_place!(flow, site, place)
         Node.Fresh(_) => something(site.fresh)
-        Node.Outside() => unknown(NO_DOUBT)
+        Node.Outside() => site_place!(flow, site, Place.At(Root.Elsewhere(), NO_STEPS))
     end
 end
 
@@ -665,10 +688,6 @@ end
 function map_nodes!(flow::Flow, nodes::Nodes, site::CallSite)::Targets
     found = Targets()
     for (node, doubt) in nodes
-        if node == Node.Outside()
-            add!(found, Origin.Unknown(), caller_doubt!(flow, site, doubt))
-            continue
-        end
         mapped = map_node!(flow, node, site)
         # Flow stays same over node, so its doubt maps once.
         isempty(mapped) || add_all!(found, mapped, caller_doubt!(flow, site, doubt))
@@ -742,10 +761,18 @@ end
 """Writes and reads of callee `summary` at `site` into `writes` and `reads`, each mapped onto caller objects."""
 function map_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary)::Nothing
     for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below, kind), effect) in effects
-        objects = below ? site_below!(flow, site, place) : site_place!(flow, site, place)
-        access!(table, objects, below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), kind)
+        access!(table, access_objects!(flow, site, place, below, kind), below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), kind)
     end
     return nothing
+end
+
+"""
+Caller objects of callee access of `kind` on `place` (or `below` it) at `site`. Task state access (`TASK_KINDS`) on
+`Elsewhere` stays on unknown object, which names current task; access to object reaches each outside object.
+"""
+function access_objects!(flow::Flow, site::CallSite, place::Place.Type, below::Bool, kind::EffectKind.T)::Targets
+    kind in TASK_KINDS && root_of(place) == Root.Elsewhere() && return unknown(NO_DOUBT)
+    return below ? site_below!(flow, site, place) : site_place!(flow, site, place)
 end
 
 """
