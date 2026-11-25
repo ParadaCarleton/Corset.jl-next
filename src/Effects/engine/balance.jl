@@ -223,7 +223,8 @@ function add_path!(paths::Vector{Path}, path::Path)::Bool
 end
 
 """Join `path` into entry of `block`; queue block in `pending` when its entry changes."""
-function flow_into!(entries::Vector{Vector{Path}}, pending::BitSet, block::Integer, path::Path)::Nothing
+function flow_into!(entries::AbstractVector{Vector{Path}}, pending::BitSet, block::Integer, path::Path)::Nothing
+    Base.require_one_based_indexing(entries)
     add_path!(entries[block], path) && push!(pending, block)
     return nothing
 end
