@@ -137,7 +137,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
   <h1>Corset Rewrite Plan</h1>
   <p class="lede">Footguns, rules, shared analyses and decisions for rewrite of Corset. Source files: <code>docs/design/README.md</code> lists them. Legacy rule names live in <code>rules-rewrite-history.md</code>.</p>
   <div class="meta"><span><b>110</b> footguns</span><span><b>102</b> rules</span><span><b>7</b> analysis stages</span></div>
-  <nav class="note"><a href="#principles">principles</a> · <a href="#footguns">footguns</a> · <a href="#pipeline">pipeline</a> · <a href="#stages">stages</a> · <a href="#rules">rules</a> · <a href="#findings">findings</a> · <a href="#types">types</a> · <a href="#effects">effects</a> · <a href="#lifecycle">lifecycle</a> · <a href="#architecture">architecture</a> · <a href="#plan">plan</a> · <a href="#phase5">phase5</a> · <a href="#glossary">glossary</a></nav>
+  <nav class="note"><a href="#principles">principles</a> · <a href="#footguns">footguns</a> · <a href="#pipeline">pipeline</a> · <a href="#stages">stages</a> · <a href="#rules">rules</a> · <a href="#findings">findings</a> · <a href="#types">types</a> · <a href="#effects">effects</a> · <a href="#engine">engine</a> · <a href="#lifecycle">lifecycle</a> · <a href="#architecture">architecture</a> · <a href="#plan">plan</a> · <a href="#phase5">phase5</a> · <a href="#glossary">glossary</a></nav>
 </header>
 
 <section id="principles">
@@ -877,8 +877,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Name trust: a public function writes an argument only when its name ends in <code>!</code>, as Julia style guide asks.</li>
 <li>A callee that breaks the convention is a bug in its own package. <code>bang-convention</code> reports it there.</li>
 <li>Cost: a write through a non-<code>!</code> function that breaks the convention stays unseen in its callers.</li>
-<li>Whole-program engine (points-to through Base) is frozen at tag <code>effects-engine</code> (history, &quot;Engine freeze&quot;).</li>
-<li>Revive the engine only when name-trust misses block the quality gate of a rule.</li>
+<li>Whole-program engine (points-to through Base) lives in <code>src/Effects/engine/</code> (<code>engine.md</code>). It does not feed facts yet.</li>
 </ul>
 <h4>Units and IR</h4>
 <ul>
@@ -1047,6 +1046,322 @@ Code lives in <code>src/Effects/</code>.</p>
 <p>Argument and global writes. IO and RNG exempt. Memo caches exempt with cheap proof only.</p>
 </div><div class="decision"><h3>Borrow checking</h3>
 <p>Defer. Revisit for concurrency rules.</p>
+</div>
+</section>
+
+<section id="engine">
+<h2>Effects engine</h2>
+<p>Whole-program effect summaries: points-to through Base and dependencies.</p>
+<p>Engine code lives in <code>src/Effects/engine/</code>, module <code>Effects.Summaries</code>.
+<code>effects</code> stage does not read engine verdicts yet: name trust gives its facts (<code>effects.md</code>, Name trust).</p>
+<div class="pipeline" role="img" aria-label="Effects engine steps from inference stage units to effects facts">
+      <div class="layer"><div class="id">units</div><div class="what">Method and stand-in signature, from <code>inference</code> stage<small>same signatures and reached calls · no own roots</small></div></div>
+      <div class="layer"><div class="id">IR</div><div class="what">SSA IR before inlining, from unit's typed code<small>passes until <code>CC: COMPACT_1</code> · no second inference</small></div></div>
+      <div class="layer"><div class="id">call graph</div><div class="what">Instances that units reach, Base and dependencies included<small>strongly connected components · bottom-up</small></div></div>
+      <div class="layer"><div class="id">summary</div><div class="what">Points-to with origins and provenance; writes, reads, result aliases<small>compiler effects skip empty summaries · library summaries cached</small></div></div>
+      <div class="layer"><div class="id">verdict</div><div class="what">Worst over units of method; cut and opaque doubt go to coverage line<small>facts for rules and <code>lifecycle</code></small></div></div>
+    </div>
+<div class="decision"><h3>Units</h3>
+<ul>
+<li>Effects reads units of <code>inference</code> stage: method and stand-in signature, plus signatures package calls reach. Effects adds no roots.</li>
+<li>Method gets verdict from its units only. Unannotated method no call reaches has none; <code>inference</code> stage counts it.</li>
+<li>Verdict of method: worst over its units.</li>
+<li>Incomplete method gets no definite none: signatures over limit, crash, inference without code, or type test (<code>inference</code> stage <code>incomplete</code>), or stand-in cut. Coverage reason names cause.</li>
+<li>Unit that always throws on its signature gives no verdict. Coverage reason: <code>always throws on stand-ins</code>.</li>
+</ul>
+</div><div class="decision"><h3>IR</h3>
+<ul>
+<li><code>inference</code> stage hands typed code of units it inferred this run to effects. Stored unit needs no typed code: its entry keeps effects record (see <strong>Solve and cache</strong>).</li>
+<li>Typed SSA IR before inlining: copy unit's unoptimized code; run compiler passes until <code>CC: COMPACT_1</code>. Package units need no second inference.</li>
+<li>Calls stay call statements, so allocations and consumers map to source through <code>inference</code> stage spans.</li>
+<li>Passes renumber statements. Before passes, line of each statement gets its source index; passes carry line to IR.</li>
+<li>Instance outside package: native inference, then same passes. Library cache skips both (see <strong>Solve and cache</strong>).</li>
+</ul>
+</div><div class="decision"><h3>Origins and points-to</h3>
+<ul>
+<li>Origin: abstract object. Kinds: caller place (parameter or global path), allocation statement, <code>unknown</code>.</li>
+<li>Constant object in code counts as <code>unknown</code>. Fresh objects of callee merge into one allocation at call statement.</li>
+<li><code>unknown</code>: object open call can return that no operand names, global included. Write to it is <code>possible</code> global write.</li>
+<li>Path: field name or element. Path follows declared field types.</li>
+<li>Path collapses to <code>deep</code> at step into concrete type it already passed (recursive type), at third abstract step in a row, or past 8 steps.</li>
+<li>Place says where access lands; certainty says whether it happens. <code>deep w</code> is coarse place: write below it still changes <code>w</code>.</li>
+<li>Field name comes from concrete type, array stand-in family or <code>Array</code> family. Other struct family (<code>Object{K, V} where …</code>) gives field position.</li>
+<li>Memory backing belongs to its owner: field of type <code>GenericMemory</code> or <code>GenericMemoryRef</code> adds no step. Write to <code>Vector</code> elements writes <code>Vector</code>.</li>
+<li><code>Ptr</code> value holds origins of object it points into, so foreign call through pointer writes that object.</li>
+<li>Constant null pointer global (<code>C_NULL</code>) points into no object.</li>
+<li>Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.</li>
+<li>Unification is rejected: it merges unrelated objects at each unknown call.</li>
+<li>Write: statement that stores into origin content, or callee summary write mapped through call operands.</li>
+<li>Each origin in points-to set carries doubt: none, <code>code</code> or <code>blind</code>. Join keeps least doubt per origin.</li>
+<li>Open call on chain gives <code>code</code>. Call result merged from several fresh objects gives <code>blind</code>: they can hold different caller objects.</li>
+<li>Collapsed path and load of non-constant slot add no doubt: object they reach lies below same root.</li>
+<li>Access below <code>deep w</code> takes kind of written object type at access, of callee access, or of <code>w</code> type.</li>
+<li>Exempt kind needs proof, as balanced lock use does. Raw write into <code>IO</code> memory below <code>deep w</code> is memory write: <code># corset: allow</code> covers it.</li>
+<li>Access takes most doubt of effect and chain. None gives definite; <code>code</code> gives <code>possible</code>.</li>
+<li><code>blind</code> gives blind access with cause <code>alias</code>: blind spot, counted on coverage line only.</li>
+<li>Summary per parameter and global: read and write of top object, each path, and <code>deep</code>. Each has certainty and cause span.</li>
+<li>Access says whether it covers every place below too. Open call covers whole object graph below each operand.</li>
+<li>Access below fresh object covers caller objects in its slots: open call on <code>(x,)</code> writes below <code>x</code>.</li>
+<li>Caller maps callee <code>deep</code> place: caller place below argument keeps access certainty. Caller object inside fresh argument gives <code>blind</code>: callee may leave it unchanged.</li>
+<li>Summary also gives result origins as parameter and global paths: result aliases. Fresh result keeps its fields: <code>view(A, 1:2)</code> result holds <code>A</code>.</li>
+<li>Summary gives stores callee makes between caller objects: <code>push!(v, x)</code> puts <code>x</code> into <code>v</code>, so caller write through <code>v[1]</code> writes <code>x</code>.</li>
+<li>Caller maps writes through result onto those paths, so write through result that aliases global is global write.</li>
+<li>Must-alias: two values whose points-to sets hold same single exact origin, and that origin is one object per call.</li>
+<li>Allocation site inside loop or recursion makes many objects: its origin gives may-alias only.</li>
+</ul>
+</div><div class="decision"><h3>Provenance</h3>
+<p>Doubt test (<code>findings.md</code>) needs to know where open type comes from.</p>
+<p>Each unit argument has one provenance:</p>
+<ul>
+<li>Opaque: Corset chose its type and code did not. Its data gives blind spots only.
+<ul>
+<li>Argument without stand-in (declared narrower than <code>Any</code>); type variable with bound.</li>
+<li>Stand-in with open part: <code>FunctionStandIn</code>, array stand-in with open element, struct stand-in whose parameter took its bound (<code>types.md</code>).</li>
+</ul>
+</li>
+<li>Opt-out: source declares <code>::Any</code>; declared concrete type with <code>Any</code> parameter (<code>types.md</code>, Explicit <code>Any</code>). Its data gives no finding and no blind spot.</li>
+<li>Code: every other argument, untyped argument and type variable without bound included. Compiler sees same open type.</li>
+<li>Unit that calls reach keeps caller types. Only function stand-in and array stand-in with open part are opaque there.</li>
+</ul>
+<p>Sources carry provenance through engine. No separate taint pass.</p>
+<ul>
+<li><code>code</code> doubt holds sources: parameter bits, <code>OPAQUE</code> (<code>FunctionStandIn</code>) and <code>INHERENT</code> (doubt in code itself).</li>
+<li>Open dispatch (step 7) takes sources of each operand whose type is no dispatch element.</li>
+<li>Caller place gives its parameter. Global, or more than one fresh object, gives <code>INHERENT</code>. Chain to operand adds its own sources.</li>
+<li>Value without object source takes derived sources: type values and computed numbers hold no object. Objects decide when they give a source.</li>
+<li>Call result with open type derives sources of call operands with open type: <code>eltype(a)</code> and <code>w .* b</code> keep opaque source of open element.</li>
+<li>Argument with open type gives its parameter. Static parameter gives each parameter whose declared type holds it. Phi and pi nodes join sources of their values.</li>
+<li>Last fixpoint round records accesses: early round with sources still unknown adds no doubt in code.</li>
+<li>Callback record keeps targets only: its arguments give object sources alone.</li>
+<li>Two <code>code</code> doubts join sources, along chain and across chains. Callee summary maps parameter sources to sources of call arguments.</li>
+<li>Root unit resolves sources: code source gives <code>possible</code>. Else opaque source gives blind spot <code>open dispatch on opaque data</code>. Else no access.</li>
+<li>Unresolved call has doubt in code itself: unknown foreign call, builtin with splat, splat of other collection, splat that contract cannot place, <code>invoke</code> without constant method.</li>
+<li><code>invoke</code> without constant method on contract function takes contract: contract covers every method (<code>Tuple{typeof(x)}</code> in Base logging).</li>
+<li>Provenance covers argument and every place below it. Argument with open part is opaque, so open type that code declares below it gives blind spot.</li>
+<li>Contract write on argument that admits consumed iterator (<code>iterate(x::Any)</code>) takes sources of that argument: its type decides write.</li>
+<li>Provenance judges doubt from open dispatch only. Writes code performs, and resolved, joined or contract writes, keep certainty on every origin: <code>f(x::Any) = setfield!(x, :n, 0)</code> writes <code>x</code>.</li>
+</ul>
+</div><div class="decision"><h3>Calls</h3>
+<p>Resolution of each call statement, first match wins:</p>
+<ol>
+<li>Builtin or intrinsic: transfer function (<code>setfield!</code>, <code>memoryrefset!</code>, <code>setglobal!</code>, <code>swapfield!</code>, <code>modifyfield!</code>, <code>replacefield!</code>; <code>_apply_iterate</code> unpacked).</li>
+<li>Foreign call: table of known C functions (<code>memmove</code> writes destination; runtime type queries read only). Unknown: <code>possible</code> write on pointer and object operands, doubt in code.
+<ul>
+<li>MPFR and GMP entries come from C headers: pointer to non-const is written, pointer to const is read (<code>mpfr_srcptr</code>, <code>const char *</code>). Generator: <code>gen/foreign/generate.jl</code>; output: <code>src/Effects/engine/foreign_gmp_mpfr.jl</code>.</li>
+<li>Symbols: every MPFR and GMP function that Base and SpecialFunctions call, plus five numeric extras. The whole header holds about 800 functions; each one needs vetting for global state.</li>
+<li>Hand entries (<code>calls.jl</code>) cover variadic functions and pointer results. Left open: functions that write C global state (<code>mpfr_set_emax</code>, <code>mpfr_set_emin</code>, <code>mpfr_clear_flags</code>, GMP allocator hooks).</li>
+<li>PCRE2 entries cover functions that Base regex code calls, by PCRE2 API manual. Match writes match data and JIT stack of match context.</li>
+<li>No prefix rule: unknown <code>mpfr_</code> or <code>__gmp</code> name stays open, because wrong entry gives false definite write.</li>
+<li>CI lacks the headers. The generator does not run there; committed file is the source of truth. Test compares it with hand classification.</li>
+</ul>
+</li>
+<li>Static call (one method matches, or <code>Core.invoke</code> with constant selector): callee summary. No method matches: call throws, so code after it is dead.
+Summary per variant: instance plus constant arguments callee uses as field name. <code>getproperty(x, :a)</code> keeps field <code>a</code>.
+Constant <code>Bool</code> argument that callee uses as branch condition also makes variant. Variant code drops blocks branch never reaches.
+<code>HAMT.path(trie, key, h, false)</code> skips copy-on-write store, so <code>ScopedValue</code> read writes nothing. Julia inference resolves the same constant.</li>
+<li>Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.</li>
+<li>Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.
+Access that some members lack takes sources of open operands, as open dispatch does: operand types pick member.
+Blind access of one member and exact access of another disagree: join gives <code>possible</code>.</li>
+<li>Base interface function with documented contract (<code>setindex!</code> writes collection; <code>length</code> reads only; <code>view</code> result lies within array). Breach in package method is finding.</li>
+<li>Else open: <code>possible</code> write on operands; result may point into operands, one direction, and to <code>unknown</code>.</li>
+</ol>
+<ul>
+<li>Splat of tuple or array with unknown length: dispatch on <code>Vararg</code> of element type. Callee parameters past fixed operands take any element.</li>
+<li>Splatted tuple slot has unknown position, so caller tuple collapses to <code>deep</code>. Splat of other collection stays open: its <code>iterate</code> runs.</li>
+<li>Instance specializes on call argument types. Callable type known to caller is concrete in callee too, so step 3 reaches its method.</li>
+<li><code>@invokelatest f(x)</code> with constant <code>GlobalRef</code> resolves as call <code>f(x)</code>, keywords included (<code>Base.invokelatest_gr</code>).</li>
+<li>Constant binding has its value in analysis world. IR world range can start before binding exists: <code>@invokelatest</code> reads binding in latest world.</li>
+<li>Callback record keeps write path short. Tuple <code>foreach</code> wraps closure in <code>foldl</code> reducers: closure writes lie three steps below reducer.</li>
+<li>Caller maps record to its own objects. Callable still holding object below caller parameter passes record to next caller.</li>
+<li>Root unit has no caller: its verdict resolves records left in its summary.</li>
+<li>Record with fresh argument applies now: caller merges fresh objects of callee into one, so record would lose them.</li>
+<li>Join resolves records of its members. Member disagreement on access gives <code>possible</code>.</li>
+<li>Recursion repeats record on same targets: record applies once.</li>
+<li>Callable of abstract type stays open (step 7): solve reached no dispatch for caller type.</li>
+<li>Steps 5 and 6 assume methods loaded now. Write they find keeps certainty. &quot;Writes nothing&quot; from them is at most <code>possible</code>.</li>
+<li>Contract: <code>first</code> and generic <code>isempty</code> start iteration of argument (<code>isempty</code> docstring warns). Type with own <code>isempty</code> or <code>isdone</code> method uses its summary.</li>
+<li>Contract entry holds only behavior Base documents. Base type that writes where others read (<code>iterate</code> on <code>Iterators.Stateful</code>) gives <code>possible</code> write when operand type admits it.</li>
+<li>Query (comparison, size, predicate, arithmetic) reads arguments. Its result is new value.</li>
+<li>Alias query (<code>convert</code>, <code>getproperty</code>, <code>keys</code>, <code>max</code>, <code>conj</code>, <code>adjoint</code>) reads arguments. Its result may point beneath them.</li>
+<li>Element query (<code>getindex</code>) result is element of collection or lies beneath it, never in indices.</li>
+<li>Iteration (<code>iterate</code>, <code>first</code>, <code>only</code>, <code>isempty</code>, <code>in</code>) reads like element query. <code>Iterators.Stateful</code>, <code>Channel</code> and <code>EachLine</code> get <code>possible</code> write.</li>
+<li>Write contract (<code>setindex!</code>, <code>push!</code>, <code>append!</code>, <code>resize!</code>, <code>pop!</code>, <code>copyto!</code>, <code>merge!</code>) writes first argument and stores or copies elements into it.</li>
+<li>Collection whose <code>eltype</code> points to no object (<code>Vector{UInt8}</code>) takes no stored object: Julia converts value at store. Foreign call table keeps every store: C pointers are untyped.</li>
+<li>Function with callable-first form (<code>get</code>, <code>get!</code>, <code>merge!</code>): contract holds only when first argument cannot be callable. Else call stays open.</li>
+<li>Keyword call of contract function: keyword tuple takes rest role. Contract needs rest role that only reads.</li>
+<li>Keyword callable (<code>by</code>) runs as callback, so keyword call with callable value stays open.</li>
+<li>Logger interface (<code>AbstractLogger</code>): <code>shouldlog</code>, <code>min_enabled_level</code> and <code>catch_exceptions</code> are queries.</li>
+<li><code>handle_message</code> reads message and keywords. Logger takes IO write: message goes to its sink.</li>
+<li>Contract keeps no record of logged values: <code>Test.TestLogger</code> stores them, Base documents no store.</li>
+<li>Query result that may alias every argument tripled JSON <code>effects</code> time and changed no verdict.</li>
+<li>Open call (step 7) whose open operands come from opaque and opt-out arguments only: no finding (Provenance). Opaque argument counts on coverage line: <code>open dispatch on opaque data</code>.</li>
+<li>Other open call: doubt in code, <code>possible</code> finding.</li>
+<li>Limit 3 is compiler <code>max_methods</code>, never below. Limit 8 reached 20 times more instances on Distances.</li>
+<li>Library code joins nothing: its run-time dispatch stays open (step 7). Joins there raised <code>possible</code> share and cost most time.</li>
+</ul>
+</div><div class="decision"><h3>Compiler effects</h3>
+<ul>
+<li>Compiler effects come free with unit inference and native cache.</li>
+<li>Instance with <code>effect_free</code>, <code>inaccessiblememonly</code>, <code>notaskstate</code> and result type that holds no reference has empty summary. Engine skips own analysis and callees there.</li>
+<li><code>notaskstate</code> keeps <code>ScopedValue</code> reads: Base claims <code>effect_free</code> and <code>inaccessiblememonly</code> for them.</li>
+<li><code>effect_free</code> proves one direction. True: instance writes nothing caller sees, so its own verdict is none.</li>
+<li>False proves no write: dynamic call or IO also clears it. Own analysis decides then, per argument and global.</li>
+<li>Callee summary needs more than <code>effect_free</code>: result aliases. <code>view</code> writes nothing, but caller writes <code>A</code> through <code>view(A, 1:2)</code>.</li>
+<li><code>@assume_effects</code> makes compiler trust claim. Shortcut holds only when no instance it reaches carries claim outside Base or stand-in cut.</li>
+<li>Claim: <code>@assume_effects</code> on method or on block in it. Generated method and method without source count as claim.</li>
+<li>Native inference edges tell reach. Callee without cached code counts as claim. Corset, Moshi and Compiler carry claims, so each run checks reach of claims.</li>
+<li>Compaction deletes unused call when compiler effects allow. Call that reaches claim or cut stays, and so does statement under block claim of claiming method.</li>
+<li>Unit keeps every call: call facts need discarded calls (Facts). Unit with shortcut keeps code too; its summary stays empty.</li>
+<li>Own analysis runs on every method with claim outside Base. <code>false-effects</code> compares claims of package methods.</li>
+</ul>
+</div><div class="decision"><h3>Stand-in cuts</h3>
+<ul>
+<li>Cut: call or store statement live at declared signature and dead at stand-in signature. Engine never sees it, so unit summary carries <code>cut</code>.</li>
+<li>Causes: call that fails on stand-in only, whose callee engine never sees; type test that stand-in decides (<code>x isa BigFloat &amp;&amp; (STATE[] += 1)</code>).</li>
+<li><code>inference</code> stage finds cuts: units with dead call or store statements first, then declared-signature inference of those units only.</li>
+<li>Failure check of units gives failing calls: model-type inference decides them. Throw helpers fail on every signature, so they are never cut.</li>
+<li>Package call that fails on stand-in only gets no failure-check spot, but stays cut: stand-in can dispatch to other method.</li>
+<li>Package units and library instances count both causes, with model-type check for library instances.</li>
+<li>Base, Core and stand-in methods count failing calls only: Base keeps documented contracts, so its type branches keep same effects (<code>findings.md</code>, Confidence and blind spots).</li>
+<li>Generated code differs per signature. Its statements match no statement of other signature, so generated method clears no cut.</li>
+<li>Callers inherit <code>cut</code>. Method with <code>cut</code> is incomplete. Verdict none with <code>cut</code> goes to coverage line: <code>stand-in cuts path</code>.</li>
+<li>Blind spot points at first cut statement, else at first call whose callee carries <code>cut</code>.</li>
+<li>Definite and <code>possible</code> writes keep certainty with <code>cut</code>.</li>
+<li>Compiler effects of stand-in instance skip code past cut. Shortcut and compaction treat instance with cut like claim (Compiler effects).</li>
+<li>Library cut check runs only on instance that holds stand-in: method outside Base, or call that can fail (not <code>nothrow</code>, or method with <code>try</code>). Caught failure keeps <code>nothrow</code>.</li>
+</ul>
+</div><div class="decision"><h3>Effect kinds</h3>
+<p>Summary keeps every effect with its kind. Rules apply exemptions; engine filters nothing.</p>
+<ul>
+<li>Kinds: memory write, IO, default RNG, RNG argument, task-local state, <code>ScopedValue</code> read, lock and other synchronization, lazy init, audited internal state, iteration start.</li>
+<li><code>bang-convention</code> exempts IO, RNG, lazy init and audited internal state. <code>unused-call</code> counts every kind. <code>hidden-input</code> reads default RNG, task-local state, <code>ScopedValue</code> and mutable globals.</li>
+<li>Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.</li>
+<li>Kind comes from types along place path, root first: first <code>IO</code> gives IO, <code>AbstractRNG</code> gives RNG argument.</li>
+<li>Contract write can set own kind: <code>handle_message</code> writes logger as IO.</li>
+<li>Lock, <code>Condition</code> and <code>Semaphore</code> on path give synchronization. Path without such type gives memory write.</li>
+<li>Path types: instance parameter type, constant global value type or global binding type, then field type or element type per step. Abstract type without field ends walk.</li>
+<li>Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.</li>
+<li>Write to RNG fields of <code>Task</code> (<code>rngState0</code> to <code>rngState4</code>): default RNG. Other write to <code>Task</code>, <code>task_local_storage</code> included: task-local state.</li>
+<li><code>ScopedValue</code> read: read of <code>ScopedValue</code> object or of current task scope.</li>
+<li>Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.</li>
+<li>Lazy init and audited internal state come from audited table of Base types and methods only:
+<ul>
+<li>Table keys holder type and field, or method. Listed entry sets kind before path types.</li>
+<li>Audited field sets kind of every place below it: JIT compile writes code below <code>Regex</code> field.</li>
+<li><code>Regex</code> compile cache, <code>LazyString</code>; Base logging and PCRE contexts.</li>
+<li>Logging <code>JULIA_DEBUG</code> cache (<code>env_override_minlevel</code>) and frame lookup of deprecation (<code>_depwarn</code>): unknown objects they write.</li>
+<li>Repair method <code>unsafe_convert(Ref{BigFloat}, ::BigFloatData)</code>: rewrites stale MPFR limb pointer before each call.</li>
+</ul>
+</li>
+<li>Package <code>setfieldonce!</code> and package caches follow memo-cache rule above: cheap proof or opt-out.</li>
+<li>Write to other module's global outside audited table counts as global write; requirement propagates.</li>
+<li>Writes to fresh local objects inside error paths (message building) are local writes.</li>
+<li>Argument or global write before throw stays in summary: caller that catches sees it, open calls included (<code>foreign_mutate!(x); error()</code>).</li>
+<li>Message call: call whose result feeds only thrown value, directly or through other message statements. It adds definite writes only.</li>
+<li>Thrown value: argument of <code>throw</code> or of throw-helper call (<code>error</code>). Other call that never returns fails on stand-in: stand-in cuts handle it.</li>
+<li>Use cycle never counts: <code>string</code> call that builds message in loop keeps its writes.</li>
+<li>Message call resolves callback records at call: record would carry its writes to caller.</li>
+<li>Throw-only exemption (F86) needs no write on any path.</li>
+</ul>
+</div><div class="decision"><h3>Release balance</h3>
+<p>Summary keeps hold count per resource place at normal exit and at throw exit. Count is exact (acquires less releases), unknown, or blind.</p>
+<ul>
+<li>Resources: lock, <code>Semaphore</code> slot, file that <code>open</code> returns. Resource place: one target of operand, exact caller place or fresh object.</li>
+<li>Count key: resource place and resource kind. Fresh <code>IOStream</code> holds file and own lock: they count apart.</li>
+<li>Merged fresh objects of callee count together: <code>open</code> result is one of them.</li>
+<li>Operand with other targets: blind spot <code>release pattern</code>.</li>
+<li>Primitive table: <code>lock</code>, <code>unlock</code>, <code>trylock</code> on lock; <code>acquire</code>, <code>release</code> on <code>Semaphore</code>; <code>open</code> with <code>IOStream</code> result; <code>close</code> on <code>IOStream</code>.</li>
+<li>Table also: <code>wait(::Condition)</code> releases lock and takes it again.</li>
+<li>Engine never reads lock, semaphore or <code>wait</code> bodies. It reads <code>open</code> and <code>close</code> bodies for their IO.</li>
+<li>Base libuv lock (<code>iolock_begin</code>) holds no Julia object: engine skips it.</li>
+<li><code>lock(f, l)</code>, <code>open(f, path)</code> and <code>@lock l expr</code> need no entry: each releases in <code>finally</code>, which dataflow balances.</li>
+<li><code>trylock</code> gives blind spot <code>release pattern</code>. Count that follows its result comes later.</li>
+<li>Dataflow over CFG blocks. Statement that may throw (compiler <code>nothrow</code> off) inside <code>try</code> has edge to its catch block.</li>
+<li>Block keeps at most 4 paths: counts and branch conditions taken. Fifth path joins all paths into one.</li>
+<li>Branch on condition that path took before takes same side: <code>l &amp;&amp; lock(x) … l &amp;&amp; unlock(x)</code> balances (Base <code>@_lock_ios</code>).</li>
+<li>Condition is forgotten when loop runs its statement again.</li>
+<li>Primitive that throws: acquire takes nothing, release still counts. <code>unlock</code> throws only when lock is not held.</li>
+<li>Join of different counts gives unknown; count that grows round a loop gives unknown.</li>
+<li>Throw exit: statement that may throw outside every <code>try</code>. Its count joins into throw-exit count.</li>
+<li>Call applies callee counts on caller places like writes: through join and callback record. Callee throw-exit count joins at call statement.</li>
+<li>Normal-exit lock or semaphore count not 0 on argument or global: lock write. Exact count gives definite; unknown from join gives <code>possible</code>.</li>
+<li>F98 (<code>unguarded-release</code>) fact: statement throws outside every <code>try</code> while method holds resource. Release is skipped.</li>
+<li>Hold comes from own acquire or callee normal exit. Callee throw-exit count alone gives none: finding goes to method that acquires.</li>
+</ul>
+</div><div class="decision"><h3>Solve and cache</h3>
+<ul>
+<li>Call graph over variants; strongly connected components from iterative Tarjan; solve bottom-up.</li>
+<li>Inside component: worklist. Member reads summaries of callees and of callback record variants it resolves. Member reruns when read summary changes.</li>
+<li>Inside instance: rounds over IR until targets settle. These rounds apply callee stores only. One settled round then applies callee accesses.</li>
+<li>Join of methods (Calls, step 5) is not monotone, so summaries in cycle can oscillate.</li>
+<li>After 8 reruns, member summary widens: union with previous summary. Access that still changes becomes blind (<code>unsettled call cycle</code>).</li>
+<li>Widened summaries only grow through finite values, so fixpoint ends.</li>
+<li>Flow work: targets that loads trace and joins read, over every round of one variant.</li>
+<li>Flow past work limit stops. Variant gets open summary: blind access on each parameter, blind spot <code>effects budget</code>.</li>
+<li>Work counts origins each trace walks. Load past limit returns nothing, so one call statement stops too.</li>
+<li>Root past limit keeps no call facts: its rounds stopped early.</li>
+<li>Limit: 10 million, 10 times largest flow on corpus (Distributions, 0.95 million).</li>
+<li>Callee signature can grow along call chain without end: <code>_any(f ∘ transpose, parent(A), :)</code> adds <code>ComposedFunction</code> layer per step.</li>
+<li>Engine limits callee like native inference (<code>abstract_call_method</code>): method that recurs on call chain gets <code>limit_type_size</code> signature.</li>
+<li>Call chain: caller that first reached each instance. Join limits hard, against method signature.</li>
+<li>Library instance: method outside package, and signature names no package type.</li>
+<li>Library summary: variant of library instance. Disk cache keeps it; cache hit skips native inference and passes.</li>
+<li>Cache also keeps variant parameters and stand-in cut of library instances.</li>
+<li>Partition: Julia version, cache flags and Corset content. One library file per partition serves every checked path and environment.</li>
+<li>Entry key: kind, closure key of instance, and constants of variant. Module constant adds its owner text.</li>
+<li>Closure key: digest over strongly connected components of native edge graph, callees first. Walk order cannot change it.</li>
+<li>Node: cached code instance, else instance that run inferred. Lookup before native inference needs cached code; instance without it misses.</li>
+<li>Node text: instance key, text of each edge record, and owner digest of each root module that instance or records name.</li>
+<li>Instance key: canonical text of method signature and of specialization. Type text: module path, name, parameters; variables by binding depth.</li>
+<li>Edge records of Julia 1.13: lookup with match count, single match, binding, call type with method table, call type with <code>invoke</code> target.</li>
+<li>Lookup count is negative when matches do not cover call. Too many matches give no record, so push past method limit changes key.</li>
+<li>Package method that changes dispatch of library call removes cached code of caller. New code gives other edge records.</li>
+<li>Owner text: package content and texts of its loaded dependencies. Extension: texts of parent and triggers. Base and Core: none.</li>
+<li>Corset gives texts of its dependencies only: partition holds its content.</li>
+<li>Package content: path in depot <code>packages</code> or standard library, since depot slug derives from tree hash. Else digest of project file, <code>src</code>, <code>ext</code> and <code>deps</code>.</li>
+<li>Package content adds preferences of package. Edit of unrelated package keeps key.</li>
+<li>No key: package code, <code>Main</code> code, root without project file, unknown edge form, or edge target without node.</li>
+<li>Solve of shared variant stays inside native edges of its node. Union split, folded call and callee limit can leave them.</li>
+<li>Core methods of <code>!==</code> and <code>&gt;:</code> count as inside: inference reads them as <code>===</code> and <code>&lt;:</code>. Closure key holds their other methods.</li>
+<li>Variant whose solve reaches package code or unshared variant stays out. Summary with callback record stays out: caller needs record variants too.</li>
+<li>Throw helper verdict reads every method of callee. Entry keeps each verdict its closure read; hit checks each again.</li>
+<li>Stand-in cut that inferred model types reads methods outside native edges. Store gives no key to closure that holds its instance.</li>
+<li>Library file lists instance key of each entry. Lookup walks closure only for listed instance.</li>
+<li>Write reads file again, merges new entries, and stamps hits. Entries go newest first within 128 MiB.</li>
+<li>Write goes to staging file, then rename. Concurrent writer can lose entries; file stays whole. Directory keeps newest 4 library files.</li>
+<li>Run that skipped crashed instance stores nothing: its blind spot holds for that run only.</li>
+<li>Package summary: method store entry keeps effects record of unit beside <code>Inferred</code>, with same invalidation.</li>
+<li>Record: accesses with spans, holds, call facts, blind spots and cuts. Call fact names callee methods by signature, since deserialized <code>Method</code> is new object.</li>
+<li>Effects run infers again each unit whose entry has no record. Inference run keeps records of stored entries.</li>
+<li>Stored unit that fresh unit calls gets unit body from native inference and no first caller, as in cold run.</li>
+<li>Stored units start no walk, so first caller of library instance can differ from cold run. Only recursion limit reads call chain.</li>
+<li>Budget: with warm library cache, effects stage takes at most <code>inference</code> stage time.</li>
+<li>Corpus cost: history, &quot;Engine cost&quot; and &quot;Engine freeze&quot;.</li>
+</ul>
+</div><div class="decision"><h3>Facts</h3>
+<ul>
+<li>Per package method: writes and reads by place with certainty and cause span; blind writes and reads with blind spot; result aliases.</li>
+<li>Iteration starts by place: <code>iterate</code> without state, directly or through callee. Summary joins and widens them like reads.</li>
+<li>Start is read of kind <code>iteration</code>. Base contract of <code>first</code>, <code>only</code>, generic <code>isempty</code> and destructuring starts too.</li>
+<li>Fact of incomplete method has <code>complete</code> false: it gets no definite none.</li>
+<li>Per unit, for <code>lifecycle</code> and statement rules (F48, F50, F51): allocation sites, read, write and iteration-start events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.</li>
+<li>Element event carries index operand: constant or SSA value. <code>lifecycle</code> decides which elements writes cover (F33, F34).</li>
+<li>Per call statement: callee, kinds of its writes at any certainty, may throw, terminates, result used or discarded (F54, F86).</li>
+<li>Callee holds that call leaves count as writes: lock gives synchronization, file gives IO.</li>
+<li>Use counts before compaction: compaction turns each use of constant result into literal (<code>b == UInt8('\t')</code>).</li>
+<li>Units of method merge by source statement: unit that may throw, writes or uses result decides.</li>
+<li><code>unused-call</code> needs no effect of any kind, no throw and termination: discarded <code>parse(Int, text)</code> validates input.</li>
+<li>Join of two allocations at branch (<code>y = flag ? a : b</code>) makes fact <code>possible</code>.</li>
+<li>Callee content reads come from summaries: <code>sum</code> reads, <code>fill!</code> does not.</li>
+<li><code>possible</code> effect findings stay off until call resolution passes quality gate.</li>
+</ul>
+</div><div class="decision"><h3>Tests</h3>
+<ul>
+<li>Fixture per transfer function, resolution step, origin kind and benign write.</li>
+<li>Soundness property (Supposition.jl): run fixture function on generated inputs; compare deep copies before and after. Observed write needs definite or <code>possible</code> in summary.</li>
+<li>UI tests per rule; mutation testing on engine; corpus go/no-go (<code>plan.md</code>).</li>
+</ul>
 </div>
 </section>
 
@@ -1567,7 +1882,7 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 <li>After first release: corpus findings and real use test footgun list, levels, presets and messages.</li>
 <li>After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (<code>types.md</code>). Revisit integer input of <code>type-disruption</code> if corpus shows integer widening outside index math.</li>
 <li>Before each later phase: reread parts that phase builds on; question decisions that no longer fit.</li>
-<li>After phase 5 rule rows: count name-trust misses that block rules on corpus. Revive frozen engine only when they block a quality gate.</li>
+<li>After phase 5 rule rows: compare engine verdicts with name trust on corpus before engine verdicts feed facts.</li>
 <li>Each review: adversarial pass by second model on changed parts; log findings and outcomes in <code>rules-rewrite-history.md</code>.</li>
 <li>Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.</li>
 </ul>
@@ -1594,28 +1909,28 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 <td>Engine core</td>
 <td>Units, IR, origins, points-to, builtins, static calls, solve, soundness property</td>
 <td>—</td>
-<td>#232; frozen</td>
+<td>#232; revived</td>
 </tr>
 <tr>
 <td>2</td>
 <td>Call resolution</td>
 <td>Foreign calls, callback records, join, Base contracts, open calls</td>
 <td>1</td>
-<td>2a #234; 2b #235; 2c #237; 2d #238; 2e #239; frozen</td>
+<td>2a #234; 2b #235; 2c #237; 2d #238; 2e #239; revived</td>
 </tr>
 <tr>
 <td>3</td>
 <td>Engine limits</td>
 <td>Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance</td>
 <td>2</td>
-<td>3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249 (fix #252), iteration starts #250, frame copy #253; frozen</td>
+<td>3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249 (fix #252), iteration starts #250, frame copy #253; revived</td>
 </tr>
 <tr>
 <td>4</td>
 <td>Summary cache</td>
 <td>Library summary disk cache; package summaries in method store</td>
 <td>3</td>
-<td>#251 (per-environment key), #254 (per-entry key); frozen</td>
+<td>#251 (per-environment key), #254 (per-entry key); revived</td>
 </tr>
 <tr>
 <td>5</td>
@@ -1671,7 +1986,7 @@ Rerun with no changes, same scope: about 0.5 s on DataStructures, from cache. Wh
 <ul>
 <li>One PR per row; split a rule row by rule when it grows large. Status gets PR number at merge.</li>
 <li>Rule rows merge in any order after row 5. Bug rules go first: F48, F50, F98, F58, F54.</li>
-<li>Rows 1 to 4 built the whole-program engine. Its code and design stay at tag <code>effects-engine</code> (history, &quot;Engine freeze&quot;).</li>
+<li>Rows 1 to 4 built the whole-program engine (<code>engine.md</code>). It left main at row 5 and came back unwired; tag <code>effects-engine</code> marks its last wired state.</li>
 </ul>
 </div><div class="decision"><h3>Every PR</h3>
 <ul>

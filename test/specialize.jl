@@ -30,5 +30,6 @@ function specializing_methods()::Vector{String}
 end
 
 @testset "specialization on program values" begin
+    @test nospecialized(only(methods(Corset.Effects.Summaries.value_targets)), 3) && !nospecialized(only(methods(Corset.Effects.Summaries.value_targets)), 2)
     @test isempty(specializing_methods())
 end

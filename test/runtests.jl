@@ -15,7 +15,7 @@ end
 
 const FILES = [
     "units.jl", "standins.jl", "signatures.jl", "inference.jl", "widening.jl", "hard_arrays.jl", "guesses.jl", "narrowing.jl",
-    "own_code.jl", "specialize.jl", "names.jl", "indices.jl", "lifecycle.jl", "registry.jl", "ui.jl", "properties.jl", "cli.jl",
+    "own_code.jl", "specialize.jl", "effects.jl", "summary_cache.jl", "names.jl", "indices.jl", "lifecycle.jl", "registry.jl", "ui.jl", "properties.jl", "cli.jl",
     "cache.jl", "invalidation.jl", "perf.jl",
 ]
 
