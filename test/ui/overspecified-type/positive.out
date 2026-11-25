@@ -329,3 +329,236 @@ warning[overspecified-type]: `Float64` rejects callers `Real` accepts
     = fix: replace with `Real` after checking `applicable` calls and `MethodError` catches: widening changes what they do   [manual]
     = docs: corset explain overspecified-type
 
+warning[overspecified-type]: `Vector{Float64}` rejects callers `Vector{<:Real}` accepts
+   --> src/OverspecifiedTypePositive.jl:113:17
+    |
+113 | appended(items::Vector{Float64}) = push!(items, 1.0)
+    |                 ^^^^^^^^^^^^^^^ narrower than code needs
+    |                        ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Vector{<:Real}`   [likely]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Vector{<:Float64}` rejects callers `Vector{<:Real}` accepts
+   --> src/OverspecifiedTypePositive.jl:116:23
+    |
+116 | appended_bound(items::Vector{<:Float64}) = push!(items, 1.0)
+    |                       ^^^^^^^^^^^^^^^^^ narrower than code needs
+    |                                ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Vector{<:Real}`   [likely]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Vector{Vector{Float64}}` rejects callers `AbstractVector{<:Vector{<:Real}}` accepts
+   --> src/OverspecifiedTypePositive.jl:119:23
+    |
+119 | function padded(rows::Vector{Vector{Float64}})
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^ narrower than code needs
+    |                       ------ names specific type
+    |                                     ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `AbstractVector{<:Vector{<:Real}}`   [likely]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Vector{Float64}` rejects callers `Vector{<:Real}` accepts
+   --> src/OverspecifiedTypePositive.jl:127:15
+    |
+127 | tagged(items::Vector{Float64}) = (push!(items, 1.0); :float)
+    |               ^^^^^^^^^^^^^^^ narrower than code needs
+    |                      ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Vector{<:Real}` after other methods change: widened method overlaps them   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `AbstractVector{Int}` rejects callers `AbstractVector{<:Integer}` accepts
+   --> src/OverspecifiedTypePositive.jl:128:15
+    |
+128 | tagged(items::AbstractVector{Int}) = :integer
+    |               ^^^^^^^^^^^^^^^^^^^ narrower than code needs
+    |                              --- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `AbstractVector{<:Integer}` after other methods change: widened method overlaps them   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Float64` rejects callers `Real` accepts
+   --> src/OverspecifiedTypePositive.jl:132:38
+    |
+132 | aliased(values::FloatValues, factor::Float64) = factor
+    |                                      ^^^^^^^ narrower than code needs
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Real` after other methods change: widened method overlaps them   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `AbstractVector{Float64}` rejects callers `AbstractVector{<:Real}` accepts
+   --> src/OverspecifiedTypePositive.jl:133:17
+    |
+133 | aliased(values::AbstractVector{Float64}, factor::Int) = factor
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^ narrower than code needs
+    |                                ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `AbstractVector{<:Real}` after other methods change: widened method overlaps them   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Int` rejects callers `Integer` accepts
+   --> src/OverspecifiedTypePositive.jl:133:50
+    |
+133 | aliased(values::AbstractVector{Float64}, factor::Int) = factor
+    |                                                  ^^^ narrower than code needs
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Integer` after other methods change: widened method overlaps them   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Base.RefValue{Float64}` rejects callers `Base.RefValue{<:Real}` accepts
+   --> src/OverspecifiedTypePositive.jl:136:14
+    |
+136 | shaped(cell::Base.RefValue{Float64}, mode::Tuple{Val{:fast}, Array{Float64, 2}}, pair::Tuple{Float64, T}, table::Dict{Float64, Ref{U} where {U <: Integer}}) where {T} = pair
+    |              ^^^^^^^^^^^^^^^^^^^^^^ narrower than code needs
+    |                            ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Base.RefValue{<:Real}`   [likely]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Tuple{Val{:fast}, Array{Float64, 2}}` rejects callers `Tuple{Val{:fast}, AbstractArray{<:Real, 2}}` accepts
+   --> src/OverspecifiedTypePositive.jl:136:44
+    |
+136 | shaped(cell::Base.RefValue{Float64}, mode::Tuple{Val{:fast}, Array{Float64, 2}}, pair::Tuple{Float64, T}, table::Dict{Float64, Ref{U} where {U <: Integer}}) where {T} = pair
+    |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ narrower than code needs
+    |                                                              ----- names specific type
+    |                                                                    ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Tuple{Val{:fast}, AbstractArray{<:Real, 2}}`   [likely]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Tuple{Float64, T}` rejects callers `Tuple{Real, T}` accepts
+   --> src/OverspecifiedTypePositive.jl:136:88
+    |
+136 | shaped(cell::Base.RefValue{Float64}, mode::Tuple{Val{:fast}, Array{Float64, 2}}, pair::Tuple{Float64, T}, table::Dict{Float64, Ref{U} where {U <: Integer}}) where {T} = pair
+    |                                                                                        ^^^^^^^^^^^^^^^^^ narrower than code needs
+    |                                                                                              ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Tuple{Real, T}`   [likely]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Dict{Float64, Ref{U} where {U <: Integer}}` rejects callers `AbstractDict{<:Real, Ref{U} where {U <: Integer}}` accepts
+   --> src/OverspecifiedTypePositive.jl:136:114
+    |
+136 | shaped(cell::Base.RefValue{Float64}, mode::Tuple{Val{:fast}, Array{Float64, 2}}, pair::Tuple{Float64, T}, table::Dict{Float64, Ref{U} where {U <: Integer}}) where {T} = pair
+    |                                                                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ narrower than code needs
+    |                                                                                                                  ---- names specific type
+    |                                                                                                                       ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `AbstractDict{<:Real, Ref{U} where {U <: Integer}}`   [likely]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Tuple{Float64, Val{sum((1, 1))}}` rejects callers `Tuple{Real, Val{sum((1, 1))}}` accepts
+   --> src/OverspecifiedTypePositive.jl:139:14
+    |
+139 | picked(pair::Tuple{Float64, Val{sum((1, 1))}}) = pair[1]
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ narrower than code needs
+    |                    ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Tuple{Real, Val{sum((1, 1))}}` after checking other methods of function: Corset cannot build widened signature   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Tuple{Int, Val{2}}` rejects callers `Tuple{Integer, Val{2}}` accepts
+   --> src/OverspecifiedTypePositive.jl:140:14
+    |
+140 | picked(pair::Tuple{Int, Val{2}}) = pair[1]
+    |              ^^^^^^^^^^^^^^^^^^ narrower than code needs
+    |                    --- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Tuple{Integer, Val{2}}` after other methods change: widened method overlaps them   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Vector{Int}` rejects callers `AbstractVector{<:Integer}` accepts
+   --> src/OverspecifiedTypePositive.jl:146:13
+    |
+146 | head(items::Vector{Int}) = first(items)
+    |             ^^^^^^^^^^^ narrower than code needs
+    |             ------ names specific type
+    |                    --- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `AbstractVector{<:Integer}` after checking other methods of function: Corset cannot build widened signature   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Tuple{TagType, Float64}` rejects callers `Tuple{TagType, Real}` accepts
+   --> src/OverspecifiedTypePositive.jl:151:14
+    |
+151 | tupled(pair::Tuple{TagType, Float64}) = :tagged
+    |              ^^^^^^^^^^^^^^^^^^^^^^^ narrower than code needs
+    |                             ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Tuple{TagType, Real}` after checking other methods of function: Corset cannot build widened signature   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Tuple{Signed, Int}` rejects callers `Tuple{Signed, Integer}` accepts
+   --> src/OverspecifiedTypePositive.jl:152:14
+    |
+152 | tupled(pair::Tuple{Signed, Int}) = :signed
+    |              ^^^^^^^^^^^^^^^^^^ narrower than code needs
+    |                            --- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Tuple{Signed, Integer}` after other methods change: widened method overlaps them   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Vector{Float64}` rejects callers `AbstractVector{<:Real}` accepts
+   --> src/OverspecifiedTypePositive.jl:158:19
+    |
+158 | first_real(items::Vector{Float64}) = first(items)
+    |                   ^^^^^^^^^^^^^^^ narrower than code needs
+    |                   ------ names specific type
+    |                          ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `AbstractVector{<:Real}` after checking other methods of function: Corset cannot build widened signature   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Int` rejects callers `Integer` accepts
+   --> src/OverspecifiedTypePositive.jl:165:13
+    |
+165 | same(count::Int) = count
+    |             ^^^ narrower than code needs
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Integer` after checking other methods of function: Corset cannot build widened signature   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Int` rejects callers `Integer` accepts
+   --> src/OverspecifiedTypePositive.jl:167:18
+    |
+167 | counted(; count::Int = 1) = count
+    |                  ^^^ narrower than code needs
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `Integer` after checking other methods of function: Corset cannot build widened signature   [manual]
+    = docs: corset explain overspecified-type
+
+warning[overspecified-type]: `Vector{Float64}` rejects callers `AbstractVector{<:Real}` accepts
+   --> src/OverspecifiedTypePositive.jl:174:19
+    |
+174 | first_item(items::Vector{Float64}) = first(items)
+    |                   ^^^^^^^^^^^^^^^ narrower than code needs
+    |                   ------ names specific type
+    |                          ------- names specific type
+    |
+    = why: Julia compiles method for each concrete argument type, so wider annotation runs as fast
+    = fix: replace with `AbstractVector{<:Real}` after checking other methods of function: Corset cannot build widened signature   [manual]
+    = docs: corset explain overspecified-type
+
