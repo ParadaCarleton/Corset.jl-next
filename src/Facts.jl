@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, Weak, Exit, EffectKind
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, StatefulIterate, InferenceFacts, Step, Root, Place, Access, UnguardedHold, LoopWrite, SelfAlias, StatefulReuse, UnprovenIndex, IndexContract, IndexSource, OperandIndex, ArrayOperand, IndexCall, IndexFacts, AllocationKind, ArrayEventKind, Coverage, ArrayPath, ArrayEvent, Rebind, ArrayLife, MethodArrays, LifecycleFacts, Callee, callee_name, callee_methods, place_text, place_root, place_steps, step_child, current_objects, takes_rng, root_global, CallFact, no_effect, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, ArgumentUse, RESIZE_FUNCTIONS, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, StatefulIterate, InferenceFacts, Step, Root, Place, Access, UnguardedHold, LoopWrite, SelfAlias, StatefulReuse, UnprovenIndex, IndexContract, IndexSource, OperandIndex, ArrayOperand, IndexCall, IndexFacts, AllocationKind, ArrayEventKind, Coverage, ArrayPath, ArrayEvent, Rebind, ArrayLife, MethodArrays, LifecycleFacts, Callee, callee_name, callee_methods, place_text, place_root, place_steps, step_child, current_objects, takes_rng, root_global, CallFact, no_effect, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, tuple_parameters, lowered_value, argument_type, subject_position, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -190,23 +190,7 @@ struct Ban
     reason::String
 end
 
-"""
-Method package code defines, in analyzed `file`. `node` is its definition node, when exactly one definition of that
-name starts on method line; `nothing` otherwise (`@eval` loops, macro output), and `span` then has line precision.
-"""
-struct MethodSite
-    method::Method
-    file::SyntaxFile
-    node::Union{Nothing, SyntaxNode}
-    span::Span
-end
-
-"""Struct package code defines, as written (`UnionAll` for parametric struct), and its `struct` form in analyzed `file`."""
-struct StructSite
-    type::Type
-    file::SyntaxFile
-    node::SyntaxNode
-end
+include("Facts/package.jl")
 
 """Package extension: name, file Julia loads (`ext/<name>.jl` or `ext/<name>/<name>.jl`), and trigger packages."""
 struct Extension
@@ -231,21 +215,6 @@ struct ProjectFacts
     test_deps::TestDeps.T
     tests::Vector{Base.PkgId}
     test_loads::Union{Nothing, Vector{Base.PkgId}}
-end
-
-"""
-Loaded package (`package` stage facts): package modules (root, submodules, loaded extensions; root first), values
-public names reach, and sites of methods and structs package modules define in analyzed files.
-`methods` keeps methods later definitions replaced; `overwrites` pairs each (earlier, later) by same signature.
-`probed`: functions, types and callable objects package methods test for methods; new method changes what code does.
-"""
-struct PackageFacts
-    modules::Vector{Module}
-    public::Base.IdSet{Any}
-    methods::Vector{MethodSite}
-    overwrites::Vector{Tuple{MethodSite, MethodSite}}
-    structs::Vector{StructSite}
-    probed::Base.IdSet{Any}
 end
 
 """
