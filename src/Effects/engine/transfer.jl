@@ -632,10 +632,45 @@ struct CallSite
     sources::Dict{Int, Sources}
 end
 
-"""Call site at statement `index` of callee with `fresh` fresh nodes: they merge into allocation at `index`."""
-function CallSite(arguments::AbstractVector{Targets}, derived::AbstractVector{Sources}, index::Integer, fresh::Integer)::CallSite
-    merged = fresh == 0 ? nothing : Targets(Origin.Allocation(index) => fresh == 1 ? NO_DOUBT : BLIND_DOUBT)
+"""
+Call site at statement `index` of callee with `summary`: its fresh nodes merge into allocation at `index`, blind unless
+merge is exact. One fresh node merges exactly; several need check (`merges_exactly`).
+"""
+function CallSite(arguments::AbstractVector{Targets}, derived::AbstractVector{Sources}, index::Integer, summary::Summary)::CallSite
+    merged = summary.fresh == 0 ? nothing : Targets(Origin.Allocation(index) => (summary.fresh == 1 || merges_exactly(summary)) ? NO_DOUBT : BLIND_DOUBT)
     return CallSite(arguments, derived, index, merged, Dict{Place.Type, Targets}(), Dict{Place.Type, Targets}(), Dict{Int, Sources}())
+end
+
+"""Whether `node` is fresh object of callee."""
+fresh_node(node::Node.Type)::Bool = @match node begin
+    Node.Fresh(_) => true
+    _ => false
+end
+
+"""
+Whether fresh nodes of `summary` merge into one allocation without false targets. Fresh nodes must form one object:
+every fresh node but one backs another (`Array` and its `Memory`); merged object backs itself. Independent objects
+(two vectors in one tuple) would share caller stores after call. No slot step holds stores of two fresh nodes, and
+fresh node with unknown slot or backing outside fresh nodes is only fresh node with stores.
+"""
+function merges_exactly(summary::Summary)::Bool
+    holders, stored, open, backs = Dict{Step.Type, Node.Type}(), Set{Node.Type}(), Set{Node.Type}(), Set{Node.Type}()
+    for (node, step) in keys(summary.edges)
+        fresh_node(node) || continue
+        push!(stored, node)
+        get!(holders, step, node) == node || return false
+    end
+    for node in keys(summary.spread)
+        fresh_node(node) && push!(open, node)
+    end
+    for (node, nodes) in summary.backing
+        fresh_node(node) || continue
+        all(fresh_node, keys(nodes)) || push!(open, node)
+        # Node that backs itself is earlier merge of one object (`[x]` calls `Vector(undef, 1)`).
+        union!(backs, Iterators.filter(other -> fresh_node(other) && other != node, keys(nodes)))
+    end
+    summary.fresh - length(backs) == 1 || return false
+    return isempty(open) || (length(open) == 1 && stored ⊆ open)
 end
 
 """Targets of callee `place` at `site`, mapped once per call statement and round."""
@@ -726,7 +761,7 @@ change nothing there.
 function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Integer, summary::Summary, variant::Variant, operands::AbstractVector{Operand.Type}, defers::Bool, callees::Callees)::Nothing
     method = first(variant).def::Method
     arguments = parameter_targets!(flow, index, method, operands)
-    site = CallSite(arguments, parameter_derived(flow, method, operands), index, summary.fresh)
+    site = CallSite(arguments, parameter_derived(flow, method, operands), index, summary)
     summary.closed_world && (flow.closed_world = true)
     summary.cut && (flow.cut = true)
     flow.settled || apply_stores!(flow, site, summary)
@@ -785,7 +820,7 @@ function resolve!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, ind
     push!(seen, record)
     variant, arguments = record
     summary = summary!(callees, variant)
-    site = CallSite(arguments, zeros(Sources, length(arguments)), index, summary.fresh)
+    site = CallSite(arguments, zeros(Sources, length(arguments)), index, summary)
     apply_accesses!(flow, writes, reads, site, summary, defers, callees, seen)
     return nothing
 end

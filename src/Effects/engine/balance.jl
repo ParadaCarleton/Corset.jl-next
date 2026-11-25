@@ -115,7 +115,7 @@ function summary_changes!(flow::Flow, normal::Counts, site::CallSite, summary::S
             push!(seen, record)
             variant, arguments = record
             inner = summary!(callees, variant)
-            inner_site = CallSite(arguments, zeros(Sources, length(arguments)), site.index, inner.fresh)
+            inner_site = CallSite(arguments, zeros(Sources, length(arguments)), site.index, inner)
             thrown = join_counts(thrown, summary_changes!(flow, normal, inner_site, inner, defers, callees, seen))
         end
     end
@@ -130,7 +130,7 @@ function variant_changes!(flow::Flow, index::Integer, operands::AbstractVector{O
     summary, method = summary!(callees, variant), first(variant).def::Method
     arguments = parameter_targets!(flow, index, method, operands)
     defers && deferred(arguments) && return (Counts(), Counts())
-    site = CallSite(arguments, parameter_derived(flow, method, operands), index, summary.fresh)
+    site = CallSite(arguments, parameter_derived(flow, method, operands), index, summary)
     normal = Counts()
     return normal, summary_changes!(flow, normal, site, summary, defers, callees, Set{Deferred}())
 end

@@ -50,7 +50,11 @@ Engine code lives in `src/Effects/engine/`, module `Effects.Summaries`.
 - Unification is rejected: it merges unrelated objects at each unknown call.
 - Write: statement that stores into origin content, or callee summary write mapped through call operands.
 - Each origin in points-to set carries doubt: none, `code` or `blind`. Join keeps least doubt per origin.
-- Open call on chain gives `code`. Call result merged from several fresh objects gives `blind`: they can hold different caller objects.
+- Open call on chain gives `code`.
+- Merge of callee fresh objects is exact when they form one object: each fresh object but one backs another.
+- `Array` and its `Memory` form one object: merged object backs itself.
+- Exact merge also needs each slot to hold stores of one fresh object at most.
+- Inexact merge gives `blind`: caller store into one merged object would show in the others.
 - Collapsed path and load of non-constant slot add no doubt: object they reach lies below same root.
 - Access below `deep w` takes kind of written object type at access, of callee access, or of `w` type.
 - Exempt kind needs proof, as balanced lock use does. Raw write into `IO` memory below `deep w` is memory write: `# corset: allow` covers it.
