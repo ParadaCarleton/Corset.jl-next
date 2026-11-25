@@ -5,6 +5,7 @@ using Corset.Inference: infer_package
 using Corset.Effects: Effects, record_bytes, unit_record, place_root, ALWAYS_THROWS
 using Supposition: Supposition, Data, @check
 using Random: Random, Xoshiro
+include("coverage.jl")
 
 const CASE = joinpath(@__DIR__, "names", "NameCases")
 
@@ -48,7 +49,7 @@ shape(accesses::Vector{Access})::Vector{Tuple{Place.Type, Bool, EffectKind.T, Co
 const DEFINITE, POSSIBLE, MEMORY = Confidence.definite, Confidence.possible, EffectKind.memory
 
 """Whether inference can prove `effect_free` of fixture: coverage of fixture file counts its counters as effects."""
-const PROVES = Base.JLOptions().code_coverage == 0 || Base.JLOptions().code_coverage == 3 && !startswith(CASE, unsafe_string(Base.JLOptions().tracked_path))
+const PROVES = !instrumented(CASE)
 
 @testset "write sources" begin
     # Field assignment calls `setproperty!` before inlining: `!` name writes object or below.

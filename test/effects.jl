@@ -17,6 +17,7 @@ using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
 using Base.ScopedValues: ScopedValue
+include("coverage.jl")
 
 const CASE = joinpath(@__DIR__, "effects", "EffectsCases")
 
@@ -232,8 +233,8 @@ sourceless(x::Int)::Int = x + 3
     root = (instance_of(+, Int, Int), Pair{Int, Any}[])
     solve!(run, [root])
     @test same(root_summary!(run, root), empty_summary()) && !haskey(run.codes, root)
-    # Unit verdict keeps no read of constant `Memory` length, which own analysis reads. Coverage turns shortcut off.
-    @test isempty(named(:memory_length).reads) == (Base.JLOptions().code_coverage == 0)
+    # Unit verdict keeps no read of constant `Memory` length, which own analysis reads. Fixture coverage turns shortcut off.
+    @test isempty(named(:memory_length).reads) == !instrumented(CASE)
     own = start_run(nothing, Module[CASES])
     length_root = (instance_of(CASES.memory_length, Memory{Int}), Pair{Int, Any}[])
     own.bodies[first(length_root)] = Summaries.frame_body!(own, Core.Compiler.typeinf_frame(own.interpreter, first(length_root), false), false, false, false)
