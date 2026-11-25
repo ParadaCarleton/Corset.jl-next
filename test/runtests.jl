@@ -6,31 +6,28 @@ function isolated(file::String)::Any
     return Base.include(holder, joinpath(@__DIR__, file))
 end
 
+"""Run speed tests in process, or in child process without coverage instrumentation, which slows code many times."""
+function perf()::Any
+    Base.JLOptions().code_coverage == 0 && return isolated("perf.jl")
+    command = `$(Base.julia_cmd()) --code-coverage=none --project=$(Base.active_project()) $(joinpath(@__DIR__, "perf.jl"))`
+    return @test success(pipeline(command; stdout, stderr))
+end
+
+const FILES = [
+    "units.jl", "standins.jl", "signatures.jl", "inference.jl", "widening.jl", "hard_arrays.jl", "guesses.jl", "narrowing.jl",
+    "own_code.jl", "specialize.jl", "names.jl", "indices.jl", "lifecycle.jl", "registry.jl", "ui.jl", "properties.jl", "cli.jl",
+    "cache.jl", "invalidation.jl", "perf.jl",
+]
+
+# Arguments pick files (`julia --project=test test/runtests.jl names.jl lifecycle.jl`); no argument runs every file.
+const SELECTED = isempty(ARGS) ? FILES : ARGS
+isempty(setdiff(SELECTED, FILES)) || error("unknown test files $(setdiff(SELECTED, FILES)); choose from $(FILES)")
+
+# Outer testset reports failures at end; testset per file records load error. Later files run in both cases.
 @testset "Corset" begin
-    isolated("units.jl")
-    isolated("standins.jl")
-    isolated("signatures.jl")
-    isolated("inference.jl")
-    isolated("widening.jl")
-    isolated("hard_arrays.jl")
-    isolated("guesses.jl")
-    isolated("narrowing.jl")
-    isolated("own_code.jl")
-    isolated("specialize.jl")
-    isolated("names.jl")
-    isolated("indices.jl")
-    isolated("lifecycle.jl")
-    isolated("registry.jl")
-    isolated("ui.jl")
-    isolated("properties.jl")
-    isolated("cli.jl")
-    isolated("cache.jl")
-    isolated("invalidation.jl")
-    # Coverage instrumentation slows code many times, so speed tests run in process without it.
-    if Base.JLOptions().code_coverage == 0
-        isolated("perf.jl")
-    else
-        perf = `$(Base.julia_cmd()) --code-coverage=none --project=$(Base.active_project()) $(joinpath(@__DIR__, "perf.jl"))`
-        @test success(pipeline(perf; stdout, stderr))
+    for file in SELECTED
+        @testset "$file" begin
+            file == "perf.jl" ? perf() : isolated(file)
+        end
     end
 end
