@@ -180,19 +180,47 @@ end
 """Whether `inner` is strict subtype of `outer`: Julia picks method of `inner` for calls both match."""
 nested(inner::Type, outer::Type)::Bool = inner <: outer && !(outer <: inner)
 
+"""Fix of positional argument: its position and parameter type of fixed signature."""
+const Edit = Pair{Int, Any}
+
+"""Signature `signature` with each of `edits` applied."""
+function edited(signature::Type, edits::AbstractVector{Edit})::Type
+    parameters = Any[tuple_parameters(signature)...]
+    for (position, type) in edits
+        parameters[position + 1] = type
+    end
+    return Base.rewrap_unionall(Tuple{parameters...}, signature)
+end
+
+"""Every subset of `edits`, empty and full included."""
+function subsets(edits::AbstractVector{Edit})::Vector{Vector{Edit}}
+    chosen = [Edit[]]
+    # Each edit doubles subsets: those without it, and same ones with it.
+    for edit in edits
+        append!(chosen, [Edit[subset; edit] for subset in chosen])
+    end
+    return chosen
+end
+
+"""Most fixes of two methods whose combinations rule checks: 2^10 signature pairs."""
+const COMBINATION_LIMIT = 10
+
 """
-Whether method `wide`, widened from `method`, and each other method of its function, before and after its own fix
-(`fixed`; method without entry keeps signature), are disjoint or nested: no call becomes ambiguous and no method
-replaces other. Other method whose fixed signature is unknown (`nothing`) fails check.
+Whether `edit` of `method` keeps dispatch beside each other method of its function, under every combination of other
+fixes of both (`edits`; method without entry has none): signatures stay disjoint or nested, so no call becomes ambiguous
+and no method replaces other. Other method whose fixes are unknown (`nothing`) fails; `nothing` past `COMBINATION_LIMIT`.
 """
-function dispatch_safe(method::Method, wide::Type, fixed::IdDict{Method, <:Union{Nothing, Type}})::Bool
+function dispatch_safe(method::Method, edit::Edit, edits::IdDict{Method, <:Union{Nothing, AbstractVector{Edit}}})::Union{Nothing, Bool}
+    own = Edit[other for other in something(edits[method]) if first(other) != first(edit)]
     callee = tuple_parameters(method.sig)[1]
     matches = Base._methods_by_ftype(Base.rewrap_unionall(Tuple{callee, Vararg{Any}}, method.sig), -1, Base.get_world_counter())
     for match in matches
         match.method === method && continue
-        after = get(fixed, match.method, match.method.sig)
-        isnothing(after) && return false
-        for other in (match.method.sig, after)
+        theirs = get(edits, match.method, Edit[])
+        isnothing(theirs) && return false
+        length(own) + length(theirs) > COMBINATION_LIMIT && return nothing
+        for mine in subsets(own), others in subsets(theirs)
+            wide, other = edited(method.sig, Edit[edit; mine]), edited(match.method.sig, others)
             typeintersect(wide, other) === Union{} || nested(wide, other) || nested(other, wide) || return false
         end
     end
@@ -273,13 +301,15 @@ function probed_callee(method::Method, probed::AbstractSet)::Bool
 end
 
 """
-What to do before widening `method` to signature `fixed[method]`; `nothing` when fix is safe. `fixed` holds signature
-fix gives each package method, `nothing` when rule cannot build it; package code tests functions of `probed` for methods.
+What to do before fix `edit` of `method`; `nothing` when fix is safe. Fix of keyword, or of position method lacks, is
+`nothing` edit: signature stays. `edits` holds fixes of each package method, `nothing` when rule cannot build them;
+package code tests functions of `probed` for methods.
 """
-function fix_blocker(method::Method, fixed::IdDict{Method, <:Union{Nothing, Type}}, probed::AbstractSet)::Union{Nothing, String}
-    wide = fixed[method]
-    isnothing(wide) && return "checking other methods of function: Corset cannot build widened signature"
-    dispatch_safe(method, wide, fixed) || return "other methods change: widened method overlaps them"
+function fix_blocker(method::Method, edit::Union{Nothing, Edit}, edits::IdDict{Method, <:Union{Nothing, AbstractVector{Edit}}}, probed::AbstractSet)::Union{Nothing, String}
+    isnothing(edits[method]) && return "checking other methods of function: Corset cannot build widened signature"
+    safe = isnothing(edit) || dispatch_safe(method, edit, edits)
+    isnothing(safe) && return "checking other methods of function: too many fixes to check each combination"
+    safe || return "other methods change: widened method overlaps them"
     probed_callee(method, probed) && return "checking `applicable` calls and `MethodError` catches: widening changes what they do"
     return nothing
 end
@@ -324,22 +354,30 @@ function overspecified_finding(file::SyntaxFile, annotation::SyntaxNode, wider::
     )
 end
 
+"""Overspecified annotation of `file`: widened text, reported parts, and each method of its definition with fix there."""
+struct Report
+    file::SyntaxFile
+    wider::String
+    reported::Vector{SyntaxNode}
+    sites::Vector{Tuple{Method, Union{Nothing, Edit}}}
+end
+
 """Findings for overspecified argument annotations of package methods on package functions; fast paths pass."""
 function findings(facts::FactSet)::Vector{Finding}
     package = facts.package
     isnothing(package) && return Finding[]
     modules = Set(package.modules)
     # Default arguments give one definition several methods; each annotation reports once, with uses of all.
-    seen, definitions = Base.IdSet{SyntaxNode}(), IdDict{SyntaxNode, Vector{Method}}()
+    definitions = IdDict{SyntaxNode, Vector{Method}}()
     foreach(site -> isnothing(site.node) || push!(get!(Vector{Method}, definitions, site.node), site.method), package.methods)
-    # Fix of every method comes first: blocker of one method needs fixed signatures of others.
-    fixed, pending = IdDict{Method, Union{Nothing, Type}}(), Tuple{MethodSite, Vector{Tuple{SyntaxNode, String, Vector{SyntaxNode}}}}[]
+    # Fixes of every method come first: blocker of one method needs fixes of others.
+    edits, reports, order = IdDict{Method, Union{Nothing, Vector{Edit}}}(), IdDict{SyntaxNode, Report}(), SyntaxNode[]
     for site in package.methods
         parts = isnothing(site.node) ? nothing : signature(site.node)
         (isnothing(parts) || !owned(site.method, modules) || fast_path(site, package.methods)) && continue
-        reports = Tuple{SyntaxNode, String, Vector{SyntaxNode}}[]
         # Fixed signature takes widened text of each annotation, as fix writes it: aliases and other text stay.
-        parameters, variables, typed = Any[tuple_parameters(site.method.sig)...], method_variables(site.method.sig), true
+        own, variables, typed = Edit[], method_variables(site.method.sig), true
+        parameter_count = length(tuple_parameters(site.method.sig))
         positional = count(argument -> kind_name(argument) != "parameters", parts.arguments)
         position = 0
         for argument in parts.arguments
@@ -355,22 +393,26 @@ function findings(facts::FactSet)::Vector{Finding}
                 isempty(reported) && continue
                 # Fix must name type (`const Integer = 1` breaks it), keyword too; default-argument method lacks later positions.
                 value = annotation_value(site.method.module, Meta.parse(wider), variables)
-                typed &= !isnothing(value) && bound_value(something(value))
-                if typed && !keyword && position < length(parameters)
-                    parameters[position + 1] = kind_name(argument) == "..." ? Vararg{something(value)} : something(value)
-                end
-                annotation in seen && continue
-                push!(seen, annotation)
-                push!(reports, (annotation, wider, reported))
+                type = isnothing(value) || !bound_value(something(value)) ? nothing : something(value)
+                typed &= !isnothing(type)
+                splat = kind_name(argument) == "..."
+                edit = !isnothing(type) && !keyword && position < parameter_count ? Edit(position, splat ? Vararg{type} : type) : nothing
+                isnothing(edit) || push!(own, edit)
+                report = get!(() -> (push!(order, annotation); Report(site.file, wider, reported, Tuple{Method, Union{Nothing, Edit}}[])), reports, annotation)
+                push!(report.sites, (site.method, edit))
             end
         end
-        fixed[site.method] = typed ? Base.rewrap_unionall(Tuple{parameters...}, site.method.sig) : nothing
-        isempty(reports) || push!(pending, (site, reports))
+        edits[site.method] = typed ? own : nothing
     end
     found = Finding[]
-    for (site, reports) in pending
-        blocker = fix_blocker(site.method, fixed, package.probed)
-        append!(found, [overspecified_finding(site.file, annotation, wider, reported, blocker) for (annotation, wider, reported) in reports])
+    for annotation in order
+        report, blocker = reports[annotation], nothing
+        # Fix applies to every method of definition: first blocker of any decides.
+        for (method, edit) in report.sites
+            blocker = fix_blocker(method, edit, edits, package.probed)
+            isnothing(blocker) || break
+        end
+        push!(found, overspecified_finding(report.file, annotation, report.wider, report.reported, blocker))
     end
     return found
 end

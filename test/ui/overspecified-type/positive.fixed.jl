@@ -152,6 +152,18 @@ TagType = Int
 tupled(pair::Tuple{TagType, Float64}) = :tagged
 tupled(pair::Tuple{Signed, Int}) = :signed
 
+"""Scales count; `Float64` fix makes `scaled(1, "x", 1)` ambiguous, with or without `Int` fix, so both are manual."""
+scaled(count::Integer, label::String, factor::Float64) = count
+scaled(count::Signed, label::String, factor::Int) = count
+
+"""Steps count; `step` and `factor` fixes together make `stepped(1, 0x01, 1)` ambiguous, so both are manual."""
+stepped(count::Integer, step::Int, factor::Float64) = count
+stepped(count::Signed, step::UInt8, factor::Signed) = count
+
+"""First of six; two methods have 12 fixes, too many combinations to check, so each fix is manual."""
+sixth(a::Int, b::Int, c::Int, d::Int, e::Int, f::Int) = a
+sixth(a::Float64, b::Float64, c::Float64, d::Float64, e::Float64, f::Float64) = a
+
 """Module whose `Real` names no type: fixed bound is unknown, so fix is manual."""
 module NoReal
 const Real = 1
