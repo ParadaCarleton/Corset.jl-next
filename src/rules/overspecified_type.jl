@@ -10,11 +10,17 @@ anywhere inside:
 Union of number types only, as `Union{Int32, Int64}`, reports as whole and widens to `Integer` or `Real`.
 Private method counts: public `f(x) = _f(x)` with `_f(x::Vector)` rejects every other vector.
 Method passes when other method of same function covers its signature: it is fast path beside generic method.
-Fix is `likely` when widened method and each other method of function, widened too or not, are disjoint or nested.
+Fix is `likely` when method as fix widens it and each other method of function, before and after own fix, are disjoint
+or nested.
 Otherwise fix is manual: Julia could find call ambiguous, or drop method with same widened signature.
 Fix is manual for function or callable object package code tests for methods: passes to `applicable`, `hasmethod`,
 `which` or `methods`, or calls in `try` whose handler can swallow `MethodError`, directly or through package method.
 Widening changes what that code does.
+Argument that body resizes (`push!`, `d[k] = v`, other resizing call) keeps its container; fix widens its parameters.
+Argument whose elements body resizes keeps container of elements. Argument stored into struct field passes when its
+widened type does not fit field type, since `new` converts it to copy; number field converts by value. Uses count
+through local, `for` loop, closure capture, keyword call and package callee whose parameter type can take argument
+(`PackageFacts.uses`).
 
 ## Rationale
 Julia compiles method for each concrete argument type, so wider annotation runs as fast.
@@ -37,6 +43,10 @@ Fix stays `likely` when package code tests for methods in closure, keyword body 
 or splatted argument, or by `try` around caller: rule follows positional arguments and calls directly inside `try` only.
 `Bool`, unsigned types and C aliases as `Cint` pass: they mark flags, bit patterns and C calls.
 Type alias that names listed type passes.
+Rule sees uses of positional arguments only: resize of keyword argument, boxed capture or element of element gets fix.
+Function that Base calls on elements, as in `foreach(f, items)`, does not tell rule `f` resizes elements.
+Fix widens element type of written container: caller with narrower element type can get conversion error.
+Fix is manual when widened annotation holds call or interpolation: rule cannot build fixed signature to check dispatch.
 """
 module OverspecifiedType
 
@@ -93,21 +103,98 @@ function widened_type(@nospecialize(type::Any))::Any
     return foldr(UnionAll, variables; init = head{parameters...})
 end
 
-"""Signature `signature` with every argument widened; callee and `where` bounds of method stay."""
-widened_signature(signature::Type)::Type = Base.rewrap_unionall(Tuple{widened_type.(tuple_parameters(signature))...}, signature)
+"""
+Value annotation text `expression` names in `mod` with method type `variables` in scope: name, dotted name, curly type
+with `<:` parameters, `where` with plain or `<:` variables, integer and symbol literals. `nothing` for other syntax:
+rule runs no code of package.
+"""
+function annotation_value(mod::Module, expression::Any, variables::AbstractDict{Symbol, TypeVar})::Union{Nothing, Some{Any}}
+    expression isa Symbol && return haskey(variables, expression) ? Some{Any}(variables[expression]) : global_value(mod, expression)
+    expression isa Integer && return Some{Any}(expression)
+    expression isa QuoteNode && return Some{Any}(expression.value)
+    if Meta.isexpr(expression, :., 2)
+        owner = something(annotation_value(mod, expression.args[1], variables), Some{Any}(nothing))
+        return owner isa Module ? global_value(owner, (expression.args[2]::QuoteNode).value::Symbol) : nothing
+    end
+    Meta.isexpr(expression, :curly) && return curly_value(mod, expression.args, variables)
+    Meta.isexpr(expression, :where) && return where_value(mod, expression, variables)
+    return nothing
+end
+
+"""
+Value of constant global `name` in `mod`. `nothing` when `mod` has no such binding (`baremodule` without
+`AbstractVector`), or binding is not constant: method signature holds its value at definition, not current one.
+"""
+global_value(mod::Module, name::Symbol)::Union{Nothing, Some{Any}} = isdefinedglobal(mod, name) && isconst(mod, name) ? Some{Any}(getglobal(mod, name)) : nothing
+
+"""Whether `value` can bound type variable."""
+bound_value(value::Any)::Bool = value isa Union{Type, TypeVar}
+
+"""Value of curly type: head `arguments[1]` applied to the rest; each `<:` parameter becomes new variable."""
+function curly_value(mod::Module, arguments::AbstractVector, variables::AbstractDict{Symbol, TypeVar})::Union{Nothing, Some{Any}}
+    values, bound = Any[], TypeVar[]
+    for argument in arguments
+        upper = Meta.isexpr(argument, :<:, 1)
+        found = annotation_value(mod, upper ? only(argument.args) : argument, variables)
+        # Name that holds no type (`const Real = 1`) cannot bound variable.
+        (isnothing(found) || (upper && !bound_value(something(found)))) && return nothing
+        upper && push!(bound, TypeVar(gensym(:T), something(found)))
+        push!(values, upper ? last(bound) : something(found))
+    end
+    applied = try
+        Core.apply_type(values...)
+    catch error
+        # Julia rejects head or parameters (`Vector{Int, 2}`, head `1`): fixed signature unknown.
+        error isa Union{TypeError, ErrorException} || rethrow()
+        return nothing
+    end
+    return Some{Any}(foldr(UnionAll, bound; init = applied))
+end
+
+"""Value of `where` type `expression`: body with each declaration, `T` or `T <: Bound`, as new variable."""
+function where_value(mod::Module, expression::Expr, variables::AbstractDict{Symbol, TypeVar})::Union{Nothing, Some{Any}}
+    inner, bound = Dict{Symbol, TypeVar}(variables), TypeVar[]
+    for declaration in expression.args[2:end]
+        plain = declaration isa Symbol
+        # Other declaration (`T >: Bound`, `A <: T <: B`) leaves value unknown.
+        (plain || (Meta.isexpr(declaration, :<:, 2) && declaration.args[1] isa Symbol)) || return nothing
+        name, upper = plain ? (declaration, Some{Any}(Any)) : (declaration.args[1]::Symbol, annotation_value(mod, declaration.args[2], inner))
+        (isnothing(upper) || !bound_value(something(upper))) && return nothing
+        push!(bound, TypeVar(name, something(upper)))
+        inner[name] = last(bound)
+    end
+    body = annotation_value(mod, expression.args[1], inner)
+    return isnothing(body) || !(something(body) isa Type) ? nothing : Some{Any}(foldr(UnionAll, bound; init = something(body)))
+end
+
+"""Type variables of method signature `signature` by name."""
+function method_variables(signature::Type)::Dict{Symbol, TypeVar}
+    variables = Dict{Symbol, TypeVar}()
+    while signature isa UnionAll
+        variables[signature.var.name] = signature.var
+        signature = signature.body
+    end
+    return variables
+end
 
 """Whether `inner` is strict subtype of `outer`: Julia picks method of `inner` for calls both match."""
 nested(inner::Type, outer::Type)::Bool = inner <: outer && !(outer <: inner)
 
 """
-Whether method `wide`, widened from `method`, and each other method of its function, before and after its own widening,
-are disjoint or nested: no call becomes ambiguous and no method replaces other.
+Whether method `wide`, widened from `method`, and each other method of its function, before and after its own fix
+(`fixed`; method without entry keeps signature), are disjoint or nested: no call becomes ambiguous and no method
+replaces other. Other method whose fixed signature is unknown (`nothing`) fails check.
 """
-function dispatch_safe(method::Method, wide::Type)::Bool
+function dispatch_safe(method::Method, wide::Type, fixed::IdDict{Method, <:Union{Nothing, Type}})::Bool
     callee = tuple_parameters(method.sig)[1]
     matches = Base._methods_by_ftype(Base.rewrap_unionall(Tuple{callee, Vararg{Any}}, method.sig), -1, Base.get_world_counter())
-    for match in matches, other in (match.method.sig, widened_signature(match.method.sig))
-        match.method === method || typeintersect(wide, other) === Union{} || nested(wide, other) || nested(other, wide) || return false
+    for match in matches
+        match.method === method && continue
+        after = get(fixed, match.method, match.method.sig)
+        isnothing(after) && return false
+        for other in (match.method.sig, after)
+            typeintersect(wide, other) === Union{} || nested(wide, other) || nested(other, wide) || return false
+        end
     end
     return true
 end
@@ -115,8 +202,24 @@ end
 """Whether type `head` takes subtypes in its parameters: `Union` and tuple types."""
 covariant(head::Union{Nothing, Type})::Bool = head === Union || (!isnothing(head) && Base.unwrap_unionall(head) <: Tuple)
 
-"""Widened text of curly `node`: union of number types becomes its join; parameters widen, with `<:` inside invariant type."""
-function widened_curly!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode)::String
+"""
+Whether each of `count` parameters of type `head` keeps its container: members of `Union` that keeps (`keep`), and
+element parameter, or every tuple parameter, of argument whose elements body resizes (`element`).
+"""
+function kept_parameters(head::Union{Nothing, Type}, count::Integer, keep::Bool, element::Bool)::Vector{Bool}
+    head === Union && return fill(keep, count)
+    element || return fill(false, count)
+    covariant(head) && return fill(true, count)
+    # Dictionary element read is value: `d[k]`.
+    index = !isnothing(head) && head <: AbstractDict && count >= 2 ? 2 : 1
+    return [position == index for position in 1:count]
+end
+
+"""
+Widened text of curly `node`: union of number types becomes its join; parameters widen, with `<:` inside invariant type.
+Container that body resizes keeps its head (`keep`); one whose elements body resizes keeps their head (`element`).
+"""
+function widened_curly!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode, keep::Bool, element::Bool)::String
     head, parameters = children_of(node)[1], children_of(node)[2:end]
     resolved = resolve_type(mod, file, head)
     resolved in (Type, Val) && return source(file, node)
@@ -126,22 +229,28 @@ function widened_curly!(found::AbstractVector{SyntaxNode}, mod::Module, file::Sy
         return all(==("Integer"), wider) ? "Integer" : "Real"
     end
     texts = String[]
-    for parameter in parameters
+    # Members of resized union are resized too.
+    elements = resolved === Union && element
+    for (parameter, kept) in zip(parameters, kept_parameters(resolved, length(parameters), keep, element))
         before = length(found)
-        text = widened_text!(found, mod, file, parameter)
+        text = widened_text!(found, mod, file, parameter, kept, elements)
         changed = length(found) > before && !covariant(resolved) && kind_name(parameter) != "<:"
         push!(texts, changed ? "<:$text" : text)
     end
-    return "$(widened_text!(found, mod, file, head)){$(join(texts, ", "))}"
+    return "$(widened_text!(found, mod, file, head, keep, false)){$(join(texts, ", "))}"
 end
 
-"""Widened text of annotation `node` of `file` in `mod`; pushes each reported part to `found`."""
-function widened_text!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode)::String
+"""
+Widened text of annotation `node` of `file` in `mod`; pushes each reported part to `found`. Resized container (`keep`)
+keeps its name; its elements (`element`) keep theirs.
+"""
+function widened_text!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode, keep::Bool, element::Bool)::String
     kind = kind_name(node)
-    kind == "curly" && return widened_curly!(found, mod, file, node)
-    kind == "<:" && length(children_of(node)) == 1 && return "<:" * widened_text!(found, mod, file, only(children_of(node)))
+    kind == "curly" && return widened_curly!(found, mod, file, node, keep, element)
+    kind == "<:" && length(children_of(node)) == 1 && return "<:" * widened_text!(found, mod, file, only(children_of(node)), keep, element)
     wider = replacement(mod, file, node)
-    isnothing(wider) && return source(file, node)
+    # Number type of resized argument still widens.
+    (isnothing(wider) || (keep && !(wider in ("Real", "Integer")))) && return source(file, node)
     push!(found, node)
     return wider
 end
@@ -163,11 +272,38 @@ function probed_callee(method::Method, probed::AbstractSet)::Bool
     return false
 end
 
-"""What to do before widening `method`; `nothing` when fix is safe. Package code tests functions of `probed` for methods."""
-function fix_blocker(method::Method, probed::AbstractSet)::Union{Nothing, String}
-    dispatch_safe(method, widened_signature(method.sig)) || return "other methods change: widened method overlaps them"
+"""
+What to do before widening `method` to signature `fixed[method]`; `nothing` when fix is safe. `fixed` holds signature
+fix gives each package method, `nothing` when rule cannot build it; package code tests functions of `probed` for methods.
+"""
+function fix_blocker(method::Method, fixed::IdDict{Method, <:Union{Nothing, Type}}, probed::AbstractSet)::Union{Nothing, String}
+    wide = fixed[method]
+    isnothing(wide) && return "checking other methods of function: Corset cannot build widened signature"
+    dispatch_safe(method, wide, fixed) || return "other methods change: widened method overlaps them"
     probed_callee(method, probed) && return "checking `applicable` calls and `MethodError` catches: widening changes what they do"
     return nothing
+end
+
+"""Uses of argument without need."""
+const NO_USES = Dict{Int, ArgumentUse}()
+
+"""
+Needs of argument at `position` over `methods` of one definition with `count` positional arguments (`PackageFacts.uses`):
+container resized, elements resized, and store into field its widened type does not fit; number field converts by
+value, so it fits. Keyword body has more arguments than source, at other positions: it passes.
+"""
+function argument_needs(uses::IdDict{Method, <:AbstractDict{<:Integer, ArgumentUse}}, methods::AbstractVector{Method}, position::Integer, count::Integer)::NTuple{3, Bool}
+    resized = elements = narrow = false
+    for method in methods
+        position <= method.nargs - 1 <= count || continue
+        use = get(get(uses, method, NO_USES), position, nothing)
+        isnothing(use) && continue
+        resized |= use.resized
+        elements |= use.elements_resized
+        wide = widened_type(Facts.argument_type(method, position))
+        narrow |= any(field -> !(wide <: field || field <: Number), use.stored)
+    end
+    return resized, elements, narrow
 end
 
 """Whether wider method in `sites` covers `site`: `site` is fast path beside generic method of same function."""
@@ -193,23 +329,48 @@ function findings(facts::FactSet)::Vector{Finding}
     package = facts.package
     isnothing(package) && return Finding[]
     modules = Set(package.modules)
-    # Default arguments give one definition several methods; each annotation reports once.
-    seen = Base.IdSet{SyntaxNode}()
-    found = Finding[]
+    # Default arguments give one definition several methods; each annotation reports once, with uses of all.
+    seen, definitions = Base.IdSet{SyntaxNode}(), IdDict{SyntaxNode, Vector{Method}}()
+    foreach(site -> isnothing(site.node) || push!(get!(Vector{Method}, definitions, site.node), site.method), package.methods)
+    # Fix of every method comes first: blocker of one method needs fixed signatures of others.
+    fixed, pending = IdDict{Method, Union{Nothing, Type}}(), Tuple{MethodSite, Vector{Tuple{SyntaxNode, String, Vector{SyntaxNode}}}}[]
     for site in package.methods
         parts = isnothing(site.node) ? nothing : signature(site.node)
         (isnothing(parts) || !owned(site.method, modules) || fast_path(site, package.methods)) && continue
-        pending = Tuple{SyntaxNode, String, Vector{SyntaxNode}}[]
-        for argument in parts.arguments, annotation in argument_annotations(argument)
-            annotation in seen && continue
-            push!(seen, annotation)
-            reported = SyntaxNode[]
-            wider = widened_text!(reported, site.method.module, site.file, annotation)
-            isempty(reported) || push!(pending, (annotation, wider, reported))
+        reports = Tuple{SyntaxNode, String, Vector{SyntaxNode}}[]
+        # Fixed signature takes widened text of each annotation, as fix writes it: aliases and other text stay.
+        parameters, variables, typed = Any[tuple_parameters(site.method.sig)...], method_variables(site.method.sig), true
+        positional = count(argument -> kind_name(argument) != "parameters", parts.arguments)
+        position = 0
+        for argument in parts.arguments
+            keyword = kind_name(argument) == "parameters"
+            keyword || (position += 1)
+            resized, elements, narrow = keyword ? (false, false, false) : argument_needs(package.uses, definitions[site.node], position, positional)
+            # Splat annotation types each element of argument tuple.
+            kind_name(argument) == "..." && ((resized, elements) = (elements, false))
+            for annotation in argument_annotations(argument)
+                narrow && continue
+                reported = SyntaxNode[]
+                wider = widened_text!(reported, site.method.module, site.file, annotation, resized, elements)
+                isempty(reported) && continue
+                # Fix must name type (`const Integer = 1` breaks it), keyword too; default-argument method lacks later positions.
+                value = annotation_value(site.method.module, Meta.parse(wider), variables)
+                typed &= !isnothing(value) && bound_value(something(value))
+                if typed && !keyword && position < length(parameters)
+                    parameters[position + 1] = kind_name(argument) == "..." ? Vararg{something(value)} : something(value)
+                end
+                annotation in seen && continue
+                push!(seen, annotation)
+                push!(reports, (annotation, wider, reported))
+            end
         end
-        isempty(pending) && continue
-        blocker = fix_blocker(site.method, package.probed)
-        append!(found, [overspecified_finding(site.file, annotation, wider, reported, blocker) for (annotation, wider, reported) in pending])
+        fixed[site.method] = typed ? Base.rewrap_unionall(Tuple{parameters...}, site.method.sig) : nothing
+        isempty(reports) || push!(pending, (site, reports))
+    end
+    found = Finding[]
+    for (site, reports) in pending
+        blocker = fix_blocker(site.method, fixed, package.probed)
+        append!(found, [overspecified_finding(site.file, annotation, wider, reported, blocker) for (annotation, wider, reported) in reports])
     end
     return found
 end

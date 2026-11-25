@@ -39,6 +39,29 @@ generic_sum(values::Vector{Float64}) = sum(values)
 """Methods on Base constructor of Base type follow Base signatures."""
 Base.Float64(counter::Counter) = Float64(counter.count)
 
+"""Registers name; inserted dictionary keeps `Dict`."""
+register(table::Dict{Symbol, Any}, name::Symbol) = (table[name] = nothing; table)
+
+"""Pushes values through closure that captures resized vector."""
+collect_into(items::Vector{Any}, values) = foreach(value -> push!(items, value), values)
+
+"""Forwards resized vector to package function."""
+forward_into(items::Vector{Any}) = collect_into(items, (1, 2))
+
+"""Holder of names."""
+struct Names
+    names::Vector{Symbol}
+end
+
+"""Wraps names; field type `Vector{Symbol}` needs argument type."""
+wrap_names(names::Vector{Symbol}) = Names(names)
+
+"""First item; rule reads no `where` inside annotation."""
+first_of(items::Union{Vector{T}, Set{T}} where {T}) = first(items)
+
+"""First item of first reference; rule reads no `where` inside annotation."""
+first_ref(items::Vector{Ref{T}} where {T}) = first(items)[]
+
 """Own `Vector` type; annotation names it, not Base `Vector`."""
 module Geometry
 export Vector, squared

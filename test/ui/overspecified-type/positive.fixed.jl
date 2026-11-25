@@ -109,4 +109,70 @@ const doubler = Scaler(2)
 """Double of float, else zero; widened call method of `Scaler` would change `applicable` answer, so fix is manual."""
 doubled(x) = applicable(doubler, x) ? doubler(x) : 0
 
+
+"""Appends one; resized argument keeps `Vector`, element type widens."""
+appended(items::Vector{<:Real}) = push!(items, 1.0)
+
+"""Appends one through bounded element type: argument type is `UnionAll`, widened as whole."""
+appended_bound(items::Vector{<:Real}) = push!(items, 1.0)
+
+"""Appends zero to each row; rows keep `Vector`, outer container widens."""
+function padded(rows::AbstractVector{<:Vector{<:Real}})
+    for row in rows
+        push!(row, 0.0)
+    end
+    return rows
+end
+
+"""Tags float vector after append; kept `Vector` would overlap integer method, so fix is manual."""
+tagged(items::Vector{Float64}) = (push!(items, 1.0); :float)
+tagged(items::AbstractVector{Int}) = :integer
+
+"""Float vector under alias name; fix keeps alias, which overlaps abstract method, so fixes are manual."""
+const FloatValues = Vector{Float64}
+aliased(values::FloatValues, factor::Float64) = factor
+aliased(values::AbstractVector{Float64}, factor::Int) = factor
+
+"""Shapes values; fixed signature keeps dotted names, literals, `where` and method variables."""
+shaped(cell::Base.RefValue{<:Real}, mode::Tuple{Val{:fast}, AbstractArray{<:Real, 2}}, pair::Tuple{Real, T}, table::AbstractDict{<:Real, Ref{U} where {U <: Integer}}) where {T} = pair
+
+"""Picks first; call inside annotation leaves fixed signature unknown, so both fixes are manual."""
+picked(pair::Tuple{Float64, Val{sum((1, 1))}}) = pair[1]
+picked(pair::Tuple{Int, Val{2}}) = pair[1]
+
+"""Module without `AbstractVector`: widened annotation names no binding there, so fix is manual."""
+baremodule Bare
+import Base: Vector, Int, first
+"""First item."""
+head(items::Vector{Int}) = first(items)
+end
+
+TagType = Int
+"""Tags pair; `TagType` can change after definition, so fixed signature is unknown and both fixes are manual."""
+tupled(pair::Tuple{TagType, Float64}) = :tagged
+tupled(pair::Tuple{Signed, Int}) = :signed
+
+"""Module whose `Real` names no type: fixed bound is unknown, so fix is manual."""
+module NoReal
+const Real = 1
+"""First item."""
+first_real(items::Vector{Float64}) = first(items)
+end
+
+"""Module whose `Integer` names no type: fixed annotation would break definition, so fixes are manual."""
+module NoInteger
+const Integer = 1
+"""Same count."""
+same(count::Int) = count
+"""Keyword count."""
+counted(; count::Int = 1) = count
+end
+
+"""Module whose `AbstractVector` names no type: Julia rejects fixed annotation, so fix is manual."""
+module NoVector
+const AbstractVector = 1
+"""First item."""
+first_item(items::Vector{Float64}) = first(items)
+end
+
 end
