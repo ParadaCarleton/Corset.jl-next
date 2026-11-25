@@ -109,7 +109,7 @@ const WORK_LIMIT = 10_000_000
 Run in current world with crash `journal` for package `modules` and `library` cache, before any code. Flow past
 `work_limit` stops (`WORK_LIMIT`).
 """
-function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module}, library::Library; work_limit::Int = WORK_LIMIT)::Run
+function start_run(journal::Union{Nothing, Journal}, modules::AbstractVector{Module}, library::Library; work_limit::Integer = WORK_LIMIT)::Run
     world = Base.get_world_counter()
     bodies, callers = IdDict{Core.MethodInstance, Union{Body, Shortcut, String}}(), IdDict{Core.MethodInstance, Core.MethodInstance}()
     parameters, claims, catches = IdDict{Core.MethodInstance, Set{Int}}(), IdDict{Method, Bool}(), IdDict{Method, Bool}()
@@ -126,7 +126,7 @@ function start_run(journal::Union{Nothing, Journal}, modules::Vector{Module}, li
 end
 
 """Run of `start_run` without library cache: every instance gets native inference."""
-start_run(journal::Union{Nothing, Journal}, modules::Vector{Module}; work_limit::Int = WORK_LIMIT)::Run = start_run(journal, modules, Library(); work_limit)
+start_run(journal::Union{Nothing, Journal}, modules::AbstractVector{Module}; work_limit::Integer = WORK_LIMIT)::Run = start_run(journal, modules, Library(); work_limit)
 
 """
 Whether `method` outside Base claims effects (`engine.md`, Compiler effects): `@assume_effects` on method or on block
@@ -178,8 +178,8 @@ Whether native inference `edges` (callee code instances) reach instance whose co
 types: method that `claims!` effects, instance that stand-ins cut (`cut!`), or callee without cached code. Search that
 finds none marks every instance it visited trusted.
 """
-function reaches_untrusted!(run::Run, edges::Union{Vector{Any}, Core.SimpleVector})::Bool
-    visited, pending = Base.IdSet{Core.MethodInstance}(), Union{Vector{Any}, Core.SimpleVector}[edges]
+function reaches_untrusted!(run::Run, edges::Union{AbstractVector{Any}, Core.SimpleVector})::Bool
+    visited, pending = Base.IdSet{Core.MethodInstance}(), Union{AbstractVector{Any}, Core.SimpleVector}[edges]
     while !isempty(pending)
         for edge in pop!(pending)
             edge isa Union{Core.CodeInstance, Core.MethodInstance} || continue
@@ -231,7 +231,8 @@ end
 Callee `callee` of call in first of `chain`, limited like native inference (`abstract_call_method`): method that
 recurs on `chain` with other signature cannot grow past `limit_type_size`. Call that `joins` methods limits hard.
 """
-function limit_callee(run::Run, chain::Vector{Core.MethodInstance}, callee::Core.MethodInstance, joins::Bool)::Core.MethodInstance
+function limit_callee(run::Run, chain::AbstractVector{Core.MethodInstance}, callee::Core.MethodInstance, joins::Bool)::Core.MethodInstance
+    Base.require_one_based_indexing(chain)
     method, signature, caller, topmost = callee.def::Method, callee.specTypes, first(chain), 0
     for (position, link) in enumerate(chain)
         link.def === method || continue
@@ -253,7 +254,7 @@ function limit_callee(run::Run, chain::Vector{Core.MethodInstance}, callee::Core
 end
 
 """Callees `instances` of call in first of `chain`, limited (`limit_callee`); records first caller of each new callee."""
-function limit_callees!(run::Run, chain::Vector{Core.MethodInstance}, instances::Vector{Core.MethodInstance})::Vector{Core.MethodInstance}
+function limit_callees!(run::Run, chain::AbstractVector{Core.MethodInstance}, instances::AbstractVector{Core.MethodInstance})::Vector{Core.MethodInstance}
     limited = Core.MethodInstance[limit_callee(run, chain, instance, length(instances) > 1) for instance in instances]
     for callee in limited
         # Unit has no first caller: its body starts chain.
@@ -263,7 +264,7 @@ function limit_callees!(run::Run, chain::Vector{Core.MethodInstance}, instances:
 end
 
 """Outcome `outcome` of statement in first of `chain`, with callees of dispatch limited (`limit_callees!`)."""
-function limited_outcome!(run::Run, chain::Vector{Core.MethodInstance}, outcome::Union{Nothing, Outcome.Type})::Union{Nothing, Outcome.Type}
+function limited_outcome!(run::Run, chain::AbstractVector{Core.MethodInstance}, outcome::Union{Nothing, Outcome.Type})::Union{Nothing, Outcome.Type}
     isnothing(outcome) && return nothing
     return @match something(outcome) begin
         Outcome.Dispatch(instances, operands) => Outcome.Dispatch(limit_callees!(run, chain, instances), operands)
@@ -408,7 +409,8 @@ const NAMING_BUILTINS = (Core.getfield, Core.getglobal, keys(FIELD_WRITES)..., k
 naming(@nospecialize(builtin::Any))::Bool = any(candidate -> candidate === builtin, NAMING_BUILTINS)
 
 """Add parameter position of each of `operands` at `positions` that is argument of instance."""
-function add_parameters!(found::Set{Int}, operands::Vector{Operand.Type}, positions::Any)::Nothing
+function add_parameters!(found::Set{Int}, operands::AbstractVector{Operand.Type}, positions::Any)::Nothing
+    Base.require_one_based_indexing(operands)
     for position in positions
         position <= length(operands) || continue
         parameter = parameter_of(operands[position])
@@ -433,7 +435,7 @@ mutable struct ParametersFrame
 end
 
 """Add call with `operands` to each of `callees` to `calls`."""
-function append_calls!(calls::Vector{Pair{Vector{Operand.Type}, Core.MethodInstance}}, operands::Vector{Operand.Type}, callees::Vector{Core.MethodInstance})::Nothing
+function append_calls!(calls::Vector{Pair{Vector{Operand.Type}, Core.MethodInstance}}, operands::AbstractVector{Operand.Type}, callees::AbstractVector{Core.MethodInstance})::Nothing
     foreach(callee -> push!(calls, operands => callee), callees)
     return nothing
 end
@@ -485,7 +487,8 @@ function variant_parameters!(run::Run, instance::Core.MethodInstance)::Set{Int}
 end
 
 """Variant that static call of `callee` with `operands` in `ir` reaches: constants it passes to variant parameters."""
-function callee_variant!(run::Run, ir::CC.IRCode, callee::Core.MethodInstance, operands::Vector{Operand.Type})::Variant
+function callee_variant!(run::Run, ir::CC.IRCode, callee::Core.MethodInstance, operands::AbstractVector{Operand.Type})::Variant
+    Base.require_one_based_indexing(operands)
     constants = Pair{Int, Any}[]
     method = callee.def::Method
     for position in sort!(collect(variant_parameters!(run, callee)))
@@ -497,7 +500,7 @@ function callee_variant!(run::Run, ir::CC.IRCode, callee::Core.MethodInstance, o
 end
 
 """Variants that call with `operands` in `ir` reaches through each of `instances`."""
-callee_variants(run::Run, ir::CC.IRCode, instances::Vector{Core.MethodInstance}, operands::Vector{Operand.Type})::Vector{Variant} = [callee_variant!(run, ir, instance, operands) for instance in instances]
+callee_variants(run::Run, ir::CC.IRCode, instances::AbstractVector{Core.MethodInstance}, operands::AbstractVector{Operand.Type})::Vector{Variant} = [callee_variant!(run, ir, instance, operands) for instance in instances]
 
 """
 Code of `variant` with body `body`: IR specialized to its constants, and variants each call reaches. Comprehension
@@ -527,7 +530,7 @@ end
 Variants `roots` reach through calls, roots first; gives code to each variant with body. Variant that library cache
 holds takes stored summary (hit): it needs no body, and walk stops there.
 """
-function reach!(run::Run, roots::Vector{Variant})::Vector{Variant}
+function reach!(run::Run, roots::AbstractVector{Variant})::Vector{Variant}
     order, seen, pending = Variant[], Set{Variant}(), reverse(roots)
     while !isempty(pending)
         variant = pop!(pending)
@@ -613,7 +616,7 @@ Solve call cycle `members` (`engine.md`, Solve and cache): summaries start empty
 member it read changes, and widens after `WIDEN_AFTER` reruns. Member reads callee summaries and variants of callback
 records it resolves, so readers come from each solve.
 """
-function solve_cycle!(run::Run, members::Vector{Variant})::Nothing
+function solve_cycle!(run::Run, members::AbstractVector{Variant})::Nothing
     for member in members
         body = run.bodies[first(member)]
         run.summaries[member] = body isa String ? open_summary(Int((first(member).def::Method).nargs), body) : empty_summary()
@@ -644,7 +647,9 @@ end
 Strongly connected components of graph with `successors` of each vertex, each component after every component it
 reaches: callees before callers. Tarjan's algorithm with explicit stack, so deep call chains need no deep recursion.
 """
-function components(successors::Vector{Vector{Int}})::Vector{Vector{Int}}
+function components(successors::AbstractVector{<:AbstractVector{<:Integer}})::Vector{Vector{Int}}
+    Base.require_one_based_indexing(successors)
+    foreach(Base.require_one_based_indexing, successors)
     index, low, open = zeros(Int, length(successors)), zeros(Int, length(successors)), falses(length(successors))
     stack, found, count = Int[], Vector{Int}[], 0
     for root in eachindex(successors)
@@ -685,7 +690,7 @@ function components(successors::Vector{Vector{Int}})::Vector{Vector{Int}}
 end
 
 """Callee positions in `order` of each variant of `order` with code: call graph of solve."""
-function call_graph(run::Run, order::Vector{Variant})::Vector{Vector{Int}}
+function call_graph(run::Run, order::AbstractVector{Variant})::Vector{Vector{Int}}
     vertex = Dict(variant => position for (position, variant) in enumerate(order))
     successors = [Int[] for _ in order]
     for (position, variant) in enumerate(order)
@@ -702,7 +707,7 @@ end
 Summaries of `roots` and every variant they reach: call graph components solved callees first. Library cache hit has
 no code, so it forms component alone and keeps its stored summary.
 """
-function solve!(run::Run, roots::Vector{Variant})::Nothing
+function solve!(run::Run, roots::AbstractVector{Variant})::Nothing
     order = reach!(run, roots)
     # Frames left are of callees no body needs.
     empty!(run.frames)

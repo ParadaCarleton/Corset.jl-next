@@ -49,7 +49,7 @@ previous round at `index` give way to this round. Message call (`message_stateme
 primitive (`primitive`) skips callee body; its result is unknown object. Flow that records call kinds (`Flow`) sends
 writes through scratch table too.
 """
-function call!(flow::Flow, index::Int, outcome::Outcome.Type, callees::Callees)::Nothing
+function call!(flow::Flow, index::Integer, outcome::Outcome.Type, callees::Callees)::Nothing
     delete!(flow.callbacks, index)
     derive_call!(flow, index, outcome_operands(outcome))
     skipped = flow.primitives[index]
@@ -88,7 +88,7 @@ IR value whose iteration call statement `index` of `ir` with `outcome` starts (`
 `iterate` without state starts at every resolution: its method continues with state. Other function starts through
 Base contract only; static call shows start through callee summary, and own method of type may start nothing.
 """
-function started(ir::CC.IRCode, index::Int, outcome::Outcome.Type)::Union{Nothing, Some{Any}}
+function started(ir::CC.IRCode, index::Integer, outcome::Outcome.Type)::Union{Nothing, Some{Any}}
     statement = ir.stmts[index][:stmt]::Expr
     statement.head === :call || return nothing
     callee = constant(ir, statement.args[1])
@@ -116,7 +116,7 @@ end
 Kinds of `writes` of call statement `index` with `outcome`, at any certainty, and of holds its callees from `callees`
 leave at normal exit: lock gives synchronization, file gives IO.
 """
-function call_kinds(outcome::Outcome.Type, writes::OriginAccesses, callees::Callees, index::Int)::Set{EffectKind.T}
+function call_kinds(outcome::Outcome.Type, writes::OriginAccesses, callees::Callees, index::Integer)::Set{EffectKind.T}
     kinds = Set{EffectKind.T}(kind for (_, _, kind) in keys(writes))
     dispatched = @match outcome begin
         Outcome.Dispatch(_, _) => true
@@ -137,7 +137,7 @@ const CallRecord = @NamedTuple{callee::Callee.Type, kinds::Vector{EffectKind.T},
 Facts of call statement `index` of `flow` that records call kinds, whose result code `used`: callee, write kinds, and
 compiler `nothrow` and `terminates` flags.
 """
-function call_record(flow::Flow, index::Int, used::Bool)::CallRecord
+function call_record(flow::Flow, index::Integer, used::Bool)::CallRecord
     kinds = sort!(collect(get(flow.call_kinds, index, Set{EffectKind.T}())))
     terminates = flow.ir.stmts[index][:flag] & CC.IR_FLAG_TERMINATES != 0
     return (callee = outcome_callee(flow.ir.stmts[index][:stmt], something(flow.outcomes[index])), kinds = kinds, throws = may_throw(flow.ir, index), terminates = terminates, used = used)
@@ -171,7 +171,7 @@ end
 Derive type sources of call `index` with open result type from its `operands` (`engine.md`, Provenance): sources of
 each operand with open type. Type value and computed number carry no object, so their sources travel here.
 """
-function derive_call!(flow::Flow, index::Int, operands::Vector{Operand.Type})::Nothing
+function derive_call!(flow::Flow, index::Integer, operands::AbstractVector{Operand.Type})::Nothing
     Base.isdispatchelem(CC.widenconst(flow.ir.stmts[index][:type])) && return nothing
     derive!(flow, index, reduce(|, (open_sources!(flow, operand) for operand in operands); init = Sources(0)))
     return nothing
@@ -182,9 +182,10 @@ Transfer call with table `effects` on `arguments` (`engine.md`, Calls, steps 2 a
 Base contract. With `typed`, store or copy into argument whose `eltype` points to no object stores nothing: Julia
 converts stored value (`Vector{UInt8}`). C arguments are untyped pointers. Writes go into `writes`.
 """
-function table!(flow::Flow, writes::OriginAccesses, index::Int, effects::CallEffects, arguments::Vector{Operand.Type}, typed::Bool)::Nothing
-    targets(position::Int)::Targets = union_targets(operand_targets!(flow, arguments[at]) for at in role(effects, position, length(arguments)))
-    holders(position::Int)::Targets = union_targets(operand_targets!(flow, arguments[at]) for at in role(effects, position, length(arguments)) if !typed || holds_objects!(flow, operand_type(flow.ir, arguments[at])))
+function table!(flow::Flow, writes::OriginAccesses, index::Integer, effects::CallEffects, arguments::AbstractVector{Operand.Type}, typed::Bool)::Nothing
+    Base.require_one_based_indexing(arguments)
+    targets(position::Integer)::Targets = union_targets(operand_targets!(flow, arguments[at]) for at in role(effects, position, length(arguments)))
+    holders(position::Integer)::Targets = union_targets(operand_targets!(flow, arguments[at]) for at in role(effects, position, length(arguments)) if !typed || holds_objects!(flow, operand_type(flow.ir, arguments[at])))
     foreach(position -> access!(writes, targets(position), false, definite(index), effects.write_kind), effects.writes)
     foreach(position -> access!(flow.reads, targets(position), false, definite(index), EffectKind.memory), effects.reads)
     for (destination, source) in effects.copies
@@ -207,7 +208,8 @@ Transfer call by Base contract `effects` on `arguments` (`engine.md`, Calls, ste
 that writes where contract reads: `possible` write. Argument types decide breach, so write takes their dispatch doubt.
 Contract holds for methods loaded now, so verdict is closed-world. Writes go into `writes`.
 """
-function contract!(flow::Flow, writes::OriginAccesses, index::Int, effects::CallEffects, arguments::Vector{Operand.Type}, breached::Vector{Int})::Nothing
+function contract!(flow::Flow, writes::OriginAccesses, index::Integer, effects::CallEffects, arguments::AbstractVector{Operand.Type}, breached::AbstractVector{<:Integer})::Nothing
+    Base.require_one_based_indexing(arguments)
     flow.closed_world = true
     table!(flow, writes, index, effects, arguments, true)
     for position in breached
@@ -223,7 +225,7 @@ summary, or leaves callback record for caller when `defers`; more join their sum
 Access every member makes keeps most doubt among them; access only some make takes doubt of dispatch between them
 (`open_doubt`). Writes go into `writes`.
 """
-function dispatch!(flow::Flow, writes::OriginAccesses, index::Int, operands::Vector{Operand.Type}, callees::Callees, defers::Bool)::Nothing
+function dispatch!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type}, callees::Callees, defers::Bool)::Nothing
     variants = callees.variants[index]
     if length(variants) == 1
         variant = only(variants)
@@ -246,7 +248,7 @@ Record in `table` join of accesses of each member in `members`: most doubt among
 most doubtful level. Access absent from some member is at least `partial`: operand types decide which member runs.
 Blind access counts as absent beside exact one: blind spot of one member leaves write of other `possible`.
 """
-function join_accesses!(table::OriginAccesses, members::Vector{OriginAccesses}, partial::Doubt)::Nothing
+function join_accesses!(table::OriginAccesses, members::AbstractVector{OriginAccesses}, partial::Doubt)::Nothing
     for key in union(keys.(members)...)
         present = [member[key] for member in members if haskey(member, key)]
         exact = [effect for effect in present if level_of(effect.doubt) != Level.blind]
@@ -261,8 +263,9 @@ function join_accesses!(table::OriginAccesses, members::Vector{OriginAccesses}, 
 end
 
 """Transfer builtin call (`engine.md`, Calls, step 1); writes go into `writes`."""
-function builtin!(flow::Flow, writes::OriginAccesses, index::Int, @nospecialize(builtin::Any), operands::Vector{Operand.Type})::Nothing
-    targets(position::Int)::Targets = operand_targets!(flow, operands[position])
+function builtin!(flow::Flow, writes::OriginAccesses, index::Integer, @nospecialize(builtin::Any), operands::AbstractVector{Operand.Type})::Nothing
+    Base.require_one_based_indexing(operands)
+    targets(position::Integer)::Targets = operand_targets!(flow, operands[position])
     if builtin === Core.getfield
         binding = module_global(flow, operands)
         if isnothing(binding)
@@ -327,14 +330,15 @@ end
 global_place(binding::GlobalRef)::Targets = Targets(Origin.Caller(Place.At(Root.Global(binding), NO_STEPS)) => NO_DOUBT)
 
 """Read of global `binding` at statement `index`: mutable binding counts as read."""
-function read_global!(flow::Flow, index::Int, binding::GlobalRef)::Nothing
+function read_global!(flow::Flow, index::Integer, binding::GlobalRef)::Nothing
     isconst(binding) || access!(flow.reads, global_place(binding), false, definite(index), EffectKind.memory)
     assign!(flow, index, global_targets(flow, binding))
     return nothing
 end
 
 """Global binding that call with constant module and symbol operands names; `nothing` otherwise."""
-function module_global(flow::Flow, operands::Vector{Operand.Type})::Union{Nothing, Some{GlobalRef}}
+function module_global(flow::Flow, operands::AbstractVector{Operand.Type})::Union{Nothing, Some{GlobalRef}}
+    Base.require_one_based_indexing(operands)
     length(operands) >= 2 || return nothing
     owner, name = operand_constant(flow.ir, operands[1]), operand_constant(flow.ir, operands[2])
     (isnothing(owner) || isnothing(name)) && return nothing
@@ -347,7 +351,8 @@ Transfer write of slot of `objects` with `shape` and call `operands`: record wri
 `old` holds slot content before write; `store` puts targets into slot of declared type `slot`. Slot of type that
 points to no object holds no targets. `modify` operator call stays open. Writes of `kind` go into `writes`.
 """
-function write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Shape, operands::Vector{Operand.Type}, objects::Targets, old::Targets, store::Function, @nospecialize(slot::Any), kind::EffectKind.T)::Nothing
+function write!(flow::Flow, writes::OriginAccesses, index::Integer, shape::Shape, operands::AbstractVector{Operand.Type}, objects::Targets, old::Targets, store::Function, @nospecialize(slot::Any), kind::EffectKind.T)::Nothing
+    Base.require_one_based_indexing(operands)
     access!(writes, objects, false, definite(index), kind)
     shape.returns in (Returns.stored, Returns.object) || access!(flow.reads, objects, false, definite(index), kind)
     holds = points!(flow, slot)
@@ -375,7 +380,7 @@ end
 """
 Transfer write of global binding `operands` name, into `writes`; binding that is not constant writes unknown object.
 """
-function global_write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Shape, operands::Vector{Operand.Type})::Nothing
+function global_write!(flow::Flow, writes::OriginAccesses, index::Integer, shape::Shape, operands::AbstractVector{Operand.Type})::Nothing
     found = module_global(flow, operands)
     if isnothing(found)
         write!(flow, writes, index, shape, operands, unknown(CODE_DOUBT), unknown(CODE_DOUBT), values -> store!(flow, unknown(CODE_DOUBT), nothing, values), Any, EffectKind.memory)
@@ -388,14 +393,15 @@ function global_write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Sh
 end
 
 """Result of statement `index` is fresh immutable object holding `fields` (`Pair`, named tuple)."""
-function pack!(flow::Flow, index::Int, fields::Pair{<:Step.Type, Targets}...)::Nothing
+function pack!(flow::Flow, index::Integer, fields::Pair{<:Step.Type, Targets}...)::Nothing
     allocate!(flow, index)
     foreach(((step, targets),) -> store!(flow, flow.values[index], step, targets), fields)
     return nothing
 end
 
 """Transfer write of memory element or pointer target, into `writes`: first operand holds memory or pointer."""
-function element_write!(flow::Flow, writes::OriginAccesses, index::Int, shape::Shape, operands::Vector{Operand.Type})::Nothing
+function element_write!(flow::Flow, writes::OriginAccesses, index::Integer, shape::Shape, operands::AbstractVector{Operand.Type})::Nothing
+    Base.require_one_based_indexing(operands)
     objects = operand_targets!(flow, operands[1])
     slot = element_type(operand_type(flow.ir, operands[1]))
     write!(flow, writes, index, shape, operands, objects, load!(flow, objects, Step.Element()), values -> store!(flow, objects, Step.Element(), values), slot, EffectKind.memory)
@@ -455,7 +461,8 @@ end
 """
 Transfer intrinsic call: pointer writes into `writes`, and reads; other intrinsics pass pointer operands to result.
 """
-function intrinsic!(flow::Flow, writes::OriginAccesses, index::Int, @nospecialize(intrinsic::Any), operands::Vector{Operand.Type})::Nothing
+function intrinsic!(flow::Flow, writes::OriginAccesses, index::Integer, @nospecialize(intrinsic::Any), operands::AbstractVector{Operand.Type})::Nothing
+    Base.require_one_based_indexing(operands)
     intrinsics = Core.Intrinsics
     if haskey(ELEMENT_WRITES, intrinsic)
         element_write!(flow, writes, index, ELEMENT_WRITES[intrinsic], operands)
@@ -477,7 +484,7 @@ end
 """
 Write into `writes` and read with `doubt` below every origin of `objects` that open call at statement `index` reaches.
 """
-function open_effects!(flow::Flow, writes::OriginAccesses, index::Int, objects::Targets, doubt::Doubt)::Nothing
+function open_effects!(flow::Flow, writes::OriginAccesses, index::Integer, objects::Targets, doubt::Doubt)::Nothing
     effect, reached = Effect(doubt, index, ""), beneath(flow, objects)
     access!(writes, reached, true, effect, EffectKind.memory)
     access!(flow.reads, reached, true, effect, EffectKind.memory)
@@ -488,7 +495,7 @@ end
 Transfer open call (`engine.md`, Calls, step 7) with `code` `doubt`: write into `writes` and read below every operand;
 result may point into operands, one direction, and to unknown object.
 """
-function open!(flow::Flow, writes::OriginAccesses, index::Int, operands::Vector{Operand.Type}, doubt::Doubt)::Nothing
+function open!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type}, doubt::Doubt)::Nothing
     objects = union_targets(operand_targets!(flow, operand) for operand in operands)
     open_effects!(flow, writes, index, objects, doubt)
     assign!(flow, index, union_targets((objects, unknown(doubt))), doubt)
@@ -499,7 +506,7 @@ end
 Doubt of open dispatch with `operands` (`engine.md`, Provenance): sources of each operand whose type leaves dispatch
 open. Call open without open operand type: doubt in code.
 """
-function open_doubt(flow::Flow, operands::Vector{Operand.Type})::Doubt
+function open_doubt(flow::Flow, operands::AbstractVector{Operand.Type})::Doubt
     sources = reduce(|, (open_sources!(flow, operand) for operand in operands); init = Sources(0))
     return Doubt(Level.code, sources == 0 ? INHERENT : sources)
 end
@@ -547,7 +554,8 @@ end
 Targets of callee place `place` from argument targets `arguments` (`engine.md`, Calls, step 3). Global places map to
 same global; `Elsewhere` to unknown object; `Deep` to every object below root, blind.
 """
-function map_place!(flow::Flow, place::Place.Type, arguments::Vector{Targets})::Targets
+function map_place!(flow::Flow, place::Place.Type, arguments::AbstractVector{Targets})::Targets
+    Base.require_one_based_indexing(arguments)
     return @match place begin
         Place.At(Root.Parameter(position), steps) => foldl((objects, step) -> load!(flow, objects, step), steps; init = arguments[position])
         Place.At(Root.Global(binding), steps) => foldl((objects, step) -> load!(flow, objects, step), steps; init = global_targets(flow, binding))
@@ -601,7 +609,7 @@ struct CallSite
 end
 
 """Call site at statement `index` of callee with `fresh` fresh nodes: they merge into allocation at `index`."""
-function CallSite(arguments::Vector{Targets}, derived::Vector{Sources}, index::Int, fresh::Int)::CallSite
+function CallSite(arguments::AbstractVector{Targets}, derived::AbstractVector{Sources}, index::Integer, fresh::Integer)::CallSite
     merged = fresh == 0 ? nothing : Targets(Origin.Allocation(index) => fresh == 1 ? NO_DOUBT : BLIND_DOUBT)
     return CallSite(arguments, derived, index, merged, Dict{Place.Type, Targets}(), Dict{Place.Type, Targets}(), Dict{Int, Sources}())
 end
@@ -628,7 +636,7 @@ end
 Targets of each callee parameter at call `index` of `method` with `operands`. Parameters past last fixed operand take
 any `Rest` element. Vararg method packs trailing operands into allocation; `Rest` elements go to its unknown slot.
 """
-function parameter_targets!(flow::Flow, index::Int, method::Method, operands::Vector{Operand.Type})::Vector{Targets}
+function parameter_targets!(flow::Flow, index::Integer, method::Method, operands::AbstractVector{Operand.Type})::Vector{Targets}
     given = Targets[operand_targets!(flow, operand) for operand in operands if !is_rest(operand)]
     rest = union_targets(operand_targets!(flow, operand) for operand in operands if is_rest(operand))
     fixed = method.isva ? method.nargs - 1 : method.nargs
@@ -643,12 +651,12 @@ function parameter_targets!(flow::Flow, index::Int, method::Method, operands::Ve
 end
 
 """Derived type sources of each callee parameter, grouped from call `operands` as `parameter_targets!` groups targets."""
-function parameter_derived(flow::Flow, method::Method, operands::Vector{Operand.Type})::Vector{Sources}
+function parameter_derived(flow::Flow, method::Method, operands::AbstractVector{Operand.Type})::Vector{Sources}
     given = Sources[derived_of(flow, operand) for operand in operands if !is_rest(operand)]
     rest = reduce(|, (derived_of(flow, operand) for operand in operands if is_rest(operand)); init = Sources(0))
     fixed = method.isva ? method.nargs - 1 : method.nargs
     derived = [position <= length(given) ? given[position] : rest for position in 1:fixed]
-    method.isva && push!(derived, reduce(|, given[(fixed + 1):end]; init = rest))
+    method.isva && push!(derived, reduce(|, @view(given[(fixed + 1):end]); init = rest))
     return derived
 end
 
@@ -683,7 +691,7 @@ function caller_doubt!(flow::Flow, site::CallSite, doubt::Doubt)::Doubt
 end
 
 """Type sources of argument `position` at `site`, found once per call statement and round; doubt in code past arguments."""
-function argument_sources!(flow::Flow, site::CallSite, position::Int)::Sources
+function argument_sources!(flow::Flow, site::CallSite, position::Integer)::Sources
     position <= length(site.arguments) || return INHERENT
     haskey(site.sources, position) || (site.sources[position] = type_sources(flow, site.arguments[position], site.derived[position]))
     return site.sources[position]
@@ -695,7 +703,7 @@ stores and result now. Accesses go into `writes` and `reads`, or into callback r
 caller object (`deferred`). Vararg tuple becomes allocation at `index`. Settled round (`Flow`) skips stores: they
 change nothing there.
 """
-function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, summary::Summary, variant::Variant, operands::Vector{Operand.Type}, defers::Bool, callees::Callees)::Nothing
+function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Integer, summary::Summary, variant::Variant, operands::AbstractVector{Operand.Type}, defers::Bool, callees::Callees)::Nothing
     method = first(variant).def::Method
     arguments = parameter_targets!(flow, index, method, operands)
     site = CallSite(arguments, parameter_derived(flow, method, operands), index, summary.fresh)
@@ -744,7 +752,7 @@ Resolve callback `record` at call statement `index`: callable is fresh here, so 
 targets. Record in `seen` adds nothing: recursion through callable repeats same accesses on same targets. Instance
 that kept record took `closed_world` of variant already (`apply!`). Record keeps targets only, so no derived sources.
 """
-function resolve!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Int, record::Deferred, defers::Bool, callees::Callees, seen::Set{Deferred})::Nothing
+function resolve!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Integer, record::Deferred, defers::Bool, callees::Callees, seen::Set{Deferred})::Nothing
     record in seen && return nothing
     push!(seen, record)
     variant, arguments = record
@@ -755,7 +763,7 @@ function resolve!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, ind
 end
 
 """Keep callback `record` of call statement `index` for caller; its targets are copied, since values grow in round."""
-function defer!(flow::Flow, index::Int, record::Deferred)::Nothing
+function defer!(flow::Flow, index::Integer, record::Deferred)::Nothing
     push!(get!(Vector{Deferred}, flow.callbacks, index), (first(record), map(copy, last(record))))
     return nothing
 end
@@ -764,7 +772,7 @@ end
 Whether call with callee parameter `arguments` (callable first) leaves accesses to caller: callable holds object below
 caller parameter, and no argument holds fresh object. Caller merges fresh objects of instance into one (`map_node!`).
 """
-function deferred(arguments::Vector{Targets})::Bool
+function deferred(arguments::AbstractVector{Targets})::Bool
     any(parameter_origin, keys(first(arguments))) || return false
     return !any(targets -> any(fresh_origin, keys(targets)), arguments)
 end

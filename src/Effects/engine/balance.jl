@@ -14,7 +14,7 @@ balanced(hold::HoldCount)::Bool = hold.level == Level.none && hold.count == 0
 holding(hold::HoldCount)::Bool = hold.level != Level.none || hold.count > 0
 
 """Earlier of statements `first` and `second`; 0 is no statement."""
-earlier(first::Int, second::Int)::Int = first == 0 ? second : second == 0 ? first : min(first, second)
+earlier(first::Integer, second::Integer)::Int = first == 0 ? second : second == 0 ? first : min(first, second)
 
 """Blind spot cause of `first` and `second` at `level`: least cause of blind holds, so rounds agree; none below blind."""
 function blind_reason(level::Level.T, first::HoldCount, second::HoldCount)::String
@@ -126,7 +126,7 @@ end
 Hold changes of dispatched call `index` with `operands` to one `variant` at normal return and at throw. Call that
 leaves callback record for caller (`deferred`) leaves its changes there too.
 """
-function variant_changes!(flow::Flow, index::Int, operands::Vector{Operand.Type}, variant::Variant, defers::Bool, callees::Callees)::Tuple{Counts, Counts}
+function variant_changes!(flow::Flow, index::Integer, operands::AbstractVector{Operand.Type}, variant::Variant, defers::Bool, callees::Callees)::Tuple{Counts, Counts}
     summary, method = summary!(callees, variant), first(variant).def::Method
     arguments = parameter_targets!(flow, index, method, operands)
     defers && deferred(arguments) && return (Counts(), Counts())
@@ -140,7 +140,7 @@ Hold changes of call statement `index` at normal return and at throw (`engine.md
 entry, else callee counts; join of methods joins them. Throw of primitive skips its acquire and keeps its release.
 Other calls change no count.
 """
-function call_changes!(flow::Flow, callees::Callees, index::Int)::Tuple{Counts, Counts}
+function call_changes!(flow::Flow, callees::Callees, index::Integer)::Tuple{Counts, Counts}
     outcome = flow.outcomes[index]
     isnothing(outcome) && return (Counts(), Counts())
     operands = @match something(outcome) begin
@@ -166,7 +166,7 @@ end
 const THROWING_HEADS = (:call, :foreigncall, :new, :splatnew, :throw_undef_if_not)
 
 """Whether statement `index` of `ir` may throw: call or global read without compiler `nothrow` flag."""
-function may_throw(ir::CC.IRCode, index::Int)::Bool
+function may_throw(ir::CC.IRCode, index::Integer)::Bool
     statement = ir.stmts[index][:stmt]
     statement isa GlobalRef || (statement isa Expr && statement.head in THROWING_HEADS) || return false
     return ir.stmts[index][:flag] & CC.IR_FLAG_NOTHROW == 0
@@ -176,7 +176,7 @@ end
 Catch block of statement `index` of `ir` with `handlers` (`CC.compute_trycatch`): block of innermost `try` that
 catches; 0 outside every `try`. Scope `enter` (`catch_dest` 0) catches nothing, so its outer `try` decides.
 """
-function catch_block(ir::CC.IRCode, handlers::Union{Nothing, CC.HandlerInfo}, index::Int)::Int
+function catch_block(ir::CC.IRCode, handlers::Union{Nothing, CC.HandlerInfo}, index::Integer)::Int
     isnothing(handlers) && return 0
     handler = handlers.handler_at[index][1]
     while handler != 0
@@ -198,7 +198,7 @@ const Path = Tuple{Counts, Dict{Any, Bool}}
 const PATH_LIMIT = 4
 
 """Conditions both `first` and `second` paths agree on."""
-agreed(first::Dict{Any, Bool}, second::Dict{Any, Bool})::Dict{Any, Bool} = Dict{Any, Bool}(key => value for (key, value) in first if get(second, key, !value) == value)
+agreed(first::AbstractDict{Any, Bool}, second::AbstractDict{Any, Bool})::Dict{Any, Bool} = Dict{Any, Bool}(key => value for (key, value) in first if get(second, key, !value) == value)
 
 """
 Join `path` into `paths`: path with equal counts keeps conditions both agree on; past `PATH_LIMIT` paths, all join into
@@ -223,13 +223,13 @@ function add_path!(paths::Vector{Path}, path::Path)::Bool
 end
 
 """Join `path` into entry of `block`; queue block in `pending` when its entry changes."""
-function flow_into!(entries::Vector{Vector{Path}}, pending::BitSet, block::Int, path::Path)::Nothing
+function flow_into!(entries::Vector{Vector{Path}}, pending::BitSet, block::Integer, path::Path)::Nothing
     add_path!(entries[block], path) && push!(pending, block)
     return nothing
 end
 
 """Value of branch `condition` on path with `conditions`: constant, condition path took, else `nothing`."""
-function condition_value(conditions::Dict{Any, Bool}, @nospecialize(condition::Any))::Union{Nothing, Bool}
+function condition_value(conditions::AbstractDict{Any, Bool}, @nospecialize(condition::Any))::Union{Nothing, Bool}
     condition isa Bool && return condition
     return get(conditions, condition, nothing)
 end
@@ -238,7 +238,7 @@ end
 Successors of `block` that path with `conditions` reaches, each with conditions it adds. Branch on known condition takes
 one side; catch block of `enter` takes states of statements that throw only.
 """
-function path_successors(ir::CC.IRCode, block::Int, conditions::Dict{Any, Bool})::Vector{Pair{Int, Dict{Any, Bool}}}
+function path_successors(ir::CC.IRCode, block::Integer, conditions::AbstractDict{Any, Bool})::Vector{Pair{Int, Dict{Any, Bool}}}
     terminator = ir.stmts[last(ir.cfg.blocks[block].stmts)][:stmt]
     successors = ir.cfg.blocks[block].succs
     if terminator isa Core.GotoIfNot && terminator.dest != block + 1
@@ -252,7 +252,7 @@ function path_successors(ir::CC.IRCode, block::Int, conditions::Dict{Any, Bool})
 end
 
 """Record in `unguarded` hold of `key` that throw at `index` skips: definite before `possible` before blind, then first throw."""
-function unguard!(unguarded::Dict{Tuple{Origin.Type, Resource.T}, Unguarded}, key::Tuple{Origin.Type, Resource.T}, hold::HoldCount, index::Int)::Nothing
+function unguard!(unguarded::Dict{Tuple{Origin.Type, Resource.T}, Unguarded}, key::Tuple{Origin.Type, Resource.T}, hold::HoldCount, index::Integer)::Nothing
     old = get(unguarded, key, nothing)
     isnothing(old) || (hold.level, index) < (old.hold.level, old.throws) || return nothing
     unguarded[key] = (hold = hold, throws = index)
@@ -303,6 +303,6 @@ function balance!(flow::Flow, callees::Callees)::Tuple{Counts, Counts, Dict{Tupl
 end
 
 """Hold counts of `counts` on nodes caller can see: fresh origin counts only when it escapes (`escaping`)."""
-function exported_holds(counts::Counts, exported::Set{Origin.Type})::HoldCounts
+function exported_holds(counts::Counts, exported::AbstractSet{Origin.Type})::HoldCounts
     return HoldCounts((node_of(origin), resource) => hold for ((origin, resource), hold) in counts if !fresh_origin(origin) || origin in exported)
 end

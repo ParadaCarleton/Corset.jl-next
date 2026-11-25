@@ -4,7 +4,8 @@ whether value of each source statement has use (`engine.md`, IR). Passes run on 
 stage left it. Line of each statement carries its index through passes. Compaction keeps statements `kept` marks,
 though compiler effects let it delete them.
 """
-function frame_ir(frame::CC.InferenceState, interpreter::CC.NativeInterpreter, kept::Vector{Bool})::Tuple{CC.IRCode, Vector{Int}, Vector{Bool}}
+function frame_ir(frame::CC.InferenceState, interpreter::CC.NativeInterpreter, kept::AbstractVector{Bool})::Tuple{CC.IRCode, Vector{Int}, Vector{Bool}}
+    Base.require_one_based_indexing(kept)
     source = copy(frame.src)
     count = length(source.code)
     for index in findall(kept)
@@ -26,10 +27,10 @@ function frame_ir(frame::CC.InferenceState, interpreter::CC.NativeInterpreter, k
 end
 
 """Source statement index of statement `index` of `ir` (`frame_ir`)."""
-statement_line(ir::CC.IRCode, index::Int)::Int = Int(ir.stmts[index][:line][1])
+statement_line(ir::CC.IRCode, index::Integer)::Int = Int(ir.stmts[index][:line][1])
 
 """Whether value of each of `count` source statements has use in `ir` before compaction: in statement or in new node."""
-function source_used(ir::CC.IRCode, count::Int)::Vector{Bool}
+function source_used(ir::CC.IRCode, count::Integer)::Vector{Bool}
     used = fill(false, count)
     for statement in Iterators.flatten((ir.stmts.stmt, ir.new_nodes.stmts.stmt)), reference in CC.userefs(statement)
         value = reference[]
@@ -45,7 +46,7 @@ end
 IR `ir` with argument types of `constants` (position and value) set to constant. Statements stay shared, unless
 constant `Bool` argument fixes branch on it (`drop_unreached`).
 """
-function specialize(ir::CC.IRCode, constants::Vector{Pair{Int, Any}})::CC.IRCode
+function specialize(ir::CC.IRCode, constants::AbstractVector{<:Pair{<:Integer, Any}})::CC.IRCode
     isempty(constants) && return ir
     argtypes = copy(ir.argtypes)
     foreach(((position, value),) -> argtypes[position] = Core.Const(value), constants)
@@ -64,7 +65,7 @@ structural(@nospecialize(statement::Any))::Bool = statement isa CONTROL || (stat
 Statements of `ir` where branch on argument with constant in `flags` (position and `Bool`) takes that constant. Each
 statement of block no path from entry reaches becomes `nothing`, structural statement excepted (`structural`).
 """
-function drop_unreached(ir::CC.IRCode, flags::Dict{Int, Bool})::CC.InstructionStream
+function drop_unreached(ir::CC.IRCode, flags::AbstractDict{<:Integer, Bool})::CC.InstructionStream
     stmts, blocks = copy(ir.stmts), ir.cfg.blocks
     reached, pending = falses(length(blocks)), [1]
     while !isempty(pending)
@@ -174,7 +175,8 @@ end
 Whether each statement of `ir` with `users` (`statement_users`) builds thrown value only (`engine.md`, Effect kinds):
 it has use, and each use is `sinks` statement (throw) or other such statement. Use cycle never counts: least fixpoint.
 """
-function message_statements(users::Vector{Vector{Int}}, sinks::Vector{Bool})::Vector{Bool}
+function message_statements(users::AbstractVector{<:AbstractVector{<:Integer}}, sinks::AbstractVector{Bool})::Vector{Bool}
+    Base.require_one_based_indexing(users, sinks)
     message, changed = fill(false, length(users)), true
     while changed
         changed = false

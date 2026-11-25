@@ -259,7 +259,7 @@ function operand_type(ir::CC.IRCode, operand::Operand.Type)::Any
 end
 
 """Argument types of call with `operands` for dispatch: `Rest` operands join into one trailing `Vararg`."""
-function call_types(ir::CC.IRCode, operands::Vector{Operand.Type})::Vector{Any}
+function call_types(ir::CC.IRCode, operands::AbstractVector{Operand.Type})::Vector{Any}
     types = Any[operand_type(ir, operand) for operand in operands if !is_rest(operand)]
     rests = Any[operand_type(ir, operand) for operand in operands if is_rest(operand)]
     isempty(rests) || push!(types, Vararg{Union{rests...}})
@@ -276,7 +276,7 @@ const JOIN_LIMIT = 3
 Instances of methods call with argument `types` can reach in `world`, each specialized to call; `nothing` past
 `limit` methods.
 """
-function dispatch(types::Vector{Any}, world::UInt, limit::Int)::Union{Nothing, Vector{Core.MethodInstance}}
+function dispatch(types::AbstractVector{Any}, world::UInt, limit::Integer)::Union{Nothing, Vector{Core.MethodInstance}}
     matches = Base._methods_by_ftype(Tuple{types...}, limit, world)
     matches isa Vector || return nothing
     return Core.MethodInstance[CC.specialize_method(match::Core.MethodMatch) for match in matches]
@@ -289,7 +289,8 @@ can be nested constant expression (`cglobal((:name, library))`), so operand type
 than `tuple` with `Rest` operands stays unresolved. Call of `FunctionStandIn` is open dispatch: it stands for any
 function.
 """
-function resolve(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt, limit::Int)::Outcome.Type
+function resolve(ir::CC.IRCode, operands::AbstractVector{Operand.Type}, world::UInt, limit::Integer)::Outcome.Type
+    Base.require_one_based_indexing(operands)
     callee = @match first(operands) begin
         Operand.Value(value) => constant(ir, value)
         Operand.Rest(_) => return Outcome.Open(operands)
@@ -318,7 +319,8 @@ end
 Operands of call that `Base.invokelatest_gr` with constant `GlobalRef` makes (`@invokelatest`), directly or with
 keywords (`Core.kwcall`): binding read takes place of reference. `nothing` for other calls.
 """
-function latest_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operands::Vector{Operand.Type})::Union{Nothing, Vector{Operand.Type}}
+function latest_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operands::AbstractVector{Operand.Type})::Union{Nothing, Vector{Operand.Type}}
+    Base.require_one_based_indexing(operands)
     isnothing(callee) && return nothing
     head = something(callee) === Core.kwcall ? 3 : 1
     length(operands) > head && is_constant(ir, operands[head], Base.invokelatest_gr) || return nothing
@@ -334,7 +336,8 @@ function is_constant(ir::CC.IRCode, operand::Operand.Type, @nospecialize(expecte
 end
 
 """Whether call of constant `callee` with `operands` calls `FunctionStandIn`, directly or with keywords (`Core.kwcall`)."""
-function stand_in_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operands::Vector{Operand.Type})::Bool
+function stand_in_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operands::AbstractVector{Operand.Type})::Bool
+    Base.require_one_based_indexing(operands)
     isnothing(callee) && return false
     something(callee) isa FunctionStandIn && return true
     something(callee) === Core.kwcall && length(operands) >= 3 || return false
@@ -347,7 +350,8 @@ Resolution of call with `operands` (callee first) that dispatch leaves open: con
 `Rest` operand needs vararg role at or before its position: any later role could take its elements. Keyword call
 (`Core.kwcall`) puts keyword tuple last, in rest role (`keyword_role`).
 """
-function contract_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operands::Vector{Operand.Type})::Outcome.Type
+function contract_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operands::AbstractVector{Operand.Type})::Outcome.Type
+    Base.require_one_based_indexing(operands)
     keywords = !isnothing(callee) && something(callee) === Core.kwcall && length(operands) >= 3
     called = keywords ? operand_constant(ir, operands[3]) : callee
     contract = isnothing(called) ? nothing : get(BASE_CONTRACTS, something(called), nothing)
@@ -358,7 +362,7 @@ function contract_call(ir::CC.IRCode, callee::Union{Nothing, Some{Any}}, operand
     isnothing(spread) || 0 < contract.effects.rest <= spread || return Outcome.Unresolved(operands)
     types = Any[operand_type(ir, argument) for argument in arguments]
     contract.callback && !isempty(types) && typeintersect(first(types), Base.Callable) !== Union{} && return Outcome.Open(operands)
-    admits(position::Int, @nospecialize(type::Any))::Bool = any(index -> typeintersect(types[index], type) !== Union{}, role(contract.effects, position, length(types)))
+    admits(position::Integer, @nospecialize(type::Any))::Bool = any(index -> typeintersect(types[index], type) !== Union{}, role(contract.effects, position, length(types)))
     return Outcome.Contract(contract.effects, arguments, Int[position for (position, type) in contract.breaches if admits(position, type)])
 end
 
@@ -366,7 +370,7 @@ end
 Whether keyword tuple, last of `arguments`, falls in rest role of `effects` that reads only, and holds no callable:
 keyword callable (`by`) runs as callback.
 """
-function keyword_role(ir::CC.IRCode, effects::CallEffects, arguments::Vector{Operand.Type})::Bool
+function keyword_role(ir::CC.IRCode, effects::CallEffects, arguments::AbstractVector{Operand.Type})::Bool
     rest = effects.rest
     0 < rest <= length(arguments) && rest in effects.reads || return false
     any(roles -> rest in roles, (effects.writes, effects.result, effects.elements, effects.aliases)) && return false
@@ -391,14 +395,15 @@ function keyword_types(@nospecialize(type::Any))::Union{Nothing, Vector{Any}}
 end
 
 """Positions among `count` arguments that take role of `position` in `effects`: from `rest` on, all; past end, none."""
-role(effects::CallEffects, position::Int, count::Int)::UnitRange{Int} = position == effects.rest ? (position:count) : (position:min(position, count))
+role(effects::CallEffects, position::Integer, count::Integer)::UnitRange{Int} = position == effects.rest ? (position:count) : (position:min(position, count))
 
 """
 Resolution of `_apply_iterate` call: callee and spread `arguments` become operands. Tuple of known length gives `Part`
 per position until first `Rest`; tuple or array of unknown length gives `Rest`. Other collections run `iterate`
 methods, so call stays unresolved.
 """
-function spread_call(ir::CC.IRCode, arguments::Vector{Operand.Type}, world::UInt, limit::Int)::Outcome.Type
+function spread_call(ir::CC.IRCode, arguments::AbstractVector{Operand.Type}, world::UInt, limit::Integer)::Outcome.Type
+    Base.require_one_based_indexing(arguments)
     operands = Operand.Type[first(arguments)]
     for argument in arguments[2:end]
         value = @match argument begin
@@ -421,7 +426,8 @@ end
 Resolution of `Core.invoke(f, T, args...)`: method `T` selects, specialized to argument types. Selector that is not
 constant (`Tuple{typeof(x)}`) can select any method of `f`: contract of `f` covers them all, else call is unresolved.
 """
-function invoke_call(ir::CC.IRCode, operands::Vector{Operand.Type}, world::UInt)::Outcome.Type
+function invoke_call(ir::CC.IRCode, operands::AbstractVector{Operand.Type}, world::UInt)::Outcome.Type
+    Base.require_one_based_indexing(operands)
     called = Operand.Type[operands[2]; operands[4:end]]
     types = Any[operand_type(ir, operand) for operand in called]
     selector = operand_constant(ir, operands[3])
@@ -463,7 +469,7 @@ end
 Resolution of statement `statement` of `ir`: call or foreign call outcome; `nothing` for other statements. IR before
 inlining holds no `:invoke` statement.
 """
-function statement_outcome(ir::CC.IRCode, @nospecialize(statement::Any), world::UInt, limit::Int)::Union{Nothing, Outcome.Type}
+function statement_outcome(ir::CC.IRCode, @nospecialize(statement::Any), world::UInt, limit::Integer)::Union{Nothing, Outcome.Type}
     statement isa Expr || return nothing
     statement.head === :call && return resolve(ir, Operand.Type[Operand.Value(value) for value in statement.args], world, limit)
     statement.head === :foreigncall && return foreign_outcome(statement)
@@ -493,13 +499,14 @@ Primitive that call with `operands` (callee first) and result of `type` makes in
 (`Core.kwcall`) names callee third. Argument types pick resource: lock, `Semaphore`, `Condition`, `IOStream`.
 `wait(::Condition)` releases lock and takes it again.
 """
-function primitive(ir::CC.IRCode, operands::Vector{Operand.Type}, @nospecialize(type::Any))::Union{Nothing, Primitive}
+function primitive(ir::CC.IRCode, operands::AbstractVector{Operand.Type}, @nospecialize(type::Any))::Union{Nothing, Primitive}
+    Base.require_one_based_indexing(operands)
     callee, first_argument = operand_constant(ir, operands[1]), 2
     if !isnothing(callee) && something(callee) === Core.kwcall && length(operands) >= 3
         callee, first_argument = operand_constant(ir, operands[3]), 4
     end
     isnothing(callee) && return nothing
-    arguments = operands[first_argument:end]
+    arguments = @view(operands[first_argument:end])
     any(is_rest, arguments) && return nothing
     call = something(callee)
     if length(arguments) == 1

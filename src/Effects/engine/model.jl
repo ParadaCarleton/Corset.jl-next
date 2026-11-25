@@ -81,7 +81,7 @@ const OPAQUE = Sources(1) << (LAST_PARAMETER + 1)
 const PARAMETERS = (Sources(1) << (LAST_PARAMETER + 1)) - Sources(2)
 
 """Source bit of parameter `position` (callee is 1); past `LAST_PARAMETER`, `INHERENT`."""
-parameter_source(position::Int)::Sources = 1 <= position <= LAST_PARAMETER ? Sources(1) << position : INHERENT
+parameter_source(position::Integer)::Sources = 1 <= position <= LAST_PARAMETER ? Sources(1) << position : INHERENT
 
 """No doubt: definite."""
 const NO_DOUBT = Doubt(Level.none, Sources(0))
@@ -189,7 +189,7 @@ struct HoldCount
     level::Level.T
     cause::Int
     reason::String
-    function HoldCount(count::Int, level::Level.T, cause::Int, reason::String)::HoldCount
+    function HoldCount(count::Integer, level::Level.T, cause::Integer, reason::String)::HoldCount
         (level == Level.blind) == !isempty(reason) || throw(ArgumentError("hold count has reason exactly at `blind` level: $level, $reason"))
         return new(level == Level.none ? count : 0, level, cause, reason)
     end
@@ -259,7 +259,7 @@ const UNSETTLED = "unsettled call cycle"
 union_nodes(old::Nodes, new::Nodes)::Nodes = mergewith(least, old, new)
 
 """Union of `old` and `new` stores by holder."""
-(union_stores(old::Dict{K, Nodes}, new::Dict{K, Nodes})::Dict{K, Nodes}) where {K} = mergewith(union_nodes, old, new)
+(union_stores(old::AbstractDict{K, Nodes}, new::AbstractDict{K, Nodes})::Dict{K, Nodes}) where {K} = mergewith(union_nodes, old, new)
 
 """Union of `old` and `new` accesses: access that differs between them becomes blind (`UNSETTLED`)."""
 widen_accesses(old::Accesses, new::Accesses)::Accesses = mergewith((first, second) -> first == second ? first : Effect(BLIND_DOUBT, first.cause, UNSETTLED), old, new)
@@ -301,7 +301,7 @@ struct Library
 end
 
 """Library cache of `entries`."""
-Library(entries::Dict{String, Cache.Stamped})::Library = Library(entries, Set{String}(stamped.instance for stamped in values(entries)))
+Library(entries::AbstractDict{String, Cache.Stamped})::Library = Library(entries, Set{String}(stamped.instance for stamped in values(entries)))
 
 """Library cache without entries."""
 Library()::Library = Library(Dict{String, Cache.Stamped}())
@@ -322,7 +322,7 @@ end
 Summary of instance with `count` parameters engine cannot analyze, for blind spot `cause`: blind write and read below
 every parameter, result anywhere.
 """
-function open_summary(count::Int, cause::String)::Summary
+function open_summary(count::Integer, cause::String)::Summary
     places = [Place.At(Root.Parameter(position), NO_STEPS) for position in 1:count]
     effects = Accesses((place, true, EffectKind.memory) => Effect(BLIND_DOUBT, 0, cause) for place in places)
     result = Nodes(Node.Placed(place) => BLIND_DOUBT for place in places)

@@ -118,7 +118,7 @@ Content text of package `id` at `root` for library entry key: name, UUID, then `
 or in `packages` directory of one of `depots`, whose slug Pkg derives from Manifest tree hash. Path or developed package
 gives digest of its code files instead: project file, `src`, `ext` and `deps`. Preferences of package count too.
 """
-function package_content(id::Base.PkgId, root::String, depots::Vector{String})::String
+function package_content(id::Base.PkgId, root::String, depots::AbstractVector{String})::String
     stores = [Sys.STDLIB; [joinpath(depot, "packages") for depot in depots]]
     fixed = any(store -> startswith(root, joinpath(store, "")), stores)
     content = fixed ? root : digest(String[], found_files([joinpath(root, "Project.toml")], joinpath.(root, ["src", "ext", "deps"]), ""))
@@ -133,7 +133,7 @@ it depends on. Corset gives texts of its dependencies only, as partition key hol
 parent and triggers. `nothing` for module without package root on disk, such as `Main`. `texts` caches answers by root
 module.
 """
-function owner_texts!(texts::IdDict{Module, Union{Nothing, Vector{String}}}, mod::Module, depots::Vector{String})::Union{Nothing, Vector{String}}
+function owner_texts!(texts::IdDict{Module, Union{Nothing, Vector{String}}}, mod::Module, depots::AbstractVector{String})::Union{Nothing, Vector{String}}
     root = Base.moduleroot(mod)
     (root === Base || root === Core) && return String[]
     haskey(texts, root) && return texts[root]
@@ -172,7 +172,7 @@ library_directory(directory::String)::String = joinpath(directory, "library")
 Partition key of library file: Julia version `julia`, cache flags and content of Corset (`package_content`) under
 `depots`. Entry keys hold all else.
 """
-function partition_key(julia::String, depots::Vector{String})::String
+function partition_key(julia::String, depots::AbstractVector{String})::String
     corset = Base.moduleroot(@__MODULE__)
     return digest([julia, repr(Base.CacheFlags()), package_content(Base.PkgId(corset), corset_root(), depots)], String[])
 end
@@ -202,7 +202,7 @@ entries and `hits` take time now. Then entries go newest first while their bytes
 entries writes no entries: it marks file as used. Directory keeps newest `LIBRARY_FILES` files; staging files of other
 processes stay. Concurrent writer can lose entries of other, but file changes in one step.
 """
-function keep_library!(directory::String, partition::String, found::Dict{String, Stamped}, hits::Set{String}, limit::Int)::Nothing
+function keep_library!(directory::String, partition::String, found::AbstractDict{String, Stamped}, hits::AbstractSet{String}, limit::Integer)::Nothing
     file = entry(directory, partition)
     if isempty(found)
         isfile(file) || return nothing

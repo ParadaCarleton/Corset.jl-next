@@ -15,7 +15,7 @@ end
 package_variant!(run::Run, variant::Variant)::Bool = package_instance!(run, first(variant)) || any(constant -> last(constant) in run.modules, last(variant))
 
 """Whether `list` holds `item` itself (`===`)."""
-function identical_in(@nospecialize(item::Any), list::Vector{Any})::Bool
+function identical_in(@nospecialize(item::Any), list::AbstractVector{Any})::Bool
     for known in list
         known === item && return true
     end
@@ -156,7 +156,8 @@ Canonical text of native edge record at `position` of `edges`, and position afte
 with method table (lookup without covering match), call type with target (`invoke` or inlining). Too many matches
 leave no record. Adds modules record names to `modules` and edge nodes to `successors`; `nothing` for other form.
 """
-function record_text!(run::Run, edges::Union{Core.SimpleVector, Vector{Any}}, position::Int, modules::Vector{Module}, successors::Vector{Any})::Union{Nothing, Tuple{String, Int}}
+function record_text!(run::Run, edges::Union{Core.SimpleVector, AbstractVector{Any}}, position::Integer, modules::Vector{Module}, successors::Vector{Any})::Union{Nothing, Tuple{String, Int}}
+    edges isa AbstractVector && Base.require_one_based_indexing(edges)
     item = edges[position]
     if item isa Int
         last_target = position + 1 + abs(item)
@@ -210,7 +211,7 @@ function node_text!(run::Run, @nospecialize(node::Any))::Union{Nothing, Tuple{St
 end
 
 """Add `callees` missing from `found` by identity."""
-function add_callees!(found::Vector{Any}, callees::Vector{Any})::Nothing
+function add_callees!(found::Vector{Any}, callees::AbstractVector{Any})::Nothing
     for callee in callees
         any(known -> known === callee, found) || push!(found, callee)
     end
@@ -222,7 +223,7 @@ Pop component of `node` from `stack` (`walk_components!`). Each member gets key:
 keys of components members reach; `nothing` when one of them has none, or when `state` rejects member. Members share
 helper callees their closure read.
 """
-function finish_component!(run::Run, state::Closure, texts::IdDict{Any, Union{Nothing, Tuple{String, Vector{Any}}}}, stack::Vector{Any}, open::Base.IdSet{Any}, @nospecialize(node::Any))::Nothing
+function finish_component!(run::Run, state::Closure, texts::IdDict{Any, <:Union{Nothing, Tuple{String, AbstractVector{Any}}}}, stack::Vector{Any}, open::Base.IdSet{Any}, @nospecialize(node::Any))::Nothing
     members = Any[]
     while isempty(members) || last(members) !== node
         member = pop!(stack)
@@ -374,7 +375,7 @@ function alias_text()::String
 end
 
 """Whether every instance in `instances` lies in `targets` or is Core method of alias function (`aliased`)."""
-function all_in(instances::Vector{Core.MethodInstance}, targets::Base.IdSet{Core.MethodInstance})::Bool
+function all_in(instances::AbstractVector{Core.MethodInstance}, targets::Base.IdSet{Core.MethodInstance})::Bool
     for instance in instances
         instance in targets || aliased(instance) || return false
     end

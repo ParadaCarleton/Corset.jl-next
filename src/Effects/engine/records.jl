@@ -67,7 +67,7 @@ function unit_verdict!(run::Run, typed::TypedCode, root::Variant)::UnitVerdict
         [BlindSpot("always throws on stand-ins", typed.site.span)], false, nothing, own_cut,
     )
     summary = root_summary!(run, root)
-    span_of(cause::Int)::Span = cause_span(typed, run.codes[root], cause)
+    span_of(cause::Integer)::Span = cause_span(typed, run.codes[root], cause)
     kind_of(place::Place.Type)::EffectKind.T = path_kind(run.codes[root].ir, place)
     writes, blind_writes = unit_accesses(summary.writes, span_of, typed.provenance)
     held_writes, held_blind = lock_writes(summary, span_of, kind_of)
@@ -122,7 +122,7 @@ end
 Unit record that method store entry keeps in `bytes` (`record_bytes`); callees come back in `world`. `nothing` for unit
 without code. Entry without record throws: `effects` run infers such unit instead.
 """
-function unit_record(bytes::Vector{UInt8}, world::UInt)::Union{Nothing, UnitVerdict}
+function unit_record(bytes::AbstractVector{UInt8}, world::UInt)::Union{Nothing, UnitVerdict}
     isempty(bytes) && throw(ArgumentError("method store entry keeps no effects record; effects run must infer its unit"))
     stored = deserialize(IOBuffer(bytes))::Union{Nothing, Tuple{UnitVerdict, StoredCalls}}
     isnothing(stored) && return nothing

@@ -1,7 +1,7 @@
 using ...Signatures: Provenance
 
 """Span of IR statement `cause` of unit `typed` with `code`: its source statement span, else method span."""
-function cause_span(typed::TypedCode, code::Code, cause::Int)::Span
+function cause_span(typed::TypedCode, code::Code, cause::Integer)::Span
     line = cause in eachindex(code.lines) ? code.lines[cause] : 0
     return line in eachindex(typed.spans) ? typed.spans[line] : typed.site.span
 end
@@ -13,7 +13,8 @@ const OPAQUE_DATA = "open dispatch on opaque data"
 Provenance of `code` doubt with `sources` in unit with argument `provenance` (`engine.md`, Provenance): `code` when
 doubt is in code itself or any source argument is code; else `opaque` when any source is; else `opt_out`.
 """
-function source_provenance(sources::Sources, provenance::Vector{Provenance.T})::Provenance.T
+function source_provenance(sources::Sources, provenance::AbstractVector{Provenance.T})::Provenance.T
+    Base.require_one_based_indexing(provenance)
     sources & INHERENT == 0 || return Provenance.code
     found = sources & OPAQUE == 0 ? Provenance.opt_out : Provenance.opaque
     for position in 1:LAST_PARAMETER
@@ -29,7 +30,7 @@ end
 Accesses of unit `effects` with doubt below blind, and blind accesses, with cause spans from `span_of`. Argument
 `provenance` judges `code` doubt: opaque gives blind access (`OPAQUE_DATA`); opt-out gives no access.
 """
-function unit_accesses(effects::Accesses, span_of::Function, provenance::Vector{Provenance.T})::Tuple{Vector{Access}, Vector{BlindAccess}}
+function unit_accesses(effects::Accesses, span_of::Function, provenance::AbstractVector{Provenance.T})::Tuple{Vector{Access}, Vector{BlindAccess}}
     accesses, blind = Access[], BlindAccess[]
     for ((place, below, effect_kind), effect) in effects
         span, level = span_of(effect.cause), level_of(effect.doubt)
@@ -119,7 +120,7 @@ end
 place_key(place::Place.Type, below::Bool, kind::EffectKind.T)::Tuple{String, Bool, EffectKind.T} = (repr(place), below, kind)
 
 """Worst access per place, coverage and kind over `accesses` of all units: definite beats possible; first cause stays."""
-function worst(accesses::Vector{Access})::Vector{Access}
+function worst(accesses::AbstractVector{Access})::Vector{Access}
     found = Dict{Tuple{Place.Type, Bool, EffectKind.T}, Access}()
     for access in accesses
         key = (access.place, access.below, access.kind)
@@ -203,7 +204,7 @@ unit for method store, `nothing` for unit whose instance earlier unit holds, new
 entries that hit. Run that skipped crashed instance gives no entries: its blind spot holds here only. Crash `journal`
 records native inference of instances outside units. Flow past `work_limit` stops (`WORK_LIMIT`).
 """
-function cached_effects(package::PackageFacts, units::Units, stored::AbstractVector{Union{Nothing, UnitVerdict}}, journal::Union{Nothing, Journal}, library::Library; work_limit::Int = WORK_LIMIT)::Tuple{Vector{MethodVerdict}, Vector{BlindSpot}, Vector{Union{Nothing, UnitVerdict}}, Library, Set{String}}
+function cached_effects(package::PackageFacts, units::Units, stored::AbstractVector{Union{Nothing, UnitVerdict}}, journal::Union{Nothing, Journal}, library::Library; work_limit::Integer = WORK_LIMIT)::Tuple{Vector{MethodVerdict}, Vector{BlindSpot}, Vector{Union{Nothing, UnitVerdict}}, Library, Set{String}}
     length(stored) == length(units.stored) || throw(ArgumentError("$(length(stored)) stored verdicts for $(length(units.stored)) stored units"))
     run = start_run(journal, package.modules, library; work_limit)
     typed_of = IdDict{Core.MethodInstance, TypedCode}()

@@ -77,7 +77,8 @@ parameter. `flush` resolves callback records in this instance; `cut` marks insta
 `statics` holds sources of each static parameter (`static_sources`); `record` keeps write kinds of each call. Rounds
 stop once `work` passes `limit` (`over_budget`).
 """
-function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}}, message::Vector{Bool}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::Vector{Sources}, record::Bool, limit::Int)::Flow
+function start_flow(ir::CC.IRCode, outcomes::AbstractVector{Union{Nothing, Outcome.Type}}, message::AbstractVector{Bool}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::AbstractVector{Sources}, record::Bool, limit::Integer)::Flow
+    Base.require_one_based_indexing(outcomes)
     arguments = [
         referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), NO_STEPS)) => NO_DOUBT) : Targets()
             for (position, type) in enumerate(ir.argtypes)
@@ -89,7 +90,7 @@ function start_flow(ir::CC.IRCode, outcomes::Vector{Union{Nothing, Outcome.Type}
 end
 
 """Release balance primitive of statement `index` of `ir` with call `outcome`: dispatched call only (`primitive`)."""
-function statement_primitive(ir::CC.IRCode, index::Int, outcome::Union{Nothing, Outcome.Type})::Union{Nothing, Primitive}
+function statement_primitive(ir::CC.IRCode, index::Integer, outcome::Union{Nothing, Outcome.Type})::Union{Nothing, Primitive}
     isnothing(outcome) && return nothing
     return @match something(outcome) begin
         Outcome.Dispatch(_, operands) => primitive(ir, operands, ir.stmts[index][:type])
@@ -443,7 +444,7 @@ function bind!(flow::Flow, binding::GlobalRef, values::Targets)::Nothing
 end
 
 """Set targets of statement `index` to include `targets`, raised to `doubt`, when its type can point to object."""
-function assign!(flow::Flow, index::Int, targets::Targets, doubt::Doubt = NO_DOUBT)::Nothing
+function assign!(flow::Flow, index::Integer, targets::Targets, doubt::Doubt = NO_DOUBT)::Nothing
     points!(flow, flow.ir.stmts[index][:type]) && join!(flow, flow.values[index], targets, doubt)
     return nothing
 end
@@ -477,7 +478,7 @@ const INERT = (
 )
 
 """Transfer statement `index` of `flow` (`engine.md`, Calls)."""
-function statement!(flow::Flow, index::Int, @nospecialize(statement::Any), callees::Callees)::Nothing
+function statement!(flow::Flow, index::Integer, @nospecialize(statement::Any), callees::Callees)::Nothing
     if statement isa Expr
         head = statement.head
         if head in (:call, :foreigncall)
@@ -526,14 +527,14 @@ function statement!(flow::Flow, index::Int, @nospecialize(statement::Any), calle
 end
 
 """Pass IR `value` to statement `index` (phi or pi node): its targets and derived type sources."""
-function pass!(flow::Flow, index::Int, @nospecialize(value::Any))::Nothing
+function pass!(flow::Flow, index::Integer, @nospecialize(value::Any))::Nothing
     assign!(flow, index, value_targets!(flow, value))
     derive!(flow, index, value_derived(flow, value))
     return nothing
 end
 
 """Add `sources` to derived type sources of statement `index`; mark `flow` changed when they grow."""
-function derive!(flow::Flow, index::Int, sources::Sources)::Nothing
+function derive!(flow::Flow, index::Integer, sources::Sources)::Nothing
     grown = flow.derived[index] | sources
     grown == flow.derived[index] && return nothing
     flow.derived[index], flow.changed = grown, true
@@ -575,13 +576,13 @@ derived_of(flow::Flow, operand::Operand.Type)::Sources = @match operand begin
 end
 
 """Make statement `index` an allocation: its value points to fresh object `Allocation(index)`."""
-function allocate!(flow::Flow, index::Int)::Nothing
+function allocate!(flow::Flow, index::Integer)::Nothing
     assign!(flow, index, Targets(Origin.Allocation(index) => NO_DOUBT))
     return nothing
 end
 
 """Allocation of `%new(type, operands...)` at `index`: each operand goes into its field, memory fields into backing."""
-function new!(flow::Flow, index::Int, @nospecialize(type_value::Any), operands::Vector{Operand.Type})::Nothing
+function new!(flow::Flow, index::Integer, @nospecialize(type_value::Any), operands::AbstractVector{Operand.Type})::Nothing
     allocate!(flow, index)
     type = CC.instanceof_tfunc(value_lattice(flow.ir, type_value))[1]
     object = flow.values[index]
@@ -611,7 +612,7 @@ function layout(@nospecialize(type::Any))::Union{Nothing, DataType}
 end
 
 """Whether field `field` of `type` holds memory backing (`GenericMemory` or `GenericMemoryRef`): it adds no path step."""
-function backing_field(@nospecialize(type::Any), field::Union{Symbol, Int})::Bool
+function backing_field(@nospecialize(type::Any), field::Union{Symbol, Integer})::Bool
     type = layout(type)
     isnothing(type) && return false
     type <: Tuple && return false
@@ -636,4 +637,4 @@ function field_step(@nospecialize(type::Any), @nospecialize(field::Any))::Union{
 end
 
 """Definite effect starting at statement `index`."""
-definite(index::Int)::Effect = Effect(NO_DOUBT, index, "")
+definite(index::Integer)::Effect = Effect(NO_DOUBT, index, "")
