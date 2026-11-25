@@ -398,6 +398,22 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
     @test !catches!(run, only(methods(CASES.poke_at!)))
 end
 
+@testset "engine stage" begin
+    run = Corset.Effects.effects_facts(PACKAGE, UNITS, nothing, Library())
+    @test [found.site.method for found in run.facts.methods] == [found.site.method for found in FACTS] && length(run.verdicts) == length(UNITS.typed)
+    @test issubset(SPOTS, run.spots)
+    mktempdir(@__DIR__) do directory
+        journal = open_journal(directory)
+        journaled = try
+            Corset.Effects.effects_facts(PACKAGE, UNITS, journal, Library())
+        finally
+            close(journal.io)
+        end
+        @test length(journaled.facts.methods) == length(FACTS)
+        @test any(record -> startswith(record.key, "effects\n") && !record.finished, records(directory))
+    end
+end
+
 """Summary of method `f` on argument `types`, solved with every instance it reaches."""
 function summary_of(f::Any, types::Type...)::Summary
     run = start_run(nothing, Module[])

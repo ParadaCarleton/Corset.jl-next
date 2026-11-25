@@ -55,13 +55,6 @@ abstract type Sampler end
 Random.rand!(rng::AbstractRNG, s::Sampler, x::AbstractVector{Float64}) = (x .= 1.0; x)
 sampled(rng::AbstractRNG, s::Sampler, n::Int) = Random.rand!(rng, s, zeros(n))
 
-# `!!` call writes operand only when it can.
-mutable struct Tally
-    count::Int
-end
-tally!!(tally::Tally, x::Int) = (tally.count += x; tally)
-counted(tally::Tally) = tally!!(tally, 1)
-
 # `!` call on immutable operands writes no global state.
 struct Device end
 launch!(device::Device, n::Int) = n

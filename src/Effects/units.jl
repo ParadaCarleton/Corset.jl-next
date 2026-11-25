@@ -161,20 +161,6 @@ function text_order(items::AbstractVector{T}, key::F)::Vector{T} where {T, F <: 
     return items[sortperm(map(key, items))]
 end
 
-"""Key of access for worst merge and order: place text, coverage, kind."""
-place_key(place::Place.Type, below::Bool, kind::EffectKind.T)::Tuple{String, Bool, EffectKind.T} = (repr(place), below, kind)
-
-"""Worst access per place, coverage and kind over `accesses` of all units: definite beats possible; first cause stays."""
-function worst(accesses::AbstractVector{Access})::Vector{Access}
-    found = Dict{Tuple{Place.Type, Bool, EffectKind.T}, Access}()
-    for access in accesses
-        key = (access.place, access.below, access.kind)
-        old = get(found, key, nothing)
-        (isnothing(old) || access.confidence < old.confidence) && (found[key] = access)
-    end
-    return text_order(collect(values(found)), access -> place_key(access.place, access.below, access.kind))
-end
-
 """
 Facts over all units of method, one per `key` in key order: definite in any unit decides. Key leads with source
 position of fact, so order is source order.
@@ -217,13 +203,6 @@ index_key(unproven::UnprovenIndex)::Tuple{String, Int, Int, Int, String} = (unpr
 """Call facts of one method by source statement and span."""
 const Calls = Dict{Tuple{Int, Span}, CallFact}
 
-"""Callee of call statement over two units of method: methods of both; open when either is other callee."""
-function merge_callees(first::Callee.Type, second::Callee.Type)::Callee.Type
-    first == second && return first
-    left, right = callee_methods(first), callee_methods(second)
-    return isnothing(left) || isnothing(right) ? Callee.Open() : methods_callee([left; right])
-end
-
 """Fact of call statement over two units of method: unit that may throw, writes, uses result or lacks proof decides."""
 function merge_calls(first::CallFact, second::CallFact)::CallFact
     kinds, definite = sort!(union(first.kinds, second.kinds)), sort!(union(first.definite, second.definite))
@@ -249,39 +228,23 @@ call_order(calls::Calls)::Vector{CallFact} = [fact for (_, fact) in sort!(collec
 """Effects `@assume_effects` on `method` claims, as `Base.EffectsOverride` field names in field order; block claims excluded."""
 claimed_effects(method::Method)::Vector{Symbol} = (claim = CC.decode_effects_override(method.purity); Symbol[name for name in fieldnames(CC.EffectsOverride) if getfield(claim, name) === true])
 
-"""
-Effects record of each unit in inference order, with its method: typed unit takes its record in `fresh`, stored unit
-(`Units.stored`) its record in `stored`. Order keeps first cause per access (`worst`), as run that infers all.
-"""
-function ordered_records(units::Units, fresh::AbstractVector{Union{Nothing, UnitEffects}}, stored::AbstractVector{Union{Nothing, UnitEffects}})::Vector{Pair{Method, Union{Nothing, UnitEffects}}}
-    positions = [[(index, 0) for index in eachindex(units.typed)]; [(unit.position, 1) for unit in units.stored]]
-    methods = Method[[typed.site.method for typed in units.typed]; [unit.site.method for unit in units.stored]]
-    records = Union{Nothing, UnitEffects}[fresh; stored]
-    return [methods[index] => records[index] for index in sortperm(positions)]
-end
+"""Facts of all units of one method: holds throws skip, call facts, loop writes, self aliases, stateful reuses, index facts."""
+const Collected = Tuple{Vector{UnguardedHold}, Calls, Vector{LoopWrite}, Vector{SelfAlias}, Vector{StatefulReuse}, Vector{IndexFacts}}
 
 """
-Accesses of all units of one method: writes, reads, result aliases, holds throws skip, call facts, loop writes, self
-aliases, stateful reuses, index facts.
+Facts of methods of `package` from effects `records` of units in inference order and engine `verdicts`, and blind
+spots (`effects.md`, Facts). Writes, reads and result aliases come from engine verdict; other facts merge over units.
+Method in `incomplete`, or that stand-ins cut, is incomplete; no write with cut gives blind spot `CUT`. Method is
+effect-free when compiler proves every unit effect-free. Method with record but no verdict throws.
 """
-const Collected = Tuple{Vector{Access}, Vector{Access}, Vector{Place.Type}, Vector{UnguardedHold}, Calls, Vector{LoopWrite}, Vector{SelfAlias}, Vector{StatefulReuse}, Vector{IndexFacts}}
-
-"""
-Facts of methods of `package` from effects `records` of units in inference order, and blind spots: worst over units of
-method (`effects.md`, Facts). Method in `incomplete`, or that stand-ins cut, is incomplete; no write with cut gives
-blind spot `CUT`. Method is effect-free when compiler proves every unit effect-free.
-"""
-function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, records::AbstractVector{Pair{Method, Union{Nothing, UnitEffects}}})::Tuple{EffectsFacts, Vector{BlindSpot}}
-    spots = BlindSpot[]
+function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, records::AbstractVector{Pair{Method, Union{Nothing, UnitEffects}}}, verdicts::AbstractVector{Summaries.MethodVerdict})::Tuple{EffectsFacts, Vector{BlindSpot}}
+    spots, verdict_of = BlindSpot[], IdDict{Method, Summaries.MethodVerdict}(verdict.site.method => verdict for verdict in verdicts)
     found, free, cuts, new_results = IdDict{Method, Collected}(), IdDict{Method, Bool}(), IdDict{Method, Span}(), IdDict{Method, Bool}()
     for (method, record) in records
         isnothing(record) && continue
         append!(spots, record.spots)
         record.verdict || continue
-        writes, reads, aliases, unguarded, calls, loops, selves, reuses, indices = get!(() -> (Access[], Access[], Place.Type[], UnguardedHold[], Calls(), LoopWrite[], SelfAlias[], StatefulReuse[], IndexFacts[]), found, method)
-        append!(writes, record.writes)
-        append!(reads, record.reads)
-        append!(aliases, record.aliases)
+        unguarded, calls, loops, selves, reuses, indices = get!(() -> (UnguardedHold[], Calls(), LoopWrite[], SelfAlias[], StatefulReuse[], IndexFacts[]), found, method)
         append!(unguarded, record.unguarded)
         add_calls!(calls, record.calls)
         append!(loops, record.loop_writes)
@@ -295,10 +258,12 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
     methods = MethodEffects[]
     for site in package.methods
         haskey(found, site.method) || continue
-        writes, reads, aliases, unguarded, calls, loops, selves, reuses, indices = found[site.method]
-        complete = !(site.method in incomplete) && !haskey(cuts, site.method)
+        unguarded, calls, loops, selves, reuses, indices = found[site.method]
+        verdict = get(verdict_of, site.method, nothing)
+        isnothing(verdict) && throw(ArgumentError("engine gives no verdict for $(site.method), which has name tier record"))
+        complete = !(site.method in incomplete) && !haskey(cuts, site.method) && verdict.complete
         effects = MethodEffects(
-            site, worst(writes), worst(reads), text_order(unique!(aliases), repr), surest(unguarded, hold_key),
+            site, verdict.writes, verdict.reads, verdict.aliases, surest(unguarded, hold_key),
             call_order(calls), surest(loops, loop_key), surest(selves, alias_key), surest(reuses, reuse_key), merged_indices(indices), complete, free[site.method], new_results[site.method],
             name_writes(site.method), claimed_effects(site.method),
         )
@@ -310,12 +275,28 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
 end
 
 """
-`effects` stage facts of `package` from inference `units`, blind spots, and effects record of each typed unit for method
-store: `nothing` for unit whose instance earlier unit holds. Stored units give their kept records. Last come compiler
-edges of offset inference per typed unit (`unit_effects`), then records of all units in inference order with their
-methods (`ordered_records`). Crash `journal` records offset inferences; `nothing` none.
+Records of one `effects` stage run (`effects_facts`): facts, blind spots, name tier record and engine verdict of each
+typed unit for method store (`nothing` for unit whose instance earlier unit holds), compiler edges of offset inference
+per typed unit (`unit_effects`), name tier records of all units in inference order with their methods
+(`ordered_records`), new library cache entries, and keys of library entries that hit.
 """
-function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Inference.Journal})::Tuple{EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, UnitEffects}}, Vector{Union{Nothing, Vector{Any}}}, Vector{Pair{Method, Union{Nothing, UnitEffects}}}}
+struct StageRun
+    facts::EffectsFacts
+    spots::Vector{BlindSpot}
+    fresh::Vector{Union{Nothing, UnitEffects}}
+    verdicts::Vector{Union{Nothing, Summaries.UnitVerdict}}
+    edges::Vector{Union{Nothing, Vector{Any}}}
+    ordered::Vector{Pair{Method, Union{Nothing, UnitEffects}}}
+    library::Summaries.Library
+    hits::Set{String}
+end
+
+"""
+`effects` stage run on `package` from inference `units` (`StageRun`), with `library` cache of engine summaries
+(`engine.md`, Solve and cache). Stored units give their kept records. Crash `journal` records offset inferences and
+native inference of library instances; `nothing` none.
+"""
+function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Inference.Journal}, library::Summaries.Library)::StageRun
     world = Base.get_world_counter()
     interpreter, modules, seen = CC.NativeInterpreter(world), Set{Module}(package.modules), Base.IdSet{Core.MethodInstance}()
     fresh, edges = Union{Nothing, UnitEffects}[], Union{Nothing, Vector{Any}}[]
@@ -325,8 +306,10 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
         push!(edges, read)
         push!(seen, typed.frame.linfo)
     end
-    stored = Union{Nothing, UnitEffects}[unit_record(unit.effects, world) for unit in units.stored]
+    kept = Union{Nothing, Tuple{UnitEffects, Summaries.UnitVerdict}}[unit_record(unit.effects, world) for unit in units.stored]
+    stored = Union{Nothing, UnitEffects}[isnothing(pair) ? nothing : first(pair) for pair in kept]
+    verdicts, engine_spots, fresh_verdicts, entries, hits = Summaries.cached_effects(package, units, Union{Nothing, Summaries.UnitVerdict}[isnothing(pair) ? nothing : last(pair) for pair in kept], journal, library)
     ordered = ordered_records(units, fresh, stored)
-    facts, spots = method_facts(package, units.incomplete, ordered)
-    return facts, spots, fresh, edges, ordered
+    facts, spots = method_facts(package, units.incomplete, ordered, verdicts)
+    return StageRun(facts, unique!([spots; engine_spots]), fresh, fresh_verdicts, edges, ordered, entries, hits)
 end

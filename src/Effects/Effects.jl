@@ -1,4 +1,7 @@
-"""`effects` stage by name trust (`effects.md`, Name trust): per-unit records and method facts."""
+"""
+`effects` stage (`effects.md`): engine verdicts (`Summaries`) give method writes, reads and result aliases; name tier
+gives per-unit records and other method facts.
+"""
 module Effects
 
 using Moshi.Match: @match
@@ -10,6 +13,8 @@ const CC = Core.Compiler
 # Engine reads Base function contracts of name tier (`IO_FUNCTIONS`).
 include("tables.jl")
 include("engine/Summaries.jl")
+using .Summaries: Summaries, stored_callee, loaded_callee, merge_callees, ordered_records
+
 include("ir.jl")
 include("records.jl")
 include("names.jl")

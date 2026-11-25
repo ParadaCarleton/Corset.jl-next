@@ -131,7 +131,7 @@ end
                 # `names` in running function misses bindings `include` adds later; newest world sees them.
                 return () -> Base.invokelatest() do
                     package = Corset.Package.package_facts([mod], files)
-                    return Corset.Effects.effects_facts(package, Corset.Inference.infer_package(package, files, nothing, nothing)[3], nothing)
+                    return Corset.Effects.effects_facts(package, Corset.Inference.infer_package(package, files, nothing, nothing)[3], nothing, Corset.Effects.Summaries.Library())
                 end
             end
             first(stages)()

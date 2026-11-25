@@ -37,8 +37,9 @@ Code lives in `src/Effects/`.
 
 - Name trust: a public function writes an argument only when its name ends in `!`, as Julia style guide asks.
 - A callee that breaks the convention is a bug in its own package. `bang-convention` reports it there.
-- Cost: a write through a non-`!` function that breaks the convention stays unseen in its callers.
-- Whole-program engine (points-to through Base) lives in `src/Effects/engine/` (`engine.md`). It does not feed facts yet.
+- Cost: name tier misses a write through a non-`!` function that breaks the convention. Engine verdict sees it.
+- Whole-program engine (points-to through Base) lives in `src/Effects/engine/` (`engine.md`).
+- Engine verdict gives method writes, reads and result aliases. Name tier gives other method facts.
 
 #### Units and IR
 

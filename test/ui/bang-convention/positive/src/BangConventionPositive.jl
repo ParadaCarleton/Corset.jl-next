@@ -58,4 +58,11 @@ scale!(point::Point, factor::Float64) = Point(point.x * factor)
 # Method of Base `!` function returns new value and writes nothing.
 Base.empty!(point::Point) = Point(0.0)
 
+# `!!` call on mutable operand writes it, so caller writes it too.
+mutable struct Tally
+    count::Int
+end
+tally!!(tally::Tally, x::Int) = (tally.count += x; tally)
+counted(tally::Tally) = tally!!(tally, 1)
+
 end

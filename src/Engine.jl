@@ -101,8 +101,8 @@ store_key(path::String, package::PackageFacts, files::AbstractVector{Facts.Synta
 """
 Inference and effects facts of `package` in analyzed `files`, each with its blind spots, then lifecycle facts:
 inference facts when `inference` holds, effects facts when `effects` holds too, lifecycle facts when `lifecycle` holds
-too; else none. Cache directory `cache` keeps method store of
-checked `path`; `nothing` turns it off.
+too; else none. Cache directory `cache` keeps method store of checked `path` and library summaries (`architecture.md`;
+`engine.md`, Solve and cache); `nothing` turns both off.
 Crash journal `directory` of relaunched process records each inference (`journaled`); `nothing` records none.
 """
 function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files::AbstractVector{Facts.SyntaxFile}, inference::Bool, effects::Bool, lifecycle::Bool, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}, Union{Nothing, EffectsFacts}, Vector{BlindSpot}, Union{Nothing, LifecycleFacts}}
@@ -113,39 +113,45 @@ function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files:
     store = isnothing(directory) ? cached : merge(something(cached, Inference.Store()), Inference.finished_store(Inference.records(directory)))
     # Effects run reads effects record of each stored unit, so entry without one infers again.
     effects && !isnothing(store) && filter!(pair -> !isempty(last(pair).effects), store)
-    found = isnothing(directory) ? run_stages(package, files, store, effects, lifecycle, nothing) : journaled(journal -> run_stages(package, files, store, effects, lifecycle, journal), directory)
-    facts, spots, stored, effects_found, effects_spots, lifecycle_found = found
+    library_directory = isnothing(cache) ? "" : Cache.library_directory(cache)
+    partition = isnothing(cache) ? "" : Cache.partition_key(string(VERSION), DEPOT_PATH)
+    library = Effects.Summaries.Library(isnothing(cache) ? Dict{String, Cache.Stamped}() : Cache.read_library(library_directory, partition))
+    stages(journal::Union{Nothing, Inference.Journal}) = run_stages(package, files, store, effects, lifecycle, library, journal)
+    facts, spots, stored, run, lifecycle_found = isnothing(directory) ? stages(nothing) : journaled(stages, directory)
     isnothing(cache) || Cache.store!(cache, method_entry(path), key, something(stored); root = nothing)
-    return facts, spots, effects_found, effects_spots, lifecycle_found
+    isnothing(cache) || isnothing(run) || Cache.keep_library!(library_directory, partition, run.library.entries, run.hits, Cache.LIBRARY_BYTES)
+    return isnothing(run) ? (facts, spots, nothing, BlindSpot[], lifecycle_found) : (facts, spots, run.facts, run.spots, lifecycle_found)
 end
 
 """
-Facts and blind spots of `inference` stage on `package` with method `store`, store this run used, and facts and blind
-spots of `effects` stage when `effects`, and `lifecycle` stage facts when `lifecycle` too. Crash `journal` covers effects stage and store entries too: index proof infers
-again, and entries run generators.
+Facts and blind spots of `inference` stage on `package` with method `store`, store this run used, `effects` stage run
+when `effects` (`Effects.StageRun`) with `library` cache, and `lifecycle` stage facts when `lifecycle` too. Crash
+`journal` covers effects stage and store entries too: index proof infers again, engine infers library instances, and
+entries run generators.
 """
-function run_stages(package::PackageFacts, files::AbstractVector{Facts.SyntaxFile}, store::Union{Nothing, Inference.Store}, effects::Bool, lifecycle::Bool, journal::Union{Nothing, Inference.Journal})::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Inference.Store}, Union{Nothing, EffectsFacts}, Vector{BlindSpot}, Union{Nothing, LifecycleFacts}}
+function run_stages(package::PackageFacts, files::AbstractVector{Facts.SyntaxFile}, store::Union{Nothing, Inference.Store}, effects::Bool, lifecycle::Bool, library::Effects.Summaries.Library, journal::Union{Nothing, Inference.Journal})::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Inference.Store}, Union{Nothing, Effects.StageRun}, Union{Nothing, LifecycleFacts}}
     facts, spots, units, used = Inference.infer_package(package, files, store, journal)
-    effects || return facts, spots, used, nothing, BlindSpot[], nothing
-    effects_found, effects_spots, records, edges, ordered = Effects.effects_facts(package, units, journal)
-    kept = isnothing(used) ? nothing : with_records(used, units, records, edges, files, package, journal)
-    return facts, spots, kept, effects_found, effects_spots, lifecycle ? Lifecycle.lifecycle_facts(package, ordered) : nothing
+    effects || return facts, spots, used, nothing, nothing
+    run = Effects.effects_facts(package, units, journal, library)
+    kept = isnothing(used) ? nothing : with_records(used, units, run, files, package, journal)
+    return facts, spots, kept, run, lifecycle ? Lifecycle.lifecycle_facts(package, run.ordered) : nothing
 end
 
 """
-Store `used` where each entry without effects record takes one: typed unit of `units` its record in `records`, other
-unit (no code) `nothing`. Filled entry also reads methods behind compiler `edges` of its effects stage; entry drops
-when they are unknown (`Inference.with_edges`). Generators run under crash `journal`. Stored entries keep theirs.
+Store `used` where each entry without effects record takes one: typed unit of `units` its name record and engine
+verdict in effects `run`, other unit (no code) `nothing`. Filled entry also reads methods behind compiler edges of its
+effects stage; entry drops when they are unknown (`Inference.with_edges`). Generators run under crash `journal`.
+Stored entries keep theirs.
 """
-function with_records(used::Inference.Store, units::Inference.Units, records::AbstractVector{Union{Nothing, Effects.UnitEffects}}, edges::AbstractVector{<:Union{Nothing, AbstractVector{Any}}}, files::AbstractVector{Facts.SyntaxFile}, package::PackageFacts, journal::Union{Nothing, Inference.Journal})::Inference.Store
+function with_records(used::Inference.Store, units::Inference.Units, run::Effects.StageRun, files::AbstractVector{Facts.SyntaxFile}, package::PackageFacts, journal::Union{Nothing, Inference.Journal})::Inference.Store
     bytes, read = Dict{String, Vector{UInt8}}(), Dict{String, Union{Nothing, Vector{Any}}}()
-    for (typed, record, unit_edges) in zip(units.typed, records, edges)
+    for (typed, record, verdict, unit_edges) in zip(units.typed, run.fresh, run.verdicts, run.edges)
         key = Inference.entry_key(typed.site.method, typed.signature)
         # Unit that repeats method instance of earlier unit has no record of its own.
         isnothing(record) && haskey(bytes, key) && continue
-        bytes[key], read[key] = Effects.record_bytes(record), unit_edges
+        bytes[key], read[key] = Effects.record_bytes(record, verdict), unit_edges
     end
-    none, by_path, modules = Effects.record_bytes(nothing), Dict(file.path => file for file in files), Set(package.modules)
+    none, by_path, modules = Effects.record_bytes(nothing, nothing), Dict(file.path => file for file in files), Set(package.modules)
     filled(key::String, entry::Inference.Entry)::Union{Nothing, Inference.Entry} = Inference.with_edges(Inference.Entry(entry.file, entry.methods, entry.staged, entry.inferred, get(bytes, key, none)), get(read, key, Any[]), by_path, modules, journal)
     store = Inference.Store()
     for (key, entry) in used
@@ -201,7 +207,7 @@ end
 
 """
 Facts and analysis of real `path` with discovered `sources` under `settings`. Opt-outs apply before levels. Cache
-directory `cache` keeps method store unless `nothing`; crash `journal` directory as in `stage_facts`.
+directory `cache` keeps method store and library summaries unless `nothing`; crash `journal` directory as in `stage_facts`.
 """
 function analyze(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, journal::Union{Nothing, String})::Tuple{FactSet, Analysis}
     loaded = load_package(sources.project, settings, sources.files)

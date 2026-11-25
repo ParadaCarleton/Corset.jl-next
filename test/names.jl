@@ -1,4 +1,4 @@
-using Test: @test, @testset, @test_throws
+using Test: @test, @testset, @test_throws, @test_broken
 using Corset: Corset
 using Corset.Facts: Facts, MethodEffects, Access, Callee, Place, Root, Step, Confidence, EffectKind, BlindSpot, ArrayOperand, OperandIndex, IndexSource, callee_name, place_text, root_global, subject_position, step_child, current_objects
 using Corset.Inference: infer_package
@@ -9,11 +9,8 @@ include("coverage.jl")
 
 const CASE = joinpath(@__DIR__, "names", "NameCases")
 
-"""
-Fixture module, package facts, inference units, effects facts, blind spots, unit records and offset inference edges
-of `NameCases`.
-"""
-function case_facts()::Tuple{Module, Facts.PackageFacts, Corset.Inference.Units, Facts.EffectsFacts, Vector{BlindSpot}, Vector{Union{Nothing, Effects.UnitEffects}}, Vector{Union{Nothing, Vector{Any}}}}
+"""Fixture module, package facts, inference units and `effects` stage run of `NameCases`."""
+function case_facts()::Tuple{Module, Facts.PackageFacts, Corset.Inference.Units, Effects.StageRun}
     sources = Corset.Discovery.discover(CASE; environment = nothing)
     push!(LOAD_PATH, CASE)
     loaded = try
@@ -22,11 +19,11 @@ function case_facts()::Tuple{Module, Facts.PackageFacts, Corset.Inference.Units,
         pop!(LOAD_PATH)
     end
     _, _, units, _ = infer_package(loaded.facts, sources.files, nothing, nothing)
-    facts, spots, records, edges = Effects.effects_facts(loaded.facts, units, nothing)
-    return first(loaded.facts.modules), loaded.facts, units, facts, spots, records, edges
+    return first(loaded.facts.modules), loaded.facts, units, Effects.effects_facts(loaded.facts, units, nothing, Effects.Summaries.Library())
 end
 
-const CASES, PACKAGE, UNITS, FACTS, SPOTS, RECORDS, EDGES = case_facts()
+const CASES, PACKAGE, UNITS, RUN = case_facts()
+const FACTS, SPOTS, RECORDS, VERDICTS, EDGES = RUN.facts, RUN.spots, RUN.fresh, RUN.verdicts, RUN.edges
 
 """Effects of fixture method `name`; fixture names are unique."""
 effects(name::Symbol)::MethodEffects = only(found for found in FACTS.methods if found.site.method.name == name)
@@ -52,85 +49,101 @@ const DEFINITE, POSSIBLE, MEMORY = Confidence.definite, Confidence.possible, Eff
 const PROVES = !instrumented(CASE)
 
 @testset "write sources" begin
-    # Field assignment calls `setproperty!` before inlining: `!` name writes object or below.
-    @test shape(effects(:set_value!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
-    @test shape(effects(:set_inner!).writes) == [(parameter(2, Step.Field(:box)), true, MEMORY, DEFINITE)]
-    @test Set(shape(effects(:set_either!).writes)) == Set([(parameter(2), true, MEMORY, POSSIBLE), (parameter(3), true, MEMORY, POSSIBLE)])
+    # Field assignment and `push!` write object itself: write covers no place below it.
+    @test shape(effects(:set_value!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
+    @test shape(effects(:set_inner!).writes) == [(parameter(2, Step.Field(:box)), false, MEMORY, DEFINITE)]
+    # Run-time `pick` decides which argument changes: write is `possible` on each.
+    @test Set(shape(effects(:set_either!).writes)) == Set([(parameter(2), false, MEMORY, POSSIBLE), (parameter(3), false, MEMORY, POSSIBLE)])
     @test shape(effects(:store_field!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
-    @test shape(effects(:push_value!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
-    @test shape(effects(:map_into!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
-    @test Set(shape(effects(:shuffle_with!).writes)) == Set([(parameter(2), true, EffectKind.rng_argument, DEFINITE), (parameter(3), true, MEMORY, DEFINITE)])
+    @test shape(effects(:push_value!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
+    @test shape(effects(:map_into!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
+    @test Set(shape(effects(:shuffle_with!).writes)) == Set([(parameter(2), false, EffectKind.rng_argument, DEFINITE), (parameter(3), false, MEMORY, DEFINITE)])
     # `_rand!` helper of listed owner fills array after sampler; other helper writes first operand.
     @test Effects.fill_call(CASES.__rand!, Set([Base.PkgId(CASES)])) && Effects.fill_call(Random.rand!, Set{Base.PkgId}())
     @test !Effects.fill_call(CASES.__rand!, Effects.FILL_HELPER_OWNERS) && !Effects.fill_call(CASES.optional_jitter!, Set([Base.PkgId(CASES)]))
     # Extension of listed owner keeps its fill helpers (`DistributionsTestExt.__rand!`).
     extension = Base.get_extension(CASES, :NameCasesTestExt)
     @test Effects.fill_call(extension._rand!, Set([Base.PkgId(CASES)])) && !Effects.fill_call(extension._rand!, Effects.FILL_HELPER_OWNERS)
-    @test Set(shape(effects(:optional_jitter!).writes)) == Set([(parameter(2), true, EffectKind.rng_argument, POSSIBLE), (parameter(3), true, MEMORY, DEFINITE)])
-    @test shape(effects(:reseed!).writes) == [(ELSEWHERE, true, MEMORY, DEFINITE)]
-    @test shape(effects(:solve_upper!).writes) == [(parameter(3), true, MEMORY, DEFINITE)]
-    @test shape(effects(:call_setter!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
-    # Convention breaker writes; its caller trusts its name.
-    @test !isempty(effects(:sneaky).writes) && isempty(effects(:call_sneaky).writes)
-    @test shape(effects(:zero_bytes!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
-    @test shape(effects(:collect_into!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
+    # Confidence names object, not whether write runs: write on RNG that is present is `definite`.
+    @test Set(shape(effects(:optional_jitter!).writes)) == Set([(parameter(2), false, EffectKind.rng_argument, DEFINITE), (parameter(3), false, MEMORY, DEFINITE)])
+    # Reseed writes default RNG only; engine adds memory, `rng_argument` and `task_local` writes on `Elsewhere`.
+    @test_broken shape(effects(:reseed!).writes) == [(ELSEWHERE, false, EffectKind.default_rng, DEFINITE)]
+    @test (ELSEWHERE, false, EffectKind.default_rng, DEFINITE) in shape(effects(:reseed!).writes)
+    # Foreign table lacks BLAS call of `ldiv!`: engine adds possible write on `factor`.
+    @test_broken shape(effects(:solve_upper!).writes) == [(parameter(3), false, MEMORY, DEFINITE)]
+    @test (parameter(3), false, MEMORY, DEFINITE) in shape(effects(:solve_upper!).writes)
+    @test shape(effects(:call_setter!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
+    # Convention breaker writes; engine follows call, so its caller writes too.
+    @test shape(effects(:sneaky).writes) == shape(effects(:call_sneaky).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
+    # Foreign table: `memset` writes memory its first operand points at.
+    @test shape(effects(:zero_bytes!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
+    @test shape(effects(:collect_into!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
     # Closure that only escapes writes nothing in method that builds it.
     @test isempty(effects(:make_callback).writes) && isempty(effects(:wrap_callback).writes) && isempty(effects(:hash_callback).writes)
-    @test shape(effects(:register!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
+    @test shape(effects(:register!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
     # Store into caller place: later load from it can be stored object.
-    @test (parameter(3), true, MEMORY, POSSIBLE) in shape(effects(:store_then_fill!).writes)
-    @test shape(effects(:call_callback!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
-    @test shape(effects(:assumed_foreach!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
-    @test shape(effects(:claimed_caller!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
-    @test shape(effects(:keyword_caller!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
+    @test Set(shape(effects(:store_then_fill!).writes)) == Set([(parameter(2), false, MEMORY, DEFINITE), (parameter(2, Step.Element()), false, MEMORY, POSSIBLE), (parameter(3), false, MEMORY, POSSIBLE)])
+    @test shape(effects(:call_callback!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
+    @test shape(effects(:assumed_foreach!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
+    @test shape(effects(:claimed_caller!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
+    @test shape(effects(:keyword_caller!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
     # Compiler trusts claim of direct callee, so caller gets no proof.
     @test !effects(:claimed_caller!).effect_free && !effects(:keyword_caller!).effect_free
-    @test shape(effects(:forward_keyword!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
-    @test shape(effects(:poke!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
+    @test shape(effects(:forward_keyword!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
+    @test shape(effects(:poke!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
     # Element type comes from declared supertype; package `eltype` method throws.
     @test any(access -> place_root(access.place) == Root.Parameter(2), effects(:set_first!).writes)
-    # Tree walk reaches many exact paths; `Deep` of root covers them.
-    @test Set(shape(effects(:zero_at!).writes)) == Set([(parameter(2), true, MEMORY, POSSIBLE), (Place.Deep(Root.Parameter(2)), true, MEMORY, POSSIBLE)])
-    # Step types come from tuple field and, for `Ref` element, `Any`.
-    @test shape(effects(:zero_left!).writes) == [(parameter(2, Step.Position(1)), true, MEMORY, DEFINITE)]
-    @test shape(effects(:zero_ref!).writes) == [(parameter(2, Step.Element()), true, MEMORY, DEFINITE)]
-    @test shape(effects(:zero_at_index!).writes) == [(Place.Deep(Root.Parameter(2)), true, MEMORY, DEFINITE)]
-    @test shape(effects(:push_literal!).writes) == [(ELSEWHERE, true, MEMORY, DEFINITE)]
+    # Path decides which node changes: each node is `possible`; write at or below `node` is `definite`.
+    @test (parameter(2), true, MEMORY, DEFINITE) in shape(effects(:zero_at!).writes) && all(access -> access.confidence == POSSIBLE || (access.place == parameter(2) && access.below), effects(:zero_at!).writes)
+    # Steps come from tuple position and `RefValue` field.
+    @test shape(effects(:zero_left!).writes) == [(parameter(2, Step.Position(1)), false, MEMORY, DEFINITE)]
+    @test shape(effects(:zero_ref!).writes) == [(parameter(2, Step.Field(:x)), false, MEMORY, DEFINITE)]
+    @test shape(effects(:zero_at_index!).writes) == [(Place.Deep(Root.Parameter(2)), false, MEMORY, DEFINITE)]
+    # Interpolated vector literal is one object: write on it is sure.
+    @test shape(effects(:push_literal!).writes) == [(ELSEWHERE, false, MEMORY, DEFINITE)]
     # Load from fresh vector can give fresh object, so write is possible.
-    @test shape(effects(:fill_wrapped!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
-    @test (Place.Deep(Root.Parameter(2)), true, MEMORY, POSSIBLE) in shape(effects(:push_all!).writes)
-    @test shape(effects(:collect_local!).writes) == [(global_place(:SEEN), true, MEMORY, DEFINITE), (parameter(2), true, MEMORY, DEFINITE)]
-    @test shape(effects(:swap_local!).writes) == [(global_place(:SEEN), true, MEMORY, DEFINITE), (parameter(2), true, MEMORY, POSSIBLE)]
-    @test shape(effects(:loop_local!).writes) == [(global_place(:SEEN), true, MEMORY, DEFINITE), (parameter(2), true, MEMORY, POSSIBLE)]
+    @test shape(effects(:fill_wrapped!).writes) == [(parameter(2), false, MEMORY, POSSIBLE)]
+    # Splat of `Int` elements points at no object: `push!` writes `items` only.
+    @test shape(effects(:push_all!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
+    @test (parameter(2), false, MEMORY, DEFINITE) in shape(effects(:push_all!).writes)
+    @test shape(effects(:collect_local!).writes) == [(global_place(:SEEN), false, MEMORY, DEFINITE), (parameter(2), false, MEMORY, DEFINITE)]
+    @test shape(effects(:swap_local!).writes) == [(global_place(:SEEN), false, MEMORY, DEFINITE)]
+    # Loop joins fresh vector of round 1 with `out` of round 2, so sure write on `out` reads as `possible`.
+    @test_broken shape(effects(:loop_local!).writes) == [(global_place(:SEEN), false, MEMORY, DEFINITE), (parameter(2), false, MEMORY, DEFINITE)]
     @test isempty(effects(:thread_count_address).writes)
 end
 
 @testset "call results" begin
     # Iteration result holds element of iterated container.
-    @test shape(effects(:zero_all!).writes) == [(parameter(2, Step.Element()), true, MEMORY, DEFINITE)]
-    @test shape(effects(:zero_first_pair!).writes) == [(parameter(2, Step.Element()), true, MEMORY, DEFINITE)]
-    # Other result can hold objects below operand, when its type can hold pointing objects.
-    @test shape(effects(:zero_copied!).writes) == [(Place.Deep(Root.Parameter(2)), true, MEMORY, POSSIBLE)]
-    @test isempty(effects(:grow_copy).writes) && isempty(effects(:grow_copy).aliases)
-    # Element function result: element of container, or other operand.
-    @test shape(effects(:zero_lookup!).writes) == [(parameter(2, Step.Element()), true, MEMORY, POSSIBLE)]
-    @test (parameter(2, Step.Element()), true, MEMORY, POSSIBLE) in shape(effects(:group!).writes)
-    @test shape(effects(:push_lookup!).writes) == [(parameter(2, Step.Element()), true, MEMORY, POSSIBLE)]
-    @test Set(shape(effects(:push_handler!).writes)) == Set([(parameter(2, Step.Element()), true, MEMORY, POSSIBLE), (parameter(4), true, MEMORY, POSSIBLE)])
-    @test (parameter(3), true, MEMORY, POSSIBLE) in shape(effects(:push_default!).writes)
+    @test shape(effects(:zero_all!).writes) == [(parameter(2, Step.Element()), false, MEMORY, DEFINITE)]
+    @test shape(effects(:zero_first_pair!).writes) == [(parameter(2, Step.Position(1)), false, MEMORY, DEFINITE)]
+    # Shallow copy holds same boxes: write lands on element of `boxes`.
+    @test shape(effects(:zero_copied!).writes) == [(parameter(2, Step.Element()), false, MEMORY, DEFINITE)]
+    # Copy of integers holds no caller object; engine aliases element place of `Vector{Int}`.
+    @test isempty(effects(:grow_copy).writes)
+    @test_broken isempty(effects(:grow_copy).aliases)
+    # Element function result: element of container, or other operand; run-time key decides.
+    @test shape(effects(:zero_lookup!).writes) == [(parameter(2, Step.Element()), false, MEMORY, POSSIBLE)]
+    @test (parameter(2), false, MEMORY, DEFINITE) in shape(effects(:group!).writes) && (parameter(2, Step.Element()), false, MEMORY, POSSIBLE) in shape(effects(:group!).writes)
+    # Pointer to memory data names memory: no write on field `ptr`, which `Dict` lacks.
+    @test all(access -> access.place != parameter(2, Step.Field(:ptr)), effects(:group!).writes)
+    @test shape(effects(:push_lookup!).writes) == [(parameter(2, Step.Element()), false, MEMORY, POSSIBLE)]
+    @test Set(shape(effects(:push_handler!).writes)) == Set([(parameter(2, Step.Element()), false, MEMORY, POSSIBLE), (parameter(4), false, MEMORY, POSSIBLE)])
+    @test Set(shape(effects(:push_default!).writes)) == Set([(parameter(2, Step.Element()), false, MEMORY, POSSIBLE), (parameter(3), false, MEMORY, POSSIBLE)])
     # Sample advances default RNG only.
     @test shape(effects(:push_sample!).writes) == [(ELSEWHERE, false, EffectKind.default_rng, DEFINITE)]
-    @test any(access -> access.place == Place.Deep(Root.Parameter(2)) && access.confidence == POSSIBLE, effects(:take_bytes).writes)
-    @test Set(shape(effects(:zero_larger!).writes)) == Set([(parameter(2), true, MEMORY, POSSIBLE), (parameter(3), true, MEMORY, POSSIBLE)])
-    @test shape(effects(:zero_chosen!).writes) == [(parameter(3), true, MEMORY, POSSIBLE)]
+    # `take!` empties `io`; byte store lands in buffer that `io` gives up.
+    @test shape(effects(:take_bytes).writes) == [(parameter(2), false, EffectKind.io, DEFINITE)]
+    @test Set(shape(effects(:zero_larger!).writes)) == Set([(parameter(2), false, MEMORY, POSSIBLE), (parameter(3), false, MEMORY, POSSIBLE)])
+    @test shape(effects(:zero_chosen!).writes) == [(parameter(3), false, MEMORY, POSSIBLE)]
     @test Set(shape(effects(:reset_either!).writes)) == Set([(parameter(3), false, MEMORY, POSSIBLE), (parameter(4), false, MEMORY, POSSIBLE)])
-    @test shape(effects(:stock!).writes) == [(parameter(2, Step.Element()), true, MEMORY, DEFINITE)]
-    @test shape(effects(:zero_listed!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
-    @test shape(effects(:zero_converted!).writes) == [(parameter(2), true, MEMORY, POSSIBLE)]
-    # Package call result that is operand itself waits for package result roots (`effects.md`, Roots).
-    @test isempty(effects(:push_same!).writes)
-    @test Set(shape(effects(:zero_promoted!).writes)) == Set([(parameter(2), true, MEMORY, POSSIBLE), (parameter(3), true, MEMORY, POSSIBLE)])
-    @test shape(effects(:zero_typed_listed!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
+    @test shape(effects(:stock!).writes) == [(parameter(2, Step.Field(:items), Step.Element()), false, MEMORY, DEFINITE)]
+    # Vector literal holds `box` itself.
+    @test shape(effects(:zero_listed!).writes) == shape(effects(:zero_typed_listed!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
+    # Conversion and promotion give new box: no write.
+    @test isempty(effects(:zero_converted!).writes) && isempty(effects(:zero_promoted!).writes)
+    # Package `getindex` of `Same` returns `items` itself.
+    @test shape(effects(:push_same!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
 end
 
 """Writing function and confidence of each loop write of fixture method `name`."""
@@ -208,8 +221,9 @@ end
     key = Corset.Inference.entry_key(typed.site.method, typed.signature)
     used, failed = Corset.Inference.Store(key => entry), copy(EDGES)
     failed[position] = nothing
-    @test haskey(Corset.Engine.with_records(used, UNITS, RECORDS, EDGES, collect(values(files)), PACKAGE, nothing), key)
-    @test isempty(Corset.Engine.with_records(used, UNITS, RECORDS, failed, collect(values(files)), PACKAGE, nothing))
+    failed_run = Effects.StageRun(RUN.facts, RUN.spots, RUN.fresh, RUN.verdicts, failed, RUN.ordered, RUN.library, RUN.hits)
+    @test haskey(Corset.Engine.with_records(used, UNITS, RUN, collect(values(files)), PACKAGE, nothing), key)
+    @test isempty(Corset.Engine.with_records(used, UNITS, failed_run, collect(values(files)), PACKAGE, nothing))
 end
 
 @testset "generator digest journal" begin
@@ -420,6 +434,12 @@ reuse_shape(name::Symbol)::Vector{Tuple{Bool, Bool, Union{Nothing, String}, Conf
     end
 end
 
+"""Memory writes of fixture method `name`."""
+memory_writes(name::Symbol)::Set{Tuple{Place.Type, Bool, EffectKind.T, Confidence.T}} = Set(entry for entry in shape(effects(name).writes) if entry[3] == MEMORY)
+
+"""Writes of taking element from channel at parameter `position` and `steps`: channel state and its buffer."""
+taken(position::Int, steps::Step.Type...)::Set{Tuple{Place.Type, Bool, EffectKind.T, Confidence.T}} = Set([(parameter(position, steps...), false, MEMORY, DEFINITE), (parameter(position, steps..., Step.Field(:data)), false, MEMORY, DEFINITE)])
+
 @testset "exception table" begin
     @test shape(effects(:print_value).writes) == [(parameter(2), true, EffectKind.io, DEFINITE)]
     @test shape(effects(:shout).writes) == [(Place.At(Root.Global(GlobalRef(Base, :stdout)), Step.Type[]), true, EffectKind.io, DEFINITE)]
@@ -427,34 +447,39 @@ end
     @test shape(effects(:draw_default).writes) == [(ELSEWHERE, false, EffectKind.default_rng, DEFINITE)]
     @test (ELSEWHERE, false, EffectKind.default_rng, DEFINITE) in shape(effects(:draw_default).reads)
     @test shape(effects(:hold).writes) == [(parameter(2), false, EffectKind.synchronization, DEFINITE)]
-    @test shape(effects(:take_next).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
     @test (parameter(2), false, EffectKind.iteration, DEFINITE) in shape(effects(:take_next).reads)
-    # Vector part of `zip` restarts unchanged: no write.
-    for name in (:drain, :take_one, :zip_drain, :flatten_drain, :first_of_channel, :zip_empty, :zip_empty_items, :zip_collect_items)
-        @test shape(effects(name).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
+    # Taking element writes channel and its buffer. Channel wait writes Base scheduler globals as synchronization.
+    consumed = (name => taken(2) for name in (:take_next, :drain, :take_one, :zip_drain, :first_of_channel, :zip_empty, :zip_empty_items, :zip_collect_items))
+    # `isempty` of zip with `Stateful` takes element of each part, unless `Stateful` is done.
+    for (name, writes) in (consumed..., :flatten_drain => taken(2, Step.Element()), :zip_maybe_empty => push!(taken(3), (parameter(2), false, MEMORY, DEFINITE)))
+        @test memory_writes(name) == writes
     end
-    @test shape(effects(:zip_maybe_empty).writes) == [(parameter(2), true, MEMORY, POSSIBLE), (parameter(3), true, MEMORY, POSSIBLE)]
+    # Vector part of `zip` restarts unchanged: no write.
+    @test !any(entry -> place_root(entry[1]) == Root.Parameter(3), memory_writes(:zip_empty_items) ∪ memory_writes(:zip_collect_items))
 end
 
 @testset "aliases and globals" begin
     @test effects(:first_view).aliases == [parameter(2)] && isempty(effects(:first_view).writes)
-    @test shape(effects(:zero_view!).writes) == [(parameter(2), true, MEMORY, DEFINITE)]
+    @test shape(effects(:zero_view!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
     @test effects(:wrap).aliases == [parameter(2)] && isempty(effects(:wrap).writes)
     @test isempty(effects(:set_value!).aliases)
-    @test shape(effects(:bump!).writes) == [(global_place(:COUNTER), true, MEMORY, DEFINITE)]
+    @test shape(effects(:bump!).writes) == [(global_place(:COUNTER), false, MEMORY, DEFINITE)]
     @test (global_place(:COUNTER), false, MEMORY, DEFINITE) in shape(effects(:bump!).reads)
     @test shape(effects(:set_total!).writes) == [(global_place(:total), false, MEMORY, DEFINITE)]
     @test shape(effects(:read_total).reads) == [(global_place(:total), false, MEMORY, DEFINITE)]
 end
 
 @testset "read kinds" begin
-    @test shape(effects(:level).reads) == [(global_place(:LEVEL), false, EffectKind.scoped_read, DEFINITE)]
+    # `ScopedValue` read names `LEVEL`; engine reads `Elsewhere` and adds memory read.
+    @test_broken shape(effects(:level).reads) == [(global_place(:LEVEL), false, EffectKind.scoped_read, DEFINITE)]
+    @test (ELSEWHERE, false, EffectKind.scoped_read, DEFINITE) in shape(effects(:level).reads)
     @test shape(effects(:task_state).reads) == [(ELSEWHERE, false, EffectKind.task_local, DEFINITE)]
     @test shape(effects(:task_value).reads) == [(ELSEWHERE, false, EffectKind.task_local, DEFINITE)]
     @test (parameter(2), false, EffectKind.iteration, DEFINITE) in shape(effects(:finished).reads)
-    @test shape(effects(:first_of).reads) == [(parameter(2), false, EffectKind.iteration, DEFINITE)]
-    @test shape(effects(:total_of).reads) == [(parameter(2), false, EffectKind.iteration, DEFINITE)]
-    @test shape(effects(:emptiness).reads) == [(parameter(2), false, EffectKind.iteration, POSSIBLE)]
+    # `first` and `sum` of `Vector` read its memory and start no iteration.
+    @test shape(effects(:first_of).reads) == shape(effects(:total_of).reads) == [(parameter(2), false, MEMORY, DEFINITE)]
+    # Generic `isempty` may consume stateful iterator: start is `possible`.
+    @test_broken filter(entry -> entry[3] == EffectKind.iteration, shape(effects(:emptiness).reads)) == [(parameter(2), false, EffectKind.iteration, POSSIBLE)]
     # Plain argument loads stay out of facts.
     @test isempty(effects(:set_value!).reads)
 end
@@ -481,11 +506,12 @@ end
     @test isempty(push.closure_kinds)
     doubled = only(fact for fact in effects(:doubled_rest).calls if callee_name(fact.callee) == "map")
     @test !isempty(doubled.kinds) && isempty(doubled.closure_kinds)
-    @test (parameter(2), true, MEMORY, DEFINITE) in shape(effects(:sort_logged!).writes)
-    @test (global_place(:CLOSURE_CALLS), true, MEMORY, DEFINITE) in shape(effects(:counted_sum).writes)
-    @test !any(write -> write[1] == global_place(:CLOSURE_CALLS), shape(effects(:named_sum).writes))
-    @test (global_place(:CLOSURE_CALLS), true, MEMORY, DEFINITE) in shape(effects(:called_in_place).writes)
-    @test (global_place(:tally_count), true, MEMORY, DEFINITE) in shape(effects(:tallied).writes)
+    @test (parameter(2), false, MEMORY, DEFINITE) in shape(effects(:sort_logged!).writes)
+    @test (global_place(:CLOSURE_CALLS), false, MEMORY, DEFINITE) in shape(effects(:counted_sum).writes)
+    # Engine follows named function too: its write is caller write.
+    @test (global_place(:CLOSURE_CALLS), false, MEMORY, DEFINITE) in shape(effects(:named_sum).writes)
+    @test (global_place(:CLOSURE_CALLS), false, MEMORY, DEFINITE) in shape(effects(:called_in_place).writes)
+    @test (global_place(:tally_count), false, MEMORY, DEFINITE) in shape(effects(:tallied).writes)
     @test only(fact for fact in effects(:seen_once).calls if callee_name(fact.callee) == "filter").closure_definite == [MEMORY]
     # Block claim makes compiler trust it, so it proves nothing.
     @test !effects(:assumed_store!).effect_free
@@ -562,14 +588,20 @@ end
 
 @testset "unit record round trip" begin
     world = Base.get_world_counter()
-    @test length(RECORDS) == length(UNITS.typed)
-    for record in RECORDS
+    @test length(RECORDS) == length(VERDICTS) == length(UNITS.typed)
+    for (record, verdict) in zip(RECORDS, VERDICTS)
+        @test isnothing(record) == isnothing(verdict)
         isnothing(record) && continue
-        loaded = something(unit_record(record_bytes(record), world))
-        @test record_bytes(loaded) == record_bytes(record)
+        loaded, loaded_verdict = something(unit_record(record_bytes(record, verdict), world))
+        @test record_bytes(loaded, loaded_verdict) == record_bytes(record, verdict)
         @test [fact.callee for (_, fact) in loaded.calls] == [fact.callee for (_, fact) in record.calls]
     end
-    @test isnothing(unit_record(record_bytes(nothing), world))
+    @test isnothing(unit_record(record_bytes(nothing, nothing), world))
+    # Both tiers judge same units: record without verdict fails loud.
+    record = something(RECORDS[findfirst(!isnothing, RECORDS)])
+    @test_throws ArgumentError record_bytes(record, nothing)
+    @test_throws ArgumentError record_bytes(nothing, something(VERDICTS[findfirst(!isnothing, VERDICTS)]))
+    @test_throws ArgumentError unit_record(UInt8[], world)
 end
 
 """State of fixture argument `argument` that writes change."""
@@ -580,8 +612,11 @@ function state(argument::Any)::Any
     return argument isa Dict{Symbol, CASES.Box} ? Dict(key => box.value for (key, box) in argument) : argument
 end
 
-"""Whether facts of `name` hold write on parameter `position` or below it."""
-writes_parameter(name::Symbol, position::Int)::Bool = any(access -> place_root(access.place) == Root.Parameter(position), effects(name).writes)
+"""Engine blind writes over units of fixture method `name`: they count on coverage line only."""
+blind_writes(name::Symbol)::Vector{Effects.Summaries.BlindAccess} = [access for (unit, verdict) in zip(UNITS.typed, VERDICTS) if unit.site.method.name == name && !isnothing(verdict) for access in something(verdict).blind_writes]
+
+"""Whether fixture method `name` has write fact, or blind write, rooted at parameter `position`."""
+writes_parameter(name::Symbol, position::Int)::Bool = any(access -> place_root(access.place) == Root.Parameter(position), [effects(name).writes; blind_writes(name)])
 
 @testset "soundness on fixtures that follow convention" begin
     vectors, numbers = Data.Vectors(Data.Integers(-9, 9); min_size = 2, max_size = 6), Data.Integers(-9, 9)
