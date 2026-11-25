@@ -1,4 +1,4 @@
-# Speed: syntax budget on legacy source, and cost linear in function size.
+# Speed: syntax budget on legacy source, and cost linear in function size and in chain of locals.
 
 using Corset: Corset
 using Corset.Facts: FactSet, Role
@@ -66,9 +66,22 @@ end
             mod = Module(:Sites)
             Base.include(mod, path)
             files = [Corset.Syntax.parse_file(path, read(path, String), Role.package)]
-            Corset.Package.method_sites([mod], files)
-            @test (@allocated Corset.Package.method_sites([mod], files)) / 300 < 16_000
+            methods = Corset.Package.module_methods([mod])
+            Corset.Package.method_sites(methods, files)
+            @test (@allocated Corset.Package.method_sites(methods, files)) / 300 < 16_000
         end
+    end
+    @testset "argument uses linear in chain of locals" begin
+        # Each local reads local before it twice: constant lookup without index doubles per local, 256× from 8 to 16.
+        uses = map((8, 16)) do count
+            chain = join(("layer$index = Union{layer$(index - 1), layer$(index - 1)}" for index in 1:count), "\n")
+            mod = Module(:Chain)
+            Base.include_string(mod, "function chained(items::Vector{Int})\nlayer0 = Int\n$chain\nreturn Vector{layer$count}(items)\nend\n")
+            bodies = Corset.Package.lowered_bodies(Corset.Package.module_methods([mod]))
+            return () -> Corset.Package.argument_uses(bodies, Set([mod]))
+        end
+        foreach(run -> run(), uses)
+        @test (@allocated last(uses)()) / (@allocated first(uses)()) < 8
     end
     @testset "package rules compile independent of struct count" begin
         RULES = [Symbol("missing-interface"), Symbol("shadowed-base")]
