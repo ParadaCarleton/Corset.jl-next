@@ -73,4 +73,26 @@ function jittered(points::Vector{Float64})
     return [jitter(point) for point in points]
 end
 
+# Sibling may draw default RNG through dispatch: it reports, and convenience method keeps caller RNG choice.
+abstract type Shape end
+struct Dot <: Shape end
+struct Blob <: Shape end
+jiggle(::Dot) = 0.0
+jiggle(::Blob) = randn()
+jiggle(rng::AbstractRNG, ::Blob) = randn(rng)
+function spread(rng::AbstractRNG, shapes::Vector{Shape})
+    total = rand(rng)
+    for shape in shapes
+        total += jiggle(shape)
+    end
+    return total
+end
+spread(shapes::Vector{Shape}) = rand() * length(shapes)
+
+# Untyped RNG keyword counts for none: declare `rng::AbstractRNG`.
+untyped_draw(n::Int; rng = Random.default_rng()) = rand(rng, n)
+
+# Keyword body never reads RNG keyword: caller RNG cannot reach draw.
+unread_keyword(n::Int; rng::AbstractRNG = Random.default_rng()) = rand(n)
+
 end

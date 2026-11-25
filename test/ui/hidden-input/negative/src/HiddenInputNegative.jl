@@ -61,5 +61,13 @@ tail_draw(x::Float64, rng::AbstractRNG = Random.default_rng()) = x + randn(rng)
 
 # Keyword RNG: caller can pass one.
 keyword_draw(n::Int; rng::AbstractRNG = Random.default_rng()) = rand(rng, n)
+scaled_draw(n::Int; scale::Float64 = 1.0, rng::AbstractRNG = Random.default_rng()) = scale * rand(rng, n)
+
+# Sibling draws through open call on its RNG argument.
+struct Mix
+    means::Vector{Float64}
+end
+draw(rng::AbstractRNG, mix::Mix) = mix.means[1] + randn(rng)
+draw(mix::Mix) = mix.means[1] + randn()
 
 end

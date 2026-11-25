@@ -6,8 +6,8 @@ Reports package method that reads input no argument passes:
 - default RNG: `rand()`, `randn()` or `shuffle!(v)` without RNG argument;
 - object in package global that other package method writes: `const SCALE = Ref(1.0)` that `set_scale!` sets.
 Default RNG read passes when caller controls RNG: package method of same function takes RNG argument beside same
-arguments (`f(rng, x)` beside convenience method `f(x) = f(default_rng(), x)`). Method that takes RNG and draws
-without it gets finding.
+arguments (`f(rng, x)` beside convenience method `f(x) = f(default_rng(), x)`), or method takes RNG keyword
+(`f(x; rng::AbstractRNG = default_rng())`). Method that takes RNG and draws without it gets finding.
 Read through call to package method that reads same input passes: callee gets finding.
 Method that writes global it reads passes: `bang-convention` covers it.
 
@@ -26,6 +26,9 @@ jitter(x::Float64) = jitter(Random.default_rng(), x)
 ```
 
 ## Limitations
+RNG keyword that keyword body reads passes, even when body draws default RNG too: facts leave out generated methods.
+Untyped RNG argument or keyword counts for none: declare `rng::AbstractRNG`.
+Sibling that only seeds its RNG argument counts as drawing from it: facts give one kind to every RNG access.
 Global no package method writes passes: lookup table stays constant. Write in `__init__` sets state once, so it passes too.
 Cache write passes: cache read is invisible to caller.
 Task-local storage and `ScopedValue` reads pass: logging reads both for every message.
@@ -153,20 +156,40 @@ function writer(written::Writes, access::Access)::Match
 end
 
 """
-Whether method with `accesses` draws from its RNG argument at `position` and never from default RNG it chose itself.
-Default RNG at argument is RNG caller passed there.
+Whether method with `accesses` draws from its RNG argument at `position` and never surely from default RNG it chose
+itself. Default RNG at argument is RNG caller passed there. Method whose callee `possible` draws default RNG (one method
+of open dispatch) still takes caller RNG.
 """
 function draws_from(accesses::AbstractVector{Access}, position::Integer)::Bool
-    any(access -> access.kind == EffectKind.default_rng && place_root(access.place) == Root.Elsewhere(), accesses) && return false
+    any(access -> access.kind == EffectKind.default_rng && place_root(access.place) == Root.Elsewhere() && access.confidence == Confidence.definite, accesses) && return false
     return any(access -> access.kind in (EffectKind.rng_argument, EffectKind.default_rng) && place_root(access.place) == Root.Parameter(position + 1), accesses)
 end
 
 """
-Whether caller of `method` can pass RNG instead: `method` takes no RNG argument, and package method of same function
-in `methods` draws from its RNG argument (`draws_from`) and drops to argument types that accept every call of `method`.
+Whether keyword body of `method` declares keyword whose type can hold `AbstractRNG` (`rng_positions`), and reads it:
+caller passes own RNG by name.
+"""
+function rng_keyword(method::Method)::Bool
+    keywords = length(Base.kwarg_decl(method))
+    keywords == 0 && return false
+    body = Base.bodyfunction(method)
+    isnothing(body) && return false
+    for other in Base.methods(body)
+        flags = Base.uncompressed_ast(other).slotflags
+        # Slot 1 holds body function; keyword at `position` sits in slot `position + 1`.
+        any(position -> position <= keywords && flags[position + 1] & Base.SLOT_USED != 0, rng_positions(other)) && return true
+    end
+    return false
+end
+
+"""
+Whether caller of `method` can pass RNG instead: `method` takes no RNG argument, and takes RNG keyword (`rng_keyword`)
+or package method of same function in `methods` draws from its RNG argument (`draws_from`) and drops to argument types
+that accept every call of `method`.
 """
 function chooses_rng(method::Method, methods::AbstractVector{MethodEffects})::Bool
     isempty(rng_positions(method)) || return false
+    rng_keyword(method) && return true
     parameters = tuple_parameters(method.sig)
     arguments = Base.rewrap_unionall(Tuple{parameters[2:end]...}, method.sig)
     for other in methods
