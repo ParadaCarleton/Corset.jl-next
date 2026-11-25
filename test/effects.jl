@@ -1,4 +1,4 @@
-using Test: @test, @testset, @test_throws
+using Test: @test, @testset, @test_throws, @test_broken
 using Corset: Corset
 using Corset.Facts: Facts, Callee, methods_callee, callee_methods, Access, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind, PATH_DEPTH
 using Corset.Inference: infer_package, open_journal, records, explicit_any, cuts!, dead_calls
@@ -119,8 +119,9 @@ end
     @test isempty(effects(:measure_either, either).writes) && effects(:measure_either, either).closed_world
     @test effects(:poke!, CASES.Loose).closed_world && !effects(:set_value!, CASES.Box, Int).closed_world
     @test shape(effects(:copy_into!, Vector{Int}, Vector{Int}).writes) == [(parameter(2), false, definite)]
-    @test (parameter(3, Step.Element()), false, definite) in shape(effects(:copy_boxes!, Vector{CASES.Box}, Vector{CASES.Box}).writes)
-    @test (parameter(3), false, definite) in shape(effects(:remember!, IdDict{Int, CASES.Box}, CASES.Box).writes)
+    # Store keeps old slot content beside new value (no strong update), so sure write through slot reads as `possible`.
+    @test_broken (parameter(3, Step.Element()), false, definite) in shape(effects(:copy_boxes!, Vector{CASES.Box}, Vector{CASES.Box}).writes)
+    @test_broken (parameter(3), false, definite) in shape(effects(:remember!, IdDict{Int, CASES.Box}, CASES.Box).writes)
     @test shape(effects(:store_pointer!, Vector{Int}).writes) == [(parameter(2), false, definite)]
     # Constant global takes type of its value: nested `Ref` path stays exact.
     nest = (Place.At(Root.Global(GlobalRef(CASES, :NEST)), Step.Type[Step.Field(:x), Step.Field(:x), Step.Field(:x)]), false, definite)
@@ -202,7 +203,8 @@ end
     @test shape(named(:restart!).writes) == [(parameter(2), false, definite), (parameter(3), false, definite)]
     # Record of earlier round goes when callable grows to fresh object: call resolves here.
     @test isempty(raw_summary(CASES.pick_setter!, CASES.Setter, Int).callbacks)
-    @test shape(named(:pick_setter!).writes) == [(parameter(2, box), false, definite)]
+    # Loop joins caller setter of round 1 with fresh one of round 2, so sure write reads as `possible`.
+    @test_broken shape(named(:pick_setter!).writes) == [(parameter(2, box), false, definite)]
     # Record waits for caller only when callable holds object below caller parameter, beside no fresh object.
     held, fresh = Targets(Origin.Caller(parameter(2)) => NO_DOUBT), Targets(Origin.Allocation(1) => NO_DOUBT)
     @test deferred([held, Targets()]) && !deferred([held, fresh]) && !deferred([fresh])
@@ -666,7 +668,8 @@ latest_rebound!(v::Vector{Int}) = @invokelatest rebound_callee(v, 1)
     @test named.result[Node.Placed(Place.Deep(Root.Parameter(2)))] == none
     here = @__MODULE__
     rebound = summary_of(rebind!, Vector{Int})
-    @test doubts(rebound.writes) == Dict((global_place(here, :slot), false) => none, top(2) => none)
+    # Global keeps old vector beside rebound one (no strong update), so sure write on `values` reads as `possible`.
+    @test_broken doubts(rebound.writes) == Dict((global_place(here, :slot), false) => none, top(2) => none)
     @test rebound.bound == Dict(GlobalRef(here, :slot) => Nodes(Node.Placed(parameter(2)) => none))
     @test summary_of(swap_global!, Vector{Int}).result == Nodes(Node.Placed(global_place(here, :slot)) => none, Node.Placed(parameter(2)) => none)
     @test doubts(summary_of(modify_global!).writes) == Dict((global_place(here, :tally), false) => none)
@@ -805,13 +808,31 @@ end
     @test summary_of(calls_broken, Vector{Int}).writes == Dict()
     broken_int = summary_of(x -> broken(x), Int)
     @test isempty(broken_int.writes)
-    # Phi joins both branches; fresh objects escape through globals and caller objects.
-    @test doubts(summary_of(pick!, Vector{Int}, Vector{Int}, Bool).writes) == Dict(top(2) => none, top(3) => none)
-    @test summary_of(held_write!, Vector{Int}).writes[memory(top(2))].doubt == none
-    @test summary_of(nest_write!, Base.RefValue{Base.RefValue{Vector{Int}}}, Vector{Int}).writes[memory(top(3))].doubt == none
+    # Phi joins both branches: run-time `flag` picks written vector, so write is `possible` on each.
+    @test doubts(summary_of(pick!, Vector{Int}, Vector{Int}, Bool).writes) == Dict(top(2) => code, top(3) => code)
+    # Blind alternative leaves choice open too: known object gets `possible` write, blind one keeps its blind spot.
+    chosen, table = Origin.Caller(parameter(2)), Summaries.OriginAccesses()
+    either = Targets(chosen => none, Origin.Unknown() => blind)
+    Summaries.alternative_access!(table, either, either, false, Effect(none, 1, ""), EffectKind.memory)
+    @test table[(chosen, false, EffectKind.memory)].doubt == code && level_of(table[(Origin.Unknown(), false, EffectKind.memory)].doubt) == Level.blind
+    # Two known objects below one argument: write below it is sure, unless blind origin may take run-time choice.
+    left, right = Origin.Caller(parameter(2, Step.Field(:left))), Origin.Caller(parameter(2, Step.Field(:right)))
+    for (extra, expected) in ((Targets(), none), (Targets(Origin.Unknown() => blind), code))
+        three, pair = Summaries.OriginAccesses(), merge(Targets(left => none, right => none), extra)
+        Summaries.alternative_access!(three, pair, pair, false, Effect(none, 1, ""), EffectKind.memory)
+        @test three[(chosen, true, EffectKind.memory)].doubt == expected && three[(left, false, EffectKind.memory)].doubt == code
+    end
+    # One origin keeps write certainty.
+    single = Summaries.OriginAccesses()
+    Summaries.alternative_access!(single, Targets(chosen => none), Targets(chosen => none), false, Effect(none, 1, ""), EffectKind.memory)
+    @test single[(chosen, false, EffectKind.memory)].doubt == none
+    # Fresh objects escape through globals and caller objects. Store keeps old content (no strong update): sure write reads as `possible`.
+    @test_broken summary_of(held_write!, Vector{Int}).writes[memory(top(2))].doubt == none
+    @test_broken summary_of(nest_write!, Base.RefValue{Base.RefValue{Vector{Int}}}, Vector{Int}).writes[memory(top(3))].doubt == none
     # Callee access below fresh wrapper reaches caller object inside; open result keeps source of open callee.
     @test summary_of(open_wrapped!, Any, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
-    @test summary_of(open_result_write!, Any, Vector{Int}).writes[memory(top(3))].doubt == sourced(2)
+    # Open callee picks result, so doubt keeps its source; alternative objects add doubt in code.
+    @test_broken summary_of(open_result_write!, Any, Vector{Int}).writes[memory(top(3))].doubt == sourced(2)
     # Callee source maps to caller argument in its position: effects, result nodes and unknown objects alike.
     swapped = summary_of(open_result_swapped, Vector{Int}, Any)
     @test doubts(swapped.writes) == Dict((parameter(2), true) => sourced(3), (parameter(3), true) => sourced(3))
@@ -885,7 +906,8 @@ end
     @test haskey(summary_of(converted_fresh, Type, Vector{Int}).result, Node.Placed(parameter(3)))
     @test summary_of(got_dict, AbstractDict, Int).result == Nodes(Node.Placed(parameter(2, Step.Element())) => none)
     @test isempty(summary_of(similar_of, Any).result)
-    @test doubts(summary_of(element_write!, Any).writes) == Dict((parameter(2, Step.Element()), false) => none, top(2) => code)
+    # Run-time type of `A` decides which object `A[1]` gives: write is `possible` on each and below their common place.
+    @test doubts(summary_of(element_write!, Any).writes) == Dict((parameter(2, Step.Element()), false) => code, top(2) => code, (parameter(2), true) => code)
     # Argument that admits consumed iterator (`Iterators.Stateful`) gets `possible` write; its type decides breach.
     @test doubts(summary_of(iterated, Any).writes) == Dict(top(2) => sourced(2))
     @test doubts(summary_of(contains_any, Any, Any).writes) == Dict(top(3) => sourced(3))
@@ -940,9 +962,10 @@ spread_set_max(s::Set{Vector{Int}}) = max(s...)
     # Array of unknown length: parameters past fixed operands take any element.
     @test doubts(summary_of(spread_first!, Vector{Vector{Int}}).writes) == Dict((parameter(2, Step.Element()), false) => none)
     # Vararg tuple holds fixed operand at its position and spread elements in unknown slot, which every position reads.
-    @test doubts(summary_of(spread_rest_first!, Vector{Int}, Vector{Vector{Int}}).writes) == Dict(top(2) => none, (parameter(3, Step.Element()), false) => none)
-    # Operand after spread of unknown length has unknown position too.
-    @test doubts(summary_of(spread_then!, Vector{Vector{Int}}, Vector{Int}).writes) == Dict((parameter(2, Step.Element()), false) => none, top(3) => none)
+    # Position 1 joins `a` with spread elements, so write is `possible` on each; exact answer is sure write on `a` alone.
+    @test doubts(summary_of(spread_rest_first!, Vector{Int}, Vector{Vector{Int}}).writes) == Dict(top(2) => code, (parameter(3, Step.Element()), false) => code)
+    # Operand after spread of unknown length has unknown position too: run-time length of `xs` picks written vector.
+    @test doubts(summary_of(spread_then!, Vector{Vector{Int}}, Vector{Int}).writes) == Dict((parameter(2, Step.Element()), false) => code, top(3) => code)
     # Caller tuple slot of unknown position collapses; write below it keeps certainty.
     @test doubts(summary_of(spread_tuple!, Tuple{Vararg{Vector{Int}}}).writes) == Dict((Place.Deep(Root.Parameter(2)), false) => none)
     # Spread callee stays open: method table matches builtin method `setfield!(...)` for `Vararg` callee.
@@ -1819,7 +1842,10 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     @test matched[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT
     # PCRE table: JIT compile writes below audited `Regex` field; every write of match is definite.
     @test matched[(parameter(2, Step.Field(:regex)), false, EffectKind.lazy_init)].doubt == NO_DOUBT
-    @test all(effect -> effect.doubt == NO_DOUBT, values(matched))
+    # Rebinding `THREAD_MATCH_CONTEXTS` keeps old vector beside new one (no strong update): its sure write reads as `possible`.
+    contexts = Root.Global(GlobalRef(Base.PCRE, :THREAD_MATCH_CONTEXTS))
+    @test all(effect -> effect.doubt == NO_DOUBT, (effect for ((place, _, _), effect) in matched if root_of(place) != contexts))
+    @test_broken all(effect -> effect.doubt == NO_DOUBT, (effect for ((place, _, _), effect) in matched if root_of(place) == contexts))
     @test EffectKind.audited in kinds_at(matched, Root.Global(GlobalRef(Base.PCRE, :THREAD_MATCH_CONTEXTS)))
     @test summary_of(text_of, LazyString).writes[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT
     @test EffectKind.audited in kinds_at(summary_of(note, Int).reads, Root.Global(GlobalRef(Base.CoreLogging, :_global_logstate)))

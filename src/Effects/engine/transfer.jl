@@ -186,7 +186,10 @@ function table!(flow::Flow, writes::OriginAccesses, index::Integer, effects::Cal
     Base.require_one_based_indexing(arguments)
     targets(position::Integer)::Targets = union_targets(operand_targets!(flow, arguments[at]) for at in role(effects, position, length(arguments)))
     holders(position::Integer)::Targets = union_targets(operand_targets!(flow, arguments[at]) for at in role(effects, position, length(arguments)) if !typed || holds_objects!(flow, operand_type(flow.ir, arguments[at])))
-    foreach(position -> access!(writes, targets(position), false, definite(index), effects.write_kind), effects.writes)
+    for position in effects.writes, at in role(effects, position, length(arguments))
+        found = operand_targets!(flow, arguments[at])
+        alternative_access!(writes, found, found, false, definite(index), effects.write_kind)
+    end
     foreach(position -> access!(flow.reads, targets(position), false, definite(index), EffectKind.memory), effects.reads)
     for (destination, source) in effects.copies
         store!(flow, holders(destination), Step.Element(), load!(flow, targets(source), Step.Element()))
@@ -354,7 +357,7 @@ points to no object holds no targets. `modify` operator call stays open. Writes 
 """
 function write!(flow::Flow, writes::OriginAccesses, index::Integer, shape::Shape, operands::AbstractVector{Operand.Type}, objects::Targets, old::Targets, store::Function, @nospecialize(slot::Any), kind::EffectKind.T)::Nothing
     Base.require_one_based_indexing(operands)
-    access!(writes, objects, false, definite(index), kind)
+    alternative_access!(writes, objects, objects, false, definite(index), kind)
     shape.returns in (Returns.stored, Returns.object) || access!(flow.reads, objects, false, definite(index), kind)
     holds = points!(flow, slot)
     old = holds ? old : Targets()
@@ -809,21 +812,30 @@ function apply_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccess
     return nothing
 end
 
-"""Writes and reads of callee `summary` at `site` into `writes` and `reads`, each mapped onto caller objects."""
+"""
+Writes and reads of callee `summary` at `site` into `writes` and `reads`, each mapped onto caller objects. Callee place
+that maps to one of several caller objects gives `possible` write on each (`alternative_access!`).
+"""
 function map_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary)::Nothing
-    for (table, effects) in ((writes, summary.writes), (reads, summary.reads)), ((place, below, kind), effect) in effects
-        access!(table, access_objects!(flow, site, place, below, kind), below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), kind)
+    for ((place, below, kind), effect) in summary.writes
+        direct, objects = access_objects!(flow, site, place, below, kind)
+        alternative_access!(writes, direct, objects, below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), kind)
+    end
+    for ((place, below, kind), effect) in summary.reads
+        access!(reads, last(access_objects!(flow, site, place, below, kind)), below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), kind)
     end
     return nothing
 end
 
 """
-Caller objects of callee access of `kind` on `place` (or `below` it) at `site`. Task state access (`TASK_KINDS`) on
-`Elsewhere` stays on unknown object, which names current task; access to object reaches each outside object.
+Caller objects at callee `place` at `site`, and objects access of `kind` on it (or `below` it) reaches. Task state
+access (`TASK_KINDS`) on `Elsewhere` stays on unknown object, which names current task; access to object reaches each
+outside object.
 """
-function access_objects!(flow::Flow, site::CallSite, place::Place.Type, below::Bool, kind::EffectKind.T)::Targets
-    kind in TASK_KINDS && root_of(place) == Root.Elsewhere() && return unknown(NO_DOUBT)
-    return below ? site_below!(flow, site, place) : site_place!(flow, site, place)
+function access_objects!(flow::Flow, site::CallSite, place::Place.Type, below::Bool, kind::EffectKind.T)::Tuple{Targets, Targets}
+    kind in TASK_KINDS && root_of(place) == Root.Elsewhere() && return (unknown(NO_DOUBT), unknown(NO_DOUBT))
+    direct = site_place!(flow, site, place)
+    return (direct, below ? site_below!(flow, site, place) : direct)
 end
 
 """
