@@ -199,6 +199,10 @@ end
             # Rejected member, package code, or `Main` code has no key.
             @test isnothing(closure_key!(run, Closure(Base.IdSet{Core.MethodInstance}([pong])), ping))
             @test isnothing(closure_key!(start_run(nothing, [lib], Library()), fresh(), ping))
+            # Caller of callee without key has no key either.
+            precompile(lib.call, (Int8,))
+            called = instance_of(lib.call, Int8)
+            @test !isnothing(closure_key!(run, fresh(), called)) && isnothing(closure_key!(run, Closure(Base.IdSet{Core.MethodInstance}([instance_of(lib.target, Int8)])), called))
             precompile(relay_add, (Int,))
             @test isnothing(closure_key!(run, fresh(), instance_of(relay_add, Int)))
             # Instance without node has no key until run infers it; then run edges give key.
@@ -307,5 +311,22 @@ end
         @test any(fact -> isa_variant(fact.callee, Callee.Builtin), calls)
         @test isnothing(unit_record(record_bytes(nothing), world))
         @test_throws ArgumentError unit_record(UInt8[], world)
+    end
+
+    @testset "stored units" begin
+        # Method store serves units; their kept verdicts give facts of run that infers every unit.
+        kept = Dict((typed.site.method, typed.signature) => record for (typed, record) in zip(UNITS.typed, RECORDS))
+        verdicts(units::Inference.Units) = Union{Nothing, UnitVerdict}[kept[(unit.site.method, unit.signature)] for unit in units.stored]
+        used = something(last(infer_package(PACKAGE, FILES, Inference.Store(), nothing)))
+        units = infer_package(PACKAGE, FILES, copy(used), nothing)[3]
+        @test isempty(units.typed) && !isempty(units.stored)
+        facts, spots, records, new, _ = cached_effects(PACKAGE, units, verdicts(units), nothing, Library())
+        @test fact_text(facts) == fact_text(FACTS) && spots == SPOTS && isempty(records) && isempty(new.entries)
+        # Callers infer again while their callees stay stored: callee keeps unit body, so facts agree.
+        callers = Set(Inference.entry_key(typed.site.method, typed.signature) for typed in UNITS.typed if startswith(string(typed.site.method.name), "call_"))
+        units = infer_package(PACKAGE, FILES, filter(((key, _),) -> !(key in callers), used), nothing)[3]
+        @test !isempty(units.typed) && !isempty(units.stored)
+        facts, spots, _ = cached_effects(PACKAGE, units, verdicts(units), nothing, reread(LIBRARY))
+        @test fact_text(facts) == fact_text(FACTS) && spots == SPOTS
     end
 end
