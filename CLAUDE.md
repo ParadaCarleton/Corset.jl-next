@@ -15,6 +15,13 @@ Each `Rule` is pure function of `Corset.Facts`. Analysis stages compute facts on
 Every finding: primary span, labeled cause spans, one-line reason, fix with tier.
 Every rule: UI snapshot test with positive, negative and fix case. Manual fix has no edits: positive snapshot shows its text.
 
+## Pull requests
+
+Give each PR one concern.
+Rule PR changes only its rule file, UI tests, registry entry and design rows.
+Fix Corset code that new rule flags in own PR; merge it before rule PR.
+Change to other module (`Signatures`, `StandIns`, `Inference`, `Widening`) goes in own PR, with its reason.
+
 ## Scope
 
 Facts come from source, type annotations, loaded module and inference. Package without tests or precompile workload gets full analysis.
