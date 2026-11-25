@@ -19,7 +19,8 @@ Effects of call that table knows (`engine.md`, Calls, steps 2 and 6), by argumen
 reads through; `copies` of source elements into destination elements; `stores` of argument into destination elements;
 arguments result points into; arguments whose elements result may be; and arguments result may point beneath
 (`aliases`, doubt in code). Every argument from position `rest` on takes role of `rest`; 0 means none. Writes take
-`write_kind`; memory write takes kind of its path (`engine.md`, Effect kinds).
+`write_kind`; memory write takes kind of its path (`engine.md`, Effect kinds). `outside`: result is unknown object
+without doubt, such as current task.
 """
 Base.@kwdef struct CallEffects
     writes::Vector{Int} = Int[]
@@ -31,6 +32,7 @@ Base.@kwdef struct CallEffects
     aliases::Vector{Int} = Int[]
     rest::Int = 0
     write_kind::EffectKind.T = EffectKind.memory
+    outside::Bool = false
 end
 
 include("foreign_gmp_mpfr.jl")
@@ -76,6 +78,8 @@ const RUNTIME_EFFECTS = Dict{Symbol, CallEffects}(
     :jl_get_world_counter => CallEffects(),
     :jl_get_tls_world_age => CallEffects(),
     :jl_threadid => CallEffects(),
+    # Current task: object outside caller places. Its RNG fields hold default RNG state.
+    :jl_get_current_task => CallEffects(outside = true),
     :jl_rethrow => CallEffects(),
     :jl_rethrow_other => CallEffects(),
     :utf8proc_category => CallEffects(),

@@ -1082,6 +1082,8 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Origin: abstract object. Kinds: caller place (parameter or global path), allocation statement, <code>unknown</code>.</li>
 <li>Constant object in code counts as <code>unknown</code>. Fresh objects of callee merge into one allocation at call statement.</li>
 <li><code>unknown</code>: object open call can return that no operand names, global included. Write to it is <code>possible</code> global write.</li>
+<li>Current task is <code>unknown</code> without doubt: write to its fields is certain global write.</li>
+<li>One <code>unknown</code> origin stands for every outside object, so values stored into it take <code>code</code> doubt.</li>
 <li>Path: field name or element. Path follows declared field types.</li>
 <li>Path collapses to <code>deep</code> at step into concrete type it already passed (recursive type), at third abstract step in a row, or past 8 steps.</li>
 <li>Place says where access lands; certainty says whether it happens. <code>deep w</code> is coarse place: write below it still changes <code>w</code>.</li>
@@ -1149,7 +1151,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <ul>
 <li>MPFR and GMP entries come from C headers: pointer to non-const is written, pointer to const is read (<code>mpfr_srcptr</code>, <code>const char *</code>). Generator: <code>gen/foreign/generate.jl</code>; output: <code>src/Effects/engine/foreign_gmp_mpfr.jl</code>.</li>
 <li>Symbols: every MPFR and GMP function that Base and SpecialFunctions call, plus five numeric extras. The whole header holds about 800 functions; each one needs vetting for global state.</li>
-<li>Hand entries (<code>calls.jl</code>) cover variadic functions and pointer results. Left open: functions that write C global state (<code>mpfr_set_emax</code>, <code>mpfr_set_emin</code>, <code>mpfr_clear_flags</code>, GMP allocator hooks).</li>
+<li>Hand entries (<code>calls.jl</code>) cover variadic functions and pointer results. <code>jl_get_current_task</code> returns <code>unknown</code> without doubt. Left open: functions that write C global state (<code>mpfr_set_emax</code>, <code>mpfr_set_emin</code>, <code>mpfr_clear_flags</code>, GMP allocator hooks).</li>
 <li>PCRE2 entries cover functions that Base regex code calls, by PCRE2 API manual. Match writes match data and JIT stack of match context.</li>
 <li>No prefix rule: unknown <code>mpfr_</code> or <code>__gmp</code> name stays open, because wrong entry gives false definite write.</li>
 <li>CI lacks the headers. The generator does not run there; committed file is the source of truth. Test compares it with hand classification.</li>
