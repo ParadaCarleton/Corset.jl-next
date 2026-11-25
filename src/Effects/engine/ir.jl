@@ -44,15 +44,30 @@ end
 
 """
 IR `ir` with argument types of `constants` (position and value) set to constant. Statements stay shared, unless
-constant `Bool` argument fixes branch on it (`drop_unreached`).
+constant fixes branch (`branch_flag`, `drop_unreached`).
 """
 function specialize(ir::CC.IRCode, constants::AbstractVector{<:Pair{<:Integer, Any}})::CC.IRCode
     isempty(constants) && return ir
     argtypes = copy(ir.argtypes)
     foreach(((position, value),) -> argtypes[position] = Core.Const(value), constants)
-    flags = Dict{Int, Bool}(position => value for (position, value) in constants if value isa Bool)
-    stmts = isempty(flags) ? ir.stmts : drop_unreached(ir, flags)
-    return CC.IRCode(stmts, ir.cfg, ir.debuginfo, argtypes, ir.meta, ir.sptypes, ir.valid_worlds)
+    specialized = CC.IRCode(ir.stmts, ir.cfg, ir.debuginfo, argtypes, ir.meta, ir.sptypes, ir.valid_worlds)
+    return CC.IRCode(drop_unreached(specialized), ir.cfg, ir.debuginfo, argtypes, ir.meta, ir.sptypes, ir.valid_worlds)
+end
+
+"""
+Value that branch condition `condition` of `ir` takes on every run: constant `Bool`, or `===` of two constant operands
+(`getproperty(x, :a)` variant skips `name === :b` branch). `nothing` when condition can take both values.
+"""
+function branch_flag(ir::CC.IRCode, @nospecialize(condition::Any))::Union{Nothing, Bool}
+    found = constant(ir, condition)
+    isnothing(found) || return something(found) isa Bool ? something(found)::Bool : nothing
+    condition isa Core.SSAValue || return nothing
+    statement = ir.stmts[condition.id][:stmt]
+    statement isa Expr || return nothing
+    statement.head === :call && length(statement.args) == 3 || return nothing
+    callee, left, right = (constant(ir, operand) for operand in statement.args)
+    any(isnothing, (callee, left, right)) && return nothing
+    return something(callee) === (===) ? something(left) === something(right) : nothing
 end
 
 """Statements that move no value: flow skips them, and release balance walks blocks through them."""
@@ -62,11 +77,12 @@ const CONTROL = Union{Core.GotoNode, Core.GotoIfNot, Core.EnterNode, Core.Upsilo
 structural(@nospecialize(statement::Any))::Bool = statement isa CONTROL || (statement isa Expr && statement.head in (:leave, :pop_exception))
 
 """
-Statements of `ir` where branch on argument with constant in `flags` (position and `Bool`) takes that constant. Each
-statement of block no path from entry reaches becomes `nothing`, structural statement excepted (`structural`).
+Statements of `ir` where each branch with known condition (`branch_flag`) takes that value. Each statement of block no
+path from entry reaches becomes `nothing`, structural statement excepted (`structural`). No known branch: statements
+of `ir` itself.
 """
-function drop_unreached(ir::CC.IRCode, flags::AbstractDict{<:Integer, Bool})::CC.InstructionStream
-    stmts, blocks = copy(ir.stmts), ir.cfg.blocks
+function drop_unreached(ir::CC.IRCode)::CC.InstructionStream
+    stmts, blocks = ir.stmts, ir.cfg.blocks
     reached, pending = falses(length(blocks)), [1]
     while !isempty(pending)
         block = pop!(pending)
@@ -74,11 +90,13 @@ function drop_unreached(ir::CC.IRCode, flags::AbstractDict{<:Integer, Bool})::CC
         reached[block] = true
         index = last(blocks[block].stmts)
         terminator = stmts[index][:stmt]
-        flag = terminator isa Core.GotoIfNot && terminator.cond isa Core.Argument ? get(flags, terminator.cond.n, nothing) : nothing
+        flag = terminator isa Core.GotoIfNot ? branch_flag(ir, terminator.cond) : nothing
         isnothing(flag) && (append!(pending, blocks[block].succs); continue)
+        stmts === ir.stmts && (stmts = copy(ir.stmts))
         stmts[index][:stmt] = Core.GotoIfNot(flag, terminator.dest)
         push!(pending, flag ? block + 1 : terminator.dest)
     end
+    stmts === ir.stmts && return stmts
     for block in findall(!, reached), index in blocks[block].stmts
         structural(stmts[index][:stmt]) || (stmts[index][:stmt] = nothing)
     end

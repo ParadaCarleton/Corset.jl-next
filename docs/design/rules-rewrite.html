@@ -1160,6 +1160,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Static call (one method matches, or <code>Core.invoke</code> with constant selector): callee summary. No method matches: call throws, so code after it is dead.
 Summary per variant: instance plus constant arguments callee uses as field name. <code>getproperty(x, :a)</code> keeps field <code>a</code>.
 Constant <code>Bool</code> argument that callee uses as branch condition also makes variant. Variant code drops blocks branch never reaches.
+Branch on <code>===</code> of two constants folds too: <code>getproperty(::Task, :rngState0)</code> variant drops <code>:backtrace</code> branch. Only variant constants fold; <code>===</code> adds no variant parameter.
 <code>HAMT.path(trie, key, h, false)</code> skips copy-on-write store, so <code>ScopedValue</code> read writes nothing. Julia inference resolves the same constant.</li>
 <li>Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.</li>
 <li>Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: <code>possible</code>.
