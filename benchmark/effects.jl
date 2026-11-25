@@ -15,9 +15,10 @@ using Corset: Corset
 const Effects = isdefined(Corset.Effects, :Summaries) ? Corset.Effects.Summaries : Corset.Effects
 using .Effects: start_run, solve!, Variant, Outcome
 # Older Corset builds every unit body; newer one may shortcut it (`instance_body`), then also knows stand-in cuts.
-# Newest keeps unit body with shortcut flag (`unit_body`) for call facts.
-const cuts = isdefined(Effects, :stand_in_cut)
-function unit_body(run, typed)
+# Newer keeps unit body with shortcut flag (`unit_body`) for call facts; newest names it `unit_body!`.
+const cuts = isdefined(Effects, :stand_in_cut) || isdefined(Effects, :stand_in_cut!)
+function unit_body!(run, typed)
+    isdefined(Effects, :unit_body!) && return Effects.unit_body!(run, typed.frame, run.cuts[typed.frame.linfo])
     isdefined(Effects, :unit_body) && return Effects.unit_body(run, typed.frame, run.cuts[typed.frame.linfo])
     return cuts ? Effects.instance_body(run, typed.frame, run.cuts[typed.frame.linfo]) : isdefined(Effects, :instance_body) ? Effects.instance_body(run, typed.frame) : Effects.frame_body(run, typed.frame)
 end
@@ -35,7 +36,7 @@ function solved(units)
     foreach(typed -> get!(firsts, typed.frame.linfo, typed), units.typed)
     roots = Variant[(typed.frame.linfo, Pair{Int, Any}[]) for typed in units.typed if firsts[typed.frame.linfo] === typed]
     cuts && foreach(((instance, _),) -> run.cuts[instance] = !isempty(firsts[instance].cuts), roots)
-    foreach(((instance, _),) -> run.bodies[instance] = unit_body(run, firsts[instance]), roots)
+    foreach(((instance, _),) -> run.bodies[instance] = unit_body!(run, firsts[instance]), roots)
     solve!(run, roots)
     return run
 end

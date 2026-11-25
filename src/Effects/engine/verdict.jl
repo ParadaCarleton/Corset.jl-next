@@ -130,7 +130,7 @@ function worst(accesses::Vector{Access})::Vector{Access}
 end
 
 """Blind accesses of all units, each once, by place."""
-blind_order(accesses::Vector{BlindAccess})::Vector{BlindAccess} = sort!(unique!(accesses); by = access -> place_key(access.place, access.below, access.kind))
+blind_order!(accesses::Vector{BlindAccess})::Vector{BlindAccess} = sort!(unique!(accesses); by = access -> place_key(access.place, access.below, access.kind))
 
 """Blind spot cause of method whose verdict writes nothing on path stand-ins cut (`engine.md`, Stand-in cuts)."""
 const CUT = "stand-in cuts path"
@@ -221,13 +221,13 @@ function cached_effects(package::PackageFacts, units::Units, stored::AbstractVec
     roots = Variant[(typed.frame.linfo, Pair{Int, Any}[]) for typed in units.typed if typed_of[typed.frame.linfo] === typed]
     # Every unit cut is known before first shortcut check walks callees; unit order keeps first callers fixed.
     for (instance, _) in roots
-        run.bodies[instance] = unit_body(run, typed_of[instance].frame, run.cuts[instance])
+        run.bodies[instance] = unit_body!(run, typed_of[instance].frame, run.cuts[instance])
     end
     solve!(run, roots)
-    fresh = Union{Nothing, UnitVerdict}[typed_of[typed.frame.linfo] === typed ? unit_verdict(run, typed, (typed.frame.linfo, Pair{Int, Any}[])) : nothing for typed in units.typed]
+    fresh = Union{Nothing, UnitVerdict}[typed_of[typed.frame.linfo] === typed ? unit_verdict!(run, typed, (typed.frame.linfo, Pair{Int, Any}[])) : nothing for typed in units.typed]
     verdicts, spots = method_facts(package, units.incomplete, ordered_records(units, fresh, stored))
     crashed = !isnothing(journal) && !isempty(journal.crashed)
-    return verdicts, spots, fresh, crashed ? Library() : library_entries(run), run.cache.hits
+    return verdicts, spots, fresh, crashed ? Library() : library_entries!(run), run.cache.hits
 end
 
 """
@@ -259,7 +259,7 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
         writes, reads, blind_writes, blind_reads, aliases, unguarded, calls = found[site.method]
         complete = !(site.method in incomplete) && !haskey(cuts, site.method)
         verdict = MethodVerdict(
-            site, worst(writes), worst(reads), blind_order(blind_writes), blind_order(blind_reads), sort!(unique!(aliases); by = repr), sort!(unique!(unguarded); by = repr),
+            site, worst(writes), worst(reads), blind_order!(blind_writes), blind_order!(blind_reads), sort!(unique!(aliases); by = repr), sort!(unique!(unguarded); by = repr),
             call_order(calls), complete, closed[site.method],
         )
         push!(verdicts, verdict)

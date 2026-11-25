@@ -6,13 +6,13 @@ using Corset.StandIns: FunctionStandIn, ArrayStandIn, DenseStandIn, FloatStandIn
 using Corset.Signatures: Provenance
 using Corset.Effects.Summaries:
     Summaries, MethodVerdict, CallSummary, BlindAccess, UnitVerdict, Library, cached_effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
-    library_body, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
-    element_type, constant, value_type, start_flow, statement!, map_node, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
-    components, foreign_name, FOREIGN_EFFECTS, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt, source_provenance,
-    Callback, Callees, Variant, root_summary, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut, CUT, catches!, cut!,
+    library_body!, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
+    element_type, constant, value_type, start_flow, statement!, map_node!, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
+    components, foreign_name, FOREIGN_EFFECTS, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt!, source_provenance,
+    Callback, Callees, Variant, root_summary!, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut!, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
-    unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body, root_calls, merge_calls, merge_callees, load, store!, store_backing!,
-    beneath, map_nodes, exact_path, extend, load_any, keyword_types, over_budget
+    unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body!, root_calls!, merge_calls, merge_callees, load!, store!, store_backing!,
+    beneath, map_nodes!, exact_path, extend, load_any, keyword_types, over_budget
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
@@ -209,7 +209,7 @@ end
     run = start_run(nothing, Module[])
     root = (only(something(dispatch(Any[typeof(CASES.set_value!), CASES.Box, Int], run.world, 1))), Pair{Int, Any}[])
     solve!(run, [root])
-    @test root_summary(run, root) === run.summaries[root]
+    @test root_summary!(run, root) === run.summaries[root]
 end
 
 """Method never called: it has no inferred code."""
@@ -231,12 +231,12 @@ sourceless(x::Int)::Int = x + 3
     end
     root = (instance_of(+, Int, Int), Pair{Int, Any}[])
     solve!(run, [root])
-    @test same(root_summary(run, root), empty_summary()) && !haskey(run.codes, root)
+    @test same(root_summary!(run, root), empty_summary()) && !haskey(run.codes, root)
     # Unit verdict keeps no read of constant `Memory` length, which own analysis reads. Coverage turns shortcut off.
     @test isempty(named(:memory_length).reads) == (Base.JLOptions().code_coverage == 0)
     own = start_run(nothing, Module[CASES])
     length_root = (instance_of(CASES.memory_length, Memory{Int}), Pair{Int, Any}[])
-    own.bodies[first(length_root)] = Summaries.frame_body(own, Core.Compiler.typeinf_frame(own.interpreter, first(length_root), false), false, false, false)
+    own.bodies[first(length_root)] = Summaries.frame_body!(own, Core.Compiler.typeinf_frame(own.interpreter, first(length_root), false), false, false, false)
     solve!(own, [length_root])
     @test collect(keys(own.summaries[length_root].reads)) == [memory((parameter(2), false))]
     # Claim outside Base turns shortcut off: own analysis finds write that false claim hides.
@@ -320,21 +320,21 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
     instance_of(f::Any, types::Type...)::Core.MethodInstance = only(something(dispatch(Any[typeof(f), types...], run.world, 1)))
     frame_of(instance::Core.MethodInstance)::Core.Compiler.InferenceState = Core.Compiler.typeinf_frame(run.interpreter, instance, false)
     stand_in = instance_of(pointer, ArrayStandIn{Int, 1})
-    @test stand_in_cut(run, frame_of(stand_in)) && (body!(run, stand_in)::Body).cut
+    @test stand_in_cut!(run, frame_of(stand_in)) && (body!(run, stand_in)::Body).cut
     root = (stand_in, Pair{Int, Any}[])
     solve!(run, [root])
     @test run.summaries[root].cut
     # No stand-in, throw helper, or call that fails on model types too: no cut.
-    @test !stand_in_cut(run, frame_of(instance_of(pointer, Vector{Int})))
-    @test !stand_in_cut(run, frame_of(instance_of(Base.throw_boundserror, ArrayStandIn{Int, 1}, Tuple{Int}))) && first(run.helpers[throw])
-    @test !stand_in_cut(run, frame_of(instance_of(size, ArrayStandIn{Int, 1})))
-    @test !stand_in_cut(run, frame_of(instance_of(CASES.refuse, ArrayStandIn{Int, 1}))) && !first(run.helpers[CASES.reject])
+    @test !stand_in_cut!(run, frame_of(instance_of(pointer, Vector{Int})))
+    @test !stand_in_cut!(run, frame_of(instance_of(Base.throw_boundserror, ArrayStandIn{Int, 1}, Tuple{Int}))) && first(run.helpers[throw])
+    @test !stand_in_cut!(run, frame_of(instance_of(size, ArrayStandIn{Int, 1})))
+    @test !stand_in_cut!(run, frame_of(instance_of(CASES.refuse, ArrayStandIn{Int, 1}))) && !first(run.helpers[CASES.reject])
     # Type branch outside Base is cut, `nothrow` or not; stand-in method keeps contracts like Base.
-    @test stand_in_cut(run, frame_of(instance_of(reset_if_vector!, ArrayStandIn{Int, 1})))
+    @test stand_in_cut!(run, frame_of(instance_of(reset_if_vector!, ArrayStandIn{Int, 1})))
     @test cut!(run, instance_of(reset_if_vector!, ArrayStandIn{Int, 1}), Core.Compiler.EFFECTS_TOTAL)
-    @test !stand_in_cut(run, frame_of(instance_of(skip_if_text, ArrayStandIn{Int, 1})))
-    @test !stand_in_cut(run, frame_of(instance_of(+, FloatStandIn, FloatStandIn)))
-    @test stand_in_cut(run, frame_of(instance_of(generated_library_poke, ArrayStandIn{Int, 1})))
+    @test !stand_in_cut!(run, frame_of(instance_of(skip_if_text, ArrayStandIn{Int, 1})))
+    @test !stand_in_cut!(run, frame_of(instance_of(+, FloatStandIn, FloatStandIn)))
+    @test stand_in_cut!(run, frame_of(instance_of(generated_library_poke, ArrayStandIn{Int, 1})))
     # Cut check runs only on stand-in instance that can fail; instance without code counts as cut.
     total, throwing = Core.Compiler.EFFECTS_TOTAL, Core.Compiler.EFFECTS_THROWS
     vector_pointer = instance_of(pointer, Vector{Int})
@@ -361,7 +361,7 @@ function summary_of(f::Any, types::Type...)::Summary
     run = start_run(nothing, Module[])
     root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
     solve!(run, [root])
-    return root_summary(run, root)
+    return root_summary!(run, root)
 end
 
 """Unknown-slot contents of only exported node of `summary`, which must be fresh; coverage shifts its statement index."""
@@ -797,7 +797,7 @@ end
     @test summary_of(make_backed, Vector{Int}).result == Nodes(Node.Placed(parameter(2)) => none)
     run = start_run(nothing, Module[])
     instance = only(something(dispatch(Any[typeof(broken), Int], run.world, 1)))
-    @test library_body(run, instance) == "inference gave no code"
+    @test library_body!(run, instance) == "inference gave no code"
     @test summary_of(calls_broken, Vector{Int}).writes == Dict()
     broken_int = summary_of(x -> broken(x), Int)
     @test isempty(broken_int.writes)
@@ -826,7 +826,7 @@ end
     joined_run = start_run(nothing, Module[@__MODULE__])
     joined_root = (only(something(dispatch(Any[typeof(half_join!), Union{Vector{Int}, Vector{Float64}}], joined_run.world, 1))), Pair{Int, Any}[])
     solve!(joined_run, [joined_root])
-    @test root_summary(joined_run, joined_root).writes[memory(top(2))].doubt == sourced(2)
+    @test root_summary!(joined_run, joined_root).writes[memory(top(2))].doubt == sourced(2)
     # `DataType` value dispatches on type it holds: `typeof(x)` keeps source of `x`.
     @test summary_of(typeof_write!, Any, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
     @test summary_of(derived_rest!, Vector{Type}, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
@@ -1050,12 +1050,12 @@ four_way(x::Symbol) = x
     flow = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
-    @test map_node(flow, Node.Fresh(4), CallSite(Targets[], Sources[], 7, 2)) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
+    @test map_node!(flow, Node.Fresh(4), CallSite(Targets[], Sources[], 7, 2)) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
     # Site maps every fresh node to one shared allocation; outside node maps to unknown object at node doubt.
     fresh_site = CallSite(Targets[], Sources[], 7, 1)
-    @test map_node(flow, Node.Fresh(1), fresh_site) === map_node(flow, Node.Fresh(2), fresh_site)
-    @test map_nodes(flow, Nodes(Node.Outside() => BLIND_DOUBT, Node.Fresh(1) => NO_DOUBT), fresh_site) == Targets(Origin.Unknown() => BLIND_DOUBT, Origin.Allocation(7) => NO_DOUBT)
-    @test_throws ArgumentError map_node(flow, Node.Fresh(1), CallSite(Targets[], Sources[], 7, 0))
+    @test map_node!(flow, Node.Fresh(1), fresh_site) === map_node!(flow, Node.Fresh(2), fresh_site)
+    @test map_nodes!(flow, Nodes(Node.Outside() => BLIND_DOUBT, Node.Fresh(1) => NO_DOUBT), fresh_site) == Targets(Origin.Unknown() => BLIND_DOUBT, Origin.Allocation(7) => NO_DOUBT)
+    @test_throws ArgumentError map_node!(flow, Node.Fresh(1), CallSite(Targets[], Sources[], 7, 0))
     # Objects without fresh origin hold nothing beneath them: result is same table.
     plain = Targets(Origin.Caller(parameter(2)) => NO_DOUBT)
     @test beneath(flow, plain) === plain
@@ -1092,12 +1092,12 @@ four_way(x::Symbol) = x
     @test extend(code.ir, Place.Deep(at(:LOOP)), link_next) == Place.Deep(at(:LOOP))
     # Slot targets found before heap grows go stale: load after store sees new slot and backing contents.
     box, backed = Targets(Origin.Allocation(5) => NO_DOUBT), Targets(Origin.Allocation(6) => NO_DOUBT)
-    @test isempty(load(flow, box, Step.Field(:y))) && isempty(load(flow, box, Step.Element()))
+    @test isempty(load!(flow, box, Step.Field(:y))) && isempty(load!(flow, box, Step.Element()))
     store!(flow, box, Step.Field(:y), Targets(Origin.Caller(parameter(2)) => NO_DOUBT))
-    @test load(flow, box, Step.Field(:y)) == Targets(Origin.Caller(parameter(2)) => NO_DOUBT)
+    @test load!(flow, box, Step.Field(:y)) == Targets(Origin.Caller(parameter(2)) => NO_DOUBT)
     store_backing!(flow, box, Targets(Origin.Allocation(6) => CODE_DOUBT))
     store!(flow, backed, Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
-    @test load(flow, box, Step.Element()) == Targets(Origin.Unknown() => CODE_DOUBT)
+    @test load!(flow, box, Step.Element()) == Targets(Origin.Unknown() => CODE_DOUBT)
     # Blind chain and exact chain reach one memory; roles swap, so one case visits blind chain first. Least doubt wins.
     holder, element = Origin.Allocation(33), Targets(Origin.Allocation(32) => NO_DOUBT)
     for (detour, memory) in ((Origin.Allocation(30), Origin.Allocation(31)), (Origin.Allocation(31), Origin.Allocation(30)))
@@ -1108,7 +1108,7 @@ four_way(x::Symbol) = x
             Summaries.invalidate!(flow, (origin, nothing, true))
             Summaries.invalidate!(flow, (origin, Step.Element(), false))
         end
-        @test load(flow, Targets(holder => NO_DOUBT), Step.Element()) == element
+        @test load!(flow, Targets(holder => NO_DOUBT), Step.Element()) == element
         @test load_any(flow, Targets(detour => BLIND_DOUBT, memory => NO_DOUBT)) == element
     end
     # A call with many stores reuses traces of other slots on the same object.
@@ -1129,19 +1129,19 @@ four_way(x::Symbol) = x
     chain = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
     first_memory, second_memory = Targets(Origin.Allocation(101) => NO_DOUBT), Targets(Origin.Allocation(102) => NO_DOUBT)
     store_backing!(chain, first_memory, second_memory)
-    @test isempty(load(chain, first_memory, Step.Element()))
+    @test isempty(load!(chain, first_memory, Step.Element()))
     store!(chain, second_memory, Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
-    @test load(chain, first_memory, Step.Element()) == Targets(Origin.Unknown() => NO_DOUBT)
+    @test load!(chain, first_memory, Step.Element()) == Targets(Origin.Unknown() => NO_DOUBT)
     spread = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
-    @test isempty(load(spread, first_memory, Step.Field(:x))) && isempty(load(spread, first_memory, Step.Field(:y)))
+    @test isempty(load!(spread, first_memory, Step.Field(:x))) && isempty(load!(spread, first_memory, Step.Field(:y)))
     store!(spread, first_memory, nothing, Targets(Origin.Unknown() => NO_DOUBT))
-    @test load(spread, first_memory, Step.Field(:x)) == Targets(Origin.Unknown() => NO_DOUBT)
-    @test load(spread, first_memory, Step.Field(:y)) == Targets(Origin.Unknown() => NO_DOUBT)
+    @test load!(spread, first_memory, Step.Field(:x)) == Targets(Origin.Unknown() => NO_DOUBT)
+    @test load!(spread, first_memory, Step.Field(:y)) == Targets(Origin.Unknown() => NO_DOUBT)
     # A retained trace still charges the work of a global cache flush.
     limited = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, 2)
-    @test isempty(load(limited, first_memory, Step.Element()))
+    @test isempty(load!(limited, first_memory, Step.Element()))
     store!(limited, second_memory, Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
-    @test isempty(load(limited, first_memory, Step.Element()))
+    @test isempty(load!(limited, first_memory, Step.Element()))
     @test limited.traces == 1 && limited.work == 3 && over_budget(limited)
     # Long traces stay indexed until the flow membership budget fills.
     long = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
@@ -1149,18 +1149,18 @@ four_way(x::Symbol) = x
     for index in 1:(length(memories) - 1)
         store_backing!(long, memories[index], memories[index + 1])
     end
-    @test all(isempty(load(long, memory, Step.Element())) for memory in memories)
+    @test all(isempty(load!(long, memory, Step.Element())) for memory in memories)
     memberships = sum(length, values(long.dependents); init = 0)
     @test memberships == long.memberships && memberships <= Summaries.TRACE_MEMBERSHIP_LIMIT
     @test memberships > 6240 && !isempty(long.coarse)
     @test long.traces == 1000
-    @test isempty(load(long, first(memories), Step.Element())) && long.traces == 1000
+    @test isempty(load!(long, first(memories), Step.Element())) && long.traces == 1000
     store!(long, Targets(Origin.Allocation(2001) => NO_DOUBT), Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
     @test isempty(long.coarse) && haskey(long.follows, (Origin.Allocation(1001), Step.Element()))
-    @test isempty(load(long, first(memories), Step.Element())) && long.traces == 1000
+    @test isempty(load!(long, first(memories), Step.Element())) && long.traces == 1000
     store!(long, last(memories), Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
-    expected = Summaries.trace(long, Origin.Allocation(1001), Step.Element()).targets
-    @test load(long, first(memories), Step.Element()) == expected == Targets(Origin.Unknown() => NO_DOUBT)
+    expected = Summaries.trace!(long, Origin.Allocation(1001), Step.Element()).targets
+    @test load!(long, first(memories), Step.Element()) == expected == Targets(Origin.Unknown() => NO_DOUBT)
     @test long.memberships == sum(length, values(long.dependents); init = 0)
     # Type sources: parameter of caller place, sources of chain; global and merge of fresh objects are doubt in code.
     held_global = Origin.Caller(global_place(@__MODULE__, :HOLDER))
@@ -1186,8 +1186,8 @@ four_way(x::Symbol) = x
     @test static_sources(only(methods(static_pair))) == [parameter_source(2), parameter_source(3)] && isempty(static_sources(only(methods(fill_one!))))
     # Callee parameter source becomes type sources of argument, derived ones too; parameter without argument is doubt in code.
     site = CallSite([Targets(), Targets(Origin.Caller(parameter(4)) => NO_DOUBT), Targets()], Sources[none, none, parameter_source(5)], 7, 0)
-    @test caller_doubt(flow, site, sourced(1)) == CODE_DOUBT && caller_doubt(flow, site, sourced(2)) == sourced(4)
-    @test caller_doubt(flow, site, sourced(3)) == sourced(5) && caller_doubt(flow, site, sourced(4)) == CODE_DOUBT
+    @test caller_doubt!(flow, site, sourced(1)) == CODE_DOUBT && caller_doubt!(flow, site, sourced(2)) == sourced(4)
+    @test caller_doubt!(flow, site, sourced(3)) == sourced(5) && caller_doubt!(flow, site, sourced(4)) == CODE_DOUBT
     # Source past unit arguments is doubt in code.
     @test source_provenance(parameter_source(3), [Provenance.code, Provenance.opaque]) == Provenance.code
     # Spread part as callee: `MemoryRef` has no call method, so call throws.
@@ -1465,17 +1465,17 @@ end
     tight = start_run(nothing, Module[]; work_limit = 0)
     root = (only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], tight.world, 1))), Pair{Int, Any}[])
     solve!(tight, [root])
-    @test root in tight.over_budget && same(root_summary(tight, root), open_summary(2, Summaries.BUDGET)) && isempty(root_calls(tight, root))
+    @test root in tight.over_budget && same(root_summary!(tight, root), open_summary(2, Summaries.BUDGET)) && isempty(root_calls!(tight, root))
     # Default budget keeps same variant precise.
     roomy = start_run(nothing, Module[])
     solve!(roomy, [root])
-    @test isempty(roomy.over_budget) && !same(root_summary(roomy, root), open_summary(2, Summaries.BUDGET))
+    @test isempty(roomy.over_budget) && !same(root_summary!(roomy, root), open_summary(2, Summaries.BUDGET))
     # Trace counts origins it walks, and load past budget stops: one call statement cannot run past limit.
     code = roomy.codes[root]
     spent = start_flow(code.ir, code.outcomes, code.message, roomy.referent, false, false, Sources[], false, 1)
     holder = Targets(Origin.Allocation(30) => NO_DOUBT)
     store!(spent, holder, Step.Field(:z), Targets(Origin.Caller(parameter(2)) => NO_DOUBT))
-    @test !isempty(load(spent, holder, Step.Field(:z))) && over_budget(spent) && isempty(load(spent, holder, Step.Field(:z)))
+    @test !isempty(load!(spent, holder, Step.Field(:z))) && over_budget(spent) && isempty(load!(spent, holder, Step.Field(:z)))
     # Package unit past budget: blind access with budget cause goes to coverage line.
     _, spots = cached_effects(PACKAGE, UNITS, Union{Nothing, UnitVerdict}[], nothing, Library(); work_limit = 0)
     @test any(spot -> spot.cause == Summaries.BUDGET, spots) && !any(spot -> spot.cause == Summaries.BUDGET, SPOTS)
@@ -1591,11 +1591,11 @@ report_taker!(taker::Taker, value::Int, flag::Bool)::Nothing = flag ? throw(Argu
     @test doubts(summary_of(logged_write!, Vector{String}, Any).writes) == Dict(top(2) => NO_DOUBT, (parameter(3), true) => sourced(3))
     # Static call, join and contract breach inside message add no `possible` write.
     @test isempty(summary_of(describe_message, Any, Bool).writes) && isempty(summary_of(breach_message, Any, Bool).writes)
-    @test isempty(root_summary(solved(join_message, Module[@__MODULE__], Any, Any, Bool)...).writes)
+    @test isempty(root_summary!(solved(join_message, Module[@__MODULE__], Any, Any, Bool)...).writes)
     # Definite write inside message stays, and so does write before throw; earlier write keeps its cause.
     @test doubts(summary_of(pop_message!, Vector{Any}, Bool).writes) == Dict(top(2) => NO_DOUBT)
     run, root = solved(pop_twice!, Module[], Vector{Any}, Bool)
-    @test !run.codes[root].message[root_summary(run, root).writes[memory(top(2))].cause]
+    @test !run.codes[root].message[root_summary!(run, root).writes[memory(top(2))].cause]
     @test level_of(summary_of(open_then_throw!, Any, Any, Bool).writes[memory((parameter(3), true))].doubt) == Level.code
     @test isempty(summary_of(error_message, Any, Bool).writes)
     # Use cycle never counts as message; call that fails on its types is no throw.
@@ -1861,8 +1861,8 @@ placed(position::Int, steps::Step.Type...)::Node.Type = Node.Placed(parameter(po
     @test holds(summary_of(maybe_lock!, ReentrantLock, Bool).held) == Dict((placed(2), lock_) => (0, code))
     @test isempty(summary_of(paired_lock!, ReentrantLock, Bool, Vector{Int}).held)
     @test holds(summary_of(lock_each!, ReentrantLock, Int).held) == Dict((placed(2), lock_) => (0, code))
-    @test holds(root_summary(solved(grab_either!, Module[@__MODULE__], Union{Guarded, Lockless})...).held) == Dict((placed(2, lk), lock_) => (0, code))
-    either_store = root_summary(solved(grab_either_store!, Module[@__MODULE__], Union{Guarded, Lockless}, Vector{Int})...)
+    @test holds(root_summary!(solved(grab_either!, Module[@__MODULE__], Union{Guarded, Lockless})...).held) == Dict((placed(2, lk), lock_) => (0, code))
+    either_store = root_summary!(solved(grab_either_store!, Module[@__MODULE__], Union{Guarded, Lockless}, Vector{Int})...)
     @test only(values(either_store.unguarded)).hold.level == code
     # `IOStream` code locks stream only when `_dolock` holds: same condition, so stream ends balanced.
     @test isempty(summary_of(stream_byte, IOStream).held)
@@ -1971,18 +1971,18 @@ end
     # Shortcut unit keeps code for call facts; its summary stays empty.
     run = start_run(nothing, Module[])
     plus = Base.method_instance(+, (Int, Int))
-    body = unit_body(run, Core.Compiler.typeinf_frame(run.interpreter, plus, false), false)
+    body = unit_body!(run, Core.Compiler.typeinf_frame(run.interpreter, plus, false), false)
     @test body.shortcut
     run.bodies[plus] = body
     root = (plus, Pair{Int, Any}[])
     solve!(run, [root])
-    @test same(root_summary(run, root), empty_summary()) && haskey(run.codes, root)
-    added = only(last.(root_calls(run, root)))
+    @test same(root_summary!(run, root), empty_summary()) && haskey(run.codes, root)
+    added = only(last.(root_calls!(run, root)))
     @test added.callee == Callee.Builtin(Core.Intrinsics.add_int) && added.used && !added.throws && added.terminates
     # Passes empty unreachable set of their state; frame keeps own set, so second body drops dead `convert` too.
     frame = Core.Compiler.typeinf_frame(run.interpreter, Base.method_instance(CASES.add, (Int, Int)), false)
     unreachable = copy(frame.unreachable)
-    bodies = [unit_body(start_run(nothing, Module[]), frame, false) for _ in 1:2]
+    bodies = [unit_body!(start_run(nothing, Module[]), frame, false) for _ in 1:2]
     @test !isempty(unreachable) && frame.unreachable == unreachable
     @test length(bodies[1].ir.stmts) == length(bodies[2].ir.stmts) && bodies[1].used == bodies[2].used
     # Units of method merge: methods join; other callee pair gives open dispatch.

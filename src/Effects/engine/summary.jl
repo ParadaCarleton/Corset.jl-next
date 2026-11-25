@@ -54,10 +54,10 @@ end
 
 """
 Summary of instance of `method` from `flow` at fixpoint, with callee summaries from `callees`: caller-visible accesses,
-stores of exported objects, result, and release balance (`balance`).
+stores of exported objects, result, and release balance (`balance!`).
 """
-function summarize(flow::Flow, method::Method, callees::Callees)::Summary
-    held, thrown, unguarded = balance(flow, callees)
+function summarize!(flow::Flow, method::Method, callees::Callees)::Summary
+    held, thrown, unguarded = balance!(flow, callees)
     exported = escaping(flow)
     shown(origin::Origin.Type)::Bool = !fresh_origin(origin) || origin in exported
     edges = Dict((node_of(holder), step) => nodes_of(targets) for (holder, slots) in flow.heap if shown(holder) for (step, targets) in slots if !isempty(targets))

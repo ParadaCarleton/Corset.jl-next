@@ -6,8 +6,8 @@ using Corset.Cache: Cache
 using Corset.Facts: Facts, Callee, callee_methods
 using Corset.Inference: Inference, infer_package, serialized, edge_instance
 using Corset.Effects.Summaries:
-    Summaries, MethodVerdict, UnitVerdict, Library, LibraryEntry, Summary, Run, Variant, Closure, start_run, solve!, dispatch, root_summary, same, cached_effects,
-    library_entries, unshared, closure_key!, variant_key!, instance_key!, instance_node, record_text!, stored_value!, type_text!, inferred!,
+    Summaries, MethodVerdict, UnitVerdict, Library, LibraryEntry, Summary, Run, Variant, Closure, start_run, solve!, dispatch, root_summary!, same, cached_effects,
+    library_entries!, unshared!, closure_key!, variant_key!, instance_key!, instance_node, record_text!, stored_value!, type_text!, inferred!,
     record_bytes, unit_record
 using Moshi.Data: isa_variant
 using Serialization: deserialize
@@ -134,7 +134,7 @@ end
 """
 
 """Library cache entries of solve of `f` on `types` with empty cache, after round trip through bytes."""
-library_of(f::Any, types::Type...)::Library = reread(library_entries(first(solved(Library(), Module[], f, types...))))
+library_of(f::Any, types::Type...)::Library = reread(library_entries!(first(solved(Library(), Module[], f, types...))))
 
 """Whether solve of `f` on `types` with `library` takes summary of its root from library cache."""
 function root_hit(library::Library, f::Any, types::Type...)::Bool
@@ -208,7 +208,7 @@ end
             # Body that calls outside native edges cannot share: call without method dispatches nowhere.
             missing_run, missing_root = solved(Library(), Module[], lib.missing_call, Vector{Int})
             called, called_root = solved(Library(), Module[], lib.ping, Int)
-            @test missing_root in unshared(missing_run, fresh()) && !(called_root in unshared(called, fresh()))
+            @test missing_root in unshared!(missing_run, fresh()) && !(called_root in unshared!(called, fresh()))
         end
         # Other process with other loaded packages gives same key.
         precompile(push!, (Vector{Int}, Int))
@@ -219,25 +219,25 @@ end
 
     @testset "library entries" begin
         cold, root = solved(Library(), Module[], push!, Vector{Int}, Int)
-        entries = reread(library_entries(cold))
+        entries = reread(library_entries!(cold))
         key = something(variant_key!(cold, fresh(), root))
         @test haskey(entries.entries, key) && instance_key!(cold, first(root)) in entries.instances
         # Hit needs no body: walk stops at it, and run finds no new entry.
         warm, _ = solved(entries, Module[], push!, Vector{Int}, Int)
-        @test key in warm.cache.hits && isempty(warm.codes) && isempty(warm.bodies) && same(root_summary(warm, root), root_summary(cold, root))
-        @test isempty(library_entries(warm))
+        @test key in warm.cache.hits && isempty(warm.codes) && isempty(warm.bodies) && same(root_summary!(warm, root), root_summary!(cold, root))
+        @test isempty(library_entries!(warm))
         # Summary with callback record stays out.
         precompile(CASES.call_setter!, (CASES.Setter, Int))
         setter, setter_root = solved(Library(), Module[], CASES.call_setter!, CASES.Setter, Int)
         setter_key = variant_key!(setter, fresh(), setter_root)
-        @test !isempty(setter.summaries[setter_root].callbacks) && !isnothing(setter_key) && !haskey(library_entries(setter).entries, something(setter_key))
+        @test !isempty(setter.summaries[setter_root].callbacks) && !isnothing(setter_key) && !haskey(library_entries!(setter).entries, something(setter_key))
         # Caller of package method stays out, though its own signature names no package type.
         relay, relay_root = solved(Library(), [CASES], relay_twice, Int)
-        @test relay_root in unshared(relay, fresh())
+        @test relay_root in unshared!(relay, fresh())
         # Variant with package module as constant stays out.
         named, _ = solved(Library(), [CASES], CASES.read_module)
         moduled = [variant for variant in keys(named.summaries) if any(constant -> last(constant) === CASES, last(variant))]
-        @test !isempty(moduled) && issubset(moduled, unshared(named, fresh()))
+        @test !isempty(moduled) && issubset(moduled, unshared!(named, fresh()))
         # Entry holds throw helper verdicts its closure read, and hits only while each holds.
         instance = first(root)
         for (verdict, hit) in [(true, true), (false, false)]

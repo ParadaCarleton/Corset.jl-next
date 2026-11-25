@@ -3,7 +3,7 @@
 # `benchmark/effects.jl` makes <work>. Output: methods by source group and label; TSV holds label set of each method.
 
 using Corset: Corset
-using Corset.Effects.Summaries: Summaries, CC, Level, Outcome, Operand, Variant, level_of, root_summary, solve!, source_provenance, sources_of, start_run, unit_body
+using Corset.Effects.Summaries: Summaries, CC, Level, Outcome, Operand, Variant, level_of, root_summary!, solve!, source_provenance, sources_of, start_run, unit_body!
 using Corset.Effects.Summaries: @match
 using Corset.Signatures: Provenance
 
@@ -121,13 +121,13 @@ function census(name::String, root::String)::IdDict{Method, Labels}
         run.cuts[typed.frame.linfo] = !isempty(typed.cuts)
     end
     roots = Variant[(typed.frame.linfo, Pair{Int, Any}[]) for typed in units.typed if typed_of[typed.frame.linfo] === typed]
-    foreach(((instance, _),) -> run.bodies[instance] = unit_body(run, typed_of[instance].frame, run.cuts[instance]), roots)
+    foreach(((instance, _),) -> run.bodies[instance] = unit_body!(run, typed_of[instance].frame, run.cuts[instance]), roots)
     solve!(run, roots)
     package, labels = Set(loaded.facts.modules), IdDict{Method, Labels}()
     for root_variant in roots
         typed = typed_of[first(root_variant)]
         typed.result === Union{} && continue
-        for effect in values(root_summary(run, root_variant).writes)
+        for effect in values(root_summary!(run, root_variant).writes)
             level_of(effect.doubt) == Level.code || continue
             source_provenance(sources_of(effect.doubt), typed.provenance) == Provenance.code || continue
             trace!(get!(Labels, labels, typed.site.method), run, root_variant, effect.cause, package, Set{Tuple{Variant, Int}}())

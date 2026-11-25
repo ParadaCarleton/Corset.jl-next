@@ -105,10 +105,18 @@ function referent!(cache::IdDict{Any, Bool}, @nospecialize(type::Any))::Bool
     elseif type <: Ptr || ismutabletype(type)
         true
     else
-        any(index -> referent!(cache, fieldtype(type, index)), 1:fieldcount(type))
+        fields_refer!(cache, type)
     end
     cache[type] = answer
     return answer
+end
+
+"""Whether some field of concrete `type` can point to object (`referent!`); fields after first such field stay unchecked."""
+function fields_refer!(cache::IdDict{Any, Bool}, type::DataType)::Bool
+    for index in 1:fieldcount(type)
+        referent!(cache, fieldtype(type, index)) && return true
+    end
+    return false
 end
 
 """

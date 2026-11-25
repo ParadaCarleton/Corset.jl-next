@@ -1,6 +1,6 @@
 """
 Instance key of `instance`: canonical texts of its method signature and specialization (`type_text!`). Library cache lists
-instance key of each entry, so lookup walks closure of listed instance only (`listed`).
+instance key of each entry, so lookup walks closure of listed instance only (`listed!`).
 """
 instance_key!(run::Run, instance::Core.MethodInstance)::String =
     get!(() -> "$(first(type_text!(run, (instance.def::Method).sig))) $(first(type_text!(run, instance.specTypes)))", run.cache.keys, instance)
@@ -344,19 +344,19 @@ function stored_value!(run::Run, ::Type{T}, key::Union{Nothing, String}, instanc
 end
 
 """Whether library cache lists instance key of `instance` (`instance_key!`): only then can entry key of it match."""
-listed(run::Run, instance::Core.MethodInstance)::Bool = !isempty(run.cache.library) && !package_instance!(run, instance) && instance_key!(run, instance) in run.cache.library.instances
+listed!(run::Run, instance::Core.MethodInstance)::Bool = !isempty(run.cache.library) && !package_instance!(run, instance) && instance_key!(run, instance) in run.cache.library.instances
 
 """Stored summary of library cache for `variant` (`stored_value!`)."""
-stored_summary(run::Run, variant::Variant)::Union{Nothing, Summary} = listed(run, first(variant)) ? stored_value!(run, Summary, variant_key!(run, run.cache.closure, variant), first(variant)) : nothing
+stored_summary!(run::Run, variant::Variant)::Union{Nothing, Summary} = listed!(run, first(variant)) ? stored_value!(run, Summary, variant_key!(run, run.cache.closure, variant), first(variant)) : nothing
 
 """Variant parameters of library cache for `instance` (`stored_value!`)."""
-stored_parameters(run::Run, instance::Core.MethodInstance)::Union{Nothing, Set{Int}} = listed(run, instance) ? stored_value!(run, Set{Int}, instance_entry_key!(run, run.cache.closure, "parameters", instance), instance) : nothing
+stored_parameters!(run::Run, instance::Core.MethodInstance)::Union{Nothing, Set{Int}} = listed!(run, instance) ? stored_value!(run, Set{Int}, instance_entry_key!(run, run.cache.closure, "parameters", instance), instance) : nothing
 
 """Whether stand-ins cut `instance`, as library cache holds (`stored_value!`)."""
-stored_cut(run::Run, instance::Core.MethodInstance)::Union{Nothing, Bool} = listed(run, instance) ? stored_value!(run, Bool, instance_entry_key!(run, run.cache.closure, "cut", instance), instance) : nothing
+stored_cut!(run::Run, instance::Core.MethodInstance)::Union{Nothing, Bool} = listed!(run, instance) ? stored_value!(run, Bool, instance_entry_key!(run, run.cache.closure, "cut", instance), instance) : nothing
 
-"""Whether stand-ins cut `instance` with native inference `frame`: library cache answer, else `stand_in_cut`."""
-stored_or_cut(run::Run, instance::Core.MethodInstance, frame::CC.InferenceState)::Bool = (stored = stored_cut(run, instance); isnothing(stored) ? stand_in_cut(run, frame) : stored)
+"""Whether stand-ins cut `instance` with native inference `frame`: library cache answer, else `stand_in_cut!`."""
+stored_or_cut!(run::Run, instance::Core.MethodInstance, frame::CC.InferenceState)::Bool = (stored = stored_cut!(run, instance); isnothing(stored) ? stand_in_cut!(run, frame) : stored)
 
 """
 Whether `instance` is Core method of alias function: inference reads `x !== y` as `x === y` and `x >: y` as `y <: x`,
@@ -410,7 +410,7 @@ function contained(run::Run, instance::Core.MethodInstance, body::Body)::Bool
 end
 
 """
-Whether library cache cannot share `variant` of solved `run` by itself (`unshared`): package variant
+Whether library cache cannot share `variant` of solved `run` by itself (`unshared!`): package variant
 (`package_variant!`), variant with body that calls outside native edges (`contained`, once per instance in
 `checked`), or variant without code (hit, shortcut, blind spot) without closure key in `state`. Core method of alias
 function counts as shared (`aliased`).
@@ -429,11 +429,15 @@ included: call graph components, callees first, take reach of their callees. Dis
 so variant with code needs own check only. Closure key in `state` holds native edges, so solve that leaves them stays
 out too.
 """
-function unshared(run::Run, state::Closure)::Set{Variant}
+function unshared!(run::Run, state::Closure)::Set{Variant}
     order, checked = collect(keys(run.summaries)), IdDict{Core.MethodInstance, Bool}()
     successors, inside = call_graph(run, order), falses(length(order))
     for component in components(successors)
-        reaches = any(member -> unshared!(run, state, checked, order[member]) || any(callee -> inside[callee], successors[member]), component)
+        reaches = false
+        for member in component
+            reaches = unshared!(run, state, checked, order[member]) || any(callee -> inside[callee], successors[member])
+            reaches && break
+        end
         inside[component] .= reaches
     end
     return Set(order[inside])
@@ -455,13 +459,13 @@ end
 """
 New library cache entries of solved `run` (`engine.md`, Solve and cache): summaries, variant parameters and cuts of
 library instances, under keys of store phase. Store phase `Closure` rejects instances whose cut check inferred model
-types (`stand_in_cut`): that inference reads methods outside native edges. Summary of variant that cache cannot share
-(`unshared`), or with callback record, stays out: caller of hit would need summaries of record variants too. Library
+types (`stand_in_cut!`): that inference reads methods outside native edges. Summary of variant that cache cannot share
+(`unshared!`), or with callback record, stays out: caller of hit would need summaries of record variants too. Library
 variant with code proves variant parameters of its instance with body, since its callees are callees of that body.
 """
-function library_entries(run::Run)::Library
+function library_entries!(run::Run)::Library
     state = Closure(copy(run.cache.modeled))
-    inside, entries = unshared(run, state), Library()
+    inside, entries = unshared!(run, state), Library()
     for (variant, summary) in run.summaries
         (variant in inside || !isempty(summary.callbacks)) && continue
         add_entry!(entries, run, state, variant_key!(run, state, variant), first(variant), summary)

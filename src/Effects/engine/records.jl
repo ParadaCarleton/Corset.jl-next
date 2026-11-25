@@ -48,10 +48,10 @@ struct UnitVerdict
     own_cut::Bool
 end
 
-"""Call facts of `root` with code in `run`, with spans from `span_of` (`root_calls`)."""
-function unit_calls(run::Run, root::Variant, span_of::Function)::UnitCalls
+"""Call facts of `root` with code in `run`, with spans from `span_of` (`root_calls!`)."""
+function unit_calls!(run::Run, root::Variant, span_of::Function)::UnitCalls
     lines, found = run.codes[root].lines, UnitCalls()
-    for (index, record) in root_calls(run, root)
+    for (index, record) in root_calls!(run, root)
         fact = CallSummary(span_of(index), record...)
         push!(found, (lines[index], fact.span) => fact)
     end
@@ -59,14 +59,14 @@ function unit_calls(run::Run, root::Variant, span_of::Function)::UnitCalls
 end
 
 """Verdict record of root unit `typed` with variant `root` in solved `run`."""
-function unit_verdict(run::Run, typed::TypedCode, root::Variant)::UnitVerdict
+function unit_verdict!(run::Run, typed::TypedCode, root::Variant)::UnitVerdict
     own_cut = !isempty(typed.cuts)
     # Unit that always throws on stand-ins shows no behavior of declared signature.
     typed.result === Union{} && return UnitVerdict(
         false, Access[], Access[], BlindAccess[], BlindAccess[], Place.Type[], UnguardedHold[], UnitCalls(),
         [BlindSpot("always throws on stand-ins", typed.site.span)], false, nothing, own_cut,
     )
-    summary = root_summary(run, root)
+    summary = root_summary!(run, root)
     span_of(cause::Int)::Span = cause_span(typed, run.codes[root], cause)
     kind_of(place::Place.Type)::EffectKind.T = path_kind(run.codes[root].ir, place)
     writes, blind_writes = unit_accesses(summary.writes, span_of, typed.provenance)
@@ -76,7 +76,7 @@ function unit_verdict(run::Run, typed::TypedCode, root::Variant)::UnitVerdict
     cut = summary.cut ? cut_span(run, typed, root) : nothing
     return UnitVerdict(
         true, [writes; held_writes], reads, [blind_writes; held_blind], blind_reads, result_aliases(summary), unguarded,
-        unit_calls(run, root, span_of), spots, summary.closed_world, cut, own_cut,
+        unit_calls!(run, root, span_of), spots, summary.closed_world, cut, own_cut,
     )
 end
 
@@ -105,8 +105,8 @@ function method_of(signature::Type, world::UInt)::Method
     return method
 end
 
-"""`fact` with callee `callee`: call fact or call summary."""
-with_callee(fact::T, callee::Callee.Type) where {T} = T((name === :callee ? callee : getfield(fact, name) for name in fieldnames(T))...)::T
+"""Call summary `fact` with callee `callee`."""
+with_callee(fact::CallSummary, callee::Callee.Type)::CallSummary = CallSummary((name === :callee ? callee : getfield(fact, name) for name in fieldnames(CallSummary))...)
 
 """Call facts of unit as method store keeps them: fact with open callee, and its callee (`stored_callee`)."""
 const StoredCalls = Vector{Tuple{Tuple{Int, Span}, CallSummary, Any}}

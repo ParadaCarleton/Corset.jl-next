@@ -3,7 +3,7 @@
 # `benchmark/effects.jl` makes <work>. Compare two fact dumps with `diff`; two summary dumps with `summary_leaves.jl`.
 
 using Corset: Corset
-using Corset.Effects.Summaries: Summaries, Summary, Variant, solve!, start_run, unit_body
+using Corset.Effects.Summaries: Summaries, Summary, Variant, solve!, start_run, unit_body!
 
 """Text of `x` with every dictionary and set in sorted order, so equal values give equal text."""
 canon(x::AbstractDict)::String = "{" * join(sort!([canon(key) * " => " * canon(item) for (key, item) in x]), ", ") * "}"
@@ -42,7 +42,7 @@ function write_summaries(modules::Vector{Module}, units::Any, path::String)::Int
     foreach(typed -> get!(firsts, typed.frame.linfo, typed), units.typed)
     roots = Variant[(typed.frame.linfo, Pair{Int, Any}[]) for typed in units.typed if firsts[typed.frame.linfo] === typed]
     foreach(((instance, _),) -> run.cuts[instance] = !isempty(firsts[instance].cuts), roots)
-    foreach(((instance, _),) -> run.bodies[instance] = unit_body(run, firsts[instance].frame, run.cuts[instance]), roots)
+    foreach(((instance, _),) -> run.bodies[instance] = unit_body!(run, firsts[instance].frame, run.cuts[instance]), roots)
     solve!(run, roots)
     open(path, "w") do io
         for (variant, summary) in run.summaries

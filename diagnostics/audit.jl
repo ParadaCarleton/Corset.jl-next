@@ -4,7 +4,7 @@
 # Trace follows every definite write of static callee, so origin of one place can over-approximate.
 
 using Corset: Corset
-using Corset.Effects.Summaries: Summaries, Level, Outcome, Variant, cause_span, level_of, root_summary, solve!, start_run, unit_body
+using Corset.Effects.Summaries: Summaries, Level, Outcome, Variant, cause_span, level_of, root_summary!, solve!, start_run, unit_body!
 using Corset.Effects.Summaries: @match
 
 """Origin of definite write: `contract` or `join`, callee name, and chain of callee methods from root to it."""
@@ -83,13 +83,13 @@ function audit(name::String, root::String)::Vector{String}
         run.cuts[typed.frame.linfo] = !isempty(typed.cuts)
     end
     roots = Variant[(typed.frame.linfo, Pair{Int, Any}[]) for typed in units.typed if typed_of[typed.frame.linfo] === typed]
-    foreach(((instance, _),) -> run.bodies[instance] = unit_body(run, typed_of[instance].frame, run.cuts[instance]), roots)
+    foreach(((instance, _),) -> run.bodies[instance] = unit_body!(run, typed_of[instance].frame, run.cuts[instance]), roots)
     solve!(run, roots)
     rows = String[]
     for root_variant in roots
         typed = typed_of[first(root_variant)]
         (typed.result === Union{} || !haskey(run.codes, root_variant)) && continue
-        for ((place, below, kind), effect) in root_summary(run, root_variant).writes
+        for ((place, below, kind), effect) in root_summary!(run, root_variant).writes
             level_of(effect.doubt) == Level.none || continue
             found = Origin[]
             origins!(found, run, root_variant, effect.cause, String[], Set{Tuple{Variant, Int}}())

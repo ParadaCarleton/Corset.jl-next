@@ -29,7 +29,7 @@ backing, unknown-slot stores and global bindings; result targets; accesses by or
 below; callback records by call statement. `changed` records growth of targets in current round; `closed_world` records
 join over methods loaded now, and `cut` path stand-ins cut (`Summary`). `flush` resolves every callback record here:
 root unit has no caller to resolve them. `record` keeps kinds of writes each call statement makes (`call_kinds`).
-`follows` keeps slot targets by origin and step (`load`); `dependents` indexes traces by origins they read.
+`follows` keeps slot targets by origin and step (`load!`); `dependents` indexes traces by origins they read.
 `coarse` holds traces beyond `TRACE_MEMBERSHIP_LIMIT`; any heap growth invalidates them.
 `stale` and `generation` preserve work accounting after heap growth.
 `traces` counts trace executions.
@@ -136,7 +136,7 @@ raised(targets::Targets, doubt::Doubt)::Targets = Targets(origin => most(flag, d
 
 """
 Unknown object with chain `doubt`. Engine reaches it with `code` doubt or more: steps from it and callee nodes for it
-add none (`trace`, `map_node`), so sources of chain stay.
+add none (`trace!`, `map_node!`), so sources of chain stay.
 """
 unknown(doubt::Doubt)::Targets = Targets(Origin.Unknown() => doubt)
 
@@ -211,7 +211,7 @@ function beneath(flow::Flow, objects::Targets)::Targets
 end
 
 """Whether `flow` value of `type` can point to object."""
-points(flow::Flow, @nospecialize(type::Any))::Bool = referent!(flow.referent, CC.widenconst(type))
+points!(flow::Flow, @nospecialize(type::Any))::Bool = referent!(flow.referent, CC.widenconst(type))
 
 """Whether global `binding` is constant null pointer (`C_NULL`): pointer into no object."""
 null_pointer(binding::GlobalRef)::Bool = isconst(binding) && (pointer = getglobal(binding.mod, binding.name); pointer isa Ptr && pointer == C_NULL)
@@ -225,27 +225,27 @@ function global_targets(flow::Flow, binding::GlobalRef)::Targets
 end
 
 """Targets of IR `value`: SSA value, argument, global binding, or constant object (unknown)."""
-function value_targets(flow::Flow, @nospecialize(value::Any))::Targets
+function value_targets!(flow::Flow, @nospecialize(value::Any))::Targets
     value isa Core.SSAValue && return flow.values[value.id]
     value isa Core.Argument && return flow.arguments[value.n]
-    points(flow, value_lattice(flow.ir, value)) || return Targets()
+    points!(flow, value_lattice(flow.ir, value)) || return Targets()
     value isa GlobalRef && return global_targets(flow, value)
     return unknown(CODE_DOUBT)
 end
 
 """Targets of call `operand`: value, slot at position of spread tuple, or every element of `Rest`."""
-function operand_targets(flow::Flow, operand::Operand.Type)::Targets
+function operand_targets!(flow::Flow, operand::Operand.Type)::Targets
     return @match operand begin
-        Operand.Value(value) => value_targets(flow, value)
-        Operand.Part(value, position) => load(flow, value_targets(flow, value), Step.Position(position))
-        Operand.Rest(value) => spread_elements(flow, value)
+        Operand.Value(value) => value_targets!(flow, value)
+        Operand.Part(value, position) => load!(flow, value_targets!(flow, value), Step.Position(position))
+        Operand.Rest(value) => spread_elements!(flow, value)
     end
 end
 
 """Targets of every element of spread tuple or array `value`: tuple position is unknown, so any slot (`load_any`)."""
-function spread_elements(flow::Flow, @nospecialize(value::Any))::Targets
-    objects = value_targets(flow, value)
-    return value_type(flow.ir, value) <: Tuple ? load_any(flow, objects) : load(flow, objects, Step.Element())
+function spread_elements!(flow::Flow, @nospecialize(value::Any))::Targets
+    objects = value_targets!(flow, value)
+    return value_type(flow.ir, value) <: Tuple ? load_any(flow, objects) : load!(flow, objects, Step.Element())
 end
 
 """
@@ -287,7 +287,7 @@ const MEMORY_POINTER = Step.Field(:ptr)
 Targets of `step` slot of `origin`: place below caller object, stored targets, and element or data pointer of each
 memory backing chain reaches, with doubt of chain. Each origin walk counts as work.
 """
-function trace(flow::Flow, origin::Origin.Type, step::Step.Type)::Follow
+function trace!(flow::Flow, origin::Origin.Type, step::Step.Type)::Follow
     flow.traces += 1
     found, reached, pending = Targets(), Targets(), [origin => NO_DOUBT]
     while !isempty(pending)
@@ -324,7 +324,7 @@ end
 Targets of `step` slot over every origin of `objects`. Reuse traces until a dependency changes. Charge work as if heap
 growth cleared all traces, so the work limit keeps its original behavior.
 """
-function load(flow::Flow, objects::Targets, step::Step.Type)::Targets
+function load!(flow::Flow, objects::Targets, step::Step.Type)::Targets
     flow.stale && (flow.generation += 1; flow.stale = false)
     found = Targets()
     for (origin, doubt) in objects
@@ -332,7 +332,7 @@ function load(flow::Flow, objects::Targets, step::Step.Type)::Targets
         key = (origin, step)
         followed = get(flow.follows, key, nothing)
         if isnothing(followed)
-            followed = trace(flow, origin, step)
+            followed = trace!(flow, origin, step)
             flow.follows[key] = followed
             flow.memberships += length(followed.dependencies)
             isempty(followed.dependencies) && push!(flow.coarse, key)
@@ -418,7 +418,7 @@ end
 
 """
 Store `values` into `step` slot of every origin of `objects`; `nothing` step stores into unknown slot. Growth makes
-slot targets `load` found stale.
+slot targets `load!` found stale.
 """
 function store!(flow::Flow, objects::Targets, step::Union{Nothing, Step.Type}, values::Targets)::Nothing
     for (origin, doubt) in objects
@@ -428,7 +428,7 @@ function store!(flow::Flow, objects::Targets, step::Union{Nothing, Step.Type}, v
     return nothing
 end
 
-"""Store `values` into memory backing of every origin of `objects`; growth makes slot targets `load` found stale."""
+"""Store `values` into memory backing of every origin of `objects`; growth makes slot targets `load!` found stale."""
 function store_backing!(flow::Flow, objects::Targets, values::Targets)::Nothing
     for (origin, doubt) in objects
         join!(flow, slot!(flow.backing, origin), values, doubt) && invalidate!(flow, (origin, nothing, true))
@@ -444,7 +444,7 @@ end
 
 """Set targets of statement `index` to include `targets`, raised to `doubt`, when its type can point to object."""
 function assign!(flow::Flow, index::Int, targets::Targets, doubt::Doubt = NO_DOUBT)::Nothing
-    points(flow, flow.ir.stmts[index][:type]) && join!(flow, flow.values[index], targets, doubt)
+    points!(flow, flow.ir.stmts[index][:type]) && join!(flow, flow.values[index], targets, doubt)
     return nothing
 end
 
@@ -491,11 +491,11 @@ function statement!(flow::Flow, index::Int, @nospecialize(statement::Any), calle
             else
                 # Field count unknown: any field may hold any slot of tuple.
                 allocate!(flow, index)
-                store!(flow, flow.values[index], nothing, load_any(flow, value_targets(flow, statement.args[2])))
+                store!(flow, flow.values[index], nothing, load_any(flow, value_targets!(flow, statement.args[2])))
             end
         elseif head === :new_opaque_closure || head === :copyast
             allocate!(flow, index)
-            store!(flow, flow.values[index], nothing, union_targets(value_targets(flow, value) for value in statement.args))
+            store!(flow, flow.values[index], nothing, union_targets(value_targets!(flow, value) for value in statement.args))
         elseif head === :the_exception
             assign!(flow, index, unknown(CODE_DOUBT))
         elseif head === :static_parameter
@@ -515,10 +515,10 @@ function statement!(flow::Flow, index::Int, @nospecialize(statement::Any), calle
     elseif statement isa Core.PiNode
         pass!(flow, index, statement.val)
     elseif statement isa Core.ReturnNode
-        isdefined(statement, :val) && join!(flow, flow.result, value_targets(flow, statement.val))
+        isdefined(statement, :val) && join!(flow, flow.result, value_targets!(flow, statement.val))
     elseif statement isa GlobalRef
         isconst(statement) || access!(flow.reads, global_targets(flow, statement), false, definite(index), EffectKind.memory)
-        assign!(flow, index, value_targets(flow, statement))
+        assign!(flow, index, value_targets!(flow, statement))
     elseif !(statement isa Union{Nothing, Core.GotoNode, Core.GotoIfNot, Core.EnterNode, Core.UpsilonNode})
         throw(ArgumentError("effects engine has no transfer for IR statement of type `$(typeof(statement))`"))
     end
@@ -527,7 +527,7 @@ end
 
 """Pass IR `value` to statement `index` (phi or pi node): its targets and derived type sources."""
 function pass!(flow::Flow, index::Int, @nospecialize(value::Any))::Nothing
-    assign!(flow, index, value_targets(flow, value))
+    assign!(flow, index, value_targets!(flow, value))
     derive!(flow, index, value_derived(flow, value))
     return nothing
 end
@@ -586,7 +586,7 @@ function new!(flow::Flow, index::Int, @nospecialize(type_value::Any), operands::
     type = CC.instanceof_tfunc(value_lattice(flow.ir, type_value))[1]
     object = flow.values[index]
     for (position, operand) in enumerate(operands)
-        targets = operand_targets(flow, operand)
+        targets = operand_targets!(flow, operand)
         isempty(targets) && continue
         if backing_field(type, position)
             store_backing!(flow, object, targets)

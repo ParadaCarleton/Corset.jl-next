@@ -92,11 +92,11 @@ function add_change!(changes::Counts, targets::Targets, resource::Resource.T, ch
     return nothing
 end
 
-"""Changes callee `holds` make at `site`: each node maps to caller targets (`map_node`); cause is call statement."""
-function site_changes(flow::Flow, site::CallSite, holds::HoldCounts)::Counts
+"""Changes callee `holds` make at `site`: each node maps to caller targets (`map_node!`); cause is call statement."""
+function site_changes!(flow::Flow, site::CallSite, holds::HoldCounts)::Counts
     changes = Counts()
     for ((node, resource), hold) in holds
-        add_change!(changes, map_node(flow, node, site), resource, HoldCount(hold.count, hold.level, site.index, hold.reason))
+        add_change!(changes, map_node!(flow, node, site), resource, HoldCount(hold.count, hold.level, site.index, hold.reason))
     end
     return changes
 end
@@ -107,10 +107,10 @@ record waits again when `defers` and callable still holds caller object (`apply_
 callee throw-exit count joined with throw of each record.
 """
 function summary_changes!(flow::Flow, normal::Counts, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::Set{Deferred})::Counts
-    apply_changes!(normal, site_changes(flow, site, summary.held))
-    thrown = site_changes(flow, site, summary.thrown)
+    apply_changes!(normal, site_changes!(flow, site, summary.held))
+    thrown = site_changes!(flow, site, summary.thrown)
     for callback in summary.callbacks
-        record = (callback.variant, Targets[map_nodes(flow, nodes, site) for nodes in callback.parameters])
+        record = (callback.variant, Targets[map_nodes!(flow, nodes, site) for nodes in callback.parameters])
         defers && deferred(last(record)) || record in seen || begin
             push!(seen, record)
             variant, arguments = record
@@ -126,9 +126,9 @@ end
 Hold changes of dispatched call `index` with `operands` to one `variant` at normal return and at throw. Call that
 leaves callback record for caller (`deferred`) leaves its changes there too.
 """
-function variant_changes(flow::Flow, index::Int, operands::Vector{Operand.Type}, variant::Variant, defers::Bool, callees::Callees)::Tuple{Counts, Counts}
+function variant_changes!(flow::Flow, index::Int, operands::Vector{Operand.Type}, variant::Variant, defers::Bool, callees::Callees)::Tuple{Counts, Counts}
     summary, method = summary!(callees, variant), first(variant).def::Method
-    arguments = parameter_targets(flow, index, method, operands)
+    arguments = parameter_targets!(flow, index, method, operands)
     defers && deferred(arguments) && return (Counts(), Counts())
     site = CallSite(arguments, parameter_derived(flow, method, operands), index, summary.fresh)
     normal = Counts()
@@ -140,7 +140,7 @@ Hold changes of call statement `index` at normal return and at throw (`engine.md
 entry, else callee counts; join of methods joins them. Throw of primitive skips its acquire and keeps its release.
 Other calls change no count.
 """
-function call_changes(flow::Flow, callees::Callees, index::Int)::Tuple{Counts, Counts}
+function call_changes!(flow::Flow, callees::Callees, index::Int)::Tuple{Counts, Counts}
     outcome = flow.outcomes[index]
     isnothing(outcome) && return (Counts(), Counts())
     operands = @match something(outcome) begin
@@ -149,7 +149,7 @@ function call_changes(flow::Flow, callees::Callees, index::Int)::Tuple{Counts, C
     end
     found = flow.primitives[index]
     if !isnothing(found)
-        targets = found.operand == 0 ? Targets(Origin.Allocation(index) => NO_DOUBT) : operand_targets(flow, operands[found.operand])
+        targets = found.operand == 0 ? Targets(Origin.Allocation(index) => NO_DOUBT) : operand_targets!(flow, operands[found.operand])
         change = isnothing(found.change) ? HoldCount(0, Level.blind, index, RELEASE_PATTERN) : HoldCount(found.change, Level.none, index, "")
         normal = Counts()
         balanced(change) || add_change!(normal, targets, found.resource, change)
@@ -157,9 +157,9 @@ function call_changes(flow::Flow, callees::Callees, index::Int)::Tuple{Counts, C
     end
     variants = callees.variants[index]
     defers = !flow.flush && !flow.message[index] && length(variants) == 1
-    members = [variant_changes(flow, index, operands, variant, defers, callees) for variant in variants]
+    members = [variant_changes!(flow, index, operands, variant, defers, callees) for variant in variants]
     length(members) == 1 && return only(members)
-    return reduce(join_counts, first.(members)), reduce(join_counts, last.(members))
+    return mapreduce(first, join_counts, members), mapreduce(last, join_counts, members)
 end
 
 """Heads of IR expressions that can throw: calls and allocations. Flag `nothrow` decides whether each one does."""
@@ -215,7 +215,7 @@ function add_path!(paths::Vector{Path}, path::Path)::Bool
         paths[at] = (counts, kept)
     end
     if length(paths) > PATH_LIMIT
-        joined = (reduce(join_counts, first.(paths)), reduce(agreed, last.(paths)))
+        joined = (mapreduce(first, join_counts, paths), mapreduce(last, agreed, paths))
         empty!(paths)
         push!(paths, joined)
     end
@@ -264,7 +264,7 @@ Release balance of `flow` at fixpoint (`engine.md`, Release balance): forward da
 one state per path (`Path`). Statement that may throw has edge to its catch block, else to throw exit. Gives counts at
 normal exit and throw exit, and holds own throws skip: hold before throw that throw still holds.
 """
-function balance(flow::Flow, callees::Callees)::Tuple{Counts, Counts, Dict{Tuple{Origin.Type, Resource.T}, Unguarded}}
+function balance!(flow::Flow, callees::Callees)::Tuple{Counts, Counts, Dict{Tuple{Origin.Type, Resource.T}, Unguarded}}
     ir = flow.ir
     blocks, handlers = ir.cfg.blocks, CC.compute_trycatch(ir)
     entries = [Path[] for _ in blocks]
@@ -280,7 +280,7 @@ function balance(flow::Flow, callees::Callees)::Tuple{Counts, Counts, Dict{Tuple
                 # Statement in loop defines its value again: condition path took on old value no longer holds.
                 delete!(known, Core.SSAValue(index))
                 statement isa Core.ReturnNode && isdefined(statement, :val) && (normal = join_into(normal, state))
-                done, throws = get!(() -> call_changes(flow, callees, index), changes, index)
+                done, throws = get!(() -> call_changes!(flow, callees, index), changes, index)
                 if may_throw(ir, index)
                     exceptional = copy(state)
                     apply_changes!(exceptional, throws)
