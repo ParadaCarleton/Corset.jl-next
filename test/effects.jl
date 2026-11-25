@@ -15,7 +15,7 @@ using Corset.Effects.Summaries:
     beneath, map_nodes!, merges_exactly, exact_path, extend, load_any, keyword_types, over_budget, outside_targets!, unknown
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
-using Random: Xoshiro
+using Random: Random, Xoshiro, AbstractRNG
 using Base.ScopedValues: ScopedValue
 include("coverage.jl")
 
@@ -1692,6 +1692,8 @@ end
 sink_push!(sink::Sink, b::UInt8) = push_byte!(sink.bytes, b)
 
 roll(rng::Xoshiro) = rand(rng)
+roll_open(rng::AbstractRNG) = rand(rng)
+shuffle_open!(rng::AbstractRNG, items::Vector{Int}) = Random.shuffle!(rng, items)
 roll_default() = rand()
 remember!(x::Int) = task_local_storage(:effects_test, x)
 
@@ -1780,6 +1782,10 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     @test doubts(summary_of(sink_push!, Sink, UInt8).writes) == Dict((parameter(2, Step.Field(:bytes)), false, io) => NO_DOUBT)
     # RNG argument, default RNG in `Task` fields, task-local storage, scoped read.
     @test doubts(summary_of(roll, Xoshiro).writes) == Dict((parameter(2), false, EffectKind.rng_argument) => NO_DOUBT)
+    # Open call of Random draw function draws from RNG argument, whatever method runs; other effects stay open.
+    @test doubts(summary_of(roll_open, AbstractRNG).writes)[(parameter(2), false, EffectKind.rng_argument)] == NO_DOUBT
+    @test doubts(summary_of(shuffle_open!, AbstractRNG, Vector{Int}).writes)[(parameter(2), false, EffectKind.rng_argument)] == NO_DOUBT
+    @test (parameter(2), false, EffectKind.rng_argument) in keys(summary_of(roll_open, AbstractRNG).reads)
     # Current task is unknown object without doubt: draw writes default RNG for sure, and nothing else for sure.
     rolled = summary_of(roll_default)
     rolled_writes = doubts(rolled.writes)
