@@ -42,6 +42,15 @@ Base.Float64(counter::Counter) = Float64(counter.count)
 """Registers name; inserted dictionary keeps `Dict`."""
 register(table::Dict{Symbol, Any}, name::Symbol) = (table[name] = nothing; table)
 
+"""Appends one; `Vector{<:Real}` would admit `Vector{Irrational}`, which cannot hold `1.0`."""
+appended(items::Vector{Float64}) = push!(items, 1.0)
+
+"""Appends one through bounded element type: argument type is `UnionAll`."""
+appended_bound(items::Vector{<:Float64}) = push!(items, 1.0)
+
+"""Adds position; `Set{<:Integer}` would admit `Set{Int8}`, which cannot hold position 128."""
+add_position!(found::Set{Int}, position) = push!(found, position)
+
 """Pushes values through closure that captures resized vector."""
 collect_into(items::Vector{Any}, values) = foreach(value -> push!(items, value), values)
 

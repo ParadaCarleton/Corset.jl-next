@@ -109,13 +109,7 @@ const doubler = Scaler(2)
 doubled(x) = applicable(doubler, x) ? doubler(x) : 0
 
 
-"""Appends one; resized argument keeps `Vector`, element type widens."""
-appended(items::Vector{Float64}) = push!(items, 1.0)
-
-"""Appends one through bounded element type: argument type is `UnionAll`, widened as whole."""
-appended_bound(items::Vector{<:Float64}) = push!(items, 1.0)
-
-"""Appends zero to each row; rows keep `Vector`, outer container widens."""
+"""Appends zero to each row; rows keep their type, so they hold zero. Outer container widens."""
 function padded(rows::Vector{Vector{Float64}})
     for row in rows
         push!(row, 0.0)
@@ -123,7 +117,7 @@ function padded(rows::Vector{Vector{Float64}})
     return rows
 end
 
-"""Tags float vector after append; kept `Vector` would overlap integer method, so fix is manual."""
+"""Tags float vector after append; appended argument keeps its type, and integer method widens beside it."""
 tagged(items::Vector{Float64}) = (push!(items, 1.0); :float)
 tagged(items::AbstractVector{Int}) = :integer
 

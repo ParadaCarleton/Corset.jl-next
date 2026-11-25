@@ -231,12 +231,11 @@ end
 covariant(head::Union{Nothing, Type})::Bool = head === Union || (!isnothing(head) && Base.unwrap_unionall(head) <: Tuple)
 
 """
-Whether each of `count` parameters of type `head` keeps its container: members of `Union` that keeps (`keep`), and
-element parameter, or every tuple parameter, of argument whose elements body resizes (`element`).
+Whether each of `count` parameters of type `head` stays as written: element parameter, or every tuple parameter, of
+argument whose elements body resizes (`element`). `Union` members stay open: each is resized container itself.
 """
-function kept_parameters(head::Union{Nothing, Type}, count::Integer, keep::Bool, element::Bool)::Vector{Bool}
-    head === Union && return fill(keep, count)
-    element || return fill(false, count)
+function kept_parameters(head::Union{Nothing, Type}, count::Integer, element::Bool)::Vector{Bool}
+    (element && head !== Union) || return fill(false, count)
     covariant(head) && return fill(true, count)
     # Dictionary element read is value: `d[k]`.
     index = !isnothing(head) && head <: AbstractDict && count >= 2 ? 2 : 1
@@ -245,9 +244,9 @@ end
 
 """
 Widened text of curly `node`: union of number types becomes its join; parameters widen, with `<:` inside invariant type.
-Container that body resizes keeps its head (`keep`); one whose elements body resizes keeps their head (`element`).
+Container whose elements body resizes (`element`) keeps their type.
 """
-function widened_curly!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode, keep::Bool, element::Bool)::String
+function widened_curly!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode, element::Bool)::String
     head, parameters = children_of(node)[1], children_of(node)[2:end]
     resolved = resolve_type(mod, file, head)
     resolved in (Type, Val) && return source(file, node)
@@ -257,28 +256,28 @@ function widened_curly!(found::AbstractVector{SyntaxNode}, mod::Module, file::Sy
         return all(==("Integer"), wider) ? "Integer" : "Real"
     end
     texts = String[]
-    # Members of resized union are resized too.
+    # Members of union whose elements body resizes have resized elements too.
     elements = resolved === Union && element
-    for (parameter, kept) in zip(parameters, kept_parameters(resolved, length(parameters), keep, element))
+    for (parameter, kept) in zip(parameters, kept_parameters(resolved, length(parameters), element))
         before = length(found)
         text = widened_text!(found, mod, file, parameter, kept, elements)
         changed = length(found) > before && !covariant(resolved) && kind_name(parameter) != "<:"
         push!(texts, changed ? "<:$text" : text)
     end
-    return "$(widened_text!(found, mod, file, head, keep, false)){$(join(texts, ", "))}"
+    return "$(widened_text!(found, mod, file, head, false, false)){$(join(texts, ", "))}"
 end
 
 """
-Widened text of annotation `node` of `file` in `mod`; pushes each reported part to `found`. Resized container (`keep`)
-keeps its name; its elements (`element`) keep theirs.
+Widened text of annotation `node` of `file` in `mod`; pushes each reported part to `found`. Container that body resizes
+(`keep`) stays as written: its type must hold values body inserts. Its elements (`element`) keep their type.
 """
 function widened_text!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode, keep::Bool, element::Bool)::String
+    keep && return source(file, node)
     kind = kind_name(node)
-    kind == "curly" && return widened_curly!(found, mod, file, node, keep, element)
-    kind == "<:" && length(children_of(node)) == 1 && return "<:" * widened_text!(found, mod, file, only(children_of(node)), keep, element)
+    kind == "curly" && return widened_curly!(found, mod, file, node, element)
+    kind == "<:" && length(children_of(node)) == 1 && return "<:" * widened_text!(found, mod, file, only(children_of(node)), false, element)
     wider = replacement(mod, file, node)
-    # Number type of resized argument still widens.
-    (isnothing(wider) || (keep && !(wider in ("Real", "Integer")))) && return source(file, node)
+    isnothing(wider) && return source(file, node)
     push!(found, node)
     return wider
 end
