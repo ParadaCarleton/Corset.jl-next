@@ -409,7 +409,7 @@ const NAMING_BUILTINS = (Core.getfield, Core.getglobal, keys(FIELD_WRITES)..., k
 naming(@nospecialize(builtin::Any))::Bool = any(candidate -> candidate === builtin, NAMING_BUILTINS)
 
 """Add parameter position of each of `operands` at `positions` that is argument of instance."""
-function add_parameters!(found::Set{Int}, operands::AbstractVector{Operand.Type}, positions::Any)::Nothing
+function add_parameters!(found::AbstractSet{<:Integer}, operands::AbstractVector{Operand.Type}, positions::Any)::Nothing
     Base.require_one_based_indexing(operands)
     for position in positions
         position <= length(operands) || continue
@@ -435,7 +435,7 @@ mutable struct ParametersFrame
 end
 
 """Add call with `operands` to each of `callees` to `calls`."""
-function append_calls!(calls::Vector{Pair{Vector{Operand.Type}, Core.MethodInstance}}, operands::AbstractVector{Operand.Type}, callees::AbstractVector{Core.MethodInstance})::Nothing
+function append_calls!(calls::AbstractVector{<:Pair{<:AbstractVector{Operand.Type}, Core.MethodInstance}}, operands::AbstractVector{Operand.Type}, callees::AbstractVector{Core.MethodInstance})::Nothing
     foreach(callee -> push!(calls, operands => callee), callees)
     return nothing
 end

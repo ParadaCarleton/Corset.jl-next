@@ -724,7 +724,7 @@ Accesses of callee `summary` at `site` into `writes` and `reads`, and its callba
 record resolved makes it, since most calls have none. Only settled round (`Flow`) maps accesses: round empties them
 first. Every round resolves records, so variants of records count as read (`summary!`).
 """
-function apply_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::Union{Nothing, Set{Deferred}})::Nothing
+function apply_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::Union{Nothing, AbstractSet{Deferred}})::Nothing
     flow.settled && map_accesses!(flow, writes, reads, site, summary)
     for callback in summary.callbacks
         record = (callback.variant, Targets[map_nodes!(flow, nodes, site) for nodes in callback.parameters])
@@ -752,7 +752,7 @@ Resolve callback `record` at call statement `index`: callable is fresh here, so 
 targets. Record in `seen` adds nothing: recursion through callable repeats same accesses on same targets. Instance
 that kept record took `closed_world` of variant already (`apply!`). Record keeps targets only, so no derived sources.
 """
-function resolve!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Integer, record::Deferred, defers::Bool, callees::Callees, seen::Set{Deferred})::Nothing
+function resolve!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Integer, record::Deferred, defers::Bool, callees::Callees, seen::AbstractSet{Deferred})::Nothing
     record in seen && return nothing
     push!(seen, record)
     variant, arguments = record

@@ -133,7 +133,7 @@ it depends on. Corset gives texts of its dependencies only, as partition key hol
 parent and triggers. `nothing` for module without package root on disk, such as `Main`. `texts` caches answers by root
 module.
 """
-function owner_texts!(texts::IdDict{Module, Union{Nothing, Vector{String}}}, mod::Module, depots::AbstractVector{String})::Union{Nothing, Vector{String}}
+function owner_texts!(texts::IdDict{Module, <:Union{Nothing, AbstractVector{String}}}, mod::Module, depots::AbstractVector{String})::Union{Nothing, Vector{String}}
     root = Base.moduleroot(mod)
     (root === Base || root === Core) && return String[]
     haskey(texts, root) && return texts[root]

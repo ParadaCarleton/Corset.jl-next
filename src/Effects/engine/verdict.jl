@@ -131,7 +131,7 @@ function worst(accesses::AbstractVector{Access})::Vector{Access}
 end
 
 """Blind accesses of all units, each once, by place."""
-blind_order!(accesses::Vector{BlindAccess})::Vector{BlindAccess} = sort!(unique!(accesses); by = access -> place_key(access.place, access.below, access.kind))
+blind_order(accesses::AbstractVector{BlindAccess})::Vector{BlindAccess} = sort!(unique(accesses); by = access -> place_key(access.place, access.below, access.kind))
 
 """Blind spot cause of method whose verdict writes nothing on path stand-ins cut (`engine.md`, Stand-in cuts)."""
 const CUT = "stand-in cuts path"
@@ -260,7 +260,7 @@ function method_facts(package::PackageFacts, incomplete::AbstractSet{Method}, re
         writes, reads, blind_writes, blind_reads, aliases, unguarded, calls = found[site.method]
         complete = !(site.method in incomplete) && !haskey(cuts, site.method)
         verdict = MethodVerdict(
-            site, worst(writes), worst(reads), blind_order!(blind_writes), blind_order!(blind_reads), sort!(unique!(aliases); by = repr), sort!(unique!(unguarded); by = repr),
+            site, worst(writes), worst(reads), blind_order(blind_writes), blind_order(blind_reads), sort!(unique!(aliases); by = repr), sort!(unique!(unguarded); by = repr),
             call_order(calls), complete, closed[site.method],
         )
         push!(verdicts, verdict)

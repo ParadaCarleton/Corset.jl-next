@@ -8,7 +8,8 @@ using Corset.Inference: Inference, infer_package, serialized, edge_instance
 using Corset.Effects.Summaries:
     Summaries, MethodVerdict, UnitVerdict, Library, LibraryEntry, Summary, Run, Variant, Closure, start_run, solve!, dispatch, root_summary!, same, cached_effects,
     library_entries!, unshared!, closure_key!, variant_key!, instance_key!, instance_node, record_text!, stored_value!, type_text!, inferred!,
-    record_bytes, unit_record
+    record_bytes, unit_record, structure_text!
+using EvilArrays: EvilArray
 using Moshi.Data: isa_variant
 using Serialization: deserialize
 using Random: RandomDevice
@@ -175,6 +176,8 @@ end
         @test text(UnionAll(first_variable, UnionAll(inner, Tuple{first_variable, inner}))) != text(UnionAll(first_variable, UnionAll(inner, Tuple{inner, first_variable})))
         # Free variable counts by name and bounds.
         @test text(first_variable) == text(TypeVar(:T)) != text(TypeVar(:T, Integer))
+        # Depth counts from innermost variable, also in offset bound stack.
+        @test structure_text!(run, first_variable, EvilArray(TypeVar[first_variable, inner]), Module[]) == structure_text!(run, first_variable, TypeVar[first_variable, inner], Module[]) == "bound 1"
         values = Any[Val{1}, Val{Int32(1)}, Val{1.0}, Val{true}, Val{:a}, Val{(:a, 1)}, Val{(:a, 2)}, Union{}, Nothing, Union{Int, String}, Union{Int, Symbol}, Tuple{Vararg{Int}}, NTuple{2, Int}, Val{Base.Iterators}, Val{Base}]
         @test allunique(map(text, values))
         # Text holds content alone: other run agrees.

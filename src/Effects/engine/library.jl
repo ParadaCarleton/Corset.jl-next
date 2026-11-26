@@ -53,11 +53,12 @@ Canonical text of `type` inside type variables `bound` (innermost last); adds ro
 by module path, name and parameters; union by members; variable of `bound` by binding depth, so renamed variables agree.
 Composite text is digest of its parts (`Cache.digest`); part without free variable takes its run text (`typed!`).
 """
-function structure_text!(run::Run, @nospecialize(type::Any), bound::Vector{TypeVar}, modules::Vector{Module})::String
+function structure_text!(run::Run, @nospecialize(type::Any), bound::AbstractVector{TypeVar}, modules::AbstractVector{Module})::String
     part(@nospecialize(inner::Any))::String = Base.has_free_typevars(inner) ? structure_text!(run, inner, bound, modules) : typed!(run, inner, modules)
     parts = if type isa TypeVar
         depth = findlast(variable -> variable === type, bound)
-        isnothing(depth) || return "bound $(length(bound) - something(depth))"
+        # Depth from innermost: `lastindex` keeps it right for offset axes.
+        isnothing(depth) || return "bound $(lastindex(bound) - something(depth))"
         String["free", string(type.name), part(type.lb), part(type.ub)]
     elseif type isa Union
         String["union", part(type.a), part(type.b)]
@@ -100,7 +101,7 @@ function type_text!(run::Run, @nospecialize(type::Any))::Tuple{String, Vector{Mo
 end
 
 """Canonical text of `type` (`type_text!`); adds root modules it names to `modules`."""
-function typed!(run::Run, @nospecialize(type::Any), modules::Vector{Module})::String
+function typed!(run::Run, @nospecialize(type::Any), modules::AbstractVector{Module})::String
     text, named = type_text!(run, type)
     append!(modules, named)
     return text
@@ -120,7 +121,7 @@ end
 Owner digests of root `modules` (`owner_digest!`), sorted, empty ones left out; `nothing` when one has none. Library
 summary depends on code of each module its closure names.
 """
-function owners!(run::Run, modules::Vector{Module})::Union{Nothing, Vector{String}}
+function owners!(run::Run, modules::AbstractVector{Module})::Union{Nothing, Vector{String}}
     found = String[]
     for mod in unique!(modules)
         owned = owner_digest!(run, mod)
@@ -135,7 +136,7 @@ Text of edge `target`, and its node added to `successors`: instance key of code 
 overrides it, or module and signature of method that inference gave no code. Adds modules it names to `modules`.
 `nothing` when instance has no node (`instance_node`) or target has other form.
 """
-function edge_text!(run::Run, @nospecialize(target::Any), modules::Vector{Module}, successors::Vector{Any})::Union{Nothing, String}
+function edge_text!(run::Run, @nospecialize(target::Any), modules::AbstractVector{Module}, successors::AbstractVector{Any})::Union{Nothing, String}
     if target isa Method
         push!(modules, Base.moduleroot(target.module))
         return "method $(join(fullname(target.module), '.')) $(typed!(run, target.sig, modules))"
@@ -156,7 +157,7 @@ Canonical text of native edge record at `position` of `edges`, and position afte
 with method table (lookup without covering match), call type with target (`invoke` or inlining). Too many matches
 leave no record. Adds modules record names to `modules` and edge nodes to `successors`; `nothing` for other form.
 """
-function record_text!(run::Run, edges::Union{Core.SimpleVector, AbstractVector{Any}}, position::Integer, modules::Vector{Module}, successors::Vector{Any})::Union{Nothing, Tuple{String, Int}}
+function record_text!(run::Run, edges::Union{Core.SimpleVector, AbstractVector{Any}}, position::Integer, modules::AbstractVector{Module}, successors::AbstractVector{Any})::Union{Nothing, Tuple{String, Int}}
     edges isa AbstractVector && Base.require_one_based_indexing(edges)
     item = edges[position]
     if item isa Int
@@ -211,7 +212,7 @@ function node_text!(run::Run, @nospecialize(node::Any))::Union{Nothing, Tuple{St
 end
 
 """Add `callees` missing from `found` by identity."""
-function add_callees!(found::Vector{Any}, callees::AbstractVector{Any})::Nothing
+function add_callees!(found::AbstractVector{Any}, callees::AbstractVector{Any})::Nothing
     for callee in callees
         any(known -> known === callee, found) || push!(found, callee)
     end
@@ -223,7 +224,7 @@ Pop component of `node` from `stack` (`walk_components!`). Each member gets key:
 keys of components members reach; `nothing` when one of them has none, or when `state` rejects member. Members share
 helper callees their closure read.
 """
-function finish_component!(run::Run, state::Closure, texts::IdDict{Any, <:Union{Nothing, Tuple{String, AbstractVector{Any}}}}, stack::Vector{Any}, open::Base.IdSet{Any}, @nospecialize(node::Any))::Nothing
+function finish_component!(run::Run, state::Closure, texts::IdDict{Any, <:Union{Nothing, Tuple{String, AbstractVector{Any}}}}, stack::AbstractVector{Any}, open::Base.IdSet{Any}, @nospecialize(node::Any))::Nothing
     members = Any[]
     while isempty(members) || last(members) !== node
         member = pop!(stack)

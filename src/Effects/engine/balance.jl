@@ -106,7 +106,7 @@ Add hold changes at normal return of callee `summary` at `site` to `normal`, and
 record waits again when `defers` and callable still holds caller object (`apply_accesses!`). Gives change at throw:
 callee throw-exit count joined with throw of each record.
 """
-function summary_changes!(flow::Flow, normal::Counts, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::Set{Deferred})::Counts
+function summary_changes!(flow::Flow, normal::Counts, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::AbstractSet{Deferred})::Counts
     apply_changes!(normal, site_changes!(flow, site, summary.held))
     thrown = site_changes!(flow, site, summary.thrown)
     for callback in summary.callbacks
@@ -204,7 +204,7 @@ agreed(first::AbstractDict{Any, Bool}, second::AbstractDict{Any, Bool})::Dict{An
 Join `path` into `paths`: path with equal counts keeps conditions both agree on; past `PATH_LIMIT` paths, all join into
 one. Return whether `paths` changed.
 """
-function add_path!(paths::Vector{Path}, path::Path)::Bool
+function add_path!(paths::AbstractVector{Path}, path::Path)::Bool
     counts, conditions = path
     at = findfirst(existing -> first(existing) == counts, paths)
     if isnothing(at)
@@ -223,7 +223,7 @@ function add_path!(paths::Vector{Path}, path::Path)::Bool
 end
 
 """Join `path` into entry of `block`; queue block in `pending` when its entry changes."""
-function flow_into!(entries::AbstractVector{Vector{Path}}, pending::BitSet, block::Integer, path::Path)::Nothing
+function flow_into!(entries::AbstractVector{<:AbstractVector{Path}}, pending::BitSet, block::Integer, path::Path)::Nothing
     Base.require_one_based_indexing(entries)
     add_path!(entries[block], path) && push!(pending, block)
     return nothing
@@ -253,7 +253,7 @@ function path_successors(ir::CC.IRCode, block::Integer, conditions::AbstractDict
 end
 
 """Record in `unguarded` hold of `key` that throw at `index` skips: definite before `possible` before blind, then first throw."""
-function unguard!(unguarded::Dict{Tuple{Origin.Type, Resource.T}, Unguarded}, key::Tuple{Origin.Type, Resource.T}, hold::HoldCount, index::Integer)::Nothing
+function unguard!(unguarded::AbstractDict{Tuple{Origin.Type, Resource.T}, Unguarded}, key::Tuple{Origin.Type, Resource.T}, hold::HoldCount, index::Integer)::Nothing
     old = get(unguarded, key, nothing)
     isnothing(old) || (hold.level, index) < (old.hold.level, old.throws) || return nothing
     unguarded[key] = (hold = hold, throws = index)

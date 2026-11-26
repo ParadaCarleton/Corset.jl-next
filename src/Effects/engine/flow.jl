@@ -162,7 +162,7 @@ function join!(flow::Flow, target::Targets, source::Targets, doubt::Doubt = NO_D
 end
 
 """Targets stored under `key` of `table`, created empty on first use."""
-function slot!(table::Dict{K, Targets}, key::K)::Targets where {K}
+function slot!(table::AbstractDict{K, Targets}, key::K)::Targets where {K}
     return get!(Targets, table, key)
 end
 
