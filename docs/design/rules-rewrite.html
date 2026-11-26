@@ -1100,7 +1100,11 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Unification is rejected: it merges unrelated objects at each unknown call.</li>
 <li>Write: statement that stores into origin content, or callee summary write mapped through call operands.</li>
 <li>Each origin in points-to set carries doubt: none, <code>code</code> or <code>blind</code>. Join keeps least doubt per origin.</li>
-<li>Open call on chain gives <code>code</code>. Call result merged from several fresh objects gives <code>blind</code>: they can hold different caller objects.</li>
+<li>Open call on chain gives <code>code</code>.</li>
+<li>Merge of callee fresh objects is exact when they form one object: each fresh object but one backs another.</li>
+<li><code>Array</code> and its <code>Memory</code> form one object: merged object backs itself.</li>
+<li>Exact merge also needs each slot to hold stores of one fresh object at most.</li>
+<li>Inexact merge gives <code>blind</code>: caller store into one merged object would show in the others.</li>
 <li>Collapsed path and load of non-constant slot add no doubt: object they reach lies below same root.</li>
 <li>Access below <code>deep w</code> takes kind of written object type at access, of callee access, or of <code>w</code> type.</li>
 <li>Exempt kind needs proof, as balanced lock use does. Raw write into <code>IO</code> memory below <code>deep w</code> is memory write: <code># corset: allow</code> covers it.</li>

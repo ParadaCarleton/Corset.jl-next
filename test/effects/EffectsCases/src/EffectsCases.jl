@@ -490,4 +490,8 @@ no_items(items::Vector{Int})::Bool = isempty(items)
 # Call that no method matches starts nothing.
 dead_start(flag::Bool) = flag ? iterate(nothing) : nothing
 
+# Callee returns two vectors; caller merges them, so write through second is blind spot (`alias`).
+@noinline twin_boxes() = (Box[], Box[])
+twin_write!(box::Box) = (pair = twin_boxes(); push!(pair[1], box); pair[2][1].value = 0; nothing)
+
 end

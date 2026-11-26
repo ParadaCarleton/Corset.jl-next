@@ -12,7 +12,7 @@ using Corset.Effects.Summaries:
     Callback, Callees, Variant, root_summary!, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut!, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body!, root_calls!, merge_calls, merge_callees, load!, store!, store_backing!,
-    beneath, map_nodes!, exact_path, extend, load_any, keyword_types, over_budget, outside_targets!, unknown
+    beneath, map_nodes!, merges_exactly, exact_path, extend, load_any, keyword_types, over_budget, outside_targets!, unknown
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
@@ -127,6 +127,9 @@ end
     @test shape(effects(:bump_nest!).writes) == [nest] && shape(effects(:call_nest!).writes) == [nest]
     @test all(found -> found.site.method.name != :fail, FACTS)
     @test BlindSpot("always throws on stand-ins", only(site for site in UNITS.typed if site.site.method.name == :fail).site.span) in SPOTS
+    # Merge of two independent callee objects would alias them: write through merged object is blind spot.
+    twin = effects(:twin_write!, CASES.Box)
+    @test isempty(twin.writes) && blind_shape(twin.blind_writes) == [(parameter(2), false, "alias")]
     @test any(spot -> spot.cause == "alias", SPOTS)
     # Stand-in cuts make method incomplete too ("stand-in cuts" testset).
     @test all(found -> !(found.site.method in UNITS.incomplete) || !found.complete, FACTS)
@@ -957,6 +960,14 @@ spread_set_max(s::Set{Vector{Int}}) = max(s...)
     @test doubts(summary_of(spread_set_max, Set{Vector{Int}}).writes) == Dict((parameter(2), true) => code)
 end
 
+"""Summary with `fresh` fresh nodes and stores `edges`, memory `backing` and unknown-slot `spread`; it accesses nothing."""
+function fresh_summary(fresh::Integer, edges::Edges, backing::Holds, spread::Holds)::Summary
+    return Summary(Accesses(), Accesses(), edges, backing, spread, Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), fresh, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}())
+end
+
+"""Summary with `fresh` fresh nodes and no stores."""
+fresh_summary(fresh::Integer)::Summary = fresh_summary(fresh, Edges(), Holds(), Holds())
+
 """Function with `JOIN_LIMIT` methods: call on `Any` joins them."""
 three_way(x::Int) = x
 three_way(x::Float64) = x
@@ -1051,12 +1062,30 @@ four_way(x::Symbol) = x
     flow = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
-    @test map_node!(flow, Node.Fresh(4), CallSite(Targets[], Sources[], 7, 2)) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
+    # `copy` result: `Array` backed by fresh `Memory` that holds caller elements merges exactly.
+    element, array, buffer = Node.Placed(Place.At(Root.Parameter(2), Step.Type[Step.Element()])), Node.Fresh(12), Node.Fresh(5)
+    copied = fresh_summary(2, Edges((buffer, Step.Element()) => Nodes(element => NO_DOUBT)), Holds(array => Nodes(buffer => NO_DOUBT)), Holds())
+    @test merges_exactly(copied) && map_node!(flow, array, CallSite(Targets[], Sources[], 7, copied)) == Targets(Origin.Allocation(7) => NO_DOUBT)
+    # Two fresh nodes fill one slot: merged load could give either caller object.
+    other = Node.Placed(Place.At(Root.Parameter(3), Step.Type[Step.Element()]))
+    clashing = fresh_summary(2, Edges((buffer, Step.Element()) => Nodes(element => NO_DOUBT), (array, Step.Element()) => Nodes(other => NO_DOUBT)), copied.backing, Holds())
+    @test !merges_exactly(clashing) && map_node!(flow, Node.Fresh(4), CallSite(Targets[], Sources[], 7, clashing)) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
+    # Unknown slot or backing outside fresh nodes reaches every slot: exact only when no other fresh node stores.
+    spread = Holds(array => Nodes(other => NO_DOUBT))
+    @test !merges_exactly(fresh_summary(2, copied.edges, copied.backing, spread)) && merges_exactly(fresh_summary(2, Edges((array, Step.Element()) => Nodes(element => NO_DOUBT)), Holds(buffer => Nodes(array => NO_DOUBT)), spread))
+    @test !merges_exactly(fresh_summary(2, copied.edges, Holds(array => Nodes(other => NO_DOUBT, buffer => NO_DOUBT)), Holds())) && !merges_exactly(fresh_summary(2, Edges(), copied.backing, Holds(array => Nodes(other => NO_DOUBT), buffer => Nodes(element => NO_DOUBT))))
+    # Stores of caller objects only leave merge of one object exact.
+    held = Edges((element, Step.Element()) => Nodes(buffer => NO_DOUBT), (other, Step.Element()) => Nodes(array => NO_DOUBT))
+    @test merges_exactly(fresh_summary(2, held, copied.backing, Holds()))
+    # Merged object of inner call backs itself: still one object (`vect` result).
+    @test merges_exactly(fresh_summary(1, Edges((array, Step.Element()) => Nodes(element => NO_DOUBT)), Holds(array => Nodes(array => NO_DOUBT)), Holds()))
+    # Independent objects: caller store into one would show in other (`(Vector{Any}(), Vector{Any}())`).
+    @test !merges_exactly(fresh_summary(2, held, Holds(), Holds())) && !merges_exactly(fresh_summary(4, Edges(), Holds(array => Nodes(buffer => NO_DOUBT), Node.Fresh(1) => Nodes(Node.Fresh(2) => NO_DOUBT)), Holds()))
     # Site maps every fresh node to one shared allocation; outside node maps to unknown object at node doubt.
-    fresh_site = CallSite(Targets[], Sources[], 7, 1)
+    fresh_site = CallSite(Targets[], Sources[], 7, fresh_summary(1))
     @test map_node!(flow, Node.Fresh(1), fresh_site) === map_node!(flow, Node.Fresh(2), fresh_site)
     @test map_nodes!(flow, Nodes(Node.Outside() => BLIND_DOUBT, Node.Fresh(1) => NO_DOUBT), fresh_site) == Targets(Origin.Unknown() => BLIND_DOUBT, Origin.Allocation(7) => NO_DOUBT)
-    @test_throws ArgumentError map_node!(flow, Node.Fresh(1), CallSite(Targets[], Sources[], 7, 0))
+    @test_throws ArgumentError map_node!(flow, Node.Fresh(1), CallSite(Targets[], Sources[], 7, fresh_summary(0)))
     # Objects without fresh origin hold nothing beneath them: result is same table.
     plain = Targets(Origin.Caller(parameter(2)) => NO_DOUBT)
     @test beneath(flow, plain) === plain
@@ -1137,7 +1166,7 @@ four_way(x::Symbol) = x
         place = Place.At(Root.Global(GlobalRef(@__MODULE__, :NESTED)), Step.Type[prefix, Step.Position(index)])
         summary.edges[(Node.Placed(root), Step.Position(index))] = Nodes(Node.Placed(place) => NO_DOUBT)
     end
-    Summaries.apply_stores!(many, CallSite(Targets[], Sources[], 1, 0), summary)
+    Summaries.apply_stores!(many, CallSite(Targets[], Sources[], 1, fresh_summary(0)), summary)
     @test haskey(many.follows, (Origin.Caller(root), prefix))
     @test length(many.follows) >= 40
     # This fixture executes 41 traces; allow headroom for changes in path handling.
@@ -1202,7 +1231,7 @@ four_way(x::Symbol) = x
     @test static_sources(only(methods(static_both))) == [parameter_source(2) | parameter_source(3)]
     @test static_sources(only(methods(static_pair))) == [parameter_source(2), parameter_source(3)] && isempty(static_sources(only(methods(fill_one!))))
     # Callee parameter source becomes type sources of argument, derived ones too; parameter without argument is doubt in code.
-    site = CallSite([Targets(), Targets(Origin.Caller(parameter(4)) => NO_DOUBT), Targets()], Sources[none, none, parameter_source(5)], 7, 0)
+    site = CallSite([Targets(), Targets(Origin.Caller(parameter(4)) => NO_DOUBT), Targets()], Sources[none, none, parameter_source(5)], 7, fresh_summary(0))
     @test caller_doubt!(flow, site, sourced(1)) == CODE_DOUBT && caller_doubt!(flow, site, sourced(2)) == sourced(4)
     @test caller_doubt!(flow, site, sourced(3)) == sourced(5) && caller_doubt!(flow, site, sourced(4)) == CODE_DOUBT
     # Source past unit arguments is doubt in code.
