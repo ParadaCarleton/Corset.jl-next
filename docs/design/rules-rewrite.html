@@ -1255,9 +1255,12 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li>Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.</li>
 <li>Lazy init and audited internal state come from audited table of Base types and methods only:
 <ul>
-<li>Table keys holder type and field, or method. Listed entry sets kind before path types.</li>
+<li>Table keys holder type and field, global binding, or method. Listed entry sets kind before path types.</li>
 <li>Audited field sets kind of every place below it: JIT compile writes code below <code>Regex</code> field.</li>
+<li>Audited global sets kind only in methods of its own package. Caller that writes <code>Dict</code> from <code>parsed_toml</code> writes memory.</li>
 <li><code>Regex</code> compile cache, <code>LazyString</code>; Base logging and PCRE contexts.</li>
+<li>IO bookkeeping: temporary path cleanup (<code>mktempdir</code>), libuv handles kept alive (<code>preserve_handle</code>).</li>
+<li>Lazy caches: parsed TOML, loading cache, docstring modules, stack trace module colors.</li>
 <li>Logging <code>JULIA_DEBUG</code> cache (<code>env_override_minlevel</code>) and frame lookup of deprecation (<code>_depwarn</code>): unknown objects they write.</li>
 <li>Repair method <code>unsafe_convert(Ref{BigFloat}, ::BigFloatData)</code>: rewrites stale MPFR limb pointer before each call.</li>
 </ul>

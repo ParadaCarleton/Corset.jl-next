@@ -12,11 +12,23 @@ const AUDITED_FIELDS = Dict{Tuple{DataType, Symbol}, EffectKind.T}(
     (LazyString, :str) => EffectKind.lazy_init,
 )
 
-"""Audited internal state by global binding: Base logging state and PCRE match contexts."""
+"""
+Audited internal state by global binding, for methods of its own package (`path_kind`): Base logging state and PCRE
+match contexts. IO bookkeeping: temporary path cleanup at exit, libuv handles kept alive. Lazy caches: parsed TOML,
+loading, docstring modules, stack trace colors.
+"""
 const AUDITED_GLOBALS = Dict{GlobalRef, EffectKind.T}(
     GlobalRef(Base.CoreLogging, :_min_enabled_level) => EffectKind.audited,
     GlobalRef(Base.CoreLogging, :_global_logstate) => EffectKind.audited,
     GlobalRef(Base.PCRE, :THREAD_MATCH_CONTEXTS) => EffectKind.audited,
+    GlobalRef(Base.Filesystem, :TEMP_CLEANUP) => EffectKind.io,
+    GlobalRef(Base.Filesystem, :TEMP_CLEANUP_MAX) => EffectKind.io,
+    GlobalRef(Base, :uvhandles) => EffectKind.io,
+    GlobalRef(Base, :TOML_CACHE) => EffectKind.lazy_init,
+    GlobalRef(Base, :LOADING_CACHE) => EffectKind.lazy_init,
+    GlobalRef(Base.Docs, :modules) => EffectKind.lazy_init,
+    GlobalRef(Base, :STACKTRACE_FIXEDCOLORS) => EffectKind.lazy_init,
+    GlobalRef(Base, :STACKTRACE_MODULECOLORS) => EffectKind.lazy_init,
 )
 
 """
@@ -90,10 +102,11 @@ function step_type(@nospecialize(type::Any), step::Step.Type)::Any
 end
 
 """
-Kind of memory access to `place` in instance with IR `ir` (`engine.md`, Effect kinds): audited global; else first
-special type or audited field along path, root first (JIT compile writes below `Regex` field); else memory.
+Kind of memory access to `place` in instance of `method` with IR `ir` (`engine.md`, Effect kinds): audited global when
+`method` belongs to its package; else first special type or audited field along path, root first (JIT compile writes
+below `Regex` field); else memory. Package method that writes `Dict` from `parsed_toml` writes memory below Base cache.
 """
-function path_kind(ir::CC.IRCode, place::Place.Type)::EffectKind.T
+function path_kind(ir::CC.IRCode, method::Method, place::Place.Type)::EffectKind.T
     root, steps = @match place begin
         Place.At(root, steps) => (root, steps)
         Place.Deep(root) => (root, Step.Type[])
@@ -102,7 +115,8 @@ function path_kind(ir::CC.IRCode, place::Place.Type)::EffectKind.T
         Root.Global(binding) => binding
         _ => nothing
     end
-    !isnothing(binding) && haskey(AUDITED_GLOBALS, binding) && return AUDITED_GLOBALS[binding]
+    owned = !isnothing(binding) && Base.moduleroot(method.module) === Base.moduleroot(binding.mod)
+    owned && haskey(AUDITED_GLOBALS, binding) && return AUDITED_GLOBALS[binding]
     type = root_type(ir, root)
     for step in steps
         found = special_kind(type)
@@ -125,5 +139,5 @@ function place_kind(ir::CC.IRCode, method::Method, place::Place.Type, kind::Effe
     kind == EffectKind.memory || return kind
     audited = get(AUDITED_METHODS, method, nothing)
     !isnothing(audited) && root_of(place) == first(audited) && return last(audited)
-    return path_kind(ir, place)
+    return path_kind(ir, method, place)
 end
