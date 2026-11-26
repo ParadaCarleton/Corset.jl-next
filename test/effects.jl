@@ -969,14 +969,15 @@ spread_set_max(s::Set{Vector{Int}}) = max(s...)
     # Caller tuple slot of unknown position collapses; write below it keeps certainty.
     @test doubts(summary_of(spread_tuple!, Tuple{Vararg{Vector{Int}}}).writes) == Dict((Place.Deep(Root.Parameter(2)), false) => none)
     # Spread callee stays open: method table matches builtin method `setfield!(...)` for `Vararg` callee.
-    @test doubts(summary_of(spread_builtin_callee, Vector{typeof(setfield!)}).writes) == Dict((parameter(2, Step.Element()), true) => code)
+    # Singleton function elements hold no object, so open call writes nothing.
+    @test isempty(summary_of(spread_builtin_callee, Vector{typeof(setfield!)}).writes)
     @test fresh_spread(summary_of(spread_packed, Vector{Vector{Int}})) == Nodes(Node.Placed(parameter(2, Step.Element())) => none)
     # Contract holds when spread falls on its vararg role.
     pushed = summary_of(spread_pushed!, Vector{Vector{Int}}, Vector{Vector{Int}})
     @test doubts(pushed.writes) == Dict(top(2) => none) && pushed.edges[(Node.Placed(parameter(2)), Step.Element())] == Nodes(Node.Placed(parameter(3, Step.Element())) => none)
     # Spread before contract role, into builtin, as callee, or of collection with own `iterate`: open.
-    # Open call takes spread elements, not array itself.
-    @test doubts(summary_of(spread_set!, Vector{Int}, Vector{Int}).writes) == Dict((parameter(2), true) => code, (parameter(3, Step.Element()), true) => code)
+    # Open call takes spread elements, not array itself; `Int` elements hold no object.
+    @test doubts(summary_of(spread_set!, Vector{Int}, Vector{Int}).writes) == Dict((parameter(2), true) => code)
     # Builtin of unknown argument count: doubt in code. Spread callee: element type decides.
     @test doubts(summary_of(spread_field, Vector{Any}).writes) == Dict((parameter(2, Step.Element()), true) => code)
     @test doubts(summary_of(spread_latest, Vector{Any}).writes) == Dict((parameter(2, Step.Element()), true) => sourced(2))
@@ -1026,6 +1027,9 @@ four_way(x::Symbol) = x
     @test !referent!(cache, Union{}) && referent!(cache, Union{Int, Vector{Int}}) && !referent!(cache, Union{Int, Symbol})
     @test referent!(cache, AbstractVector) && !referent!(cache, Type{Int}) && referent!(cache, Ptr{Int})
     @test !referent!(cache, Tuple{Int, Symbol}) && referent!(cache, Tuple{Int, Vector{Int}}) && !referent!(cache, Module)
+    # Tuple of unknown length points as its element types do; bare `Vararg` takes any element.
+    @test !referent!(cache, Tuple{Vararg{Int}}) && !referent!(cache, Tuple{Symbol, Vararg{Union{Int, Float64}}}) && referent!(cache, Tuple{Vararg{Vector{Int}}})
+    @test referent!(cache, Tuple{Int, Vararg}) && referent!(cache, Tuple{Vararg{Integer}})
     @test field_step(Tuple{Int}, :a) === nothing && field_step(Tuple{Int}, 1) == Step.Position(1)
     # Array stand-in and `Array` families name fields as members do; code struct family keeps `Position`.
     @test field_step(Base.RefValue{Int}, 1) == Step.Field(:x) && field_step(Base.RefValue, 1) == Step.Position(1)
