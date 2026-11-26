@@ -285,12 +285,9 @@ function exact_path(ir::CC.IRCode, root::Root.Type, steps::AbstractVector{Step.T
     return true
 end
 
-"""Step of pointer to memory data: object that owns memory shares it with the memory's other owners (`Memory` field `ptr`)."""
-const MEMORY_POINTER = Step.Field(:ptr)
-
 """
-Targets of `step` slot of `origin`: place below caller object, stored targets, and element or data pointer of each
-memory backing chain reaches, with doubt of chain. Each origin walk counts as work.
+Targets of `step` slot of `origin`: place below caller object, stored targets, and element of each memory backing
+chain reaches, with doubt of chain. Each origin walk counts as work.
 """
 function trace!(flow::Flow, origin::Origin.Type, step::Step.Type)::Follow
     flow.traces += 1
@@ -308,18 +305,18 @@ function trace!(flow::Flow, origin::Origin.Type, step::Step.Type)::Follow
         add_all!(found, slot(flow, current, step), doubt)
         add_all!(found, get(flow.spread, current, nothing), doubt)
         backing = get(flow.backing, current, nothing)
-        ((step == Step.Element() || step == MEMORY_POINTER) && !isnothing(backing)) || continue
+        (step == Step.Element() && !isnothing(backing)) || continue
         for (memory, flag) in backing
             push!(pending, memory => most(flag, doubt))
         end
     end
     flow.work += length(reached)
     dependencies = TraceDependency[]
-    per_origin = (step == Step.Element() || step == MEMORY_POINTER) ? 3 : 2
+    per_origin = step == Step.Element() ? 3 : 2
     if length(reached) <= (TRACE_MEMBERSHIP_LIMIT - flow.memberships) ÷ per_origin
         for current in keys(reached)
             push!(dependencies, (current, step, false), (current, nothing, false))
-            (step == Step.Element() || step == MEMORY_POINTER) && push!(dependencies, (current, nothing, true))
+            step == Step.Element() && push!(dependencies, (current, nothing, true))
         end
     end
     return Follow(found, dependencies, length(reached), flow.generation)
