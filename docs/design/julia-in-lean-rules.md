@@ -108,6 +108,7 @@ Message: "in/issubset switch between == and isequal by container type and size; 
 Layer: inferred types.
 Confidence: bugs proven; rule likely noisy (fires on all float sets).
 Cite: array-findall-in-array-isequal (#64153), tuples-findall-in-isequal (#64153), dicts-issubset-vector-threshold, bitsetscov-isdisjoint-threshold, sorttuplescov-insorted-range-equivalence.
+Related: F116 `float-key` flags float key lookup on `Set` and `Dict`, which always compare with `isequal`.
 Trigger: cmp between BigFloat/BigInt/Rational and Float64 where operand may be -0.0.
 Cite: bignums-cmp-signed-zero, bignums-gmp-comparison-ieee (#64167), promotion-cmp-rational-signed-zero.
 
