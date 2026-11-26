@@ -136,8 +136,9 @@ end
 raised(targets::Targets, doubt::Doubt)::Targets = Targets(origin => most(flag, doubt) for (origin, flag) in targets)
 
 """
-Unknown object with chain `doubt`. Engine reaches it with `code` doubt or more: steps from it and callee nodes for it
-add none (`trace!`, `map_node!`), so sources of chain stay.
+Unknown object with chain `doubt`: `code` from open call; none for current task and for outside node of callee. Steps
+from it and callee nodes for it add no doubt (`trace!`, `map_node!`), so sources of chain stay. Its slots hold stores into
+every unknown object, so stored targets take `code` doubt (`stored_doubt`).
 """
 unknown(doubt::Doubt)::Targets = Targets(Origin.Unknown() => doubt)
 
@@ -424,15 +425,21 @@ slot targets `load!` found stale.
 function store!(flow::Flow, objects::Targets, step::Union{Nothing, Step.Type}, values::Targets)::Nothing
     for (origin, doubt) in objects
         target = isnothing(step) ? slot!(flow.spread, origin) : slot!(get!(Dict{Step.Type, Targets}, flow.heap, origin), step)
-        join!(flow, target, values, doubt) && invalidate!(flow, (origin, step, false))
+        join!(flow, target, values, stored_doubt(origin, doubt)) && invalidate!(flow, (origin, step, false))
     end
     return nothing
 end
 
+"""
+Doubt of targets stored into `origin` reached with `doubt`: at least `code` for unknown object, whose slots merge stores
+into every object outside caller places.
+"""
+stored_doubt(origin::Origin.Type, doubt::Doubt)::Doubt = origin == Origin.Unknown() ? most(doubt, CODE_DOUBT) : doubt
+
 """Store `values` into memory backing of every origin of `objects`; growth makes slot targets `load!` found stale."""
 function store_backing!(flow::Flow, objects::Targets, values::Targets)::Nothing
     for (origin, doubt) in objects
-        join!(flow, slot!(flow.backing, origin), values, doubt) && invalidate!(flow, (origin, nothing, true))
+        join!(flow, slot!(flow.backing, origin), values, stored_doubt(origin, doubt)) && invalidate!(flow, (origin, nothing, true))
     end
     return nothing
 end

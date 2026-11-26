@@ -197,6 +197,7 @@ function table!(flow::Flow, writes::OriginAccesses, index::Integer, effects::Cal
     foreach(position -> assign!(flow, index, targets(position)), effects.result)
     foreach(position -> assign!(flow, index, load!(flow, targets(position), Step.Element())), effects.elements)
     foreach(position -> assign!(flow, index, beneath(flow, targets(position)), CODE_DOUBT), effects.aliases)
+    effects.outside && assign!(flow, index, unknown(NO_DOUBT))
     return nothing
 end
 

@@ -1637,6 +1637,13 @@ roll(rng::Xoshiro) = rand(rng)
 roll_default() = rand()
 remember!(x::Int) = task_local_storage(:effects_test, x)
 
+"""Sets `v` as result of current task, then pushes into result of task from task storage: maybe `v`."""
+function other_result!(v::Vector{Int})::Nothing
+    current_task().result = v
+    push!((task_local_storage(:effects_task)::Task).result::Vector{Int}, 1)
+    return nothing
+end
+
 """Scoped value: read of current task scope."""
 const LEVEL = ScopedValue(1)
 level() = LEVEL[]
@@ -1663,7 +1670,14 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     @test doubts(summary_of(sink_push!, Sink, UInt8).writes) == Dict((parameter(2, Step.Field(:bytes)), false, io) => NO_DOUBT)
     # RNG argument, default RNG in `Task` fields, task-local storage, scoped read.
     @test doubts(summary_of(roll, Xoshiro).writes) == Dict((parameter(2), false, EffectKind.rng_argument) => NO_DOUBT)
-    @test EffectKind.default_rng in kinds_at(summary_of(roll_default).writes, elsewhere) && EffectKind.default_rng in kinds_at(summary_of(roll_default).reads, elsewhere)
+    # Current task is unknown object without doubt: draw writes default RNG for sure, and nothing else for sure.
+    rolled = summary_of(roll_default)
+    rolled_writes = doubts(rolled.writes)
+    @test rolled_writes[(Place.At(elsewhere, Step.Type[]), false, EffectKind.default_rng)] == NO_DOUBT
+    @test count(==(NO_DOUBT), values(rolled_writes)) == 1
+    @test EffectKind.default_rng in kinds_at(rolled.reads, elsewhere)
+    # Unknown object merges every outside object: vector stored into it stays in doubt when other task loads it.
+    @test level_of(doubts(summary_of(other_result!, Vector{Int}).writes)[top(2)]) == Level.code
     remembered = summary_of(remember!, Int)
     @test kinds_at(remembered.writes, elsewhere) == Set([EffectKind.task_local])
     # Audited method covers its root only: global read inside it keeps own kind.

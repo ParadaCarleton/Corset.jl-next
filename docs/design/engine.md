@@ -34,6 +34,8 @@ Engine code lives in `src/Effects/engine/`, module `Effects.Summaries`.
 - Origin: abstract object. Kinds: caller place (parameter or global path), allocation statement, `unknown`.
 - Constant object in code counts as `unknown`. Fresh objects of callee merge into one allocation at call statement.
 - `unknown`: object open call can return that no operand names, global included. Write to it is `possible` global write.
+- Current task is `unknown` without doubt: write to its fields is certain global write.
+- One `unknown` origin stands for every outside object, so values stored into it take `code` doubt.
 - Path: field name or element. Path follows declared field types.
 - Path collapses to `deep` at step into concrete type it already passed (recursive type), at third abstract step in a row, or past 8 steps.
 - Place says where access lands; certainty says whether it happens. `deep w` is coarse place: write below it still changes `w`.
@@ -100,7 +102,7 @@ Resolution of each call statement, first match wins:
 2. Foreign call: table of known C functions (`memmove` writes destination; runtime type queries read only). Unknown: `possible` write on pointer and object operands, doubt in code.
    - MPFR and GMP entries come from C headers: pointer to non-const is written, pointer to const is read (`mpfr_srcptr`, `const char *`). Generator: `gen/foreign/generate.jl`; output: `src/Effects/engine/foreign_gmp_mpfr.jl`.
    - Symbols: every MPFR and GMP function that Base and SpecialFunctions call, plus five numeric extras. The whole header holds about 800 functions; each one needs vetting for global state.
-   - Hand entries (`calls.jl`) cover variadic functions and pointer results. Left open: functions that write C global state (`mpfr_set_emax`, `mpfr_set_emin`, `mpfr_clear_flags`, GMP allocator hooks).
+   - Hand entries (`calls.jl`) cover variadic functions and pointer results. `jl_get_current_task` returns `unknown` without doubt. Left open: functions that write C global state (`mpfr_set_emax`, `mpfr_set_emin`, `mpfr_clear_flags`, GMP allocator hooks).
    - PCRE2 entries cover functions that Base regex code calls, by PCRE2 API manual. Match writes match data and JIT stack of match context.
    - No prefix rule: unknown `mpfr_` or `__gmp` name stays open, because wrong entry gives false definite write.
    - CI lacks the headers. The generator does not run there; committed file is the source of truth. Test compares it with hand classification.
