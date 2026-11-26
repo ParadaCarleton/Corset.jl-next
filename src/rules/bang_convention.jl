@@ -83,8 +83,8 @@ function state_write(access::Access, method::Method, touched::AbstractDict{Globa
     return !cache_write(access, method, touched)
 end
 
-"""Whether `access` of method of `callee` writes `iterate` state: loop that passes state back owns it."""
-iteration_state(callee::Function, access::Access)::Bool = callee === iterate && place_root(access.place) == Root.Parameter(3)
+"""Whether `access` of `iterate` method writes iteration state: loop that passes state back owns it."""
+iteration_state(access::Access)::Bool = place_root(access.place) == Root.Parameter(3)
 
 """Whether name trust covers `access` of `method`: write to subject of method of name-trust function (`name_writes`)."""
 function trusted_write(method::MethodEffects, access::Access)::Bool
@@ -133,7 +133,9 @@ function findings(facts::FactSet)::Vector{Finding}
             (endswith(name, "!!") || nameof(callee) in HINTS) && continue
             method.effect_free && isempty(method.writes) && method.new_result && push!(found, spurious_finding(method, callee, modules))
         else
-            kept = [access for access in method.writes if state_write(access, method.site.method, touched) && !trusted_write(method, access) && !iteration_state(callee, access)]
+            # Flag, not `callee`: closure over function value compiles once per function.
+            iterating = callee === iterate
+            kept = [access for access in method.writes if state_write(access, method.site.method, touched) && !trusted_write(method, access) && !(iterating && iteration_state(access))]
             writes = sort(kept; by = access -> access.cause.first_byte)
             isempty(writes) || push!(found, missing_finding(method, callee, first(writes), modules))
         end

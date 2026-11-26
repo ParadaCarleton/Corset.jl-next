@@ -73,7 +73,7 @@ end
 """Findings for each package call that passes index without proof that it comes from array it indexes in callee."""
 function call_findings(methods::AbstractVector{MethodEffects})::Vector{Finding}
     contracts, found, seen = method_contracts(methods), Finding[], Set{Tuple{Span, Int, Int}}()
-    for method in methods, call in method.indices.calls, callee in call.callees, contract in get(contracts, callee, IndexContract[])
+    for method in methods, call in method.indices.calls, callee in call.callees, contract in get(contracts, Signature(callee), IndexContract[])
         confidence, key = broken(call, contract), (call.site, contract.index, contract.array)
         (isnothing(confidence) || key in seen) && continue
         push!(seen, key)
@@ -85,13 +85,24 @@ function call_findings(methods::AbstractVector{MethodEffects})::Vector{Finding}
 end
 
 """
+Method signature as table key. `hash` and `==` call methods for abstract `Type` once: key `Type` compiles them, and
+`get!`, again for each signature.
+"""
+struct Signature
+    type::Type
+end
+
+Base.hash(key::Signature, seed::UInt)::UInt = invoke(hash, Tuple{Type, UInt}, key.type, seed)
+Base.:(==)(one::Signature, other::Signature)::Bool = invoke(==, Tuple{Type, Type}, one.type, other.type)
+
+"""
 Index contracts of each package method signature, in order found: its own, and those it takes by passing its index
 and array arguments on to call whose method has contract.
 """
-function method_contracts(methods::AbstractVector{MethodEffects})::Dict{Type, Vector{IndexContract}}
-    contracts = Dict{Type, Vector{IndexContract}}()
+function method_contracts(methods::AbstractVector{MethodEffects})::Dict{Signature, Vector{IndexContract}}
+    contracts = Dict{Signature, Vector{IndexContract}}()
     for method in methods
-        own = get!(Vector{IndexContract}, contracts, method.site.method.sig)
+        own = get!(Vector{IndexContract}, contracts, Signature(method.site.method.sig))
         for contract in method.indices.contracts
             contract in own || push!(own, contract)
         end
@@ -105,12 +116,12 @@ function method_contracts(methods::AbstractVector{MethodEffects})::Dict{Type, Ve
 end
 
 """Add to `contracts` those each method of `methods` takes through its calls; whether any is new."""
-function add_inherited!(contracts::AbstractDict{<:Type, <:AbstractVector{IndexContract}}, methods::AbstractVector{MethodEffects})::Bool
+function add_inherited!(contracts::AbstractDict{Signature, <:AbstractVector{IndexContract}}, methods::AbstractVector{MethodEffects})::Bool
     added = false
     for method in methods, call in method.indices.calls, callee in call.callees
-        own = contracts[method.site.method.sig]
+        own = contracts[Signature(method.site.method.sig)]
         # Copy: recursive call takes contracts of its own method.
-        for contract in copy(get(contracts, callee, IndexContract[])), taken in inherited(call, contract)
+        for contract in copy(get(contracts, Signature(callee), IndexContract[])), taken in inherited(call, contract)
             taken in own && continue
             push!(own, taken)
             added = true

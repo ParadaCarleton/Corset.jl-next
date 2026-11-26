@@ -161,6 +161,41 @@ end
             @test specializations(Corset) == before
         end
     end
+    @testset "effects rules compile independent of package" begin
+        # `bang-convention` closure over function value and `one-based-range` table keyed by `Type` compiled per value.
+        # Cold self-lint on main: 81 s and 29 s of 189 s.
+        entries = filter(entry -> entry.name in (Symbol("bang-convention"), Symbol("one-based-range")), Corset.Rules.REGISTRY)
+        mktempdir(@__DIR__) do directory
+            facts = map(1:2) do batch
+                source = """
+                first_item(items::AbstractVector{Int}) = items[1]
+                reset_first(items::Vector{Int}) = (items[1] = 0; nothing)
+                item_at(items::AbstractVector{Int}, index::Int) = items[index]
+                item_through(items::AbstractVector{Int}, index::Int) = item_at(items, index)
+                """
+                path = joinpath(directory, "Rules$batch.jl")
+                write(path, source)
+                mod = Module(Symbol(:Rules, batch))
+                Base.include(mod, path)
+                files = [Corset.Syntax.parse_file(path, source, Role.package)]
+                # `names` in running function misses bindings `include` adds later; newest world sees them.
+                return Base.invokelatest() do
+                    package = Corset.Package.package_facts([mod], files)
+                    inference, _, units, _ = Corset.Inference.infer_package(package, files, nothing, nothing)
+                    return FactSet(files, String[], Corset.Facts.Ban[], nothing, package, inference, first(Corset.Effects.effects_facts(package, units, nothing)), nothing, nothing)
+                end
+            end
+            rules(facts::FactSet)::Vector{Symbol} = sort!([finding.rule for finding in Base.invokelatest(Corset.Engine.run_rules, facts, entries)])
+            found = rules(first(facts))
+            @test Symbol("bang-convention") in found
+            before = specializations(Corset, Base)
+            @test rules(last(facts)) == found
+            @test specializations(Corset, Base) == before
+        end
+        # Store record holds signature as new `UnionAll`: equal signature built apart finds same contracts.
+        apart = (Corset.Rules.OneBasedRange.Signature(Tuple{typeof(sin), Vector{T}} where {T}) for _ in 1:2)
+        @test allequal(apart) && allequal(hash.(apart))
+    end
     @testset "cost linear in function size" begin
         # Every UI and opt-out case inside one function, 16 and 128 copies: linear cost grows 8×, quadratic 64×.
         # Both sizes exceed processor cache: smaller trees fit in it, and cache step looks like superlinear time.
