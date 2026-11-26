@@ -75,12 +75,13 @@ end
 
 """
 Flow of `ir` with call `outcomes` and `message` statements before first round: each referent argument points to its
-parameter. `flush` resolves callback records in this instance; `cut` marks instance whose own code stand-ins cut;
-`statics` holds sources of each static parameter (`static_sources`); `record` keeps write kinds of each call;
-`scheduler` marks scheduler instance (`Flow`). Rounds stop once `work` passes `limit` (`over_budget`).
+parameter. Flow keeps own `referent!` answers. `flush` resolves callback records in this instance; `cut` marks instance
+whose own code stand-ins cut; `statics` holds sources of each static parameter (`static_sources`); `record` keeps write
+kinds of each call; `scheduler` marks scheduler instance (`Flow`). Rounds stop once `work` passes `limit` (`over_budget`).
 """
-function start_flow(ir::CC.IRCode, outcomes::AbstractVector{Union{Nothing, Outcome.Type}}, message::AbstractVector{Bool}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::AbstractVector{Sources}, record::Bool, scheduler::Bool, limit::Integer)::Flow
+function start_flow(ir::CC.IRCode, outcomes::AbstractVector{Union{Nothing, Outcome.Type}}, message::AbstractVector{Bool}, flush::Bool, cut::Bool, statics::AbstractVector{Sources}, record::Bool, scheduler::Bool, limit::Integer)::Flow
     Base.require_one_based_indexing(outcomes)
+    referent = IdDict{Any, Bool}()
     arguments = [
         referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), NO_STEPS)) => NO_DOUBT) : Targets()
             for (position, type) in enumerate(ir.argtypes)

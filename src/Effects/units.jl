@@ -86,7 +86,7 @@ function frame_walk(frame::CC.InferenceState, method::Method, modules::AbstractS
     # Inferred flags reuse claim bits, so claim reads code before inference.
     flags, claimed = frame.src.ssaflags, claims_effect_free(method, CC.retrieve_code_info(frame.linfo, world))
     proven = Bool[!claimed && line in eachindex(flags) && flags[line] & CC.IR_FLAG_EFFECT_FREE != 0 for line in lines]
-    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), IdDict{Any, Bool}(), modules, IdDict{Any, Vector{ClosureWrite}}(), IdDict{Union{Method, Core.MethodInstance}, Bool}(), world)
+    walk = Walk(ir, fill(NO_VALUE, length(ir.stmts)), proven, Dict{Place.Type, Set{Place.Type}}(), modules, world)
     return walk, lines, used, claimed
 end
 

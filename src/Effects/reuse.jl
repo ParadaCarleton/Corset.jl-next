@@ -32,20 +32,21 @@ Kind of iterator that type gives: `multi` restarts at each start, `stateful` adv
 """
 @enumx Pass multi stateful open blind
 
-# corset: allow bang-convention -- memo of type answers; result never changes
 """
 Kind of iterator of `type`, joined over union members; `nothing` and `missing` iterate nothing. Members of both kinds,
-or `open` member, give `open`; else `blind` member gives `blind`. Type variable takes kind of its bound. `memo` holds
-kinds of types this traversal met: bound that parameters share answers once.
+or `open` member, give `open`; else `blind` member gives `blind`. Type variable takes kind of its bound.
 """
-function pass_kind(@nospecialize(type::Any), memo::IdDict{Any, Pass.T} = IdDict{Any, Pass.T}())::Pass.T
+pass_kind(@nospecialize(type::Any))::Pass.T = pass_kind!(IdDict{Any, Pass.T}(), type)
+
+"""`pass_kind` of `type`; `memo` keeps kinds of types this traversal met: bound that parameters share answers once."""
+function pass_kind!(memo::IdDict{Any, Pass.T}, @nospecialize(type::Any))::Pass.T
     haskey(memo, type) && return memo[type]
     kinds = Set{Pass.T}()
     for member in Base.uniontypes(type)
         if member isa TypeVar
-            push!(kinds, pass_kind(member.ub, memo))
+            push!(kinds, pass_kind!(memo, member.ub))
         elseif member isa Type && !(member <: Union{Nothing, Missing})
-            push!(kinds, member_kind(member, memo))
+            push!(kinds, member_kind!(memo, member))
         end
     end
     kind = Pass.open in kinds || (Pass.multi in kinds && Pass.stateful in kinds) ? Pass.open : Pass.blind in kinds ? Pass.blind : Pass.stateful in kinds ? Pass.stateful : Pass.multi
@@ -59,7 +60,7 @@ abstract type is `open`. Struct family (`Bag{T} where T`) takes kinds of paramet
 field (`inner::T`: iteration can pass to field) and `blind` inside field type (`items::Vector{T}`); `blind` bound gives
 `blind`. Restart of one kind is deliberate. Recursion ends: bound names only types defined before its family.
 """
-function member_kind(type::Type, memo::IdDict{Any, Pass.T})::Pass.T
+function member_kind!(memo::IdDict{Any, Pass.T}, type::Type)::Pass.T
     body = Base.unwrap_unionall(type)
     stateful_iterator(body) && return Pass.stateful
     (type <: MULTI_PASS || type <: Type || isconcretetype(type)) && return Pass.multi
@@ -72,7 +73,7 @@ function member_kind(type::Type, memo::IdDict{Any, Pass.T})::Pass.T
     kind = Pass.multi
     for parameter in body.parameters
         parameter isa TypeVar || continue
-        bound = pass_kind(parameter.ub, memo)
+        bound = pass_kind!(memo, parameter.ub)
         bound in (Pass.open, Pass.blind) || continue
         for index in 1:count
             field = fieldtype(body, index)
