@@ -15,7 +15,7 @@ builds index once per body, so slot read scans no statement.
 struct Locals
     assigned::Dict{Int, Vector{Any}}
     origins::Dict{Int, Vector{Origin}}
-    constants::Dict{Int, Some}
+    constants::Dict{Int, Some{Any}}
 end
 
 """
@@ -38,9 +38,9 @@ end
 when function type of `method` is singleton: default-argument method calls own function through it.
 """
 function body_locals(code::AbstractVector{Any}, method::Method)::Locals
-    locals = Locals(Dict{Int, Vector{Any}}(), Dict{Int, Vector{Origin}}(), Dict{Int, Some}())
+    locals = Locals(Dict{Int, Vector{Any}}(), Dict{Int, Vector{Origin}}(), Dict{Int, Some{Any}}())
     self = first(Facts.tuple_parameters(method.sig))
-    Base.issingletontype(self) && (locals.constants[1] = Some(self.instance))
+    Base.issingletontype(self) && (locals.constants[1] = Some{Any}(self.instance))
     nargs = Int(method.nargs)
     for statement in code
         statement isa Expr || continue
@@ -113,18 +113,18 @@ Value of `operand` of lowered `code` on every run, when constant: constant globa
 module, literal, local assigned once, or type application of constant values. `nothing` for other operand: argument,
 closure, call result, static parameter, non-constant global. Local reads `locals.constants`.
 """
-function constant_value(code::AbstractVector{Any}, locals::Locals, @nospecialize(operand::Any))::Union{Nothing, Some}
+function constant_value(code::AbstractVector{Any}, locals::Locals, @nospecialize(operand::Any))::Union{Nothing, Some{Any}}
     operand isa Core.SSAValue && return constant_value(code, locals, code[operand.id])
     operand isa Core.SlotNumber && return get(locals.constants, operand.id, nothing)
-    operand isa QuoteNode && return Some(operand.value)
-    operand isa GlobalRef && return isdefined(operand.mod, operand.name) && isconst(operand.mod, operand.name) ? Some(getglobal(operand.mod, operand.name)) : nothing
-    operand isa Expr || return Some(operand)
+    operand isa QuoteNode && return Some{Any}(operand.value)
+    operand isa GlobalRef && return isdefined(operand.mod, operand.name) && isconst(operand.mod, operand.name) ? Some{Any}(getglobal(operand.mod, operand.name)) : nothing
+    operand isa Expr || return Some{Any}(operand)
     operand.head === :call || return nothing
-    known = Union{Nothing, Some}[constant_value(code, locals, part) for part in operand.args]
+    known = Union{Nothing, Some{Any}}[constant_value(code, locals, part) for part in operand.args]
     any(isnothing, known) && return nothing
     (callee, parts...) = Any[something(part) for part in known]
     callee === Core.apply_type && return try
-        Some(Core.apply_type(parts...))
+        Some{Any}(Core.apply_type(parts...))
     catch error
         # Builtin `apply_type` rejects bad parameter count or kind; it runs no package code.
         error isa Union{TypeError, ErrorException} ? nothing : rethrow()
@@ -132,7 +132,7 @@ function constant_value(code::AbstractVector{Any}, locals::Locals, @nospecialize
     # Lowering turns `Base.f` into `getproperty(Base, :f)`.
     (callee === getproperty && length(parts) == 2 && parts[1] isa Module && parts[2] isa Symbol) || return nothing
     (owner, name) = parts
-    return isdefined(owner, name) && isconst(owner, name) ? Some(getglobal(owner, name)) : nothing
+    return isdefined(owner, name) && isconst(owner, name) ? Some{Any}(getglobal(owner, name)) : nothing
 end
 
 """Type `new` operand `operand` of lowered `code` builds: global, or `apply_type` of global, as closure over typed captures."""
@@ -187,9 +187,9 @@ function use_steps(code::AbstractVector{Any}, method::Method, targets::Function,
         constant = constant_value(code, locals, head)
         # Open callee and splat hide callee or its positions (`ArgumentUse` blind spots).
         (isnothing(constant) || splat_call(code, index)) && continue
-        # Comprehension captures `call`: capture of `types`, which kwcall shift assigns again, gets `Core.Box`.
-        call = Tuple{Any, types...}
-        callees = Method[target for target in targets(something(constant)) if typeintersect(call, target.sig) !== Union{}]
+        candidates = targets(something(constant))
+        # Broadcast over `Ref{Type}`: closure over signature, or `Ref(signature)`, compiles once per signature (`perf.jl`).
+        callees = candidates[typeintersect.(Ref{Type}(Tuple{Any, types...}), Type[target.sig for target in candidates]) .!== Union{}]
         for (position, reached) in pairs(held), origin in reached
             exact = filter(target -> !vararg_position(target, position), callees)
             isempty(exact) || push!(links, (origin, exact, position))
@@ -218,12 +218,13 @@ Argument uses of lowered `bodies` (`lowered_bodies`) of package `modules` that n
 arguments, including keyword bodies (`Core.kwcall`), and of closure fields into operands that reach them.
 """
 function argument_uses(bodies::AbstractVector{<:Tuple{Method, AbstractVector{Any}, Type}}, modules::AbstractSet{Module})::IdDict{Method, Dict{Int, ArgumentUse}}
-    exact, inexact, closures = IdDict{Type, Vector{Method}}(), Tuple{Type, Method}[], IdDict{Core.TypeName, Vector{Method}}()
+    exact, inexact_keys, inexact_methods, closures = IdDict{Type, Vector{Method}}(), Type[], Method[], IdDict{Core.TypeName, Vector{Method}}()
     for (method, _, key) in bodies
         if isconcretetype(key)
             push!(get!(Vector{Method}, exact, key), method)
         else
-            push!(inexact, (key, method))
+            push!(inexact_keys, key)
+            push!(inexact_methods, method)
         end
         wrapper = Base.unwrap_unionall(key)
         wrapper isa DataType && wrapper <: Function && push!(get!(Vector{Method}, closures, wrapper.name), method)
@@ -231,7 +232,8 @@ function argument_uses(bodies::AbstractVector{<:Tuple{Method, AbstractVector{Any
     function targets(@nospecialize(callee::Any))::Vector{Method}
         isnothing(callee) && return Method[]
         type = Core.Typeof(callee)
-        return [get(exact, type, Method[]); Method[method for (key, method) in inexact if type <: key]]
+        # Broadcast: closure over callee type compiles once per type (`perf.jl`).
+        return [get(exact, type, Method[]); inexact_methods[Ref{Type}(type) .<: inexact_keys]]
     end
     uses = IdDict{Method, Uses}(method => Uses() for (method, _, _) in bodies)
     links = Tuple{Uses, Origin, Vector{Method}, Int}[]

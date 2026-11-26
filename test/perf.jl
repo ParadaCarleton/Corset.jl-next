@@ -83,6 +83,36 @@ end
         foreach(run -> run(), uses)
         @test (@allocated last(uses)()) / (@allocated first(uses)()) < 8
     end
+    @testset "package facts compile independent of package" begin
+        # Closure over type value, `Ref(type)`, `Some(value)` and hash set of types compiled again for each type.
+        # Measured `package_facts` on Distributions: 116 s cold, 1.8 s warm.
+        mktempdir(@__DIR__) do directory
+            facts = map(1:2) do batch
+                source = """
+                struct Point$batch
+                    x::Int
+                end
+                struct Box$batch{T}
+                    items::Vector{T}
+                end
+                moved(point::Point$batch, step::Int) = Point$batch(point.x + step)
+                scaled(point::Point$batch, factor::Int = 2; offset::Int = 0) = moved(point, factor + offset)
+                mapped(box::Box$batch, f::Function) = Box$batch(map(item -> f(item), box.items))
+                """
+                path = joinpath(directory, "Batch$batch.jl")
+                write(path, source)
+                mod = Module(Symbol(:Batch, batch))
+                Base.include(mod, path)
+                files = [Corset.Syntax.parse_file(path, source, Role.package)]
+                # `names` in running function misses bindings `include` adds later; newest world sees them.
+                return () -> Base.invokelatest(Corset.Package.package_facts, [mod], files)
+            end
+            first(facts)()
+            before = specializations(Corset, Base)
+            last(facts)()
+            @test specializations(Corset, Base) == before
+        end
+    end
     @testset "package rules compile independent of struct count" begin
         RULES = [Symbol("missing-interface"), Symbol("shadowed-base")]
         # Closure over type value compiles once per value: missing-interface and shadowed-base compiled again for each type.

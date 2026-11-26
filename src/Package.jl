@@ -242,7 +242,8 @@ function struct_sites(sites::AbstractVector{MethodSite}, files::AbstractVector{S
             isnothing(index) && push!(untied, (length(found), file, node, name))
         end
     end
-    tied = Set{Type}(site.type for site in found if !isnothing(site))
+    # Identity set: hash `Set` compiles `hash` and `setindex!` once per struct type.
+    tied = Base.IdSet{Any}(site.type for site in found if !isnothing(site))
     for (slot, file, node, name) in untied
         named = filter(type -> !(type in tied), named_structs(modules, name))
         length(named) == 1 && (found[slot] = StructSite(only(named), file, node))
