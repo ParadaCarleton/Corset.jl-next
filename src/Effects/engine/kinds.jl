@@ -26,7 +26,7 @@ Audited kind of `field` of object of `type`: serializer stream state (IO; `Seria
 """
 function audited_field(@nospecialize(type::Any), field::Symbol)::Union{Nothing, EffectKind.T}
     type isa DataType || return nothing
-    stream = field in SERIALIZER_FIELDS || type <: Serialization.Serializer && field === :known_object_data
+    stream = field in SERIALIZER_FIELDS || (type <: Serialization.Serializer && field === :known_object_data)
     type <: AbstractSerializer && stream && return EffectKind.io
     return get(AUDITED_FIELDS, (type, field), nothing)
 end
