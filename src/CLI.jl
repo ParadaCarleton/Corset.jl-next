@@ -216,7 +216,10 @@ function execute(args::AbstractVector{String}, @nospecialize(out::IO), @nospecia
             code == EXIT_RECHECK || return code
             return exit_code(Launch.supervise(env, recheck_arguments(args), cache, out, err, Launch.CRASHES))
         end
-        isnothing(cache) || !Cache.cold(cache, realpath(path)) || println(err, "corset: no cached analysis of ", path, "; first run can be slow, later runs reuse it")
+        stored = command == "fix" || isnothing(cache) ? nothing : Engine.cached(path, flags, cache, Base.load_path())
+        isnothing(stored) || return finish(command, stored..., out, err, options["format"])
+        # Method store makes rerun after edit fast; first run of path has none.
+        isnothing(cache) || !Cache.cold(cache, Engine.method_entry(realpath(path))) || println(err, "corset: no cached analysis of ", path, "; first run can be slow, later runs reuse it")
         if command == "fix"
             count, stale = Engine.fix!(path; flags, cache, journal)
             println(err, "corset: applied ", count, " edits")

@@ -47,8 +47,13 @@ end
             write(script, "x = 1\n")
             symlink(script, link)
             project = joinpath(environment, "Project.toml")
-            parts, files = Cache.inputs(root, "flags", root, [joinpath(root, "src", "a.jl"), link], [project, Sys.STDLIB], joinpath(root, "cache"))
-            @test parts == [string(VERSION), repr(Base.CacheFlags()), root, "flags", project, Sys.STDLIB]
+            parts, files, naming = Cache.inputs(root, "flags", root, [joinpath(root, "src", "a.jl"), link], [project, Sys.STDLIB], joinpath(root, "cache"))
+            @test parts == [string(VERSION), repr(Base.CacheFlags()), "@root", "flags", "@environment1/Project.toml", Sys.STDLIB]
+            names = ["Project.toml", "Manifest.toml", "LocalPreferences.toml", "JuliaLocalPreferences.toml"]
+            @test naming.anchors == [realpath(root) => "@root"; [Cache.real_path(joinpath(environment, name)) => "@environment1/$name" for name in names]]
+            # Entry relocates root alone: file near environment keeps real path in key.
+            @test Cache.anchored(joinpath(realpath(environment), "deps", "D.jl"), naming.anchors) == joinpath(realpath(environment), "deps", "D.jl")
+            @test naming.manifests == Set([realpath(joinpath(environment, "Manifest.toml"))])
             corset = realpath(pkgdir(Corset))
             listed = [
                 joinpath(root, "Project.toml"), joinpath(root, "src", "a.jl"), script, joinpath(dependency, "src", "D.jl"),
@@ -61,7 +66,47 @@ end
             write_files(environment, "Manifest.toml" => "[[D]]\npath = \"../dependency\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n")
             @test Cache.path_entries(project) == [dependency]
             # Script outside project counts only its own files.
-            @test !any(startswith(root), last(Cache.inputs(script, "flags", nothing, [script], String[], joinpath(scratch, "cache"))))
+            @test !any(startswith(root), Cache.inputs(script, "flags", nothing, [script], String[], joinpath(scratch, "cache"))[2])
+        end
+    end
+
+    @testset "relocated key" begin
+        # Copy of project and environment in other directory gives same key; Manifest develops root by real path.
+        mktempdir() do scratch
+            uuid = Base.UUID(rand(RandomDevice(), UInt128))
+            function copy_key(name::String, text::String, own::Bool = false)::Tuple{String, Union{Nothing, String}}
+                root, environment = joinpath.(scratch, name, ["root", "environment"])
+                real = (mkpath(root); realpath(root))
+                # Malformed fixture named `Manifest.toml` counts by bytes: only environment Manifest parses.
+                write_files(root, "Project.toml" => "", "src/a.jl" => text, "test/fixtures/Manifest.toml" => "[[")
+                write_files(environment, "Project.toml" => "", "Manifest.toml" => "manifest_format = \"2.0\"\n\n[[deps.A]]\npath = \"$real\"\nuuid = \"$uuid\"\n")
+                # Environment of `own` copy is project itself.
+                project = joinpath(own ? real : environment, "Project.toml")
+                return Cache.key(joinpath(real, "src"), "flags", real, [joinpath(real, "src", "a.jl")], [project, Sys.STDLIB], joinpath(scratch, "cache"))
+            end
+            original, relocated = copy_key("first", "a = 1\n")
+            @test relocated == realpath(joinpath(scratch, "first", "root"))
+            @test original == first(copy_key("second", "a = 1\n")) != first(copy_key("third", "a = 2\n"))
+            # Code that names own root can act on it: key names root and entry relocates nothing. Unchanged copy elsewhere
+            # names other root, so it keys apart.
+            text = "a = (@__DIR__) == \"$(realpath(mkpath(joinpath(scratch, "fourth", "root"))))/src\"\n"
+            named, copied = copy_key("fourth", text), copy_key("fifth", text)
+            @test isnothing(last(named)) && first(named) != first(copied) && !isnothing(last(copied))
+            # Files hash in order of anchored name: copies on either side of shared environment key alike.
+            shared = joinpath(scratch, "m", "Project.toml")
+            write_files(dirname(shared), "Project.toml" => "")
+            sides = map(["a", "z"]) do name
+                real = realpath(mkpath(joinpath(scratch, name, "root")))
+                write_files(real, "Project.toml" => "", "src/a.jl" => "a = 1\n")
+                return Cache.key(joinpath(real, "src"), "flags", real, [joinpath(real, "src", "a.jl")], [shared, Sys.STDLIB], joinpath(scratch, "cache"))
+            end
+            @test first(sides[1]) == first(sides[2])
+            # Project environment around unanchored root keeps root in key: copies that name both roots key apart.
+            both = text * "b = (@__DIR__) == \"$(realpath(mkpath(joinpath(scratch, "fifth", "root"))))/src\"\n"
+            @test first(copy_key("fourth", both, true)) != first(copy_key("fifth", both, true))
+            # Anchor names whole directory: sibling that shares prefix stays absolute.
+            anchors = ["/p/root" => "@root"]
+            @test [Cache.anchored(path, anchors) for path in ["/p/root", "/p/root/a.jl", "/p/root2/a.jl"]] == ["@root", "@root/a.jl", "/p/root2/a.jl"]
         end
     end
 
@@ -212,15 +257,63 @@ end
     @testset "entries" begin
         mktempdir(@__DIR__) do directory
             cache = joinpath(directory, "cache")
-            @test Cache.cold(cache, "/checked") && isnothing(Cache.lookup(String, cache, "/checked", "key"))
-            Cache.store!(cache, "/checked", "key", "first")
-            Cache.store!(cache, "/checked", "key", "stored")
+            @test Cache.cold(cache, "/checked") && isnothing(Cache.lookup(String, cache, "/checked", "key"; root = nothing))
+            Cache.store!(cache, "/checked", "key", "first"; root = nothing)
+            Cache.store!(cache, "/checked", "key", "stored"; root = nothing)
             @test !Cache.cold(cache, "/checked") && Cache.cold(cache, "/other")
-            @test Cache.lookup(String, cache, "/checked", "key") == "stored"
-            @test isnothing(Cache.lookup(String, cache, "/checked", "other key"))
-            # Entry is file per checked path; no staging file stays behind.
+            @test Cache.lookup(String, cache, "/checked", "key"; root = nothing) == "stored"
+            @test isnothing(Cache.lookup(String, cache, "/checked", "other key"; root = nothing))
+            # Entry is file per name; no staging file stays behind.
             @test readdir(cache) == [basename(Cache.entry(cache, "/checked"))]
-            @test_throws TypeError Cache.lookup(Int, cache, "/checked", "key")
+            @test_throws TypeError Cache.lookup(Int, cache, "/checked", "key"; root = nothing)
+            # Hit makes entry new for `prune!`; miss leaves it old.
+            file = Cache.entry(cache, "/checked")
+            handle = Base.Filesystem.open(file, Base.Filesystem.JL_O_RDONLY)
+            Base.Filesystem.futime(handle, 0.0, 0.0)
+            close(handle)
+            @test isnothing(Cache.lookup(String, cache, "/checked", "other key"; root = nothing)) && mtime(file) == 0
+            @test Cache.lookup(String, cache, "/checked", "key"; root = nothing) == "stored" && mtime(file) > 0
+            # Only missing entry is miss: cache path that names file fails loud.
+            @test_throws Base.IOError Cache.lookup(String, file, "/checked", "key"; root = nothing)
+        end
+    end
+
+    @testset "relocating entries" begin
+        mktempdir() do directory
+            shared = "/a/b/shared path"
+            paths = ["/a/b", "/a/b/c.jl", "cannot load /a/b/d.jl here", "/a/bc/e.jl", "/x/a/b", shared, shared]
+            Cache.store!(directory, "name", "key", paths; root = "/a/b")
+            moved = Cache.lookup(Vector{String}, directory, "name", "key"; root = "/q")
+            @test moved == ["/q", "/q/c.jl", "cannot load /q/d.jl here", "/a/bc/e.jl", "/x/a/b", "/q/shared path", "/q/shared path"]
+            # Entry holds mark in place of root: read without root keeps it.
+            @test Cache.lookup(Vector{String}, directory, "name", "key"; root = nothing)[2] == Cache.ROOT_MARK * "/c.jl"
+            # Root that relocation cannot reach fails loud and stores nothing.
+            @test_throws ErrorException Cache.store!(directory, "symbol", "key", [Symbol("/a/b/c.jl")]; root = "/a/b")
+            @test_throws ErrorException Cache.store!(directory, "substring", "key", [SubString("/a/b/c.jl", 1)]; root = "/a/b")
+            # Root with pattern syntax and other script matches literally.
+            odd = "/a/\\E(é) [b]*"
+            Cache.store!(directory, "odd", "key", [odd * "/c.jl", "/a/xE(é) [b]*/c.jl"]; root = odd)
+            @test Cache.lookup(Vector{String}, directory, "odd", "key"; root = "/q") == ["/q/c.jl", "/a/xE(é) [b]*/c.jl"]
+            @test Cache.cold(directory, "symbol") && Cache.cold(directory, "substring")
+        end
+    end
+
+    @testset "prune" begin
+        mktempdir() do directory
+            names = [bytes2hex(rand(RandomDevice(), UInt8, 16)) for _ in 1:3]
+            for name in names
+                write(joinpath(directory, name), fill(0x01, 10))
+                sleep(0.05)
+            end
+            mkpath(joinpath(directory, "library"))
+            write(joinpath(directory, "staging"), fill(0x01, 100))
+            # Hit makes entry new: oldest entry goes first.
+            touch(joinpath(directory, names[1]))
+            Cache.prune!(directory, 25)
+            @test sort!(readdir(directory)) == sort!([names[1], names[3], "library", "staging"])
+            # Newest entry stays past limit.
+            Cache.prune!(directory, 0)
+            @test sort!(readdir(directory)) == sort!([names[1], "library", "staging"])
         end
     end
 
@@ -235,14 +328,30 @@ end
             settings, stored = Corset.Engine.cached(directory, Flags(), cache, Base.load_path())
             @test settings.confidence == Corset.Facts.Confidence.definite && stored.files == [joinpath(checked, "a.jl")]
             @test isnothing(Corset.Engine.cached(directory, Flags(; deny_warnings = true), cache, Base.load_path()))
-            # Stored analysis serves check: entry with no diagnostics hides finding.
-            key = readline(Cache.entry(cache, checked))
-            Cache.store!(cache, checked, key, Corset.Engine.Analysis(checked, stored.files, [], [], [], []))
+            # Stored analysis serves check: entry with no diagnostics hides finding. Entry is named by key.
+            entry = only(readdir(cache; join = true))
+            key = readline(entry)
+            @test entry == Cache.entry(cache, key)
+            Cache.store!(cache, key, key, Corset.Engine.Analysis(checked, stored.files, [], [], [], []); root = checked)
             @test isempty(Corset.check(directory; cache).diagnostics)
             @test Corset.Engine.baseline(directory; cache) == 0
             write(joinpath(directory, "a.jl"), "total = 1.0\ntotal ≈ 0\n\n")
             @test length(Corset.check(directory; cache).diagnostics) == 1
-            @test readline(Cache.entry(cache, checked)) != key
+            @test length(readdir(cache)) == 2
+        end
+        # Copy of project in other directory takes entry of original, with paths below copy.
+        mktempdir() do scratch
+            cache, original, copied = joinpath.(scratch, ["cache", "original", "copied"])
+            write_files(original, "Project.toml" => "[deps]\n", "a.jl" => "total = 1.0\ntotal ≈ 0\n")
+            found = Corset.check(original; cache).diagnostics
+            cp(original, copied)
+            moved = realpath(copied)
+            _, stored = something(Corset.Engine.cached(copied, Flags(), cache, Base.load_path()))
+            @test stored.root == moved && stored.files == [joinpath(moved, "a.jl")]
+            @test only(stored.leveled).finding.primary.span.file == joinpath(moved, "a.jl")
+            relocated = Corset.check(copied; cache).diagnostics
+            @test [diagnostic.finding.message for diagnostic in relocated] == [diagnostic.finding.message for diagnostic in found]
+            @test length(readdir(cache)) == 1
         end
     end
 
@@ -257,8 +366,9 @@ end
             # `--no-cache` reads and writes nothing.
             other = joinpath(scratch, "other")
             write_files(other, "Project.toml" => "[deps]\n", "a.jl" => "total = 1.0\ntotal ≈ 0\n")
+            entries = readdir(cache)
             @test cached_corset(cache, "check", other, "--no-cache") == (code, out, "")
-            @test Cache.cold(cache, realpath(other))
+            @test readdir(cache) == entries
             # Fix through cache matches fix without it.
             fixed, plain = cached_corset(cache, "fix", directory), corset("fix", other)
             @test fixed[1:2] == plain[1:2] && read(joinpath(directory, "a.jl"), String) == read(joinpath(other, "a.jl"), String)
@@ -271,14 +381,14 @@ end
                 @test first(cached_corset(cache, "check", package)) == 0
                 checked, store_entry = realpath(package), Corset.Engine.method_entry(realpath(package))
                 key, b = readline(Cache.entry(cache, store_entry)), joinpath(realpath(package), "src", "b.jl")
-                store = Cache.lookup(Corset.Inference.Store, cache, store_entry, key)
+                store = Cache.lookup(Corset.Inference.Store, cache, store_entry, key; root = nothing)
                 # Entry of `second_part` that claims failing call shows store serves facts.
                 held = first(name for (name, held) in store if first(held.file) == b)
                 span = Corset.Facts.Span(b, 1, 11, Corset.Facts.Precision.exact)
                 fake = Corset.Facts.FailingCall(span, span, "fake", Corset.Facts.Confidence.definite)
                 bytes = Corset.Inference.serialized(Corset.Inference.Inferred(Union{}, Tuple{Type, Type}[], Type[], [1 => fake], true, false, Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.StatefulIterate[]))
                 store[held] = Corset.Inference.Entry(store[held].file, store[held].methods, store[held].staged, bytes, store[held].effects)
-                Cache.store!(cache, store_entry, key, store)
+                Cache.store!(cache, store_entry, key, store; root = nothing)
                 write(joinpath(checked, "src", "a.jl"), first_part * "\n")
                 @test occursin("call to `fake` never succeeds", cached_corset(cache, "check", package)[2])
                 write(b, second_part * "\n")

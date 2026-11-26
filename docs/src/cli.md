@@ -34,8 +34,9 @@ The guide section "Load errors" describes this environment.
 
 ## Cache
 
-Corset stores the analysis of each checked path in its scratch space in the Julia depot.
+Corset stores each analysis in its scratch space in the Julia depot.
 A later run with the same inputs prints the stored findings. It loads no package and starts no second Julia process.
+A copy of the project in another directory has the same inputs, so it uses the stored analysis too.
 The inputs are:
 
 - the Julia version and its cache flags, such as `--check-bounds`
@@ -47,6 +48,7 @@ The inputs are:
 Hidden files and directories do not count.
 The first run on a path prints a note. `--no-cache` analyzes again and reads or writes no cache.
 CI that saves the Julia depot between runs keeps the cache.
+The cache keeps the newest entries up to 512 MiB.
 
 ## Level flags
 

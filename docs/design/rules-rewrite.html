@@ -1702,12 +1702,17 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <p>UI cases for rules after <code>syntax</code>: case directory holds package (Project.toml with <code>name</code> and <code>uuid</code>, <code>src/</code>). Harness loads it in test process under unique name. Fixture that extends function it does not own (<code>piracy</code>) adds only methods no other case calls, so later cases see same dispatch.</p>
 </div><div class="decision"><h3>Incremental runs and disk cache</h3>
 <ul>
-<li>Disk cache (<code>Cache</code>) holds one entry per checked path: key line, then serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.</li>
+<li>Disk cache (<code>Cache</code>) holds one entry per analysis key: key line, then serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.</li>
 <li>Key: SHA-256 of Julia version, <code>Base.CacheFlags</code>, checked path, serialized flags, each load path environment with Manifest and preferences, Corset source, analyzed files, and every file of project root and Manifest <code>path</code> entries.</li>
 <li>Key reads file content, so fresh CI checkout hits. Names that start with dot and cache directory stay out of key.</li>
+<li>Key names paths relative to anchors: project root, and project, Manifest and preference files of each load path environment. Other files keep real path: entry relocates root alone. Load path Manifests count by entries, <code>path</code> entries as anchored real paths; other files count by bytes. Copy of project in other directory gives same key.</li>
+<li>Root anchors only when no key file but Manifest holds root path text. Code that names own root can act on it, so key then names root.</li>
+<li>Entry of anchored root stores root as mark in every string; read puts root of checked copy in its place. Root left outside strings, such as in <code>Symbol</code>, fails store. <code>SubString</code> fails too: its offsets would go stale.</li>
+<li>Blind spot: code can derive behavior from own location by other means, such as path length, or read files outside root by relative path. Key holds neither.</li>
+<li>Cache keeps newest entries within byte budget (<code>Cache.ENTRY_BYTES</code>); hit makes entry new.</li>
 <li>Location: Corset scratch space <code>analyses</code> in Julia depot. CI that saves depot keeps cache. <code>--no-cache</code> turns cache off.</li>
 <li>Relaunching process computes key of relaunched process (temporary environment, load path <code>@:@stdlib</code>) and asks cache first. Hit loads no package and starts no process. <code>fix</code> always relaunches.</li>
-<li>Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.</li>
+<li>Run that analyzes without method store of checked path prints one note: first analysis can be slow; later runs reuse cache.</li>
 <li>Later: <code>syntax</code> stage findings per file, keyed by file content hash.</li>
 <li><code>inference</code> stage keeps method store per checked path beside analysis entry. Store holds one entry per inferred method and signature: reached signatures, stage facts and blind spots.</li>
 <li><code>effects</code> run adds effects record of unit to each entry (<code>effects.md</code>, Units and IR).</li>

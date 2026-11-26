@@ -1,11 +1,13 @@
 """
-Disk cache of analyses: one entry per checked path, holding key and stored analysis. Key hashes every analysis input,
-so changed input misses and run analyzes again. Library summaries of `effects` stage share one library file per
-partition (`partition_key`), whose entries every checked path and environment shares.
+Disk cache of analyses: one entry per analysis key, which hashes every analysis input, so changed input misses and run
+analyzes again. Key names files relative to project root and environments (`anchors`), and entry stores paths below
+root relative to it (`Relocating`): copy of project in other directory hits. Method store keeps one entry per checked
+path. Library summaries of `effects` stage share one library file per partition (`partition_key`), whose entries every
+checked path and environment shares.
 """
 module Cache
 
-using Serialization: serialize, deserialize
+using Serialization: Serialization, AbstractSerializer, serialize, deserialize
 using SHA: SHA, sha256
 using Scratch: get_scratch!
 using TOML: TOML
@@ -40,6 +42,69 @@ function path_entries(environment::String)::Vector{String}
     return [abspath(dirname(manifest), entry["path"]) for entries in values(deps) for entry in entries if haskey(entry, "path")]
 end
 
+"""`path` by real path when it exists."""
+real_path(path::String)::String = ispath(path) ? realpath(path) : path
+
+"""
+How key names files: `anchors` map real directory to label (`anchored`). Each of `manifests`, Manifest of load path
+environment, counts by entries with `path` entries anchored; other files count by bytes.
+"""
+struct Naming
+    anchors::Vector{Pair{String, String}}
+    manifests::Set{String}
+end
+
+"""Whether `file` holds text `path`."""
+names_path(file::String, path::String)::Bool = isfile(file) && !isnothing(findfirst(codeunits(path), read(file)))
+
+"""
+`Naming` of key: real project `root` as `@root`, then each file of each project environment of `load_path`
+(`environment_files`) as `@environment`, its position and file name. Root anchors only when no file of `files` but
+Manifest names it: code that names own root can act on it, so its copy needs own key; root then labels itself. Entry
+relocates root alone, so other files near environment keep real path.
+"""
+function naming(root::Union{Nothing, String}, load_path::AbstractVector{String}, files::AbstractVector{String})::Naming
+    environments = filter(isfile, load_path)
+    manifests = Set{String}(real_path(manifest) for manifest in Base.project_file_manifest_path.(environments) if !isnothing(manifest))
+    real = isnothing(root) ? nothing : realpath(root)
+    named = !isnothing(real) && any(file -> !(file in manifests) && names_path(file, real), files)
+    anchors = isnothing(real) ? Pair{String, String}[] : [real => (named ? real : "@root")]
+    for (position, environment) in enumerate(load_path), file in (environment in environments ? environment_files(environment) : String[])
+        push!(anchors, real_path(file) => "@environment$position/" * basename(file))
+    end
+    return Naming(anchors, manifests)
+end
+
+"""Real project root whose copy shares key of `naming`; `nothing` when root does not anchor."""
+function relocated_root(naming::Naming)::Union{Nothing, String}
+    position = findfirst(anchor -> last(anchor) == "@root", naming.anchors)
+    return isnothing(position) ? nothing : first(naming.anchors[position])
+end
+
+"""Name of real `path` in key: relative to first of `anchors` that holds it, else `path` itself."""
+function anchored(path::String, anchors::AbstractVector{Pair{String, String}})::String
+    for (directory, label) in anchors
+        path == directory && return label
+        prefix = joinpath(directory, "")
+        startswith(path, prefix) && return label * "/" * chopprefix(path, prefix)
+    end
+    return path
+end
+
+"""
+Content digest of `file` for key; `"absent"` when missing. Manifest of `naming` counts by its entries, each `path` entry
+real and `anchored`: environment that develops copy of project then hashes as one that develops original.
+"""
+function content_digest(file::String, naming::Naming)::String
+    isfile(file) || return "absent"
+    file in naming.manifests || return bytes2hex(sha256(read(file)))
+    manifest = TOML.parsefile(file)
+    for entries in values(Base.get_deps(manifest)), entry in entries
+        haskey(entry, "path") && (entry["path"] = anchored(real_path(abspath(dirname(file), entry["path"])), naming.anchors))
+    end
+    return bytes2hex(sha256(sprint(io -> TOML.print(io, manifest; sorted = true))))
+end
+
 """Add `text` to `context` with its length first, so neighboring parts cannot run together."""
 function update_part!(context::SHA.SHA256_CTX, text::String)::Nothing
     SHA.update!(context, codeunits(string(sizeof(text), ':')))
@@ -48,14 +113,23 @@ function update_part!(context::SHA.SHA256_CTX, text::String)::Nothing
 end
 
 """
-Text parts and files that key of analysis of checked `path` with `flags` text hashes. Parts: Julia version, cache flags,
-`path`, `flags` and each environment of `load_path`. Files: analyzed `files`, Corset source, each project environment
-with its Manifest and preferences, and every file of project root `root` and of Manifest `path` entries, `cache`
-directory left out.
+Text parts, files and `Naming` that key of analysis of real checked `path` with `flags` text hashes. Parts: Julia
+version, cache flags, `path`, `flags` and each environment of `load_path`, paths `anchored`. Files: analyzed `files`,
+Corset source, each project environment with its Manifest and preferences, and every file of project root `root` and of
+Manifest `path` entries, `cache` directory left out.
 """
-function inputs(path::String, flags::String, root::Union{Nothing, String}, files::AbstractVector{String}, load_path::AbstractVector{String}, cache::String)::Tuple{Vector{String}, Vector{String}}
+function inputs(path::String, flags::String, root::Union{Nothing, String}, files::AbstractVector{String}, load_path::AbstractVector{String}, cache::String)::Tuple{Vector{String}, Vector{String}, Naming}
     parts, listed, trees = environment_inputs(load_path)
-    return [string(VERSION), repr(Base.CacheFlags()), path, flags, parts...], found_files([files; listed], [trees; something(root, String[])], cache)
+    found = found_files([files; listed], [trees; something(root, String[])], cache)
+    named = naming(root, load_path, found)
+    labeled = [anchored(real_path(part), named.anchors) for part in parts]
+    return [string(VERSION), repr(Base.CacheFlags()), anchored(path, named.anchors), flags, labeled...], found, named
+end
+
+"""Project file `environment`, its Manifest and its preference files."""
+function environment_files(environment::String)::Vector{String}
+    preferences = joinpath.(dirname(environment), ["LocalPreferences.toml", "JuliaLocalPreferences.toml"])
+    return [environment; something(Base.project_file_manifest_path(environment), String[]); preferences]
 end
 
 """
@@ -69,8 +143,7 @@ function environment_inputs(load_path::AbstractVector{String})::Tuple{Vector{Str
         push!(parts, environment)
         # Directory environment, such as standard library, counts by path.
         isfile(environment) || continue
-        directory = dirname(environment)
-        append!(listed, [environment; something(Base.project_file_manifest_path(environment), String[]); joinpath.(directory, ["LocalPreferences.toml", "JuliaLocalPreferences.toml"])])
+        append!(listed, environment_files(environment))
         append!(trees, path_entries(environment))
     end
     return parts, listed, trees
@@ -81,7 +154,7 @@ function found_files(listed::AbstractVector{String}, trees::AbstractVector{Strin
     # Stale `path` entry names directory that is gone; it adds no file.
     found = [listed; (tree_files(tree, cache) for tree in unique(trees) if isdir(tree))...]
     # Processes that reach file through other links must agree, so files count by real path.
-    return sort!(unique!([ispath(file) ? realpath(file) : file for file in found]))
+    return sort!(unique!(real_path.(found)))
 end
 
 """
@@ -93,25 +166,37 @@ function method_key(path::String, root::String, files::AbstractVector{String}, s
     parts, listed, trees = environment_inputs(load_path)
     root = realpath(root)
     kept = [filter(tree -> !(ispath(tree) && realpath(tree) == root), trees); joinpath.(root, ["src", "ext", "deps"])]
-    analyzed = Set(ispath(file) ? realpath(file) : file for file in files)
+    analyzed = Set(real_path(file) for file in files)
     outside = filter(file -> !(file in analyzed), found_files(listed, kept, cache))
     return digest([string(VERSION), repr(Base.CacheFlags()), path, parts..., files..., shape...], outside)
 end
 
-"""SHA-256 of `parts`, then of path and content of each of `files`. Missing file counts too: file that appears changes digest."""
-function digest(parts::AbstractVector{String}, files::AbstractVector{String})::String
+"""
+SHA-256 of `parts`, then of name and content of each of `files` in order of name: name `anchored` to anchors of
+`naming`, content `content_digest`. Missing file counts too: file that appears changes digest.
+"""
+function digest(parts::AbstractVector{String}, files::AbstractVector{String}, naming::Naming)::String
     context = SHA.SHA256_CTX()
     foreach(part -> update_part!(context, part), parts)
-    for file in files
-        update_part!(context, file)
-        update_part!(context, isfile(file) ? bytes2hex(sha256(read(file))) : "absent")
+    # Order by name: copies at other paths sort their files apart from files that keep real path.
+    for (name, file) in sort!([(anchored(file, naming.anchors), file) for file in files])
+        update_part!(context, name)
+        update_part!(context, content_digest(file, naming))
     end
     return bytes2hex(SHA.digest!(context))
 end
 
-"""Key of analysis: digest of `inputs`."""
-key(path::String, flags::String, root::Union{Nothing, String}, files::AbstractVector{String}, load_path::AbstractVector{String}, cache::String)::String =
-    digest(inputs(path, flags, root, files, load_path, cache)...)
+"""`digest` of `parts`, and of `files` by real path and bytes."""
+digest(parts::AbstractVector{String}, files::AbstractVector{String})::String = digest(parts, files, Naming(Pair{String, String}[], Set{String}()))
+
+"""
+Key of analysis, digest of `inputs`, and real project root that entry stores as `ROOT_MARK` (`relocated_root`;
+`nothing`: entry keeps paths, key names root).
+"""
+function key(path::String, flags::String, root::Union{Nothing, String}, files::AbstractVector{String}, load_path::AbstractVector{String}, cache::String)::Tuple{String, Union{Nothing, String}}
+    parts, found, named = inputs(path, flags, root, files, load_path, cache)
+    return digest(parts, found, named), relocated_root(named)
+end
 
 """
 Content text of package `id` at `root` for library entry key: name, UUID, then `root` for package in standard library
@@ -191,7 +276,7 @@ const LIBRARY_FILES = 4
 const LIBRARY_BYTES = 128 * 2^20
 
 """Entries of library file of `partition` in library `directory`; none when file is missing or has other key."""
-read_library(directory::String, partition::String)::Dict{String, Stamped} = something(lookup(Dict{String, Stamped}, directory, partition, partition), Dict{String, Stamped}())
+read_library(directory::String, partition::String)::Dict{String, Stamped} = something(lookup(Dict{String, Stamped}, directory, partition, partition; root = nothing), Dict{String, Stamped}())
 
 """
 Merge `found` entries into library file of `partition` in library `directory`, read again just before write. Found
@@ -216,35 +301,122 @@ function keep_library!(directory::String, partition::String, found::AbstractDict
             total > limit && break
             kept[key] = stamped
         end
-        store!(directory, partition, partition, kept)
+        store!(directory, partition, partition, kept; root = nothing)
     end
     files = filter(path -> length(basename(path)) == 32 && all(isxdigit, basename(path)), readdir(directory; join = true))
     foreach(path -> rm(path; force = true), sort!(files; by = mtime, rev = true)[(LIBRARY_FILES + 1):end])
     return nothing
 end
 
-"""Entry file of checked `path` in cache `directory`."""
-entry(directory::String, path::String)::String = joinpath(directory, bytes2hex(sha256(path))[1:32])
+"""Entry file of `name` in cache `directory`: checked path or analysis key."""
+entry(directory::String, name::String)::String = joinpath(directory, bytes2hex(sha256(name))[1:32])
 
-"""Whether cache `directory` holds no entry for checked `path`."""
-cold(directory::String, path::String)::Bool = !isfile(entry(directory, path))
+"""Whether cache `directory` holds no entry of `name`."""
+cold(directory::String, name::String)::Bool = !isfile(entry(directory, name))
 
-"""Analysis of type `T` stored for checked `path` under `key` in cache `directory`; `nothing` when entry is missing or has other key."""
-function lookup(::Type{T}, directory::String, path::String, key::String)::Union{Nothing, T} where {T}
-    file = entry(directory, path)
-    isfile(file) || return nothing
-    # Key line comes first, so entry from other Julia or Corset version is never deserialized.
-    return open(io -> readline(io) == key ? deserialize(io)::T : nothing, file)
+"""Text that entry holds in place of project root."""
+const ROOT_MARK = "\0corset root\0"
+
+"""
+Serializer that replaces matches of `from` with `to` in each string it writes or reads. Entry stores project root as
+`ROOT_MARK`, and read in copy of project gives paths below copy. `SubString` fails: its offsets would go stale.
+"""
+mutable struct Relocating{I <: IO, P <: Union{Regex, String}} <: AbstractSerializer
+    io::I
+    counter::Int
+    table::IdDict{Any, Any}
+    pending_refs::Vector{Int}
+    known_object_data::Dict{UInt64, Any}
+    version::Int
+    from::P
+    to::String
 end
 
-"""Store `analysis` under `key` as entry of checked `path` in cache `directory`. Entry file changes in one step."""
-function store!(directory::String, path::String, key::String, analysis::T)::Nothing where {T}
+"""`Relocating` serializer of `io` that replaces `from` with `to`."""
+Relocating(io::IO, from::Union{Regex, String}, to::String)::Relocating =
+    Relocating(io, 0, IdDict{Any, Any}(), Int[], Dict{UInt64, Any}(), Serialization.ser_version, from, to)
+
+Serialization.serialize(serializer::Relocating, text::String)::Nothing =
+    invoke(serialize, Tuple{AbstractSerializer, String}, serializer, replace(text, serializer.from => serializer.to))
+
+Serialization.serialize(::Relocating, text::SubString{String})::Union{} = error("cache entry holds substring `$text`, whose offsets relocation would break")
+
+Serialization.deserialize_string(serializer::Relocating, length::Int)::String =
+    replace(invoke(Serialization.deserialize_string, Tuple{AbstractSerializer, Int}, serializer, length), serializer.from => serializer.to)
+
+"""
+Project `root` as whole path in text: at start or after space, quote or bracket, and before separator, space, quote,
+bracket, colon or end. Sibling `root2` and path `/x/root` stay.
+"""
+function root_pattern(root::String)::Regex
+    # Backslash before character other than ASCII letter or digit makes it literal in PCRE.
+    literal = replace(root, r"[^A-Za-z0-9]" => s"\\\0")
+    return Regex("(?<![^\\s\"'`(\\[{<])" * literal * "(?=\$|[/\\s\"'`)\\]}>:,;])")
+end
+
+"""
+Value of type `T` stored as entry of `name` under `key` in cache `directory`, paths below project `root` restored from
+`ROOT_MARK` (`nothing`: none). `nothing` when entry is missing or has other key; hit makes entry new (`prune!`).
+"""
+function lookup(::Type{T}, directory::String, name::String, key::String; root::Union{Nothing, String})::Union{Nothing, T} where {T}
+    # Other process can prune entry at any time: missing file is miss, and hit touches open file, never path.
+    handle = try
+        Base.Filesystem.open(entry(directory, name), Base.Filesystem.JL_O_RDONLY)
+    catch failure
+        failure isa Base.IOError && failure.code == Base.UV_ENOENT && return nothing
+        rethrow()
+    end
+    try
+        io = IOBuffer(read(handle))
+        # Key line comes first, so entry from other Julia or Corset version is never deserialized.
+        readline(io) == key || return nothing
+        found = (isnothing(root) ? deserialize(io) : deserialize(Relocating(io, ROOT_MARK, root)))::T
+        touch(handle)
+        return found
+    finally
+        close(handle)
+    end
+end
+
+"""
+Store `value` under `key` as entry of `name` in cache `directory`, paths below project `root` as `ROOT_MARK` (`nothing`:
+none). Fails when root stays in bytes outside strings, such as in `Symbol`. Entry file changes in one step.
+"""
+function store!(directory::String, name::String, key::String, value::T; root::Union{Nothing, String})::Nothing where {T}
+    buffer = IOBuffer()
+    if isnothing(root)
+        serialize(buffer, value)
+    else
+        relocating = Relocating(buffer, root_pattern(root), ROOT_MARK)
+        Serialization.writeheader(relocating)
+        serialize(relocating, value)
+    end
+    bytes = take!(buffer)
+    isnothing(root) || isnothing(findfirst(codeunits(joinpath(root, "")), bytes)) || error("cache entry of `$name` holds project root `$root` outside strings")
     mkpath(directory)
     staging, io = mktemp(directory)
     println(io, key)
-    serialize(io, analysis)
+    write(io, bytes)
     close(io)
-    mv(staging, entry(directory, path); force = true)
+    mv(staging, entry(directory, name); force = true)
+    return nothing
+end
+
+"""Entry bytes that cache directory keeps at most (`prune!`): analyses and method stores."""
+const ENTRY_BYTES = 512 * 2^20
+
+"""
+Delete oldest entry files of cache `directory` past `limit` bytes; newest entry always stays. Staging files and library
+directory stay. Lookup hit makes entry new, so entries in use stay.
+"""
+function prune!(directory::String, limit::Integer)::Nothing
+    # One `stat` per entry; entry that other process prunes meanwhile stats as no file (zeros) and drops out.
+    found = [(path, stat(path)) for path in readdir(directory; join = true) if length(basename(path)) == 32 && all(isxdigit, basename(path))]
+    total = 0
+    for (position, (file, status)) in enumerate(sort!(filter!(isfile ∘ last, found); by = pair -> last(pair).mtime, rev = true))
+        total += status.size
+        position > 1 && total > limit && rm(file; force = true)
+    end
     return nothing
 end
 

@@ -94,7 +94,7 @@ function package_workload()::Nothing
     # Second run takes method store from first, as rerun of `corset check` does.
     mktempdir() do cache
         Engine.stage_facts(path, package, files, true, true, true, cache, nothing)
-        store = Cache.lookup(Inference.Store, cache, Engine.method_entry(path), Engine.store_key(path, package, files, cache))
+        store = Cache.lookup(Inference.Store, cache, Engine.method_entry(path), Engine.store_key(path, package, files, cache); root = nothing)
         isempty(something(store, Inference.Store())) && error("precompile workload: inference stage stored no sample method")
         inference, _, effects, _, lifecycle = Engine.stage_facts(path, package, files, true, true, true, cache, nothing)
         package_rules(package, inference, effects, lifecycle, files, [path], path, nothing)
