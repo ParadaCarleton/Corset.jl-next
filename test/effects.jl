@@ -721,6 +721,8 @@ end
     # Null pointer global points into no object, so `Cstring` error path writes no `C_NULL`.
     @test all(((place, _),) -> root_of(place) != Root.Global(GlobalRef(Base, :C_NULL)), keys(summary_of(length_of, String).writes))
     @test null_pointer(GlobalRef(Base, :C_NULL)) && !null_pointer(GlobalRef(@__MODULE__, :HOLDER)) && !null_pointer(GlobalRef(@__MODULE__, :slot))
+    # Compiler inlines `C_NULL` into `uv_random` call: null literal points into no object, so open call writes buffer only.
+    @test all(((place, _, _),) -> root_of(place) == Root.Parameter(2), keys(summary_of(Base.Libc.getrandom!, Base.RefValue{UInt64}).writes))
     @test summary_of(object_at, Ptr{Cvoid}).result == Nodes(Node.Placed(parameter(2)) => none)
     @test doubts(summary_of(unknown_foreign!, Ptr{Int}).writes) == Dict((parameter(2), true) => code)
     # Unknown C function: doubt in code, also on argument of open type.
@@ -803,7 +805,8 @@ end
     # No method matches: call throws, so it writes and reads nothing.
     @test isempty(summary_of(no_method, Vector{Int}).writes) && isempty(summary_of(no_method, Vector{Int}).reads)
     @test summary_of(nested_apply, Vector{Int}, Tuple{Tuple{Int}}).writes[memory((parameter(2), true))].doubt == code
-    @test summary_of(embedded).result == Nodes(Node.Outside() => code)
+    # Constant object in code is one object outside caller places: result aliases it without doubt.
+    @test summary_of(embedded).result == Nodes(Node.Outside() => none)
     @test summary_of(unknown_field, Module, Symbol).result == Nodes(Node.Outside() => code)
     @test summary_of(unknown_any, Module, Symbol, Symbol).result == Nodes(Node.Outside() => code)
     @test haskey(summary_of(first_of_fresh, Vector{Int}).result, Node.Placed(parameter(2)))

@@ -1082,7 +1082,7 @@ Code lives in <code>src/Effects/</code>.</p>
 </div><div class="decision"><h3>Origins and points-to</h3>
 <ul>
 <li>Origin: abstract object. Kinds: caller place (parameter or global path), allocation statement, <code>unknown</code>.</li>
-<li>Constant object in code counts as <code>unknown</code>. Fresh objects of callee merge into one allocation at call statement.</li>
+<li>Constant object in code counts as <code>unknown</code>: write to it is definite. Fresh objects of callee merge into one allocation at call statement.</li>
 <li><code>unknown</code>: object open call can return that no operand names, global included. Write to it is <code>possible</code> global write.</li>
 <li>Current task is <code>unknown</code> without doubt: write to its fields is certain global write.</li>
 <li>One <code>unknown</code> origin stands for every outside object, so values stored into it take <code>code</code> doubt.</li>
