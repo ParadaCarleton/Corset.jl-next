@@ -145,6 +145,7 @@ Resolution of each call statement, first match wins:
 - Callback record keeps write path short. Tuple `foreach` wraps closure in `foldl` reducers: closure writes lie three steps below reducer.
 - Caller maps record to its own objects. Callable still holding object below caller parameter passes record to next caller.
 - Root unit has no caller: its verdict resolves records left in its summary.
+- Access that only resolved records add carries callback mark: callable argument makes it (`map(f, xs)` runs `f`).
 - Record with fresh argument applies now: caller merges fresh objects of callee into one, so record would lose them.
 - Join resolves records of its members. Member disagreement on access gives `possible`.
 - Recursion repeats record on same targets: record applies once.
@@ -206,7 +207,7 @@ Resolution of each call statement, first match wins:
 Summary keeps every effect with its kind. Rules apply exemptions; engine filters nothing.
 
 - Kinds: memory write, IO, default RNG, RNG argument, task-local state, `ScopedValue` read, lock and other synchronization, lazy init, audited internal state, iteration start.
-- `bang-convention` exempts IO, RNG, lazy init and audited internal state. `unused-call` counts every kind. `hidden-input` reads default RNG, task-local state, `ScopedValue` and mutable globals.
+- `bang-convention` exempts IO, RNG, lazy init, audited internal state and callback writes. `unused-call` counts every kind. `hidden-input` reads default RNG, task-local state, `ScopedValue` and mutable globals.
 - Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.
 - Kind comes from types along place path, root first: first `IO` gives IO, `AbstractRNG` gives RNG argument.
 - Contract write can set own kind: `handle_message` writes logger as IO.

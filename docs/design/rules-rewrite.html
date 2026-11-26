@@ -1200,6 +1200,7 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>Callback record keeps write path short. Tuple <code>foreach</code> wraps closure in <code>foldl</code> reducers: closure writes lie three steps below reducer.</li>
 <li>Caller maps record to its own objects. Callable still holding object below caller parameter passes record to next caller.</li>
 <li>Root unit has no caller: its verdict resolves records left in its summary.</li>
+<li>Access that only resolved records add carries callback mark: callable argument makes it (<code>map(f, xs)</code> runs <code>f</code>).</li>
 <li>Record with fresh argument applies now: caller merges fresh objects of callee into one, so record would lose them.</li>
 <li>Join resolves records of its members. Member disagreement on access gives <code>possible</code>.</li>
 <li>Recursion repeats record on same targets: record applies once.</li>
@@ -1260,7 +1261,7 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <p>Summary keeps every effect with its kind. Rules apply exemptions; engine filters nothing.</p>
 <ul>
 <li>Kinds: memory write, IO, default RNG, RNG argument, task-local state, <code>ScopedValue</code> read, lock and other synchronization, lazy init, audited internal state, iteration start.</li>
-<li><code>bang-convention</code> exempts IO, RNG, lazy init and audited internal state. <code>unused-call</code> counts every kind. <code>hidden-input</code> reads default RNG, task-local state, <code>ScopedValue</code> and mutable globals.</li>
+<li><code>bang-convention</code> exempts IO, RNG, lazy init, audited internal state and callback writes. <code>unused-call</code> counts every kind. <code>hidden-input</code> reads default RNG, task-local state, <code>ScopedValue</code> and mutable globals.</li>
 <li>Access key holds place, below flag and kind. Memory write and IO write on one place keep own doubt each.</li>
 <li>Kind comes from types along place path, root first: first <code>IO</code> gives IO, <code>AbstractRNG</code> gives RNG argument.</li>
 <li>Contract write can set own kind: <code>handle_message</code> writes logger as IO.</li>

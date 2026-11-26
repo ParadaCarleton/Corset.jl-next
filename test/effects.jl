@@ -227,6 +227,8 @@ end
     raw = raw_summary(CASES.call_setter!, CASES.Setter, Int)
     @test only(raw.callbacks).parameters[1] == Nodes(Node.Placed(parameter(2)) => NO_DOUBT) && !haskey(raw.writes, (parameter(2, box), false))
     @test shape(named(:call_setter!).writes) == [(parameter(2, box), false, definite)]
+    # Callable that caller passes makes that write, so access carries callback mark. Own closure write carries none.
+    @test only(named(:call_setter!).writes).callback && !any(access -> access.callback, named(:fill_pair!).writes)
     @test isempty(raw_summary(CASES.set_pair!, CASES.Box).callbacks)
     # Units split `Union` stand-ins: `Relay` unit resolves record of `Relay` call, then record of `Setter` call inside it.
     setter = Step.Field(:setter)
@@ -1414,10 +1416,12 @@ four_way(x::Symbol) = x
     package_run = start_run(nothing, [@__MODULE__])
     @test join_limit(package_run, only(something(dispatch(Any[typeof(three_way), Int], world, 1)))) == JOIN_LIMIT
     @test join_limit(package_run, only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], world, 1)))) == 1
-    possible_first = Access(parameter(2), false, EffectKind.memory, Confidence.possible, typed.site.span)
-    @test worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, typed.site.span)])[1].confidence == Confidence.definite
+    possible_first = Access(parameter(2), false, EffectKind.memory, Confidence.possible, false, typed.site.span)
+    @test worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, false, typed.site.span)])[1].confidence == Confidence.definite
     # Kinds stay apart: definite IO write never hides `possible` memory write.
-    @test length(worst([possible_first, Access(parameter(2), false, EffectKind.io, Confidence.definite, typed.site.span)])) == 2
+    @test length(worst([possible_first, Access(parameter(2), false, EffectKind.io, Confidence.definite, false, typed.site.span)])) == 2
+    # Callback mark stays apart too: definite write of callable argument never hides `possible` own write.
+    @test length(worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, true, typed.site.span)])) == 2
 end
 
 """Whether `first` and `second` hold same state: same type, and same fields and elements, deep."""
