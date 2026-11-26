@@ -1697,6 +1697,12 @@ write_byte!(io::IOBuffer, b::UInt8) = write(io, b)
 """Line to `stdout`: global binding declared `IO`."""
 say(x::Int) = println(stdout, x)
 
+"""Shows `source` on `destination`: open `show` writes `destination` for sure, and `source` only as open operand."""
+show_stream(destination::IO, source::IO) = show(destination, source)
+
+"""Copies `source` into `destination`: open `write` reads `source`, so it writes both for sure."""
+copy_stream(destination::IO, source::IO) = write(destination, source)
+
 """Holder of buffer: path crosses `IO` at field."""
 struct Logger
     io::IOBuffer
@@ -1794,9 +1800,14 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
 
 @testset "effect kinds" begin
     io, elsewhere = EffectKind.io, Root.Elsewhere()
-    # IO by declared type of argument, global, or field on path.
-    logged = summary_of(log_line, IO, Int).writes
-    @test collect(keys(logged)) == [(parameter(2), true, io)] && level_of(only(values(logged)).doubt) == Level.code
+    # IO by declared type of argument, global, or field on path. Open `write` inside `println` writes its `IO` for sure.
+    @test doubts(summary_of(log_line, IO, Int).writes) == Dict((parameter(2), true, io) => NO_DOUBT)
+    # Stream operand alone takes definite write: shown value keeps open-call doubt.
+    shown = doubts(summary_of(show_stream, IO, IO).writes)
+    @test shown[(parameter(2), true, io)] == NO_DOUBT && get(shown, (parameter(3), true, io), nothing) != NO_DOUBT
+    @test doubts(summary_of(copy_stream, IO, IO).writes) == Dict((parameter(2), true, io) => NO_DOUBT, (parameter(3), true, io) => NO_DOUBT)
+    @test isempty(Corset.Effects.stream_positions(display, 2)) && isempty(Corset.Effects.stream_positions(show, 1))
+    @test Corset.Effects.stream_positions(show, 2) == 1:1 && Corset.Effects.stream_positions(print, 0) == 1:0
     @test doubts(summary_of(write_byte!, IOBuffer, UInt8).writes) == Dict((parameter(2), false, io) => NO_DOUBT)
     @test Set(kind for (_, _, kind) in keys(summary_of(say, Int).writes)) == Set([io])
     @test doubts(summary_of(log_byte!, Logger, UInt8).writes) == Dict((parameter(2, Step.Field(:io)), false, io) => NO_DOUBT)
