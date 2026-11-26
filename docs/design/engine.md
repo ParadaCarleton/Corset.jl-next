@@ -113,8 +113,12 @@ Resolution of each call statement, first match wins:
    - Symbols: every MPFR and GMP function that Base and SpecialFunctions call, plus five numeric extras. The whole header holds about 800 functions; each one needs vetting for global state.
    - Hand entries (`calls.jl`) cover variadic functions and pointer results. `jl_get_current_task` returns `unknown` without doubt. Left open: functions that write C global state (`mpfr_set_emax`, `mpfr_set_emin`, `mpfr_clear_flags`, GMP allocator hooks).
    - PCRE2 entries cover functions that Base regex code calls, by PCRE2 API manual. Match writes match data and JIT stack of match context.
-   - No prefix rule: unknown `mpfr_` or `__gmp` name stays open, because wrong entry gives false definite write.
-   - CI lacks the headers. The generator does not run there; committed file is the source of truth. Test compares it with hand classification.
+   - BLAS and LAPACK entries come from `\param` role comments of Reference-LAPACK source: `[out]` written, `[in]` read, `[in,out]` both. Generator: `gen/foreign/blas_lapack.jl`; output: `src/Effects/engine/foreign_blas_lapack.jl`.
+   - Symbols: every BLAS and LAPACK routine that LinearAlgebra calls. `[in]` argument that routine modifies and restores (`A` of `?ormrz`) counts as written.
+   - Hand entries cover CBLAS dot products and `?axpby`, which Reference-LAPACK lacks. `lbt_` configuration of libblastrampoline stays open.
+   - BLAS entry applies only to call into libblastrampoline or OpenBLAS, by string or constant global. Same name in other library stays open.
+   - No prefix rule: unknown `mpfr_` or `__gmp` name stays open, because wrong entry gives false definite write. Call with fewer arguments than entry names stays open too: same name, other library.
+   - CI lacks the headers and LAPACK source. Generators do not run there; committed files are the source of truth. Tests compare them with hand classification.
 3. Static call (one method matches, or `Core.invoke` with constant selector): callee summary. No method matches: call throws, so code after it is dead.
    Summary per variant: instance plus constant arguments callee uses as field name. `getproperty(x, :a)` keeps field `a`.
    Constant `Bool` argument that callee uses as branch condition also makes variant. Variant code drops blocks branch never reaches.

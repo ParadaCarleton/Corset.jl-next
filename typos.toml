@@ -1,9 +1,9 @@
 [default]
 locale = "en-us"
 
-# Vendored bug records keep upstream identifiers and wording.
+# Vendored bug records keep upstream identifiers and wording. Generated BLAS table keeps routine names (`srot`).
 [files]
-extend-exclude = ["docs/design/julia-in-lean/", "spikes/*/out/"]
+extend-exclude = ["docs/design/julia-in-lean/", "spikes/*/out/", "src/Effects/engine/foreign_blas_lapack.jl"]
 
 # Julia Base function names.
 [default.extend-words]
