@@ -1,4 +1,4 @@
-using Random: AbstractRNG
+using Random: Random, AbstractRNG
 using Scratch: Scratch
 using Serialization: Serialization, AbstractSerializer
 
@@ -58,21 +58,36 @@ const AUDITED_GLOBALS = Dict{GlobalRef, EffectKind.T}(
 """Argument types of audited method (`AUDITED_METHODS`) that every instance has."""
 const ANY_ARGUMENTS = Tuple{Vararg{Any}}
 
+"""Kinds that audit of method (`Audit`) takes over: most audits take over memory accesses only."""
+const MEMORY = (EffectKind.memory,)
+
 """
-Audited state by method: memory accesses of its instance below listed root take listed kind, when instance argument
-types (after callee) fall in listed tuple type. `unsafe_convert(Ref{BigFloat}, ::BigFloatData)` rewrites stale MPFR limb
-pointer of its argument; `task_local_storage` writes storage of current task. Logging: `env_override_minlevel` caches
-parsed `JULIA_DEBUG` in captured boxes; `_depwarn` reads frames of backtrace. `pkgversion` caches version in package
-origin record; other writes of origins (`set_pkgorigin_version_path`) stay memory. `ScopedValues.get` reads dictionary
-of current task scope; only `ScopedValue` argument runs no package code (package `getdefault` does).
+Audit of method (`AUDITED_METHODS`): access of its instance below `root` with kind in `from` takes `kind`, when
+instance argument types (after callee) fall in `arguments`.
 """
-const AUDITED_METHODS = Dict{Method, Tuple{Type, Root.Type, EffectKind.T}}(
-    which(Base.unsafe_convert, (Type{Ref{BigFloat}}, Base.MPFR.BigFloatData)) => (ANY_ARGUMENTS, Root.Parameter(3), EffectKind.audited),
-    (method => (ANY_ARGUMENTS, Root.Elsewhere(), EffectKind.task_local) for method in methods(task_local_storage))...,
-    which(Base.CoreLogging.env_override_minlevel, (Any, Any)) => (ANY_ARGUMENTS, Root.Elsewhere(), EffectKind.audited),
-    which(Base._depwarn, (Any, Any, Bool)) => (ANY_ARGUMENTS, Root.Elsewhere(), EffectKind.audited),
-    which(pkgversion, (Module,)) => (ANY_ARGUMENTS, Root.Global(GlobalRef(Base, :pkgorigins)), EffectKind.lazy_init),
-    which(Base.ScopedValues.get, (Base.ScopedValues.AbstractScopedValue,)) => (Tuple{Base.ScopedValues.ScopedValue}, Root.Elsewhere(), EffectKind.scoped_read),
+struct Audit
+    arguments::Type
+    root::Root.Type
+    from::Tuple{Vararg{EffectKind.T}}
+    kind::EffectKind.T
+end
+
+"""
+Audited state by method. `unsafe_convert(Ref{BigFloat}, ::BigFloatData)` rewrites stale MPFR limb pointer of its
+argument; `task_local_storage` writes storage of current task. Logging: `env_override_minlevel` caches parsed
+`JULIA_DEBUG` in captured boxes; `_depwarn` reads frames of backtrace. `pkgversion` caches version in package origin
+record; other writes of origins (`set_pkgorigin_version_path`) stay memory. `ScopedValues.get` reads dictionary of
+current task scope; only `ScopedValue` argument runs no package code (package `getdefault` does). `seed!(seed)` reseeds
+default RNG and copies it into its seed record in task storage (`get_tls_seed`); package integer seed runs package code.
+"""
+const AUDITED_METHODS = Dict{Method, Audit}(
+    which(Base.unsafe_convert, (Type{Ref{BigFloat}}, Base.MPFR.BigFloatData)) => Audit(ANY_ARGUMENTS, Root.Parameter(3), MEMORY, EffectKind.audited),
+    (method => Audit(ANY_ARGUMENTS, Root.Elsewhere(), MEMORY, EffectKind.task_local) for method in methods(task_local_storage))...,
+    which(Base.CoreLogging.env_override_minlevel, (Any, Any)) => Audit(ANY_ARGUMENTS, Root.Elsewhere(), MEMORY, EffectKind.audited),
+    which(Base._depwarn, (Any, Any, Bool)) => Audit(ANY_ARGUMENTS, Root.Elsewhere(), MEMORY, EffectKind.audited),
+    which(pkgversion, (Module,)) => Audit(ANY_ARGUMENTS, Root.Global(GlobalRef(Base, :pkgorigins)), MEMORY, EffectKind.lazy_init),
+    which(Base.ScopedValues.get, (Base.ScopedValues.AbstractScopedValue,)) => Audit(Tuple{Base.ScopedValues.ScopedValue}, Root.Elsewhere(), MEMORY, EffectKind.scoped_read),
+    which(Random.seed!, (Any,)) => Audit(Tuple{Union{Nothing, Base.BitInteger}}, Root.Elsewhere(), (EffectKind.memory, EffectKind.rng_argument, EffectKind.task_local), EffectKind.default_rng),
 )
 
 """Kind of access to object of `type` itself: `IO`, RNG or synchronization object; `nothing` for other types."""
@@ -163,16 +178,15 @@ function path_kind(ir::CC.IRCode, method::Method, place::Place.Type)::EffectKind
     return something(special_kind(type), EffectKind.memory)
 end
 
+"""Whether instance with IR `ir` falls under `audit`: its argument types (after callee) fall in audit arguments."""
+audit_fits(ir::CC.IRCode, audit::Audit)::Bool = audit.arguments === ANY_ARGUMENTS || Tuple{map(CC.widenconst, ir.argtypes[2:end])...} <: audit.arguments
+
 """
-Kind of access with `kind` to `place` in instance of `method` with IR `ir`: memory access below root of audited
-method takes its kind when instance arguments fit audit, else kind of its path.
+Kind of access with `kind` to `place` in instance of `method` with IR `ir`: audit of method (`Audit`) that covers it
+gives its kind; else memory access takes kind of its path.
 """
 function place_kind(ir::CC.IRCode, method::Method, place::Place.Type, kind::EffectKind.T)::EffectKind.T
-    kind == EffectKind.memory || return kind
-    audited = get(AUDITED_METHODS, method, nothing)
-    isnothing(audited) && return path_kind(ir, method, place)
-    arguments, root, audited_kind = audited
-    root_of(place) == root || return path_kind(ir, method, place)
-    (arguments === ANY_ARGUMENTS || Tuple{map(CC.widenconst, ir.argtypes[2:end])...} <: arguments) && return audited_kind
-    return path_kind(ir, method, place)
+    audit = get(AUDITED_METHODS, method, nothing)
+    !isnothing(audit) && kind in audit.from && root_of(place) == audit.root && audit_fits(ir, audit) && return audit.kind
+    return kind == EffectKind.memory ? path_kind(ir, method, place) : kind
 end
