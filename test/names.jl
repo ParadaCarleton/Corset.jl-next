@@ -66,12 +66,10 @@ const PROVES = !instrumented(CASE)
     @test Effects.fill_call(extension._rand!, Set([Base.PkgId(CASES)])) && !Effects.fill_call(extension._rand!, Effects.FILL_HELPER_OWNERS)
     # Confidence names object, not whether write runs: write on RNG that is present is `definite`.
     @test Set(shape(effects(:optional_jitter!).writes)) == Set([(parameter(2), false, EffectKind.rng_argument, DEFINITE), (parameter(3), false, MEMORY, DEFINITE)])
-    # Reseed writes default RNG only; engine adds memory, `rng_argument` and `task_local` writes on `Elsewhere`.
-    @test_broken shape(effects(:reseed!).writes) == [(ELSEWHERE, false, EffectKind.default_rng, DEFINITE)]
-    @test (ELSEWHERE, false, EffectKind.default_rng, DEFINITE) in shape(effects(:reseed!).writes)
-    # Foreign table lacks BLAS call of `ldiv!`: engine adds possible write on `factor`.
-    @test_broken shape(effects(:solve_upper!).writes) == [(parameter(3), false, MEMORY, DEFINITE)]
-    @test (parameter(3), false, MEMORY, DEFINITE) in shape(effects(:solve_upper!).writes)
+    # Reseed writes default RNG only: audit of `seed!` (`kinds.jl`) gives its seed record that kind.
+    @test shape(effects(:reseed!).writes) == [(ELSEWHERE, false, EffectKind.default_rng, DEFINITE)]
+    # BLAS solve of `ldiv!` writes right-hand side only.
+    @test shape(effects(:solve_upper!).writes) == [(parameter(3), false, MEMORY, DEFINITE)]
     @test shape(effects(:call_setter!).writes) == [(parameter(2), false, MEMORY, DEFINITE)]
     # Convention breaker writes; engine follows call, so its caller writes too.
     @test shape(effects(:sneaky).writes) == shape(effects(:call_sneaky).writes) == [(parameter(2), false, MEMORY, DEFINITE)]

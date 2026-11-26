@@ -182,7 +182,7 @@ end
                 return Base.invokelatest() do
                     package = Corset.Package.package_facts([mod], files)
                     inference, _, units, _ = Corset.Inference.infer_package(package, files, nothing, nothing)
-                    return FactSet(files, String[], Corset.Facts.Ban[], nothing, package, inference, first(Corset.Effects.effects_facts(package, units, nothing, Corset.Effects.Summaries.Library())), nothing, nothing)
+                    return FactSet(files, String[], Corset.Facts.Ban[], nothing, package, inference, Corset.Effects.effects_facts(package, units, nothing, Corset.Effects.Summaries.Library()).facts, nothing, nothing)
                 end
             end
             rules(facts::FactSet)::Vector{Symbol} = sort!([finding.rule for finding in Base.invokelatest(Corset.Engine.run_rules, facts, entries)])
