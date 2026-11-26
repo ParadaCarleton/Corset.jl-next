@@ -419,6 +419,52 @@ function access!(table::OriginAccesses, objects::Targets, below::Bool, effect::E
 end
 
 """
+Record write as `access!` on `objects`, when write lands on one of `direct` origins (`y = flag ? a : b; push!(y, 1)`).
+Several origins make write on each at least `possible`: run-time values pick one. Blind origin counts too, as in join
+of blind and exact member. Known origins all below one caller root keep write below their common place.
+"""
+function alternative_access!(table::OriginAccesses, direct::Targets, objects::Targets, below::Bool, effect::Effect, kind::EffectKind.T)::Nothing
+    if length(direct) <= 1
+        access!(table, objects, below, effect, kind)
+        return nothing
+    end
+    access!(table, objects, below, Effect(most(effect.doubt, CODE_DOUBT), effect.cause, effect.reason), kind)
+    known = [(origin, doubt) for (origin, doubt) in direct if level_of(doubt) != Level.blind]
+    length(known) <= 1 && return nothing
+    common = common_place(first.(known))
+    isnothing(common) && return nothing
+    # Run-time choice may pick blind origin outside common place: write below it is then `possible` only.
+    chains = reduce(most, (doubt for (_, doubt) in known))
+    access!(table, Targets(Origin.Caller(common) => length(known) < length(direct) ? most(chains, CODE_DOUBT) : chains), true, effect, kind)
+    return nothing
+end
+
+"""Longest place that holds every caller place of `origins` below it; `nothing` when any origin is no caller place or roots differ."""
+function common_place(origins::AbstractVector{Origin.Type})::Union{Nothing, Place.Type}
+    places = Place.Type[]
+    for origin in origins
+        place = @match origin begin
+            Origin.Caller(place) => place
+            _ => nothing
+        end
+        isnothing(place) && return nothing
+        push!(places, place)
+    end
+    root = root_of(first(places))
+    all(place -> root_of(place) == root, places) || return nothing
+    return Place.At(root, PlaceSteps(reduce(common_steps, (exact_steps(place) for place in places))))
+end
+
+"""Exact steps of `place`; `Deep` place has none, since its path is past exact steps."""
+exact_steps(place::Place.Type)::Vector{Step.Type} = @match place begin
+    Place.At(_, steps) => collect(steps)
+    Place.Deep(_) => Step.Type[]
+end
+
+"""Longest common start of step paths `one` and `other`."""
+common_steps(one::AbstractVector{Step.Type}, other::AbstractVector{Step.Type})::Vector{Step.Type} = Step.Type[step for (step, _) in Iterators.takewhile(splat(==), zip(one, other))]
+
+"""
 Store `values` into `step` slot of every origin of `objects`; `nothing` step stores into unknown slot. Growth makes
 slot targets `load!` found stale.
 """
