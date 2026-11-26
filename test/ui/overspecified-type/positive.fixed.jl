@@ -110,23 +110,32 @@ const doubler = Scaler(2)
 doubled(x) = applicable(doubler, x) ? doubler(x) : 0
 
 
-"""Appends one; resized argument keeps `Vector`, element type widens."""
-appended(items::Vector{<:Real}) = push!(items, 1.0)
+"""Appends one; resized argument widens container and element type."""
+appended(items::AbstractVector{<:Real}) = push!(items, 1.0)
 
 """Appends one through bounded element type: argument type is `UnionAll`, widened as whole."""
-appended_bound(items::Vector{<:Real}) = push!(items, 1.0)
+appended_bound(items::AbstractVector{<:Real}) = push!(items, 1.0)
 
-"""Appends zero to each row; rows keep `Vector`, outer container widens."""
-function padded(rows::AbstractVector{<:Vector{<:Real}})
+"""Appends zero to each row; rows and outer container widen."""
+function padded(rows::AbstractVector{<:AbstractVector{<:Real}})
     for row in rows
         push!(row, 0.0)
     end
     return rows
 end
 
-"""Tags float vector after append; kept `Vector` would overlap integer method, so fix is manual."""
-tagged(items::Vector{Float64}) = (push!(items, 1.0); :float)
-tagged(items::AbstractVector{Int}) = :integer
+"""Tags float vector after append; widened method nests integer method."""
+tagged(items::AbstractVector{<:Real}) = (push!(items, 1.0); :float)
+tagged(items::AbstractVector{<:Integer}) = :integer
+
+"""Registers name; inserted dictionary widens."""
+register(table::AbstractDict{Symbol, Any}, name::Symbol) = (table[name] = nothing; table)
+
+"""Pushes values through closure that captures resized vector."""
+collect_into(items::AbstractVector{Any}, values) = foreach(value -> push!(items, value), values)
+
+"""Forwards resized vector to package function."""
+forward_into(items::AbstractVector{Any}) = collect_into(items, (1, 2))
 
 """Float vector under alias name; fix keeps alias, which overlaps abstract method, so fixes are manual."""
 const FloatValues = Vector{Float64}
