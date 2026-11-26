@@ -1,3 +1,5 @@
+using Random: Random
+
 """
 Operand of call: IR `Value`; `Part` at position of tuple value that `_apply_iterate` spreads; or `Rest`: every element of
 tuple or array value spread with unknown count. `Rest` operands come after all others.
@@ -233,6 +235,18 @@ const BASE_CONTRACTS = IdDict{Any, BaseContract}(
     # Logger filters read; `@logmsg` calls them through `invokelatest` on logger of abstract type.
     Base.CoreLogging.shouldlog => QUERY, Base.CoreLogging.min_enabled_level => QUERY, Base.CoreLogging.catch_exceptions => QUERY,
     Base.CoreLogging.handle_message => LOG_MESSAGE,
+)
+
+"""
+Random functions that draw from `AbstractRNG` first argument, whatever method runs (Random docstrings: `rng` is "random
+number generator" call draws from). Open call keeps its other effects open (`open_call!`).
+"""
+const RNG_DRAWS = Base.IdSet{Any}(
+    Any[
+        Random.rand, Random.rand!, Random.randn, Random.randn!, Random.randexp, Random.randexp!, Random.bitrand,
+        Random.randstring, Random.randsubseq, Random.randsubseq!, Random.shuffle, Random.shuffle!, Random.randperm,
+        Random.randperm!, Random.randcycle, Random.randcycle!,
+    ],
 )
 
 """

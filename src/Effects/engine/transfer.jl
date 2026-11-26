@@ -66,7 +66,7 @@ function call!(flow::Flow, index::Integer, outcome::Outcome.Type, callees::Calle
         Outcome.Foreign(effects, operands) => table!(flow, writes, index, effects, operands, false)
         Outcome.Dispatch(_, operands) => dispatch!(flow, writes, index, operands, callees, !flow.flush && !message)
         Outcome.Contract(effects, operands, breached) => contract!(flow, writes, index, effects, operands, breached)
-        Outcome.Open(operands) => open!(flow, writes, index, operands, open_doubt(flow, operands))
+        Outcome.Open(operands) => open_call!(flow, writes, index, operands)
         Outcome.Unresolved(operands) => open!(flow, writes, index, operands, CODE_DOUBT)
         Outcome.Dead() => nothing
     end
@@ -500,6 +500,22 @@ function open!(flow::Flow, writes::OriginAccesses, index::Integer, operands::Abs
     objects = union_targets(operand_targets!(flow, operand) for operand in operands)
     open_effects!(flow, writes, index, objects, doubt)
     assign!(flow, index, union_targets((objects, unknown(doubt))), doubt)
+    return nothing
+end
+
+"""
+Transfer open call statement `index` with `operands` (callee first) into `writes`: effects whose open types decide
+doubt. Random function (`RNG_DRAWS`) draws from its `AbstractRNG` first argument whatever method runs.
+"""
+function open_call!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type})::Nothing
+    Base.require_one_based_indexing(operands)
+    open!(flow, writes, index, operands, open_doubt(flow, operands))
+    length(operands) >= 2 && operand_type(flow.ir, operands[2]) <: AbstractRNG || return nothing
+    callee = operand_constant(flow.ir, operands[1])
+    (isnothing(callee) || !(something(callee) in RNG_DRAWS)) && return nothing
+    rng = operand_targets!(flow, operands[2])
+    access!(writes, rng, false, definite(index), EffectKind.rng_argument)
+    access!(flow.reads, rng, false, definite(index), EffectKind.rng_argument)
     return nothing
 end
 
