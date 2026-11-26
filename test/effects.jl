@@ -434,6 +434,10 @@ pointer_swap!(pointer::Ptr{Int}) = Core.Intrinsics.atomic_pointerswap(pointer, 1
 pointer_modify!(pointer::Ptr{Int}) = Core.Intrinsics.atomic_pointermodify(pointer, +, 1, :sequentially_consistent)
 pointer_replace!(pointer::Ptr{Int}) = Core.Intrinsics.atomic_pointerreplace(pointer, 0, 1, :sequentially_consistent, :sequentially_consistent)
 pointer_get(pointer::Ptr{Int}) = Core.Intrinsics.atomic_pointerref(pointer, :sequentially_consistent)
+# Wrapper over argument memory: pointer write writes memory; callee write may change wrapper alone (`pop!`).
+wrap_store!(m::Memory{Int}) = (unsafe_store!(pointer(Base.wrap(Array, m, 1)), 1); nothing)
+wrap_set!(m::Memory{Int}) = (v = Base.wrap(Array, m, 1); v[1] = 1; nothing)
+wrap_pop!(m::Memory{Int}) = (pop!(Base.wrap(Array, m, 1)); nothing)
 llvm(pointer::Ptr{Int}) = Base.llvmcall("ret ptr %0", Ptr{Int}, Tuple{Ptr{Int}}, pointer)
 global_pointer() = cglobal(:jl_n_threads, Cint)
 # Library tuple stays nested constant expression in IR.
@@ -704,6 +708,10 @@ end
         @test summary_of(writer, Ptr{Int}).writes[memory(top(2))].doubt == none
     end
     @test doubts(summary_of(pointer_get, Ptr{Int}).reads) == Dict(top(2) => none)
+    @test summary_of(wrap_store!, Memory{Int}).writes[memory(top(2))].doubt == none
+    for writer in (wrap_set!, wrap_pop!)
+        @test summary_of(writer, Memory{Int}).writes[memory(top(2))].doubt == code
+    end
     @test summary_of(llvm, Ptr{Int}).result == Nodes(Node.Placed(parameter(2)) => code, Node.Outside() => code)
     @test summary_of(llvm, Ptr{Int}).writes[memory((parameter(2), true))].doubt == code
     @test summary_of(global_pointer).result == Nodes(Node.Outside() => code)
@@ -766,7 +774,7 @@ end
     @test written(mpfr_airy_unknown, BigFloat) == Set([2])
     # Output operand `BigFloat` gets the write: wrapper `x.d` stands for memory of `x`.
     @test written(mpfr_add!, BigFloat, BigFloat, BigFloat) == Set([2])
-    @test summary_of(mpfr_add!, BigFloat, BigFloat, BigFloat).writes[(parameter(2, Step.Field(:ptr)), false, EffectKind.memory)].doubt == none
+    @test summary_of(mpfr_add!, BigFloat, BigFloat, BigFloat).writes[(parameter(2), false, EffectKind.memory)].doubt == none
     @test written(mpfr_next!, BigFloat) == Set([2])
     @test written(mpfr_clear_unknown!) == Set{Int}()
     @test written(mpfr_set_unknown!, Any) == Set([2])

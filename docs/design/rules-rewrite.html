@@ -1094,7 +1094,9 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Place says where access lands; certainty says whether it happens. <code>deep w</code> is coarse place: write below it still changes <code>w</code>.</li>
 <li>Field name comes from concrete type, array stand-in family or <code>Array</code> family. Other struct family (<code>Object{K, V} where …</code>) gives field position.</li>
 <li>Memory backing belongs to its owner: field of type <code>GenericMemory</code> or <code>GenericMemoryRef</code> adds no step. Write to <code>Vector</code> elements writes <code>Vector</code>.</li>
-<li><code>Ptr</code> value holds origins of object it points into, so foreign call through pointer writes that object.</li>
+<li>Callee or table access to owner may land on its memory alone or owner alone: memory behind it gets <code>possible</code> access (<code>pop!</code> of <code>Base.wrap(Array, m, n)</code>).</li>
+<li>Memory address (<code>Ptr</code>, <code>MemoryRef</code>) that callee returns names memory behind fresh owner: write through it writes that memory.</li>
+<li><code>Ptr</code> value holds origins of object it points into, so foreign call through pointer writes that object. Data pointer of memory holds memory.</li>
 <li>Constant null pointer global (<code>C_NULL</code>) points into no object.</li>
 <li>Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.</li>
 <li>Unification is rejected: it merges unrelated objects at each unknown call.</li>

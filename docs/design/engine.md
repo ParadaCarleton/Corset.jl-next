@@ -44,7 +44,9 @@ Engine code lives in `src/Effects/engine/`, module `Effects.Summaries`.
 - Place says where access lands; certainty says whether it happens. `deep w` is coarse place: write below it still changes `w`.
 - Field name comes from concrete type, array stand-in family or `Array` family. Other struct family (`Object{K, V} where …`) gives field position.
 - Memory backing belongs to its owner: field of type `GenericMemory` or `GenericMemoryRef` adds no step. Write to `Vector` elements writes `Vector`.
-- `Ptr` value holds origins of object it points into, so foreign call through pointer writes that object.
+- Callee or table access to owner may land on its memory alone or owner alone: memory behind it gets `possible` access (`pop!` of `Base.wrap(Array, m, n)`).
+- Memory address (`Ptr`, `MemoryRef`) that callee returns names memory behind fresh owner: write through it writes that memory.
+- `Ptr` value holds origins of object it points into, so foreign call through pointer writes that object. Data pointer of memory holds memory.
 - Constant null pointer global (`C_NULL`) points into no object.
 - Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.
 - Unification is rejected: it merges unrelated objects at each unknown call.

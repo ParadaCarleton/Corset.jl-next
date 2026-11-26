@@ -182,7 +182,8 @@ end
 """
 Transfer call with table `effects` on `arguments` (`engine.md`, Calls, steps 2 and 6): foreign call of C function, or
 Base contract. With `typed`, store or copy into argument whose `eltype` points to no object stores nothing: Julia
-converts stored value (`Vector{UInt8}`). C arguments are untyped pointers. Writes go into `writes`.
+converts stored value (`Vector{UInt8}`). C arguments are untyped pointers. Access to argument reaches its memory
+backing too (`with_backing!`), as callee access does. Writes go into `writes`.
 """
 function table!(flow::Flow, writes::OriginAccesses, index::Integer, effects::CallEffects, arguments::AbstractVector{Operand.Type}, typed::Bool)::Nothing
     Base.require_one_based_indexing(arguments)
@@ -190,9 +191,9 @@ function table!(flow::Flow, writes::OriginAccesses, index::Integer, effects::Cal
     holders(position::Integer)::Targets = union_targets(operand_targets!(flow, arguments[at]) for at in role(effects, position, length(arguments)) if !typed || holds_objects!(flow, operand_type(flow.ir, arguments[at])))
     for position in effects.writes, at in role(effects, position, length(arguments))
         found = operand_targets!(flow, arguments[at])
-        alternative_access!(writes, found, found, false, definite(index), effects.write_kind)
+        alternative_access!(writes, found, with_backing!(flow, found), false, definite(index), effects.write_kind)
     end
-    foreach(position -> access!(flow.reads, targets(position), false, definite(index), EffectKind.memory), effects.reads)
+    foreach(position -> access!(flow.reads, with_backing!(flow, targets(position)), false, definite(index), EffectKind.memory), effects.reads)
     for (destination, source) in effects.copies
         store!(flow, holders(destination), Step.Element(), load!(flow, targets(source), Step.Element()))
     end
@@ -434,13 +435,14 @@ end
 
 """
 Targets of loading constant `field` (`Some` of it; `nothing` when not constant) from `object`. Memory backing field
-adds no step; `MemoryRef` stands for its memory, so its `mem` field gives same targets.
+adds no step; `MemoryRef` stands for its memory, so its `mem` field gives same targets. Data pointer of memory (`ptr`)
+stands for memory too: write through it writes memory, as write to `Vector` elements writes `Vector`.
 """
 function load_field!(flow::Flow, object::Operand.Type, field::Union{Nothing, Some{Any}})::Targets
     objects = operand_targets!(flow, object)
     isnothing(field) && return load_any(flow, objects)
     type, name = operand_type(flow.ir, object), something(field)
-    type <: GenericMemoryRef && return objects
+    (type <: GenericMemoryRef || (type <: GenericMemory && name === :ptr)) && return objects
     step = field_step(type, name)
     isnothing(step) && return load_any(flow, objects)
     backing_field(type, name) || return load!(flow, objects, something(step))
@@ -842,12 +844,33 @@ end
 """
 Caller objects at callee `place` at `site`, and objects access of `kind` on it (or `below` it) reaches. Task state
 access (`TASK_KINDS`) on `Elsewhere` stays on unknown object, which names current task; access to object reaches each
-outside object.
+outside object. Access to object reaches its memory backing too (`with_backing!`).
 """
 function access_objects!(flow::Flow, site::CallSite, place::Place.Type, below::Bool, kind::EffectKind.T)::Tuple{Targets, Targets}
     kind in TASK_KINDS && root_of(place) == Root.Elsewhere() && return (unknown(NO_DOUBT), unknown(NO_DOUBT))
     direct = site_place!(flow, site, place)
-    return (direct, below ? site_below!(flow, site, place) : direct)
+    return (direct, below ? site_below!(flow, site, place) : with_backing!(flow, direct))
+end
+
+"""
+`objects` and each memory backing chain from them reaches. Callee place holds memory of its object (`backing_field` adds
+no step), so access to owner may land on memory alone or owner alone: `Base.wrap(Array, m, n)` gives `possible` access
+to `m`, as `pop!` changes wrapper alone. Each link counts as work; walk stops past limit.
+"""
+function with_backing!(flow::Flow, objects::Targets)::Targets
+    any(origin -> haskey(flow.backing, origin), keys(objects)) || return objects
+    found, pending = copy(objects), collect(keys(objects))
+    while !isempty(pending) && !over_budget(flow)
+        origin = pop!(pending)
+        backing = get(flow.backing, origin, nothing)
+        isnothing(backing) && continue
+        for (memory, flag) in backing
+            over_budget(flow) && break
+            flow.work += 1
+            add!(found, memory, most(most(flag, CODE_DOUBT), found[origin])) && push!(pending, memory)
+        end
+    end
+    return found
 end
 
 """
@@ -900,6 +923,27 @@ function apply_stores!(flow::Flow, site::CallSite, summary::Summary)::Nothing
     for (binding, nodes) in summary.bound
         bind!(flow, binding, map_nodes!(flow, nodes, site))
     end
-    assign!(flow, site.index, map_nodes!(flow, summary.result, site))
+    assign!(flow, site.index, address_targets!(flow, flow.ir.stmts[site.index][:type], map_nodes!(flow, summary.result, site)))
     return nothing
+end
+
+"""
+Targets of value of `type` that `objects` give. Memory address (`Ptr`, `MemoryRef`) names memory: fresh owner in
+`objects` gives memory backing it instead, as `load_field!` does. Other value keeps `objects`. Each backing link counts
+as work; walk stops past limit.
+"""
+function address_targets!(flow::Flow, @nospecialize(type::Any), objects::Targets)::Targets
+    type = CC.widenconst(type)
+    (type isa DataType && type <: Union{Ptr, GenericMemoryRef}) || return objects
+    found = Targets()
+    for (origin, doubt) in objects
+        backing = fresh_origin(origin) ? get(flow.backing, origin, nothing) : nothing
+        isnothing(backing) && (add!(found, origin, doubt); continue)
+        for (memory, flag) in backing
+            over_budget(flow) && return found
+            flow.work += 1
+            add!(found, memory, most(flag, doubt))
+        end
+    end
+    return found
 end
