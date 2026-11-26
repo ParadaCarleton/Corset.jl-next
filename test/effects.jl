@@ -1656,6 +1656,10 @@ end
     roomy = start_run(nothing, Module[])
     solve!(roomy, [root])
     @test isempty(roomy.over_budget) && !same(root_summary!(roomy, root), open_summary(2, Summaries.BUDGET))
+    # Variant past budget keeps open summary: rerun runs no flow, so roomy run returns open summary too.
+    push!(roomy.over_budget, root)
+    @test same(first(Summaries.variant_summary!(roomy, root, false)), open_summary(2, Summaries.BUDGET)) && isempty(last(Summaries.variant_summary!(roomy, root, false)))
+    delete!(roomy.over_budget, root)
     # Trace counts origins it walks, and load past budget stops: one call statement cannot run past limit.
     code = roomy.codes[root]
     spent = start_flow(code.ir, code.outcomes, code.message, roomy.referent, false, false, Sources[], false, 1)

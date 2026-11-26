@@ -1339,6 +1339,7 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>Widened summaries only grow through finite values, so fixpoint ends.</li>
 <li>Flow work: targets that loads trace and joins read, over every round of one variant.</li>
 <li>Flow past work limit stops. Variant gets open summary: blind access on each parameter, blind spot <code>effects budget</code>.</li>
+<li>Variant past work limit keeps open summary for whole run: call cycle reruns no flow of it.</li>
 <li>Work counts origins each trace walks. Load past limit returns nothing, so one call statement stops too.</li>
 <li>Root past limit keeps no call facts: its rounds stopped early.</li>
 <li>Limit: 10 million, 10 times largest flow on corpus (Distributions, 0.95 million).</li>
