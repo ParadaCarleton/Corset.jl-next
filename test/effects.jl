@@ -1728,6 +1728,7 @@ warn_old(x::Int) = (Base.depwarn("old", :warn_old); x)
 temp_folder() = mktempdir()
 keep_handle(t::Timer) = Base.preserve_handle(t)
 toml_of(path::String) = Base.parsed_toml(path)
+take_value(channel::Channel{Int}) = take!(channel)
 project_of(env::String) = Base.env_project_file(env)
 doc_meta(m::Module) = Base.Docs.meta(m)
 frame_color(m::Module) = Base.get_stacktrace_color(m)
@@ -1804,6 +1805,11 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
         writes = summary_of(f, types...).writes
         @test all(ref -> kind in kinds_at(writes, Root.Global(ref)) && !(EffectKind.memory in kinds_at(writes, Root.Global(ref))), globals)
         @test !any(written in (EffectKind.memory, EffectKind.task_local) && effect.doubt == NO_DOUBT for ((_, _, written), effect) in writes)
+    end
+    # Channel wait changes Base task queues: synchronization, never memory.
+    scheduled = summary_of(take_value, Channel{Int}).writes
+    for ref in (GlobalRef(Base, :Workqueues), GlobalRef(Base.Partr, :heaps))
+        @test EffectKind.synchronization in kinds_at(scheduled, Root.Global(ref)) && !(EffectKind.memory in kinds_at(scheduled, Root.Global(ref)))
     end
     # Audited global kind holds in Base methods only: package write through cached `Dict` or `Vector` is memory.
     @test EffectKind.memory in kinds_at(summary_of(rename_project, String).writes, Root.Global(GlobalRef(Base, :TOML_CACHE)))

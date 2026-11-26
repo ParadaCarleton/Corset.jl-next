@@ -207,6 +207,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
   - `Regex` compile cache, `LazyString`; Base logging and PCRE contexts.
   - IO bookkeeping: temporary path cleanup (`mktempdir`), libuv handles kept alive (`preserve_handle`).
   - Lazy caches: parsed TOML, loading cache, docstring modules, stack trace module colors.
+  - Synchronization: Base task queues (`Workqueues`, `Partr.heaps`) that `wait`, `yield` and `schedule` change.
   - Logging `JULIA_DEBUG` cache (`env_override_minlevel`) and frame lookup of deprecation (`_depwarn`): unknown objects they write.
   - Repair method `unsafe_convert(Ref{BigFloat}, ::BigFloatData)`: rewrites stale MPFR limb pointer before each call.
 - Package `setfieldonce!` and package caches follow memo-cache rule above: cheap proof or opt-out.
