@@ -16,11 +16,10 @@ Otherwise fix is manual: Julia could find call ambiguous, or drop method with sa
 Fix is manual for function or callable object package code tests for methods: passes to `applicable`, `hasmethod`,
 `which` or `methods`, or calls in `try` whose handler can swallow `MethodError`, directly or through package method.
 Widening changes what that code does.
-Argument that body resizes (`push!`, `d[k] = v`, other resizing call) keeps its container; fix widens its parameters.
-Argument whose elements body resizes keeps container of elements. Argument stored into struct field passes when its
-widened type does not fit field type, since `new` converts it to copy; number field converts by value. Uses count
-through local, `for` loop, closure capture, keyword call and package callee whose parameter type can take argument
-(`PackageFacts.uses`).
+Argument that body resizes (`push!`, `d[k] = v`) widens too: view or range there throws `MethodError`, as in Base
+`append!(a::AbstractVector, items)`. Argument stored into struct field passes when its widened type does not fit field
+type, since `new` converts it to copy; number field converts by value. Uses count through local, `for` loop, closure
+capture, keyword call and package callee whose parameter type can take argument (`PackageFacts.uses`).
 
 ## Rationale
 Julia compiles method for each concrete argument type, so wider annotation runs as fast.
@@ -43,9 +42,9 @@ Fix stays `likely` when package code tests for methods in closure, keyword body 
 or splatted argument, or by `try` around caller: rule follows positional arguments and calls directly inside `try` only.
 `Bool`, unsigned types and C aliases as `Cint` pass: they mark flags, bit patterns and C calls.
 Type alias that names listed type passes.
-Rule sees uses of positional arguments only: resize of keyword argument, boxed capture or element of element gets fix.
-Function that Base calls on elements, as in `foreach(f, items)`, does not tell rule `f` resizes elements.
-Fix widens element type of written container: caller with narrower element type can get conversion error.
+Rule sees uses of positional arguments only: store of keyword argument into struct field gets fix.
+Fix widens written container and its element type: caller with view, range, static array or narrower element type
+gets run-time error at write.
 Fix is manual when widened annotation holds call or interpolation: rule cannot build fixed signature to check dispatch.
 """
 module OverspecifiedType
@@ -230,24 +229,8 @@ end
 """Whether type `head` takes subtypes in its parameters: `Union` and tuple types."""
 covariant(head::Union{Nothing, Type})::Bool = head === Union || (!isnothing(head) && Base.unwrap_unionall(head) <: Tuple)
 
-"""
-Whether each of `count` parameters of type `head` keeps its container: members of `Union` that keeps (`keep`), and
-element parameter, or every tuple parameter, of argument whose elements body resizes (`element`).
-"""
-function kept_parameters(head::Union{Nothing, Type}, count::Integer, keep::Bool, element::Bool)::Vector{Bool}
-    head === Union && return fill(keep, count)
-    element || return fill(false, count)
-    covariant(head) && return fill(true, count)
-    # Dictionary element read is value: `d[k]`.
-    index = !isnothing(head) && head <: AbstractDict && count >= 2 ? 2 : 1
-    return [position == index for position in 1:count]
-end
-
-"""
-Widened text of curly `node`: union of number types becomes its join; parameters widen, with `<:` inside invariant type.
-Container that body resizes keeps its head (`keep`); one whose elements body resizes keeps their head (`element`).
-"""
-function widened_curly!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode, keep::Bool, element::Bool)::String
+"""Widened text of curly `node`: union of number types becomes its join; parameters widen, with `<:` inside invariant type."""
+function widened_curly!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode)::String
     head, parameters = children_of(node)[1], children_of(node)[2:end]
     resolved = resolve_type(mod, file, head)
     resolved in (Type, Val) && return source(file, node)
@@ -257,28 +240,22 @@ function widened_curly!(found::AbstractVector{SyntaxNode}, mod::Module, file::Sy
         return all(==("Integer"), wider) ? "Integer" : "Real"
     end
     texts = String[]
-    # Members of resized union are resized too.
-    elements = resolved === Union && element
-    for (parameter, kept) in zip(parameters, kept_parameters(resolved, length(parameters), keep, element))
+    for parameter in parameters
         before = length(found)
-        text = widened_text!(found, mod, file, parameter, kept, elements)
+        text = widened_text!(found, mod, file, parameter)
         changed = length(found) > before && !covariant(resolved) && kind_name(parameter) != "<:"
         push!(texts, changed ? "<:$text" : text)
     end
-    return "$(widened_text!(found, mod, file, head, keep, false)){$(join(texts, ", "))}"
+    return "$(widened_text!(found, mod, file, head)){$(join(texts, ", "))}"
 end
 
-"""
-Widened text of annotation `node` of `file` in `mod`; pushes each reported part to `found`. Resized container (`keep`)
-keeps its name; its elements (`element`) keep theirs.
-"""
-function widened_text!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode, keep::Bool, element::Bool)::String
+"""Widened text of annotation `node` of `file` in `mod`; pushes each reported part to `found`."""
+function widened_text!(found::AbstractVector{SyntaxNode}, mod::Module, file::SyntaxFile, node::SyntaxNode)::String
     kind = kind_name(node)
-    kind == "curly" && return widened_curly!(found, mod, file, node, keep, element)
-    kind == "<:" && length(children_of(node)) == 1 && return "<:" * widened_text!(found, mod, file, only(children_of(node)), keep, element)
+    kind == "curly" && return widened_curly!(found, mod, file, node)
+    kind == "<:" && length(children_of(node)) == 1 && return "<:" * widened_text!(found, mod, file, only(children_of(node)))
     wider = replacement(mod, file, node)
-    # Number type of resized argument still widens.
-    (isnothing(wider) || (keep && !(wider in ("Real", "Integer")))) && return source(file, node)
+    isnothing(wider) && return source(file, node)
     push!(found, node)
     return wider
 end
@@ -318,22 +295,19 @@ end
 const NO_USES = Dict{Int, ArgumentUse}()
 
 """
-Needs of argument at `position` over `methods` of one definition with `count` positional arguments (`PackageFacts.uses`):
-container resized, elements resized, and store into field its widened type does not fit; number field converts by
-value, so it fits. Keyword body has more arguments than source, at other positions: it passes.
+Whether argument at `position` over `methods` of one definition with `count` positional arguments goes into struct field
+its widened type does not fit (`PackageFacts.uses`); number field converts by value, so it fits. Keyword body has more
+arguments than source, at other positions: it passes.
 """
-function argument_needs(uses::IdDict{Method, <:AbstractDict{<:Integer, ArgumentUse}}, methods::AbstractVector{Method}, position::Integer, count::Integer)::NTuple{3, Bool}
-    resized = elements = narrow = false
+function narrow_store(uses::IdDict{Method, <:AbstractDict{<:Integer, ArgumentUse}}, methods::AbstractVector{Method}, position::Integer, count::Integer)::Bool
     for method in methods
         position <= method.nargs - 1 <= count || continue
         use = get(get(uses, method, NO_USES), position, nothing)
         isnothing(use) && continue
-        resized |= use.resized
-        elements |= use.elements_resized
         wide = widened_type(Facts.argument_type(method, position))
-        narrow |= any(field -> !(wide <: field || field <: Number), use.stored)
+        any(field -> !(wide <: field || field <: Number), use.stored) && return true
     end
-    return resized, elements, narrow
+    return false
 end
 
 """Whether wider method in `sites` covers `site`: `site` is fast path beside generic method of same function."""
@@ -383,13 +357,10 @@ function findings(facts::FactSet)::Vector{Finding}
         for argument in parts.arguments
             keyword = kind_name(argument) == "parameters"
             keyword || (position += 1)
-            resized, elements, narrow = keyword ? (false, false, false) : argument_needs(package.uses, definitions[site.node], position, positional)
-            # Splat annotation types each element of argument tuple.
-            kind_name(argument) == "..." && ((resized, elements) = (elements, false))
+            (keyword || !narrow_store(package.uses, definitions[site.node], position, positional)) || continue
             for annotation in argument_annotations(argument)
-                narrow && continue
                 reported = SyntaxNode[]
-                wider = widened_text!(reported, site.method.module, site.file, annotation, resized, elements)
+                wider = widened_text!(reported, site.method.module, site.file, annotation)
                 isempty(reported) && continue
                 # Fix must name type (`const Integer = 1` breaks it), keyword too; default-argument method lacks later positions.
                 value = annotation_value(site.method.module, Meta.parse(wider), variables)
