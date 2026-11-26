@@ -235,12 +235,15 @@ function value_targets!(flow::Flow, @nospecialize(value::Any))::Targets
     return unknown(CODE_DOUBT)
 end
 
-"""Targets of call `operand`: value, slot at position of spread tuple, or every element of `Rest`."""
+"""
+Targets of call `operand`: value, slot at position of spread tuple, or every element of `Rest`. Slot or element whose
+type holds no object (`Int` of `push!(v, xs...)`) has none.
+"""
 function operand_targets!(flow::Flow, operand::Operand.Type)::Targets
     return @match operand begin
         Operand.Value(value) => value_targets!(flow, value)
-        Operand.Part(value, position) => load!(flow, value_targets!(flow, value), Step.Position(position))
-        Operand.Rest(value) => spread_elements!(flow, value)
+        Operand.Part(value, position) => points!(flow, operand_type(flow.ir, operand)) ? load!(flow, value_targets!(flow, value), Step.Position(position)) : Targets()
+        Operand.Rest(value) => points!(flow, operand_type(flow.ir, operand)) ? spread_elements!(flow, value) : Targets()
     end
 end
 

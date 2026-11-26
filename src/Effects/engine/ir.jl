@@ -106,9 +106,18 @@ end
 """Types whose values point to no object Corset tracks: type objects, modules, symbols and strings."""
 const PLAIN = Union{Type, Core.TypeName, Module, Symbol, String, Core.MethodInstance, Method}
 
+"""Whether value of any of `types` can point to object (`referent!`); stops at first that can."""
+function any_referent!(cache::IdDict{Any, Bool}, types::Core.SimpleVector)::Bool
+    for type in types
+        referent!(cache, Base.unwrapva(type)) && return true
+    end
+    return false
+end
+
 """
-Whether value of `type` can point to object effects can reach: mutable, abstract, `Ptr`, or holds such field. `cache`
-keeps answers; recursive struct counts as pointing.
+Whether value of `type` can point to object effects can reach: mutable, abstract, `Ptr`, or holds such field. Tuple
+type of unknown length points when its element type does (`Tuple{Vararg{Int}}` does not). `cache` keeps answers;
+recursive struct counts as pointing.
 """
 function referent!(cache::IdDict{Any, Bool}, @nospecialize(type::Any))::Bool
     haskey(cache, type) && return cache[type]
@@ -117,6 +126,8 @@ function referent!(cache::IdDict{Any, Bool}, @nospecialize(type::Any))::Bool
         false
     elseif type isa Union
         referent!(cache, type.a) || referent!(cache, type.b)
+    elseif type isa DataType && type <: Tuple && !isconcretetype(type)
+        any_referent!(cache, type.parameters)
     elseif type isa UnionAll || !(type isa DataType) || !isconcretetype(type)
         !(type <: PLAIN)
     elseif type <: PLAIN
