@@ -131,6 +131,19 @@ error[hidden-input]: method reads `HiddenInputPositive.settings`, which other me
    = fix: pass state as argument   [manual]
    = docs: corset explain hidden-input
 
+error[hidden-input]: method reads `HiddenInputPositive.CELLS[…]`, which other method writes
+  --> src/HiddenInputPositive.jl:56:16
+   |
+55 | bump_copy!() = (cells = copy(CELLS); cells[1][] += 1; nothing)
+   | -------------------------------------------------------------- writes `HiddenInputPositive.CELLS[…]`
+56 | first_cell() = CELLS[1][]
+   |                ^^^^^^^^^^ reads `HiddenInputPositive.CELLS[…]`
+   |
+   = why: result depends on state caller cannot see; caller that changes it affects every other caller
+   = confidence: possible
+   = fix: pass state as argument   [manual]
+   = docs: corset explain hidden-input
+
 error[hidden-input]: method reads `HiddenInputPositive.current_shared`, which other method writes
   --> src/HiddenInputPositive.jl:62:16
    |
