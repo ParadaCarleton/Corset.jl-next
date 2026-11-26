@@ -8,7 +8,7 @@ using Corset.Effects.Summaries:
     Summaries, MethodVerdict, CallSummary, BlindAccess, UnitVerdict, Library, cached_effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body!, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, value_type, start_flow, statement!, map_node!, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
-    components, foreign_name, FOREIGN_EFFECTS, BLAS_EFFECTS, foreign_effects, blas_library, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt!, source_provenance,
+    components, foreign_name, foreign_library, FOREIGN_EFFECTS, BLAS_EFFECTS, foreign_effects, blas_library, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt!, source_provenance,
     Callback, Callees, Variant, root_summary!, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut!, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body!, root_calls!, merge_calls, merge_callees, load!, store!, store_backing!,
@@ -724,6 +724,10 @@ end
     @test doubts(popped_summary.writes) == Dict(top(2) => none) && popped_summary.result == Nodes(Node.Placed(parameter(2, Step.Element())) => none)
     for (target, name) in ((QuoteNode(:strlen), :strlen), (Expr(:tuple, QuoteNode(:f), "lib"), :f), ((:f, "lib"), :f), ("f", :f), (Expr(:tuple), nothing), ((), nothing), (1, nothing))
         @test foreign_name(target) === name
+    end
+    # Library comes from second part of target, quoted or not; symbol alone names none.
+    for (target, library) in ((QuoteNode((:f, "lib")), "lib"), (Expr(:tuple, QuoteNode(:f), QuoteNode("lib")), "lib"), ((:f, "lib"), "lib"), (QuoteNode(:f), nothing), ((:f, 1), nothing))
+        @test foreign_library(target) == library
     end
 end
 
