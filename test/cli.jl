@@ -4,6 +4,7 @@ using Corset: Corset
 using JSON: JSON
 using JSONSchema: JSONSchema
 using Scratch: Scratch
+using TOML: TOML
 using Test: @test, @test_logs, @testset, @test_throws
 
 include("helpers.jl")
@@ -359,6 +360,47 @@ end
             write(joinpath(root, directory, "Project.toml"), "name = \"Changed\"\n")
             @test Launch.cache_key(facts) != key
         end
+        # Copy of project elsewhere shares key; `developed` points each path package at copy, Corset at running Corset.
+        mktempdir(@__DIR__) do elsewhere
+            copy = cp(root, joinpath(realpath(elsewhere), "Targets"))
+            copied = Discovery.project_facts(copy; environment = nothing)
+            @test Launch.cache_key(copied) == Launch.cache_key(facts)
+            paths = Launch.developed(copied)
+            @test paths[uuid] == copy && paths[helper] == joinpath(copy, "helper") && paths[Base.PkgId(Corset).uuid] == realpath(Launch.corset_root())
+            @test only(Launch.manifest_deps(joinpath(copy, "Project.toml"))["Local"])["path"] in values(paths)
+        end
+        # `Pkg.develop` brings `[sources]` path packages of target and of each such package: key reads their Project.toml.
+        mktempdir() do scratch
+            dep, inner = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
+            projects = ["Inner" => "name = \"Inner\"\nuuid = \"$inner\"\n", "Dep" => "name = \"Dep\"\nuuid = \"$dep\"\n\n[deps]\nInner = \"$inner\"\n\n[sources]\nInner = {path = \"../Inner\"}\n"]
+            push!(projects, "Root" => "name = \"Root\"\nuuid = \"$uuid\"\n\n[deps]\nDep = \"$dep\"\n\n[sources]\nDep = {path = \"../Dep\"}\nJSON = {rev = \"main\"}\n")
+            for (name, text) in projects
+                mkpath(joinpath(scratch, name, "src"))
+                write(joinpath(scratch, name, "Project.toml"), text)
+                write(joinpath(scratch, name, "src", "$name.jl"), "module $name\nend\n")
+            end
+            sourced = Discovery.project_facts(joinpath(scratch, "Root"); environment = nothing)
+            paths = Launch.developed(sourced)
+            @test paths[dep] == joinpath(realpath(scratch), "Dep") && paths[inner] == joinpath(realpath(scratch), "Inner")
+            key = Launch.cache_key(sourced)
+            write(joinpath(scratch, "Inner", "Project.toml"), "name = \"Inner\"\nuuid = \"$inner\"\nversion = \"0.2.0\"\n")
+            @test Launch.cache_key(sourced) != key
+            write(joinpath(scratch, "Dep", "Project.toml"), "name = \"Dep\"\nuuid = \"$dep\"\n\n[sources]\nInner = {path = \"../Inner\"}\n")
+            @test_throws "`[sources]` names Inner, which `[deps]`, `[weakdeps]` and `[extras]` lack" Launch.developed(sourced)
+        end
+        # Relocated copy points Manifest paths at `paths` by uuid and drops `[sources]`; unknown path package is error.
+        mktempdir() do scratch
+            built, env = mkpath(joinpath(scratch, "built")), mkpath(joinpath(scratch, "env"))
+            write(joinpath(built, "Project.toml"), "[deps]\nHelper = \"$helper\"\n\n[sources]\nHelper = {path = \"/old/helper\"}\n")
+            write(joinpath(built, "Manifest.toml"), "manifest_format = \"2.0\"\n\n[[deps.Helper]]\npath = \"/old/helper\"\nuuid = \"$helper\"\n\n[[deps.JSON]]\nuuid = \"682c06a0-de6a-54ab-a142-c8b1cf79cde6\"\nversion = \"1.0.0\"\n")
+            write(joinpath(built, "LocalPreferences.toml"), "[Helper]\nlevel = 1\n")
+            Launch.relocate!(env, built, Dict(helper => "/new/helper"))
+            relocated = TOML.parsefile(joinpath(env, "Manifest.toml"))["deps"]
+            @test only(relocated["Helper"])["path"] == "/new/helper" && only(relocated["JSON"])["version"] == "1.0.0"
+            @test TOML.parsefile(joinpath(env, "Project.toml")) == Dict("deps" => Dict("Helper" => string(helper)))
+            @test read(joinpath(env, "LocalPreferences.toml"), String) == "[Helper]\nlevel = 1\n"
+            @test_throws "develops Helper, which project no longer develops by path" Launch.relocate!(mkpath(joinpath(scratch, "again")), built, Dict{Base.UUID, String}())
+        end
         write(joinpath(root, "Manifest.toml"), "[[Helper]]\npath = \"helper\"\nuuid = \"$helper\"\n")
         @test_throws "has format 1" Launch.manifest_deps(joinpath(root, "Project.toml"))
         # Test loads: transitive `[deps]` of package and tests; Manifest maps name to uuid where names repeat.
@@ -488,9 +530,18 @@ end
                 @test occursin("building environment for Relaunched", err) && occursin("no cached analysis", err)
                 # Relaunched process stored analysis under key relaunching process computes, so repeat run loads nothing.
                 flags = Corset.Config.Flags(; levels = ["annotation" => Corset.Config.Level.allow])
-                env = Corset.Launch.environment(Corset.Engine.load_target(root, flags), IOBuffer())
+                env = Corset.Launch.relocated(Corset.Engine.load_target(root, flags), IOBuffer())
                 @test !isnothing(Corset.Engine.cached(root, flags, Corset.Cache.directory(), Corset.Launch.load_path(env)))
                 @test launched("check", root, "-A", "annotation") == (code, out, "")
+                # Copy elsewhere reuses environment: no build note. Analysis key reads Corset tree, which holds `root`:
+                # first copy misses, second copy reuses analysis of first.
+                mktempdir() do elsewhere
+                    copies = [cp(root, joinpath(mkpath(joinpath(elsewhere, name)), "Relaunched")) for name in ("first", "second")]
+                    copied, again = (launched("check", copy, "-A", "annotation") for copy in copies)
+                    @test first(copied) == code && occursin("error[shadowed-base]", copied[2])
+                    @test !occursin("building environment", last(copied)) && occursin("no cached analysis", last(copied))
+                    @test again == (code, replace(copied[2], first(copies) => last(copies)), "")
+                end
                 @test launched("baseline", root, "-A", "annotation") == (0, "", "corset: wrote 1 findings to $(Corset.Baseline.FILE)\n")
                 rm(joinpath(root, Corset.Baseline.FILE))
                 # Fix writes files, so it relaunches even when cache holds analysis. Report comes from fresh process:

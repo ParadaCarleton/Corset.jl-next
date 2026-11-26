@@ -208,7 +208,7 @@ function execute(args::AbstractVector{String}, @nospecialize(out::IO), @nospecia
         cache = options["no-cache"] ? nothing : cache
         target = launch ? Engine.load_target(path, flags) : nothing
         if !isnothing(target)
-            env = Launch.environment(target, err)
+            env = Launch.relocated(target, err)
             # Fix writes files and checks again, so it always runs in relaunched process.
             stored = command == "fix" || isnothing(cache) ? nothing : Engine.cached(path, flags, cache, Launch.load_path(env))
             isnothing(stored) || return finish(command, stored..., out, err, options["format"])
