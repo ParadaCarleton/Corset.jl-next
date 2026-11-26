@@ -195,6 +195,16 @@ function view_call(walk::Walk, @nospecialize(callee::Any), operands::AbstractVec
     return !all(operand -> operand_type(walk, operand) <: Union{Number, Base.AbstractCartesianIndex}, @view(operands[2:end]))
 end
 
+"""
+Operands that result of alias call of `callee` with `operands` lies beneath: first operand of `INDEX_VIEWS` and
+`COUNT_ALIASES` callee, else every operand that is not callable.
+"""
+function aliased_operands(walk::Walk, @nospecialize(callee::Any), operands::AbstractVector{Any})::Vector{Any}
+    Base.require_one_based_indexing(operands)
+    leading = callee in INDEX_VIEWS || callee in COUNT_ALIASES
+    return Any[operand for operand in (leading ? first(operands, 1) : operands) if !callable(walk, operand)]
+end
+
 """Value of IR statement `index` in `walk` from its operands (`effects.md`, Roots)."""
 function statement_value(walk::Walk, index::Integer)::Value
     pointing(walk, CC.widenconst(walk.ir.stmts[index][:type])) || return NO_VALUE
@@ -280,8 +290,8 @@ function call_value(walk::Walk, call::Expr, @nospecialize(type::Any))::Value
     if viewing
         # View lies beneath its array alone and holds index operands: `values[indices] .= 0` writes `values` only.
         indexing = callee in INDEX_VIEWS
-        # Result holds every operand at once (`zip(a, b)`): fresh operand leaves certainty of caller operand.
-        values = Value[operand_value(walk, operand) for operand in (indexing ? operands[1:1] : operands) if !callable(walk, operand)]
+        # Result can hold several operands at once (`zip(a, b)`): fresh operand leaves certainty of caller operand.
+        values = Value[operand_value(walk, operand) for operand in aliased_operands(walk, callee, operands)]
         places, inner = reduce(union, (value.places for value in values); init = Set{Place.Type}()), reduce(union, (value.inner for value in values); init = Set{Place.Type}())
         indexing && foreach(operand -> union!(inner, held(operand_value(walk, operand))), @view(operands[2:end]))
         return Value(places, inner, any(value -> value.fresh && !isempty(value.places), values), any(value -> value.untracked, values))

@@ -44,6 +44,12 @@ const DOT_VIEWS = Base.IdSet{Any}(Any[Base.dotview, Base.maybeview])
 """View functions whose operands after first are indices: view lies beneath first operand and holds index operands."""
 const INDEX_VIEWS = Base.IdSet{Any}(Any[view, Base.dotview, Base.maybeview])
 
+"""
+Alias functions whose operands after first are counts, dimensions or index: result keeps them as `Int`, so it lies
+beneath first operand alone (`partition(c, n)` iterates `c`, never `n`).
+"""
+const COUNT_ALIASES = Base.IdSet{Any}(Any[reshape, pointer, Iterators.cycle, Iterators.drop, Iterators.partition, Iterators.take])
+
 """Functions that delete from collection: Base `filter!` deletes while iterating `DELETION_SAFE` types (F48)."""
 const DELETE_FUNCTIONS = Base.IdSet{Any}(Any[delete!, pop!])
 
