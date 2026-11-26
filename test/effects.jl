@@ -136,6 +136,34 @@ end
     @test all(found -> !(found.site.method in UNITS.incomplete) || !found.complete, FACTS)
 end
 
+@testset "caller-chosen default RNG" begin
+    rng_kinds(accesses::Vector{Access})::Set{Tuple{Place.Type, EffectKind.T}} = Set((access.place, access.kind) for access in accesses if access.kind in (EffectKind.default_rng, EffectKind.rng_argument))
+    chosen, default = (parameter(2), EffectKind.default_rng), (Place.At(Root.Elsewhere(), Step.Type[]), EffectKind.default_rng)
+    drawers = Dict(name => effects(name, AbstractRNG, AbstractVector) for name in (:draw_from, :draw_both, :draw_each, :draw_captured))
+    # Each drawer has unit with `TaskLocalRNG` argument from its `*_default` caller.
+    for found in values(drawers)
+        @test any(typed -> typed.site.method === found.site.method && fieldtype(typed.signature, 2) === Random.TaskLocalRNG, UNITS.typed)
+    end
+    # Caller passes `default_rng()`: draw through argument, directly or through closure, moves there; caller reads default RNG.
+    for name in (:draw_from, :draw_each), accesses in (drawers[name].writes, drawers[name].reads)
+        @test chosen in rng_kinds(accesses) && !(default in rng_kinds(accesses))
+    end
+    moved = only(access for access in drawers[:draw_from].writes if (access.place, access.kind) == chosen)
+    @test moved.confidence == Confidence.definite
+    # Moved draw still touches `Task` state for `:notaskstate` claims, yet hides no input.
+    @test Corset.Rules.FalseEffects.task_state(moved)
+    @test isnothing(Corset.Rules.HiddenInput.input(moved, Module[CASES]))
+    drawn(name::Symbol)::Bool = Corset.Rules.HiddenInput.draws_from([drawers[name].writes; drawers[name].reads], 1)
+    @test drawn(:draw_each) && !drawn(:draw_both)
+    @test all(name -> rng_kinds(effects(name, AbstractVector).writes) == Set([default]), (:draw_default, :draw_both_default, :draw_each_default, :draw_captured_default))
+    # Bare `rand()` beside draw from argument keeps default RNG.
+    @test default in rng_kinds(drawers[:draw_both].writes)
+    # Closure over `default_rng()` keeps default RNG: declared signature unit reads it.
+    @test default in rng_kinds(drawers[:draw_captured].writes)
+    # Declared `TaskLocalRNG` keeps default RNG: method, not caller, chose it.
+    @test rng_kinds(effects(:draw_task, Random.TaskLocalRNG, AbstractVector).writes) == Set([default])
+end
+
 """Effects of only fixture method `name`."""
 named(name::Symbol)::MethodVerdict = only(found for found in FACTS if found.site.method.name == name)
 

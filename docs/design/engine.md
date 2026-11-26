@@ -207,6 +207,17 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - Path types: instance parameter type, constant global value type or global binding type, then field type or element type per step. Abstract type without field ends walk.
 - Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.
 - Write to RNG fields of `Task` (`rngState0` to `rngState4`): default RNG. Other write to `Task`, `task_local_storage` included: task-local state.
+- Caller chooses default RNG for unit whose argument holds `TaskLocalRNG` where method declares type that takes any RNG.
+  - Unit verdict moves default RNG accesses to that argument; kind stays default RNG. Summary keeps default RNG for callers.
+  - `false-effects` still sees `Task` state there. `hidden-input` counts default RNG on `Elsewhere` only.
+  - Such unit comes from call that also passes stand-in: `f(default_rng(), d)` with stand-in `d`; `f(default_rng())` gives none.
+  - Condition: each call that reaches default RNG gets argument, or tuple or closure built from it.
+  - `TaskLocalRNG` is singleton: inference folds closure over argument to constant. Constant that holds `TaskLocalRNG` counts as argument.
+  - Closure over explicit `default_rng()` folds to same constant. Declared signature unit keeps its default RNG access.
+  - Method that declares `TaskLocalRNG` chose default RNG itself: its accesses stay default RNG on `Elsewhere`.
+  - Bare `rand()` beside `rand(rng)`, or builtin access to `Task`, keeps default RNG.
+  - Callee that gets argument and also draws default RNG: package callee verdict keeps it, so `hidden-input` reports callee.
+  - Library callee that gets argument and draws default RNG: caller verdict misses it. Fix needs default RNG provenance in summaries.
 - `ScopedValue` read: read of `ScopedValue` object or of current task scope.
 - Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.
 - Lazy init and audited internal state come from audited table of Base types and methods only:
