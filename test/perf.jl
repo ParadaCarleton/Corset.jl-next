@@ -113,6 +113,33 @@ end
             @test specializations(Corset, Base) == before
         end
     end
+    @testset "inference and effects compile independent of package" begin
+        # Closures over unit signature (`offset_signature`) and callee (`failures!`) compiled again for each value.
+        # Measured on Distributions after PDMats: 337 signature closures, 63 callee closures.
+        mktempdir(@__DIR__) do directory
+            stages = map(1:2) do batch
+                source = """
+                first_item(items::AbstractVector{Int}) = items[1]
+                fail(x::Int) = throw(ArgumentError("negative"))
+                checked(x::Int) = x >= 0 ? x : fail(x)
+                """
+                path = joinpath(directory, "Stages$batch.jl")
+                write(path, source)
+                mod = Module(Symbol(:Stages, batch))
+                Base.include(mod, path)
+                files = [Corset.Syntax.parse_file(path, source, Role.package)]
+                # `names` in running function misses bindings `include` adds later; newest world sees them.
+                return () -> Base.invokelatest() do
+                    package = Corset.Package.package_facts([mod], files)
+                    return Corset.Effects.effects_facts(package, Corset.Inference.infer_package(package, files, nothing, nothing)[3], nothing)
+                end
+            end
+            first(stages)()
+            before = specializations(Corset, Base)
+            last(stages)()
+            @test specializations(Corset, Base) == before
+        end
+    end
     @testset "package rules compile independent of struct count" begin
         RULES = [Symbol("missing-interface"), Symbol("shadowed-base")]
         # Closure over type value compiles once per value: missing-interface and shadowed-base compiled again for each type.

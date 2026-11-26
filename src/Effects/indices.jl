@@ -648,25 +648,30 @@ rejected ones tries at once.
 """
 function offset_signature(method::Method, signature::Type)::Union{Nothing, Type}
     parameters, rejected = Any[Base.unwrap_unionall(signature).parameters...], Int[]
-    accepts(candidate::AbstractVector)::Bool = typeintersect(Base.rewrap_unionall(Tuple{candidate...}, signature), method.sig) !== Union{}
     offsets = Any[offset_type(parameter) for parameter in parameters]
     changed = false
     for position in eachindex(parameters)
         offsets[position] === parameters[position] && continue
         candidate = copy(parameters)
         candidate[position] = offsets[position]
-        accepts(candidate) || (push!(rejected, position); continue)
+        accepts(method, signature, candidate) || (push!(rejected, position); continue)
         parameters, changed = candidate, true
     end
     for group in shared_groups(method, rejected)
         together = copy(parameters)
         together[group] = offsets[group]
-        if length(group) > 1 && accepts(together)
+        if length(group) > 1 && accepts(method, signature, together)
             parameters, changed = together, true
         end
     end
     return changed ? Base.rewrap_unionall(Tuple{parameters...}, signature) : nothing
 end
+
+"""
+Whether `method` accepts unit `signature` with parameters `candidate`. Closure over `signature` compiled once per
+signature; function compiles once.
+"""
+accepts(method::Method, @nospecialize(signature::Type), candidate::AbstractVector)::Bool = typeintersect(Base.rewrap_unionall(Tuple{candidate...}, signature), method.sig) !== Union{}
 
 """Blind spot cause of unit that indexes but gives no code with offset stand-in."""
 const OFFSET_UNINFERRED = "offset stand-in gave no code"
