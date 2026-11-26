@@ -90,7 +90,7 @@ const ELEMENT_FUNCTIONS = Base.IdSet{Any}(Any[get, get!, getkey, pop!, popfirst!
 """Element functions whose third operand is default result: `get(d, k, default)`, `pop!(d, k, default)`."""
 const DEFAULT_FUNCTIONS = Base.IdSet{Any}(Any[get, get!, getkey, pop!, popat!])
 
-"""Base IO functions: each writes its `IO` operands (IO kind). Printing without `IO` operand writes `stdout`."""
+"""Base IO functions: each writes its `IO` stream operands (`stream_positions`, IO kind)."""
 const IO_FUNCTIONS = Base.IdSet{Any}(
     Any[
         write, print, println, show, display, flush, close, read, readline, readlines, readuntil, readchomp,
@@ -98,7 +98,17 @@ const IO_FUNCTIONS = Base.IdSet{Any}(
     ],
 )
 
-"""Base printing functions: without `IO` operand they write `stdout`."""
+"""
+Stream operand positions after callee, for call of IO function `callee` with `count` operands. Base dispatch decides.
+Stream is first operand. `show(x)` and `display` show operands on `stdout`: no stream. `write(to, from::IO)` reads
+`from`: each `write` operand is stream. Caller keeps positions whose operand is `IO`.
+"""
+function stream_positions(@nospecialize(callee::Any), count::Integer)::UnitRange{Int}
+    (callee === display || (callee === show && count == 1)) && return 1:0
+    return callee === write ? (1:count) : (1:min(count, 1))
+end
+
+"""Base printing functions: without `IO` stream operand they write `stdout`."""
 const STDOUT_FUNCTIONS = Base.IdSet{Any}(Any[print, println, show, display, printstyled])
 
 """Base synchronization functions: each writes its first non-callable operand (synchronization kind)."""

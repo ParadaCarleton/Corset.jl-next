@@ -1,3 +1,5 @@
+using ..Effects: IO_FUNCTIONS, stream_positions
+
 """Builtins that move no object: tests, type queries, throws and no-op markers."""
 const INERT_BUILTINS = (
     Core.isa, Core.:(===), Core.typeof, Core.:(<:), Core.nfields, Core.sizeof, Core.fieldtype, Core.apply_type,
@@ -508,14 +510,24 @@ end
 
 """
 Transfer open call statement `index` with `operands` (callee first) into `writes`: effects whose open types decide
-doubt. Random function (`RNG_DRAWS`) draws from its `AbstractRNG` first argument whatever method runs.
+doubt. Whatever method runs, IO function (`IO_FUNCTIONS`) writes each `IO` stream operand (`stream_positions`), and
+random function (`RNG_DRAWS`) draws from its `AbstractRNG` first argument.
 """
 function open_call!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type})::Nothing
     Base.require_one_based_indexing(operands)
     open!(flow, writes, index, operands, open_doubt(flow, operands))
-    length(operands) >= 2 && operand_type(flow.ir, operands[2]) <: AbstractRNG || return nothing
     callee = operand_constant(flow.ir, operands[1])
-    (isnothing(callee) || !(something(callee) in RNG_DRAWS)) && return nothing
+    isnothing(callee) && return nothing
+    if something(callee) in IO_FUNCTIONS
+        arguments = @view(operands[2:end])
+        for position in stream_positions(something(callee), length(arguments))
+            operand = arguments[position]
+            special_kind(operand_type(flow.ir, operand)) == EffectKind.io || continue
+            streams = operand_targets!(flow, operand)
+            alternative_access!(writes, streams, streams, true, definite(index), EffectKind.io)
+        end
+    end
+    (length(operands) >= 2 && operand_type(flow.ir, operands[2]) <: AbstractRNG && something(callee) in RNG_DRAWS) || return nothing
     rng = operand_targets!(flow, operands[2])
     access!(writes, rng, false, definite(index), EffectKind.rng_argument)
     access!(flow.reads, rng, false, definite(index), EffectKind.rng_argument)

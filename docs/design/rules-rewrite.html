@@ -1176,7 +1176,10 @@ Branch on <code>===</code> of two constants folds too: <code>getproperty(::Task,
 Access that some members lack takes sources of open operands, as open dispatch does: operand types pick member.
 Blind access of one member and exact access of another disagree: join gives <code>possible</code>.</li>
 <li>Base interface function with documented contract (<code>setindex!</code> writes collection; <code>length</code> reads only; <code>view</code> result lies within array). Breach in package method is finding.</li>
-<li>Else open: <code>possible</code> write on operands; result may point into operands, one direction, and to <code>unknown</code>.</li>
+<li>Else open: <code>possible</code> write on operands; result may point into operands, one direction, and to <code>unknown</code>.
+Name states write whatever method runs. Base IO function (<code>print</code>, <code>write</code>, <code>read</code>) writes its <code>IO</code> stream operand: definite IO write.
+Stream is first operand; <code>write(to, from::IO)</code> also reads <code>from</code>. Value operand (<code>show(io, other::IO)</code>) takes open write only.
+Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>AbstractRNG</code> first operand: definite RNG argument write.</li>
 </ol>
 <ul>
 <li>Splat of tuple or array with unknown length: dispatch on <code>Vararg</code> of element type. Callee parameters past fixed operands take any element.</li>

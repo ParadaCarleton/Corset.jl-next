@@ -728,7 +728,7 @@ function exception_events(walk::Walk, @nospecialize(callee::Any), operands::Abst
     Base.require_one_based_indexing(operands)
     found = Event[]
     if callee in IO_FUNCTIONS
-        streams = [operand for operand in operands if io_operand(walk, operand)]
+        streams = [operands[position] for position in stream_positions(callee, length(operands)) if io_operand(walk, operands[position])]
         for operand in streams
             append!(found, value_events(walk, operand_value(walk, operand), EffectKind.io, true, true))
         end

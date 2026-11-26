@@ -7,10 +7,11 @@ using ..Inference: Inference, TypedCode, Units, called, holds_stand_in, serializ
 
 const CC = Core.Compiler
 
+# Engine reads Base function contracts of name tier (`IO_FUNCTIONS`).
+include("tables.jl")
 include("engine/Summaries.jl")
 include("ir.jl")
 include("records.jl")
-include("tables.jl")
 include("names.jl")
 include("closures.jl")
 include("loops.jl")
