@@ -1,4 +1,6 @@
 using Random: AbstractRNG
+using Scratch: Scratch
+using Serialization: Serialization, AbstractSerializer
 
 """Fields of `Task` that hold default RNG state (`TaskLocalRNG`)."""
 const RNG_FIELDS = (:rngState0, :rngState1, :rngState2, :rngState3, :rngState4)
@@ -13,9 +15,27 @@ const AUDITED_FIELDS = Dict{Tuple{DataType, Symbol}, EffectKind.T}(
 )
 
 """
+Stream state of `AbstractSerializer`: fields that generic Serialization methods change as stream moves
+(`serialize_cycle`, `reset_state`, `readheader`). Subtype that keeps other data there breaks interface.
+"""
+const SERIALIZER_FIELDS = (:io, :counter, :table, :pending_refs, :version)
+
+"""
+Audited kind of `field` of object of `type`: serializer stream state (IO; `Serializer` adds object cache
+`known_object_data`), else `AUDITED_FIELDS` entry, else `nothing`. Other fields of package serializer keep memory kind.
+"""
+function audited_field(@nospecialize(type::Any), field::Symbol)::Union{Nothing, EffectKind.T}
+    type isa DataType || return nothing
+    stream = field in SERIALIZER_FIELDS || type <: Serialization.Serializer && field === :known_object_data
+    type <: AbstractSerializer && stream && return EffectKind.io
+    return get(AUDITED_FIELDS, (type, field), nothing)
+end
+
+"""
 Audited internal state by global binding, for methods of its own package (`path_kind`): Base logging state and PCRE
-match contexts. IO bookkeeping: temporary path cleanup at exit, libuv handles kept alive. Lazy caches: parsed TOML,
-loading, docstring modules, stack trace colors. Synchronization: task queues that `wait`, `yield` and `schedule` change.
+match contexts. IO bookkeeping: temporary path cleanup at exit, libuv handles kept alive, include record of precompile
+output, hourly timer of scratch usage log. Lazy caches: parsed TOML, loading, docstring modules, stack trace colors.
+Synchronization: task queues that `wait`, `yield` and `schedule` change.
 """
 const AUDITED_GLOBALS = Dict{GlobalRef, EffectKind.T}(
     GlobalRef(Base.CoreLogging, :_min_enabled_level) => EffectKind.audited,
@@ -24,6 +44,8 @@ const AUDITED_GLOBALS = Dict{GlobalRef, EffectKind.T}(
     GlobalRef(Base.Filesystem, :TEMP_CLEANUP) => EffectKind.io,
     GlobalRef(Base.Filesystem, :TEMP_CLEANUP_MAX) => EffectKind.io,
     GlobalRef(Base, :uvhandles) => EffectKind.io,
+    GlobalRef(Base, :_require_dependencies) => EffectKind.io,
+    GlobalRef(Scratch, :scratch_access_timers) => EffectKind.io,
     GlobalRef(Base, :TOML_CACHE) => EffectKind.lazy_init,
     GlobalRef(Base, :LOADING_CACHE) => EffectKind.lazy_init,
     GlobalRef(Base.Docs, :modules) => EffectKind.lazy_init,
@@ -37,12 +59,14 @@ const AUDITED_GLOBALS = Dict{GlobalRef, EffectKind.T}(
 Audited state by method: its memory accesses below listed root take listed kind. `unsafe_convert(Ref{BigFloat},
 ::BigFloatData)` rewrites stale MPFR limb pointer of its argument; `task_local_storage` writes storage of current task.
 Logging: `env_override_minlevel` caches parsed `JULIA_DEBUG` in captured boxes; `_depwarn` reads frames of backtrace.
+`pkgversion` caches version in package origin record; other writes of origins (`set_pkgorigin_version_path`) stay memory.
 """
 const AUDITED_METHODS = Dict{Method, Pair{Root.Type, EffectKind.T}}(
     which(Base.unsafe_convert, (Type{Ref{BigFloat}}, Base.MPFR.BigFloatData)) => (Root.Parameter(3) => EffectKind.audited),
     (method => (Root.Elsewhere() => EffectKind.task_local) for method in methods(task_local_storage))...,
     which(Base.CoreLogging.env_override_minlevel, (Any, Any)) => (Root.Elsewhere() => EffectKind.audited),
     which(Base._depwarn, (Any, Any, Bool)) => (Root.Elsewhere() => EffectKind.audited),
+    which(pkgversion, (Module,)) => (Root.Global(GlobalRef(Base, :pkgorigins)) => EffectKind.lazy_init),
 )
 
 """Kind of access to object of `type` itself: `IO`, RNG or synchronization object; `nothing` for other types."""
@@ -62,7 +86,8 @@ Kind of access to `field` of object of type `holder` at access statement (`engin
 `Task` state (RNG, scope, other), else kind of holder type itself. `nothing` field: access to whole object or memory.
 """
 function site_kind(@nospecialize(holder::Any), field::Union{Nothing, Symbol})::EffectKind.T
-    holder isa DataType && !isnothing(field) && haskey(AUDITED_FIELDS, (holder, field)) && return AUDITED_FIELDS[(holder, field)]
+    audited = isnothing(field) ? nothing : audited_field(holder, field)
+    isnothing(audited) || return audited
     if holder isa Type && holder !== Union{} && holder <: Task
         field in RNG_FIELDS && return EffectKind.default_rng
         return field === :scope ? EffectKind.scoped_read : EffectKind.task_local
@@ -123,7 +148,7 @@ function path_kind(ir::CC.IRCode, method::Method, place::Place.Type)::EffectKind
         found = special_kind(type)
         isnothing(found) || return found
         audited = @match step begin
-            Step.Field(name) => type isa DataType ? get(AUDITED_FIELDS, (type, name), nothing) : nothing
+            Step.Field(name) => audited_field(type, name)
             _ => nothing
         end
         isnothing(audited) || return audited
