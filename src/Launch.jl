@@ -68,17 +68,75 @@ end
 corset_root()::String = pkgdir(Base.moduleroot(@__MODULE__))
 
 """
-Cache key of environment for package of `project`: hash of target path, Corset path, Julia version and files that shape
-environment. Those include Project.toml of each path dependency: Manifest entry or test `[sources]` entry.
+Cache key of environment for package of `project`: hash of Julia version and files that shape environment. Those
+include Project.toml of each package `developed` names. Key names no directory: copy of project elsewhere shares
+environment, and `relocated` points it at copy.
 """
 function cache_key(project::ProjectFacts)::String
-    root, file = project.root, joinpath(project.root, "Project.toml")
-    paths = String[entry["path"] for entries in values(manifest_deps(file)) for entry in entries if haskey(entry, "path")]
-    append!(paths, [spec.path for spec in test_specs(project) if !isnothing(spec.path)])
-    dependencies = [joinpath(path, "Project.toml") for path in sort!(unique!(paths))]
-    files = [file; something(Base.project_file_manifest_path(file), ""); joinpath(root, "LocalPreferences.toml"); joinpath(root, "test", "Project.toml"); joinpath(corset_root(), "Project.toml"); dependencies]
-    parts = [realpath(root); realpath(corset_root()); string(VERSION); [isfile(file) ? read(file, String) : "" for file in files]]
+    root, paths = project.root, developed(project)
+    dependencies = [joinpath(paths[uuid], "Project.toml") for uuid in sort!(collect(keys(paths)))]
+    files = [something(Base.project_file_manifest_path(joinpath(root, "Project.toml")), ""); joinpath(root, "LocalPreferences.toml"); joinpath(root, "test", "Project.toml"); dependencies]
+    parts = [string(VERSION); [isfile(file) ? read(file, String) : "" for file in files]]
     return bytes2hex(sha256(join(parts, '\0')))[1:16]
+end
+
+"""
+Add to `paths` each `[sources]` path package of project at `directory`, then theirs in turn: `Pkg.develop` of project
+puts each one in environment Manifest. Package without Project.toml adds no more.
+"""
+function sources!(paths::Dict{Base.UUID, String}, directory::String)::Nothing
+    file = joinpath(directory, "Project.toml")
+    isfile(file) || return nothing
+    project = parse_toml(file)
+    names = merge((get(project, key, Dict{String, Any}())::Dict{String, Any} for key in ("deps", "weakdeps", "extras"))...)
+    for (name, source) in get(project, "sources", Dict{String, Any}())::Dict{String, Any}
+        haskey(source, "path") || continue
+        haskey(names, name) || throw(ConfigError("$file: `[sources]` names $name, which `[deps]`, `[weakdeps]` and `[extras]` lack"))
+        uuid, path = Base.UUID(names[name]), abspath(directory, source["path"])
+        get(paths, uuid, nothing) == path && continue
+        paths[uuid] = path
+        sources!(paths, path)
+    end
+    return nothing
+end
+
+"""
+Directory of each package that environment of `project` develops, by uuid: Manifest `path` entries, then target,
+running Corset and test `[sources]` paths, each with `[sources]` path packages it brings (`sources!`). Later entry wins,
+as later `Pkg.develop` does in `build!`.
+"""
+function developed(project::ProjectFacts)::Dict{Base.UUID, String}
+    paths = Dict{Base.UUID, String}()
+    for entries in values(manifest_deps(joinpath(project.root, "Project.toml"))), entry in entries
+        haskey(entry, "path") && (paths[Base.UUID(entry["uuid"])] = entry["path"])
+    end
+    roots = [something(package_id(project).uuid) => realpath(project.root); something(Base.PkgId(Base.moduleroot(@__MODULE__)).uuid) => realpath(corset_root())]
+    append!(roots, [something(spec.uuid) => spec.path for spec in test_specs(project) if !isnothing(spec.path)])
+    for (uuid, path) in roots
+        paths[uuid] = path
+        sources!(paths, path)
+    end
+    return paths
+end
+
+"""
+Write into `env` copy of built environment `built`, each Manifest `path` set to entry of `paths` for its uuid. Copy
+drops `[sources]` of Project.toml: Base loading reads Manifest paths only, and `[sources]` would name directory of
+project, which keys analysis cache apart. Path entry of package `paths` lacks is error: cache key covers each one.
+"""
+function relocate!(env::String, built::String, paths::AbstractDict{Base.UUID, String})::Nothing
+    foreach(name -> cp(joinpath(built, name), joinpath(env, name)), readdir(built))
+    project, manifest = parse_toml(joinpath(env, "Project.toml")), parse_toml(joinpath(env, "Manifest.toml"))
+    delete!(project, "sources")
+    for (name, entries) in manifest["deps"], entry in entries
+        haskey(entry, "path") || continue
+        uuid = Base.UUID(entry["uuid"])
+        haskey(paths, uuid) || error("environment $built develops $name, which project no longer develops by path")
+        entry["path"] = paths[uuid]
+    end
+    open(io -> TOML.print(io, project), joinpath(env, "Project.toml"), "w")
+    open(io -> TOML.print(io, manifest), joinpath(env, "Manifest.toml"), "w")
+    return nothing
 end
 
 """
@@ -199,6 +257,16 @@ function environment(project::ProjectFacts, err::IO)::String
             mv(staging, env)
         end
     end
+    return env
+end
+
+"""
+Environment relaunched process runs in: new temporary copy of cached environment of `project` (`environment`), its paths
+pointing at directories of this run (`relocate!`). Copy goes when process exits.
+"""
+function relocated(project::ProjectFacts, err::IO)::String
+    env = mktempdir()
+    relocate!(env, environment(project, err), developed(project))
     return env
 end
 
