@@ -173,6 +173,6 @@ function place_kind(ir::CC.IRCode, method::Method, place::Place.Type, kind::Effe
     isnothing(audited) && return path_kind(ir, method, place)
     arguments, root, audited_kind = audited
     root_of(place) == root || return path_kind(ir, method, place)
-    (arguments === ANY_ARGUMENTS || Tuple{map(CC.widenconst, ir.argtypes[2:end])...} <: arguments) && return audited_kind
+    (arguments === ANY_ARGUMENTS || Tuple{map(CC.widenconst, @view(ir.argtypes[2:end]))...} <: arguments) && return audited_kind
     return path_kind(ir, method, place)
 end
