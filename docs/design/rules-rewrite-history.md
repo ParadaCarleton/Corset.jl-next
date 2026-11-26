@@ -1119,6 +1119,9 @@ Effect kinds arm 564 and release balance arm 578 on ssh-dev (loaded box, so coun
 - Group composability: package-internal callers often pass only `Vector`. Library preset warns; outside callers hit `MethodError` deep inside method.
 - F15 is mirror rule: it widens `::Vector`. Resized argument keeps `Vector`, so fixes of F15 and F111 never loop.
 - Fix `manual`: caller-allocated output written by index works for every mutable array and avoids growth cost.
+- Dropped as F111. F15 widens resized `Vector` to `AbstractVector{<:Real}`, so F111 would flag every such F15 fix.
+- Reason: Julia has no list type apart from numeric arrays. `MethodError` from range or `SVector` caller is loud and accepted.
+- Gain: `BitVector`, `StructVector`, `ElasticVector`, `CircularBuffer` and `CuVector` callers can resize.
 
 ### Call site cache and joins
 

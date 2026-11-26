@@ -401,11 +401,6 @@ footguns = [110]
 note = "Inference-stage rule added after phase 4: own PR. Fixture per pattern."
 
 [[rule]]
-name = "generic-resize"
-footguns = [111]
-note = "Inference-stage rule added after phase 4: own PR. Fixture per call and per annotation form."
-
-[[rule]]
 name = "unreachable"
 footguns = [96]
 note = "Kinds: repeated condition, statement after exit."

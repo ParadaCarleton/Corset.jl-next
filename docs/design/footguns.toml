@@ -155,7 +155,7 @@ text = "Overspecified type blocks generic callers"
 example = "`x::Float64`, `x::AbstractFloat`, `v::AbstractVector{Float64}`, `x::Union{Int16, Int32, Int64}` reject other types"
 group = "composability"
 stage = "package"
-note = "Overspecified: names specific number type, `AbstractFloat`, or concrete container anywhere in annotation. Kind enumerated union: union of sibling number types; fix `typejoin` (`Integer`, floats to `Real`). Union of package variants that leaves out some subtypes is deliberate and passes. Fix: type parameter. Message says annotation gains no speed: Julia compiles for each concrete argument type anyway. Exempt: concrete method beside generic method of same function (fast path). Argument body resizes (F111 resizing call, dictionary insert) keeps its container; fix frees its parameters only. Argument whose elements body resizes keeps element container. Argument stored into struct field passes when widened type does not fit field: `new` converts it to copy. Number field converts by value and reports. Uses count through local, `for` loop, closure capture, keyword call and package callee."
+note = "Overspecified: names specific number type, `AbstractFloat`, or concrete container anywhere in annotation. Kind enumerated union: union of sibling number types; fix `typejoin` (`Integer`, floats to `Real`). Union of package variants that leaves out some subtypes is deliberate and passes. Fix: type parameter. Message says annotation gains no speed: Julia compiles for each concrete argument type anyway. Exempt: concrete method beside generic method of same function (fast path). Argument body resizes or writes widens too (`Vector{Float64}` to `AbstractVector{<:Real}`): caller with fixed-size or narrower container fails at run time, as Base `append!(a::AbstractVector, items)` does. Argument stored into struct field passes when widened type does not fit field: `new` converts it to copy. Number field converts by value and reports. Uses count through local, `for` loop, closure capture, keyword call and package callee."
 
 [[footgun]]
 id = 16
@@ -892,15 +892,6 @@ example = "`log(1 + x)` → `log1p(x)`; `log(sum(exp.(x)))` → `logsumexp(x)`"
 group = "correctness"
 stage = "inference"
 note = "Pattern table on `Number` operands, dotted forms included. Base and LinearAlgebra: `log(1 + x)` → `log1p(x)`; `log(1 - x)` → `log1p(-x)`; `exp(x) - 1` → `expm1(x)`; `sqrt(x^2 + y^2)` → `hypot(x, y)`; `sin(π * x)` → `sinpi(x)`, `cos` likewise; `x^(1/3)` → `cbrt(x)`; `log(x) / log(2)` → `log2(x)`, `10` likewise; `log(det(A))` → `logdet(A)`; `inv(A) * b` → `A \\ b`. LogExpFunctions.jl: `log(sum(exp.(x)))` → `logsumexp(x)`; `log(exp(a) + exp(b))` → `logaddexp(a, b)`; `log(1 + exp(x))` → `log1pexp(x)`; `log(1 - exp(x))` → `log1mexp(x)`; `1 / (1 + exp(-x))` → `logistic(x)`; `exp.(x) ./ sum(exp.(x))` → `softmax(x)`; `x * log(x)` → `xlogx(x)`; `x * log(y)` → `xlogy(x, y)`. Shifted form (`exp.(x .- maximum(x))`) is stable: exempt. Fix `likely` (changes rounding). Fix adds explicit import, and adds LogExpFunctions.jl to `[deps]` and `[compat]` when project lacks it. Clippy `imprecise_flops`."
-
-[[footgun]]
-id = 111
-area = "arrays"
-text = "Resizing call on argument whose annotation admits fixed-size arrays"
-example = "`f(v::AbstractVector) = push!(v, 0)` throws on `1:3`, `view(a, 1:2)` and `SVector`"
-group = "composability"
-stage = "inference"
-note = "Calls: `push!`, `pushfirst!`, `append!`, `prepend!`, `insert!`, `pop!`, `popfirst!`, `popat!`, `deleteat!`, `keepat!`, `splice!`, `resize!`, `empty!`, `filter!`, `unique!`. Annotation: Base abstract array type (`AbstractVector`, `DenseVector`, `StridedVector` and others), bound of type parameter, or union member. Type test or `ArrayInterface.can_change_size` guard before call narrows it. Unannotated argument and package abstract types pass. Definite. Direct call only; resize through callee waits for effect kinds. Fix `manual`: write into caller-allocated output by index (faster than growth); narrow to `Vector`; or return new array."
 
 [[footgun]]
 id = 112
