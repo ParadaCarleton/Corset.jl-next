@@ -663,7 +663,8 @@ function type_layout(value::Type)::String
     bare isa DataType || return digest(value)
     layout = Any[value, supertype(bare), ismutabletype(bare)]
     # Field tuples would compile `append!` once per tuple type, so loop pushes each field.
-    isstructtype(bare) && for index in 1:fieldcount(bare)
+    # Tuple type with `Vararg` has no field count: its parameters, in `value`, are its layout.
+    isstructtype(bare) && !isnothing(Base.datatype_fieldcount(bare)) && for index in 1:fieldcount(bare)
         push!(layout, fieldname(bare, index), fieldtype(bare, index))
     end
     return digest(layout)
