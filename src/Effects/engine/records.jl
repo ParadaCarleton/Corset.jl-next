@@ -68,7 +68,7 @@ function unit_verdict!(run::Run, typed::TypedCode, root::Variant)::UnitVerdict
     )
     summary = root_summary!(run, root)
     span_of(cause::Integer)::Span = cause_span(typed, run.codes[root], cause)
-    kind_of(place::Place.Type)::EffectKind.T = path_kind(run.codes[root].ir, place)
+    kind_of(place::Place.Type)::EffectKind.T = path_kind(run.codes[root].ir, first(root).def::Method, place)
     writes, blind_writes = unit_accesses(summary.writes, span_of, typed.provenance)
     held_writes, held_blind = lock_writes(summary, span_of, kind_of)
     unguarded, spots = unguarded_holds(summary, span_of)

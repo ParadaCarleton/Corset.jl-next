@@ -201,9 +201,12 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - `ScopedValue` read: read of `ScopedValue` object or of current task scope.
 - Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.
 - Lazy init and audited internal state come from audited table of Base types and methods only:
-  - Table keys holder type and field, or method. Listed entry sets kind before path types.
+  - Table keys holder type and field, global binding, or method. Listed entry sets kind before path types.
   - Audited field sets kind of every place below it: JIT compile writes code below `Regex` field.
+  - Audited global sets kind only in methods of its own package. Caller that writes `Dict` from `parsed_toml` writes memory.
   - `Regex` compile cache, `LazyString`; Base logging and PCRE contexts.
+  - IO bookkeeping: temporary path cleanup (`mktempdir`), libuv handles kept alive (`preserve_handle`).
+  - Lazy caches: parsed TOML, loading cache, docstring modules, stack trace module colors.
   - Logging `JULIA_DEBUG` cache (`env_override_minlevel`) and frame lookup of deprecation (`_depwarn`): unknown objects they write.
   - Repair method `unsafe_convert(Ref{BigFloat}, ::BigFloatData)`: rewrites stale MPFR limb pointer before each call.
 - Package `setfieldonce!` and package caches follow memo-cache rule above: cheap proof or opt-out.

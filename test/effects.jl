@@ -1725,6 +1725,14 @@ matches(r::Regex, s::String) = occursin(r, s)
 text_of(s::LazyString) = String(s)
 note(x::Int) = @info "note" x
 warn_old(x::Int) = (Base.depwarn("old", :warn_old); x)
+temp_folder() = mktempdir()
+keep_handle(t::Timer) = Base.preserve_handle(t)
+toml_of(path::String) = Base.parsed_toml(path)
+project_of(env::String) = Base.env_project_file(env)
+doc_meta(m::Module) = Base.Docs.meta(m)
+frame_color(m::Module) = Base.get_stacktrace_color(m)
+rename_project(path::String) = (Base.parsed_toml(path)["name"] = "renamed"; nothing)
+grow_load_path(path::String) = (push!(Base.load_path(), path); nothing)
 
 """Kinds of accesses in `table` on places with `root`."""
 kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.Type)::Set{EffectKind.T} = Set(kind for (place, _, kind) in keys(table) if root_of(place) == root)
@@ -1784,6 +1792,23 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     for logs in (note, warn_old)
         @test !any(kind == EffectKind.memory && root_of(place) == elsewhere && level_of(effect.doubt) == Level.code for ((place, _, kind), effect) in summary_of(logs, Int).writes)
     end
+    # IO bookkeeping and lazy Base caches take audited kind: no definite state write remains for `bang-convention`.
+    for (f, types, globals, kind) in (
+            (temp_folder, (), [GlobalRef(Base.Filesystem, :TEMP_CLEANUP), GlobalRef(Base.Filesystem, :TEMP_CLEANUP_MAX)], io),
+            (keep_handle, (Timer,), [GlobalRef(Base, :uvhandles)], io),
+            (toml_of, (String,), [GlobalRef(Base, :TOML_CACHE), GlobalRef(Base, :LOADING_CACHE)], EffectKind.lazy_init),
+            (project_of, (String,), [GlobalRef(Base, :LOADING_CACHE)], EffectKind.lazy_init),
+            (doc_meta, (Module,), [GlobalRef(Base.Docs, :modules)], EffectKind.lazy_init),
+            (frame_color, (Module,), [GlobalRef(Base, :STACKTRACE_FIXEDCOLORS), GlobalRef(Base, :STACKTRACE_MODULECOLORS)], EffectKind.lazy_init),
+        )
+        writes = summary_of(f, types...).writes
+        @test all(ref -> kind in kinds_at(writes, Root.Global(ref)) && !(EffectKind.memory in kinds_at(writes, Root.Global(ref))), globals)
+        @test !any(written in (EffectKind.memory, EffectKind.task_local) && effect.doubt == NO_DOUBT for ((_, _, written), effect) in writes)
+    end
+    # Audited global kind holds in Base methods only: package write through cached `Dict` or `Vector` is memory.
+    @test EffectKind.memory in kinds_at(summary_of(rename_project, String).writes, Root.Global(GlobalRef(Base, :TOML_CACHE)))
+    load_path = Place.At(Root.Global(GlobalRef(Base, :LOADING_CACHE)), Step.Type[Step.Field(:x), Step.Field(:load_path)])
+    @test haskey(summary_of(grow_load_path, String).writes, (load_path, false, EffectKind.memory))
     # Helpers: special types, `Task` fields, field index, step types.
     @test special_kind(IOBuffer) == io && isnothing(special_kind(Union{})) && isnothing(special_kind(1)) && special_kind(Base.Semaphore) == EffectKind.synchronization
     @test (site_kind(Task, :rngState0), site_kind(Task, :scope), site_kind(Task, :storage)) == (EffectKind.default_rng, EffectKind.scoped_read, EffectKind.task_local)
