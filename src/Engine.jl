@@ -108,14 +108,14 @@ Crash journal `directory` of relaunched process records each inference (`journal
 function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files::AbstractVector{Facts.SyntaxFile}, inference::Bool, effects::Bool, lifecycle::Bool, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}, Union{Nothing, EffectsFacts}, Vector{BlindSpot}, Union{Nothing, LifecycleFacts}}
     (isnothing(package) || !inference) && return nothing, BlindSpot[], nothing, BlindSpot[], nothing
     key = isnothing(cache) ? "" : store_key(path, package, files, cache)
-    cached = isnothing(cache) ? nothing : something(Cache.lookup(Inference.Store, cache, method_entry(path), key), Inference.Store())
+    cached = isnothing(cache) ? nothing : something(Cache.lookup(Inference.Store, cache, method_entry(path), key; root = nothing), Inference.Store())
     # Entries of runs that crashed serve as store, so finished work stays done.
     store = isnothing(directory) ? cached : merge(something(cached, Inference.Store()), Inference.finished_store(Inference.records(directory)))
     # Effects run reads effects record of each stored unit, so entry without one infers again.
     effects && !isnothing(store) && filter!(pair -> !isempty(last(pair).effects), store)
     found = isnothing(directory) ? run_stages(package, files, store, effects, lifecycle, nothing) : journaled(journal -> run_stages(package, files, store, effects, lifecycle, journal), directory)
     facts, spots, stored, effects_found, effects_spots, lifecycle_found = found
-    isnothing(cache) || Cache.store!(cache, method_entry(path), key, something(stored))
+    isnothing(cache) || Cache.store!(cache, method_entry(path), key, something(stored); root = nothing)
     return facts, spots, effects_found, effects_spots, lifecycle_found
 end
 
@@ -228,10 +228,11 @@ function analyze_loaded(path::String, settings::Settings, sources::Discovery.Sou
 end
 
 """
-Key in cache directory `cache` of run on real `path` with `flags` and discovered `sources`, in process with `load_path`.
-Flags count by serialized bytes: `repr` names types relative to `Main` imports, which differ between processes.
+Key in cache directory `cache` of run on real `path` with `flags` and discovered `sources`, in process with `load_path`,
+and project root that entry relocates (`Cache.key`). Flags count by serialized bytes: `repr` names types relative to
+`Main` imports, which differ between processes.
 """
-function cache_key(path::String, flags::Flags, sources::Discovery.Sources, load_path::AbstractVector{String}, cache::String)::String
+function cache_key(path::String, flags::Flags, sources::Discovery.Sources, load_path::AbstractVector{String}, cache::String)::Tuple{String, Union{Nothing, String}}
     flags_hash = bytes2hex(sha256(sprint(serialize, flags)))
     return Cache.key(path, flags_hash, project_root(path), [file.path for file in sources.files], load_path, cache)
 end
@@ -248,16 +249,19 @@ end
 
 """
 Settings and analysis of `path` with `flags`; cache directory `cache` serves and stores analysis unless `nothing`.
+Entry is named by key and keeps paths relative to project root (`Cache.key`), so copy of project hits too. Store
+prunes cache.
 Crash `journal` directory of relaunched process records inferences (`stage_facts`); `nothing` records none.
 """
 function analysis(path::String, flags::Flags, cache::Union{Nothing, String}, journal::Union{Nothing, String})::Tuple{Settings, Analysis}
     path, settings, sources = inputs(path, flags)
     isnothing(cache) && return settings, last(analyze(path, settings, sources, nothing, journal))
-    key = cache_key(path, flags, sources, Base.load_path(), cache)
-    stored = Cache.lookup(Analysis, cache, path, key)
+    key, root = cache_key(path, flags, sources, Base.load_path(), cache)
+    stored = Cache.lookup(Analysis, cache, key, key; root)
     isnothing(stored) || return settings, stored
     fresh = last(analyze(path, settings, sources, cache, journal))
-    Cache.store!(cache, path, key, fresh)
+    Cache.store!(cache, key, key, fresh; root)
+    Cache.prune!(cache, Cache.ENTRY_BYTES)
     return settings, fresh
 end
 
@@ -268,7 +272,8 @@ Settings and analysis that cache directory `cache` holds for run on `path` with 
 function cached(path::String, flags::Flags, cache::String, load_path::AbstractVector{String})::Union{Nothing, Tuple{Settings, Analysis}}
     path = realpath(path)
     sources = Discovery.discover(path; environment = nothing)
-    stored = Cache.lookup(Analysis, cache, path, cache_key(path, flags, sources, load_path, cache))
+    key, root = cache_key(path, flags, sources, load_path, cache)
+    stored = Cache.lookup(Analysis, cache, key, key; root)
     return isnothing(stored) ? nothing : (Config.settings(project_root(path), flags, REGISTRY), stored)
 end
 

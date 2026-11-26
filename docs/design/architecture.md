@@ -124,12 +124,17 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 
 ### Incremental runs and disk cache
 
-- Disk cache (`Cache`) holds one entry per checked path: key line, then serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.
+- Disk cache (`Cache`) holds one entry per analysis key: key line, then serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.
 - Key: SHA-256 of Julia version, `Base.CacheFlags`, checked path, serialized flags, each load path environment with Manifest and preferences, Corset source, analyzed files, and every file of project root and Manifest `path` entries.
 - Key reads file content, so fresh CI checkout hits. Names that start with dot and cache directory stay out of key.
+- Key names paths relative to anchors: project root, and project, Manifest and preference files of each load path environment. Other files keep real path: entry relocates root alone. Load path Manifests count by entries, `path` entries as anchored real paths; other files count by bytes. Copy of project in other directory gives same key.
+- Root anchors only when no key file but Manifest holds root path text. Code that names own root can act on it, so key then names root.
+- Entry of anchored root stores root as mark in every string; read puts root of checked copy in its place. Root left outside strings, such as in `Symbol`, fails store. `SubString` fails too: its offsets would go stale.
+- Blind spot: code can derive behavior from own location by other means, such as path length, or read files outside root by relative path. Key holds neither.
+- Cache keeps newest entries within byte budget (`Cache.ENTRY_BYTES`); hit makes entry new.
 - Location: Corset scratch space `analyses` in Julia depot. CI that saves depot keeps cache. `--no-cache` turns cache off.
 - Relaunching process computes key of relaunched process (temporary environment, load path `@:@stdlib`) and asks cache first. Hit loads no package and starts no process. `fix` always relaunches.
-- Empty cache: run prints one note: first analysis can be slow; later runs reuse cache.
+- Run that analyzes without method store of checked path prints one note: first analysis can be slow; later runs reuse cache.
 - Later: `syntax` stage findings per file, keyed by file content hash.
 - `inference` stage keeps method store per checked path beside analysis entry. Store holds one entry per inferred method and signature: reached signatures, stage facts and blind spots.
 - `effects` run adds effects record of unit to each entry (`effects.md`, Units and IR).
