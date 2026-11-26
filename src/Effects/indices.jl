@@ -251,8 +251,9 @@ function call_claims(proof::Proof, @nospecialize(callee::Any), operands::Abstrac
     callee === tuple && return union(Claims(), (prefixed(operand_claims(proof, operand), position) for (position, operand) in enumerate(operands))...)
     # `Base.OneTo(n)` starts at 1 whatever `n` is.
     callee isa Type && callee <: Base.OneTo && return Claims([Claim(Absolute(), 0, (0,))])
-    callee === (:) && return range_claims(proof, count == 3 ? [first_operand, operands[3]] : operands)
-    callee isa Type && callee <: AbstractUnitRange && count == 2 && return range_claims(proof, operands)
+    callee === (:) && return range_claims(proof, count == 3 ? [first_operand, operands[3]] : operands, callee, operands)
+    # Package range may read two arguments otherwise (`IdOffsetRange(values, offset)`): only `UnitRange` takes start, stop.
+    callee isa Type && callee <: UnitRange && count == 2 && return range_claims(proof, operands, callee, operands)
     callee in (something, ifelse, min, max, clamp) && return shared_claims(proof, callee === ifelse ? operands[2:end] : operands)
     callee in (prevind, nextind) && count == 2 && return operand_claims(proof, operands[2])
     callee in (+, -) && return sum_claims(proof, callee, operands)
@@ -311,12 +312,21 @@ function end_claims(proof::Proof, @nospecialize(callee::Any), @nospecialize(oper
 end
 
 """
-Claims of range between `bounds`: element indexes array both bounds index; origin of bounds otherwise. Constant bounds
-narrow literal vector (`[0.0, 1.0]` of `0.0:0.5:1.0`), so any element type passes.
+Claims of range between `bounds`, built by call of `callee` on `operands`: element indexes array both bounds index;
+origin of bounds otherwise. Range that Base builds (`base_range`) holds its start, so absolute start makes element
+absolute whatever stop is (`1:n`), as `Base.OneTo(n)`. Constant bounds narrow literal vector (`[0.0, 1.0]` of
+`0.0:0.5:1.0`), so any element type passes.
 """
-function range_claims(proof::Proof, bounds::AbstractVector)::Claims
-    return prefixed(choice_claims(Claims[operand_claims(proof, bound) for bound in bounds]), 0)
+function range_claims(proof::Proof, bounds::AbstractVector, @nospecialize(callee::Any), operands::AbstractVector{Any})::Claims
+    claims = Claims[operand_claims(proof, bound) for bound in bounds]
+    found = choice_claims(claims)
+    # Method lookup only for absolute start.
+    Claim(Absolute(), 0, ()) in first(claims) && base_range(proof, callee, operands) && push!(found, Claim(Absolute(), 0, ()))
+    return prefixed(found, 0)
 end
+
+"""Whether range call of `callee` on `operands` runs Base code only: one Base method, and each operand is bits integer."""
+base_range(proof::Proof, @nospecialize(callee::Any), operands::AbstractVector{Any})::Bool = all(operand -> operand_type(proof.walk, operand) <: Base.BitInteger, operands) && base_method(proof.walk, callee, operands)
 
 """Claims every operand of `operands` shares, as of `min` or `something`; `nothing` operand of `something` passes."""
 function shared_claims(proof::Proof, operands::AbstractVector{Any})::Claims

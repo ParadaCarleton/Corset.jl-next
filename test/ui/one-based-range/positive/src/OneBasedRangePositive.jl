@@ -142,4 +142,56 @@ function shifted_row!(m::AbstractMatrix{Int})
     return m
 end
 
+struct Shape
+    count::Int
+end
+
+# Range holds its literal start, whatever its stop: definite.
+function shape_total(xs::AbstractVector{Float64}, shape::Shape)
+    s = 0.0
+    for i in 1:shape.count
+        s += xs[i]
+    end
+    return s
+end
+
+# Package range reads its arguments its own way: `length(xs)` is no start, so index is possible.
+struct Shifted <: AbstractUnitRange{Int}
+    count::Int
+    offset::Int
+end
+Base.first(range::Shifted) = range.offset + 1
+Base.last(range::Shifted) = range.offset + range.count
+
+function shifted_total(xs::AbstractVector{Float64})
+    s = 0.0
+    for i in Shifted(length(xs), firstindex(xs) - 1)
+        s += xs[i]
+    end
+    return s
+end
+
+# Package `:` method builds its own range: literal start proves nothing, so index is possible.
+struct Stop end
+Base.:(:)(::Int, ::Stop) = 0:2
+
+function stopped_total(xs::AbstractVector{Int})
+    s = 0
+    for i in 1:Stop()
+        s += xs[i]
+    end
+    return s
+end
+
+# Pirate `:` method on bits integers builds its own range too: possible. Test process loads it: pair no other code uses.
+Base.:(:)(::Int, ::UInt128) = 0:2
+
+function pirate_total(xs::AbstractVector{Int}, stop::UInt128)
+    s = 0
+    for i in 1:stop
+        s += xs[i]
+    end
+    return s
+end
+
 end
