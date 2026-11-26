@@ -162,6 +162,11 @@ end
     @test default in rng_kinds(drawers[:draw_captured].writes)
     # Declared `TaskLocalRNG` keeps default RNG: method, not caller, chose it.
     @test rng_kinds(effects(:draw_task, Random.TaskLocalRNG, AbstractVector).writes) == Set([default])
+    # Folded constant counts as RNG argument only when it holds `TaskLocalRNG` within depth.
+    task_rng = Random.TaskLocalRNG()
+    @test Summaries.holds_task_rng((1, (task_rng,)), 3) && !Summaries.holds_task_rng((1, (2,)), 3)
+    @test Summaries.holds_task_rng((((task_rng,),),), 3) && !Summaries.holds_task_rng(((((task_rng,),),),), 3)
+    @test !Summaries.holds_task_rng((Int, Base), 3)
 end
 
 """Effects of only fixture method `name`."""
