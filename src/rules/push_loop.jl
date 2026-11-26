@@ -206,16 +206,14 @@ function declared_globals(file::SyntaxFile)::IdDict{SyntaxNode, Set{String}}
 end
 
 """Whether `target` names global in scope `root` of loop: loop at top level, or `global` declaration in scope names it."""
-global_target(globals::IdDict{SyntaxNode, Set{String}}, root::Union{Nothing, SyntaxNode}, target::String)::Bool =
+global_target(globals::IdDict{SyntaxNode, <:AbstractSet{String}}, root::Union{Nothing, SyntaxNode}, target::String)::Bool =
     isnothing(root) || target in get(globals, root, Set{String}())
 
-"""Whether `try` between `loop` and scope `root` can catch throw inside loop."""
-function guarded(loop::SyntaxNode, root::Union{Nothing, SyntaxNode})::Bool
-    for ancestor in ancestors(loop)
-        ancestor === root && return false
-        kind_name(ancestor) == "try" && return true
-    end
-    return false
+"""Whether `try` between `loop` and its scope `root` can catch throw inside loop."""
+function guarded(loop::SyntaxNode, root::SyntaxNode)::Bool
+    around = ancestors(loop)
+    inside = something(findfirst(ancestor -> ancestor === root, around)) - 1
+    return any(ancestor -> kind_name(ancestor) == "try", @view(around[1:inside]))
 end
 
 """
@@ -318,7 +316,7 @@ function fixed_length(file::SyntaxFile, index::FileIndex, loop::SyntaxNode, sour
     annotation = stable_annotation(file, index.positions, loop, source)
     isnothing(annotation) && return false
     head = annotation_head(annotation, index.bound)
-    return head in FIXED || (head in RANGES && kind_name(annotation) == "curly" && all(parameter -> bits_type(parameter, index.bound), children_of(annotation)[2:end]))
+    return head in FIXED || (head in RANGES && kind_name(annotation) == "curly" && all(parameter -> bits_type(parameter, index.bound), @view(children_of(annotation)[2:end])))
 end
 
 """
