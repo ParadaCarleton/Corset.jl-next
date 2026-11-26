@@ -179,7 +179,7 @@ function path_kind(ir::CC.IRCode, method::Method, place::Place.Type)::EffectKind
 end
 
 """Whether instance with IR `ir` falls under `audit`: its argument types (after callee) fall in audit arguments."""
-audit_fits(ir::CC.IRCode, audit::Audit)::Bool = audit.arguments === ANY_ARGUMENTS || Tuple{map(CC.widenconst, ir.argtypes[2:end])...} <: audit.arguments
+audit_fits(ir::CC.IRCode, audit::Audit)::Bool = audit.arguments === ANY_ARGUMENTS || Tuple{map(CC.widenconst, @view(ir.argtypes[2:end]))...} <: audit.arguments
 
 """
 Kind of access with `kind` to `place` in instance of `method` with IR `ir`: audit of method (`Audit`) that covers it
