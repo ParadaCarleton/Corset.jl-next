@@ -50,8 +50,8 @@ include("rules/orphan_task.jl")
 include("rules/overspecified_type.jl")
 include("rules/pinned_task.jl")
 include("rules/piracy.jl")
-include("rules/push_loop.jl")
 include("rules/process_state.jl")
+include("rules/push_loop.jl")
 include("rules/repeated_concat.jl")
 include("rules/self_alias.jl")
 include("rules/shadowed_base.jl")
@@ -124,8 +124,8 @@ const REGISTRY = RuleEntry[
     OverspecifiedType.ENTRY,
     PinnedTask.ENTRY,
     Piracy.ENTRY,
-    PushLoop.ENTRY,
     ProcessState.ENTRY,
+    PushLoop.ENTRY,
     RepeatedConcat.ENTRY,
     SelfAlias.ENTRY,
     ShadowedBase.ENTRY,
