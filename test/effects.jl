@@ -1342,6 +1342,16 @@ function flag_try!(x::Vector{Int}, careful::Bool)
 end
 flag_try_off(x::Vector{Int}) = flag_try!(x, false)
 
+"""Property `:log` writes global log; other names read field, as `getproperty(::Task, ::Symbol)` does."""
+mutable struct Switch
+    n::Int
+end
+const SWITCH_LOG = Int[]
+Base.getproperty(switch::Switch, name::Symbol) = name === :log ? (push!(SWITCH_LOG, 1); 0) : getfield(switch, name)
+# Write keeps compiler effects from skipping summary.
+bump_switch!(switch::Switch) = (switch.n += 1; nothing)
+switch_log(switch::Switch) = switch.log
+
 @testset "variant parameters" begin
     run = start_run(nothing, Module[])
     instance = only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], run.world, 1)))
@@ -1364,6 +1374,9 @@ flag_try_off(x::Vector{Int}) = flag_try!(x, false)
     @test haskey(doubts(summary_of(flag_store!, Vector{Int}, Bool).writes), top(2))
     # Dropped branch keeps its try region balanced (`Base.rm` with `recursive = false` crashed release balance).
     @test isempty(summary_of(flag_try_off, Vector{Int}).writes)
+    # `===` of constant name: variant for field `n` drops branch that writes log; variant for `:log` keeps it.
+    @test doubts(summary_of(bump_switch!, Switch).writes) == Dict(top(2) => NO_DOUBT)
+    @test Root.Global(GlobalRef(@__MODULE__, :SWITCH_LOG)) in Set(root_of(place) for (place, _, _) in keys(summary_of(switch_log, Switch).writes))
 end
 
 """Wrapper whose type grows at each recursion step."""
@@ -1673,8 +1686,8 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     # Current task is unknown object without doubt: draw writes default RNG for sure, and nothing else for sure.
     rolled = summary_of(roll_default)
     rolled_writes = doubts(rolled.writes)
-    @test rolled_writes[(Place.At(elsewhere, Step.Type[]), false, EffectKind.default_rng)] == NO_DOUBT
-    @test count(==(NO_DOUBT), values(rolled_writes)) == 1
+    # Variants of `getproperty(::Task, ::Symbol)` for RNG fields drop its other branches: draw writes nothing else.
+    @test rolled_writes == Dict((Place.At(elsewhere, Step.Type[]), false, EffectKind.default_rng) => NO_DOUBT)
     @test EffectKind.default_rng in kinds_at(rolled.reads, elsewhere)
     # Unknown object merges every outside object: vector stored into it stays in doubt when other task loads it.
     @test level_of(doubts(summary_of(other_result!, Vector{Int}).writes)[top(2)]) == Level.code

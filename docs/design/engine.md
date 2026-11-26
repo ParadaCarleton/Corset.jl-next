@@ -109,6 +109,7 @@ Resolution of each call statement, first match wins:
 3. Static call (one method matches, or `Core.invoke` with constant selector): callee summary. No method matches: call throws, so code after it is dead.
    Summary per variant: instance plus constant arguments callee uses as field name. `getproperty(x, :a)` keeps field `a`.
    Constant `Bool` argument that callee uses as branch condition also makes variant. Variant code drops blocks branch never reaches.
+   Branch on `===` of two constants folds too: `getproperty(::Task, :rngState0)` variant drops `:backtrace` branch. Only variant constants fold; `===` adds no variant parameter.
    `HAMT.path(trie, key, h, false)` skips copy-on-write store, so `ScopedValue` read writes nothing. Julia inference resolves the same constant.
 4. Static call on callable holding object below caller parameter: callee stores and result apply now. Accesses go into callback record for caller.
 5. Run-time dispatch in package code with at most 3 matching methods: join their summaries. All agree: their certainty. Disagree: `possible`.
