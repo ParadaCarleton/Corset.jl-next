@@ -6,10 +6,10 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 
 | # | PR | Holds | Needs | Status |
 |---|---|---|---|---|
-| 1 | Engine core | Units, IR, origins, points-to, builtins, static calls, solve, soundness property | — | #232; frozen |
-| 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | 2a #234; 2b #235; 2c #237; 2d #238; 2e #239; frozen |
-| 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance | 2 | 3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249 (fix #252), iteration starts #250, frame copy #253; frozen |
-| 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | #251 (per-environment key), #254 (per-entry key); frozen |
+| 1 | Engine core | Units, IR, origins, points-to, builtins, static calls, solve, soundness property | — | #232; revived |
+| 2 | Call resolution | Foreign calls, callback records, join, Base contracts, open calls | 1 | 2a #234; 2b #235; 2c #237; 2d #238; 2e #239; revived |
+| 3 | Engine limits | Compiler-effects shortcut, stand-in cuts, effect kinds, iteration starts, throw paths, call facts, release balance | 2 | 3a #240, 3b #241, throw paths #246, 3c #247, 3e #248, call facts #249 (fix #252), iteration starts #250, frame copy #253; revived |
+| 4 | Summary cache | Library summary disk cache; package summaries in method store | 3 | #251 (per-environment key), #254 (per-entry key); revived |
 | 5 | Name tier | `effects` stage on name trust and compiler effects replaces engine; engine and library summary cache leave | — | #298; done |
 | 6 | `stateful-iterate` | F109 | — | #297; done |
 | 7 | Alias rules | F48, F50, F51 | 5 | #300, #301, #304; done |
@@ -20,7 +20,7 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 
 - One PR per row; split a rule row by rule when it grows large. Status gets PR number at merge.
 - Rule rows merge in any order after row 5. Bug rules go first: F48, F50, F98, F58, F54.
-- Rows 1 to 4 built the whole-program engine. Its code and design stay at tag `effects-engine` (history, "Engine freeze").
+- Rows 1 to 4 built the whole-program engine (`engine.md`). It left main at row 5 and came back unwired; tag `effects-engine` marks its last wired state.
 
 ### Every PR
 

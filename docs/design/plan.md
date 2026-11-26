@@ -64,6 +64,6 @@ Design is draft until code proves it. Revisit at each checkpoint:
 - After first release: corpus findings and real use test footgun list, levels, presets and messages.
 - After phase 4: measure annotation transition guesses on corpus (share kept after review); revise evidence ranking, widening and tiers (`types.md`). Revisit integer input of `type-disruption` if corpus shows integer widening outside index math.
 - Before each later phase: reread parts that phase builds on; question decisions that no longer fit.
-- After phase 5 rule rows: count name-trust misses that block rules on corpus. Revive frozen engine only when they block a quality gate.
+- After phase 5 rule rows: compare engine verdicts with name trust on corpus before engine verdicts feed facts.
 - Each review: adversarial pass by second model on changed parts; log findings and outcomes in `rules-rewrite-history.md`.
 - Change decision openly: edit part, note reason in commit message. Footgun IDs stay stable through every change.

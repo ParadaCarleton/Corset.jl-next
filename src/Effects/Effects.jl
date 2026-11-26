@@ -7,6 +7,7 @@ using ..Inference: Inference, TypedCode, Units, called, holds_stand_in, serializ
 
 const CC = Core.Compiler
 
+include("engine/Summaries.jl")
 include("ir.jl")
 include("records.jl")
 include("tables.jl")
