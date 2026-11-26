@@ -84,7 +84,7 @@ end
 Add to `paths` each `[sources]` path package of project at `directory`, then theirs in turn: `Pkg.develop` of project
 puts each one in environment Manifest. Package without Project.toml adds no more.
 """
-function sources!(paths::Dict{Base.UUID, String}, directory::String)::Nothing
+function sources!(paths::AbstractDict{Base.UUID, String}, directory::String)::Nothing
     file = joinpath(directory, "Project.toml")
     isfile(file) || return nothing
     project = parse_toml(file)
