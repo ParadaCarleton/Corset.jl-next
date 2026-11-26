@@ -334,6 +334,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Per package method: writes and reads by place with certainty and cause span; blind writes and reads with blind spot; result aliases.
 - Iteration starts by place: `iterate` without state, directly or through callee. Summary joins and widens them like reads.
 - Start is read of kind `iteration`. Base contract of `first`, `only`, generic `isempty` and destructuring starts too.
+- Contract `isempty` start is `possible`: its docstring says it may consume stateful iterator.
 - Fact of incomplete method has `complete` false: it gets no definite none.
 - Per unit, for `lifecycle` and statement rules (F48, F50, F51): allocation sites, read, write and iteration-start events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.
 - Element event carries index operand: constant or SSA value. `lifecycle` decides which elements writes cover (F33, F34).

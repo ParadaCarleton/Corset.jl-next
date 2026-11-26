@@ -479,7 +479,7 @@ end
     # `first` and `sum` of `Vector` read its memory and start no iteration.
     @test shape(effects(:first_of).reads) == shape(effects(:total_of).reads) == [(parameter(2), false, MEMORY, DEFINITE)]
     # Generic `isempty` may consume stateful iterator: start is `possible`.
-    @test_broken filter(entry -> entry[3] == EffectKind.iteration, shape(effects(:emptiness).reads)) == [(parameter(2), false, EffectKind.iteration, POSSIBLE)]
+    @test filter(entry -> entry[3] == EffectKind.iteration, shape(effects(:emptiness).reads)) == [(parameter(2), false, EffectKind.iteration, POSSIBLE)]
     # Plain argument loads stay out of facts.
     @test isempty(effects(:set_value!).reads)
 end

@@ -1393,6 +1393,7 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>Per package method: writes and reads by place with certainty and cause span; blind writes and reads with blind spot; result aliases.</li>
 <li>Iteration starts by place: <code>iterate</code> without state, directly or through callee. Summary joins and widens them like reads.</li>
 <li>Start is read of kind <code>iteration</code>. Base contract of <code>first</code>, <code>only</code>, generic <code>isempty</code> and destructuring starts too.</li>
+<li>Contract <code>isempty</code> start is <code>possible</code>: its docstring says it may consume stateful iterator.</li>
 <li>Fact of incomplete method has <code>complete</code> false: it gets no definite none.</li>
 <li>Per unit, for <code>lifecycle</code> and statement rules (F48, F50, F51): allocation sites, read, write and iteration-start events per statement in control-flow order, must-alias pairs, escapes. One producer per fact.</li>
 <li>Element event carries index operand: constant or SSA value. <code>lifecycle</code> decides which elements writes cover (F33, F34).</li>
