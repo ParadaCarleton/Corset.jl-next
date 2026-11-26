@@ -387,6 +387,10 @@ name = "nan-compare"
 footguns = [95]
 
 [[rule]]
+name = "float-key"
+footguns = [116]
+
+[[rule]]
 name = "addlogprob"
 footguns = [112]
 note = "Syntax-stage Argus pattern."

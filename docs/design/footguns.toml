@@ -937,3 +937,12 @@ example = "`n >= 0 || error(\"n must be non-negative\")`"
 group = "restriction"
 stage = "syntax"
 note = "Julia manual endorses form for short `if`, so rule is restriction. Clippy `short_circuit_statement` (complexity). Statement position as F113. Chain in condition or used value passes. Definite. Fix `safe`: `if !(n >= 0); error(...); end`. `!` wraps term in parentheses unless term is call, name or `!` call (`!!x` becomes `x`); comparison never inverts, since `NaN` breaks `!(a >= b) == (a < b)`. Chain tail that is chain becomes nested `if`."
+
+[[footgun]]
+id = 116
+area = "numbers"
+text = "Float key lookup in hashed collection compares exact bits"
+example = "`0.1 + 0.2 in Set([0.3])` and `haskey(Dict(0.0 => 1), -0.0)` are false"
+group = "correctness"
+stage = "inference"
+note = "`Set` and `Dict` compare keys with `isequal`: rounding error misses key, and `-0.0` misses `0.0` though `==` holds. Rust `f64` has no `Hash` or `Eq`, so `HashSet<f64>` does not compile. Sites: `in`, `haskey`, `getindex`, `get`, `get!`, `getkey`, `pop!` and `delete!` on `AbstractSet` or `AbstractDict` whose key infers to float, or tuple or `Complex` of floats. Run-time values decide miss: `possible`. Fix `manual`: integer or `Rational` keys, or keys rounded by one rule at insert and lookup."
