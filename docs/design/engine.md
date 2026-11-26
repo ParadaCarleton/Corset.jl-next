@@ -32,7 +32,7 @@ Engine code lives in `src/Effects/engine/`, module `Effects.Summaries`.
 ### Origins and points-to
 
 - Origin: abstract object. Kinds: caller place (parameter or global path), allocation statement, `unknown`.
-- Constant object in code counts as `unknown`. Fresh objects of callee merge into one allocation at call statement.
+- Constant object in code counts as `unknown`: write to it is definite. Fresh objects of callee merge into one allocation at call statement.
 - `unknown`: object open call can return that no operand names, global included. Write to it is `possible` global write.
 - Current task is `unknown` without doubt: write to its fields is certain global write.
 - One `unknown` origin stands for every outside object, so values stored into it take `code` doubt.

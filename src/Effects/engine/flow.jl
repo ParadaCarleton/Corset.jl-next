@@ -226,13 +226,18 @@ function global_targets(flow::Flow, binding::GlobalRef)::Targets
     return found
 end
 
-"""Targets of IR `value`: SSA value, argument, global binding, or constant object (unknown)."""
+"""
+Targets of IR `value`: SSA value, argument, global binding, or constant object. Constant object is one object outside
+caller places: `unknown`, without doubt. Constant null pointer (`C_NULL` that compiler inlines) points into no object.
+"""
 function value_targets!(flow::Flow, @nospecialize(value::Any))::Targets
     value isa Core.SSAValue && return flow.values[value.id]
     value isa Core.Argument && return flow.arguments[value.n]
     points!(flow, value_lattice(flow.ir, value)) || return Targets()
     value isa GlobalRef && return global_targets(flow, value)
-    return unknown(CODE_DOUBT)
+    constant = value isa QuoteNode ? value.value : value
+    (constant isa Ptr && constant == C_NULL) && return Targets()
+    return unknown(NO_DOUBT)
 end
 
 """
