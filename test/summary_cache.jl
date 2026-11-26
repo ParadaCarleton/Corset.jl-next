@@ -268,7 +268,7 @@ end
         end
         # Run that skipped crashed instance keeps blind spot of this run only, so it stores nothing.
         mktempdir(@__DIR__) do directory
-            journal = Inference.Journal(open(joinpath(directory, "journal"), "a"), Set(["effects\nother"]))
+            journal = Inference.Journal(open(joinpath(directory, "journal"), "a"), Set(["effects\nother"]), Set{String}())
             try
                 @test isempty(cached_effects(PACKAGE, UNITS, NONE_STORED, journal, Library())[4])
             finally

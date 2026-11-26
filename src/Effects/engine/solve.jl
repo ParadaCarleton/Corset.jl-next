@@ -378,12 +378,12 @@ function inferred!(run::Run, instance::Core.MethodInstance)::Union{Tuple{CC.Infe
     journal = run.journal
     key = isnothing(journal) ? "" : journal_key(instance)
     isnothing(journal) || !(key in journal.crashed) || return "inference crashed process"
-    isnothing(journal) || record!(journal, Record(key, method_label(instance.def::Method), false, nothing))
+    isnothing(journal) || record!(journal, start_record(key, method_label(instance.def::Method), true))
     frame = CC.typeinf_frame(run.interpreter, instance, false)
     isnothing(frame) || (run.cache.edges[instance] = frame.edges)
     # Model-type inference of cut check runs inside journal record too; library cache can spare it.
     cut = !isnothing(frame) && get!(() -> stored_or_cut!(run, instance, frame), run.cuts, instance)
-    isnothing(journal) || record!(journal, Record(key, "", true, nothing))
+    isnothing(journal) || record!(journal, finish_record(key, nothing))
     return isnothing(frame) ? "inference gave no code" : (frame, cut)
 end
 

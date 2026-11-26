@@ -10,6 +10,7 @@ module Inference
 
 using Serialization: serialize, deserialize
 using SHA: sha256
+using EnumX: @enumx
 using TypedSyntax: TypedSyntax
 using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, HardArray, NarrowingLoss, StatefulIterate, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence, Weak, Exit
 using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span, parent_of, ancestors, base_macro, resolve_type
@@ -703,6 +704,50 @@ function shape(package::PackageFacts)::Vector{String}
     return unique!(parts)
 end
 
+"""Step for queued signature: seen before, over `LIMIT`, crashed earlier run, served by store, or inferred."""
+@enumx Step seen over_limit crashed stored inferred
+
+"""Queued signatures per thread in one wave: wave keeps compiler frame of each inference until its merge."""
+const WAVE = 4
+
+"""
+Step for `method` on `call_signature`, with store key and store entry; marks signature seen and counts it. Calls can
+reach one method with ever new types (`f(x) = f((x,))`), so reached signatures stop at limit.
+"""
+function next_step!(seen::AbstractSet{Tuple{Method, Type}}, counts::AbstractDict{Method, <:Integer}, method::Method, call_signature::Type, store::Union{Nothing, Store}, journal::Union{Nothing, Journal}, hashes::AbstractDict{String, String}, index::AbstractDict{String, Method}, codes::AbstractDict{String, String})::Tuple{Step.T, String, Union{Nothing, Entry}}
+    (method, call_signature) in seen && return Step.seen, "", nothing
+    push!(seen, (method, call_signature))
+    counts[method] = get(counts, method, 0) + 1
+    counts[method] > LIMIT && return Step.over_limit, "", nothing
+    key = isnothing(store) ? "" : entry_key(method, call_signature)
+    isnothing(journal) || !(key in journal.crashed) || return Step.crashed, key, nothing
+    entry = isnothing(store) ? nothing : valid_entry(store, key, hashes, index, codes, journal)
+    return isnothing(entry) ? Step.inferred : Step.stored, key, entry
+end
+
+"""
+`infer` of each `(method, signature, key)` in `jobs`, in order. Suspect of crash `journal` runs alone, first; so does
+each job of one-job wave or one-thread run. Others run on all threads at once.
+"""
+function infer_wave!(journal::Union{Nothing, Journal}, jobs::AbstractVector{<:Tuple{Method, Type, String}})::Vector{Union{Nothing, Output}}
+    solo = length(jobs) == 1 || Threads.nthreads(:default) == 1
+    alone = [solo || (!isnothing(journal) && key in journal.suspects) for (_, _, key) in jobs]
+    single = Dict(position => journaled_infer!(journal, jobs[position]..., true) for position in findall(alone))
+    shared = Dict(position => Threads.@spawn(journaled_infer!(journal, jobs[position]..., false)) for position in findall(!, alone))
+    return Union{Nothing, Output}[alone[position] ? single[position] : fetch(shared[position]) for position in eachindex(jobs)]
+end
+
+"""
+`infer` of `method` on `signature` between start and finish records of store `key` in crash `journal`; `alone` when no
+other inference runs beside it.
+"""
+function journaled_infer!(journal::Union{Nothing, Journal}, method::Method, signature::Type, key::String, alone::Bool)::Union{Nothing, Output}
+    isnothing(journal) || record!(journal, start_record(key, method_label(method), alone))
+    result = infer(method, signature)
+    isnothing(journal) || record!(journal, finish_record(key, nothing))
+    return result
+end
+
 # corset: allow bang-convention -- crash journal records progress; caller reads it only after crash
 """
 Run of inference stage: facts, blind spots, units (typed code of signatures it inferred, and units store served), and
@@ -741,75 +786,78 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
     failing, gaps, settled, disrupting, narrowing = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[], NarrowingLoss[]
     hard, iterates, observed, declared = HardArray[], StatefulIterate[], IdDict{Method, Vector{Tuple{Type, Type}}}(), IdDict{Method, Union{Nothing, Core.CodeInfo}}()
     while !isempty(pending)
-        site, call_signature, stand_in = popfirst!(pending)
-        (site.method, call_signature) in seen && continue
-        push!(seen, (site.method, call_signature))
-        # Calls can reach one method with ever new types (`f(x) = f((x,))`), so reached signatures stop at limit.
-        counts[site.method] = get(counts, site.method, 0) + 1
-        counts[site.method] > LIMIT && (push!(spots, BlindSpot("signatures over limit", site.span)); push!(incomplete, site.method); continue)
-        key = isnothing(store) ? "" : entry_key(site.method, call_signature)
-        isnothing(journal) || !(key in journal.crashed) || (push!(spots, BlindSpot("inference crashed process", site.span)); push!(incomplete, site.method); continue)
-        entry = isnothing(store) ? nothing : valid_entry(store, key, hashes, index, codes, journal)
-        if isnothing(entry)
-            isnothing(journal) || record!(journal, Record(key, method_label(site.method), false, nothing))
-            edges = Any[]
-            result = infer(site.method, call_signature)
-            inferred = if isnothing(result)
-                Inferred(Union{}, Tuple{Type, Type}[], Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, false, Disruption[], HardArray[], NarrowingLoss[], StatefulIterate[])
+        # Queue head is one wave; merge queues reached calls behind rest, in order one queue would give.
+        wave = splice!(pending, 1:min(length(pending), WAVE * Threads.nthreads(:default)))
+        steps = Tuple{Step.T, String, Union{Nothing, Entry}}[next_step!(seen, counts, site.method, call_signature, store, journal, hashes, index, codes) for (site, call_signature, _) in wave]
+        inferring = [position for (position, (step, _, _)) in enumerate(steps) if step == Step.inferred]
+        outputs = Dict(zip(inferring, infer_wave!(journal, Tuple{Method, Type, String}[(wave[position][1].method, wave[position][2], steps[position][2]) for position in inferring])))
+        for (position, (site, call_signature, stand_in)) in enumerate(wave)
+            step, key, entry = steps[position]
+            step == Step.seen && continue
+            step == Step.over_limit && (push!(spots, BlindSpot("signatures over limit", site.span)); push!(incomplete, site.method); continue)
+            step == Step.crashed && (push!(spots, BlindSpot("inference crashed process", site.span)); push!(incomplete, site.method); continue)
+            if step == Step.inferred
+                # Merge reads more code: generator can still abort, so merge has its own journal records.
+                isnothing(journal) || record!(journal, start_record(key, method_label(site.method), true))
+                edges = Any[]
+                result = outputs[position]
+                inferred = if isnothing(result)
+                    Inferred(Union{}, Tuple{Type, Type}[], Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, false, Disruption[], HardArray[], NarrowingLoss[], StatefulIterate[])
+                else
+                    instance, code, returned, frame_edges, flow, frame = result
+                    append!(edges, frame_edges)
+                    nodes = statement_nodes(code, mappings(code, instance, site), site.file)
+                    opted = [position for position in 1:(site.method.nargs - 1) if explicit_any(site, code.slotnames[position + 1])]
+                    provenance = argument_provenance(site.method, call_signature, stand_in, opted)
+                    push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes)..., frame, provenance, Int[]))
+                    # Failures need unit spans; cuts need failures.
+                    failures, stand_in_only = failures!(edges, helpers, last(typed), by_path)
+                    append!(last(typed).cuts, cuts!(declared, site.method, call_signature, code, stand_in_only))
+                    changes, branch = Widening.changes!(edges, instance, code)
+                    constructions, array_branch = HardArrays.changes!(edges, instance, code)
+                    lost = narrowings(last(typed), nodes, Narrowing.losses(code, flow, CC.sptypes_from_meth_instance(instance)))
+                    Inferred(
+                        returned, package_calls(code, instance, modules, by_path), reached(code, instance), failures, true,
+                        Widening.type_branch(code, CC.sptypes_from_meth_instance(instance)), disruptions(last(typed), instance, nodes, changes, branch),
+                        hard_arrays(last(typed), instance, nodes, constructions, array_branch), lost, stateful_iterates(last(typed), instance, nodes),
+                    )
+                end
+                entry = isnothing(used) ? nothing : entry!(named, ids, codes, site, call_signature, inferred, edges, by_path, hashes, modules)
+                isnothing(journal) || record!(journal, finish_record(key, entry))
             else
-                instance, code, returned, frame_edges, flow, frame = result
-                append!(edges, frame_edges)
-                nodes = statement_nodes(code, mappings(code, instance, site), site.file)
-                opted = [position for position in 1:(site.method.nargs - 1) if explicit_any(site, code.slotnames[position + 1])]
-                provenance = argument_provenance(site.method, call_signature, stand_in, opted)
-                push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes)..., frame, provenance, Int[]))
-                # Failures need unit spans; cuts need failures.
-                failures, stand_in_only = failures!(edges, helpers, last(typed), by_path)
-                append!(last(typed).cuts, cuts!(declared, site.method, call_signature, code, stand_in_only))
-                changes, branch = Widening.changes!(edges, instance, code)
-                constructions, array_branch = HardArrays.changes!(edges, instance, code)
-                lost = narrowings(last(typed), nodes, Narrowing.losses(code, flow, CC.sptypes_from_meth_instance(instance)))
-                Inferred(
-                    returned, package_calls(code, instance, modules, by_path), reached(code, instance), failures, true,
-                    Widening.type_branch(code, CC.sptypes_from_meth_instance(instance)), disruptions(last(typed), instance, nodes, changes, branch),
-                    hard_arrays(last(typed), instance, nodes, constructions, array_branch), lost, stateful_iterates(last(typed), instance, nodes),
-                )
+                inferred = deserialize(IOBuffer(entry.inferred))::Inferred
+                push!(stored, StoredUnit(site, call_signature, entry.effects, length(typed)))
             end
-            entry = isnothing(used) ? nothing : entry!(named, ids, codes, site, call_signature, inferred, edges, by_path, hashes, modules)
-            isnothing(journal) || record!(journal, Record(key, "", true, entry))
-        else
-            inferred = deserialize(IOBuffer(entry.inferred))::Inferred
-            push!(stored, StoredUnit(site, call_signature, entry.effects, length(typed)))
-        end
-        isnothing(used) || isnothing(entry) || (used[key] = entry)
-        inferred.coded || (push!(spots, BlindSpot("inference gave no code", site.span)); push!(incomplete, site.method); continue)
-        # Stand-ins model no `BigFloat`, so branch on type can return what no stand-in saw.
-        inferred.tests_type && push!(incomplete, site.method)
-        push!(get!(Vector{Tuple{Type, Type}}, observed, site.method), (call_signature, inferred.returned))
-        for (call_signature, result) in inferred.calls
-            push!(get!(Vector{Tuple{Type, Type}}, observed, dispatched(call_signature)), (call_signature, result))
-        end
-        push!(coded, site.method)
-        # Package methods are those analyzed files define; others (Base) stay outside.
-        for signature in inferred.reached
-            method = dispatched(signature)
-            file = get(by_path, string(method.file), nothing)
-            isnothing(file) && continue
-            push!(pending, (get!(() -> Package.method_site(method, file, lines[file.path]), sites, method), signature, false))
-        end
-        for (index, failure) in inferred.failures
-            (site.method, index) in settled && continue
-            if failure isa BlindSpot
-                push!(gaps, failure)
-            else
-                push!(settled, (site.method, index))
-                push!(failing, failure)
+            isnothing(used) || isnothing(entry) || (used[key] = entry)
+            inferred.coded || (push!(spots, BlindSpot("inference gave no code", site.span)); push!(incomplete, site.method); continue)
+            # Stand-ins model no `BigFloat`, so branch on type can return what no stand-in saw.
+            inferred.tests_type && push!(incomplete, site.method)
+            push!(get!(Vector{Tuple{Type, Type}}, observed, site.method), (call_signature, inferred.returned))
+            for (call_signature, result) in inferred.calls
+                push!(get!(Vector{Tuple{Type, Type}}, observed, dispatched(call_signature)), (call_signature, result))
             end
+            push!(coded, site.method)
+            # Package methods are those analyzed files define; others (Base) stay outside.
+            for signature in inferred.reached
+                method = dispatched(signature)
+                file = get(by_path, string(method.file), nothing)
+                isnothing(file) && continue
+                push!(pending, (get!(() -> Package.method_site(method, file, lines[file.path]), sites, method), signature, false))
+            end
+            for (index, failure) in inferred.failures
+                (site.method, index) in settled && continue
+                if failure isa BlindSpot
+                    push!(gaps, failure)
+                else
+                    push!(settled, (site.method, index))
+                    push!(failing, failure)
+                end
+            end
+            append!(disrupting, inferred.disruptions)
+            append!(hard, inferred.hard_arrays)
+            append!(narrowing, inferred.narrowings)
+            append!(iterates, inferred.stateful_iterates)
         end
-        append!(disrupting, inferred.disruptions)
-        append!(hard, inferred.hard_arrays)
-        append!(narrowing, inferred.narrowings)
-        append!(iterates, inferred.stateful_iterates)
     end
     append!(spots, BlindSpot("untyped method no call reaches", site.span) for site in skipped if !(site.method in coded))
     # One finding per weak value: escape before intermediate, definite before possible.

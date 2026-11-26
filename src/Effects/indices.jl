@@ -858,11 +858,11 @@ function offset_inference(typed::TypedCode, signature::Type, journal::Union{Noth
     method = typed.site.method
     key = "offset " * Inference.entry_key(method, signature)
     isnothing(journal) || !(key in journal.crashed) || return OFFSET_CRASHED
-    isnothing(journal) || Inference.record!(journal, Inference.Record(key, Inference.method_label(method) * " with offset stand-in", false, nothing))
+    isnothing(journal) || Inference.record!(journal, Inference.start_record(key, Inference.method_label(method) * " with offset stand-in", true))
     inferred = Inference.infer(method, signature)
     # Spans of unit fit offset code only when both lower alike; generator runs again, so journal covers check.
     mapped = isnothing(inferred) || !Base.hasgenerator(method) || same_lowered(typed.frame.linfo, first(inferred), world)
-    isnothing(journal) || Inference.record!(journal, Inference.Record(key, "", true, nothing))
+    isnothing(journal) || Inference.record!(journal, Inference.finish_record(key, nothing))
     isnothing(inferred) && return OFFSET_UNINFERRED
     return mapped ? inferred : OFFSET_UNMAPPED
 end
