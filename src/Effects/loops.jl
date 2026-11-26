@@ -132,7 +132,7 @@ function origins(walk::Walk, @nospecialize(operand::Any))::Base.IdSet{Any}
         statement.head === :call || continue
         callee, operands = call_parts(walk, statement)
         (isnothing(operands) || !(callee in ALIAS_FUNCTIONS) || callee in ELEMENT_ALIASES) && continue
-        append!(pending, (other for other in operands if !callable(walk, other)))
+        append!(pending, aliased_operands(walk, callee, operands))
     end
     return found
 end
