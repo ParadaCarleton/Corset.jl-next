@@ -424,11 +424,16 @@ end
 """
 Record write as `access!` on `objects`, when write lands on one of `direct` origins (`y = flag ? a : b; push!(y, 1)`).
 Several origins make write on each at least `possible`: run-time values pick one. Blind origin counts too, as in join
-of blind and exact member. Known origins all below one caller root keep write below their common place.
+of blind and exact member. Known origins all below one caller root keep write below their common place. Write below
+fresh object lands somewhere below it, maybe on fresh object alone: caller objects inside it get `possible` write.
 """
 function alternative_access!(table::OriginAccesses, direct::Targets, objects::Targets, below::Bool, effect::Effect, kind::EffectKind.T)::Nothing
     if length(direct) <= 1
-        access!(table, objects, below, effect, kind)
+        inside = below ? Targets(origin => doubt for (origin, doubt) in objects if !haskey(direct, origin)) : Targets()
+        access!(table, isempty(inside) ? objects : direct, below, effect, kind)
+        # Doubt in code already covers choice of target: callee it names picks it.
+        maybe = level_of(effect.doubt) == Level.none ? CODE_DOUBT : effect.doubt
+        access!(table, inside, below, Effect(maybe, effect.cause, effect.reason), kind)
         return nothing
     end
     access!(table, objects, below, Effect(most(effect.doubt, CODE_DOUBT), effect.cause, effect.reason), kind)

@@ -826,6 +826,12 @@ end
     single = Summaries.OriginAccesses()
     Summaries.alternative_access!(single, Targets(chosen => none), Targets(chosen => none), false, Effect(none, 1, ""), EffectKind.memory)
     @test single[(chosen, false, EffectKind.memory)].doubt == none
+    # Write below fresh object may land on it alone: caller object inside it gets `possible` write.
+    wrapper, wrapped = Origin.Allocation(1), Summaries.OriginAccesses()
+    Summaries.alternative_access!(wrapped, Targets(wrapper => none), Targets(wrapper => none, chosen => none), true, Effect(none, 1, ""), EffectKind.memory)
+    @test wrapped[(wrapper, true, EffectKind.memory)].doubt == none && wrapped[(chosen, true, EffectKind.memory)].doubt == code
+    # `copy(::Memory{Nothing})` writes fresh memory or its data pointer: source elements copied into it stay `possible`.
+    @test all(effect -> level_of(effect.doubt) != Level.none, values(summary_of(copy, Set{Vector{Int}}).writes))
     # Fresh objects escape through globals and caller objects. Store keeps old content (no strong update): sure write reads as `possible`.
     @test_broken summary_of(held_write!, Vector{Int}).writes[memory(top(2))].doubt == none
     @test_broken summary_of(nest_write!, Base.RefValue{Base.RefValue{Vector{Int}}}, Vector{Int}).writes[memory(top(3))].doubt == none
