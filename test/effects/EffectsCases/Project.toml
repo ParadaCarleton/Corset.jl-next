@@ -1,5 +1,8 @@
 name = "EffectsCases"
 uuid = "ffe8177f-805e-4fc8-938c-f851f72cf357"
 
+[deps]
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
 [preferences.Corset]
 kind = "library"

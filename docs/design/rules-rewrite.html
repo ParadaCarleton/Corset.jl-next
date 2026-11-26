@@ -1260,6 +1260,20 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>Path types: instance parameter type, constant global value type or global binding type, then field type or element type per step. Abstract type without field ends walk.</li>
 <li>Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.</li>
 <li>Write to RNG fields of <code>Task</code> (<code>rngState0</code> to <code>rngState4</code>): default RNG. Other write to <code>Task</code>, <code>task_local_storage</code> included: task-local state.</li>
+<li>Caller chooses default RNG for unit whose argument holds <code>TaskLocalRNG</code> where method declares type that takes any RNG.
+<ul>
+<li>Unit verdict moves default RNG accesses to that argument; kind stays default RNG. Summary keeps default RNG for callers.</li>
+<li><code>false-effects</code> still sees <code>Task</code> state there. <code>hidden-input</code> counts default RNG on <code>Elsewhere</code> only.</li>
+<li>Such unit comes from call that also passes stand-in: <code>f(default_rng(), d)</code> with stand-in <code>d</code>; <code>f(default_rng())</code> gives none.</li>
+<li>Condition: each call that reaches default RNG gets argument, or tuple or closure built from it.</li>
+<li><code>TaskLocalRNG</code> is singleton: inference folds closure over argument to constant. Constant that holds <code>TaskLocalRNG</code> counts as argument.</li>
+<li>Closure over explicit <code>default_rng()</code> folds to same constant. Declared signature unit keeps its default RNG access.</li>
+<li>Method that declares <code>TaskLocalRNG</code> chose default RNG itself: its accesses stay default RNG on <code>Elsewhere</code>.</li>
+<li>Bare <code>rand()</code> beside <code>rand(rng)</code>, or builtin access to <code>Task</code>, keeps default RNG.</li>
+<li>Callee that gets argument and also draws default RNG: package callee verdict keeps it, so <code>hidden-input</code> reports callee.</li>
+<li>Library callee that gets argument and draws default RNG: caller verdict misses it. Fix needs default RNG provenance in summaries.</li>
+</ul>
+</li>
 <li><code>ScopedValue</code> read: read of <code>ScopedValue</code> object or of current task scope.</li>
 <li>Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.</li>
 <li>Lazy init and audited internal state come from audited table of Base types and methods only:
