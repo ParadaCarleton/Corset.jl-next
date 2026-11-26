@@ -176,7 +176,7 @@ end
         records = Corset.Inference.records(directory)
         @test [record.finished for record in records] == [false, true] && endswith(first(records).label, "with offset stand-in")
         # Start record that no finish record closes is crash: next run skips inference.
-        crashed = Corset.Inference.Journal(open(Corset.Inference.journal_file(directory), "a"), Set([first(records).key]))
+        crashed = Corset.Inference.Journal(open(Corset.Inference.journal_file(directory), "a"), Set([first(records).key]), Set{String}())
         @test Effects.offset_inference(typed, signature, crashed, world) == Effects.OFFSET_CRASHED
         close(crashed.io)
     end
@@ -199,7 +199,7 @@ end
     typed, world = UNITS.typed[position], Base.get_world_counter()
     offset_key = "offset " * Corset.Inference.entry_key(typed.site.method, something(Effects.offset_signature(typed.site.method, typed.signature)))
     mktempdir() do directory
-        crashed = Corset.Inference.Journal(open(Corset.Inference.journal_file(directory), "a"), Set([offset_key]))
+        crashed = Corset.Inference.Journal(open(Corset.Inference.journal_file(directory), "a"), Set([offset_key]), Set{String}())
         record, unknown = Effects.unit_effects(typed, Set(PACKAGE.modules), Effects.CC.NativeInterpreter(world), world, crashed)
         close(crashed.io)
         @test isnothing(unknown) && any(spot -> spot.cause == Effects.OFFSET_CRASHED, record.spots)
@@ -222,7 +222,7 @@ end
         close(journal.io)
         @test [(record.key, record.finished) for record in Corset.Inference.records(directory)] == [("staged " * staged_key, false), ("staged " * staged_key, true)]
         # Generator that aborted earlier run gives no digest, so entry that needs it drops.
-        crashed = Corset.Inference.Journal(open(Corset.Inference.journal_file(directory), "a"), Set(["staged " * staged_key]))
+        crashed = Corset.Inference.Journal(open(Corset.Inference.journal_file(directory), "a"), Set(["staged " * staged_key]), Set{String}())
         @test isnothing(Corset.Inference.staged_record(IdDict{Method, String}(), Dict{String, String}(), specialized, crashed))
         close(crashed.io)
     end

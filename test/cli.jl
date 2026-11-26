@@ -407,6 +407,9 @@ end
     options = "print(Base.JLOptions().code_coverage, Base.JLOptions().malloc_log)"
     @test read(`$tracked --startup-file=no -e $options`, String) == "11"
     @test read(`$(Corset.Launch.untracked(tracked)) --startup-file=no -e $options`, String) == "00"
+    # Relaunched process runs on as many threads as this one.
+    counts = "print(Threads.nthreads(:default), ',', Threads.nthreads(:interactive))"
+    @test read(`$(Corset.Launch.threaded(Base.julia_cmd())) --startup-file=no -e $counts`, String) == "$(Threads.nthreads(:default)),$(Threads.nthreads(:interactive))"
 end
 
 @testset "manifest moves" begin
@@ -509,6 +512,8 @@ end
             end
             \"\"\"`x` plus one, through generated function.\"\"\"
             outer(x::Real) = generated(x) + 1
+            \"\"\"`x` plus two; first wave infers it beside `outer`.\"\"\"
+            other(x::Real) = x + 2
             end
             """
             mktempdir(@__DIR__) do root
@@ -517,8 +522,11 @@ end
                 write(joinpath(root, "src", "Crashing.jl"), crashing)
                 code, out, err = launched("check", root)
                 @test code == 0 && occursin("corset: Julia crashed inferring Crashing.outer at Crashing.jl:9; running again without it", err)
+                # Several threads: `outer` crashes beside `other`, so next run infers each alone first.
+                @test occursin("inferences at once; running each alone", err) == (Threads.nthreads(:default) > 1)
                 @test occursin("inference crashed process: 1", out) && !occursin("signal", err)
-                report = last(split(only(filter(contains("Report: "), split(err, '\n'))), "Report: "))
+                # Crash beside other inferences adds note before alone rerun names crash; both notes give one report.
+                report = only(unique(last(split(line, "Report: ")) for line in split(err, '\n') if contains(line, "Report: ")))
                 @test occursin("signal", read(report, String))
                 # Stale lock of dead run clears at once, well before waiting attempt checks staleness.
                 # Age between stale age and 5 times it: dead pid alone makes lock stale.

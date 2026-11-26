@@ -13,6 +13,9 @@ jobs:
     name: Corset - Julia ${{ matrix.version }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Inference stage infers waves on every thread; relaunched process keeps this count.
+    env:
+      JULIA_NUM_THREADS: "4"
     strategy:
       fail-fast: false
       matrix:

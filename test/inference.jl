@@ -12,7 +12,7 @@ using Corset.Inference: reached
 using Base.Broadcast: broadcasted
 using Corset.Inference:
     Store, Entry, Staged, entry_key, method_id, code_digest, staged_digest, method_index, instance, shape, constant_text, digest, names_package!, holds_gensym
-using Corset.Inference: Record, records, crashed, last_crash, finished_store, open_journal, record!, method_label, log_file, journal_file
+using Corset.Inference: start_record, records, crashed, suspects, unfinished, finished_store, open_journal, record!, method_label, log_file, journal_file
 
 const CASE = joinpath(@__DIR__, "inference", "InferenceCases")
 
@@ -340,33 +340,52 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
     end
     @testset "crash journal" begin
         mktempdir() do directory
-            @test isempty(records(directory)) && isnothing(last_crash(records(directory)))
+            @test isempty(records(directory)) && isempty(unfinished(records(directory)))
             @test_throws ArgumentError infer_package(PACKAGE, FILES, nothing, open_journal(directory))
             journal = open_journal(directory)
             facts, spots, _, used = infer_package(PACKAGE, FILES, Store(), journal)
             # Each inference records start, then end with entry store keeps.
             written = records(directory)
-            @test isempty(crashed(written)) && isnothing(last_crash(written)) && keys(finished_store(written)) == keys(used)
+            @test isempty(crashed(written)) && isempty(suspects(written)) && isempty(unfinished(written)) && keys(finished_store(written)) == keys(used)
             @test count(record -> !record.finished, written) == count(record -> record.finished, written)
             # Start without end is crash; next run gives that key blind spot and no inference.
             site = only(sites("scale"))
             key = entry_key(site.method, first(code.signature for code in TYPED if code.site.method === site.method))
-            record!(journal, Record(key, method_label(site.method), false, nothing))
+            record!(journal, start_record(key, method_label(site.method), true))
             close(journal.io)
-            crash = something(last_crash(records(directory)))
+            crash = only(unfinished(records(directory)))
             @test crash.key == key && crash.label == "InferenceCases.scale at InferenceCases.jl:$(line_of("scale"))"
             # Kill during write leaves torn record; reading drops it and keeps earlier records.
             whole = length(records(directory))
             open(io -> write(io, [reinterpret(UInt8, [1000]); zeros(UInt8, 10)]), journal_file(directory), "a")
-            @test length(records(directory)) == whole && something(last_crash(records(directory))).key == key
+            @test length(records(directory)) == whole && only(unfinished(records(directory))).key == key
             open(io -> write(io, UInt8[1, 2]), journal_file(directory), "a")
             @test length(records(directory)) == whole
             again = open_journal(directory)
-            @test again.crashed == Set([key])
+            @test again.crashed == Set([key]) && isempty(again.suspects)
             facts, spots, units, _ = infer_package(PACKAGE, FILES, Store(), again)
             close(again.io)
             @test only(spot.span for spot in spots if spot.cause == "inference crashed process") == site.span
             @test !any(code -> entry_key(code.site.method, code.signature) == key, units.typed)
+            # Open cut torn tail, so records of run after it stay readable.
+            @test length(records(directory)) > whole && crashed(records(directory)) == Set([key])
+        end
+        # Crash beside other inferences: next run infers each inference in flight alone; each finishes.
+        mktempdir() do directory
+            journal = open_journal(directory)
+            keys_in_flight = [entry_key(code.site.method, code.signature) for code in TYPED[1:2]]
+            foreach(key -> record!(journal, start_record(key, "in flight", false)), keys_in_flight)
+            close(journal.io)
+            crash = unfinished(records(directory))
+            @test [record.key for record in crash] == keys_in_flight && !any(record -> record.alone, crash)
+            again = open_journal(directory)
+            @test isempty(again.crashed) && again.suspects == Set(keys_in_flight)
+            _, spots, units, _ = infer_package(PACKAGE, FILES, Store(), again)
+            close(again.io)
+            written = records(directory)
+            @test !any(spot -> spot.cause == "inference crashed process", spots) && isempty(crashed(written)) && isempty(suspects(written))
+            @test all(key -> any(record -> record.key == key && !record.finished && record.alone, written[3:end]), keys_in_flight)
+            @test all(key -> any(code -> entry_key(code.site.method, code.signature) == key, units.typed), keys_in_flight)
         end
         # Stderr of inference goes to crash log; normal end copies it to stderr.
         mktempdir() do directory

@@ -179,9 +179,9 @@ function journaled_digest(journal::Union{Nothing, Journal}, specialized::Core.Me
     isnothing(journal) && return staged_digest(specialized)
     marked = "staged " * key
     marked in journal.crashed && return nothing
-    record!(journal, Record(marked, method_label(specialized.def::Method) * " generator", false, nothing))
+    record!(journal, start_record(marked, method_label(specialized.def::Method) * " generator", true))
     code = staged_digest(specialized)
-    record!(journal, Record(marked, "", true, nothing))
+    record!(journal, finish_record(marked, nothing))
     return code
 end
 
