@@ -1,0 +1,15 @@
+warning[push-loop]: loop builds `out` one `push!` at a time
+ --> bare.jl:9:9
+  |
+7 |     out = Int[]
+  |     ----------- starts empty here
+8 |     for i in span
+9 |         push!(out, 2i)
+  |         ^^^^^^^^^^^^^^ pushes once per iteration
+  |
+  = why: `push!` grows storage as loop runs; comprehension sizes result once and states it in one expression
+  = fix: replace loop with `Int[(2i) for i in span]` unless loop changes length of `span`; comprehension takes its length first and keeps its shape and axes   [manual]
+  = docs: corset explain push-loop
+  = note: warn from performance group, library preset
+  = note: opt out with `# corset: allow push-loop -- <reason>`
+
