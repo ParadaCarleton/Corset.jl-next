@@ -937,3 +937,12 @@ example = "`0.1 + 0.2 in Set([0.3])` and `haskey(Dict(0.0 => 1), -0.0)` are fals
 group = "correctness"
 stage = "inference"
 note = "`Set` and `Dict` compare keys with `isequal`: rounding error misses key, and `-0.0` misses `0.0` though `==` holds. Rust `f64` has no `Hash` or `Eq`, so `HashSet<f64>` does not compile. Sites: `in`, `haskey`, `getindex`, `get`, `get!`, `getkey`, `pop!` and `delete!` on `AbstractSet` or `AbstractDict` whose key infers to float, or tuple or `Complex` of floats. Run-time values decide miss: `possible`. Fix `manual`: integer or `Rational` keys, or keys rounded by one rule at insert and lookup."
+
+[[footgun]]
+id = 117
+area = "arrays"
+text = "Loop grows empty array one `push!` per iteration"
+example = "`out = Float64[]; for x in xs; push!(out, f(x)); end` → `out = Float64[f(x) for x in xs]`"
+group = "performance"
+stage = "syntax"
+note = "Statement before loop assigns `T[]`, `[]`, `Vector{T}()` or `Vector{T}(undef, 0)`; loop body is one push, under one `if` or after `&&` at most, with no early exit. Comprehension over source of known length allocates once and states result in one expression; filtered comprehension still grows, so filter case gains clarity only. Clippy `vec_init_then_push` and `same_item_push` cover narrower cases. Definite. Unfiltered comprehension takes source length first, and call, `getindex` or `convert` in loop can resize source. Fix `safe` for filter and for source of fixed length: never-rebound parameter typed `String` or tuple, range over bits numbers. Type name counts only when no package file binds its leftmost name; with `baremodule`, names Core does not export never count. Fix `manual` otherwise, and when comment sits in replaced code, closure or `try` can see old or partial array, comprehension would capture local bound twice (`Core.Box`), or array is global. Loop passes when comprehension would capture parameter typed `Type` or `Function`: closure compiles once per value."

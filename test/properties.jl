@@ -276,6 +276,8 @@ const EQUIVALENT = [
 ]
 """Rules whose `safe` fix changes meaning to fix definite bug inside method."""
 const BUG_FIXES = [Symbol("where-binding"), Symbol("world-age")]
+"""Rules whose `safe` fix rewrites code into other code with same result; differential run waits for execution harness."""
+const REWRITES = [Symbol("push-loop")]
 
 """Rules with `safe` fix in single-file UI positive cases; package cases are directories and need load."""
 function safe_rules()::Vector{Symbol}
@@ -287,7 +289,7 @@ end
 
 @testset "fix properties" begin
     @test count(fixable, STATEMENTS) >= 6 && count(fixable, EXPRESSIONS) >= 2
-    @test safe_rules() == sort!([EQUIVALENT; BUG_FIXES])
+    @test safe_rules() == sort!([EQUIVALENT; BUG_FIXES; REWRITES])
     same(left::String, right::String)::Bool = normalized(Meta.parseall(left)) == normalized(Meta.parseall(right))
     @test same("module M\n\"a\"\nend\n", "module M\nend\n") && same("for i in 1:2\n\"a\"\nend\n", "for i in 1:2\nend\n")
     @test same("while f()\n\"a\"\nend\n", "while f()\nend\n") && same("try\nf()\nfinally\n\"a\"\nend\n", "try\nf()\nfinally\nend\n")
