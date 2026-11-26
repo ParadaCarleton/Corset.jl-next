@@ -144,7 +144,7 @@ default RNG, since draw still touches `Task` state; `possible` when several argu
 function chosen_rng(accesses::AbstractVector{Access}, positions::AbstractVector{<:Integer})::Vector{Access}
     isempty(positions) && return accesses
     moved(access::Access, position::Integer)::Access =
-        Access(Place.At(Root.Parameter(position), NO_STEPS), false, EffectKind.default_rng, length(positions) == 1 ? access.confidence : Confidence.possible, access.cause)
+        Access(Place.At(Root.Parameter(position), NO_STEPS), false, EffectKind.default_rng, length(positions) == 1 ? access.confidence : Confidence.possible, access.callback, access.cause)
     return [found for access in accesses for found in (access.kind == EffectKind.default_rng ? [moved(access, position) for position in positions] : [access])]
 end
 

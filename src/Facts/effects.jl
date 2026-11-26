@@ -194,7 +194,10 @@ function rng_positions(method::Method)::Vector{Int}
     parameters, found = tuple_parameters(method.sig), Int[]
     for position in 1:(length(parameters) - 1)
         declared = Base.unwrapva(parameters[position + 1])
-        declared isa TypeVar && (declared = declared.ub)
+        # Bound of type variable can be type variable (`S <: T`): follow bounds to type.
+        while declared isa TypeVar
+            declared = declared.ub
+        end
         takes_rng(declared) && push!(found, position)
     end
     return found
