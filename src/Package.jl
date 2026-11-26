@@ -133,6 +133,39 @@ function method_site(method::Method, file::SyntaxFile, lines::Lines)::MethodSite
     return MethodSite(method, file, nothing, Span(file.path, start, start, Precision.line))
 end
 
+"""
+Keyword body that wrapper `method` calls, or `nothing` for method without keywords. Lowering ends wrapper with call
+`body(keywords..., function, arguments...)`; wrapper for omitted positional default (`f(a) = f(a, 1)`) calls its own
+function instead. Body method alone has keyword slots (`nkw`).
+
+Plain method that overwrites wrapper (`f(x; k) = …; f(x) = …`) keeps keyword names of old sorter (`Base.kwarg_decl`),
+but calls no body: `nothing`. `method-overwrite` reports that definition. Tests in `keyword bodies` pin lowering shapes.
+"""
+function keyword_body(method::Method)::Union{Nothing, Method}
+    keywords = Base.kwarg_decl(method)
+    isempty(keywords) && return nothing
+    code = Base.uncompressed_ast(method).code
+    call = length(code) >= 2 ? code[end - 1] : nothing
+    Meta.isexpr(call, :call) || return nothing
+    # Slurped positional arguments forward through `Core._apply_iterate(iterate, body, …)`.
+    operand = lowered_value(code, call.args[1]) === Core._apply_iterate ? call.args[3] : call.args[1]
+    # Wrapper for omitted positional default calls own function through first slot: `(_1)(_2, 1)`.
+    operand == Core.SlotNumber(1) && return nothing
+    # Inner constructor body is closure instance in quote.
+    statement = operand isa Core.SSAValue ? code[operand.id] : operand
+    callee = statement isa QuoteNode ? statement.value : lowered_value(code, operand)
+    callee isa Base.rewrap_unionall(Facts.tuple_parameters(method.sig)[1], method.sig) && return nothing
+    count = length(keywords) + length(Facts.tuple_parameters(method.sig)) + 1
+    bodies = isnothing(callee) ? Method[] : [body for body in methods(callee) if body.nkw > 0 && length(Facts.tuple_parameters(body.sig)) == count]
+    length(bodies) <= 1 || error("keyword method $method calls $(length(bodies)) keyword bodies of $count arguments")
+    return isempty(bodies) ? nothing : only(bodies)
+end
+
+"""Sites of keyword bodies of method `sites`: each body at site of its wrapper, since both come from one definition."""
+keyword_body_sites(sites::AbstractVector{MethodSite})::Vector{MethodSite} = unique!(
+    site -> site.method, [MethodSite(body, site.file, site.node, site.span) for site in sites for body in (keyword_body(site.method),) if !isnothing(body)]
+)
+
 """Methods of package `modules`, generated methods (closures, keyword bodies) included."""
 function module_methods(modules::AbstractVector{Module})::Vector{Method}
     package = Set(modules)
@@ -547,7 +580,10 @@ function package_facts(modules::AbstractVector{Module}, files::AbstractVector{Sy
     # Argument uses follow closures and keyword bodies, which have no site; `probed` reads site methods only.
     bodies = lowered_bodies(methods)
     sited = Base.IdSet{Method}(site.method for site in sites)
-    return PackageFacts(modules, public_values(modules), sites, overwrites(sites), struct_sites(sites, files, modules), probed(filter(body -> first(body) in sited, bodies)), argument_uses(bodies, Set(modules)))
+    return PackageFacts(
+        modules, public_values(modules), sites, keyword_body_sites(sites), overwrites(sites), struct_sites(sites, files, modules), probed(filter(body -> first(body) in sited, bodies)),
+        argument_uses(bodies, Set(modules)),
+    )
 end
 
 end

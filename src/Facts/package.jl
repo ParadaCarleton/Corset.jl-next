@@ -45,11 +45,14 @@ public names reach, and sites of methods and structs package modules define in a
 `methods` keeps methods later definitions replaced; `overwrites` pairs each (earlier, later) by same signature.
 `probed`: functions, types and callable objects package methods test for methods; new method changes what code does.
 `uses`: arguments of package methods, by position, whose uses need declared container type (`ArgumentUse`).
+`keyword_bodies`: keyword body (`#f#1`) of each method in `methods` with keywords, at site of its definition. Code of
+method with keywords runs there; `methods` keeps wrapper that fills defaults.
 """
 struct PackageFacts
     modules::Vector{Module}
     public::Base.IdSet{Any}
     methods::Vector{MethodSite}
+    keyword_bodies::Vector{MethodSite}
     overwrites::Vector{Tuple{MethodSite, MethodSite}}
     structs::Vector{StructSite}
     probed::Base.IdSet{Any}

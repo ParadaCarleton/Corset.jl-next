@@ -2,7 +2,7 @@ using Test: @test, @testset, @test_throws
 using Corset: Corset
 using Corset.Facts: InferenceFacts, Precision, BlindSpot, SyntaxFile, Role, PackageFacts, MethodSite, FailingCall, Confidence, call_arguments, source
 using Corset.StandIns: FloatStandIn, IntStandIn, ArrayStandIn, DenseStandIn, FunctionStandIn, model_type
-using Corset.Package: source_name
+using Corset.Package: source_name, keyword_body
 using Corset.Signatures: LIMIT
 using Corset.Inference:
     TypedCode, infer_package, infer, mappings, statement_nodes, broadcast_node, callee_name, spells, untyped, throw_helper, callable, callee_text,
@@ -24,6 +24,16 @@ boxed_call(x::Float64) = Ref(sin).x(x)
 argument_call(holder::Base.RefValue{typeof(sin)}, x::Float64) = holder.x(x)
 computed_call(name::Symbol, x::Float64) = getproperty(Base, name)(x)
 
+# Keyword body: full wrapper calls it; wrapper for omitted default and method without keywords have none.
+both(a, b = 1; k::Int = 2) = a + b + k
+summed(x) = sum(x)
+struct Scaler end
+(::Scaler)(x::Int; k::Int = 1) = x * k
+struct Wrapped
+    x::Int
+    Wrapped(x::Int; scale::Int = 1) = new(x * scale)
+end
+
 """C symbol address and length: `cglobal` keeps library tuple as nested call in typed code."""
 symbol_and_length(x::AbstractVector) = (cglobal((:strlen, "libc"), Cint), length(x))
 
@@ -42,6 +52,16 @@ end
 
 const MODULE, FILES, PACKAGE, FACTS, SPOTS, TYPED = case_facts()
 const FILE = only(file for file in FILES if basename(file.path) == "InferenceCases.jl")
+
+"""Plain method overwrites keyword wrapper: on later line, with tail call, on same line. Keyword sorter of old definition stays."""
+module Overwritten
+    label(count::Int; plural::Bool = true) = plural ? "items" : "item"
+    label(count::Int) = "items"
+    tail(x::Int; k::Int = 1) = x + k
+    tail(x::Int) = string(x)
+    # One line: sorter and replacement method share file and line.
+    include_string(@__MODULE__, "same(x::Int; k::Int = 1) = x + k; same(x::Int) = x")
+end
 
 """Code that tests redefine, as edit and reload would: struct `Point`, methods `f` and `leveled`. `Partial` leaves its field undefined."""
 module Redefined
@@ -76,7 +96,7 @@ line(file::SyntaxFile, byte::Int)::Int = count(==(UInt8('\n')), codeunits(file.t
 """Lines of blind spots with `cause`."""
 spot_lines(cause::String)::Vector{Int} = sort!([line(FILE, spot.span.first_byte) for spot in SPOTS if spot.cause == cause])
 
-"""Method sites of methods with source name `name`; keyword body included."""
+"""Method sites of methods with source name `name`; keyword bodies sit in `PACKAGE.keyword_bodies`."""
 sites(name::String)::Vector{MethodSite} = [site for site in PACKAGE.methods if source_name(site.method) == name]
 
 """Line where definition of function `name` starts in fixture."""
@@ -108,6 +128,10 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         # Literal `2` is `Int`, which integer stand-in loses to, as `Int32` does.
         @test typed("helper", IntStandIn).result == Int
         @test typed("keyed", Int, typeof(MODULE.keyed), FloatStandIn).result == FloatStandIn
+        # Typed keyword: body units take stand-ins; call with default `Int` stays inside wrapper unit.
+        bodies = Set(site.method for site in PACKAGE.keyword_bodies)
+        weights = Set(Base.unwrap_unionall(code.signature).parameters[2] for code in TYPED if source_name(code.site.method) == "weighted" && code.site.method in bodies)
+        @test weights == Set([IntStandIn, FloatStandIn])
         # Method for omitted default value calls full method with default.
         @test typed("defaulted", FloatStandIn, Int).result == FloatStandIn
         @test typed("assigned", FloatStandIn).result == FloatStandIn
@@ -127,6 +151,20 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         # Own signatures come before reached ones.
         @test findfirst(code -> code.site.method.name === :helper, TYPED) > findfirst(code -> code.site.method.name === :caller, TYPED)
     end
+    @testset "keyword bodies" begin
+        @test source_name(something(keyword_body(which(both, Tuple{Any, Any})))) == "both"
+        @test isnothing(keyword_body(which(both, Tuple{Any}))) && isnothing(keyword_body(only(methods(summed))))
+        # Callable object body has name `#_#1`; inner constructor calls closure instance.
+        @test !isnothing(keyword_body(only(methods(Scaler())))) && !isnothing(keyword_body(which(Wrapped, Tuple{Int})))
+        # Overwritten wrapper: plain method keeps keyword names of old sorter, but forwards to no body.
+        @test !isempty(Base.kwarg_decl(which(Overwritten.label, Tuple{Int})))
+        @test isnothing(keyword_body(which(Overwritten.label, Tuple{Int}))) && isnothing(keyword_body(which(Overwritten.tail, Tuple{Int})))
+        @test isnothing(keyword_body(which(Overwritten.same, Tuple{Int})))
+        # Body takes site of its definition.
+        body = only(site for site in PACKAGE.keyword_bodies if source_name(site.method) == "weighted")
+        @test body.method !== only(sites("weighted")).method && body.span == only(sites("weighted")).span && !isnothing(body.node)
+        @test isdisjoint(Set(site.method for site in PACKAGE.methods), Set(site.method for site in PACKAGE.keyword_bodies))
+    end
     @testset "definition sites" begin
         # Infix definition and callable object method once got no definition node.
         @test !isnothing(only(sites("⊕")).node) && typed("⊕", FloatStandIn, FloatStandIn).result == FloatStandIn
@@ -134,11 +172,14 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
     end
     @testset "untyped arguments" begin
         # Typed keyword leaves positional `x` untyped.
-        @test untyped(only(sites("hk"))) && !untyped(only(sites("keyed"))) && !untyped(only(sites("slurpy")))
+        @test untyped(only(sites("hk")), false) && !untyped(only(sites("keyed")), false) && !untyped(only(sites("slurpy")), false)
+        # Keyword body counts keywords: untyped `factor` and slurped `options` leave body untyped.
+        body(name::String)::MethodSite = only(site for site in PACKAGE.keyword_bodies if source_name(site.method) == name)
+        @test untyped(body("hk"), true) && untyped(body("keyed"), true) && untyped(body("slurpy"), true) && !untyped(body("weighted"), true)
         # Evaluator that macro adds at definition line takes more arguments than definition, so it gets line site.
         @test sort!([isnothing(site.node) for site in sites("evaluated")]) == [false, true]
         # Method for omitted default leaves out untyped `y`.
-        @test sort!(untyped.(sites("defaulted"))) == [false, true]
+        @test sort!(untyped.(sites("defaulted"), false)) == [false, true]
     end
     @testset "callee check" begin
         file = Corset.Syntax.parse_file("calls.jl", "f(a, b)\na + b + c\nf(a; k = 1)\n-a\nf[a]\n", Role.package)
@@ -355,7 +396,8 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         whole(name::String)::Bool = any(startswith("piracy $(only(file.path for file in FILES if basename(file.path) == name)) "), parts)
         # Pirate method makes its file count whole; macro output counts through code of methods that hold it.
         @test whole("callees.jl") && !whole("macros.jl") && !whole("callers.jl")
-        @test count(startswith("method "), parts) == length(PACKAGE.methods) && !any(contains('#'), parts)
+        @test count(startswith("method "), parts) == length(PACKAGE.methods) + length(PACKAGE.keyword_bodies)
+        @test !any(contains('#'), parts)
         @test "global $MODULE.counter $(digest(Int))" in parts && "constant $MODULE.declared $MODULE.declared" in parts
         @test any(startswith("constant $MODULE.unit "), parts) && allunique(parts)
         @test constant_text(MODULE.Circle) != constant_text(MODULE.Wrap) && constant_text(+) == "Base.+"
