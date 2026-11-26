@@ -15,6 +15,9 @@ report(io::IO, x::Int) = println(io, x)
 # RNG advance needs no `!`.
 draw(rng::AbstractRNG) = rand(rng)
 
+# Callable argument owns its writes, as for Base `map` and `foreach`.
+feed(push_to::Base.Fix1{typeof(push!), Vector{Int}}, x::Int) = (push_to(x); nothing)
+
 # Cache: non-public global that only `square` touches.
 const SQUARES = Dict{Int, Int}()
 square(n::Int) = get!(() -> n^2, SQUARES, n)

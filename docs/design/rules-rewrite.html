@@ -985,7 +985,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <p>Facts keep every effect with its kind. Rules apply exemptions.</p>
 <ul>
 <li>Kinds: memory write, IO, default RNG, RNG argument, task-local state, <code>ScopedValue</code> read, lock and other synchronization, lazy init, iteration start.</li>
-<li><code>bang-convention</code> exempts IO, RNG and lazy init, macros (own expression they rewrite) and <code>iterate</code> state writes (loop owns state). <code>unused-call</code> counts every kind. <code>hidden-input</code> reads default RNG, task-local state, <code>ScopedValue</code> and mutable globals.</li>
+<li><code>bang-convention</code> exempts IO, RNG and lazy init, macros (own expression they rewrite), <code>iterate</code> state writes (loop owns state) and callable argument writes (<code>map</code>, <code>foreach</code>). <code>unused-call</code> counts every kind. <code>hidden-input</code> reads default RNG, task-local state, <code>ScopedValue</code> and mutable globals.</li>
 <li>Kind comes from types along place path, root first: first <code>IO</code> gives IO, <code>AbstractRNG</code> gives RNG argument.</li>
 <li>Lock, <code>Condition</code> and <code>Semaphore</code> on path give synchronization. Path without such type gives memory write.</li>
 <li>Package <code>setfieldonce!</code> and package caches follow memo-cache rule above: cheap proof or opt-out.</li>
