@@ -131,14 +131,16 @@ function untyped_argument(node::SyntaxNode)::Bool
     return kind_name(node) == "tuple" || (kind_name(node) == "Identifier" && identifier_name(node) != "_")
 end
 
-"""
-Whether positional argument `name` of method of `site` has annotation `::Any` in source. Keyword bodies get no
-stand-in signatures, so keyword annotations never count (`provenance`).
-"""
+"""Argument nodes of signature `parts`: positional ones, then each keyword of keyword group."""
+argument_nodes(parts::@NamedTuple{call::SyntaxNode, arguments::Vector{SyntaxNode}, typed::Bool})::Vector{SyntaxNode} = [
+    argument for node in parts.arguments for argument in (kind_name(node) == "parameters" ? children_of(node) : [node])
+]
+
+"""Whether argument `name` of method of `site` has annotation `::Any` in source; keyword of keyword body included."""
 function explicit_any(site::MethodSite, name::Symbol)::Bool
     parts = isnothing(site.node) ? nothing : signature(site.node)
     isnothing(parts) && return false
-    return any(node -> annotated_any(site, node, string(name)), parts.arguments)
+    return any(node -> annotated_any(site, node, string(name)), argument_nodes(parts))
 end
 
 """Whether positional argument `node` of signature of `site` declares argument `name` as `::Any`."""
@@ -151,12 +153,13 @@ function annotated_any(site::MethodSite, node::SyntaxNode, name::String)::Bool
 end
 
 """
-Whether method of `site` has positional argument without type in source. Explicit `::Any` opts out on purpose, so it
-counts as typed. Site without definition node counts as typed. Package stage leaves out keyword bodies.
+Whether method of `site` has argument without type in source. Explicit `::Any` opts out on purpose, so it counts as
+typed. Site without definition node counts as typed. Keyword body (`body`) takes all positional arguments and keywords.
 """
-function untyped(site::MethodSite)::Bool
+function untyped(site::MethodSite, body::Bool)::Bool
     parts = isnothing(site.node) ? nothing : signature(site.node)
     isnothing(parts) && return false
+    body && return any(untyped_argument, argument_nodes(parts))
     # Keyword group comes last, and method for omitted default values declares fewer arguments, so slice leaves out both.
     return any(untyped_argument, @view(parts.arguments[1:(length(Facts.tuple_parameters(site.method.sig)) - 1)]))
 end
@@ -684,7 +687,7 @@ whose signature names no package type (piracy: any call can reach it, and walk s
 """
 function shape(package::PackageFacts)::Vector{String}
     modules, named, parts = Set(package.modules), IdDict{Any, Bool}(), String[]
-    for site in package.methods
+    for site in Iterators.flatten((package.methods, package.keyword_bodies))
         push!(parts, "method $(site.file.path) $(digest(site.method.sig))")
         names_package!(named, site.method.sig, modules) || push!(parts, "piracy $(site.file.path) $(bytes2hex(sha256(site.file.text)))")
     end
@@ -704,7 +707,7 @@ end
 """
 Run of inference stage: facts, blind spots, units (typed code of signatures it inferred, and units store served), and
 store of entries it used.
-Signatures: stand-in signatures of package methods in `files`, then those their calls reach. Blind spots: signatures over
+Signatures: stand-in signatures of package methods in `files` and their keyword bodies, then those their calls reach. Blind spots: signatures over
 `LIMIT`, argument without stand-in, inference that gives no code, untyped method no call reaches, call that fails on
 stand-in only. `store` serves entries whose files are unchanged; `nothing` turns store off and gives no store.
 `journal` records each inference; key that crashed earlier run gets blind spot and no inference. Journal needs store.
@@ -717,8 +720,10 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
     pending, skipped = Tuple{MethodSite, Type, Bool}[], MethodSite[]
     # Methods with signature inference skipped or failed, or code that tests type: results miss some argument types.
     incomplete = Set{Method}()
-    for site in package.methods
-        untyped(site) && (push!(skipped, site); continue)
+    # Keyword body gets stand-ins for declared keyword types; wrapper passes default values only.
+    bodies = Set(site.method for site in package.keyword_bodies)
+    for site in Iterators.flatten((package.methods, package.keyword_bodies))
+        untyped(site, site.method in bodies) && (push!(skipped, site); continue)
         found = method_signatures(site.method, structs)
         found.over_limit && (push!(spots, BlindSpot("signatures over limit", site.span)); push!(incomplete, site.method))
         # Explicit `::Any` and unbounded type variable hide nothing compiler knows, so only narrower declared types count.
@@ -727,7 +732,7 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
     end
     by_path = Dict(file.path => file for file in files)
     lines = Dict(file.path => Package.Lines(file) for file in files)
-    sites = Dict(site.method => site for site in package.methods)
+    sites = Dict(site.method => site for site in Iterators.flatten((package.methods, package.keyword_bodies)))
     hashes = Dict(file.path => bytes2hex(sha256(file.text)) for file in files)
     used, modules, named, helpers = isnothing(store) ? nothing : Store(), Set(package.modules), IdDict{Any, Bool}(), IdDict{Any, Tuple{Bool, Vector{Any}}}()
     index, ids = isnothing(store) ? (Dict{String, Method}(), IdDict{Method, String}()) : method_index(by_path)

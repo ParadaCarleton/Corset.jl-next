@@ -50,6 +50,8 @@ defaulted(x::Real, y = 2) = x + y
 ignored(_, x::Real) = x
 keyed(x::Real; factor = 2) = x * factor
 hk(x; k::Int = 1) = x + k
+# Typed keyword: body gets stand-ins for `weight`, wrapper passes default `Int` only.
+weighted(x::Float64; weight::Real = 1) = x * weight
 slurpy(x::Real; options...) = x
 nested(x::Real) = abs(abs(x)) + abs(x)
 text(s::AbstractString) = s
