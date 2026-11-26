@@ -1888,6 +1888,12 @@ writes_in_doubt(summary::Summary, position::Int)::Bool = any(kind == EffectKind.
 const LEVEL = ScopedValue(1)
 level() = LEVEL[]
 
+"""Package scoped value whose default writes object in code: `ScopedValues.get` runs package code."""
+struct Counted <: Base.ScopedValues.AbstractScopedValue{Int} end
+Base.ScopedValues.hasdefault(::Counted) = true
+@eval Base.ScopedValues.getdefault(::Counted) = (push!($(Int[]), 1); 1)
+counted_level() = Counted()[]
+
 hold!(l::ReentrantLock) = lock(l)
 matches(r::Regex, s::String) = occursin(r, s)
 text_of(s::LazyString) = String(s)
@@ -1968,8 +1974,12 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     # Audited method covers its root only: global read inside it keeps own kind.
     @test all(kind != EffectKind.task_local for (place, _, kind) in keys(remembered.reads) if root_of(place) != elsewhere)
     @test (Place.At(elsewhere, Step.Type[]), false, EffectKind.scoped_read) in keys(summary_of(level).reads)
+    # Lookup in scope dictionary is scoped read too: no memory read on `Elsewhere`.
+    @test kinds_at(summary_of(level).reads, elsewhere) == Set([EffectKind.scoped_read])
     # Lookup passes constant `false` to copy-on-write flag of `HAMT.path`, so read writes nothing.
     @test isempty(summary_of(level).writes)
+    # Audit holds for `ScopedValue` only: write of package default keeps memory kind.
+    @test kinds_at(summary_of(counted_level).writes, elsewhere) == Set([EffectKind.memory])
     # Audited table: lazy compile, lazy text, PCRE contexts, logging state, `BigFloat` pointer repair.
     matched = summary_of(matches, Regex, String).writes
     @test matched[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT

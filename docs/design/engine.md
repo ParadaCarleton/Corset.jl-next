@@ -223,10 +223,11 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
   - Bare `rand()` beside `rand(rng)`, or builtin access to `Task`, keeps default RNG.
   - Callee that gets argument and also draws default RNG: package callee verdict keeps it, so `hidden-input` reports callee.
   - Library callee that gets argument and draws default RNG: caller verdict misses it. Fix needs default RNG provenance in summaries.
-- `ScopedValue` read: read of `ScopedValue` object or of current task scope.
+- `ScopedValue` read: read of `ScopedValue` object or of current task scope, its dictionary included (`ScopedValues.get` of `ScopedValue`; package subtype runs own default).
 - Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.
 - Lazy init and audited internal state come from audited table of Base types and methods only:
   - Table keys holder type and field, global binding, or method. Listed entry sets kind before path types.
+  - Method entry can require argument types: audit must not cover package code that method runs.
   - Audited field sets kind of every place below it: JIT compile writes code below `Regex` field.
   - Audited global sets kind only in methods of its own package. Caller that writes `Dict` from `parsed_toml` writes memory.
   - `Regex` compile cache, `LazyString`; Base logging and PCRE contexts.

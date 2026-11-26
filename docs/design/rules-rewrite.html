@@ -1279,11 +1279,12 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>Library callee that gets argument and draws default RNG: caller verdict misses it. Fix needs default RNG provenance in summaries.</li>
 </ul>
 </li>
-<li><code>ScopedValue</code> read: read of <code>ScopedValue</code> object or of current task scope.</li>
+<li><code>ScopedValue</code> read: read of <code>ScopedValue</code> object or of current task scope, its dictionary included (<code>ScopedValues.get</code> of <code>ScopedValue</code>; package subtype runs own default).</li>
 <li>Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.</li>
 <li>Lazy init and audited internal state come from audited table of Base types and methods only:
 <ul>
 <li>Table keys holder type and field, global binding, or method. Listed entry sets kind before path types.</li>
+<li>Method entry can require argument types: audit must not cover package code that method runs.</li>
 <li>Audited field sets kind of every place below it: JIT compile writes code below <code>Regex</code> field.</li>
 <li>Audited global sets kind only in methods of its own package. Caller that writes <code>Dict</code> from <code>parsed_toml</code> writes memory.</li>
 <li><code>Regex</code> compile cache, <code>LazyString</code>; Base logging and PCRE contexts.</li>
