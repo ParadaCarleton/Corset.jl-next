@@ -111,12 +111,11 @@ function path_kind(ir::CC.IRCode, method::Method, place::Place.Type)::EffectKind
         Place.At(root, steps) => (root, steps)
         Place.Deep(root) => (root, Step.Type[])
     end
-    binding = @match root begin
-        Root.Global(binding) => binding
+    global_kind = @match root begin
+        Root.Global(binding) => Base.moduleroot(method.module) === Base.moduleroot(binding.mod) ? get(AUDITED_GLOBALS, binding, nothing) : nothing
         _ => nothing
     end
-    owned = !isnothing(binding) && Base.moduleroot(method.module) === Base.moduleroot(binding.mod)
-    owned && haskey(AUDITED_GLOBALS, binding) && return AUDITED_GLOBALS[binding]
+    isnothing(global_kind) || return global_kind
     type = root_type(ir, root)
     for step in steps
         found = special_kind(type)
