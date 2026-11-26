@@ -15,7 +15,7 @@ const AUDITED_FIELDS = Dict{Tuple{DataType, Symbol}, EffectKind.T}(
 """
 Audited internal state by global binding, for methods of its own package (`path_kind`): Base logging state and PCRE
 match contexts. IO bookkeeping: temporary path cleanup at exit, libuv handles kept alive. Lazy caches: parsed TOML,
-loading, docstring modules, stack trace colors.
+loading, docstring modules, stack trace colors. Synchronization: task queues that `wait`, `yield` and `schedule` change.
 """
 const AUDITED_GLOBALS = Dict{GlobalRef, EffectKind.T}(
     GlobalRef(Base.CoreLogging, :_min_enabled_level) => EffectKind.audited,
@@ -29,6 +29,8 @@ const AUDITED_GLOBALS = Dict{GlobalRef, EffectKind.T}(
     GlobalRef(Base.Docs, :modules) => EffectKind.lazy_init,
     GlobalRef(Base, :STACKTRACE_FIXEDCOLORS) => EffectKind.lazy_init,
     GlobalRef(Base, :STACKTRACE_MODULECOLORS) => EffectKind.lazy_init,
+    GlobalRef(Base, :Workqueues) => EffectKind.synchronization,
+    GlobalRef(Base.Partr, :heaps) => EffectKind.synchronization,
 )
 
 """
