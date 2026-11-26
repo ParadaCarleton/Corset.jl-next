@@ -1379,7 +1379,7 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>Effects run infers again each unit whose entry has no record. Inference run keeps records of stored entries.</li>
 <li>Stored unit that fresh unit calls gets unit body from native inference and no first caller, as in cold run.</li>
 <li>Stored units start no walk, so first caller of library instance can differ from cold run. Only recursion limit reads call chain.</li>
-<li>Budget: with warm library cache, effects stage takes at most <code>inference</code> stage time.</li>
+<li>Effects stage has no run-time budget: long runs are acceptable. Work limit bounds each flow only.</li>
 <li>Corpus cost: history, &quot;Engine cost&quot; and &quot;Engine freeze&quot;.</li>
 </ul>
 </div><div class="decision"><h3>Facts</h3>

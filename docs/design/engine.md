@@ -321,7 +321,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Effects run infers again each unit whose entry has no record. Inference run keeps records of stored entries.
 - Stored unit that fresh unit calls gets unit body from native inference and no first caller, as in cold run.
 - Stored units start no walk, so first caller of library instance can differ from cold run. Only recursion limit reads call chain.
-- Budget: with warm library cache, effects stage takes at most `inference` stage time.
+- Effects stage has no run-time budget: long runs are acceptable. Work limit bounds each flow only.
 - Corpus cost: history, "Engine cost" and "Engine freeze".
 
 ### Facts
