@@ -576,11 +576,13 @@ const BUDGET = "effects budget"
 
 """
 Summary of `variant` with code, from current callee summaries of `run` (`variant_flow`), and variants whose summaries
-rounds read. `flush` resolves callback records here. Flow past budget gives open summary with cause `BUDGET`.
+rounds read. `flush` resolves callback records here. Flow past budget gives open summary with cause `BUDGET`; variant
+keeps it for whole run, so rerun in call cycle runs no flow (`root_calls!` too).
 """
 function variant_summary!(run::Run, variant::Variant, flush::Bool)::Tuple{Summary, Set{Variant}}
-    flow, callees = variant_flow(run, variant, flush, false)
     method = first(variant).def::Method
+    variant in run.over_budget && return open_summary(Int(method.nargs), BUDGET), Set{Variant}()
+    flow, callees = variant_flow(run, variant, flush, false)
     over_budget(flow) || return summarize!(flow, method, callees), callees.read
     push!(run.over_budget, variant)
     return open_summary(Int(method.nargs), BUDGET), callees.read
