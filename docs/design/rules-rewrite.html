@@ -1285,6 +1285,7 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <ul>
 <li>Table keys holder type and field, global binding, or method. Listed entry sets kind before path types.</li>
 <li>Method entry can require argument types: audit must not cover package code that method runs.</li>
+<li>Method entry lists kinds it takes over, mostly memory. <code>seed!</code> turns seed record bookkeeping into default RNG write.</li>
 <li>Audited field sets kind of every place below it: JIT compile writes code below <code>Regex</code> field.</li>
 <li>Audited global sets kind only in methods of its own package. Caller that writes <code>Dict</code> from <code>parsed_toml</code> writes memory.</li>
 <li><code>Regex</code> compile cache, <code>LazyString</code>; Base logging and PCRE contexts.</li>

@@ -1832,6 +1832,10 @@ roll(rng::Xoshiro) = rand(rng)
 roll_open(rng::AbstractRNG) = rand(rng)
 shuffle_open!(rng::AbstractRNG, items::Vector{Int}) = Random.shuffle!(rng, items)
 roll_default() = rand()
+"""Reseed of default RNG: `seed!` also copies new state into seed record in task storage."""
+reseed!()::Nothing = (Random.seed!(); nothing)
+"""Reseed with package integer seed: hash of seed runs package code, so audit does not cover it."""
+reseed_with!(seed::Integer)::Nothing = (Random.seed!(seed); nothing)
 remember!(x::Int) = task_local_storage(:effects_test, x)
 
 """Sets `v` as result of current task, then pushes into result of task from task storage: maybe `v`."""
@@ -1954,6 +1958,11 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     # Variants of `getproperty(::Task, ::Symbol)` for RNG fields drop its other branches: draw writes nothing else.
     @test rolled_writes == Dict((Place.At(elsewhere, Step.Type[]), false, EffectKind.default_rng) => NO_DOUBT)
     @test EffectKind.default_rng in kinds_at(rolled.reads, elsewhere)
+    # Seed record copy and task storage lookup are default RNG state: reseed writes default RNG, nothing else.
+    @test doubts(summary_of(reseed!).writes) == Dict((Place.At(elsewhere, Step.Type[]), false, EffectKind.default_rng) => NO_DOUBT)
+    @test doubts(summary_of(reseed_with!, Int).writes) == doubts(summary_of(reseed!).writes)
+    # Audit needs bits integer seed: other seed keeps memory kinds.
+    @test EffectKind.memory in kinds_at(summary_of(reseed_with!, Integer).writes, elsewhere)
     # Unknown object merges every outside object: vector stored into it stays in doubt when other task loads it.
     @test level_of(doubts(summary_of(other_result!, Vector{Int}).writes)[top(2)]) == Level.code
     # Callee object outside caller places may be any object caller stored outside: result and callee write alike.
