@@ -421,6 +421,8 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test any(startswith("constant $MODULE.unit "), parts) && allunique(parts)
         @test constant_text(MODULE.Circle) != constant_text(MODULE.Wrap) && constant_text(+) == "Base.+"
         @test constant_text(Union{Int, String}) == digest(Union{Int, String}) && constant_text(Int) != constant_text(Int32)
+        # `Vararg` tuple type has no field count, so layout reads parameters only.
+        @test constant_text(Tuple{Vararg{Int}}) != constant_text(Tuple{Vararg{Float64}}) != constant_text(Tuple{Int, Vararg{Float64}}) != constant_text(NTuple)
         @test constant_text(1) != constant_text(2) && constant_text("a") != constant_text("b") && constant_text((:a,)) != constant_text((:b,))
         @test constant_text(MODULE.fast) != constant_text(MODULE.slow) && constant_text((1, ("a", 'b'))) != constant_text((1, ("a", 'c')))
         # Value of other type counts by type: run can change mutable value.
