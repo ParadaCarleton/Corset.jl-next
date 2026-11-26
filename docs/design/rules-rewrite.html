@@ -1164,8 +1164,12 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Symbols: every MPFR and GMP function that Base and SpecialFunctions call, plus five numeric extras. The whole header holds about 800 functions; each one needs vetting for global state.</li>
 <li>Hand entries (<code>calls.jl</code>) cover variadic functions and pointer results. <code>jl_get_current_task</code> returns <code>unknown</code> without doubt. Left open: functions that write C global state (<code>mpfr_set_emax</code>, <code>mpfr_set_emin</code>, <code>mpfr_clear_flags</code>, GMP allocator hooks).</li>
 <li>PCRE2 entries cover functions that Base regex code calls, by PCRE2 API manual. Match writes match data and JIT stack of match context.</li>
-<li>No prefix rule: unknown <code>mpfr_</code> or <code>__gmp</code> name stays open, because wrong entry gives false definite write.</li>
-<li>CI lacks the headers. The generator does not run there; committed file is the source of truth. Test compares it with hand classification.</li>
+<li>BLAS and LAPACK entries come from <code>\param</code> role comments of Reference-LAPACK source: <code>[out]</code> written, <code>[in]</code> read, <code>[in,out]</code> both. Generator: <code>gen/foreign/blas_lapack.jl</code>; output: <code>src/Effects/engine/foreign_blas_lapack.jl</code>.</li>
+<li>Symbols: every BLAS and LAPACK routine that LinearAlgebra calls. <code>[in]</code> argument that routine modifies and restores (<code>A</code> of <code>?ormrz</code>) counts as written.</li>
+<li>Hand entries cover CBLAS dot products and <code>?axpby</code>, which Reference-LAPACK lacks. <code>lbt_</code> configuration of libblastrampoline stays open.</li>
+<li>BLAS entry applies only to call into libblastrampoline or OpenBLAS, by string or constant global. Same name in other library stays open.</li>
+<li>No prefix rule: unknown <code>mpfr_</code> or <code>__gmp</code> name stays open, because wrong entry gives false definite write. Call with fewer arguments than entry names stays open too: same name, other library.</li>
+<li>CI lacks the headers and LAPACK source. Generators do not run there; committed files are the source of truth. Tests compare them with hand classification.</li>
 </ul>
 </li>
 <li>Static call (one method matches, or <code>Core.invoke</code> with constant selector): callee summary. No method matches: call throws, so code after it is dead.
