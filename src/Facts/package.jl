@@ -19,15 +19,12 @@ struct StructSite
 end
 
 """
-Use of package method argument that needs declared container type (`package` stage fact): body changes size or key set
-of argument (`resized`) or of element `getindex` reads from it (`elements_resized`), or stores argument into struct field
-of type in `stored`. Use is direct, through closure that captures argument, or through argument of package callee.
-Unknown callee or position (open callee, splat, vararg, keyword value) gives every resize. Blind spot: argument that
-value holds (tuple, named tuple, array, `Pair`, `Ref`) and function argument that other call runs.
+Use of package method argument that needs declared container type (`package` stage fact): body stores argument into
+struct field of type in `stored`. Use is direct, through closure that captures argument, or through argument of package
+callee. Blind spot: open callee, splat, vararg and keyword value; element of argument; argument that value holds (tuple,
+named tuple, array, `Pair`, `Ref`); function argument that other call runs.
 """
 struct ArgumentUse
-    resized::Bool
-    elements_resized::Bool
     stored::Vector{Any}
 end
 
