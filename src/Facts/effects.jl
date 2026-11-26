@@ -189,6 +189,17 @@ end
 """Whether argument of declared `type` can hold random number generator; `Any` counts for none."""
 takes_rng(@nospecialize(type::Any))::Bool = type !== Any && typeintersect(type, AbstractRNG) !== Union{}
 
+"""Positions of arguments of `method` (1 is first after callee) whose declared type can hold `AbstractRNG`; `Any` counts for none."""
+function rng_positions(method::Method)::Vector{Int}
+    parameters, found = tuple_parameters(method.sig), Int[]
+    for position in 1:(length(parameters) - 1)
+        declared = Base.unwrapva(parameters[position + 1])
+        declared isa TypeVar && (declared = declared.ub)
+        takes_rng(declared) && push!(found, position)
+    end
+    return found
+end
+
 """Global binding `place` starts at; `nothing` for place at argument or elsewhere."""
 root_global(place::Place.Type)::Union{Nothing, GlobalRef} = @match place begin
     Place.At(Root.Global(ref), _) => ref

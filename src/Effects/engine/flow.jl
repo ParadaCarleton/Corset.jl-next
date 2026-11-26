@@ -226,21 +226,29 @@ function global_targets(flow::Flow, binding::GlobalRef)::Targets
     return found
 end
 
-"""Targets of IR `value`: SSA value, argument, global binding, or constant object (unknown)."""
+"""
+Targets of IR `value`: SSA value, argument, global binding, or constant object. Constant object is one object outside
+caller places: `unknown`, without doubt. Constant null pointer (`C_NULL` that compiler inlines) points into no object.
+"""
 function value_targets!(flow::Flow, @nospecialize(value::Any))::Targets
     value isa Core.SSAValue && return flow.values[value.id]
     value isa Core.Argument && return flow.arguments[value.n]
     points!(flow, value_lattice(flow.ir, value)) || return Targets()
     value isa GlobalRef && return global_targets(flow, value)
-    return unknown(CODE_DOUBT)
+    constant = value isa QuoteNode ? value.value : value
+    (constant isa Ptr && constant == C_NULL) && return Targets()
+    return unknown(NO_DOUBT)
 end
 
-"""Targets of call `operand`: value, slot at position of spread tuple, or every element of `Rest`."""
+"""
+Targets of call `operand`: value, slot at position of spread tuple, or every element of `Rest`. Slot or element whose
+type holds no object (`Int` of `push!(v, xs...)`) has none.
+"""
 function operand_targets!(flow::Flow, operand::Operand.Type)::Targets
     return @match operand begin
         Operand.Value(value) => value_targets!(flow, value)
-        Operand.Part(value, position) => load!(flow, value_targets!(flow, value), Step.Position(position))
-        Operand.Rest(value) => spread_elements!(flow, value)
+        Operand.Part(value, position) => points!(flow, operand_type(flow.ir, operand)) ? load!(flow, value_targets!(flow, value), Step.Position(position)) : Targets()
+        Operand.Rest(value) => points!(flow, operand_type(flow.ir, operand)) ? spread_elements!(flow, value) : Targets()
     end
 end
 
@@ -282,12 +290,9 @@ function exact_path(ir::CC.IRCode, root::Root.Type, steps::AbstractVector{Step.T
     return true
 end
 
-"""Step of pointer to memory data: object that owns memory shares it with the memory's other owners (`Memory` field `ptr`)."""
-const MEMORY_POINTER = Step.Field(:ptr)
-
 """
-Targets of `step` slot of `origin`: place below caller object, stored targets, and element or data pointer of each
-memory backing chain reaches, with doubt of chain. Each origin walk counts as work.
+Targets of `step` slot of `origin`: place below caller object, stored targets, and element of each memory backing
+chain reaches, with doubt of chain. Each origin walk counts as work.
 """
 function trace!(flow::Flow, origin::Origin.Type, step::Step.Type)::Follow
     flow.traces += 1
@@ -305,18 +310,18 @@ function trace!(flow::Flow, origin::Origin.Type, step::Step.Type)::Follow
         add_all!(found, slot(flow, current, step), doubt)
         add_all!(found, get(flow.spread, current, nothing), doubt)
         backing = get(flow.backing, current, nothing)
-        ((step == Step.Element() || step == MEMORY_POINTER) && !isnothing(backing)) || continue
+        (step == Step.Element() && !isnothing(backing)) || continue
         for (memory, flag) in backing
             push!(pending, memory => most(flag, doubt))
         end
     end
     flow.work += length(reached)
     dependencies = TraceDependency[]
-    per_origin = (step == Step.Element() || step == MEMORY_POINTER) ? 3 : 2
+    per_origin = step == Step.Element() ? 3 : 2
     if length(reached) <= (TRACE_MEMBERSHIP_LIMIT - flow.memberships) ÷ per_origin
         for current in keys(reached)
             push!(dependencies, (current, step, false), (current, nothing, false))
-            (step == Step.Element() || step == MEMORY_POINTER) && push!(dependencies, (current, nothing, true))
+            step == Step.Element() && push!(dependencies, (current, nothing, true))
         end
     end
     return Follow(found, dependencies, length(reached), flow.generation)
@@ -417,6 +422,57 @@ function access!(table::OriginAccesses, objects::Targets, below::Bool, effect::E
     end
     return nothing
 end
+
+"""
+Record write as `access!` on `objects`, when write lands on one of `direct` origins (`y = flag ? a : b; push!(y, 1)`).
+Several origins make write on each at least `possible`: run-time values pick one. Blind origin counts too, as in join
+of blind and exact member. Known origins all below one caller root keep write below their common place. Write below
+fresh object lands somewhere below it, maybe on fresh object alone: caller objects inside it get `possible` write.
+"""
+function alternative_access!(table::OriginAccesses, direct::Targets, objects::Targets, below::Bool, effect::Effect, kind::EffectKind.T)::Nothing
+    if length(direct) <= 1
+        inside = below ? Targets(origin => doubt for (origin, doubt) in objects if !haskey(direct, origin)) : Targets()
+        access!(table, isempty(inside) ? objects : direct, below, effect, kind)
+        # Doubt in code already covers choice of target: callee it names picks it.
+        maybe = level_of(effect.doubt) == Level.none ? CODE_DOUBT : effect.doubt
+        access!(table, inside, below, Effect(maybe, effect.cause, effect.reason), kind)
+        return nothing
+    end
+    access!(table, objects, below, Effect(most(effect.doubt, CODE_DOUBT), effect.cause, effect.reason), kind)
+    known = [(origin, doubt) for (origin, doubt) in direct if level_of(doubt) != Level.blind]
+    length(known) <= 1 && return nothing
+    common = common_place(first.(known))
+    isnothing(common) && return nothing
+    # Run-time choice may pick blind origin outside common place: write below it is then `possible` only.
+    chains = reduce(most, (doubt for (_, doubt) in known))
+    access!(table, Targets(Origin.Caller(common) => length(known) < length(direct) ? most(chains, CODE_DOUBT) : chains), true, effect, kind)
+    return nothing
+end
+
+"""Longest place that holds every caller place of `origins` below it; `nothing` when any origin is no caller place or roots differ."""
+function common_place(origins::AbstractVector{Origin.Type})::Union{Nothing, Place.Type}
+    places = Place.Type[]
+    for origin in origins
+        place = @match origin begin
+            Origin.Caller(place) => place
+            _ => nothing
+        end
+        isnothing(place) && return nothing
+        push!(places, place)
+    end
+    root = root_of(first(places))
+    all(place -> root_of(place) == root, places) || return nothing
+    return Place.At(root, PlaceSteps(reduce(common_steps, (exact_steps(place) for place in places))))
+end
+
+"""Exact steps of `place`; `Deep` place has none, since its path is past exact steps."""
+exact_steps(place::Place.Type)::Vector{Step.Type} = @match place begin
+    Place.At(_, steps) => collect(steps)
+    Place.Deep(_) => Step.Type[]
+end
+
+"""Longest common start of step paths `one` and `other`."""
+common_steps(one::AbstractVector{Step.Type}, other::AbstractVector{Step.Type})::Vector{Step.Type} = Step.Type[step for (step, _) in Iterators.takewhile(splat(==), zip(one, other))]
 
 """
 Store `values` into `step` slot of every origin of `objects`; `nothing` step stores into unknown slot. Growth makes
