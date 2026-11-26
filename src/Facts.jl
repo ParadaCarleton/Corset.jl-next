@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, Weak, Exit, EffectKind
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, ArgumentUse, RESIZE_FUNCTIONS, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, StatefulIterate, InferenceFacts, Step, Root, Place, Access, UnguardedHold, LoopWrite, SelfAlias, StatefulReuse, UnprovenIndex, IndexContract, IndexSource, OperandIndex, ArrayOperand, IndexCall, IndexFacts, AllocationKind, ArrayEventKind, Coverage, ArrayPath, ArrayEvent, Rebind, ArrayLife, MethodArrays, LifecycleFacts, Callee, callee_name, callee_methods, place_text, place_root, place_steps, step_child, current_objects, takes_rng, root_global, CallFact, no_effect, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, ArgumentUse, RESIZE_FUNCTIONS, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, StatefulIterate, InferenceFacts, Step, Root, Place, Access, UnguardedHold, LoopWrite, SelfAlias, StatefulReuse, UnprovenIndex, IndexContract, IndexSource, OperandIndex, ArrayOperand, IndexCall, IndexFacts, AllocationKind, ArrayEventKind, Coverage, ArrayPath, ArrayEvent, Rebind, ArrayLife, MethodArrays, LifecycleFacts, Callee, callee_name, callee_methods, place_text, place_root, place_steps, step_child, current_objects, takes_rng, rng_positions, root_global, CallFact, no_effect, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, tuple_parameters, lowered_value, argument_type, subject_position, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -46,7 +46,7 @@ container, or `intermediate` only.
 """
 Kind of access (`effects.md`, Effect kinds): plain `memory`, `io`, `default_rng`, `rng_argument`, `task_local` state,
 `scoped_read` of `ScopedValue`, `synchronization`, `lazy_init` or `audited` internal state. Read of kind `iteration`
-starts iteration (`effects.md`, Facts). Rules apply exemptions.
+starts iteration (`effects.md`, Facts). `default_rng` on argument: caller passed default RNG there. Rules apply exemptions.
 """
 @enumx EffectKind memory io default_rng rng_argument task_local scoped_read synchronization lazy_init audited iteration
 

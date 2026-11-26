@@ -32,7 +32,7 @@ Engine code lives in `src/Effects/engine/`, module `Effects.Summaries`.
 ### Origins and points-to
 
 - Origin: abstract object. Kinds: caller place (parameter or global path), allocation statement, `unknown`.
-- Constant object in code counts as `unknown`. Fresh objects of callee merge into one allocation at call statement.
+- Constant object in code counts as `unknown`: write to it is definite. Fresh objects of callee merge into one allocation at call statement.
 - `unknown`: object open call can return that no operand names, global included. Write to it is `possible` global write.
 - Current task is `unknown` without doubt: write to its fields is certain global write.
 - One `unknown` origin stands for every outside object, so values stored into it take `code` doubt.
@@ -44,13 +44,19 @@ Engine code lives in `src/Effects/engine/`, module `Effects.Summaries`.
 - Place says where access lands; certainty says whether it happens. `deep w` is coarse place: write below it still changes `w`.
 - Field name comes from concrete type, array stand-in family or `Array` family. Other struct family (`Object{K, V} where …`) gives field position.
 - Memory backing belongs to its owner: field of type `GenericMemory` or `GenericMemoryRef` adds no step. Write to `Vector` elements writes `Vector`.
-- `Ptr` value holds origins of object it points into, so foreign call through pointer writes that object.
+- Callee or table access to owner may land on its memory alone or owner alone: memory behind it gets `possible` access (`pop!` of `Base.wrap(Array, m, n)`).
+- Memory address (`Ptr`, `MemoryRef`) that callee returns names memory behind fresh owner: write through it writes that memory.
+- `Ptr` value holds origins of object it points into, so foreign call through pointer writes that object. Data pointer of memory holds memory.
 - Constant null pointer global (`C_NULL`) points into no object.
 - Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.
 - Unification is rejected: it merges unrelated objects at each unknown call.
 - Write: statement that stores into origin content, or callee summary write mapped through call operands.
 - Each origin in points-to set carries doubt: none, `code` or `blind`. Join keeps least doubt per origin.
-- Open call on chain gives `code`. Call result merged from several fresh objects gives `blind`: they can hold different caller objects.
+- Open call on chain gives `code`.
+- Merge of callee fresh objects is exact when they form one object: each fresh object but one backs another.
+- `Array` and its `Memory` form one object: merged object backs itself.
+- Exact merge also needs each slot to hold stores of one fresh object at most.
+- Inexact merge gives `blind`: caller store into one merged object would show in the others.
 - Collapsed path and load of non-constant slot add no doubt: object they reach lies below same root.
 - Access below `deep w` takes kind of written object type at access, of callee access, or of `w` type.
 - Exempt kind needs proof, as balanced lock use does. Raw write into `IO` memory below `deep w` is memory write: `# corset: allow` covers it.
@@ -120,6 +126,9 @@ Resolution of each call statement, first match wins:
    Blind access of one member and exact access of another disagree: join gives `possible`.
 6. Base interface function with documented contract (`setindex!` writes collection; `length` reads only; `view` result lies within array). Breach in package method is finding.
 7. Else open: `possible` write on operands; result may point into operands, one direction, and to `unknown`.
+   Name states write whatever method runs. Base IO function (`print`, `write`, `read`) writes its `IO` stream operand: definite IO write.
+   Stream is first operand; `write(to, from::IO)` also reads `from`. Value operand (`show(io, other::IO)`) takes open write only.
+   Random draw (`rand`, `shuffle!`) writes its `AbstractRNG` first operand: definite RNG argument write.
 
 - Splat of tuple or array with unknown length: dispatch on `Vararg` of element type. Callee parameters past fixed operands take any element.
 - Splatted tuple slot has unknown position, so caller tuple collapses to `deep`. Splat of other collection stays open: its `iterate` runs.
@@ -199,6 +208,17 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - Path types: instance parameter type, constant global value type or global binding type, then field type or element type per step. Abstract type without field ends walk.
 - Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.
 - Write to RNG fields of `Task` (`rngState0` to `rngState4`): default RNG. Other write to `Task`, `task_local_storage` included: task-local state.
+- Caller chooses default RNG for unit whose argument holds `TaskLocalRNG` where method declares type that takes any RNG.
+  - Unit verdict moves default RNG accesses to that argument; kind stays default RNG. Summary keeps default RNG for callers.
+  - `false-effects` still sees `Task` state there. `hidden-input` counts default RNG on `Elsewhere` only.
+  - Such unit comes from call that also passes stand-in: `f(default_rng(), d)` with stand-in `d`; `f(default_rng())` gives none.
+  - Condition: each call that reaches default RNG gets argument, or tuple or closure built from it.
+  - `TaskLocalRNG` is singleton: inference folds closure over argument to constant. Constant that holds `TaskLocalRNG` counts as argument.
+  - Closure over explicit `default_rng()` folds to same constant. Declared signature unit keeps its default RNG access.
+  - Method that declares `TaskLocalRNG` chose default RNG itself: its accesses stay default RNG on `Elsewhere`.
+  - Bare `rand()` beside `rand(rng)`, or builtin access to `Task`, keeps default RNG.
+  - Callee that gets argument and also draws default RNG: package callee verdict keeps it, so `hidden-input` reports callee.
+  - Library callee that gets argument and draws default RNG: caller verdict misses it. Fix needs default RNG provenance in summaries.
 - `ScopedValue` read: read of `ScopedValue` object or of current task scope.
 - Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.
 - Lazy init and audited internal state come from audited table of Base types and methods only:

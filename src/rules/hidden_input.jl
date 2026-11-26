@@ -55,9 +55,12 @@ const Match = Union{Nothing, Tuple{MethodEffects, Access, Confidence.T}}
 """Hidden input of read, read access, and write that changes it."""
 const Hidden = Tuple{Union{Symbol, GlobalRef}, Access, Match}
 
-"""Input `access` reads: `:default_rng`, package global (`GlobalRef`) in `modules`, or `nothing` for other read."""
+"""
+Input `access` reads: `:default_rng`, package global (`GlobalRef`) in `modules`, or `nothing` for other read. Default
+RNG at argument is caller choice, so it hides nothing.
+"""
 function input(access::Access, modules::AbstractVector{Module})::Union{Nothing, Symbol, GlobalRef}
-    access.kind == EffectKind.default_rng && return :default_rng
+    access.kind == EffectKind.default_rng && place_root(access.place) == Root.Elsewhere() && return :default_rng
     ref = root_global(access.place)
     return access.kind == EffectKind.memory && !isnothing(ref) && ref.mod in modules ? ref : nothing
 end
@@ -149,22 +152,13 @@ function writer(written::Writes, access::Access)::Match
     return found
 end
 
-"""Positions of arguments of `method` (1 is first after callee) whose declared type can hold `AbstractRNG`; `Any` counts for none."""
-function rng_positions(method::Method)::Vector{Int}
-    parameters, found = tuple_parameters(method.sig), Int[]
-    for position in 1:(length(parameters) - 1)
-        declared = Base.unwrapva(parameters[position + 1])
-        declared isa TypeVar && (declared = declared.ub)
-        takes_rng(declared) && push!(found, position)
-    end
-    return found
-end
-
-"""Whether `method` draws from its RNG argument at `position` and never from default RNG."""
-function draws_from(method::MethodEffects, position::Integer)::Bool
-    accesses = [method.writes; method.reads]
-    any(access -> access.kind == EffectKind.default_rng, accesses) && return false
-    return any(access -> access.kind == EffectKind.rng_argument && place_root(access.place) == Root.Parameter(position + 1), accesses)
+"""
+Whether method with `accesses` draws from its RNG argument at `position` and never from default RNG it chose itself.
+Default RNG at argument is RNG caller passed there.
+"""
+function draws_from(accesses::AbstractVector{Access}, position::Integer)::Bool
+    any(access -> access.kind == EffectKind.default_rng && place_root(access.place) == Root.Elsewhere(), accesses) && return false
+    return any(access -> access.kind in (EffectKind.rng_argument, EffectKind.default_rng) && place_root(access.place) == Root.Parameter(position + 1), accesses)
 end
 
 """
@@ -180,7 +174,7 @@ function chooses_rng(method::Method, methods::AbstractVector{MethodEffects})::Bo
         others[1] == parameters[1] || continue
         for position in rng_positions(other.site.method)
             kept = Base.rewrap_unionall(Tuple{(others[index] for index in 2:length(others) if index != position + 1)...}, other.site.method.sig)
-            arguments <: kept && draws_from(other, position) && return true
+            arguments <: kept && draws_from([other.writes; other.reads], position) && return true
         end
     end
     return false

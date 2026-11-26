@@ -9,7 +9,7 @@ module Summaries
 using EnumX: @enumx
 using Moshi.Data: @data
 using Moshi.Match: @match
-using ...Facts: PackageFacts, MethodSite, Access, UnguardedHold, Callee, methods_callee, callee_methods, Step, Root, Place, PlaceSteps, NO_STEPS, PATH_DEPTH, BlindSpot, Confidence, Span, EffectKind
+using ...Facts: PackageFacts, MethodSite, Access, UnguardedHold, Callee, methods_callee, callee_methods, Step, Root, Place, PlaceSteps, NO_STEPS, PATH_DEPTH, BlindSpot, Confidence, Span, EffectKind, rng_positions, tuple_parameters, argument_type
 using ...Inference: Inference, TypedCode, Units, Journal, start_record, finish_record, record!, method_label, holds_stand_in, never_returning, throw_helper, called, dead_calls
 using ...Inference: names_package!, edge_instance, serialized
 using ...StandIns: StandIns, FunctionStandIn, model_type, array_stand_in

@@ -1,6 +1,8 @@
 """Effects engine fixtures: one method per transfer function, origin kind and path depth."""
 module EffectsCases
 
+import Random
+
 mutable struct Box
     value::Int
 end
@@ -489,5 +491,23 @@ no_items(items::Vector{Int})::Bool = isempty(items)
 
 # Call that no method matches starts nothing.
 dead_start(flag::Bool) = flag ? iterate(nothing) : nothing
+
+# Callee returns two vectors; caller merges them, so write through second is blind spot (`alias`).
+@noinline twin_boxes() = (Box[], Box[])
+twin_write!(box::Box) = (pair = twin_boxes(); push!(pair[1], box); pair[2][1].value = 0; nothing)
+
+# Caller passes default RNG to RNG argument: draw reads `Task` state, yet method draws from its argument.
+# Stand-in for `values` makes each `*_default` call a unit with `TaskLocalRNG` argument.
+draw_from(rng::Random.AbstractRNG, values::AbstractVector)::Float64 = rand(rng) * length(values)
+draw_default(values::AbstractVector)::Float64 = draw_from(Random.default_rng(), values)
+draw_both(rng::Random.AbstractRNG, values::AbstractVector)::Float64 = (rand(rng) + rand()) * length(values)
+draw_both_default(values::AbstractVector)::Float64 = draw_both(Random.default_rng(), values)
+draw_each(rng::Random.AbstractRNG, values::AbstractVector)::Vector{Float64} = map(_ -> rand(rng), 1:length(values))
+draw_each_default(values::AbstractVector)::Vector{Float64} = draw_each(Random.default_rng(), values)
+# Closure captures default RNG beside unused RNG argument: inference folds both closures to same constant.
+draw_captured(rng::Random.AbstractRNG, values::AbstractVector)::Vector{Float64} = (other = Random.default_rng(); map(_ -> rand(other), 1:length(values)))
+draw_captured_default(values::AbstractVector)::Vector{Float64} = draw_captured(Random.default_rng(), values)
+# Declared `TaskLocalRNG`: method chose default RNG itself, so caller cannot pass own RNG.
+draw_task(rng::Random.TaskLocalRNG, values::AbstractVector)::Float64 = rand(rng) * length(values)
 
 end

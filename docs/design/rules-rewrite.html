@@ -1082,7 +1082,7 @@ Code lives in <code>src/Effects/</code>.</p>
 </div><div class="decision"><h3>Origins and points-to</h3>
 <ul>
 <li>Origin: abstract object. Kinds: caller place (parameter or global path), allocation statement, <code>unknown</code>.</li>
-<li>Constant object in code counts as <code>unknown</code>. Fresh objects of callee merge into one allocation at call statement.</li>
+<li>Constant object in code counts as <code>unknown</code>: write to it is definite. Fresh objects of callee merge into one allocation at call statement.</li>
 <li><code>unknown</code>: object open call can return that no operand names, global included. Write to it is <code>possible</code> global write.</li>
 <li>Current task is <code>unknown</code> without doubt: write to its fields is certain global write.</li>
 <li>One <code>unknown</code> origin stands for every outside object, so values stored into it take <code>code</code> doubt.</li>
@@ -1094,13 +1094,19 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Place says where access lands; certainty says whether it happens. <code>deep w</code> is coarse place: write below it still changes <code>w</code>.</li>
 <li>Field name comes from concrete type, array stand-in family or <code>Array</code> family. Other struct family (<code>Object{K, V} where …</code>) gives field position.</li>
 <li>Memory backing belongs to its owner: field of type <code>GenericMemory</code> or <code>GenericMemoryRef</code> adds no step. Write to <code>Vector</code> elements writes <code>Vector</code>.</li>
-<li><code>Ptr</code> value holds origins of object it points into, so foreign call through pointer writes that object.</li>
+<li>Callee or table access to owner may land on its memory alone or owner alone: memory behind it gets <code>possible</code> access (<code>pop!</code> of <code>Base.wrap(Array, m, n)</code>).</li>
+<li>Memory address (<code>Ptr</code>, <code>MemoryRef</code>) that callee returns names memory behind fresh owner: write through it writes that memory.</li>
+<li><code>Ptr</code> value holds origins of object it points into, so foreign call through pointer writes that object. Data pointer of memory holds memory.</li>
 <li>Constant null pointer global (<code>C_NULL</code>) points into no object.</li>
 <li>Points-to: inclusion-based, field-sensitive, over SSA values and origin contents. Heap is flow-insensitive; SSA values keep flow.</li>
 <li>Unification is rejected: it merges unrelated objects at each unknown call.</li>
 <li>Write: statement that stores into origin content, or callee summary write mapped through call operands.</li>
 <li>Each origin in points-to set carries doubt: none, <code>code</code> or <code>blind</code>. Join keeps least doubt per origin.</li>
-<li>Open call on chain gives <code>code</code>. Call result merged from several fresh objects gives <code>blind</code>: they can hold different caller objects.</li>
+<li>Open call on chain gives <code>code</code>.</li>
+<li>Merge of callee fresh objects is exact when they form one object: each fresh object but one backs another.</li>
+<li><code>Array</code> and its <code>Memory</code> form one object: merged object backs itself.</li>
+<li>Exact merge also needs each slot to hold stores of one fresh object at most.</li>
+<li>Inexact merge gives <code>blind</code>: caller store into one merged object would show in the others.</li>
 <li>Collapsed path and load of non-constant slot add no doubt: object they reach lies below same root.</li>
 <li>Access below <code>deep w</code> takes kind of written object type at access, of callee access, or of <code>w</code> type.</li>
 <li>Exempt kind needs proof, as balanced lock use does. Raw write into <code>IO</code> memory below <code>deep w</code> is memory write: <code># corset: allow</code> covers it.</li>
@@ -1172,7 +1178,10 @@ Branch on <code>===</code> of two constants folds too: <code>getproperty(::Task,
 Access that some members lack takes sources of open operands, as open dispatch does: operand types pick member.
 Blind access of one member and exact access of another disagree: join gives <code>possible</code>.</li>
 <li>Base interface function with documented contract (<code>setindex!</code> writes collection; <code>length</code> reads only; <code>view</code> result lies within array). Breach in package method is finding.</li>
-<li>Else open: <code>possible</code> write on operands; result may point into operands, one direction, and to <code>unknown</code>.</li>
+<li>Else open: <code>possible</code> write on operands; result may point into operands, one direction, and to <code>unknown</code>.
+Name states write whatever method runs. Base IO function (<code>print</code>, <code>write</code>, <code>read</code>) writes its <code>IO</code> stream operand: definite IO write.
+Stream is first operand; <code>write(to, from::IO)</code> also reads <code>from</code>. Value operand (<code>show(io, other::IO)</code>) takes open write only.
+Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>AbstractRNG</code> first operand: definite RNG argument write.</li>
 </ol>
 <ul>
 <li>Splat of tuple or array with unknown length: dispatch on <code>Vararg</code> of element type. Callee parameters past fixed operands take any element.</li>
@@ -1252,6 +1261,20 @@ Blind access of one member and exact access of another disagree: join gives <cod
 <li>Path types: instance parameter type, constant global value type or global binding type, then field type or element type per step. Abstract type without field ends walk.</li>
 <li>Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.</li>
 <li>Write to RNG fields of <code>Task</code> (<code>rngState0</code> to <code>rngState4</code>): default RNG. Other write to <code>Task</code>, <code>task_local_storage</code> included: task-local state.</li>
+<li>Caller chooses default RNG for unit whose argument holds <code>TaskLocalRNG</code> where method declares type that takes any RNG.
+<ul>
+<li>Unit verdict moves default RNG accesses to that argument; kind stays default RNG. Summary keeps default RNG for callers.</li>
+<li><code>false-effects</code> still sees <code>Task</code> state there. <code>hidden-input</code> counts default RNG on <code>Elsewhere</code> only.</li>
+<li>Such unit comes from call that also passes stand-in: <code>f(default_rng(), d)</code> with stand-in <code>d</code>; <code>f(default_rng())</code> gives none.</li>
+<li>Condition: each call that reaches default RNG gets argument, or tuple or closure built from it.</li>
+<li><code>TaskLocalRNG</code> is singleton: inference folds closure over argument to constant. Constant that holds <code>TaskLocalRNG</code> counts as argument.</li>
+<li>Closure over explicit <code>default_rng()</code> folds to same constant. Declared signature unit keeps its default RNG access.</li>
+<li>Method that declares <code>TaskLocalRNG</code> chose default RNG itself: its accesses stay default RNG on <code>Elsewhere</code>.</li>
+<li>Bare <code>rand()</code> beside <code>rand(rng)</code>, or builtin access to <code>Task</code>, keeps default RNG.</li>
+<li>Callee that gets argument and also draws default RNG: package callee verdict keeps it, so <code>hidden-input</code> reports callee.</li>
+<li>Library callee that gets argument and draws default RNG: caller verdict misses it. Fix needs default RNG provenance in summaries.</li>
+</ul>
+</li>
 <li><code>ScopedValue</code> read: read of <code>ScopedValue</code> object or of current task scope.</li>
 <li>Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.</li>
 <li>Lazy init and audited internal state come from audited table of Base types and methods only:
@@ -1627,7 +1650,9 @@ end
 <ul>
 <li>One process per run. Corset loads target into its own process, as Aqua.jl and JET do, so later stages read compiler state directly.</li>
 <li>Fresh process only: no <code>Corset.check()</code> inside <code>runtests.jl</code>. Test code would change method table, and <code>--code-coverage</code> changes optimized IR, so findings would depend on what ran before.</li>
-<li>Command line always builds temporary environment: nameless project that develops target by path, starts from target Manifest, and adds test dependencies and Corset by path. Every target version stays when Corset accepts it. Otherwise packages Corset shares with target move, fewest first: Corset direct dependencies, then its dependency closure. Build prints each move; coverage line counts each loaded package at other version than Manifest pins as blind spot. Target compat that blocks every move fails loud (exit 2). Cache environment by hash of Manifest, Project.toml, Julia version and Corset version.
+<li>Command line always builds temporary environment: nameless project that develops target by path, starts from target Manifest, and adds test dependencies and Corset by path. Every target version stays when Corset accepts it. Otherwise packages Corset shares with target move, fewest first: Corset direct dependencies, then its dependency closure. Build prints each move; coverage line counts each loaded package at other version than Manifest pins as blind spot. Target compat that blocks every move fails loud (exit 2). Cache environment by hash of Manifest, Project.toml, Julia version and Project.toml of each path package. Path packages: Manifest entries, Corset, test sources, and <code>[sources]</code> of each path package in turn. Key names no directory.
+Each run copies cached environment into new temporary directory. Copy points Manifest <code>path</code> entries at directories of this run, by uuid.
+Copy drops <code>[sources]</code>: Base loading reads Manifest only, and <code>[sources]</code> names root, which keys analysis apart. Copy of project elsewhere reuses environment and analysis.
 Build holds file lock. Next run removes lock of dead process at once when lock is older than 30 s. Crashed build blocks no later run.</li>
 <li>Relaunch Julia with <code>JULIA_LOAD_PATH</code> set to that environment and <code>@stdlib</code> only, so default environment (<code>@v#.#</code>) adds no package, trigger or method.</li>
 <li>Relaunched process runs with coverage and allocation tracking off, whatever flags relaunching process has.</li>

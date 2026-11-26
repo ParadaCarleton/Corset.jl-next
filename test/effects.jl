@@ -1,4 +1,4 @@
-using Test: @test, @testset, @test_throws
+using Test: @test, @testset, @test_throws, @test_broken
 using Corset: Corset
 using Corset.Facts: Facts, Callee, methods_callee, callee_methods, Access, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind, PATH_DEPTH
 using Corset.Inference: infer_package, open_journal, records, explicit_any, cuts!, dead_calls
@@ -12,10 +12,10 @@ using Corset.Effects.Summaries:
     Callback, Callees, Variant, root_summary!, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut!, CUT, catches!, cut!,
     special_kind, audited_field, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body!, root_calls!, merge_calls, merge_callees, load!, store!, store_backing!,
-    beneath, map_nodes!, exact_path, extend, load_any, keyword_types, over_budget, outside_targets!, unknown
+    beneath, map_nodes!, merges_exactly, exact_path, extend, load_any, keyword_types, over_budget, outside_targets!, unknown
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
-using Random: Xoshiro
+using Random: Random, Xoshiro, AbstractRNG
 using Scratch: Scratch
 using Serialization: Serialization
 using Base.ScopedValues: ScopedValue
@@ -121,17 +121,54 @@ end
     @test isempty(effects(:measure_either, either).writes) && effects(:measure_either, either).closed_world
     @test effects(:poke!, CASES.Loose).closed_world && !effects(:set_value!, CASES.Box, Int).closed_world
     @test shape(effects(:copy_into!, Vector{Int}, Vector{Int}).writes) == [(parameter(2), false, definite)]
-    @test (parameter(3, Step.Element()), false, definite) in shape(effects(:copy_boxes!, Vector{CASES.Box}, Vector{CASES.Box}).writes)
-    @test (parameter(3), false, definite) in shape(effects(:remember!, IdDict{Int, CASES.Box}, CASES.Box).writes)
+    # Store keeps old slot content beside new value (no strong update), so sure write through slot reads as `possible`.
+    @test_broken (parameter(3, Step.Element()), false, definite) in shape(effects(:copy_boxes!, Vector{CASES.Box}, Vector{CASES.Box}).writes)
+    @test_broken (parameter(3), false, definite) in shape(effects(:remember!, IdDict{Int, CASES.Box}, CASES.Box).writes)
     @test shape(effects(:store_pointer!, Vector{Int}).writes) == [(parameter(2), false, definite)]
     # Constant global takes type of its value: nested `Ref` path stays exact.
     nest = (Place.At(Root.Global(GlobalRef(CASES, :NEST)), Step.Type[Step.Field(:x), Step.Field(:x), Step.Field(:x)]), false, definite)
     @test shape(effects(:bump_nest!).writes) == [nest] && shape(effects(:call_nest!).writes) == [nest]
     @test all(found -> found.site.method.name != :fail, FACTS)
     @test BlindSpot("always throws on stand-ins", only(site for site in UNITS.typed if site.site.method.name == :fail).site.span) in SPOTS
+    # Merge of two independent callee objects would alias them: write through merged object is blind spot.
+    twin = effects(:twin_write!, CASES.Box)
+    @test isempty(twin.writes) && blind_shape(twin.blind_writes) == [(parameter(2), false, "alias")]
     @test any(spot -> spot.cause == "alias", SPOTS)
     # Stand-in cuts make method incomplete too ("stand-in cuts" testset).
     @test all(found -> !(found.site.method in UNITS.incomplete) || !found.complete, FACTS)
+end
+
+@testset "caller-chosen default RNG" begin
+    rng_kinds(accesses::Vector{Access})::Set{Tuple{Place.Type, EffectKind.T}} = Set((access.place, access.kind) for access in accesses if access.kind in (EffectKind.default_rng, EffectKind.rng_argument))
+    chosen, default = (parameter(2), EffectKind.default_rng), (Place.At(Root.Elsewhere(), Step.Type[]), EffectKind.default_rng)
+    drawers = Dict(name => effects(name, AbstractRNG, AbstractVector) for name in (:draw_from, :draw_both, :draw_each, :draw_captured))
+    # Each drawer has unit with `TaskLocalRNG` argument from its `*_default` caller.
+    for found in values(drawers)
+        @test any(typed -> typed.site.method === found.site.method && fieldtype(typed.signature, 2) === Random.TaskLocalRNG, UNITS.typed)
+    end
+    # Caller passes `default_rng()`: draw through argument, directly or through closure, moves there; caller reads default RNG.
+    for name in (:draw_from, :draw_each), accesses in (drawers[name].writes, drawers[name].reads)
+        @test chosen in rng_kinds(accesses) && !(default in rng_kinds(accesses))
+    end
+    moved = only(access for access in drawers[:draw_from].writes if (access.place, access.kind) == chosen)
+    @test moved.confidence == Confidence.definite
+    # Moved draw still touches `Task` state for `:notaskstate` claims, yet hides no input.
+    @test Corset.Rules.FalseEffects.task_state(moved)
+    @test isnothing(Corset.Rules.HiddenInput.input(moved, Module[CASES]))
+    drawn(name::Symbol)::Bool = Corset.Rules.HiddenInput.draws_from([drawers[name].writes; drawers[name].reads], 1)
+    @test drawn(:draw_each) && !drawn(:draw_both)
+    @test all(name -> rng_kinds(effects(name, AbstractVector).writes) == Set([default]), (:draw_default, :draw_both_default, :draw_each_default, :draw_captured_default))
+    # Bare `rand()` beside draw from argument keeps default RNG.
+    @test default in rng_kinds(drawers[:draw_both].writes)
+    # Closure over `default_rng()` keeps default RNG: declared signature unit reads it.
+    @test default in rng_kinds(drawers[:draw_captured].writes)
+    # Declared `TaskLocalRNG` keeps default RNG: method, not caller, chose it.
+    @test rng_kinds(effects(:draw_task, Random.TaskLocalRNG, AbstractVector).writes) == Set([default])
+    # Folded constant counts as RNG argument only when it holds `TaskLocalRNG` within depth.
+    task_rng = Random.TaskLocalRNG()
+    @test Summaries.holds_task_rng((1, (task_rng,)), 3) && !Summaries.holds_task_rng((1, (2,)), 3)
+    @test Summaries.holds_task_rng((((task_rng,),),), 3) && !Summaries.holds_task_rng(((((task_rng,),),),), 3)
+    @test !Summaries.holds_task_rng((Int, Base), 3)
 end
 
 """Effects of only fixture method `name`."""
@@ -201,7 +238,8 @@ end
     @test shape(named(:restart!).writes) == [(parameter(2), false, definite), (parameter(3), false, definite)]
     # Record of earlier round goes when callable grows to fresh object: call resolves here.
     @test isempty(raw_summary(CASES.pick_setter!, CASES.Setter, Int).callbacks)
-    @test shape(named(:pick_setter!).writes) == [(parameter(2, box), false, definite)]
+    # Loop joins caller setter of round 1 with fresh one of round 2, so sure write reads as `possible`.
+    @test_broken shape(named(:pick_setter!).writes) == [(parameter(2, box), false, definite)]
     # Record waits for caller only when callable holds object below caller parameter, beside no fresh object.
     held, fresh = Targets(Origin.Caller(parameter(2)) => NO_DOUBT), Targets(Origin.Allocation(1) => NO_DOUBT)
     @test deferred([held, Targets()]) && !deferred([held, fresh]) && !deferred([fresh])
@@ -431,6 +469,10 @@ pointer_swap!(pointer::Ptr{Int}) = Core.Intrinsics.atomic_pointerswap(pointer, 1
 pointer_modify!(pointer::Ptr{Int}) = Core.Intrinsics.atomic_pointermodify(pointer, +, 1, :sequentially_consistent)
 pointer_replace!(pointer::Ptr{Int}) = Core.Intrinsics.atomic_pointerreplace(pointer, 0, 1, :sequentially_consistent, :sequentially_consistent)
 pointer_get(pointer::Ptr{Int}) = Core.Intrinsics.atomic_pointerref(pointer, :sequentially_consistent)
+# Wrapper over argument memory: pointer write writes memory; callee write may change wrapper alone (`pop!`).
+wrap_store!(m::Memory{Int}) = (unsafe_store!(pointer(Base.wrap(Array, m, 1)), 1); nothing)
+wrap_set!(m::Memory{Int}) = (v = Base.wrap(Array, m, 1); v[1] = 1; nothing)
+wrap_pop!(m::Memory{Int}) = (pop!(Base.wrap(Array, m, 1)); nothing)
 llvm(pointer::Ptr{Int}) = Base.llvmcall("ret ptr %0", Ptr{Int}, Tuple{Ptr{Int}}, pointer)
 global_pointer() = cglobal(:jl_n_threads, Cint)
 # Library tuple stays nested constant expression in IR.
@@ -665,7 +707,8 @@ latest_rebound!(v::Vector{Int}) = @invokelatest rebound_callee(v, 1)
     @test named.result[Node.Placed(Place.Deep(Root.Parameter(2)))] == none
     here = @__MODULE__
     rebound = summary_of(rebind!, Vector{Int})
-    @test doubts(rebound.writes) == Dict((global_place(here, :slot), false) => none, top(2) => none)
+    # Global keeps old vector beside rebound one (no strong update), so sure write on `values` reads as `possible`.
+    @test_broken doubts(rebound.writes) == Dict((global_place(here, :slot), false) => none, top(2) => none)
     @test rebound.bound == Dict(GlobalRef(here, :slot) => Nodes(Node.Placed(parameter(2)) => none))
     @test summary_of(swap_global!, Vector{Int}).result == Nodes(Node.Placed(global_place(here, :slot)) => none, Node.Placed(parameter(2)) => none)
     @test doubts(summary_of(modify_global!).writes) == Dict((global_place(here, :tally), false) => none)
@@ -700,6 +743,10 @@ end
         @test summary_of(writer, Ptr{Int}).writes[memory(top(2))].doubt == none
     end
     @test doubts(summary_of(pointer_get, Ptr{Int}).reads) == Dict(top(2) => none)
+    @test summary_of(wrap_store!, Memory{Int}).writes[memory(top(2))].doubt == none
+    for writer in (wrap_set!, wrap_pop!)
+        @test summary_of(writer, Memory{Int}).writes[memory(top(2))].doubt == code
+    end
     @test summary_of(llvm, Ptr{Int}).result == Nodes(Node.Placed(parameter(2)) => code, Node.Outside() => code)
     @test summary_of(llvm, Ptr{Int}).writes[memory((parameter(2), true))].doubt == code
     @test summary_of(global_pointer).result == Nodes(Node.Outside() => code)
@@ -709,6 +756,8 @@ end
     # Null pointer global points into no object, so `Cstring` error path writes no `C_NULL`.
     @test all(((place, _),) -> root_of(place) != Root.Global(GlobalRef(Base, :C_NULL)), keys(summary_of(length_of, String).writes))
     @test null_pointer(GlobalRef(Base, :C_NULL)) && !null_pointer(GlobalRef(@__MODULE__, :HOLDER)) && !null_pointer(GlobalRef(@__MODULE__, :slot))
+    # Compiler inlines `C_NULL` into `uv_random` call: null literal points into no object, so open call writes buffer only.
+    @test all(((place, _, _),) -> root_of(place) == Root.Parameter(2), keys(summary_of(Base.Libc.getrandom!, Base.RefValue{UInt64}).writes))
     @test summary_of(object_at, Ptr{Cvoid}).result == Nodes(Node.Placed(parameter(2)) => none)
     @test doubts(summary_of(unknown_foreign!, Ptr{Int}).writes) == Dict((parameter(2), true) => code)
     # Unknown C function: doubt in code, also on argument of open type.
@@ -762,7 +811,7 @@ end
     @test written(mpfr_airy_unknown, BigFloat) == Set([2])
     # Output operand `BigFloat` gets the write: wrapper `x.d` stands for memory of `x`.
     @test written(mpfr_add!, BigFloat, BigFloat, BigFloat) == Set([2])
-    @test summary_of(mpfr_add!, BigFloat, BigFloat, BigFloat).writes[(parameter(2, Step.Field(:ptr)), false, EffectKind.memory)].doubt == none
+    @test summary_of(mpfr_add!, BigFloat, BigFloat, BigFloat).writes[(parameter(2), false, EffectKind.memory)].doubt == none
     @test written(mpfr_next!, BigFloat) == Set([2])
     @test written(mpfr_clear_unknown!) == Set{Int}()
     @test written(mpfr_set_unknown!, Any) == Set([2])
@@ -791,7 +840,8 @@ end
     # No method matches: call throws, so it writes and reads nothing.
     @test isempty(summary_of(no_method, Vector{Int}).writes) && isempty(summary_of(no_method, Vector{Int}).reads)
     @test summary_of(nested_apply, Vector{Int}, Tuple{Tuple{Int}}).writes[memory((parameter(2), true))].doubt == code
-    @test summary_of(embedded).result == Nodes(Node.Outside() => code)
+    # Constant object in code is one object outside caller places: result aliases it without doubt.
+    @test summary_of(embedded).result == Nodes(Node.Outside() => none)
     @test summary_of(unknown_field, Module, Symbol).result == Nodes(Node.Outside() => code)
     @test summary_of(unknown_any, Module, Symbol, Symbol).result == Nodes(Node.Outside() => code)
     @test haskey(summary_of(first_of_fresh, Vector{Int}).result, Node.Placed(parameter(2)))
@@ -804,13 +854,37 @@ end
     @test summary_of(calls_broken, Vector{Int}).writes == Dict()
     broken_int = summary_of(x -> broken(x), Int)
     @test isempty(broken_int.writes)
-    # Phi joins both branches; fresh objects escape through globals and caller objects.
-    @test doubts(summary_of(pick!, Vector{Int}, Vector{Int}, Bool).writes) == Dict(top(2) => none, top(3) => none)
-    @test summary_of(held_write!, Vector{Int}).writes[memory(top(2))].doubt == none
-    @test summary_of(nest_write!, Base.RefValue{Base.RefValue{Vector{Int}}}, Vector{Int}).writes[memory(top(3))].doubt == none
+    # Phi joins both branches: run-time `flag` picks written vector, so write is `possible` on each.
+    @test doubts(summary_of(pick!, Vector{Int}, Vector{Int}, Bool).writes) == Dict(top(2) => code, top(3) => code)
+    # Blind alternative leaves choice open too: known object gets `possible` write, blind one keeps its blind spot.
+    chosen, table = Origin.Caller(parameter(2)), Summaries.OriginAccesses()
+    either = Targets(chosen => none, Origin.Unknown() => blind)
+    Summaries.alternative_access!(table, either, either, false, Effect(none, 1, ""), EffectKind.memory)
+    @test table[(chosen, false, EffectKind.memory)].doubt == code && level_of(table[(Origin.Unknown(), false, EffectKind.memory)].doubt) == Level.blind
+    # Two known objects below one argument: write below it is sure, unless blind origin may take run-time choice.
+    left, right = Origin.Caller(parameter(2, Step.Field(:left))), Origin.Caller(parameter(2, Step.Field(:right)))
+    for (extra, expected) in ((Targets(), none), (Targets(Origin.Unknown() => blind), code))
+        three, pair = Summaries.OriginAccesses(), merge(Targets(left => none, right => none), extra)
+        Summaries.alternative_access!(three, pair, pair, false, Effect(none, 1, ""), EffectKind.memory)
+        @test three[(chosen, true, EffectKind.memory)].doubt == expected && three[(left, false, EffectKind.memory)].doubt == code
+    end
+    # One origin keeps write certainty.
+    single = Summaries.OriginAccesses()
+    Summaries.alternative_access!(single, Targets(chosen => none), Targets(chosen => none), false, Effect(none, 1, ""), EffectKind.memory)
+    @test single[(chosen, false, EffectKind.memory)].doubt == none
+    # Write below fresh object may land on it alone: caller object inside it gets `possible` write.
+    wrapper, wrapped = Origin.Allocation(1), Summaries.OriginAccesses()
+    Summaries.alternative_access!(wrapped, Targets(wrapper => none), Targets(wrapper => none, chosen => none), true, Effect(none, 1, ""), EffectKind.memory)
+    @test wrapped[(wrapper, true, EffectKind.memory)].doubt == none && wrapped[(chosen, true, EffectKind.memory)].doubt == code
+    # `copy(::Memory{Nothing})` writes fresh memory or its data pointer: source elements copied into it stay `possible`.
+    @test all(effect -> level_of(effect.doubt) != Level.none, values(summary_of(copy, Set{Vector{Int}}).writes))
+    # Fresh objects escape through globals and caller objects. Store keeps old content (no strong update): sure write reads as `possible`.
+    @test_broken summary_of(held_write!, Vector{Int}).writes[memory(top(2))].doubt == none
+    @test_broken summary_of(nest_write!, Base.RefValue{Base.RefValue{Vector{Int}}}, Vector{Int}).writes[memory(top(3))].doubt == none
     # Callee access below fresh wrapper reaches caller object inside; open result keeps source of open callee.
     @test summary_of(open_wrapped!, Any, Vector{Int}).writes[memory((parameter(3), true))].doubt == sourced(2)
-    @test summary_of(open_result_write!, Any, Vector{Int}).writes[memory(top(3))].doubt == sourced(2)
+    # Open callee picks result, so doubt keeps its source; alternative objects add doubt in code.
+    @test_broken summary_of(open_result_write!, Any, Vector{Int}).writes[memory(top(3))].doubt == sourced(2)
     # Callee source maps to caller argument in its position: effects, result nodes and unknown objects alike.
     swapped = summary_of(open_result_swapped, Vector{Int}, Any)
     @test doubts(swapped.writes) == Dict((parameter(2), true) => sourced(3), (parameter(3), true) => sourced(3))
@@ -884,7 +958,8 @@ end
     @test haskey(summary_of(converted_fresh, Type, Vector{Int}).result, Node.Placed(parameter(3)))
     @test summary_of(got_dict, AbstractDict, Int).result == Nodes(Node.Placed(parameter(2, Step.Element())) => none)
     @test isempty(summary_of(similar_of, Any).result)
-    @test doubts(summary_of(element_write!, Any).writes) == Dict((parameter(2, Step.Element()), false) => none, top(2) => code)
+    # Run-time type of `A` decides which object `A[1]` gives: write is `possible` on each and below their common place.
+    @test doubts(summary_of(element_write!, Any).writes) == Dict((parameter(2, Step.Element()), false) => code, top(2) => code, (parameter(2), true) => code)
     # Argument that admits consumed iterator (`Iterators.Stateful`) gets `possible` write; its type decides breach.
     @test doubts(summary_of(iterated, Any).writes) == Dict(top(2) => sourced(2))
     @test doubts(summary_of(contains_any, Any, Any).writes) == Dict(top(3) => sourced(3))
@@ -939,25 +1014,35 @@ spread_set_max(s::Set{Vector{Int}}) = max(s...)
     # Array of unknown length: parameters past fixed operands take any element.
     @test doubts(summary_of(spread_first!, Vector{Vector{Int}}).writes) == Dict((parameter(2, Step.Element()), false) => none)
     # Vararg tuple holds fixed operand at its position and spread elements in unknown slot, which every position reads.
-    @test doubts(summary_of(spread_rest_first!, Vector{Int}, Vector{Vector{Int}}).writes) == Dict(top(2) => none, (parameter(3, Step.Element()), false) => none)
-    # Operand after spread of unknown length has unknown position too.
-    @test doubts(summary_of(spread_then!, Vector{Vector{Int}}, Vector{Int}).writes) == Dict((parameter(2, Step.Element()), false) => none, top(3) => none)
+    # Position 1 joins `a` with spread elements, so write is `possible` on each; exact answer is sure write on `a` alone.
+    @test doubts(summary_of(spread_rest_first!, Vector{Int}, Vector{Vector{Int}}).writes) == Dict(top(2) => code, (parameter(3, Step.Element()), false) => code)
+    # Operand after spread of unknown length has unknown position too: run-time length of `xs` picks written vector.
+    @test doubts(summary_of(spread_then!, Vector{Vector{Int}}, Vector{Int}).writes) == Dict((parameter(2, Step.Element()), false) => code, top(3) => code)
     # Caller tuple slot of unknown position collapses; write below it keeps certainty.
     @test doubts(summary_of(spread_tuple!, Tuple{Vararg{Vector{Int}}}).writes) == Dict((Place.Deep(Root.Parameter(2)), false) => none)
     # Spread callee stays open: method table matches builtin method `setfield!(...)` for `Vararg` callee.
-    @test doubts(summary_of(spread_builtin_callee, Vector{typeof(setfield!)}).writes) == Dict((parameter(2, Step.Element()), true) => code)
+    # Singleton function elements hold no object, so open call writes nothing.
+    @test isempty(summary_of(spread_builtin_callee, Vector{typeof(setfield!)}).writes)
     @test fresh_spread(summary_of(spread_packed, Vector{Vector{Int}})) == Nodes(Node.Placed(parameter(2, Step.Element())) => none)
     # Contract holds when spread falls on its vararg role.
     pushed = summary_of(spread_pushed!, Vector{Vector{Int}}, Vector{Vector{Int}})
     @test doubts(pushed.writes) == Dict(top(2) => none) && pushed.edges[(Node.Placed(parameter(2)), Step.Element())] == Nodes(Node.Placed(parameter(3, Step.Element())) => none)
     # Spread before contract role, into builtin, as callee, or of collection with own `iterate`: open.
-    # Open call takes spread elements, not array itself.
-    @test doubts(summary_of(spread_set!, Vector{Int}, Vector{Int}).writes) == Dict((parameter(2), true) => code, (parameter(3, Step.Element()), true) => code)
+    # Open call takes spread elements, not array itself; `Int` elements hold no object.
+    @test doubts(summary_of(spread_set!, Vector{Int}, Vector{Int}).writes) == Dict((parameter(2), true) => code)
     # Builtin of unknown argument count: doubt in code. Spread callee: element type decides.
     @test doubts(summary_of(spread_field, Vector{Any}).writes) == Dict((parameter(2, Step.Element()), true) => code)
     @test doubts(summary_of(spread_latest, Vector{Any}).writes) == Dict((parameter(2, Step.Element()), true) => sourced(2))
     @test doubts(summary_of(spread_set_max, Set{Vector{Int}}).writes) == Dict((parameter(2), true) => code)
 end
+
+"""Summary with `fresh` fresh nodes and stores `edges`, memory `backing` and unknown-slot `spread`; it accesses nothing."""
+function fresh_summary(fresh::Integer, edges::Edges, backing::Holds, spread::Holds)::Summary
+    return Summary(Accesses(), Accesses(), edges, backing, spread, Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), fresh, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}())
+end
+
+"""Summary with `fresh` fresh nodes and no stores."""
+fresh_summary(fresh::Integer)::Summary = fresh_summary(fresh, Edges(), Holds(), Holds())
 
 """Function with `JOIN_LIMIT` methods: call on `Any` joins them."""
 three_way(x::Int) = x
@@ -994,6 +1079,9 @@ four_way(x::Symbol) = x
     @test !referent!(cache, Union{}) && referent!(cache, Union{Int, Vector{Int}}) && !referent!(cache, Union{Int, Symbol})
     @test referent!(cache, AbstractVector) && !referent!(cache, Type{Int}) && referent!(cache, Ptr{Int})
     @test !referent!(cache, Tuple{Int, Symbol}) && referent!(cache, Tuple{Int, Vector{Int}}) && !referent!(cache, Module)
+    # Tuple of unknown length points as its element types do; bare `Vararg` takes any element.
+    @test !referent!(cache, Tuple{Vararg{Int}}) && !referent!(cache, Tuple{Symbol, Vararg{Union{Int, Float64}}}) && referent!(cache, Tuple{Vararg{Vector{Int}}})
+    @test referent!(cache, Tuple{Int, Vararg}) && referent!(cache, Tuple{Vararg{Integer}})
     @test field_step(Tuple{Int}, :a) === nothing && field_step(Tuple{Int}, 1) == Step.Position(1)
     # Array stand-in and `Array` families name fields as members do; code struct family keeps `Position`.
     @test field_step(Base.RefValue{Int}, 1) == Step.Field(:x) && field_step(Base.RefValue, 1) == Step.Position(1)
@@ -1053,12 +1141,30 @@ four_way(x::Symbol) = x
     flow = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
-    @test map_node!(flow, Node.Fresh(4), CallSite(Targets[], Sources[], 7, 2)) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
+    # `copy` result: `Array` backed by fresh `Memory` that holds caller elements merges exactly.
+    element, array, buffer = Node.Placed(Place.At(Root.Parameter(2), Step.Type[Step.Element()])), Node.Fresh(12), Node.Fresh(5)
+    copied = fresh_summary(2, Edges((buffer, Step.Element()) => Nodes(element => NO_DOUBT)), Holds(array => Nodes(buffer => NO_DOUBT)), Holds())
+    @test merges_exactly(copied) && map_node!(flow, array, CallSite(Targets[], Sources[], 7, copied)) == Targets(Origin.Allocation(7) => NO_DOUBT)
+    # Two fresh nodes fill one slot: merged load could give either caller object.
+    other = Node.Placed(Place.At(Root.Parameter(3), Step.Type[Step.Element()]))
+    clashing = fresh_summary(2, Edges((buffer, Step.Element()) => Nodes(element => NO_DOUBT), (array, Step.Element()) => Nodes(other => NO_DOUBT)), copied.backing, Holds())
+    @test !merges_exactly(clashing) && map_node!(flow, Node.Fresh(4), CallSite(Targets[], Sources[], 7, clashing)) == Targets(Origin.Allocation(7) => BLIND_DOUBT)
+    # Unknown slot or backing outside fresh nodes reaches every slot: exact only when no other fresh node stores.
+    spread = Holds(array => Nodes(other => NO_DOUBT))
+    @test !merges_exactly(fresh_summary(2, copied.edges, copied.backing, spread)) && merges_exactly(fresh_summary(2, Edges((array, Step.Element()) => Nodes(element => NO_DOUBT)), Holds(buffer => Nodes(array => NO_DOUBT)), spread))
+    @test !merges_exactly(fresh_summary(2, copied.edges, Holds(array => Nodes(other => NO_DOUBT, buffer => NO_DOUBT)), Holds())) && !merges_exactly(fresh_summary(2, Edges(), copied.backing, Holds(array => Nodes(other => NO_DOUBT), buffer => Nodes(element => NO_DOUBT))))
+    # Stores of caller objects only leave merge of one object exact.
+    held = Edges((element, Step.Element()) => Nodes(buffer => NO_DOUBT), (other, Step.Element()) => Nodes(array => NO_DOUBT))
+    @test merges_exactly(fresh_summary(2, held, copied.backing, Holds()))
+    # Merged object of inner call backs itself: still one object (`vect` result).
+    @test merges_exactly(fresh_summary(1, Edges((array, Step.Element()) => Nodes(element => NO_DOUBT)), Holds(array => Nodes(array => NO_DOUBT)), Holds()))
+    # Independent objects: caller store into one would show in other (`(Vector{Any}(), Vector{Any}())`).
+    @test !merges_exactly(fresh_summary(2, held, Holds(), Holds())) && !merges_exactly(fresh_summary(4, Edges(), Holds(array => Nodes(buffer => NO_DOUBT), Node.Fresh(1) => Nodes(Node.Fresh(2) => NO_DOUBT)), Holds()))
     # Site maps every fresh node to one shared allocation; outside node maps to unknown object at node doubt.
-    fresh_site = CallSite(Targets[], Sources[], 7, 1)
+    fresh_site = CallSite(Targets[], Sources[], 7, fresh_summary(1))
     @test map_node!(flow, Node.Fresh(1), fresh_site) === map_node!(flow, Node.Fresh(2), fresh_site)
     @test map_nodes!(flow, Nodes(Node.Outside() => BLIND_DOUBT, Node.Fresh(1) => NO_DOUBT), fresh_site) == Targets(Origin.Unknown() => BLIND_DOUBT, Origin.Allocation(7) => NO_DOUBT)
-    @test_throws ArgumentError map_node!(flow, Node.Fresh(1), CallSite(Targets[], Sources[], 7, 0))
+    @test_throws ArgumentError map_node!(flow, Node.Fresh(1), CallSite(Targets[], Sources[], 7, fresh_summary(0)))
     # Objects without fresh origin hold nothing beneath them: result is same table.
     plain = Targets(Origin.Caller(parameter(2)) => NO_DOUBT)
     @test beneath(flow, plain) === plain
@@ -1139,7 +1245,7 @@ four_way(x::Symbol) = x
         place = Place.At(Root.Global(GlobalRef(@__MODULE__, :NESTED)), Step.Type[prefix, Step.Position(index)])
         summary.edges[(Node.Placed(root), Step.Position(index))] = Nodes(Node.Placed(place) => NO_DOUBT)
     end
-    Summaries.apply_stores!(many, CallSite(Targets[], Sources[], 1, 0), summary)
+    Summaries.apply_stores!(many, CallSite(Targets[], Sources[], 1, fresh_summary(0)), summary)
     @test haskey(many.follows, (Origin.Caller(root), prefix))
     @test length(many.follows) >= 40
     # This fixture executes 41 traces; allow headroom for changes in path handling.
@@ -1204,7 +1310,7 @@ four_way(x::Symbol) = x
     @test static_sources(only(methods(static_both))) == [parameter_source(2) | parameter_source(3)]
     @test static_sources(only(methods(static_pair))) == [parameter_source(2), parameter_source(3)] && isempty(static_sources(only(methods(fill_one!))))
     # Callee parameter source becomes type sources of argument, derived ones too; parameter without argument is doubt in code.
-    site = CallSite([Targets(), Targets(Origin.Caller(parameter(4)) => NO_DOUBT), Targets()], Sources[none, none, parameter_source(5)], 7, 0)
+    site = CallSite([Targets(), Targets(Origin.Caller(parameter(4)) => NO_DOUBT), Targets()], Sources[none, none, parameter_source(5)], 7, fresh_summary(0))
     @test caller_doubt!(flow, site, sourced(1)) == CODE_DOUBT && caller_doubt!(flow, site, sourced(2)) == sourced(4)
     @test caller_doubt!(flow, site, sourced(3)) == sourced(5) && caller_doubt!(flow, site, sourced(4)) == CODE_DOUBT
     # Source past unit arguments is doubt in code.
@@ -1647,6 +1753,12 @@ write_byte!(io::IOBuffer, b::UInt8) = write(io, b)
 """Line to `stdout`: global binding declared `IO`."""
 say(x::Int) = println(stdout, x)
 
+"""Shows `source` on `destination`: open `show` writes `destination` for sure, and `source` only as open operand."""
+show_stream(destination::IO, source::IO) = show(destination, source)
+
+"""Copies `source` into `destination`: open `write` reads `source`, so it writes both for sure."""
+copy_stream(destination::IO, source::IO) = write(destination, source)
+
 """Holder of buffer: path crosses `IO` at field."""
 struct Logger
     io::IOBuffer
@@ -1665,6 +1777,8 @@ end
 sink_push!(sink::Sink, b::UInt8) = push_byte!(sink.bytes, b)
 
 roll(rng::Xoshiro) = rand(rng)
+roll_open(rng::AbstractRNG) = rand(rng)
+shuffle_open!(rng::AbstractRNG, items::Vector{Int}) = Random.shuffle!(rng, items)
 roll_default() = rand()
 remember!(x::Int) = task_local_storage(:effects_test, x)
 
@@ -1756,9 +1870,14 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
 
 @testset "effect kinds" begin
     io, elsewhere = EffectKind.io, Root.Elsewhere()
-    # IO by declared type of argument, global, or field on path.
-    logged = summary_of(log_line, IO, Int).writes
-    @test collect(keys(logged)) == [(parameter(2), true, io)] && level_of(only(values(logged)).doubt) == Level.code
+    # IO by declared type of argument, global, or field on path. Open `write` inside `println` writes its `IO` for sure.
+    @test doubts(summary_of(log_line, IO, Int).writes) == Dict((parameter(2), true, io) => NO_DOUBT)
+    # Stream operand alone takes definite write: shown value keeps open-call doubt.
+    shown = doubts(summary_of(show_stream, IO, IO).writes)
+    @test shown[(parameter(2), true, io)] == NO_DOUBT && get(shown, (parameter(3), true, io), nothing) != NO_DOUBT
+    @test doubts(summary_of(copy_stream, IO, IO).writes) == Dict((parameter(2), true, io) => NO_DOUBT, (parameter(3), true, io) => NO_DOUBT)
+    @test isempty(Corset.Effects.stream_positions(display, 2)) && isempty(Corset.Effects.stream_positions(show, 1))
+    @test Corset.Effects.stream_positions(show, 2) == 1:1 && Corset.Effects.stream_positions(print, 0) == 1:0
     @test doubts(summary_of(write_byte!, IOBuffer, UInt8).writes) == Dict((parameter(2), false, io) => NO_DOUBT)
     @test Set(kind for (_, _, kind) in keys(summary_of(say, Int).writes)) == Set([io])
     @test doubts(summary_of(log_byte!, Logger, UInt8).writes) == Dict((parameter(2, Step.Field(:io)), false, io) => NO_DOUBT)
@@ -1767,6 +1886,10 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     @test doubts(summary_of(sink_push!, Sink, UInt8).writes) == Dict((parameter(2, Step.Field(:bytes)), false, io) => NO_DOUBT)
     # RNG argument, default RNG in `Task` fields, task-local storage, scoped read.
     @test doubts(summary_of(roll, Xoshiro).writes) == Dict((parameter(2), false, EffectKind.rng_argument) => NO_DOUBT)
+    # Open call of Random draw function draws from RNG argument, whatever method runs; other effects stay open.
+    @test doubts(summary_of(roll_open, AbstractRNG).writes)[(parameter(2), false, EffectKind.rng_argument)] == NO_DOUBT
+    @test doubts(summary_of(shuffle_open!, AbstractRNG, Vector{Int}).writes)[(parameter(2), false, EffectKind.rng_argument)] == NO_DOUBT
+    @test (parameter(2), false, EffectKind.rng_argument) in keys(summary_of(roll_open, AbstractRNG).reads)
     # Current task is unknown object without doubt: draw writes default RNG for sure, and nothing else for sure.
     rolled = summary_of(roll_default)
     rolled_writes = doubts(rolled.writes)
@@ -1800,7 +1923,10 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     @test matched[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT
     # PCRE table: JIT compile writes below audited `Regex` field; every write of match is definite.
     @test matched[(parameter(2, Step.Field(:regex)), false, EffectKind.lazy_init)].doubt == NO_DOUBT
-    @test all(effect -> effect.doubt == NO_DOUBT, values(matched))
+    # Rebinding `THREAD_MATCH_CONTEXTS` keeps old vector beside new one (no strong update): its sure write reads as `possible`.
+    contexts = Root.Global(GlobalRef(Base.PCRE, :THREAD_MATCH_CONTEXTS))
+    @test all(effect -> effect.doubt == NO_DOUBT, (effect for ((place, _, _), effect) in matched if root_of(place) != contexts))
+    @test_broken all(effect -> effect.doubt == NO_DOUBT, (effect for ((place, _, _), effect) in matched if root_of(place) == contexts))
     @test EffectKind.audited in kinds_at(matched, Root.Global(GlobalRef(Base.PCRE, :THREAD_MATCH_CONTEXTS)))
     @test summary_of(text_of, LazyString).writes[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT
     @test EffectKind.audited in kinds_at(summary_of(note, Int).reads, Root.Global(GlobalRef(Base.CoreLogging, :_global_logstate)))

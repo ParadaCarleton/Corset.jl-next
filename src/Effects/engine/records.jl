@@ -58,6 +58,96 @@ function unit_calls!(run::Run, root::Variant, span_of::Function)::UnitCalls
     return found
 end
 
+"""Whether `statement` builds value that holds its operands: tuple, new object (closure) or narrowed copy."""
+function holds_operands(@nospecialize(statement::Any))::Bool
+    statement isa Core.PiNode && return true
+    statement isa Expr || return false
+    statement.head in (:new, :splatnew) && return true
+    return statement.head === :call && statement.args[1] in (GlobalRef(Core, :tuple), Core.tuple)
+end
+
+"""
+Whether constant `value` holds `TaskLocalRNG` in field, at most `depth` levels down: closure or tuple that captured
+RNG. `TaskLocalRNG` is singleton, so inference folds closure over RNG argument to constant.
+"""
+function holds_task_rng(@nospecialize(value::Any), depth::Integer)::Bool
+    (depth == 0 || value isa Type || value isa Module) && return false
+    for index in 1:nfields(value)
+        isdefined(value, index) || continue
+        field = getfield(value, index)
+        (field isa Random.TaskLocalRNG || holds_task_rng(field, depth - 1)) && return true
+    end
+    return false
+end
+
+"""
+Arguments at `positions` that each call statement of `code` passes: argument itself, tuple or new object (closure)
+built from it, or constant that holds `TaskLocalRNG` (`holds_task_rng`).
+"""
+function passed_arguments(code::Code, positions::AbstractVector{<:Integer})::Dict{Int, Set{Int}}
+    held, passed = Dict{Int, Set{Int}}(), Dict{Int, Set{Int}}()
+    for index in 1:length(code.ir.stmts)
+        statement, carried = code.ir.stmts[index][:stmt], Set{Int}()
+        for reference in CC.userefs(statement)
+            operand = reference[]
+            operand isa Core.Argument && operand.n in positions && push!(carried, operand.n)
+            operand isa Core.SSAValue && union!(carried, get(held, operand.id, Set{Int}()))
+            operand isa Union{Core.Argument, Core.SSAValue, GlobalRef, Expr} && continue
+            # Bare `TaskLocalRNG()` constant is `default_rng()`; constant that holds it captured RNG argument.
+            holds_task_rng(operand isa QuoteNode ? operand.value : operand, 3) && union!(carried, positions)
+        end
+        isempty(carried) && continue
+        isnothing(code.outcomes[index]) || (passed[index] = carried)
+        holds_operands(statement) && (held[index] = carried)
+    end
+    return passed
+end
+
+"""Whether `summary` reads or writes default RNG."""
+reaches_default_rng(summary::Summary)::Bool = any(((_, _, kind),) -> kind == EffectKind.default_rng, Iterators.flatten((keys(summary.writes), keys(summary.reads))))
+
+"""Whether call statement `index` of `code` in `run` reaches default RNG: callee summary does, or builtin gets `Task`."""
+function reaches_default_rng(run::Run, code::Code, index::Integer)::Bool
+    any(callee -> reaches_default_rng(run.summaries[callee]), code.callees[index]) && return true
+    outcome = code.outcomes[index]
+    isnothing(outcome) && return false
+    return @match something(outcome) begin
+        Outcome.Builtin(_, operands) => any(operand -> operand_type(code.ir, operand) <: Task, operands)
+        _ => false
+    end
+end
+
+"""Whether `method` declares argument at `position` (1 is first after callee) with type that takes any RNG."""
+takes_any_rng(method::Method, position::Integer)::Bool = Random.AbstractRNG <: argument_type(method, position)::Type
+
+"""
+Arguments of root `root` that hold default RNG by caller choice (`engine.md`, Effect kinds): `TaskLocalRNG` where
+method declares type that takes any RNG. Empty unless each call that reaches default RNG gets one of them.
+"""
+function chosen_rng_arguments(run::Run, root::Variant)::Vector{Int}
+    instance, code = first(root), run.codes[root]
+    types = tuple_parameters(instance.specTypes)
+    method = instance.def::Method
+    # Method that declares `TaskLocalRNG` chose default RNG itself.
+    positions = [position + 1 for position in rng_positions(method) if position + 1 <= length(types) && types[position + 1] === Random.TaskLocalRNG && takes_any_rng(method, position)]
+    isempty(positions) && return positions
+    passed = passed_arguments(code, positions)
+    reaching = filter(index -> reaches_default_rng(run, code, index), eachindex(code.outcomes))
+    all(index -> haskey(passed, index), reaching) || return Int[]
+    return sort!(collect(reduce(union, (passed[index] for index in reaching); init = Set{Int}())))
+end
+
+"""
+`accesses` with each default RNG access moved to argument at each of `positions` (`chosen_rng_arguments`): kind stays
+default RNG, since draw still touches `Task` state; `possible` when several arguments share it.
+"""
+function chosen_rng(accesses::AbstractVector{Access}, positions::AbstractVector{<:Integer})::Vector{Access}
+    isempty(positions) && return accesses
+    moved(access::Access, position::Integer)::Access =
+        Access(Place.At(Root.Parameter(position), NO_STEPS), false, EffectKind.default_rng, length(positions) == 1 ? access.confidence : Confidence.possible, access.cause)
+    return [found for access in accesses for found in (access.kind == EffectKind.default_rng ? [moved(access, position) for position in positions] : [access])]
+end
+
 """Verdict record of root unit `typed` with variant `root` in solved `run`."""
 function unit_verdict!(run::Run, typed::TypedCode, root::Variant)::UnitVerdict
     own_cut = !isempty(typed.cuts)
@@ -73,9 +163,10 @@ function unit_verdict!(run::Run, typed::TypedCode, root::Variant)::UnitVerdict
     held_writes, held_blind = lock_writes(summary, span_of, kind_of)
     unguarded, spots = unguarded_holds(summary, span_of)
     reads, blind_reads = unit_accesses(summary.reads, span_of, typed.provenance)
+    chosen = chosen_rng_arguments(run, root)
     cut = summary.cut ? cut_span(run, typed, root) : nothing
     return UnitVerdict(
-        true, [writes; held_writes], reads, [blind_writes; held_blind], blind_reads, result_aliases(summary), unguarded,
+        true, [chosen_rng(writes, chosen); held_writes], chosen_rng(reads, chosen), [blind_writes; held_blind], blind_reads, result_aliases(summary), unguarded,
         unit_calls!(run, root, span_of), spots, summary.closed_world, cut, own_cut,
     )
 end
