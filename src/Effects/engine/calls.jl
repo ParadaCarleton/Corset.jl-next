@@ -36,6 +36,7 @@ Base.@kwdef struct CallEffects
 end
 
 include("foreign_gmp_mpfr.jl")
+include("foreign_blas_lapack.jl")
 
 """
 Table of libc and Julia runtime functions that Base call sites reach. Pointer argument stands for object it points into.
@@ -106,6 +107,19 @@ const HAND_EFFECTS = Dict{Symbol, CallEffects}(
 )
 
 """
+BLAS functions that generated table leaves out (`gen/foreign/blas_lapack.jl`): CBLAS dot products by `cblas.h` of
+Reference-LAPACK (`const` pointer read), and `?axpby`, which OpenBLAS and MKL add (`y = alpha * x + beta * y`).
+"""
+const BLAS_HAND_EFFECTS = Dict{Symbol, CallEffects}(
+    # Length, x, x stride, y, y stride; result is dot product.
+    (name => CallEffects(reads = [2, 4]) for name in (:cblas_ddot64_, :cblas_sdot64_))...,
+    # Length, x, x stride, y, y stride, output.
+    (name => CallEffects(writes = [6], reads = [2, 4]) for name in (:cblas_zdotc_sub64_, :cblas_cdotc_sub64_, :cblas_zdotu_sub64_, :cblas_cdotu_sub64_))...,
+    # Length, alpha, x, x stride, beta, y, y stride.
+    (name => CallEffects(writes = [6], reads = [1, 2, 3, 4, 5, 6, 7]) for name in (:saxpby_64_, :daxpby_64_, :caxpby_64_, :zaxpby_64_))...,
+)
+
+"""
 PCRE2 functions that Base regex code calls (`base/pcre.jl`), by PCRE2 API manual (`pcre2api`). Compile, match data,
 match context and JIT stack results are new C objects, which no Julia object holds.
 """
@@ -141,6 +155,18 @@ Foreign call table: C functions corpus reaches, from Base call sites, Julia runt
 Missing name stays open. No prefix rule: unknown `mpfr_` name stays open, since wrong entry gives false definite write.
 """
 const FOREIGN_EFFECTS = merge(RUNTIME_EFFECTS, GENERATED_EFFECTS, HAND_EFFECTS, PCRE_EFFECTS)
+
+"""
+BLAS and LAPACK table: entry applies only to call into BLAS library (`blas_library`). Missing name stays open (`lbt_`
+configuration of libblastrampoline).
+"""
+const BLAS_EFFECTS = merge(BLAS_LAPACK_EFFECTS, BLAS_HAND_EFFECTS)
+
+"""
+Whether shared library `library` is BLAS library: libblastrampoline, which LinearAlgebra calls, or OpenBLAS behind it.
+Name may carry version and platform suffix (`libblastrampoline.so.5`, `libblastrampoline-5.dll`).
+"""
+blas_library(library::String)::Bool = occursin(r"^lib(blastrampoline|openblas64_)([.-]\d+)*(\.(so|dylib|dll)(\.\d+)*)?$", basename(library))
 
 """
 Documented behavior of Base function (`engine.md`, Calls, step 6): `effects` on arguments; `callback` when function
@@ -458,14 +484,41 @@ function foreign_name(@nospecialize(target::Any))::Union{Nothing, Symbol}
 end
 
 """
-Resolution of foreign call `statement`: table entry with C arguments when table knows name; else unresolved on every
-operand, GC roots included. Arguments follow name, result type, argument types, vararg count and calling convention.
+Shared library that foreign call `target` names: string, or constant global that holds one. No library, or library
+that only run time fixes, gives `nothing`.
+"""
+function foreign_library(@nospecialize(target::Any))::Union{Nothing, String}
+    target isa QuoteNode && return foreign_library(target.value)
+    library = target isa Expr && target.head === :tuple && length(target.args) == 2 ? target.args[2] : target isa Tuple && length(target) == 2 ? target[2] : nothing
+    library isa QuoteNode && (library = library.value)
+    library isa GlobalRef && isconst(library) && (library = getglobal(library.mod, library.name))
+    return library isa String ? library : nothing
+end
+
+"""Table entry of foreign call `target`, or `nothing`. BLAS name in other library stays open: same name, other contract."""
+function foreign_effects(@nospecialize(target::Any))::Union{Nothing, CallEffects}
+    name = foreign_name(target)
+    isnothing(name) && return nothing
+    haskey(BLAS_EFFECTS, name) || return get(FOREIGN_EFFECTS, name, nothing)
+    library = foreign_library(target)
+    return !isnothing(library) && blas_library(library) ? BLAS_EFFECTS[name] : nothing
+end
+
+"""Highest argument position entry `effects` names; rest position counts none, since vararg may be empty."""
+function arity(effects::CallEffects)::Int
+    pairs = [effects.copies; effects.stores]
+    return maximum([effects.writes; effects.reads; effects.result; effects.elements; effects.aliases; first.(pairs); last.(pairs)]; init = 0)
+end
+
+"""
+Resolution of foreign call `statement`: table entry with C arguments when table knows target and call passes each
+argument entry names; else unresolved on every operand, GC roots included. Arguments follow target, result type,
+argument types, vararg count and calling convention.
 """
 function foreign_outcome(statement::Expr)::Outcome.Type
-    name = foreign_name(statement.args[1])
-    effects = isnothing(name) ? nothing : get(FOREIGN_EFFECTS, name, nothing)
-    isnothing(effects) && return Outcome.Unresolved(Operand.Type[Operand.Value(value) for value in statement.args[6:end]])
+    effects = foreign_effects(statement.args[1])
     count = length(statement.args[3]::Core.SimpleVector)
+    (isnothing(effects) || arity(effects) > count) && return Outcome.Unresolved(Operand.Type[Operand.Value(value) for value in statement.args[6:end]])
     return Outcome.Foreign(effects, Operand.Type[Operand.Value(value) for value in statement.args[6:(5 + count)]])
 end
 

@@ -8,7 +8,7 @@ using Corset.Effects.Summaries:
     Summaries, MethodVerdict, CallSummary, BlindAccess, UnitVerdict, Library, cached_effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
     library_body!, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, value_type, start_flow, statement!, map_node!, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
-    components, foreign_name, FOREIGN_EFFECTS, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt!, source_provenance,
+    components, foreign_name, FOREIGN_EFFECTS, BLAS_EFFECTS, foreign_effects, blas_library, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt!, source_provenance,
     Callback, Callees, Variant, root_summary!, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut!, CUT, catches!, cut!,
     special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body!, root_calls!, merge_calls, merge_callees, load!, store!, store_backing!,
@@ -16,6 +16,7 @@ using Corset.Effects.Summaries:
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Xoshiro
+using LinearAlgebra: LinearAlgebra, UpperTriangular, ldiv!
 using Base.ScopedValues: ScopedValue
 include("coverage.jl")
 
@@ -533,6 +534,14 @@ function derived_loop!(x::Any, values::Vector{Int}, count::Int)
 end
 object_at(pointer::Ptr{Cvoid}) = unsafe_pointer_to_objref(pointer)
 unknown_foreign!(pointer::Ptr{Int}) = ccall(:corset_unknown_function, Cvoid, (Ptr{Int},), pointer)
+
+# BLAS triangular solve (`trsv`) writes right-hand side; LAPACK LU solve (`gesv`) writes matrix and right-hand side.
+solve_upper!(factor::UpperTriangular{Float64, Matrix{Float64}}, rhs::Vector{Float64})::Vector{Float64} = ldiv!(factor, rhs)
+lu_solve!(matrix::Matrix{Float64}, rhs::Vector{Float64}) = LinearAlgebra.LAPACK.gesv!(matrix, rhs)
+blas_dot(x::Vector{Float64}, y::Vector{Float64})::Float64 = LinearAlgebra.BLAS.dot(x, y)
+# Same-named C function of other library, with fewer arguments than BLAS `axpy`, and with as many.
+short_axpy!(pointer::Ptr{Float64}) = ccall(:daxpy_64_, Cvoid, (Ptr{Float64},), pointer)
+other_axpy!(x::Vector{Float64}, y::Vector{Float64}) = ccall((:daxpy_64_, "libother"), Cvoid, (Ref{Int}, Ref{Float64}, Ptr{Float64}, Ref{Int}, Ptr{Float64}, Ref{Int}), 1, 1.0, x, 1, y, 1)
 unknown_foreign_object!(x::Any) = ccall(:corset_unknown_function, Cvoid, (Any,), x)
 mpfr_next!(x::BigFloat) = ccall((:mpfr_nextabove, Base.MPFR.libmpfr), Int32, (Ref{BigFloat},), x)
 mpfr_compare(x::BigFloat, y::BigFloat) = ccall((:mpfr_less_p, Base.MPFR.libmpfr), Int32, (Ref{BigFloat}, Ref{BigFloat}), x, y)
@@ -764,6 +773,41 @@ end
     @test written(mpfr_next!, BigFloat) == Set([2])
     @test written(mpfr_clear_unknown!) == Set{Int}()
     @test written(mpfr_set_unknown!, Any) == Set([2])
+end
+
+@testset "BLAS and LAPACK foreign calls" begin
+    none = NO_DOUBT
+    effects(name::Symbol)::Tuple = (f = BLAS_EFFECTS[name]; (f.writes, f.reads))
+    # Role comments: `[in,out] X` of `trsv` read and written, `[out] IPIV` of `gesv` written, `[in]` read.
+    @test effects(:dtrsv_64_) == ([7], collect(1:8))
+    @test effects(:dgesv_64_) == ([3, 5, 6, 8], [1, 2, 3, 4, 6, 7])
+    # `?ormrz` modifies `A` and restores it: store counts as write.
+    @test 7 in first(effects(:dormrz_64_))
+    # Renamed `?gemmt` takes roles of `?gemmtr`; CBLAS dot reads, `_sub` form writes output.
+    @test effects(:zgemmt_64_) == ([12], collect(1:13))
+    @test effects(:cblas_ddot64_) == (Int[], [2, 4]) && effects(:cblas_zdotc_sub64_) == ([6], [2, 4])
+    # Every BLAS and LAPACK call of LinearAlgebra, by global or literal library, has entry; `lbt_` configuration stays open.
+    targets = Set{Any}()
+    Base.visit(Core.methodtable) do method
+        method.module in (LinearAlgebra, LinearAlgebra.BLAS, LinearAlgebra.LAPACK) || return nothing
+        foreach(statement -> statement isa Expr && statement.head === :foreigncall && push!(targets, statement.args[1]), Base.uncompressed_ast(method).code)
+    end
+    blas = filter(target -> haskey(BLAS_EFFECTS, foreign_name(target)), targets)
+    @test length(blas) > 400 && all(!isnothing ∘ foreign_effects, blas)
+    @test all(target -> target in blas || startswith(string(foreign_name(target)), "lbt_") || haskey(FOREIGN_EFFECTS, foreign_name(target)), targets)
+    # Solve writes right-hand side for sure and leaves factor unwritten; dot writes nothing.
+    @test doubts(summary_of(solve_upper!, UpperTriangular{Float64, Matrix{Float64}}, Vector{Float64}).writes) == Dict(top(3) => none)
+    @test doubts(summary_of(lu_solve!, Matrix{Float64}, Vector{Float64}).writes) == Dict(top(2) => none, top(3) => none)
+    @test isempty(summary_of(blas_dot, Vector{Float64}, Vector{Float64}).writes)
+    # Call that passes fewer arguments than entry names stays open, as unknown C function does.
+    @test doubts(summary_of(short_axpy!, Ptr{Float64}).writes) == Dict((parameter(2), true) => CODE_DOUBT)
+    # Library name with version and platform suffix is BLAS library; other name that shares prefix is not.
+    @test all(blas_library, ("libblastrampoline.so.5", "/lib/libblastrampoline.5.dylib", "libblastrampoline-5.dll", "libopenblas64_.so", "libblastrampoline"))
+    @test !any(blas_library, ("libblastrampoline_custom.so", "libopenblas.so", "libother.so.5"))
+    # BLAS name in other library stays open: possible write on both arrays.
+    @test doubts(summary_of(other_axpy!, Vector{Float64}, Vector{Float64}).writes) == Dict((parameter(2), true) => CODE_DOUBT, (parameter(3), true) => CODE_DOUBT)
+    # Complex `geqp3!` holds dead real call with fewer arguments: it adds no open write.
+    @test doubts(summary_of(LinearAlgebra.LAPACK.geqp3!, Matrix{ComplexF32}, Vector{Int}, Vector{ComplexF32}).writes) == Dict(top(2) => none, top(3) => none, top(4) => none)
 end
 
 @testset "statements and calls" begin
