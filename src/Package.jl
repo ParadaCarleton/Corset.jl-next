@@ -7,7 +7,7 @@ Each extension whose triggers environment can load gets them loaded; extension t
 """
 module Package
 
-using ..Facts: Facts, line_starts, lowered_value, ArgumentUse, RESIZE_FUNCTIONS, PackageFacts, ProjectFacts, MethodSite, StructSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
+using ..Facts: Facts, line_starts, lowered_value, ArgumentUse, PackageFacts, ProjectFacts, MethodSite, StructSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
 using ..Config: ConfigError, parse_toml
 
 """Rule name load failures report under."""

@@ -47,6 +47,14 @@ end
 """Wraps names; field type `Vector{Symbol}` needs argument type."""
 wrap_names(names::Vector{Symbol}) = Names(names)
 
+"""Holder of samples."""
+struct Samples
+    samples::Vector{Float64}
+end
+
+"""Wraps samples; field type `Vector{Float64}` needs argument type, though `Float64` alone widens."""
+wrap_samples(samples::Vector{Float64}) = Samples(samples)
+
 """First item; rule reads no `where` inside annotation."""
 first_of(items::Union{Vector{T}, Set{T}} where {T}) = first(items)
 

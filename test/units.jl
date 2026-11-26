@@ -597,133 +597,78 @@ module UseCases
     struct Wrapped{V}
         items::V
     end
+    struct Boxed{T}
+        values::Set{Int}
+        tag::T
+        Boxed{T}(values::Set{Int}, tag::T) where {T} = new{T}(values, tag)
+    end
     abstract type Shape end
     Shape(items::Vector{Int}) = Wrapped(items)
-    pushed(items::Vector{Int}) = (push!(items, 1); nothing)
-    inserted(table::Dict{Int, Int}) = (table[1] = 2; nothing)
-    written(items::Vector{Int}) = (items[1] = 2; nothing)
-    defaulted(table::Dict{Int, Vector{Int}}) = (get!(Vector{Int}, table, 1); nothing)
-    filtered(items::Vector{Int}) = (filter!(isodd, items); nothing)
-    nested(rows::Vector{Vector{Int}}, index::Int) = (push!(rows[index], 1); nothing)
-    forwarded(items::Vector{Int}) = pushed(items)
-    reassigned(rows::Vector{Vector{Int}}) = (rows = rows[1]; push!(rows, 1); nothing)
-    dispatched(items::Vector{Int}) = sum(items)
-    dispatched(items::Set{Int}) = (push!(items, 1); nothing)
-    overloaded(items::Vector{Int}) = dispatched(items)
-    keyed(items::Vector{Int}, count::Int) = (push!(items, count); nothing)
-    keyed(items::Vector{Int}, name::Symbol) = sum(items)
-    by_name(items::Vector{Int}) = keyed(items, :total)
-    mode = :total
-    by_global(items::Vector{Int}) = keyed(items, mode)
-    splatted(items::Vector{Int}, counts::Tuple{Int}) = keyed(items, counts...)
-    sliced(rows::Vector{Vector{Int}}) = nested(rows[1:2], 1)
-    counted_first(count::Int, items::Vector{Int}) = (push!(items, count); nothing)
-    splat_first(items::Vector{Int}, counts::Tuple{Int}) = counted_first(counts..., items)
-    named(; items::Vector{Int}) = (push!(items, 1); nothing)
-    by_keyword(items::Vector{Int}) = named(; items = items)
-    spread(lists::Vector{Int}...) = (push!(lists[1], 1); nothing)
-    into_vararg(items::Vector{Int}) = spread(items)
-    action = sum
-    by_open_global(items::Vector{Int}) = action(items)
-    by_argument(callback, items::Vector{Int}) = callback(items)
-    struct Grown{T}
-        items::Vector{T}
-        Grown{T}(items::Vector{T}) where {T} = (push!(items, zero(T)); new{T}(items))
-    end
-    grown_int(items::Vector{Int}) = Grown{Int}(items)
-    grown_any(::Type{T}, items::Vector{T}) where {T} = Grown{T}(items)
-    # Repeated local in one type application is no cycle.
-    grown_paired(items::Vector{Pair{Int, Int}}) = (T = Int; Grown{Pair{T, T}}(items))
-    converted(::Type{T}, items::Vector{Int}) where {T} = T(items)
-    malformed(items::Vector{Int}) = Vector{Int, Int}(items)
-    self_assigned(items::Vector{Int}) = (local callback; callback = callback; callback(items))
-    self_applied(items::Vector{Int}) = (local T; T = Vector{T}; T(items))
-    holder = Base
-    by_module(items::Vector{Int}) = holder.sum(items)
-    by_constant_module(items::Vector{Int}) = Base.sum(items)
-    each_emptied(rows::Vector{Vector{Int}}) = foreach(empty!, rows)
-    each_pushed(rows::Vector{Vector{Int}}) = foreach(pushed, rows)
-    each_closure(rows::Vector{Vector{Int}}) = foreach(row -> push!(row, 1), rows)
-    each_read(rows::Vector{Vector{Int}}) = foreach(read_only, rows)
-    each_cycled(rows::Vector{Vector{Int}}) = (local f; f = f; foreach(f, rows))
-    function each_chained(rows::Vector{Vector{Int}})
-        alias = pushed
-        chained = alias
-        return foreach(chained, rows)
-    end
-    nested_inserted(tables::Vector{Dict{Int, Int}}) = (tables[1][1] = 2; nothing)
-    # Element type of set is unknown: dictionary write can reach it.
-    function set_inserted(tables::Set{Dict{Int, Int}})
-        for table in tables
-            table[1] = 2
-        end
-        return nothing
-    end
-    # Element type comes from supertype: analysis must not run package `eltype`.
-    struct Tables <: AbstractVector{Dict{Int, Int}} end
-    Base.eltype(::Type{Tables}) = error("analysis ran package eltype")
-    own_inserted(tables::Tables) = (tables[1][1] = 2; nothing)
-    predicate_filtered(predicate, items::Vector{Int}) = (filter!(predicate, items); nothing)
-    typed_filtered(predicate::Function, items::Vector{Int}) = (filter!(predicate, items); nothing)
-    merged(table::Dict{Int, Int}, other::Dict{Int, Int}) = (merge!(table, other); nothing)
-    nested_forwarded(rows::Vector{Vector{Int}}) = pushed(rows[1])
-    function iterated(rows::Vector{Vector{Int}})
-        for row in rows
-            push!(row, 1)
-        end
-        return nothing
-    end
-    captured(items::Vector{Int}, values::Vector{Int}) = (foreach(value -> push!(items, value), values); nothing)
     stored(values::Set{Int}) = Entry(values)
+    forwarded(values::Set{Int}) = stored(values)
+    function aliased(values::Set{Int})
+        alias = values
+        return Entry(alias)
+    end
+    captured(values::Set{Int}, keys::Vector{Int}) = map(key -> Entry(values), keys)
+    keyword(values::Set{Int}; count::Int = 1) = Entry(values)
+    keyword_caller(values::Set{Int}) = keyword(values; count = 2)
+    # Default-argument method calls own function through `#self#`.
+    stored_default(values::Set{Int}, count::Int = 1) = Entry(values)
+    counted(values::Set{Int}, start::Int = 0) = start + length(values)
+    dispatched(values::Vector{Int}) = sum(values)
+    dispatched(values::Set{Int}) = Entry(values)
+    overloaded(values::Vector{Int}) = dispatched(values)
+    keyed(values::Set{Int}, count::Int) = Entry(values)
+    keyed(values::Set{Int}, name::Symbol) = length(values)
+    by_name(values::Set{Int}) = keyed(values, :total)
+    by_literal(values::Set{Int}) = keyed(values, 1)
+    mode = :total
+    by_global(values::Set{Int}) = keyed(values, mode)
+    by_constant_module(values::Set{Int}) = UseCases.stored(values)
+    # Type application of constant values reaches its constructors; repeated local in one application is no cycle.
+    boxed_int(values::Set{Int}) = Boxed{Int}(values, 1)
+    boxed_paired(values::Set{Int}) = (T = Int; Boxed{Pair{T, T}}(values, 1 => 1))
+    # Non-constant global callee: store through its current value counts.
+    action = Entry
+    by_open_global(values::Set{Int}) = action(values)
+    # Blind spots: open callee, splat, vararg, keyword value, element.
+    by_argument(callback, values::Set{Int}) = callback(values)
+    holder = UseCases
+    by_module(values::Set{Int}) = holder.stored(values)
+    splatted(values::Set{Int}, counts::Tuple{Int}) = keyed(values, counts...)
+    spread(lists::Set{Int}...) = length(lists)
+    into_vararg(values::Set{Int}) = spread(values)
+    named(; values::Set{Int}) = Entry(values)
+    by_keyword(values::Set{Int}) = named(; values = values)
+    nested(rows::Vector{Set{Int}}) = Entry(rows[1])
+    each_closure(rows::Vector{Set{Int}}) = foreach(row -> Entry(row), rows)
+    converted(::Type{T}, values::Set{Int}) where {T} = T(values)
+    malformed(values::Set{Int}) = Vector{Int, Int}(values)
+    self_assigned(values::Set{Int}) = (local callback; callback = callback; callback(values))
+    self_applied(values::Set{Int}) = (local T; T = Vector{T}; T(values))
+    # Other expressions need nothing: copy, parameter-typed field, resize.
     built(values::Set{Int}) = Entry(Set(values))
     wrapped(items::Vector{Int}) = Wrapped(items)
     shaped(items::Vector{Int}) = Shape(items)
-    keyword(items::Vector{Int}; count::Int = 1) = (push!(items, count); nothing)
-    keyword_caller(items::Vector{Int}) = keyword(items; count = 2)
-    function aliased(items::Vector{Int})
-        alias = items
-        push!(alias, 1)
-        return nothing
-    end
-    read_only(items::Vector{Int}) = sum(items)
-    # Default-argument method calls own function through `#self#`.
-    counted(items::Vector{Int}, start::Int = 0) = start + length(items)
-    pushed_default(items::Vector{Int}, count::Int = 1) = (push!(items, count); nothing)
+    pushed(items::Vector{Int}) = (push!(items, 1); nothing)
 end
 
 @testset "argument uses" begin
     uses = Corset.Package.argument_uses(Corset.Package.lowered_bodies(Corset.Package.module_methods([UseCases])), Set([UseCases]))
     use(f::Function, position::Integer) = get(get(uses, only(Base.methods(f)), Dict{Int, Facts.ArgumentUse}()), position, nothing)
-    shape(found::Union{Nothing, Facts.ArgumentUse}) = isnothing(found) ? nothing : (found.resized, found.elements_resized, found.stored)
-    resized = (true, false, Any[])
-    @test all(f -> shape(use(f, 1)) == resized, [UseCases.pushed, UseCases.inserted, UseCases.defaulted, UseCases.filtered, UseCases.forwarded, UseCases.captured, UseCases.keyword, UseCases.keyword_caller, UseCases.aliased])
-    @test shape(use(UseCases.nested, 1)) == shape(use(UseCases.nested_forwarded, 1)) == shape(use(UseCases.iterated, 1)) == shape(use(UseCases.nested_inserted, 1)) == shape(use(UseCases.own_inserted, 1)) == shape(use(UseCases.set_inserted, 1)) == (false, true, Any[])
-    @test isnothing(use(UseCases.nested, 2)) && isnothing(use(UseCases.captured, 2))
-    # Local that argument and its element both reach holds both.
-    @test shape(use(UseCases.reassigned, 1)) == (true, true, Any[])
-    # Non-constant global can hold value of other type later.
-    @test shape(use(UseCases.by_global, 1)) == resized
-    # Splat, keyword value and vararg parameter hide callee position: every resize counts.
-    @test all(f -> shape(use(f, 1)) == (true, true, Any[]), [UseCases.splatted, UseCases.splat_first, UseCases.by_keyword, UseCases.into_vararg])
-    # Open callee can run any function; function operand of other call can get other operands.
-    @test shape(use(UseCases.by_open_global, 1)) == shape(use(UseCases.by_argument, 2)) == shape(use(UseCases.by_module, 1)) == (true, true, Any[])
-    @test isnothing(use(UseCases.by_constant_module, 1))
-    # Type application of constant values reaches its constructors; other type application and static parameter are open.
-    @test shape(use(UseCases.grown_int, 1)) == shape(use(UseCases.grown_paired, 1)) == resized
-    @test shape(use(UseCases.grown_any, 2)) == shape(use(UseCases.converted, 2)) == shape(use(UseCases.malformed, 1)) == shape(use(UseCases.self_assigned, 1)) == shape(use(UseCases.self_applied, 1)) == (true, true, Any[])
-    @test all(f -> shape(use(f, 1)) == (true, true, Any[]), [UseCases.each_emptied, UseCases.each_pushed, UseCases.each_closure, UseCases.each_chained])
-    @test isnothing(use(UseCases.each_read, 1)) && isnothing(use(UseCases.each_cycled, 1))
-    # Slice holds elements of argument.
-    @test shape(use(UseCases.sliced, 1)) == (false, true, Any[])
-    # Function-first call: unknown first operand can be predicate or collection.
-    @test shape(use(UseCases.predicate_filtered, 2)) == shape(use(UseCases.typed_filtered, 2)) == shape(use(UseCases.merged, 1)) == resized
-    @test isnothing(use(UseCases.typed_filtered, 1)) && isnothing(use(UseCases.merged, 2))
-    @test shape(use(UseCases.stored, 1)) == (false, false, Any[Union{Int, Set{Int}}])
-    # Callee method for other argument type, array element write, parameter-typed field and other expressions need nothing.
-    @test all(f -> isnothing(use(f, 1)), [UseCases.overloaded, UseCases.by_name, UseCases.written, UseCases.built, UseCases.wrapped, UseCases.shaped, UseCases.read_only])
-    @test !any(method -> haskey(uses, method), Base.methods(UseCases.counted))
-    @test all(method -> shape(uses[method][1]) == resized, Base.methods(UseCases.pushed_default)) && length(Base.methods(UseCases.pushed_default)) == 2
+    stored(found::Union{Nothing, Facts.ArgumentUse}) = isnothing(found) ? nothing : found.stored
+    entry, boxed = Any[Union{Int, Set{Int}}], Any[Set{Int}]
+    @test all(f -> stored(use(f, 1)) == entry, [UseCases.stored, UseCases.forwarded, UseCases.aliased, UseCases.captured, UseCases.keyword, UseCases.keyword_caller, UseCases.by_literal, UseCases.by_global, UseCases.by_constant_module, UseCases.by_open_global])
+    @test stored(use(UseCases.boxed_int, 1)) == stored(use(UseCases.boxed_paired, 1)) == boxed
+    @test all(method -> stored(uses[method][1]) == entry, Base.methods(UseCases.stored_default)) && length(Base.methods(UseCases.stored_default)) == 2
+    @test isnothing(use(UseCases.captured, 2)) && !any(method -> haskey(uses, method), Base.methods(UseCases.counted))
+    # Callee method for other argument type and other `keyed` method store nothing.
+    @test isnothing(use(UseCases.overloaded, 1)) && isnothing(use(UseCases.by_name, 1))
+    blind = [UseCases.by_module, UseCases.splatted, UseCases.into_vararg, UseCases.by_keyword, UseCases.nested, UseCases.each_closure, UseCases.malformed, UseCases.self_assigned, UseCases.self_applied]
+    @test all(f -> isnothing(use(f, 1)), blind) && isnothing(use(UseCases.by_argument, 2)) && isnothing(use(UseCases.converted, 2))
+    @test all(f -> isnothing(use(f, 1)), [UseCases.built, UseCases.wrapped, UseCases.shaped, UseCases.pushed])
     # Package facts read closure bodies, which have no method site.
     facts = Corset.Package.package_facts([UseCases], [Corset.Syntax.parse_file(@__FILE__, read(@__FILE__, String), Role.package)])
-    @test facts.uses[only(Base.methods(UseCases.captured))][1].resized
+    @test facts.uses[only(Base.methods(UseCases.captured))][1].stored == entry
 end

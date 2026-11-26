@@ -1,17 +1,11 @@
-"""Argument a value of lowered code comes from: position, or field name of closure object; and whether value is its element."""
-const Origin = Tuple{Union{Int, Symbol}, Bool}
+"""Argument a value of lowered code comes from: position, or field name of closure object."""
+const Origin = Union{Int, Symbol}
 
 """Argument uses of one method during `argument_uses`, by position and by captured field name."""
-const Uses = Dict{Union{Int, Symbol}, ArgumentUse}
+const Uses = Dict{Origin, ArgumentUse}
 
 """Use without need: start of join (`record!`)."""
-const NO_USE = ArgumentUse(false, false, Any[])
-
-"""Use of argument that body resizes (`RESIZE_FUNCTIONS`)."""
-const RESIZED = ArgumentUse(true, false, Any[])
-
-"""Use of argument whose callee or callee position is unknown: open callee, splat, vararg, keyword value. Every resize counts."""
-const UNKNOWN = ArgumentUse(true, true, Any[])
+const NO_USE = ArgumentUse(Any[])
 
 """
 Locals of one lowered body, by slot: values each gets (`assigned`), origins (`Origin`) each holds, joined over every
@@ -25,42 +19,18 @@ struct Locals
 end
 
 """
-Origins (`Origin`) value `operand` of lowered `code` can hold, for method with `nargs` arguments: argument, field of
-closure object (`getfield(#self#, :name)`), or element `getindex` or `for` loop reads from either. Join ignores order:
-local (slot past arguments) holds origins of every value it gets (`Locals`).
+Origins (`Origin`) value `operand` of lowered `code` can hold, for method with `nargs` arguments: argument or field of
+closure object (`getfield(#self#, :name)`). Join ignores order: local (slot past arguments) holds origins of every
+value it gets (`Locals`).
 """
 function origins(code::AbstractVector{Any}, nargs::Integer, locals::Locals, @nospecialize(operand::Any))::Vector{Origin}
     operand isa Core.SSAValue && (operand = code[operand.id])
     # Lowering copies argument into local before body assigns it; slot 1 is callee.
-    operand isa Core.SlotNumber && return operand.id > nargs ? get(locals.origins, operand.id, Origin[]) : operand.id >= 2 ? [(operand.id - 1, false)] : Origin[]
+    operand isa Core.SlotNumber && return operand.id > nargs ? get(locals.origins, operand.id, Origin[]) : operand.id >= 2 ? Origin[operand.id - 1] : Origin[]
     operand isa Expr || return Origin[]
-    (operand.head === :call && length(operand.args) >= 2) || return Origin[]
-    callee, subject = lowered_value(code, operand.args[1]), operand.args[2]
-    if callee === getfield && length(operand.args) == 3
-        field = operand.args[3]
-        subject == Core.SlotNumber(1) && field isa QuoteNode && field.value isa Symbol && return [(field.value, false)]
-        # `for x in X` reads `x` as field 1 of `iterate(X, ...)` result.
-        field === 1 || return Origin[]
-        inner = iterated(code, nargs, locals, subject)
-    elseif callee === getindex
-        inner = origins(code, nargs, locals, subject)
-    else
-        return Origin[]
-    end
-    return Origin[(key, true) for (key, element) in inner if !element]
-end
-
-"""Origins (`origins`) of collections local `state` iterates: values of its assignments `state = iterate(X, ...)`."""
-function iterated(code::AbstractVector{Any}, nargs::Integer, locals::Locals, @nospecialize(state::Any))::Vector{Origin}
-    state isa Core.SSAValue && (state = code[state.id])
-    found = Origin[]
-    state isa Core.SlotNumber || return found
-    for call in get(locals.assigned, state.id, Any[])
-        call isa Expr || continue
-        (call.head === :call && length(call.args) >= 2 && lowered_value(code, call.args[1]) === iterate) || continue
-        union!(found, origins(code, nargs, locals, call.args[2]))
-    end
-    return found
+    (operand.head === :call && length(operand.args) == 3 && lowered_value(code, operand.args[1]) === getfield) || return Origin[]
+    field = operand.args[3]
+    return operand.args[2] == Core.SlotNumber(1) && field isa QuoteNode && field.value isa Symbol ? Origin[field.value] : Origin[]
 end
 
 """
@@ -98,78 +68,13 @@ function body_locals(code::AbstractVector{Any}, method::Method)::Locals
     return locals
 end
 
-"""
-Statement or value `operand` of lowered `code` stands for, through statements and chains of locals assigned once.
-`nothing` for argument, local assigned more than once, and cycle of locals (`c = c`).
-"""
-function resolved(code::AbstractVector{Any}, locals::Locals, @nospecialize(operand::Any))::Any
-    # Chain without cycle visits each local once.
-    for _ in 0:length(locals.assigned)
-        operand isa Core.SSAValue && (operand = code[operand.id])
-        operand isa Core.SlotNumber || return operand
-        assigned = get(locals.assigned, operand.id, nothing)
-        isnothing(assigned) && return nothing
-        length(assigned) == 1 || return nothing
-        operand = only(assigned)
-    end
-    return nothing
-end
-
-"""`lowered_value` of `operand` of lowered `code`, with locals read from `locals` index."""
-local_value(code::AbstractVector{Any}, locals::Locals, @nospecialize(operand::Any))::Any = lowered_value(code, resolved(code, locals, operand))
-
-"""Whether `operand` of lowered `code` is function or type: global, type application or closure object (`new`)."""
-function callable(code::AbstractVector{Any}, locals::Locals, @nospecialize(operand::Any))::Bool
-    local_value(code, locals, operand) isa Base.Callable && return true
-    operand isa Core.SSAValue || return false
-    statement = code[operand.id]
-    statement isa Expr || return false
-    return statement.head === :new || (statement.head === :call && lowered_value(code, statement.args[1]) === Core.apply_type)
-end
-
-"""Resizing functions with method that takes function first and collection second: `filter!(f, a)`, `get!(f, d, k)`."""
-const FUNCTION_FIRST = Base.IdSet{Any}(Any[filter!, unique!, merge!, mergewith!, get!])
-
-"""
-Positions of `operands` of resizing call to `callee` in lowered `code` of `method` that can hold collection call resizes.
-`FUNCTION_FIRST` call with two operands or more gives both when first operand (`held` origins) is of unknown kind.
-"""
-function resized_positions(code::AbstractVector{Any}, locals::Locals, method::Method, @nospecialize(callee::Any), operands::AbstractVector, held::AbstractVector{<:AbstractVector{Origin}})::UnitRange{Int}
-    isempty(operands) && return 1:0
-    (callee in FUNCTION_FIRST && length(operands) >= 2) || return 1:1
-    callable(code, locals, first(operands)) && return 2:2
-    declared = length(first(held)) == 1 ? declared_type(method, only(first(held))) : nothing
-    isnothing(declared) && return 1:2
-    declared <: Base.Callable && return 2:2
-    return declared <: Union{AbstractArray, AbstractDict, AbstractSet} ? (1:1) : (1:2)
-end
-
-"""
-Declared type of argument `origin` of `method`: tuple for vararg argument; for element, dictionary value or `eltype`.
-`nothing` for closure field.
-"""
+"""Declared type of argument `origin` of `method`: tuple for vararg argument; `nothing` for closure field."""
 function declared_type(method::Method, origin::Origin)::Union{Nothing, Type}
-    (position, element) = origin
+    origin isa Int || return nothing
     parameters = Facts.tuple_parameters(method.sig)
-    position isa Int || return nothing
-    length(parameters) > position || return nothing
-    parameter = parameters[position + 1]
-    declared = Base.rewrap_unionall(Base.isvarargtype(parameter) ? Tuple{parameter} : parameter, method.sig)
-    return element ? element_type(declared) : declared
-end
-
-"""
-Type `getindex` reads from collection of `declared` type: value of `AbstractDict` supertype, element of `AbstractArray`
-supertype, else `Any`. Supertypes give it: `eltype` and `valtype` could run package code.
-"""
-function element_type(declared::Type)::Type
-    body = Base.unwrap_unionall(declared)
-    while body isa DataType && body !== Any
-        index = body.name === Base.typename(AbstractDict) ? 2 : body.name === Base.typename(AbstractArray) ? 1 : 0
-        index == 0 || return body.parameters[index] isa Type ? body.parameters[index] : Any
-        body = supertype(body)
-    end
-    return Any
+    length(parameters) > origin || return nothing
+    parameter = parameters[origin + 1]
+    return Base.rewrap_unionall(Base.isvarargtype(parameter) ? Tuple{parameter} : parameter, method.sig)
 end
 
 """
@@ -177,8 +82,7 @@ Known type of `operand` of lowered `code` of `method`: declared type of its one 
 constant global, or declared type of other global; else `Any`.
 """
 function operand_type(code::AbstractVector{Any}, method::Method, @nospecialize(operand::Any), held::AbstractVector{<:Origin})::Type
-    # Element origin can be slice (`x[1:2]`): its type is unknown.
-    declared = length(held) == 1 && !last(only(held)) ? declared_type(method, only(held)) : nothing
+    declared = length(held) == 1 ? declared_type(method, only(held)) : nothing
     isnothing(declared) || return declared
     operand isa Core.SSAValue && (operand = code[operand.id])
     operand isa QuoteNode && return Core.Typeof(operand.value)
@@ -199,32 +103,6 @@ end
 function splat_call(code::AbstractVector{Any}, index::Integer)::Bool
     call = statement_call(code, index)
     return call isa Expr && lowered_value(code, call.args[1]) === Core._apply_iterate
-end
-
-"""Operands of splat call at statement `index` of lowered `code`: elements of `tuple(...)` parts, and other parts."""
-function splat_operands(code::AbstractVector{Any}, index::Integer)::Vector{Any}
-    call = statement_call(code, index)
-    found = Any[]
-    call isa Expr || return found
-    # Operands: `_apply_iterate`, `iterate`, callee, parts.
-    for part in call.args[4:end]
-        tuple = part isa Core.SSAValue ? code[part.id] : nothing
-        if tuple isa Expr && tuple.head === :call && lowered_value(code, tuple.args[1]) === Core.tuple
-            append!(found, tuple.args[2:end])
-        else
-            push!(found, part)
-        end
-    end
-    return found
-end
-
-"""Values of keyword arguments `names` operand of `Core.kwcall` in lowered `code` holds: `NamedTuple{names}(tuple(values...))`."""
-function keyword_values(code::AbstractVector{Any}, @nospecialize(names::Any))::Vector{Any}
-    built = names isa Core.SSAValue ? code[names.id] : nothing
-    built isa Expr || return Any[]
-    (built.head === :call && length(built.args) == 2) || return Any[]
-    values = built.args[2] isa Core.SSAValue ? code[built.args[2].id] : nothing
-    return values isa Expr && values.head === :call && lowered_value(code, values.args[1]) === Core.tuple ? values.args[2:end] : Any[]
 end
 
 """Whether argument `position` of call to `method` lands in its vararg parameter."""
@@ -257,15 +135,6 @@ function constant_value(code::AbstractVector{Any}, locals::Locals, @nospecialize
     return isdefined(owner, name) && isconst(owner, name) ? Some(getglobal(owner, name)) : nothing
 end
 
-"""Package methods function operand `operand` of lowered `code` can run: closure object it builds, or `targets` of its value."""
-function function_methods(code::AbstractVector{Any}, locals::Locals, @nospecialize(operand::Any), targets::Function, closures::AbstractDict{Core.TypeName, <:AbstractVector{Method}})::Vector{Method}
-    built = resolved(code, locals, operand)
-    built isa Expr || return targets(local_value(code, locals, operand))
-    built.head === :new || return targets(local_value(code, locals, operand))
-    wrapper = Base.unwrap_unionall(built_type(code, built.args[1]))
-    return wrapper isa DataType ? Vector{Method}(get(closures, wrapper.name, Method[])) : Method[]
-end
-
 """Type `new` operand `operand` of lowered `code` builds: global, or `apply_type` of global, as closure over typed captures."""
 function built_type(code::AbstractVector{Any}, @nospecialize(operand::Any))::Any
     operand isa Core.SSAValue && (operand = code[operand.id])
@@ -273,16 +142,12 @@ function built_type(code::AbstractVector{Any}, @nospecialize(operand::Any))::Any
     return lowered_value(code, operand)
 end
 
-"""
-Join `use` into entry `key` of `uses`: use of element (`element`) adds its resizes to elements, other use adds all.
-Element origin can be slice, whose elements are elements of argument. Return whether entry changed.
-"""
-function record!(uses::Uses, key::Union{Integer, Symbol}, use::ArgumentUse, element::Bool)::Bool
-    old = get(uses, key, NO_USE)
-    new = element ? ArgumentUse(old.resized, old.elements_resized || use.resized || use.elements_resized, old.stored) :
-        ArgumentUse(old.resized || use.resized, old.elements_resized || use.elements_resized, union(old.stored, use.stored))
-    (new.resized, new.elements_resized, length(new.stored)) == (old.resized, old.elements_resized, length(old.stored)) && return false
-    uses[key] = new
+"""Join `use` into entry `key` of `uses`; return whether entry grew."""
+function record!(uses::Uses, key::Origin, use::ArgumentUse)::Bool
+    old = get(uses, key, NO_USE).stored
+    stored = union(old, use.stored)
+    length(stored) == length(old) && return false
+    uses[key] = ArgumentUse(stored)
     return true
 end
 
@@ -294,7 +159,7 @@ function field_uses(@nospecialize(type::Any), modules::AbstractSet{Module})::Uni
     wrapper = Base.unwrap_unionall(type)
     wrapper isa DataType || return nothing
     (wrapper.name.module in modules && isstructtype(wrapper) && !(wrapper <: Function)) || return nothing
-    return Union{Nothing, ArgumentUse}[Base.has_free_typevars(field) ? nothing : ArgumentUse(false, false, Any[field]) for field in fieldtypes(wrapper)]
+    return Union{Nothing, ArgumentUse}[Base.has_free_typevars(field) ? nothing : ArgumentUse(Any[field]) for field in fieldtypes(wrapper)]
 end
 
 """Push to `fixed` use (`field_uses`) of each `held` operand origin constructor of `type` stores, when it takes one per field."""
@@ -302,7 +167,7 @@ function push_field_uses!(fixed::AbstractVector{Tuple{Origin, ArgumentUse}}, @no
     fields = field_uses(type, modules)
     (isnothing(fields) || length(fields) != length(held)) && return nothing
     for (use, reached) in zip(fields, held), origin in reached
-        isnothing(use) || last(origin) || push!(fixed, (origin, use))
+        isnothing(use) || push!(fixed, (origin, use))
     end
     return nothing
 end
@@ -316,60 +181,16 @@ function use_steps(code::AbstractVector{Any}, method::Method, targets::Function,
     nargs, locals = Int(method.nargs), body_locals(code, method)
     for (index, callee, head, operands) in lowered_calls(code)
         held = Vector{Origin}[origins(code, nargs, locals, operand) for operand in operands]
-        if callee in RESIZE_FUNCTIONS || callee === get!
-            for position in resized_positions(code, locals, method, callee, operands, held), origin in held[position]
-                push!(fixed, (origin, RESIZED))
-            end
-        elseif callee === setindex! && !isempty(held)
-            # Array element write keeps size; dictionary write can add key.
-            for origin in first(held)
-                declared = declared_type(method, origin)
-                !isnothing(declared) && typeintersect(declared, AbstractDict) !== Union{} && push!(fixed, (origin, RESIZED))
-            end
-        end
         types = Type[operand_type(code, method, operand, origins) for (operand, origins) in zip(operands, held)]
-        keywords = callee === Core.kwcall && length(operands) >= 2 ? keyword_values(code, first(operands)) : Any[]
         callee === Core.kwcall && length(operands) >= 2 && ((callee, head, operands, held, types) = (lowered_value(code, operands[2]), operands[2], operands[3:end], held[3:end], types[3:end]))
         push_field_uses!(fixed, callee, held, modules)
-        splat = splat_call(code, index)
-        hidden = splat ? [splat_operands(code, index); keywords] : keywords
         constant = constant_value(code, locals, head)
-        if isnothing(constant)
-            # Open callee can run any function with any operand.
-            for operand in [operands; hidden], origin in origins(code, nargs, locals, operand)
-                push!(fixed, (origin, UNKNOWN))
-            end
-            continue
-        end
-        callee = something(constant)
-        # Callee methods whose signature can take known operand types; splat call has unknown operands after them.
-        call = splat ? Tuple{Any, types..., Vararg{Any}} : Tuple{Any, types...}
-        callees = Method[target for target in targets(callee) if typeintersect(call, target.sig) !== Union{}]
-        if isempty(callees)
-            # Higher-order call (`foreach(f, xs)`) can pass other operands to function operand: link 0 reaches any position.
-            for (position, operand) in pairs(operands)
-                value = local_value(code, locals, operand)
-                resizing = value in RESIZE_FUNCTIONS || value === get!
-                functions = resizing ? Method[] : function_methods(code, locals, operand, targets, closures)
-                (resizing || !isempty(functions)) || continue
-                for (other, reached) in pairs(held), origin in reached
-                    other == position && continue
-                    if resizing
-                        push!(fixed, (origin, UNKNOWN))
-                    else
-                        push!(links, (origin, functions, 0))
-                    end
-                end
-            end
-            continue
-        end
-        # Splat and keyword value hide callee position.
-        for operand in hidden, origin in origins(code, nargs, locals, operand)
-            push!(fixed, (origin, UNKNOWN))
-        end
-        splat && continue
+        # Open callee and splat hide callee or its positions (`ArgumentUse` blind spots).
+        (isnothing(constant) || splat_call(code, index)) && continue
+        # Comprehension captures `call`: capture of `types`, which kwcall shift assigns again, gets `Core.Box`.
+        call = Tuple{Any, types...}
+        callees = Method[target for target in targets(something(constant)) if typeintersect(call, target.sig) !== Union{}]
         for (position, reached) in pairs(held), origin in reached
-            any(target -> vararg_position(target, position), callees) && push!(fixed, (origin, UNKNOWN))
             exact = filter(target -> !vararg_position(target, position), callees)
             isempty(exact) || push!(links, (origin, exact, position))
         end
@@ -393,8 +214,8 @@ end
 
 """
 Argument uses of lowered `bodies` (`lowered_bodies`) of package `modules` that need declared container type
-(`ArgumentUse`), by method and position. Passes repeat until no use grows: each joins uses of package callee arguments,
-including keyword bodies (`Core.kwcall`), and of closure fields into operands that reach them.
+(`ArgumentUse`), by method and position. Passes repeat until no use grows: each joins stores of package callee
+arguments, including keyword bodies (`Core.kwcall`), and of closure fields into operands that reach them.
 """
 function argument_uses(bodies::AbstractVector{<:Tuple{Method, AbstractVector{Any}, Type}}, modules::AbstractSet{Module})::IdDict{Method, Dict{Int, ArgumentUse}}
     exact, inexact, closures = IdDict{Type, Vector{Method}}(), Tuple{Type, Method}[], IdDict{Core.TypeName, Vector{Method}}()
@@ -416,17 +237,16 @@ function argument_uses(bodies::AbstractVector{<:Tuple{Method, AbstractVector{Any
     links = Tuple{Uses, Origin, Vector{Method}, Int}[]
     for (method, code, _) in bodies
         fixed, own = use_steps(code, method, targets, closures, modules)
-        foreach(((found, use),) -> record!(uses[method], first(found), use, last(found)), fixed)
+        foreach(((found, use),) -> record!(uses[method], found, use), fixed)
         append!(links, [(uses[method], found, callees, key) for (found, callees, key) in own])
     end
     grown = true
     while grown
         grown = false
-        for (into, (key, element), callees, link) in links, callee in callees
-            # Link 0 reaches any position; negative link names closure field by position.
-            use = link == 0 ? (any(((entry, found),) -> entry isa Int && (found.resized || found.elements_resized), uses[callee]) ? UNKNOWN : nothing) :
-                get(uses[callee], link > 0 ? link : fieldnames(Base.unwrap_unionall(callee_type(callee)))[-link], nothing)
-            isnothing(use) || (grown |= record!(into, key, use, element))
+        for (into, key, callees, link) in links, callee in callees
+            # Negative link names closure field by position.
+            use = get(uses[callee], link > 0 ? link : fieldnames(Base.unwrap_unionall(callee_type(callee)))[-link], nothing)
+            isnothing(use) || (grown |= record!(into, key, use))
         end
     end
     return IdDict{Method, Dict{Int, ArgumentUse}}(method => Dict{Int, ArgumentUse}(key => use for (key, use) in found if key isa Int) for (method, found) in uses if any(key -> key isa Int, keys(found)))
