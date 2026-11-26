@@ -417,6 +417,7 @@ end
 top(position::Int)::Tuple{Place.Type, Bool} = (parameter(position), false)
 
 const ANY_REF = Ref{Any}(nothing)
+const BYTES = UInt8[1, 2]
 const HOLDER = Ref([1])
 const NESTED = CASES.Wrapper(CASES.Chain(CASES.Holder(CASES.Box(1))))
 const NESTED_TUPLE = foldl((inner, _) -> (inner,), 1:(PATH_DEPTH + 1); init = 1)
@@ -1263,6 +1264,11 @@ four_way(x::Symbol) = x
     @test exact_path(code.ir, at(:ANY_REF), Step.Type[field_x, Step.Field(:a)]) && !exact_path(code.ir, at(:ANY_REF), Step.Type[field_x, Step.Field(:a), Step.Field(:b)])
     @test exact_path(code.ir, at(:NESTED_TUPLE), fill(Step.Position(1), PATH_DEPTH)) && !exact_path(code.ir, at(:NESTED_TUPLE), fill(Step.Position(1), PATH_DEPTH + 1))
     @test extend(code.ir, Place.Deep(at(:LOOP)), link_next) == Place.Deep(at(:LOOP))
+    # Bits element and field that concrete type lacks hold no caller object; `Any` field can.
+    caller(root::Root.Type, steps::Step.Type...)::Targets = Targets(Origin.Caller(Place.At(root, Step.Type[steps...])) => NO_DOUBT)
+    @test isempty(load!(flow, caller(at(:BYTES)), Step.Element())) && isempty(load!(flow, caller(at(:NESTED)), Step.Field(:missing)))
+    @test isempty(load!(flow, caller(at(:BYTES), Step.Element()), Step.Field(:x))) && load!(flow, caller(at(:ANY_REF)), field_x) == caller(at(:ANY_REF), field_x)
+    @test load!(flow, caller(at(:NESTED)), Step.Position(1)) == caller(at(:NESTED), Step.Position(1)) && isempty(load!(flow, caller(at(:NESTED)), Step.Position(2)))
     # Slot targets found before heap grows go stale: load after store sees new slot and backing contents.
     box, backed = Targets(Origin.Allocation(5) => NO_DOUBT), Targets(Origin.Allocation(6) => NO_DOUBT)
     @test isempty(load!(flow, box, Step.Field(:y))) && isempty(load!(flow, box, Step.Element()))
@@ -2071,8 +2077,11 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     # Property accessor runs field access of its caller; other Base methods own scheduler state.
     @test scheduler_method(which(schedule, (Task,))) && !scheduler_method(which(setproperty!, (Task, Symbol, Any))) && !scheduler_method(only(methods(unpin)))
     @test field_kind(Regex, Some{Any}(4), false) == EffectKind.lazy_init && field_kind(Tuple{IOBuffer}, Some{Any}(1), false) == EffectKind.memory && field_kind(IOBuffer, nothing, false) == io
-    @test step_type(Tuple{Vararg{Int}}, Step.Position(3)) == Int && step_type(Tuple{Int}, Step.Position(2)) == Any && step_type(Vector{IOBuffer}, Step.Element()) == IOBuffer
-    @test step_type(Any, Step.Field(:x)) == Any && step_type(Logger, Step.Field(:missing)) == Any && step_type(Dict{Int, Int}, Step.Element()) == Any
+    @test step_type(Tuple{Vararg{Int}}, Step.Position(3)) == Int && step_type(Tuple{Int}, Step.Position(2)) == Union{} && step_type(Vector{IOBuffer}, Step.Element()) == IOBuffer
+    @test step_type(Any, Step.Field(:x)) == Any && step_type(Logger, Step.Field(:missing)) == Union{} && step_type(Dict{Int, Int}, Step.Element()) == Any
+    @test step_type(AbstractVector{Int}, Step.Field(:missing)) == Any && step_type(Tuple{Vararg{Int}}, Step.Field(:missing)) == Any
+    # Summary of struct family reads field by position: concrete caller type resolves it.
+    @test step_type(Logger, Step.Position(1)) == fieldtype(Logger, 1) && step_type(Logger, Step.Position(9)) == Union{} && step_type(AbstractVector{Int}, Step.Position(1)) == Any
 end
 
 """Holder of lock: hold lands on field place."""

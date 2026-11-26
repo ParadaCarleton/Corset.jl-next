@@ -271,6 +271,17 @@ function extend(ir::CC.IRCode, place::Place.Type, step::Step.Type)::Place.Type
     end
 end
 
+"""
+Whether object can sit in `step` slot below caller `place`: declared types of place and slot can point (`points!`).
+Bits field, or field that concrete type lacks (`Union{}`), holds none. `Deep` place can hold any object.
+"""
+function slot_holds_objects!(flow::Flow, place::Place.Type, step::Step.Type)::Bool
+    return @match place begin
+        Place.At(root, steps) => (type = foldl(step_type, steps; init = root_type(flow.ir, root)); points!(flow, type) && points!(flow, step_type(type, step)))
+        Place.Deep(_) => true
+    end
+end
+
 """Abstract steps in a row that path keeps: next one collapses it."""
 const ABSTRACT_STEPS = 2
 
@@ -305,7 +316,7 @@ function trace!(flow::Flow, origin::Origin.Type, step::Step.Type)::Follow
         add!(reached, current, chain) || continue
         doubt = reached[current]
         @match current begin
-            Origin.Caller(place) => add!(found, Origin.Caller(extend(flow.ir, place, step)), doubt)
+            Origin.Caller(place) => slot_holds_objects!(flow, place, step) && add!(found, Origin.Caller(extend(flow.ir, place, step)), doubt)
             Origin.Unknown() => add!(found, current, doubt)
             Origin.Allocation(_) => nothing
         end
