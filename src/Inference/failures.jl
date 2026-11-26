@@ -90,7 +90,10 @@ function failures!(edges::AbstractVector{Any}, helpers::IdDict{Any, <:Tuple{Bool
     method, code, signature = typed.site.method, typed.code, typed.signature
     parameters = CC.sptypes_from_meth_instance(something(instance(method, signature)))
     for (index, call, callee) in never_returning(code, parameters)
-        helper, helper_edges = get!(() -> throw_helper(callee), helpers, callee)
+        # Closure over `callee` would compile `get!` once per callee type.
+        verdict = get(helpers, callee, nothing)
+        isnothing(verdict) && (verdict = helpers[callee] = throw_helper(callee))
+        helper, helper_edges = verdict
         append!(edges, helper_edges)
         helper && continue
         own = package_call(code, call, parameters, files)
