@@ -862,7 +862,6 @@ function lowered_indexing(method::Method)::Bool
     return any(call -> any(indexing, something(callee_globals(aliases, call.args[1], method.nargs), Set{GlobalRef}())), lowered_calls(code))
 end
 
-# corset: allow bang-convention -- crash journal records progress; caller reads it only after crash
 """
 Offset inference of unit `typed` at `signature` in `world`, or blind spot cause: `OFFSET_CRASHED` when key crashed earlier
 run of `journal`, `OFFSET_UNINFERRED` when inference gives no code, `OFFSET_UNMAPPED` when generator gives other code

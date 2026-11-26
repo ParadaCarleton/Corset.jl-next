@@ -339,7 +339,6 @@ function loaded_operands(walk::Walk, @nospecialize(statement::Any))::Union{Nothi
     return loads ? operands : nothing
 end
 
-# corset: allow bang-convention -- memo of reach answers; result never changes
 """
 Whether event `later` can run after event `earlier` of `walk` on one path that enters no block of `avoid`: later
 statement in same block, later operand path of same statement, or block that successors of earlier block reach.
