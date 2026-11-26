@@ -10,13 +10,15 @@ using Corset.Effects.Summaries:
     element_type, constant, value_type, start_flow, statement!, map_node!, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
     components, foreign_name, foreign_library, FOREIGN_EFFECTS, BLAS_EFFECTS, foreign_effects, blas_library, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt!, source_provenance,
     Callback, Callees, Variant, root_summary!, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut!, CUT, catches!, cut!,
-    special_kind, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
+    special_kind, audited_field, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body!, root_calls!, merge_calls, merge_callees, load!, store!, store_backing!,
     beneath, map_nodes!, merges_exactly, exact_path, extend, load_any, keyword_types, over_budget, outside_targets!, unknown
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Random, Xoshiro, AbstractRNG
 using LinearAlgebra: LinearAlgebra, UpperTriangular, ldiv!
+using Scratch: Scratch
+using Serialization: Serialization
 using Base.ScopedValues: ScopedValue
 include("coverage.jl")
 
@@ -1894,6 +1896,20 @@ take_value(channel::Channel{Int}) = take!(channel)
 project_of(env::String) = Base.env_project_file(env)
 doc_meta(m::Module) = Base.Docs.meta(m)
 frame_color(m::Module) = Base.get_stacktrace_color(m)
+version_of(m::Module) = pkgversion(m)
+set_origin(id::Base.PkgId, path::String) = Base.set_pkgorigin_version_path(id, path)
+include_into(m::Module, path::String) = Base.include(m, path)
+scratch_folder(key::String) = Scratch.get_scratch!(Corset, key)
+write_text(s::Serialization.Serializer{IOBuffer}, text::String) = Serialization.serialize(s, text)
+"""Package serializer with own field beside stream state."""
+mutable struct Tagged <: Serialization.AbstractSerializer
+    io::IOBuffer
+    counter::Int
+    table::IdDict{Any, Any}
+    pending_refs::Vector{Int}
+    tags::Vector{Int}
+end
+tag!(s::Tagged) = (push!(s.tags, 1); s.counter += 1)
 rename_project(path::String) = (Base.parsed_toml(path)["name"] = "renamed"; nothing)
 grow_load_path(path::String) = (push!(Base.load_path(), path); nothing)
 
@@ -1975,6 +1991,8 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
             (project_of, (String,), [GlobalRef(Base, :LOADING_CACHE)], EffectKind.lazy_init),
             (doc_meta, (Module,), [GlobalRef(Base.Docs, :modules)], EffectKind.lazy_init),
             (frame_color, (Module,), [GlobalRef(Base, :STACKTRACE_FIXEDCOLORS), GlobalRef(Base, :STACKTRACE_MODULECOLORS)], EffectKind.lazy_init),
+            (version_of, (Module,), [GlobalRef(Base, :pkgorigins)], EffectKind.lazy_init),
+            (scratch_folder, (String,), [GlobalRef(Scratch, :scratch_access_timers)], io),
         )
         writes = summary_of(f, types...).writes
         @test all(ref -> kind in kinds_at(writes, Root.Global(ref)) && !(EffectKind.memory in kinds_at(writes, Root.Global(ref))), globals)
@@ -1985,12 +2003,25 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     for ref in (GlobalRef(Base, :Workqueues), GlobalRef(Base.Partr, :heaps))
         @test EffectKind.synchronization in kinds_at(scheduled, Root.Global(ref)) && !(EffectKind.memory in kinds_at(scheduled, Root.Global(ref)))
     end
+    # `include` evaluates code, so blind writes of every kind stay; its include record push is IO for sure.
+    included, record = summary_of(include_into, Module, String).writes, Root.Global(GlobalRef(Base, :_require_dependencies))
+    @test included[(Place.At(record, Step.Type[]), false, io)].doubt == NO_DOUBT
+    @test !any(kind == EffectKind.memory && effect.doubt == NO_DOUBT for ((place, _, kind), effect) in included if root_of(place) == record)
+    # Version cache of `pkgversion` is lazy; path change of package origin record stays memory.
+    @test EffectKind.memory in kinds_at(summary_of(set_origin, Base.PkgId, String).writes, Root.Global(GlobalRef(Base, :pkgorigins)))
     # Audited global kind holds in Base methods only: package write through cached `Dict` or `Vector` is memory.
     @test EffectKind.memory in kinds_at(summary_of(rename_project, String).writes, Root.Global(GlobalRef(Base, :TOML_CACHE)))
     load_path = Place.At(Root.Global(GlobalRef(Base, :LOADING_CACHE)), Step.Type[Step.Field(:x), Step.Field(:load_path)])
     @test haskey(summary_of(grow_load_path, String).writes, (load_path, false, EffectKind.memory))
     # Helpers: special types, `Task` fields, field index, step types.
     @test special_kind(IOBuffer) == io && isnothing(special_kind(Union{})) && isnothing(special_kind(1)) && special_kind(Base.Semaphore) == EffectKind.synchronization
+    # Serializer stream state (back-reference table, counter) is IO; package field of serializer stays memory.
+    serialized_writes = summary_of(write_text, Serialization.Serializer{IOBuffer}, String).writes
+    @test io in kinds_at(serialized_writes, Root.Parameter(2)) && !(EffectKind.memory in kinds_at(serialized_writes, Root.Parameter(2)))
+    tagged = summary_of(tag!, Tagged).writes
+    @test kinds_at(tagged, Root.Parameter(2)) == Set([EffectKind.memory, io])
+    @test audited_field(Serialization.Serializer{IOBuffer}, :known_object_data) == io && isnothing(audited_field(Tagged, :known_object_data))
+    @test isnothing(audited_field(Tagged, :tags)) && isnothing(audited_field(Any, :table)) && audited_field(Regex, :regex) == EffectKind.lazy_init
     @test (site_kind(Task, :rngState0), site_kind(Task, :scope), site_kind(Task, :storage)) == (EffectKind.default_rng, EffectKind.scoped_read, EffectKind.task_local)
     @test field_kind(Regex, Some{Any}(4)) == EffectKind.lazy_init && field_kind(Tuple{IOBuffer}, Some{Any}(1)) == EffectKind.memory && field_kind(IOBuffer, nothing) == io
     @test step_type(Tuple{Vararg{Int}}, Step.Position(3)) == Int && step_type(Tuple{Int}, Step.Position(2)) == Any && step_type(Vector{IOBuffer}, Step.Element()) == IOBuffer
