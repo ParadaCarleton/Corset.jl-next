@@ -589,6 +589,16 @@ only_callables(f::Function, type::Type)::Nothing = nothing
     @test isnothing(subject_position(only(methods(only_callables))))
 end
 
+@testset "RNG type facts" begin
+    # Argument takes every RNG only when its type covers `AbstractRNG`; untyped and missing arguments count for none.
+    draws(rng::Random.AbstractRNG, maybe::Union{Nothing, Random.AbstractRNG}, seeded::Xoshiro, untyped) = nothing
+    method = only(methods(draws))
+    @test Facts.takes_every_rng(method, 1) && Facts.takes_every_rng(method, 2)
+    @test !any(position -> Facts.takes_every_rng(method, position), 3:5)
+    @test Facts.default_rng_type(Random.default_rng) === typeof(Random.default_rng())
+    @test isnothing(Facts.default_rng_type(rand))
+end
+
 @testset "unit record round trip" begin
     world = Base.get_world_counter()
     @test length(RECORDS) == length(VERDICTS) == length(UNITS.typed)

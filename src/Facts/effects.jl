@@ -1,7 +1,7 @@
 using Moshi.Data: @data
 using Moshi.Derive: @derive
 using Moshi.Match: @match
-using Random: AbstractRNG
+using Random: Random, AbstractRNG
 
 """Step of access path: named `Field`, tuple `Position`, or `Element` of array memory."""
 @data Step begin
@@ -188,6 +188,18 @@ end
 
 """Whether argument of declared `type` can hold random number generator; `Any` counts for none."""
 takes_rng(@nospecialize(type::Any))::Bool = type !== Any && typeintersect(type, AbstractRNG) !== Union{}
+
+"""
+Whether `method` declares type at argument `position` (1 is first after callee) that takes every random number generator;
+`Any` and missing argument count for none.
+"""
+function takes_every_rng(method::Method, position::Integer)::Bool
+    declared = argument_type(method, position)
+    return !isnothing(declared) && declared !== Any && AbstractRNG <: declared
+end
+
+"""Type of RNG that call of `callee` without arguments returns, when `callee` is `Random.default_rng`; else `nothing`."""
+default_rng_type(@nospecialize(callee::Any))::Union{Nothing, Type} = callee === Random.default_rng ? Random.TaskLocalRNG : nothing
 
 """Positions of arguments of `method` (1 is first after callee) whose declared type can hold `AbstractRNG`; `Any` counts for none."""
 function rng_positions(method::Method)::Vector{Int}

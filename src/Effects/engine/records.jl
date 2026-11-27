@@ -117,9 +117,6 @@ function reaches_default_rng(run::Run, code::Code, index::Integer)::Bool
     end
 end
 
-"""Whether `method` declares argument at `position` (1 is first after callee) with type that takes any RNG."""
-takes_any_rng(method::Method, position::Integer)::Bool = Random.AbstractRNG <: argument_type(method, position)::Type
-
 """
 Arguments of root `root` that hold default RNG by caller choice (`engine.md`, Effect kinds): `TaskLocalRNG` where
 method declares type that takes any RNG. Empty unless each call that reaches default RNG gets one of them.
@@ -129,7 +126,7 @@ function chosen_rng_arguments(run::Run, root::Variant)::Vector{Int}
     types = tuple_parameters(instance.specTypes)
     method = instance.def::Method
     # Method that declares `TaskLocalRNG` chose default RNG itself.
-    positions = [position + 1 for position in rng_positions(method) if position + 1 <= length(types) && types[position + 1] === Random.TaskLocalRNG && takes_any_rng(method, position)]
+    positions = [position + 1 for position in rng_positions(method) if position + 1 <= length(types) && types[position + 1] === Random.TaskLocalRNG && takes_every_rng(method, position)]
     isempty(positions) && return positions
     passed = passed_arguments(code, positions)
     reaching = filter(index -> reaches_default_rng(run, code, index), eachindex(code.outcomes))
