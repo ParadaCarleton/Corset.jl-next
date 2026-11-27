@@ -1951,6 +1951,8 @@ set_origin(id::Base.PkgId, path::String) = Base.set_pkgorigin_version_path(id, p
 include_into(m::Module, path::String) = Base.include(m, path)
 scratch_folder(key::String) = Scratch.get_scratch!(Corset, key)
 write_text(s::Serialization.Serializer{IOBuffer}, text::String) = Serialization.serialize(s, text)
+"""Serialized bytes of `type`: stream numbering of type names writes Serialization globals."""
+type_bytes(type::DataType)::Vector{UInt8} = (stream = IOBuffer(); Serialization.serialize(stream, type); take!(stream))
 """Package serializer with own field beside stream state."""
 mutable struct Tagged <: Serialization.AbstractSerializer
     io::IOBuffer
@@ -2052,6 +2054,7 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
             (frame_color, (Module,), [GlobalRef(Base, :STACKTRACE_FIXEDCOLORS), GlobalRef(Base, :STACKTRACE_MODULECOLORS)], EffectKind.lazy_init),
             (version_of, (Module,), [GlobalRef(Base, :pkgorigins)], EffectKind.lazy_init),
             (scratch_folder, (String,), [GlobalRef(Scratch, :scratch_access_timers)], io),
+            (type_bytes, (DataType,), [GlobalRef(Serialization, :object_numbers), GlobalRef(Serialization, :obj_number_salt)], io),
         )
         writes = summary_of(f, types...).writes
         @test all(ref -> kind in kinds_at(writes, Root.Global(ref)) && !(EffectKind.memory in kinds_at(writes, Root.Global(ref))), globals)

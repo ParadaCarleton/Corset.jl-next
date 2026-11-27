@@ -40,7 +40,7 @@ end
 """
 Audited internal state by global binding, for methods of its own package (`path_kind`): Base logging state and PCRE
 match contexts. IO bookkeeping: temporary path cleanup at exit, libuv handles kept alive, include record of precompile
-output, hourly timer of scratch usage log. Lazy caches: parsed TOML, loading, docstring modules, stack trace colors.
+output, hourly timer of scratch usage log, stream numbers that Serialization gives type names and methods. Lazy caches: parsed TOML, loading, docstring modules, stack trace colors.
 Synchronization: task queues that `wait`, `yield` and `schedule` change.
 """
 const AUDITED_GLOBALS = Dict{GlobalRef, EffectKind.T}(
@@ -52,6 +52,8 @@ const AUDITED_GLOBALS = Dict{GlobalRef, EffectKind.T}(
     GlobalRef(Base, :uvhandles) => EffectKind.io,
     GlobalRef(Base, :_require_dependencies) => EffectKind.io,
     GlobalRef(Scratch, :scratch_access_timers) => EffectKind.io,
+    GlobalRef(Serialization, :object_numbers) => EffectKind.io,
+    GlobalRef(Serialization, :obj_number_salt) => EffectKind.io,
     GlobalRef(Base, :TOML_CACHE) => EffectKind.lazy_init,
     GlobalRef(Base, :LOADING_CACHE) => EffectKind.lazy_init,
     GlobalRef(Base.Docs, :modules) => EffectKind.lazy_init,
