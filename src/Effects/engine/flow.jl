@@ -102,19 +102,34 @@ function statement_primitive(ir::CC.IRCode, index::Integer, outcome::Union{Nothi
 end
 
 """
-Callee summaries for one instance solve: variants each call statement reaches, one per matching method; summaries by
-variant; and variants whose summaries solve read, so call cycle reruns readers when they change.
+Solve state of one variant: its summary once library cache or solve gives one, and whether its flow passed work limit
+(`BUDGET`). Reach gives each variant its slot, so solve threads write slots and never table that holds them.
+"""
+mutable struct Slot
+    summary::Union{Nothing, Summary}
+    over_budget::Bool
+end
+
+"""Slot of variant before any summary."""
+Slot()::Slot = Slot(nothing, false)
+
+"""Summary that slot of `variant` in `slots` holds; error when no solve gave one yet."""
+held_summary(slots::AbstractDict{Variant, Slot}, variant::Variant)::Summary = something(slots[variant].summary)
+
+"""
+Callee summaries for one instance solve: variants each call statement reaches, one per matching method; solve slot by
+variant (`Slot`); and variants whose summaries solve read, so call cycle reruns readers when they change.
 """
 struct Callees
     variants::Vector{Vector{Variant}}
-    summaries::Dict{Variant, Summary}
+    slots::Dict{Variant, Slot}
     read::Set{Variant}
 end
 
 """Summary of `variant` from `callees`, recorded as read."""
 function summary!(callees::Callees, variant::Variant)::Summary
     push!(callees.read, variant)
-    return callees.summaries[variant]
+    return held_summary(callees.slots, variant)
 end
 
 """Add `origin` with `doubt` to `targets`; chain with less doubt wins (`least`). Return whether `targets` changed."""

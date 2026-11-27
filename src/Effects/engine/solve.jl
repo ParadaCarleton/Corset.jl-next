@@ -75,7 +75,7 @@ State of one effects run: world of dispatch and native inference, crash journal,
 instance its body, shortcut or blind spot cause, caller that first reached it, and its variant parameters (`variant_parameters!`);
 per method whether it claims effects and whether it catches; throw-helper verdict per callee (`throw_helper`); per
 instance whether stand-ins cut its own code; instances whose reach compiler effects describe on model types too
-(`reaches_untrusted!`); per variant its code and summary; summary cache state (`Lookup`).
+(`reaches_untrusted!`); per variant its code and solve slot (`Slot`); summary cache state (`Lookup`).
 """
 struct Run  # corset: allow wide-struct -- one memo per analysis; summary cache state nests in `Lookup`
     world::UInt
@@ -92,10 +92,9 @@ struct Run  # corset: allow wide-struct -- one memo per analysis; summary cache 
     frames::IdDict{Core.MethodInstance, Tuple{CC.InferenceState, Bool}}
     trusted::Base.IdSet{Core.MethodInstance}
     codes::Dict{Variant, Code}
-    summaries::Dict{Variant, Summary}
+    slots::Dict{Variant, Slot}
     cache::Lookup
     work_limit::Int
-    over_budget::Set{Variant}
 end
 
 """
@@ -114,13 +113,13 @@ function start_run(journal::Union{Nothing, Journal}, modules::AbstractVector{Mod
     parameters, claims, catches = IdDict{Core.MethodInstance, Set{Int}}(), IdDict{Method, Bool}(), IdDict{Method, Bool}()
     helpers, cuts, trusted = IdDict{Any, Tuple{Bool, Vector{Any}}}(), IdDict{Core.MethodInstance, Bool}(), Base.IdSet{Core.MethodInstance}()
     return Run(
-        world, CC.NativeInterpreter(world), journal, Set(modules), bodies, callers, parameters, claims, catches, helpers, cuts, IdDict{Core.MethodInstance, Tuple{CC.InferenceState, Bool}}(), trusted, Dict{Variant, Code}(), Dict{Variant, Summary}(),
+        world, CC.NativeInterpreter(world), journal, Set(modules), bodies, callers, parameters, claims, catches, helpers, cuts, IdDict{Core.MethodInstance, Tuple{CC.InferenceState, Bool}}(), trusted, Dict{Variant, Code}(), Dict{Variant, Slot}(),
         Lookup(
             library, IdDict{Core.MethodInstance, String}(), IdDict{Any, Tuple{String, Vector{Module}}}(), IdDict{Module, Union{Nothing, Vector{String}}}(),
             IdDict{Module, Union{Nothing, String}}(), IdDict{Any, Tuple{String, Vector{Any}}}(), Closure(Base.IdSet{Core.MethodInstance}()), IdDict{Any, Bool}(), IdDict{Core.MethodInstance, Vector{Any}}(),
             Base.IdSet{Core.MethodInstance}(), IdDict{Core.MethodInstance, Vector{Any}}(), Base.IdSet{Core.MethodInstance}(), Set{String}(), alias_text(),
         ),
-        work_limit, Set{Variant}(),
+        work_limit,
     )
 end
 
@@ -536,8 +535,9 @@ function reach!(run::Run, roots::AbstractVector{Variant})::Vector{Variant}
         variant in seen && continue
         push!(seen, variant)
         push!(order, variant)
+        slot = get!(Slot, run.slots, variant)
         stored = stored_summary!(run, variant)
-        isnothing(stored) || (run.summaries[variant] = stored; continue)
+        isnothing(stored) || (slot.summary = stored; continue)
         body = body!(run, first(variant))
         body isa Body || continue
         code = run.codes[variant] = variant_code(run, variant, body)
@@ -555,7 +555,7 @@ function variant_flow(run::Run, variant::Variant, flush::Bool, record::Bool)::Tu
     code = run.codes[variant]
     method = first(variant).def::Method
     flow = start_flow(code.ir, code.outcomes, code.message, flush, code.cut, static_sources(method), record, scheduler_method(method), run.work_limit)
-    callees = Callees(code.callees, run.summaries, Set{Variant}())
+    callees = Callees(code.callees, run.slots, Set{Variant}())
     while true
         flow.changed = false
         round!(flow, callees)
@@ -580,11 +580,11 @@ rounds read. `flush` resolves callback records here. Flow past budget gives open
 keeps it for whole run, so rerun in call cycle runs no flow (`root_calls!` too).
 """
 function variant_summary!(run::Run, variant::Variant, flush::Bool)::Tuple{Summary, Set{Variant}}
-    method = first(variant).def::Method
-    variant in run.over_budget && return open_summary(Int(method.nargs), BUDGET), Set{Variant}()
+    method, slot = first(variant).def::Method, run.slots[variant]
+    slot.over_budget && return open_summary(Int(method.nargs), BUDGET), Set{Variant}()
     flow, callees = variant_flow(run, variant, flush, false)
     over_budget(flow) || return summarize!(flow, method, callees), callees.read
-    push!(run.over_budget, variant)
+    slot.over_budget = true
     return open_summary(Int(method.nargs), BUDGET), callees.read
 end
 
@@ -593,7 +593,7 @@ Summary of root `variant` for verdicts after solve: no caller resolves its callb
 reruns with each record resolved at call statement where it starts.
 """
 function root_summary!(run::Run, variant::Variant)::Summary
-    summary = run.summaries[variant]
+    summary = held_summary(run.slots, variant)
     isempty(summary.callbacks) && return summary
     return first(variant_summary!(run, variant, true))
 end
@@ -603,9 +603,10 @@ Call statement facts of root `variant` with code (`engine.md`, Facts), by IR sta
 at call, as root has no caller, and records write kinds of each call. Root past budget has none: its flow is partial.
 """
 function root_calls!(run::Run, variant::Variant)::Vector{Pair{Int, CallRecord}}
-    variant in run.over_budget && return Pair{Int, CallRecord}[]
+    slot = run.slots[variant]
+    slot.over_budget && return Pair{Int, CallRecord}[]
     flow = first(variant_flow(run, variant, true, true))
-    over_budget(flow) && (push!(run.over_budget, variant); return Pair{Int, CallRecord}[])
+    over_budget(flow) && (slot.over_budget = true; return Pair{Int, CallRecord}[])
     code = run.codes[variant]
     return [index => call_record(flow, index, code.used[index]) for index in 1:length(code.ir.stmts) if !isnothing(code.outcomes[index])]
 end
@@ -621,7 +622,7 @@ records it resolves, so readers come from each solve.
 function solve_cycle!(run::Run, members::AbstractVector{Variant})::Nothing
     for member in members
         body = run.bodies[first(member)]
-        run.summaries[member] = body isa String ? open_summary(Int((first(member).def::Method).nargs), body) : empty_summary()
+        run.slots[member].summary = body isa String ? open_summary(Int((first(member).def::Method).nargs), body) : empty_summary()
     end
     readers = Dict(member => Variant[] for member in members)
     # Shortcut unit keeps code for call facts; its summary stays empty.
@@ -635,9 +636,9 @@ function solve_cycle!(run::Run, members::AbstractVector{Variant})::Nothing
             haskey(readers, callee) && !(member in readers[callee]) && push!(readers[callee], member)
         end
         reruns[member] = get(reruns, member, 0) + 1
-        reruns[member] > WIDEN_AFTER && (summary = widen(run.summaries[member], summary))
-        same(summary, run.summaries[member]) && continue
-        run.summaries[member] = summary
+        reruns[member] > WIDEN_AFTER && (summary = widen(held_summary(run.slots, member), summary))
+        same(summary, held_summary(run.slots, member)) && continue
+        run.slots[member].summary = summary
         for reader in readers[member]
             reader in queued || (push!(queue, reader); push!(queued, reader))
         end
@@ -705,19 +706,82 @@ function call_graph(run::Run, order::AbstractVector{Variant})::Vector{Vector{Int
     return successors
 end
 
+"""Components each of `found` components calls, by position in `found`, from vertex `successors`; no self edge."""
+function component_graph(successors::AbstractVector{<:AbstractVector{<:Integer}}, found::AbstractVector{<:AbstractVector{<:Integer}})::Vector{Vector{Int}}
+    Base.require_one_based_indexing(successors)
+    owner = zeros(Int, length(successors))
+    for (component, members) in enumerate(found), member in members
+        owner[member] = component
+    end
+    return [unique!([owner[callee] for member in members for callee in successors[member] if owner[callee] != component]) for (component, members) in enumerate(found)]
+end
+
 """
-Summaries of `roots` and every variant they reach: call graph components solved callees first. Library cache hit has
-no code, so it forms component alone and keeps its stored summary.
+State workers of `after_successors` share: `ready` vertices, `callers` of each vertex, count of successors each vertex
+`waiting` on, and vertices `left`. Atomic counts take exact `Int` writes, so fields stay concrete.
 """
-function solve!(run::Run, roots::AbstractVector{Variant})::Nothing
+struct SolveQueue
+    ready::Channel{Int}
+    callers::Vector{Vector{Int}}
+    waiting::Vector{Threads.Atomic{Int}}
+    left::Threads.Atomic{Int}
+end
+
+"""
+Run `step` on each vertex of graph with `successors`, on `workers` tasks: vertex runs once each successor has run.
+Each successor comes before its vertex (`components` order), so graph has no cycle. Workers take ready vertices off
+one channel. Failed step closes channel, so other workers stop; error reaches caller.
+"""
+function after_successors(step::Function, successors::AbstractVector{<:AbstractVector{<:Integer}}; workers::Integer = Threads.nthreads(:default))::Nothing
+    workers > 0 || throw(ArgumentError("schedule needs at least one worker, got $workers"))
+    Base.require_one_based_indexing(successors)
+    callers = [Int[] for _ in successors]
+    for (vertex, targets) in enumerate(successors), target in targets
+        1 <= target < vertex || throw(ArgumentError("successor $target of vertex $vertex must come before it"))
+        push!(callers[target], vertex)
+    end
+    queue = SolveQueue(Channel{Int}(Inf), callers, [Threads.Atomic{Int}(length(targets)) for targets in successors], Threads.Atomic{Int}(length(successors)))
+    foreach(vertex -> isempty(successors[vertex]) && put!(queue.ready, vertex), eachindex(successors))
+    isempty(successors) && return nothing
+    waitall([Threads.@spawn(work!(step, queue)) for _ in 1:min(workers, length(successors))]; failfast = false)
+    return nothing
+end
+
+"""
+Worker of `after_successors`: runs `step` on each vertex `queue` has ready, then queues each caller that waits on
+no other successor. Closes ready channel after last vertex, or with error of failed step.
+"""
+function work!(step::Function, queue::SolveQueue)::Nothing
+    try
+        for vertex in queue.ready
+            step(vertex)
+            for caller in queue.callers[vertex]
+                Threads.atomic_sub!(queue.waiting[caller], 1) == 1 && put!(queue.ready, caller)
+            end
+            Threads.atomic_sub!(queue.left, 1) == 1 && close(queue.ready)
+        end
+    catch error
+        close(queue.ready, error)
+        rethrow()
+    end
+    return nothing
+end
+
+"""
+Summaries of `roots` and every variant they reach: call graph components solved callees first, on `workers` tasks
+(`after_successors`). Component reads summaries of its members and of variants they reach alone, so schedule changes
+no summary. Library cache hit has no code, so it forms component alone and keeps its stored summary.
+"""
+function solve!(run::Run, roots::AbstractVector{Variant}; workers::Integer = Threads.nthreads(:default))::Nothing
     order = reach!(run, roots)
     # Frames left are of callees no body needs.
     empty!(run.frames)
-    for component in components(call_graph(run, order))
-        members = order[component]
+    successors = call_graph(run, order)
+    found = components(successors)
+    after_successors(component_graph(successors, found); workers) do component
+        members = order[found[component]]
         # Only hit has summary before its component solves.
-        all(member -> haskey(run.summaries, member), members) && continue
-        solve_cycle!(run, members)
+        all(member -> !isnothing(run.slots[member].summary), members) || solve_cycle!(run, members)
     end
     return nothing
 end

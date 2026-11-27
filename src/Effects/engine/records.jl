@@ -108,7 +108,7 @@ reaches_default_rng(summary::Summary)::Bool = any(((_, _, kind),) -> kind == Eff
 
 """Whether call statement `index` of `code` in `run` reaches default RNG: callee summary does, or builtin gets `Task`."""
 function reaches_default_rng(run::Run, code::Code, index::Integer)::Bool
-    any(callee -> reaches_default_rng(run.summaries[callee]), code.callees[index]) && return true
+    any(callee -> reaches_default_rng(held_summary(run.slots, callee)), code.callees[index]) && return true
     outcome = code.outcomes[index]
     isnothing(outcome) && return false
     return @match something(outcome) begin
@@ -156,7 +156,7 @@ function unit_verdict!(run::Run, typed::TypedCode, root::Variant)::UnitVerdict
         false, Access[], Access[], BlindAccess[], BlindAccess[], Place.Type[], UnguardedHold[], UnitCalls(),
         [BlindSpot("always throws on stand-ins", typed.site.span)], false, nothing, own_cut,
     )
-    summary, own = root_summary!(run, root), run.summaries[root]
+    summary, own = root_summary!(run, root), held_summary(run.slots, root)
     span_of(cause::Integer)::Span = cause_span(typed, run.codes[root], cause)
     kind_of(place::Place.Type)::EffectKind.T = path_kind(run.codes[root].ir, first(root).def::Method, place)
     writes, blind_writes = verdict_accesses(summary.writes, own.writes, span_of, typed.provenance)

@@ -155,7 +155,7 @@ const CUT = "stand-in cuts path"
 function cut_span(run::Run, typed::TypedCode, root::Variant)::Span
     isempty(typed.cuts) || return typed.spans[first(typed.cuts)]
     code = run.codes[root]
-    index = findfirst(callees -> any(callee -> run.summaries[callee].cut, callees), code.callees)
+    index = findfirst(callees -> any(callee -> held_summary(run.slots, callee).cut, callees), code.callees)
     # Record that root resolves can carry cut that no direct callee shows.
     return isnothing(index) ? typed.site.span : cause_span(typed, code, index)
 end

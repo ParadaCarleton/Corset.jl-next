@@ -12,7 +12,8 @@ using Corset.Effects.Summaries:
     Callback, Callees, Variant, root_summary!, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut!, CUT, catches!, cut!,
     special_kind, audited_field, site_kind, field_kind, scheduler_method, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body!, root_calls!, merge_calls, merge_callees, load!, store!, store_backing!,
-    beneath, map_nodes!, merges_exactly, exact_path, extend, load_any, keyword_types, over_budget, outside_targets!, unknown
+    beneath, map_nodes!, merges_exactly, exact_path, extend, load_any, keyword_types, over_budget, outside_targets!, unknown, Slot, held_summary,
+    after_successors, component_graph
 using Supposition: Supposition, Data, @check, @composed
 using Moshi.Data: isa_variant
 using Random: Random, Xoshiro, AbstractRNG
@@ -214,7 +215,7 @@ function raw_summary(f::Any, types::Type...)::Summary
     run = start_run(nothing, Module[CASES])
     root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
     solve!(run, [root])
-    return run.summaries[root]
+    return held_summary(run.slots, root)
 end
 
 @testset "callback records" begin
@@ -253,7 +254,7 @@ end
     run = start_run(nothing, Module[])
     root = (only(something(dispatch(Any[typeof(CASES.set_value!), CASES.Box, Int], run.world, 1))), Pair{Int, Any}[])
     solve!(run, [root])
-    @test root_summary!(run, root) === run.summaries[root]
+    @test root_summary!(run, root) === held_summary(run.slots, root)
 end
 
 """Method never called: it has no inferred code."""
@@ -282,7 +283,7 @@ sourceless(x::Int)::Int = x + 3
     length_root = (instance_of(CASES.memory_length, Memory{Int}), Pair{Int, Any}[])
     own.bodies[first(length_root)] = Summaries.frame_body!(own, Core.Compiler.typeinf_frame(own.interpreter, first(length_root), false), false, false, false)
     solve!(own, [length_root])
-    @test collect(keys(own.summaries[length_root].reads)) == [memory((parameter(2), false))]
+    @test collect(keys(held_summary(own.slots, length_root).reads)) == [memory((parameter(2), false))]
     # Claim outside Base turns shortcut off: own analysis finds write that false claim hides.
     @test shape(named(:call_claim_bump!).writes) == shape(named(:claim_bump!).writes) == [(global_place(CASES, :COUNTER), false, definite)]
     # Compaction keeps call whose callee claims effects, and statement under block claim.
@@ -367,7 +368,7 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
     @test stand_in_cut!(run, frame_of(stand_in)) && (body!(run, stand_in)::Body).cut
     root = (stand_in, Pair{Int, Any}[])
     solve!(run, [root])
-    @test run.summaries[root].cut
+    @test held_summary(run.slots, root).cut
     # No stand-in, throw helper, or call that fails on model types too: no cut.
     @test !stand_in_cut!(run, frame_of(instance_of(pointer, Vector{Int})))
     @test !stand_in_cut!(run, frame_of(instance_of(Base.throw_boundserror, ArrayStandIn{Int, 1}, Tuple{Int}))) && first(run.helpers[throw])
@@ -988,7 +989,7 @@ end
             crashed = start_run(journal, Module[])
             root = (only(something(dispatch(Any[typeof(latest!), Vector{Int}], crashed.world, 1))), Pair{Int, Any}[])
             solve!(crashed, [root])
-            effect = crashed.summaries[root].writes[memory((parameter(2), true))]
+            effect = held_summary(crashed.slots, root).writes[memory((parameter(2), true))]
             @test effect.doubt == blind && effect.reason == "inference crashed process"
             fresh = start_run(journal, Module[])
             other = (only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], fresh.world, 1))), Pair{Int, Any}[])
@@ -1206,8 +1207,8 @@ four_way(x::Symbol) = x
     @test operand_type(code.ir, Operand.Part(Core.Argument(2), 1)) == MemoryRef{Int}
     @test value_type(code.ir, Expr(:call, GlobalRef(Core, :tuple), QuoteNode(:jl_n_threads), "libjulia-internal")) == Tuple{Symbol, String}
     flow = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, run.work_limit)
-    @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
-    @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
+    @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Slot}(), Set{Variant}()))
+    @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Slot}(), Set{Variant}()))
     # `copy` result: `Array` backed by fresh `Memory` that holds caller elements merges exactly.
     element, array, buffer = Node.Placed(Place.At(Root.Parameter(2), Step.Type[Step.Element()])), Node.Fresh(12), Node.Fresh(5)
     copied = fresh_summary(2, Edges((buffer, Step.Element()) => Nodes(element => NO_DOUBT)), Holds(array => Nodes(buffer => NO_DOUBT)), Holds())
@@ -1496,6 +1497,14 @@ end
 """Graph of `size` vertices with edge from `from` to `to` where mark is 0: one edge in four."""
 graph((size, marks)::Pair{Int, Vector{Int}})::Vector{Vector{Int}} = [[to for to in 1:size if marks[8 * (from - 1) + to] == 0] for from in 1:size]
 
+"""Graph whose vertex list starts at index 0: vertex numbers name no position of it."""
+struct ZeroBased <: AbstractVector{Vector{Int}}
+    successors::Vector{Vector{Int}}
+end
+Base.size(graph::ZeroBased) = size(graph.successors)
+Base.axes(graph::ZeroBased) = (0:(length(graph.successors) - 1),)
+Base.getindex(graph::ZeroBased, position::Int) = graph.successors[position + 1]
+
 """Graphs of 1 to 8 vertices."""
 const GRAPHS = map(graph, Data.Pairs(Data.Integers(1, 8), Data.Vectors(Data.Integers(0, 3); min_size = 64, max_size = 64)))
 
@@ -1516,6 +1525,37 @@ const GRAPHS = map(graph, Data.Pairs(Data.Integers(1, 8), Data.Vectors(Data.Inte
         ordered = all(place[callee] <= place[caller] for caller in vertices for callee in successors[caller])
         partition && mutual && apart && ordered
     end
+end
+
+@testset "solve schedule" begin
+    # Components of `[[2], [1, 3], []]` are `[3]` and `[1, 2]`: second calls first.
+    successors = [[2], [1, 3], Int[]]
+    @test component_graph(successors, components(successors)) == [Int[], [1]]
+    # Narrow vertex type works: workers write own `Int` counts, so graph element type is free.
+    narrow, order = Vector{Int32}[Int32[], Int32[1]], Int[]
+    @test component_graph(narrow, [Int32[1], Int32[2]]) == [Int[], [1]]
+    after_successors(vertex -> push!(order, vertex), narrow; workers = 1)
+    @test order == [1, 2]
+    # Vertex numbers count from one, so graph with other first index is rejected.
+    @test_throws ArgumentError component_graph(ZeroBased([Int[], [1]]), [[1], [2]])
+    # Each vertex of condensed graph runs once, after each component it calls; on one worker and on three.
+    @check max_examples = 300 db = false function runs_callees_first(successors = GRAPHS, workers = Data.Integers(1, 3))
+        # Atomic count per vertex: test process may run several threads.
+        condensed = component_graph(successors, components(successors))
+        runs = [Threads.Atomic{Int}(0) for _ in condensed]
+        after_successors(vertex -> all(callee -> runs[callee][] == 1, condensed[vertex]) && Threads.atomic_add!(runs[vertex], 1), condensed; workers)
+        all(count -> count[] == 1, runs)
+    end
+    @test_throws ArgumentError after_successors(identity, [[2], Int[]])
+    @test_throws ArgumentError after_successors(identity, [Int[]]; workers = 0)
+    after_successors(vertex -> error("graph has no vertex"), Vector{Int}[])
+    # Failed step stops schedule: its callers never run, and error reaches caller.
+    finished = Int[]
+    @test_throws CompositeException after_successors(vertex -> vertex == 2 ? error("step failed") : push!(finished, vertex), [Int[], [1], [2]])
+    @test finished == [1]
+    # Test process may run one thread, so child process runs schedule and solve on four.
+    child = `$(Base.julia_cmd()) --threads=4 --startup-file=no --project=$(Base.active_project()) $(joinpath(@__DIR__, "effects", "threaded.jl"))`
+    @test read(child, String) == "threaded solve ok"
 end
 
 """Link of synthetic call chain: each specialization stands for one instance."""
@@ -1677,15 +1717,15 @@ end
     tight = start_run(nothing, Module[]; work_limit = 0)
     root = (only(something(dispatch(Any[typeof(fill_one!), Vector{Int}], tight.world, 1))), Pair{Int, Any}[])
     solve!(tight, [root])
-    @test root in tight.over_budget && same(root_summary!(tight, root), open_summary(2, Summaries.BUDGET)) && isempty(root_calls!(tight, root))
+    @test tight.slots[root].over_budget && same(root_summary!(tight, root), open_summary(2, Summaries.BUDGET)) && isempty(root_calls!(tight, root))
     # Default budget keeps same variant precise.
     roomy = start_run(nothing, Module[])
     solve!(roomy, [root])
-    @test isempty(roomy.over_budget) && !same(root_summary!(roomy, root), open_summary(2, Summaries.BUDGET))
+    @test !any(slot -> slot.over_budget, values(roomy.slots)) && !same(root_summary!(roomy, root), open_summary(2, Summaries.BUDGET))
     # Variant past budget keeps open summary: rerun runs no flow, so roomy run returns open summary too.
-    push!(roomy.over_budget, root)
+    roomy.slots[root].over_budget = true
     @test same(first(Summaries.variant_summary!(roomy, root, false)), open_summary(2, Summaries.BUDGET)) && isempty(last(Summaries.variant_summary!(roomy, root, false)))
-    delete!(roomy.over_budget, root)
+    roomy.slots[root].over_budget = false
     # Trace counts origins it walks, and load past budget stops: one call statement cannot run past limit.
     code = roomy.codes[root]
     spent = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, 1)
