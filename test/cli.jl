@@ -277,17 +277,37 @@ end
     end
 end
 
+@testset "timings lines" begin
+    # Sub-second stage keeps milliseconds, so fast lookups stay apart.
+    timings = [Corset.Timings.Timing("cache lookup", 0.0123, 0.0, 0.0004), Corset.Timings.Timing("method store update", 275.81, 6.8, 21.84)]
+    printed = sprint(io -> foreach(timing -> Corset.Timings.print_timing(Corset.Timings.Sink(io), timing), timings))
+    lines = [
+        "corset: stage cache lookup             0.012 s wall     0.000 s compile     0.000 s gc",
+        "corset: stage method store update    275.810 s wall     6.800 s compile    21.840 s gc",
+    ]
+    @test printed == join(lines, '\n') * '\n'
+    @test timing_rows(printed) == ["cache lookup", "method store update"]
+    # Stage prints as it ends and returns value of its work; no sink prints nothing.
+    io = IOBuffer()
+    @test Corset.Timings.timed(() -> 7, Corset.Timings.Sink(io), "sum") == 7 && timing_rows(String(take!(io))) == ["sum"]
+    @test Corset.Timings.timed(() -> 7, nothing, "sum") == 7
+end
+
 @testset "external stage" begin
     ambiguous = "\"\"\"Package with ambiguous methods.\"\"\"\nmodule Ambiguous\ncombine(left::Int, right) = left\ncombine(left, right::Int) = right\nbody(type::Type) = Base.unwrap_unionall(type)\ninclude(\"side.jl\")\nend\n"
     side = "side(value::Int)::Int = value\n"
     with_package(@__DIR__, "Ambiguous", "src/Ambiguous.jl" => ambiguous, "src/side.jl" => side) do package
         code, out, _ = corset("check", package)
         @test code == 1 && occursin("error[method-ambiguity]: `combine(::Int64, ::Int64)` matches two methods", out)
+        # `--timings` adds stage times to stderr and keeps report.
+        timed_code, timed_out, timed_err = corset("check", package, "--timings")
+        @test (timed_code, timed_out) == (code, out)
+        @test timing_rows(timed_err) == ["discovery", "package load", "inference", "effects", "lifecycle", "external", "rules"]
         @test occursin("warning[internal-access]: `Base.unwrap_unionall` is internal to `Base`\n --> src/Ambiguous.jl:5:25", out)
         # Access in file outside checked path drops.
         @test !occursin("internal-access", corset("check", joinpath(package, "src", "side.jl"))[2])
         # External checks run only when some `external` rule is enabled.
-        external(flags::Corset.Config.Flags) = first(Corset.Engine.analyze(Corset.Engine.inputs(package, flags)..., nothing, nothing)).external
+        external(flags::Corset.Config.Flags) = first(Corset.Engine.analyze(Corset.Engine.inputs(package, flags)..., nothing, nothing, nothing)).external
         @test length(external(Corset.Config.Flags()).ambiguities) == 1
         allowed = [string(entry.name) => Corset.Config.Level.allow for entry in Corset.Rules.REGISTRY if entry.stage == Corset.Facts.Stage.external]
         @test length(allowed) > 1 && isnothing(external(Corset.Config.Flags(; levels = allowed)))
@@ -535,6 +555,13 @@ end
                 env = Corset.Launch.relocated(Corset.Engine.load_target(root, flags), IOBuffer())
                 @test !isnothing(Corset.Engine.cached(root, flags, Corset.Cache.directory(), Corset.Launch.load_path(env)))
                 @test launched("check", root, "-A", "annotation") == (code, out, "")
+                # Cache hit times lookup only. Stages print as they end: environment, then relaunched process, Corset load leading.
+                hit = launched("check", root, "-A", "annotation", "--timings")
+                @test hit[1:2] == (code, out) && timing_rows(hit[3]) == ["environment", "cache lookup"]
+                fresh = launched("check", root, "-A", "annotation", "--timings", "--no-cache")
+                @test fresh[1:2] == (code, out)
+                # Crash journal of relaunched process serves as method store, so store update runs without cache.
+                @test timing_rows(fresh[3]) == ["environment", "load Corset", "discovery", "package load", "inference", "effects", "method store update", "lifecycle", "external", "rules", "analysis process"]
                 # Copy elsewhere reuses environment: no build note. Analysis key reads Corset tree, which holds `root`:
                 # first copy misses, second copy reuses analysis of first.
                 mktempdir() do elsewhere

@@ -220,7 +220,7 @@ end
             # Allocation growth is deterministic: every rule, stage and whole run gets 2× headroom over linear.
             growth(f::Function)::Float64 = (f(small); @allocated(f(large)) / @allocated(f(small)))
             growths = Dict(string(entry.name) => growth(path -> entry.run(facts[path])) for entry in Corset.Rules.REGISTRY)
-            merge!(growths, Dict(name => growth(stage) for (name, stage) in stages), Dict("analyze" => growth(path -> Corset.Engine.analysis(path, Corset.Config.Flags(), nothing, nothing))))
+            merge!(growths, Dict(name => growth(stage) for (name, stage) in stages), Dict("analyze" => growth(path -> Corset.Engine.analysis(path, Corset.Config.Flags(), nothing, nothing, nothing))))
             @test isempty(filter(entry -> last(entry) >= 16, growths))
             # Time catches loops that do not allocate. Load swings ratio of same input from 4 to 9, so time gets 5× headroom.
             # Single rules visit few nodes: cache misses swing their time.

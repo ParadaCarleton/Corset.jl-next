@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- New flag `--timings`: prints the seconds of each stage to standard error, the load of Corset in the second process included.
 - New group `restriction`: rules against idiomatic forms, off in every project kind. Turn each rule on by its level.
 - New rule `ternary-statement`: a ternary whose value goes unused runs code as a statement. The fix writes an `if` statement.
 - New rule `guard-result`: a guard such as `x > 0 || throw(...)` is the last value of a function, so the function returns `true`.
