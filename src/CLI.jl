@@ -22,6 +22,7 @@ using ..Syntax: Syntax
 using ..Package: Package
 using ..Launch: Launch
 using ..Timings: Timing, Sink, timed, print_timing
+using ..Effects.Summaries: BUDGET
 
 const EXIT_PASS = 0
 const EXIT_FAIL = 1
@@ -178,6 +179,13 @@ end
 """Exit code of finished relaunched `process`; signal that ended it is internal error."""
 exit_code(process::Base.Process)::Int = process.termsignal == 0 ? process.exitcode : EXIT_INTERNAL
 
+"""Warning when work limit stopped effects analysis in `report`, with count of its `BUDGET` blind spots; else `nothing`."""
+function budget_warning(report::Report)::Union{Nothing, String}
+    budget = count(spot -> spot.cause == BUDGET, report.blind_spots)
+    budget == 0 && return nothing
+    return "corset: warning: effects work limit gave $budget blind $(budget == 1 ? "spot" : "spots"); calls to those methods trust `!` names (`possible`)"
+end
+
 """Finish `command` on `analyzed` under `settings`: write baseline, or write report to `out` in `format`. Return exit code."""
 function finish(command::String, settings::Settings, analyzed::Analysis, @nospecialize(out::IO), @nospecialize(err::IO), format::String)::Int
     if command == "baseline"
@@ -186,6 +194,8 @@ function finish(command::String, settings::Settings, analyzed::Analysis, @nospec
     end
     report = Engine.report(settings, analyzed)
     write_report(out, report, format)
+    warning = budget_warning(report)
+    isnothing(warning) || println(err, warning)
     return Engine.failed(report) ? EXIT_FAIL : EXIT_PASS
 end
 

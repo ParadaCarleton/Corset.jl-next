@@ -429,6 +429,11 @@ end
           - 2 more: include
           - f.jl:5:1: macro
         """
+    # Work limit blind spots add warning: calls to those methods trust names.
+    @test isnothing(Corset.CLI.budget_warning(report))
+    budget = Report([], report.settings, @__DIR__, report.sources, 1, 0, [], [spot(1, "effects budget"), spot(2, "effects budget"), spot(3, "macro")])
+    @test Corset.CLI.budget_warning(budget) == "corset: warning: effects work limit gave 2 blind spots; calls to those methods trust `!` names (`possible`)"
+    @test endswith(something(Corset.CLI.budget_warning(Report([], report.settings, @__DIR__, report.sources, 1, 0, [], [spot(1, "effects budget")]))), "gave 1 blind spot; calls to those methods trust `!` names (`possible`)")
 end
 
 @testset "opt-outs" begin
