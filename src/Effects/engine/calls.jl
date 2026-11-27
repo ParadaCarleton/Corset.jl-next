@@ -443,8 +443,8 @@ role(effects::CallEffects, position::Integer, count::Integer)::UnitRange{Int} = 
 
 """
 Resolution of `_apply_iterate` call: callee and spread `arguments` become operands. Tuple of known length gives `Part`
-per position until first `Rest`; tuple or array of unknown length gives `Rest`. Other collections run `iterate`
-methods, so call stays unresolved.
+per position until first `Rest`; tuple or array of unknown length gives `Rest`, `Dims` (`NTuple{N, Int} where N`)
+included. Other collections run `iterate` methods, so call stays unresolved.
 """
 function spread_call(ir::CC.IRCode, arguments::AbstractVector{Operand.Type}, world::UInt, limit::Integer)::Outcome.Type
     Base.require_one_based_indexing(arguments)
@@ -457,7 +457,7 @@ function spread_call(ir::CC.IRCode, arguments::AbstractVector{Operand.Type}, wor
         type = value_type(ir, value)
         if definite_tuple(type) && !any(is_rest, operands)
             append!(operands, Operand.Type[Operand.Part(value, position) for position in 1:fieldcount(type)])
-        elseif type isa DataType && type <: Union{Tuple, Array}
+        elseif Base.unwrap_unionall(type) isa DataType && type <: Union{Tuple, Array}
             push!(operands, Operand.Rest(value))
         else
             return Outcome.Unresolved(arguments)
