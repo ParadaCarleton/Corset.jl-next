@@ -94,6 +94,9 @@ module Forms
     invoked(x::Int) = invoke(invoked_target, Tuple{Any}, x)
     global counter::Int = 0
     bound() = getglobal(Forms, :counter)
+    # Serializer calls package `write` of enum value, which throws here.
+    @enum Mode plain fancy
+    Base.write(::IO, ::Mode) = error("`Mode` has no byte form")
 end
 
 """Native edges of `f` on `types` that `run` infers, and text of each record (`record_text!`)."""
@@ -190,7 +193,7 @@ end
         @test text(first_variable) == text(TypeVar(:T)) != text(TypeVar(:T, Integer))
         # Depth counts from innermost variable, also in offset bound stack.
         @test structure_text!(run, first_variable, EvilArray(TypeVar[first_variable, inner]), Module[]) == structure_text!(run, first_variable, TypeVar[first_variable, inner], Module[]) == "bound 1"
-        values = Any[Val{1}, Val{Int32(1)}, Val{1.0}, Val{true}, Val{:a}, Val{(:a, 1)}, Val{(:a, 2)}, Union{}, Nothing, Union{Int, String}, Union{Int, Symbol}, Tuple{Vararg{Int}}, NTuple{2, Int}, Val{Base.Iterators}, Val{Base}]
+        values = Any[Val{1}, Val{Int32(1)}, Val{1.0}, Val{true}, Val{:a}, Val{(:a, 1)}, Val{(:a, 2)}, Val{Forms.plain}, Val{Forms.fancy}, Union{}, Nothing, Union{Int, String}, Union{Int, Symbol}, Tuple{Vararg{Int}}, NTuple{2, Int}, Val{Base.Iterators}, Val{Base}]
         @test allunique(map(text, values))
         # Text holds content alone: other run agrees.
         @test map(text, values) == [first(type_text!(start_run(nothing, Module[], Library()), type)) for type in values]

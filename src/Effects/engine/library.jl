@@ -86,8 +86,8 @@ function structure_text!(run::Run, @nospecialize(type::Any), bound::AbstractVect
         end
         items
     else
-        # Other value parameter (`Val{1.0}`): serializer writes its bytes.
-        String["value", part(typeof(type)), Inference.digest(type)]
+        # Other value parameter (`Val{1.0}`) is bits value: digest reads its bytes with no package method (`plain_digest`).
+        String["value", part(typeof(type)), something(Inference.plain_digest(type))]
     end
     return Cache.digest(parts, String[])
 end
