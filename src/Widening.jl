@@ -255,8 +255,11 @@ end
 """Whether call result type `type` tells meeting test something: call neither throws nor infers `Any`."""
 known(type::Type)::Bool = type !== Union{} && type !== Any
 
-"""Type call result `type` stands for: array that lazy broadcast materializes to, else `type`. Adds to `edges`."""
-materialized!(edges::AbstractVector{Any}, type::Type)::Type = type <: Base.Broadcast.Broadcasted ? call_result!(edges, Any[typeof(Base.Broadcast.materialize), type]) : type
+"""
+Type call result `type` stands for: array that lazy broadcast materializes to, else `type`. Adds to `edges`.
+`Union{}` (call throws) is subtype of `Broadcasted` too, yet stands for itself.
+"""
+materialized!(edges::AbstractVector{Any}, type::Type)::Type = type !== Union{} && type <: Base.Broadcast.Broadcasted ? call_result!(edges, Any[typeof(Base.Broadcast.materialize), type]) : type
 
 """Argument `types` with type of each of `positions` replaced by its converted type in `swaps`."""
 function with_swaps(types::AbstractVector, swaps::AbstractDict{<:Integer}, positions::Any)::Vector{Any}

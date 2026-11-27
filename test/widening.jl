@@ -138,6 +138,8 @@ module WideningCases
     asserted(x) = (x isa AbstractFloat ? x * 0.5 : x)::AbstractFloat
     broke(x) = (takes_double(x * 2.0), x * 3.0)
     broke_all(x) = takes_double(x * 2.0)
+    same(a::T, b::T) where {T} = a + b
+    matched(x) = same(x, 0.5)
     @inline static(x::T) where {T} = x * T(0.5) + 0.5
     shifted_all(xs) = xs .+ 1
     function rescaled!(x, a, s)
@@ -262,6 +264,8 @@ const F, I, FV, IV = FloatStandIn, IntStandIn, ArrayStandIn{FloatStandIn, 1}, Ar
         # Converted literal would make call of `Float64` method throw: no finding, and other weak value still counts.
         @test isempty(reported(cases.broke_all, F))
         @test reported(cases.broke, F) == [(Weak.literal, 3.0, Exit.returned)]
+        # Call has no method for input type, so it infers `Union{}`; swapped literal makes it match, yet input keeps type.
+        @test isempty(reported(cases.matched, F))
         # Dropped weak value stays dropped, so search ends after few inferences.
         @test edge_count(cases.broke, F) < 60
         # Base number type outside `Core` widens on purpose.
