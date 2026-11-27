@@ -183,21 +183,74 @@ function rng_keyword(method::Method)::Bool
 end
 
 """
-Whether caller of `method` can pass RNG instead: `method` takes no RNG argument, and takes RNG keyword (`rng_keyword`)
-or package method of same function in `methods` draws from its RNG argument (`draws_from`) and drops to argument types
-that accept every call of `method`.
+Whether lowered body of `method` only computes default values and returns call to own function (slot 1) with own
+arguments first, as each method that default positional arguments make does: `f(x)` returns `f(x, 10^6, nothing)`.
+"""
+function fills_defaults(method::Method)::Bool
+    (Base.hasgenerator(method) || isnothing(method.source)) && return false
+    source = Base.uncompressed_ast(method)
+    code = source.code
+    returned = last(code)
+    returned isa Core.ReturnNode || return false
+    isdefined(returned, :val) || return false
+    position = returned.val
+    position isa Core.SSAValue || return false
+    position.id == length(code) - 1 || return false
+    call = code[position.id]
+    call isa Expr || return false
+    (call.head === :call && length(call.args) > method.nargs) || return false
+    all(slot -> call.args[slot] == Core.SlotNumber(slot), 1:method.nargs) || return false
+    return reads_all_before(source, position.id)
+end
+
+"""Whether statement `id` of straight-line lowered `source` reads each earlier statement, directly or through others."""
+function reads_all_before(source::Core.CodeInfo, id::Integer)::Bool
+    code = source.code
+    used = falses(id)
+    used[id] = true
+    for index in id:-1:1
+        used[index] || continue
+        statement = code[index]
+        statement isa Expr || continue
+        for argument in statement.args
+            argument isa Core.SSAValue && (used[argument.id] = true)
+        end
+    end
+    return all(used)
+end
+
+"""
+Argument types of `method` from its signature `parameters` (callee first): first `count` arguments, without argument
+`position` (1 is first after callee); `0` drops none.
+"""
+kept_arguments(method::Method, parameters::Core.SimpleVector, count::Integer, position::Integer)::Type =
+    Base.rewrap_unionall(Tuple{(parameters[index] for index in 2:(count + 1) if index != position + 1)...}, method.sig)
+
+"""
+Whether caller of `method` can pass RNG instead: `method` takes no RNG argument, and takes RNG keyword (`rng_keyword`),
+or package method of same function in `methods` takes RNG at position where caller of `method` can pass one. Sibling
+must draw from that RNG argument (`draws_from`) and, without it, accept every call of `method`; `nothing` in place of
+RNG argument counts as no argument. Method that same definition makes with more default positional arguments
+(`fills_defaults`) needs RNG among them: full method that ignores RNG reports own finding.
 """
 function chooses_rng(method::Method, methods::AbstractVector{MethodEffects})::Bool
     isempty(rng_positions(method)) || return false
     rng_keyword(method) && return true
     parameters = tuple_parameters(method.sig)
-    arguments = Base.rewrap_unionall(Tuple{parameters[2:end]...}, method.sig)
+    count = length(parameters) - 1
     for other in methods
-        others = tuple_parameters(other.site.method.sig)
+        sibling = other.site.method
+        others = tuple_parameters(sibling.sig)
         others[1] == parameters[1] || continue
-        for position in rng_positions(other.site.method)
-            kept = Base.rewrap_unionall(Tuple{(others[index] for index in 2:length(others) if index != position + 1)...}, other.site.method.sig)
-            arguments <: kept && draws_from([other.writes; other.reads], position) && return true
+        # Default positional arguments make one method per arity at line of definition.
+        defaults = sibling.file == method.file && sibling.line == method.line && length(others) > length(parameters) && fills_defaults(method)
+        for position in rng_positions(sibling)
+            if defaults
+                position > count && kept_arguments(method, parameters, count, 0) <: kept_arguments(sibling, others, count, 0) && return true
+            else
+                own = length(others) == length(parameters) && parameters[position + 1] === Nothing ? position : 0
+                kept_arguments(method, parameters, count, own) <: kept_arguments(sibling, others, length(others) - 1, position) && draws_from([other.writes; other.reads], position) && return true
+            end
         end
     end
     return false

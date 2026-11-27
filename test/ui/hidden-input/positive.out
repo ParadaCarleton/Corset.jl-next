@@ -218,3 +218,47 @@ error[hidden-input]: method draws from default RNG
    = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
    = docs: corset explain hidden-input
 
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputPositive.jl:99:65
+   |
+99 | gauge(count::Int, rng::Union{AbstractRNG, Nothing} = nothing) = rand(count)
+   | --------------------------------------------------------------------------- takes RNG argument but draws without it
+   |                                                                 ^^^^^^^^^^^ reads default RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: pass RNG argument to each draw   [manual]
+   = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+   --> src/HiddenInputPositive.jl:102:31
+    |
+102 | toss(::Nothing, count::Int) = rand(count)
+    | ----------------------------------------- takes no RNG argument
+    |                               ^^^^^^^^^^^ reads default RNG
+    |
+    = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+    = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+    = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+   --> src/HiddenInputPositive.jl:106:1
+    |
+106 | bump(x::Int) = rand() + x; bump(x::Int, rng::AbstractRNG) = 0.0
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reads default RNG
+    | --------------------------------------------------------------- takes no RNG argument
+    |
+    = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+    = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+    = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+   --> src/HiddenInputPositive.jl:109:1
+    |
+109 | jolt(x::Int) = (rand(); jolt(x, nothing)); jolt(x::Int, rng::Union{AbstractRNG, Nothing}) = 0.0
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reads default RNG
+    | ----------------------------------------------------------------------------------------------- takes no RNG argument
+    |
+    = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+    = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+    = docs: corset explain hidden-input
+
