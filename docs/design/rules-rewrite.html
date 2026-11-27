@@ -1294,7 +1294,7 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>Method entry lists kinds it takes over, mostly memory. <code>seed!</code> turns seed record bookkeeping into default RNG write.</li>
 <li>Audited field sets kind of every place below it: JIT compile writes code below <code>Regex</code> field.</li>
 <li>Audited global sets kind only in methods of its own package. Caller that writes <code>Dict</code> from <code>parsed_toml</code> writes memory.</li>
-<li><code>Regex</code> compile cache, <code>LazyString</code>; Base logging and PCRE contexts.</li>
+<li><code>Regex</code> compile cache, <code>LazyString</code>; Base logging, PCRE contexts, lock profiling switch of <code>@time</code> and <code>@timed</code>.</li>
 <li>IO bookkeeping: temporary path cleanup (<code>mktempdir</code>), libuv handles kept alive (<code>preserve_handle</code>).</li>
 <li>Lazy caches: parsed TOML, loading cache, docstring modules, stack trace module colors.</li>
 <li>Synchronization: Base task queues (<code>Workqueues</code>, <code>Partr.heaps</code>) that <code>wait</code>, <code>yield</code> and <code>schedule</code> change.</li>
