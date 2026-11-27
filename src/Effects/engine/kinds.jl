@@ -38,8 +38,9 @@ function audited_field(@nospecialize(type::Any), field::Symbol)::Union{Nothing, 
 end
 
 """
-Audited internal state by global binding, for methods of its own package (`path_kind`): Base logging state and PCRE
-match contexts. IO bookkeeping: temporary path cleanup at exit, libuv handles kept alive, include record of precompile
+Audited internal state by global binding, for methods of its own package (`path_kind`): Base logging state, PCRE
+match contexts, and lock profiling switch that `@time` and `@timed` turn on, then off (internal `lock_profiling`).
+Pairing switch calls as lock holds fails: `@timed` calls `gc_num`, which compiler lets throw, before its `try`. IO bookkeeping: temporary path cleanup at exit, libuv handles kept alive, include record of precompile
 output, hourly timer of scratch usage log, stream numbers that Serialization gives type names and methods. Lazy caches: parsed TOML, loading, docstring modules, stack trace colors.
 Synchronization: task queues that `wait`, `yield` and `schedule` change.
 """
@@ -47,6 +48,7 @@ const AUDITED_GLOBALS = Dict{GlobalRef, EffectKind.T}(
     GlobalRef(Base.CoreLogging, :_min_enabled_level) => EffectKind.audited,
     GlobalRef(Base.CoreLogging, :_global_logstate) => EffectKind.audited,
     GlobalRef(Base.PCRE, :THREAD_MATCH_CONTEXTS) => EffectKind.audited,
+    GlobalRef(Base.Threads, :LOCK_PROFILING) => EffectKind.audited,
     GlobalRef(Base.Filesystem, :TEMP_CLEANUP) => EffectKind.io,
     GlobalRef(Base.Filesystem, :TEMP_CLEANUP_MAX) => EffectKind.io,
     GlobalRef(Base, :uvhandles) => EffectKind.io,
