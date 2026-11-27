@@ -161,6 +161,7 @@ end
 Key line of method store of checked `path`: Julia version, cache flags, `path`, environment (`environment_inputs`),
 analyzed `files` by path, package `shape`, and files of project `root` that package code loads from (`src`, `ext`,
 `deps`) but `files` leave out. Store entries count analyzed files by content, so Manifest `path` entry of `root` stays out.
+Environments count by load path position (`naming`): relaunch copies environment to new temporary directory each run.
 """
 function method_key(path::String, root::String, files::AbstractVector{String}, shape::AbstractVector{String}, load_path::AbstractVector{String}, cache::String)::String
     parts, listed, trees = environment_inputs(load_path)
@@ -168,7 +169,9 @@ function method_key(path::String, root::String, files::AbstractVector{String}, s
     kept = [filter(tree -> !(ispath(tree) && realpath(tree) == root), trees); joinpath.(root, ["src", "ext", "deps"])]
     analyzed = Set(real_path(file) for file in files)
     outside = filter(file -> !(file in analyzed), found_files(listed, kept, cache))
-    return digest([string(VERSION), repr(Base.CacheFlags()), path, parts..., files..., shape...], outside)
+    named = naming(nothing, load_path, String[])
+    labeled = [anchored(real_path(part), named.anchors) for part in parts]
+    return digest([string(VERSION), repr(Base.CacheFlags()), path, labeled..., files..., shape...], outside, named)
 end
 
 """
