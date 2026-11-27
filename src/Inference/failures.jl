@@ -56,7 +56,7 @@ struct HelperVerdicts
     verdicts::IdDict{Any, Tuple{Bool, Vector{Any}}}
 end
 
-HelperVerdicts() = HelperVerdicts(ReentrantLock(), IdDict{Any, Tuple{Bool, Vector{Any}}}())
+HelperVerdicts()::HelperVerdicts = HelperVerdicts(ReentrantLock(), IdDict{Any, Tuple{Bool, Vector{Any}}}())
 
 """
 Throw helper verdict on `callee` from `helpers`, computed on first use. Inference runs outside lock: threads that race
