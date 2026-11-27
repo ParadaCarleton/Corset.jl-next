@@ -96,6 +96,11 @@ module Layered
     const SHARED = foldl((inner, _) -> Twin(inner, inner), 1:64; init = 1)
     read_shared() = SHARED
     @enum Speed quick crawl
+    # Package `write` of boxed value writes same byte for each value: digest must not call it.
+    @enum Shade light dark
+    Base.write(io::IO, ::Base.RefValue{Shade}) = write(io, 0x00)
+    # Primitive type of 3 bytes: `reinterpret` of its vector into bytes throws on padding.
+    primitive type Triple 24 end
     const CONFIG = (quick,)
     read_config() = CONFIG[1] == quick ? 1 : 2
     read_constant() = Sub.C + 1
@@ -557,6 +562,8 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test constant_text(Tuple{Vararg{Int}}) != constant_text(Tuple{Vararg{Float64}}) != constant_text(Tuple{Int, Vararg{Float64}}) != constant_text(NTuple)
         @test constant_text(1) != constant_text(2) && constant_text("a") != constant_text("b") && constant_text((:a,)) != constant_text((:b,))
         @test constant_text(MODULE.fast) != constant_text(MODULE.slow) && constant_text((1, ("a", 'b'))) != constant_text((1, ("a", 'c')))
+        @test plain_digest(Layered.light) != plain_digest(Layered.dark)
+        @test plain_digest(reinterpret(Layered.Triple, (0x01, 0x02, 0x03))) != plain_digest(reinterpret(Layered.Triple, (0x01, 0x02, 0x04)))
         # Value of other type counts by type: run can change mutable value.
         @test constant_text([1]) == constant_text([2]) != constant_text([1.0]) && constant_text((1, [2])) == constant_text((1, [3]))
         @test constant_text(MODULE.Wrap(1)) != constant_text(MODULE.Wrap(2)) && constant_text(MODULE.Wrap([1])) == constant_text(MODULE.Wrap([2]))

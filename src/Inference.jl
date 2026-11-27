@@ -662,8 +662,10 @@ function plain_digest(@nospecialize(value::Any))::Union{Nothing, String}
             serialize(stream, current)
         elseif isprimitivetype(typeof(current))
             # Enum value and other bits type: serializer throws for type without `write`, so stream takes raw bytes.
+            # Pointer read calls no method on package type: package `write` or promotion would change bytes or invalidate.
             serialize(stream, typeof(current))
-            write(stream, reinterpret(UInt8, [current]))
+            box = Base.RefValue(current)
+            GC.@preserve box write(stream, unsafe_wrap(Array, Ptr{UInt8}(pointer_from_objref(box)), Core.sizeof(current)))
         elseif isstructtype(typeof(current)) && !ismutable(current)
             position = get(seen, heap_address(current), 0)
             if position > 0
