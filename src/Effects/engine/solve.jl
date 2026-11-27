@@ -571,28 +571,55 @@ function variant_flow(run::Run, variant::Variant, flush::Bool, record::Bool)::Tu
     return flow, callees
 end
 
-"""Blind spot cause of variant whose flow passed `WORK_LIMIT`: it gets open summary."""
+"""Blind spot cause of variant whose flow passed `WORK_LIMIT`: its reads, result and own verdict stay open."""
 const BUDGET = "effects budget"
 
 """
+Parameter that `!` method with IR `ir` writes by name (`effects.md`, Name trust): first after callee that can point to
+object and is no callable, `IO` or `AbstractRNG`, as name tier picks. `nothing` for other method, or no such parameter.
+"""
+function named_subject(method::Method, ir::CC.IRCode)::Union{Nothing, Int}
+    name = string(method.name)
+    (endswith(name, "!") && name != "!") || return nothing
+    for position in 2:Int(method.nargs)
+        type = root_type(ir, Root.Parameter(position))
+        type <: Union{Function, Type, IO, AbstractRNG} || !referent(type) || return position
+    end
+    return nothing
+end
+
+"""
+Summary that callers of `variant` past work limit apply: name decides writes (`named_subject`), and `closed_world` keeps
+them and their absence at `possible`. Reads and result stay blind with cause `BUDGET` (`open_summary`).
+"""
+function named_summary(run::Run, variant::Variant)::Summary
+    method = first(variant).def::Method
+    open, subject = open_summary(Int(method.nargs), BUDGET), named_subject(method, run.codes[variant].ir)
+    writes = isnothing(subject) ? Accesses() : Accesses((Place.At(Root.Parameter(subject), NO_STEPS), true, EffectKind.memory) => Effect(CODE_DOUBT, 0, ""))
+    return Summary(writes, open.reads, open.edges, open.backing, open.spread, open.bound, open.callbacks, open.result, open.fresh, true, open.cut, open.held, open.thrown, open.unguarded)
+end
+
+"""
 Summary of `variant` with code, from current callee summaries of `run` (`variant_flow`), and variants whose summaries
-rounds read. `flush` resolves callback records here. Flow past budget gives open summary with cause `BUDGET`; variant
+rounds read. `flush` resolves callback records here. Flow past budget gives name summary (`named_summary`); variant
 keeps it for whole run, so rerun in call cycle runs no flow (`root_calls!` too).
 """
 function variant_summary!(run::Run, variant::Variant, flush::Bool)::Tuple{Summary, Set{Variant}}
     method, slot = first(variant).def::Method, run.slots[variant]
-    slot.over_budget && return open_summary(Int(method.nargs), BUDGET), Set{Variant}()
+    slot.over_budget && return named_summary(run, variant), Set{Variant}()
     flow, callees = variant_flow(run, variant, flush, false)
     over_budget(flow) || return summarize!(flow, method, callees), callees.read
     slot.over_budget = true
-    return open_summary(Int(method.nargs), BUDGET), callees.read
+    return named_summary(run, variant), callees.read
 end
 
 """
 Summary of root `variant` for verdicts after solve: no caller resolves its callback records, so root with records
-reruns with each record resolved at call statement where it starts.
+reruns with each record resolved at call statement where it starts. Root past budget gets open summary: its name
+tells nothing about itself.
 """
 function root_summary!(run::Run, variant::Variant)::Summary
+    run.slots[variant].over_budget && return open_summary(Int((first(variant).def::Method).nargs), BUDGET)
     summary = held_summary(run.slots, variant)
     isempty(summary.callbacks) && return summary
     return first(variant_summary!(run, variant, true))

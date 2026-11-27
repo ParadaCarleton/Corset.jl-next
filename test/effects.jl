@@ -521,6 +521,9 @@ latest!(values::Vector{Int}) = Base.invokelatest(push!, values, 1)
 world!(values::Vector{Int}) = Base.invoke_in_world(Base.get_world_counter(), push!, values, 1)
 invoked!(values::Vector{Int}) = invoke(push!, Tuple{Vector{Int}, Any}, values, 1)
 fill_one!(values::Vector{Int}) = (values[1] = 1; nothing)
+# Callers of method past work limit trust its name: `!` writes first argument that can point to object.
+wrap_fill(values::Vector{Int}) = fill_one!(values)
+seeded_fill!(rng::AbstractRNG, scale::Int, values::Vector{Int}) = (values[1] = rand(rng, 1:scale); nothing)
 invoke_dead(text::String) = invoke(fill_one!, Tuple{Vector{Int}}, text)
 invoke_open(values::Vector{Int}, selector::Type) = invoke(fill_one!, selector, values)
 """Selector that is not constant can select any method: `push!` contract covers them all."""
@@ -1722,10 +1725,26 @@ end
     roomy = start_run(nothing, Module[])
     solve!(roomy, [root])
     @test !any(slot -> slot.over_budget, values(roomy.slots)) && !same(root_summary!(roomy, root), open_summary(2, Summaries.BUDGET))
-    # Variant past budget keeps open summary: rerun runs no flow, so roomy run returns open summary too.
+    # Variant past budget keeps name summary for callers: rerun runs no flow. `!` method writes its argument at `possible`;
+    # reads and result stay blind, and own verdict stays open.
     roomy.slots[root].over_budget = true
-    @test same(first(Summaries.variant_summary!(roomy, root, false)), open_summary(2, Summaries.BUDGET)) && isempty(last(Summaries.variant_summary!(roomy, root, false)))
+    named, opened = first(Summaries.variant_summary!(roomy, root, false)), open_summary(2, Summaries.BUDGET)
+    @test named.writes == Accesses(memory((parameter(2), true)) => Effect(CODE_DOUBT, 0, "")) && named.closed_world && isempty(last(Summaries.variant_summary!(roomy, root, false)))
+    @test named.reads == opened.reads && named.result == opened.result && same(root_summary!(roomy, root), opened)
     roomy.slots[root].over_budget = false
+    # Caller applies name summary of callee past budget: its write becomes `possible`.
+    wrapped = start_run(nothing, Module[])
+    caller = (only(something(dispatch(Any[typeof(wrap_fill), Vector{Int}], wrapped.world, 1))), Pair{Int, Any}[])
+    solve!(wrapped, [caller])
+    @test level_of(held_summary(wrapped.slots, caller).writes[memory((parameter(2), true))].doubt) == Level.none
+    wrapped.slots[root].over_budget = true
+    wrapped.slots[root].summary = Summaries.named_summary(wrapped, root)
+    @test first(Summaries.variant_summary!(wrapped, caller, false)).writes[memory((parameter(2), true))].doubt == CODE_DOUBT
+    # Name subject skips RNG and values that point to no object; method without `!` names none.
+    seeded = (only(something(dispatch(Any[typeof(seeded_fill!), Xoshiro, Int, Vector{Int}], wrapped.world, 1))), Pair{Int, Any}[])
+    solve!(wrapped, [seeded])
+    @test Summaries.named_subject(first(seeded).def, wrapped.codes[seeded].ir) == 4
+    @test isnothing(Summaries.named_subject(first(caller).def, wrapped.codes[caller].ir)) && isnothing(Summaries.named_subject(which(!, (Bool,)), wrapped.codes[caller].ir))
     # Trace counts origins it walks, and load past budget stops: one call statement cannot run past limit.
     code = roomy.codes[root]
     spent = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, 1)
