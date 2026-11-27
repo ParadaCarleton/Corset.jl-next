@@ -29,8 +29,14 @@ The guide section "Load errors" describes this environment.
 | `--format` | `text`, `json`, `sarif` | `text` |
 | `--confidence` | `definite`, `possible` | from the configuration |
 | `--no-cache` | (flag) | cache on |
+| `--timings` | (flag) | off |
 
 `fix` also takes `--tier` with `safe`, `likely` or `breaking`. The default comes from the configuration.
+
+`--timings` prints the seconds of each stage to standard error: wall time, compile time and garbage collection time.
+The second Julia process prints its stages first. Its first line is the time to load Corset.
+The first process then prints the environment build, the cache lookup and the whole second process.
+A cache hit prints the cache lookup only. Use `--no-cache` to time every stage.
 
 ## Cache
 

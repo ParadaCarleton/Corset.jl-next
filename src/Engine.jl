@@ -15,6 +15,7 @@ using ..Effects: Effects
 using ..Lifecycle: Lifecycle
 using ..External: External
 using ..Cache: Cache
+using ..Timings: Timing, timed!
 using Serialization: serialize
 using SHA: sha256
 
@@ -98,28 +99,34 @@ method_entry(path::String)::String = "$path\nmethod store"
 store_key(path::String, package::PackageFacts, files::AbstractVector{Facts.SyntaxFile}, cache::String)::String =
     Cache.method_key(path, something(project_root(path)), [file.path for file in files], Inference.shape(package), Base.load_path(), cache)
 
+"""Key of method store of checked `path` with `package` and analyzed `files` in cache `cache`, and store it holds: empty on miss."""
+function read_store(path::String, package::PackageFacts, files::AbstractVector{Facts.SyntaxFile}, cache::String)::Tuple{String, Inference.Store}
+    key = store_key(path, package, files, cache)
+    return key, something(Cache.lookup(Inference.Store, cache, method_entry(path), key; root = nothing), Inference.Store())
+end
+
 """
 Inference and effects facts of `package` in analyzed `files`, each with its blind spots, then lifecycle facts:
 inference facts when `inference` holds, effects facts when `effects` holds too, lifecycle facts when `lifecycle` holds
 too; else none. Cache directory `cache` keeps method store of checked `path` and library summaries (`architecture.md`;
 `engine.md`, Solve and cache); `nothing` turns both off.
 Crash journal `directory` of relaunched process records each inference (`journaled`); `nothing` records none.
+Stage times go to `timings` unless `nothing`.
 """
-function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files::AbstractVector{Facts.SyntaxFile}, inference::Bool, effects::Bool, lifecycle::Bool, cache::Union{Nothing, String}, directory::Union{Nothing, String})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}, Union{Nothing, EffectsFacts}, Vector{BlindSpot}, Union{Nothing, LifecycleFacts}}
+function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files::AbstractVector{Facts.SyntaxFile}, inference::Bool, effects::Bool, lifecycle::Bool, cache::Union{Nothing, String}, directory::Union{Nothing, String}, timings::Union{Nothing, Vector{Timing}})::Tuple{Union{Nothing, InferenceFacts}, Vector{BlindSpot}, Union{Nothing, EffectsFacts}, Vector{BlindSpot}, Union{Nothing, LifecycleFacts}}
     (isnothing(package) || !inference) && return nothing, BlindSpot[], nothing, BlindSpot[], nothing
-    key = isnothing(cache) ? "" : store_key(path, package, files, cache)
-    cached = isnothing(cache) ? nothing : something(Cache.lookup(Inference.Store, cache, method_entry(path), key; root = nothing), Inference.Store())
+    key, cached = isnothing(cache) ? ("", nothing) : timed!(() -> read_store(path, package, files, cache), timings, "method store read")
     # Entries of runs that crashed serve as store, so finished work stays done.
     store = isnothing(directory) ? cached : merge(something(cached, Inference.Store()), Inference.finished_store(Inference.records(directory)))
     # Effects run reads effects record of each stored unit, so entry without one infers again.
     effects && !isnothing(store) && filter!(pair -> !isempty(last(pair).effects), store)
     library_directory = isnothing(cache) ? "" : Cache.library_directory(cache)
     partition = isnothing(cache) ? "" : Cache.partition_key(string(VERSION), DEPOT_PATH)
-    library = Effects.Summaries.Library(isnothing(cache) ? Dict{String, Cache.Stamped}() : Cache.read_library(library_directory, partition))
-    stages(journal::Union{Nothing, Inference.Journal}) = run_stages(package, files, store, effects, lifecycle, library, journal)
+    library = Effects.Summaries.Library(isnothing(cache) ? Dict{String, Cache.Stamped}() : timed!(() -> Cache.read_library(library_directory, partition), timings, "library read"))
+    stages(journal::Union{Nothing, Inference.Journal}) = run_stages(package, files, store, effects, lifecycle, library, journal, timings)
     facts, spots, stored, run, lifecycle_found = isnothing(directory) ? stages(nothing) : journaled(stages, directory)
-    isnothing(cache) || Cache.store!(cache, method_entry(path), key, something(stored); root = nothing)
-    isnothing(cache) || isnothing(run) || Cache.keep_library!(library_directory, partition, run.library.entries, run.hits, Cache.LIBRARY_BYTES)
+    isnothing(cache) || timed!(() -> Cache.store!(cache, method_entry(path), key, something(stored); root = nothing), timings, "method store write")
+    isnothing(cache) || isnothing(run) || timed!(() -> Cache.keep_library!(library_directory, partition, run.library.entries, run.hits, Cache.LIBRARY_BYTES), timings, "library write")
     return isnothing(run) ? (facts, spots, nothing, BlindSpot[], lifecycle_found) : (facts, spots, run.facts, run.spots, lifecycle_found)
 end
 
@@ -127,14 +134,14 @@ end
 Facts and blind spots of `inference` stage on `package` with method `store`, store this run used, `effects` stage run
 when `effects` (`Effects.StageRun`) with `library` cache, and `lifecycle` stage facts when `lifecycle` too. Crash
 `journal` covers effects stage and store entries too: index proof infers again, engine infers library instances, and
-entries run generators.
+entries run generators. Stage times go to `timings` unless `nothing`.
 """
-function run_stages(package::PackageFacts, files::AbstractVector{Facts.SyntaxFile}, store::Union{Nothing, Inference.Store}, effects::Bool, lifecycle::Bool, library::Effects.Summaries.Library, journal::Union{Nothing, Inference.Journal})::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Inference.Store}, Union{Nothing, Effects.StageRun}, Union{Nothing, LifecycleFacts}}
-    facts, spots, units, used = Inference.infer_package(package, files, store, journal)
+function run_stages(package::PackageFacts, files::AbstractVector{Facts.SyntaxFile}, store::Union{Nothing, Inference.Store}, effects::Bool, lifecycle::Bool, library::Effects.Summaries.Library, journal::Union{Nothing, Inference.Journal}, timings::Union{Nothing, Vector{Timing}})::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Inference.Store}, Union{Nothing, Effects.StageRun}, Union{Nothing, LifecycleFacts}}
+    facts, spots, units, used = timed!(() -> Inference.infer_package(package, files, store, journal), timings, "inference")
     effects || return facts, spots, used, nothing, nothing
-    run = Effects.effects_facts(package, units, journal, library)
-    kept = isnothing(used) ? nothing : with_records(used, units, run, files, package, journal)
-    return facts, spots, kept, run, lifecycle ? Lifecycle.lifecycle_facts(package, run.ordered) : nothing
+    run = timed!(() -> Effects.effects_facts(package, units, journal, library), timings, "effects")
+    kept = isnothing(used) ? nothing : timed!(() -> with_records(used, units, run, files, package, journal), timings, "method store update")
+    return facts, spots, kept, run, lifecycle ? timed!(() -> Lifecycle.lifecycle_facts(package, run.ordered), timings, "lifecycle") : nothing
 end
 
 """
@@ -208,19 +215,21 @@ end
 """
 Facts and analysis of real `path` with discovered `sources` under `settings`. Opt-outs apply before levels. Cache
 directory `cache` keeps method store and library summaries unless `nothing`; crash `journal` directory as in `stage_facts`.
+Stage times go to `timings` unless `nothing`.
 """
-function analyze(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, journal::Union{Nothing, String})::Tuple{FactSet, Analysis}
-    loaded = load_package(sources.project, settings, sources.files)
+function analyze(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, journal::Union{Nothing, String}, timings::Union{Nothing, Vector{Timing}})::Tuple{FactSet, Analysis}
+    loaded = timed!(() -> load_package(sources.project, settings, sources.files), timings, "package load")
     # Target methods are newer than this call; in its world, `Float32(::TargetIrrational)` throws and `show` falls back.
-    return Base.invokelatest(analyze_loaded, path, settings, sources, cache, journal, loaded)::Tuple{FactSet, Analysis}
+    return Base.invokelatest(analyze_loaded, path, settings, sources, cache, journal, timings, loaded)::Tuple{FactSet, Analysis}
 end
 
 """Facts and analysis of `analyze` once package of `sources` is `loaded`; runs in world that sees package methods."""
-function analyze_loaded(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, journal::Union{Nothing, String}, loaded::Package.Loaded)::Tuple{FactSet, Analysis}
-    stages = stage_facts(path, loaded.facts, sources.files, needs_inference(settings), needs_effects(settings), needs_lifecycle(settings), cache, journal)
+function analyze_loaded(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, journal::Union{Nothing, String}, timings::Union{Nothing, Vector{Timing}}, loaded::Package.Loaded)::Tuple{FactSet, Analysis}
+    stages = stage_facts(path, loaded.facts, sources.files, needs_inference(settings), needs_effects(settings), needs_lifecycle(settings), cache, journal, timings)
     inference, inference_spots, effects, effects_spots, lifecycle = stages
-    facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, inference, effects, lifecycle, external_facts(sources.project, loaded.facts, sources.files, settings))
-    kept, problems = OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY))
+    external = timed!(() -> external_facts(sources.project, loaded.facts, sources.files, settings), timings, "external")
+    facts = FactSet(sources.files, sources.entries, settings.bans, sources.project, loaded.facts, inference, effects, lifecycle, external)
+    kept, problems = timed!(() -> OptOuts.apply(facts, run_rules(facts), Set(rule.name for rule in REGISTRY)), timings, "rules")
     leveled = diagnostics(kept, settings)
     root = something(project_root(path), isdir(path) ? path : dirname(path))
     keys = Baseline.finding_keys(facts, root, [diagnostic.finding for diagnostic in leveled])
@@ -258,16 +267,21 @@ Settings and analysis of `path` with `flags`; cache directory `cache` serves and
 Entry is named by key and keeps paths relative to project root (`Cache.key`), so copy of project hits too. Store
 prunes cache.
 Crash `journal` directory of relaunched process records inferences (`stage_facts`); `nothing` records none.
+Stage times go to `timings` unless `nothing`.
 """
-function analysis(path::String, flags::Flags, cache::Union{Nothing, String}, journal::Union{Nothing, String})::Tuple{Settings, Analysis}
-    path, settings, sources = inputs(path, flags)
-    isnothing(cache) && return settings, last(analyze(path, settings, sources, nothing, journal))
-    key, root = cache_key(path, flags, sources, Base.load_path(), cache)
-    stored = Cache.lookup(Analysis, cache, key, key; root)
+function analysis(path::String, flags::Flags, cache::Union{Nothing, String}, journal::Union{Nothing, String}, timings::Union{Nothing, Vector{Timing}})::Tuple{Settings, Analysis}
+    real, settings, sources = timed!(() -> inputs(path, flags), timings, "discovery")
+    isnothing(cache) && return settings, last(analyze(real, settings, sources, nothing, journal, timings))
+    key, root, stored = timed!(timings, "cache lookup") do
+        entry, anchor = cache_key(real, flags, sources, Base.load_path(), cache)
+        entry, anchor, Cache.lookup(Analysis, cache, entry, entry; root = anchor)
+    end
     isnothing(stored) || return settings, stored
-    fresh = last(analyze(path, settings, sources, cache, journal))
-    Cache.store!(cache, key, key, fresh; root)
-    Cache.prune!(cache, Cache.ENTRY_BYTES)
+    fresh = last(analyze(real, settings, sources, cache, journal, timings))
+    timed!(timings, "cache write") do
+        Cache.store!(cache, key, key, fresh; root)
+        Cache.prune!(cache, Cache.ENTRY_BYTES)
+    end
     return settings, fresh
 end
 
@@ -299,9 +313,9 @@ end
 
 """
 Report for files discovered from `path`; cache directory `cache` serves and stores analysis unless `nothing`. Only
-relaunched process passes crash `journal` directory.
+relaunched process passes crash `journal` directory. Stage times go to `timings` unless `nothing`.
 """
-check(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing, journal::Union{Nothing, String} = nothing)::Report = report(analysis(path, flags, cache, journal)...)
+check(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing, journal::Union{Nothing, String} = nothing, timings::Union{Nothing, Vector{Timing}} = nothing)::Report = report(analysis(path, flags, cache, journal, timings)...)
 
 """Write baseline of `analyzed` at its project root from every reported finding; return entry count."""
 function baseline(analyzed::Analysis)::Int
@@ -310,16 +324,16 @@ function baseline(analyzed::Analysis)::Int
 end
 
 """Write baseline at project root of `path` from every reported finding; return entry count. `cache` as in `check`."""
-baseline(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing)::Int = baseline(last(analysis(path, flags, cache, nothing)))
+baseline(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing)::Int = baseline(last(analysis(path, flags, cache, nothing, nothing)))
 
 """
 Apply fixes of reported findings under `path` up to fix tier. Return number of edits applied, and whether check of
-edited files needs fresh process: run loaded package, whose methods keep code from before edits. `cache`, `journal` as
-in `check`.
+edited files needs fresh process: run loaded package, whose methods keep code from before edits. `cache`, `journal`,
+`timings` as in `check`.
 """
-function fix!(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing, journal::Union{Nothing, String} = nothing)::Tuple{Int, Bool}
+function fix!(path::String; flags::Flags = Flags(), cache::Union{Nothing, String} = nothing, journal::Union{Nothing, String} = nothing, timings::Union{Nothing, Vector{Timing}} = nothing)::Tuple{Int, Bool}
     _, settings, sources = inputs(path, flags)
-    report = check(path; flags, cache, journal)
+    report = check(path; flags, cache, journal, timings)
     edits = Fixes.applicable_edits([diagnostic.finding for diagnostic in report.diagnostics], report.settings.tier)
     # Fix may span files; edit in unread file throws `KeyError` before any write.
     files = unique(edit.span.file for edit in edits)

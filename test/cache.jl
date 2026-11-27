@@ -414,6 +414,16 @@ end
                 first = cached_corset(cache, "check", package)
                 @test occursin("skipped 1", first[2]) && cached_corset(cache, "check", package) == (first[1], first[2], "")
             end
+            # `--timings` on cold cache times store reads and writes too; hit times lookup only.
+            mktempdir(@__DIR__) do cache
+                cold = cached_corset(cache, "check", package, "--timings")
+                stages = [
+                    "cache lookup", "discovery", "cache lookup", "package load", "method store read", "library read", "inference", "effects",
+                    "method store update", "lifecycle", "method store write", "library write", "external", "rules", "cache write",
+                ]
+                @test occursin("skipped 1", cold[2]) && timing_rows(cold[3]) == stages
+                @test timing_rows(cached_corset(cache, "check", package, "--timings")[3]) == ["cache lookup"]
+            end
         end
     end
 end

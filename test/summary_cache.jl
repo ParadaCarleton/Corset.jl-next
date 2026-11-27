@@ -345,10 +345,10 @@ end
 
     @testset "engine stage" begin
         none = (nothing, BlindSpot[], nothing, BlindSpot[], nothing)
-        @test Corset.Engine.stage_facts(CASE, nothing, FILES, true, true, false, nothing, nothing) == none
-        @test Corset.Engine.stage_facts(CASE, PACKAGE, FILES, false, true, false, nothing, nothing) == none
+        @test Corset.Engine.stage_facts(CASE, nothing, FILES, true, true, false, nothing, nothing, nothing) == none
+        @test Corset.Engine.stage_facts(CASE, PACKAGE, FILES, false, true, false, nothing, nothing, nothing) == none
         mktempdir(@__DIR__) do cache
-            staged(effects::Bool)::Tuple = Corset.Engine.stage_facts(CASE, PACKAGE, FILES, true, effects, false, cache, nothing)
+            staged(effects::Bool)::Tuple = Corset.Engine.stage_facts(CASE, PACKAGE, FILES, true, effects, false, cache, nothing, nothing)
             entry = Corset.Engine.method_entry(CASE)
             store() = Cache.lookup(Store, cache, entry, readline(Cache.entry(cache, entry)); root = nothing)
             # Inference run keeps no records; effects run infers their units again.
@@ -367,7 +367,7 @@ end
         end
         mktempdir(@__DIR__) do directory
             mktempdir(@__DIR__) do cache
-                @test fact_text(Corset.Engine.stage_facts(CASE, PACKAGE, FILES, true, true, false, cache, directory)[3]) == fact_text(RUN.facts)
+                @test fact_text(Corset.Engine.stage_facts(CASE, PACKAGE, FILES, true, true, false, cache, directory, nothing)[3]) == fact_text(RUN.facts)
             end
         end
     end

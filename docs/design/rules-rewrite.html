@@ -1724,7 +1724,8 @@ Build holds file lock. Next run removes lock of dead process at once when lock i
 </tr>
 </tbody>
 </table></div>
-<p>Flags: <code>-A</code>, <code>-W</code>, <code>-D &lt;rule or group&gt;</code> set levels and apply in order, as in rustc; <code>-D warnings</code> fails run on warnings; <code>--confidence definite|possible</code>; <code>--format text|json|sarif</code>; <code>--tier safe|likely|breaking</code> for <code>fix</code>; <code>--no-cache</code>.</p>
+<p>Flags: <code>-A</code>, <code>-W</code>, <code>-D &lt;rule or group&gt;</code> set levels and apply in order, as in rustc; <code>-D warnings</code> fails run on warnings; <code>--confidence definite|possible</code>; <code>--format text|json|sarif</code>; <code>--tier safe|likely|breaking</code> for <code>fix</code>; <code>--no-cache</code>; <code>--timings</code>.</p>
+<p><code>--timings</code> prints wall, compile and garbage collection seconds per stage to stderr. Relaunched process prints first; its Corset load leads. Relaunching process then prints environment, cache lookup and analysis process. Flag stays out of cache key: hit times lookup only.</p>
 <p>Install: <code>pkg&gt; app add Corset</code> puts <code>corset</code> on PATH (Julia app); <code>julia -m Corset</code> runs same entry point. App starts Julia on all cores (<code>--threads=auto</code>); <code>corset --threads=N --</code> sets other count. Text output ends with count line (errors, warnings, baselined), then coverage line. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.</p>
 <p>Files, as Cargo picks targets:</p>
 <ul>

@@ -24,10 +24,10 @@ const LOAD_PATH = "@:@stdlib"
 
 """
 Code relaunched process runs: same command line, without relaunch, with cache directory `cache` of relaunching process
-and crash `journal` directory.
+and crash `journal` directory. Process times own load of Corset, which slow cold start can hide in.
 """
 child(cache::Union{Nothing, String}, journal::String)::String =
-    "using Corset: Corset; exit(Corset.CLI.execute(ARGS, stdout, stderr; launch = false, cache = $(repr(cache)), journal = $(repr(journal))))"
+    "loading = @timed @eval(using Corset: Corset); exit(Corset.CLI.execute(ARGS, stdout, stderr; launch = false, cache = $(repr(cache)), journal = $(repr(journal)), loading = Corset.Timings.timing(\"load Corset\", loading)))"
 
 """`Base.load_path()` of process that `relaunch` starts in `env`: `LOAD_PATH` expanded."""
 load_path(env::String)::Vector{String} = [joinpath(env, "Project.toml"), Sys.STDLIB]

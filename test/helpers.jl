@@ -9,6 +9,12 @@ function corset(args::String...)::Tuple{Int, String, String}
     return code, String(take!(out)), String(take!(err))
 end
 
+"""Line of `--timings` table: stage name, then wall, compile and garbage collection seconds."""
+const TIMING_ROW = r"^  (\S+(?: \S+)*) +[\d.]+ +[\d.]+ +[\d.]+$"
+
+"""Stage names of `--timings` lines in standard error text `err`, in order."""
+timing_rows(err::String)::Vector{String} = [String(match(TIMING_ROW, line)[1]) for line in split(err, '\n') if occursin(TIMING_ROW, line)]
+
 const LIBRARY = joinpath(@__DIR__, "config", "library")
 # Package stage loads fixture packages in place, so test environment must load them from their roots.
 LIBRARY in LOAD_PATH || push!(LOAD_PATH, LIBRARY)
