@@ -139,12 +139,12 @@ function entry!(named::IdDict{Any, Bool}, ids::IdDict{Method, String}, codes::Ab
         push!(found, site.method)
     end
     # Unit start record of crash journal covers generators that run here.
-    digests, records = method_digests(ids, codes, found), Staged[something(staged_record(ids, codes, specialized, nothing)) for specialized in generated]
+    digests, records = method_digests!(ids, codes, found), Staged[something(staged_record(ids, codes, specialized, nothing)) for specialized in generated]
     return Entry(site.file.path => hashes[site.file.path], digests, records, serialized(inferred), UInt8[])
 end
 
 """Digest of each method in `found` by id, once per id; `ids` and `codes` cache ids and digests."""
-function method_digests(ids::IdDict{Method, String}, codes::AbstractDict{String, String}, found::AbstractVector{Method})::Vector{Pair{String, String}}
+function method_digests!(ids::IdDict{Method, String}, codes::AbstractDict{String, String}, found::AbstractVector{Method})::Vector{Pair{String, String}}
     methods = Dict(get!(() -> method_id(method), ids, method) => method for method in found)
     return [id => get!(() -> code_digest(method), codes, id) for (id, method) in methods]
 end
@@ -198,7 +198,7 @@ function with_edges(entry::Entry, edges::Union{Nothing, AbstractVector{Any}}, fi
     (found, generated), ids, codes = read, IdDict{Method, String}(), Dict{String, String}()
     records = [staged_record(ids, codes, specialized, journal) for specialized in generated]
     any(isnothing, records) && return nothing
-    digests = unique!(append!(copy(entry.methods), method_digests(ids, codes, found)))
+    digests = unique!(append!(copy(entry.methods), method_digests!(ids, codes, found)))
     return Entry(entry.file, digests, append!(copy(entry.staged), Staged[something(record) for record in records]), entry.inferred, entry.effects)
 end
 
