@@ -117,9 +117,8 @@ end
     @test shape(effects(:zero_first_pair!).writes) == [(parameter(2, Step.Position(1)), false, MEMORY, DEFINITE)]
     # Shallow copy holds same boxes: write lands on element of `boxes`.
     @test shape(effects(:zero_copied!).writes) == [(parameter(2, Step.Element()), false, MEMORY, DEFINITE)]
-    # Copy of integers holds no caller object; engine aliases element place of `Vector{Int}`.
-    @test isempty(effects(:grow_copy).writes)
-    @test_broken isempty(effects(:grow_copy).aliases)
+    # Copy of integers holds no caller object: push writes and aliases nothing of caller.
+    @test isempty(effects(:grow_copy).writes) && isempty(effects(:grow_copy).aliases)
     # Element function result: element of container, or other operand; run-time key decides.
     @test shape(effects(:zero_lookup!).writes) == [(parameter(2, Step.Element()), false, MEMORY, POSSIBLE)]
     @test (parameter(2), false, MEMORY, DEFINITE) in shape(effects(:group!).writes) && (parameter(2, Step.Element()), false, MEMORY, POSSIBLE) in shape(effects(:group!).writes)
