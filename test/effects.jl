@@ -522,7 +522,8 @@ world!(values::Vector{Int}) = Base.invoke_in_world(Base.get_world_counter(), pus
 invoked!(values::Vector{Int}) = invoke(push!, Tuple{Vector{Int}, Any}, values, 1)
 fill_one!(values::Vector{Int}) = (values[1] = 1; nothing)
 # Callers of method past work limit trust its name: `!` writes first argument that can point to object.
-wrap_fill(values::Vector{Int}) = fill_one!(values)
+@noinline fill_held!(values::Vector{Int}) = (values[1] = 1; nothing)
+wrap_fill(values::Vector{Int}) = fill_held!(values)
 seeded_fill!(rng::AbstractRNG, scale::Int, values::Vector{Int}) = (values[1] = rand(rng, 1:scale); nothing)
 invoke_dead(text::String) = invoke(fill_one!, Tuple{Vector{Int}}, text)
 invoke_open(values::Vector{Int}, selector::Type) = invoke(fill_one!, selector, values)
@@ -1735,11 +1736,12 @@ end
     # Caller applies name summary of callee past budget: its write becomes `possible`.
     wrapped = start_run(nothing, Module[])
     caller = (only(something(dispatch(Any[typeof(wrap_fill), Vector{Int}], wrapped.world, 1))), Pair{Int, Any}[])
+    held = (only(something(dispatch(Any[typeof(fill_held!), Vector{Int}], wrapped.world, 1))), Pair{Int, Any}[])
     solve!(wrapped, [caller])
-    @test level_of(held_summary(wrapped.slots, caller).writes[memory((parameter(2), true))].doubt) == Level.none
-    wrapped.slots[root].over_budget = true
-    wrapped.slots[root].summary = Summaries.named_summary(wrapped, root)
-    @test first(Summaries.variant_summary!(wrapped, caller, false)).writes[memory((parameter(2), true))].doubt == CODE_DOUBT
+    @test level_of(held_summary(wrapped.slots, caller).writes[memory((parameter(2), false))].doubt) == Level.none
+    wrapped.slots[held].over_budget = true
+    wrapped.slots[held].summary = Summaries.named_summary(wrapped, held)
+    @test [(key, effect.doubt) for (key, effect) in first(Summaries.variant_summary!(wrapped, caller, false)).writes] == [(memory((parameter(2), true)), CODE_DOUBT)]
     # Root can pass budget only in rerun that resolves its callback records: own verdict still gets open summary.
     called = start_run(nothing, Module[CASES])
     setter = (only(something(dispatch(Any[typeof(CASES.call_setter!), CASES.Setter, Int], called.world, 1))), Pair{Int, Any}[])
