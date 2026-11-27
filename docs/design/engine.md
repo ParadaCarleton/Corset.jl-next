@@ -212,6 +212,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
 - Kind comes from types along place path, root first: first `IO` gives IO, `AbstractRNG` gives RNG argument.
 - Contract write can set own kind: `handle_message` writes logger as IO.
 - Stream state fields of `AbstractSerializer` give IO: `io`, `counter`, `table`, `pending_refs`, `version`, which generic Serialization methods write. `Serializer` adds `known_object_data`. Other serializer fields keep memory kind.
+- Stream numbers that Serialization gives type names and methods (`object_numbers`, `obj_number_salt`) give IO too.
 - Lock, `Condition` and `Semaphore` on path give synchronization. Path without such type gives memory write.
 - Path types: instance parameter type, constant global value type or global binding type, then field type or element type per step. Abstract type without field ends walk.
 - Instance that maps callee access onto own place classifies again: memory write takes special kind when own path crosses special type.
