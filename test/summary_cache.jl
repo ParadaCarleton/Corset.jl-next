@@ -21,11 +21,11 @@ function case_package()::Tuple{Module, Vector{Facts.SyntaxFile}, Facts.PackageFa
     sources = Corset.Discovery.discover(CASE; environment = nothing)
     push!(LOAD_PATH, CASE)
     loaded = try
-        Corset.Package.load(sources.project, sources.files)
+        Corset.Package.load(sources)
     finally
         pop!(LOAD_PATH)
     end
-    return first(loaded.facts.modules), sources.files, loaded.facts
+    return first(loaded.facts.modules), loaded.sources.files, loaded.facts
 end
 
 const CASES, FILES, PACKAGE = case_package()

@@ -14,11 +14,11 @@ function case_facts()::Tuple{Module, Facts.PackageFacts, Corset.Inference.Units,
     sources = Corset.Discovery.discover(CASE; environment = nothing)
     push!(LOAD_PATH, CASE)
     loaded = try
-        Corset.Package.load(sources.project, sources.files)
+        Corset.Package.load(sources)
     finally
         pop!(LOAD_PATH)
     end
-    _, _, units, _ = infer_package(loaded.facts, sources.files, nothing, nothing)
+    _, _, units, _ = infer_package(loaded.facts, loaded.sources.files, nothing, nothing)
     return first(loaded.facts.modules), loaded.facts, units, Effects.effects_facts(loaded.facts, units, nothing, Effects.Summaries.Library())
 end
 

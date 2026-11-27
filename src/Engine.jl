@@ -85,12 +85,11 @@ needs_package(settings::Settings)::Bool = any(entry -> entry.fix_stage != Stage.
 loads(project::Union{Nothing, ProjectFacts}, settings::Settings)::Bool = !isnothing(project) && needs_package(settings)
 
 """
-Loaded package of `project` with method sites in `files`, and its load errors and blind spots.
-Nothing loads outside package project, and when no enabled rule reads package.
+Loaded package of `sources` with method sites in its files, and its load errors and blind spots.
+Nothing loads outside package project, and when no enabled rule reads package: `sources` stay as discovered.
 """
-function load_package(project::Union{Nothing, ProjectFacts}, settings::Settings, files::AbstractVector{Facts.SyntaxFile})::Package.Loaded
-    return loads(project, settings) ? Package.load(project, files) : Package.Loaded(nothing, Finding[], BlindSpot[])
-end
+load_package(sources::Discovery.Sources, settings::Settings)::Package.Loaded =
+    loads(sources.project, settings) ? Package.load(sources) : Package.Loaded(sources, nothing, Finding[], BlindSpot[])
 
 """Name of method store entry of checked `path` in cache directory, beside analysis entry of `path`."""
 method_entry(path::String)::String = "$path\nmethod store"
@@ -220,9 +219,9 @@ directory `cache` keeps method store and library summaries unless `nothing`; cra
 Stage times go to `timings` unless `nothing`.
 """
 function analyze(path::String, settings::Settings, sources::Discovery.Sources, cache::Union{Nothing, String}, journal::Union{Nothing, String}, timings::Union{Nothing, Sink})::Tuple{FactSet, Analysis}
-    loaded = timed(() -> load_package(sources.project, settings, sources.files), timings, "package load")
+    loaded = timed(() -> load_package(sources, settings), timings, "package load")
     # Target methods are newer than this call; in its world, `Float32(::TargetIrrational)` throws and `show` falls back.
-    return Base.invokelatest(analyze_loaded, path, settings, sources, cache, journal, timings, loaded)::Tuple{FactSet, Analysis}
+    return Base.invokelatest(analyze_loaded, path, settings, loaded.sources, cache, journal, timings, loaded)::Tuple{FactSet, Analysis}
 end
 
 """Facts and analysis of `analyze` once package of `sources` is `loaded`; runs in world that sees package methods."""

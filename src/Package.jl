@@ -9,6 +9,7 @@ module Package
 
 using ..Facts: Facts, line_starts, lowered_value, ArgumentUse, PackageFacts, ProjectFacts, MethodSite, StructSite, SyntaxFile, SyntaxNode, Finding, Label, Span, Precision, Confidence, BlindSpot
 using ..Config: ConfigError, parse_toml
+using ..Discovery: Discovery, Sources
 
 """Rule name load failures report under."""
 const LOAD_ERROR = Symbol("load-error")
@@ -47,6 +48,30 @@ end
 function package_modules(root::Module, project::ProjectFacts)::Vector{Module}
     loaded = filter(!isnothing, [Base.get_extension(root, Symbol(extension.name)) for extension in project.extensions])
     return reduce(vcat, map(module_tree, loaded); init = module_tree(root))
+end
+
+"""
+Loaded root modules whose file is in `entries`: package `root` for its module file, extensions for theirs. Run of
+other file checks its include closure only.
+"""
+function entry_modules(root::Module, project::ProjectFacts, entries::AbstractVector{String})::Vector{Module}
+    roots = [(root, project.entry); [(Base.get_extension(root, Symbol(extension.name)), extension.file) for extension in project.extensions]]
+    return Module[mod for (mod, file) in roots if mod isa Module && file in entries]
+end
+
+"""
+Source files Julia included to load package `roots`, read from header of each precompile cache, as Revise reads them.
+Root loaded without cache adds none.
+"""
+function included_files(roots::AbstractVector{Module})::Vector{String}
+    caches = [get(Base.PkgOrigin, Base.pkgorigins, Base.PkgId(root)).cachepath for root in roots]
+    return reduce(vcat, [cache_sources(cache) for cache in caches if cache isa String]; init = String[])
+end
+
+"""Files whose text precompile cache at `path` holds: files Julia included, without `include_dependency` files."""
+function cache_sources(path::String)::Vector{String}
+    _, (_, sources, _) = Base.parse_cache_header(path)
+    return [include.filename for include in sources]
 end
 
 """
@@ -311,8 +336,12 @@ function load_error(error::Any, frames::AbstractVector{Base.StackTraces.StackFra
     )
 end
 
-"""Outcome of package load: facts when root module loads, `load-error` findings, and parts rules could not see."""
+"""
+Outcome of package load: sources with files load included (`Discovery.resolve`), facts when root module loads,
+`load-error` findings, and parts rules could not see.
+"""
 struct Loaded
+    sources::Sources
     facts::Union{Nothing, PackageFacts}
     errors::Vector{Finding}
     blind_spots::Vector{BlindSpot}
@@ -379,10 +408,12 @@ function moved_versions(project::ProjectFacts)::Vector{BlindSpot}
 end
 
 """
-Facts of package of `project`, loaded in this process with extension triggers, with method sites in `files`.
-Precompile failure carries no frame inside package, so error comes from second load in anonymous module (`reproduce`).
+Facts of package of `sources`, loaded in this process with extension triggers, with method sites in files of `sources`
+and files load included. Precompile failure carries no frame inside package, so error comes from second load in
+anonymous module (`reproduce`).
 """
-function load(project::ProjectFacts, files::AbstractVector{SyntaxFile})::Loaded
+function load(sources::Sources)::Loaded
+    project, files = sources.project::ProjectFacts, sources.files
     entry = project.entry
     mod = try
         load_module(package_id(project), entry)
@@ -394,10 +425,11 @@ function load(project::ProjectFacts, files::AbstractVector{SyntaxFile})::Loaded
             isnothing(again) || ((error, frames) = again)
         end
         finding = load_error(error, frames, entry, files, "package", "rules after `syntax` stage did not run")
-        return Loaded(nothing, [finding], [BlindSpot("package did not load", finding.primary.span); moved_versions(project)])
+        return Loaded(sources, nothing, [finding], [BlindSpot("package did not load", finding.primary.span); moved_versions(project)])
     end
     errors, blind_spots = load_extensions(mod, project, files)
-    return Loaded(package_facts(package_modules(mod, project), files), errors, [blind_spots; moved_versions(project)])
+    resolved = Discovery.resolve(sources, included_files(entry_modules(mod, project, sources.entries)))
+    return Loaded(resolved, package_facts(package_modules(mod, project), resolved.files), errors, [blind_spots; moved_versions(project)])
 end
 
 """Functions that answer whether function takes arguments."""
