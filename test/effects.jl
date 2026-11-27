@@ -6,7 +6,7 @@ using Corset.StandIns: FunctionStandIn, ArrayStandIn, DenseStandIn, FloatStandIn
 using Corset.Signatures: Provenance
 using Corset.Effects.Summaries:
     Summaries, MethodVerdict, CallSummary, BlindAccess, UnitVerdict, Library, cached_effects, Doubt, Level, Sources, BLIND, level_of, sources_of, NO_DOUBT, CODE_DOUBT, BLIND_DOUBT, OPAQUE, INHERENT, LAST_PARAMETER, parameter_source, least, Effect, Summary, Node, Nodes, Origin, Targets, Operand, Outcome, Code, Flow, start_run, solve!, dispatch, body!,
-    library_body!, journal_key, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
+    library_body!, journal_key!, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, value_type, start_flow, statement!, map_node!, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
     components, foreign_name, foreign_library, FOREIGN_EFFECTS, BLAS_EFFECTS, foreign_effects, blas_library, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt!, source_provenance,
     Callback, Callees, Variant, root_summary!, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut!, CUT, catches!, cut!,
@@ -985,7 +985,7 @@ end
         journal = open_journal(directory)
         try
             target = only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], run.world, 1)))
-            push!(journal.crashed, journal_key(target))
+            push!(journal.crashed, journal_key!(run, target))
             crashed = start_run(journal, Module[])
             root = (only(something(dispatch(Any[typeof(latest!), Vector{Int}], crashed.world, 1))), Pair{Int, Any}[])
             solve!(crashed, [root])
@@ -1659,7 +1659,11 @@ peel(f::Any, shell::InnerShell) = (STEPS[] += 1; peel(f ∘ identity, shell.inne
         @test length(reached) == total
         @test any(instance -> instance.specTypes == expected, reached)
     end
-    @test journal_key(only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], Base.get_world_counter(), 1)))) == "effects\nTuple{typeof(push!), Array{Int64, 1}, Int64}"
+    # Journal key agrees across runs, as canonical type text does across processes, and tells instances apart.
+    pushed(run, types...) = journal_key!(run, only(something(dispatch(Any[typeof(push!), types...], Base.get_world_counter(), 1))))
+    first_run, second_run = start_run(nothing, Module[]), start_run(nothing, Module[])
+    @test pushed(first_run, Vector{Int}, Int) == pushed(second_run, Vector{Int}, Int) != pushed(second_run, Vector{Float64}, Float64)
+    @test startswith(pushed(first_run, Vector{Int}, Int), "effects\n")
 end
 
 const DOUBTS = Data.SampledFrom([NO_DOUBT, CODE_DOUBT, sourced(2), sourced(3), BLIND_DOUBT])
