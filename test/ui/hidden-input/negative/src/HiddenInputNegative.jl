@@ -70,4 +70,11 @@ end
 draw(rng::AbstractRNG, mix::Mix) = mix.means[1] + randn(rng)
 draw(mix::Mix) = mix.means[1] + randn()
 
+# Default positional arguments define one method per arity: caller of `spread(values)` can call `spread(values, 2.0, rng)`.
+pick(::Nothing, values::Vector{Float64}) = rand(values)
+pick(rng::AbstractRNG, values::Vector{Float64}) = rand(rng, values)
+spread(values::Vector{Float64}, scale::Float64 = 2.0^3, rng::Union{AbstractRNG, Nothing} = nothing) = scale * pick(rng, values)
+# Keywords keep shorter methods calling own function: `sample(values)` calls `sample(values, nothing)`.
+sample(values::Vector{Float64}, rng::Union{AbstractRNG, Nothing} = nothing; scale::Float64 = 1.0) = scale * pick(rng, values)
+
 end

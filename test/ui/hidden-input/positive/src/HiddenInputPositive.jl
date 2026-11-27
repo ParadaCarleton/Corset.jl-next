@@ -95,4 +95,14 @@ untyped_draw(n::Int; rng = Random.default_rng()) = rand(rng, n)
 # Keyword body never reads RNG keyword: caller RNG cannot reach draw.
 unread_keyword(n::Int; rng::AbstractRNG = Random.default_rng()) = rand(n)
 
+# Default positional RNG argument that full method never reads: full method reports it, `gauge(count)` does not.
+gauge(count::Int, rng::Union{AbstractRNG, Nothing} = nothing) = rand(count)
+
+# `nothing` in place of RNG, but RNG method never draws from its RNG: caller RNG cannot reach draw.
+toss(::Nothing, count::Int) = rand(count)
+toss(rng::AbstractRNG, count::Int) = fill(0.5, count)
+
+# Two definitions on one line: `bump(x)` makes no call to `bump(x, rng)`, so caller RNG cannot reach draw.
+bump(x::Int) = rand() + x; bump(x::Int, rng::AbstractRNG) = 0.0
+
 end
