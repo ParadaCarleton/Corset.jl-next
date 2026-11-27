@@ -349,3 +349,54 @@ warning[one-based-range]: index into `m` has no proof that it comes from its axe
     = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
     = docs: corset explain one-based-range
 
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
+   --> src/OneBasedRangePositive.jl:153:14
+    |
+152 |     for i in 1:shape.count
+    |              ------------- index comes from here
+153 |         s += xs[i]
+    |              ^^^^^ index without proof
+    |
+    = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+    = docs: corset explain one-based-range
+
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
+   --> src/OneBasedRangePositive.jl:169:14
+    |
+168 |     for i in Shifted(length(xs), firstindex(xs) - 1)
+    |                                  ------------------ index comes from here
+169 |         s += xs[i]
+    |              ^^^^^ index without proof
+    |
+    = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+    = confidence: possible
+    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+    = docs: corset explain one-based-range
+
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
+   --> src/OneBasedRangePositive.jl:181:14
+    |
+180 |     for i in 1:Stop()
+    |              -------- index comes from here
+181 |         s += xs[i]
+    |              ^^^^^ index without proof
+    |
+    = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+    = confidence: possible
+    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+    = docs: corset explain one-based-range
+
+warning[one-based-range]: index into `xs` has no proof that it comes from its axes
+   --> src/OneBasedRangePositive.jl:192:14
+    |
+191 |     for i in 1:stop
+    |              ------ index comes from here
+192 |         s += xs[i]
+    |              ^^^^^ index without proof
+    |
+    = why: array with offset axes starts its indices elsewhere than 1, so this index can read wrong element
+    = confidence: possible
+    = fix: take index from `eachindex`, `axes`, `firstindex` or `begin`, or guard with `Base.require_one_based_indexing`   [manual]
+    = docs: corset explain one-based-range
+
