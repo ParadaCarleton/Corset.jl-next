@@ -652,20 +652,21 @@ end
 """
 Digest of `value` when number, character, string, symbol, bits value (enum), or immutable struct of those, tuples
 included: data that inference or `@eval` loops of other files read. Other value gives `nothing`. Work stack and
-leaf-only serializer: constant linked list can be deeper than call stack.
+leaf-only serializer: constant linked list can be deeper than call stack. Bits values come first: serializer calls
+package `write` of primitive type, which can throw.
 """
 function plain_digest(@nospecialize(value::Any))::Union{Nothing, String}
     stream, pending, seen, kept = IOBuffer(), Any[value], Dict{Ptr{Cvoid}, Int}(), Any[]
     while !isempty(pending)
         current = pop!(pending)
-        if current isa Union{Number, AbstractChar, String, Symbol, UndefinedField}
-            serialize(stream, current)
-        elseif isprimitivetype(typeof(current))
-            # Enum value and other bits type: serializer throws for type without `write`, so stream takes raw bytes.
-            # Pointer read calls no method on package type: package `write` or promotion would change bytes or invalidate.
+        if isprimitivetype(typeof(current))
+            # Enum value, number and other bits type: pointer read calls no method on package type, whose `write` or
+            # promotion would throw, change bytes or invalidate.
             serialize(stream, typeof(current))
             box = Base.RefValue(current)
             GC.@preserve box write(stream, unsafe_wrap(Array, Ptr{UInt8}(pointer_from_objref(box)), Core.sizeof(current)))
+        elseif current isa Union{String, Symbol, UndefinedField}
+            serialize(stream, current)
         elseif isstructtype(typeof(current)) && !ismutable(current)
             position = get(seen, heap_address(current), 0)
             if position > 0
@@ -679,6 +680,9 @@ function plain_digest(@nospecialize(value::Any))::Union{Nothing, String}
             for index in nfields(current):-1:1
                 push!(pending, isdefined(current, index) ? getfield(current, index) : UndefinedField())
             end
+        elseif current isa Union{Number, AbstractChar}
+            # Mutable number of Base (`BigInt`): serializer writes its value.
+            serialize(stream, current)
         else
             return nothing
         end
