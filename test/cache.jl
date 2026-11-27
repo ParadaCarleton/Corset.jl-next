@@ -39,9 +39,11 @@ end
         mktempdir(@__DIR__) do scratch
             root, dependency, environment = joinpath.(scratch, ["root", "dependency", "environment"])
             write_files(root, "Project.toml" => "", "src/a.jl" => "a = 1\n", ".hidden" => "")
-            write_files(dependency, "src/D.jl" => "module D end\n")
+            write_files(dependency, "src/D.jl" => "module D end\n", "out.json" => "{}")
             gone = "\n[[deps.Gone]]\npath = \"../gone\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n"
-            manifest = "manifest_format = \"2.0\"\n\n[[deps.D]]\npath = \"../dependency\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n$gone"
+            corset = realpath(pkgdir(Corset))
+            developed = "\n[[deps.Corset]]\npath = $(repr(corset))\nuuid = \"$(Base.PkgId(Corset).uuid)\"\n"
+            manifest = "manifest_format = \"2.0\"\n\n[[deps.D]]\npath = \"../dependency\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n$gone$developed"
             write_files(environment, "Project.toml" => "", "Manifest.toml" => manifest)
             script, link = joinpath(scratch, "script.jl"), joinpath(scratch, "link.jl")
             write(script, "x = 1\n")
@@ -54,14 +56,15 @@ end
             # Entry relocates root alone: file near environment keeps real path in key.
             @test Cache.anchored(joinpath(realpath(environment), "deps", "D.jl"), naming.anchors) == joinpath(realpath(environment), "deps", "D.jl")
             @test naming.manifests == Set([realpath(joinpath(environment, "Manifest.toml"))])
-            corset = realpath(pkgdir(Corset))
             listed = [
-                joinpath(root, "Project.toml"), joinpath(root, "src", "a.jl"), script, joinpath(dependency, "src", "D.jl"),
+                joinpath(root, "Project.toml"), joinpath(root, "src", "a.jl"), script, joinpath(dependency, "src", "D.jl"), joinpath(dependency, "out.json"),
                 project, joinpath(environment, "Manifest.toml"), joinpath(environment, "LocalPreferences.toml"), joinpath(environment, "JuliaLocalPreferences.toml"),
                 joinpath(corset, "Project.toml"), joinpath(corset, "src", "Cache.jl"),
             ]
             @test issubset(listed, files) && issorted(files) && allunique(files)
             @test !any(file -> file in (joinpath(root, ".hidden"), link) || startswith(file, joinpath(scratch, "gone")), files)
+            # Developed Corset counts by project file and source: depot and outputs in its root change no Corset code.
+            @test !(joinpath(corset, "test", "cache.jl") in files)
             # Manifest format 1 keeps entries at top level.
             write_files(environment, "Manifest.toml" => "[[D]]\npath = \"../dependency\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n")
             @test Cache.path_entries(project) == [dependency]
