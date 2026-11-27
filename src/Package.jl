@@ -55,8 +55,9 @@ Loaded root modules whose file is in `entries`: package `root` for its module fi
 other file checks its include closure only.
 """
 function entry_modules(root::Module, project::ProjectFacts, entries::AbstractVector{String})::Vector{Module}
-    roots = [(root, project.entry); [(Base.get_extension(root, Symbol(extension.name)), extension.file) for extension in project.extensions]]
-    return Module[mod for (mod, file) in roots if mod isa Module && file in entries]
+    loaded = (Base.get_extension(root, Symbol(extension.name)) for extension in project.extensions if extension.file in entries)
+    extensions = Module[mod for mod in loaded if mod isa Module]
+    return project.entry in entries ? Module[root; extensions] : extensions
 end
 
 """

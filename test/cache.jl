@@ -414,7 +414,8 @@ end
             end
         end
         # Package run: blind spots and load problems come back from cache.
-        computed = "\"\"\"Package with computed include.\"\"\"\nmodule Cached\ninclude(string(\"part\", \".jl\"))\nend\n"
+        # Load skips include in branch, so it stays blind spot.
+        computed = "\"\"\"Package with computed include.\"\"\"\nmodule Cached\nif get(ENV, \"CORSET_PART\", \"\") == \"1\"\n    include(string(\"part\", \".jl\"))\nend\nend\n"
         with_package(@__DIR__, "Cached", "src/Cached.jl" => computed, "src/part.jl" => "part_value = 1\n") do package
             mktempdir(@__DIR__) do cache
                 first = cached_corset(cache, "check", package)
