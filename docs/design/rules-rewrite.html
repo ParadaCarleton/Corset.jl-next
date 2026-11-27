@@ -1187,12 +1187,15 @@ Access that some members lack takes sources of open operands, as open dispatch d
 Blind access of one member and exact access of another disagree: join gives <code>possible</code>.</li>
 <li>Base interface function with documented contract (<code>setindex!</code> writes collection; <code>length</code> reads only; <code>view</code> result lies within array). Breach in package method is finding.</li>
 <li>Else open: <code>possible</code> write on operands; result may point into operands, one direction, and to <code>unknown</code>.
+<code>TaskLocalRNG</code> holds no object: operand that is or holds one gets open call <code>possible</code> default RNG write on <code>unknown</code>.
 Name states write whatever method runs. Base IO function (<code>print</code>, <code>write</code>, <code>read</code>) writes its <code>IO</code> stream operand: definite IO write.
 Stream is first operand; <code>write(to, from::IO)</code> also reads <code>from</code>. Value operand (<code>show(io, other::IO)</code>) takes open write only.
-Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>AbstractRNG</code> first operand: definite RNG argument write.</li>
+Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>AbstractRNG</code> first operand: definite RNG argument write.
+<code>TaskLocalRNG</code> operand holds no state: draw writes default RNG of current task (<code>rand!(default_rng(), A::AbstractArray)</code>).</li>
 </ol>
 <ul>
-<li>Splat of tuple or array with unknown length: dispatch on <code>Vararg</code> of element type. Callee parameters past fixed operands take any element.</li>
+<li>Splat of tuple or array with unknown length: dispatch on <code>Vararg</code> of element type. Callee parameters past fixed operands take any element.
+<code>Dims</code> and other tuple type with free length parameter count as unknown length.</li>
 <li>Splatted tuple slot has unknown position, so caller tuple collapses to <code>deep</code>. Splat of other collection stays open: its <code>iterate</code> runs.</li>
 <li>Instance specializes on call argument types. Callable type known to caller is concrete in callee too, so step 3 reaches its method.</li>
 <li><code>@invokelatest f(x)</code> with constant <code>GlobalRef</code> resolves as call <code>f(x)</code>, keywords included (<code>Base.invokelatest_gr</code>).</li>

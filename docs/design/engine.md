@@ -133,11 +133,14 @@ Resolution of each call statement, first match wins:
    Blind access of one member and exact access of another disagree: join gives `possible`.
 6. Base interface function with documented contract (`setindex!` writes collection; `length` reads only; `view` result lies within array). Breach in package method is finding.
 7. Else open: `possible` write on operands; result may point into operands, one direction, and to `unknown`.
+   `TaskLocalRNG` holds no object: operand that is or holds one gets open call `possible` default RNG write on `unknown`.
    Name states write whatever method runs. Base IO function (`print`, `write`, `read`) writes its `IO` stream operand: definite IO write.
    Stream is first operand; `write(to, from::IO)` also reads `from`. Value operand (`show(io, other::IO)`) takes open write only.
    Random draw (`rand`, `shuffle!`) writes its `AbstractRNG` first operand: definite RNG argument write.
+   `TaskLocalRNG` operand holds no state: draw writes default RNG of current task (`rand!(default_rng(), A::AbstractArray)`).
 
 - Splat of tuple or array with unknown length: dispatch on `Vararg` of element type. Callee parameters past fixed operands take any element.
+  `Dims` and other tuple type with free length parameter count as unknown length.
 - Splatted tuple slot has unknown position, so caller tuple collapses to `deep`. Splat of other collection stays open: its `iterate` runs.
 - Instance specializes on call argument types. Callable type known to caller is concrete in callee too, so step 3 reaches its method.
 - `@invokelatest f(x)` with constant `GlobalRef` resolves as call `f(x)`, keywords included (`Base.invokelatest_gr`).

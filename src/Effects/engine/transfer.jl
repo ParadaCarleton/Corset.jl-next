@@ -513,12 +513,28 @@ function open_effects!(flow::Flow, writes::OriginAccesses, index::Integer, objec
 end
 
 """
+Whether value of `type` is `TaskLocalRNG`, or holds one in field at most `depth` levels down: tuple that unresolved
+splat passes, closure or struct over RNG.
+"""
+function holds_task_rng_type(@nospecialize(type::Any), depth::Integer)::Bool
+    type isa DataType || return false
+    type <: Random.TaskLocalRNG && return true
+    (depth > 0 && isconcretetype(type)) || return false
+    return any(field -> holds_task_rng_type(field, depth - 1), fieldtypes(type))
+end
+
+"""
 Transfer open call (`engine.md`, Calls, step 7) with `code` `doubt`: write into `writes` and read below every operand;
-result may point into operands, one direction, and to unknown object.
+result may point into operands, one direction, and to unknown object. `TaskLocalRNG` holds no object, so operand that
+is or holds one (`holds_task_rng_type`) lets call draw from default RNG of current task.
 """
 function open!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type}, doubt::Doubt)::Nothing
     objects = union_targets(operand_targets!(flow, operand) for operand in operands)
     open_effects!(flow, writes, index, objects, doubt)
+    if any(operand -> holds_task_rng_type(operand_type(flow.ir, operand), 3), operands)
+        access!(writes, unknown(NO_DOUBT), false, Effect(doubt, index, ""), EffectKind.default_rng)
+        access!(flow.reads, unknown(NO_DOUBT), false, Effect(doubt, index, ""), EffectKind.default_rng)
+    end
     assign!(flow, index, union_targets((objects, unknown(doubt))), doubt)
     return nothing
 end
@@ -526,7 +542,8 @@ end
 """
 Transfer open call statement `index` with `operands` (callee first) into `writes`: effects whose open types decide
 doubt. Whatever method runs, IO function (`IO_FUNCTIONS`) writes each `IO` stream operand (`stream_positions`), and
-random function (`RNG_DRAWS`) draws from its `AbstractRNG` first argument.
+random function (`RNG_DRAWS`) draws from its `AbstractRNG` first argument. `TaskLocalRNG` holds no state: draw from it
+changes default RNG state of current task, on `unknown`.
 """
 function open_call!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type})::Nothing
     Base.require_one_based_indexing(operands)
@@ -543,9 +560,10 @@ function open_call!(flow::Flow, writes::OriginAccesses, index::Integer, operands
         end
     end
     (length(operands) >= 2 && operand_type(flow.ir, operands[2]) <: AbstractRNG && something(callee) in RNG_DRAWS) || return nothing
-    rng = operand_targets!(flow, operands[2])
-    access!(writes, rng, false, definite(index), EffectKind.rng_argument)
-    access!(flow.reads, rng, false, definite(index), EffectKind.rng_argument)
+    task_rng = operand_type(flow.ir, operands[2]) <: Random.TaskLocalRNG
+    rng, kind = task_rng ? (unknown(NO_DOUBT), EffectKind.default_rng) : (operand_targets!(flow, operands[2]), EffectKind.rng_argument)
+    access!(writes, rng, false, definite(index), kind)
+    access!(flow.reads, rng, false, definite(index), kind)
     return nothing
 end
 

@@ -1898,6 +1898,9 @@ roll(rng::Xoshiro) = rand(rng)
 roll_open(rng::AbstractRNG) = rand(rng)
 shuffle_open!(rng::AbstractRNG, items::Vector{Int}) = Random.shuffle!(rng, items)
 roll_default() = rand()
+fill_open!(rng::Random.TaskLocalRNG, items::AbstractArray{Float64}) = Random.rand!(rng, items)
+roll_dims(dims::Dims) = rand(Random.default_rng(), dims...)
+roll_set(counts::Set{Int}) = rand(Random.default_rng(), counts...)
 """Reseed of default RNG: `seed!` also copies new state into seed record in task storage."""
 reseed!()::Nothing = (Random.seed!(); nothing)
 """Reseed with package integer seed: hash of seed runs package code, so audit does not cover it."""
@@ -2032,6 +2035,13 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     @test doubts(summary_of(roll_open, AbstractRNG).writes)[(parameter(2), false, EffectKind.rng_argument)] == NO_DOUBT
     @test doubts(summary_of(shuffle_open!, AbstractRNG, Vector{Int}).writes)[(parameter(2), false, EffectKind.rng_argument)] == NO_DOUBT
     @test (parameter(2), false, EffectKind.rng_argument) in keys(summary_of(roll_open, AbstractRNG).reads)
+    # Open draw from `TaskLocalRNG` draws from default RNG of current task, through splat of unknown length too.
+    for summary in (summary_of(fill_open!, Random.TaskLocalRNG, AbstractArray{Float64}), summary_of(roll_dims, Dims))
+        @test doubts(summary.writes)[(Place.At(elsewhere, Step.Type[]), false, EffectKind.default_rng)] == NO_DOUBT
+        @test EffectKind.default_rng in kinds_at(summary.reads, elsewhere) && all(((_, _, kind),) -> kind != EffectKind.rng_argument, keys(summary.writes))
+    end
+    # Splat of `Set` runs `iterate` methods: unresolved call may draw from default RNG it gets.
+    @test doubts(summary_of(roll_set, Set{Int}).writes)[(Place.At(elsewhere, Step.Type[]), false, EffectKind.default_rng)] == CODE_DOUBT
     # Current task is unknown object without doubt: draw writes default RNG for sure, and nothing else for sure.
     rolled = summary_of(roll_default)
     rolled_writes = doubts(rolled.writes)
