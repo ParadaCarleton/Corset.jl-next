@@ -499,7 +499,13 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         # Callable struct has layout; type of named function has none.
         @test types(Tuple{typeof(sin), Layered.Callable}) == Set([Layered.Callable.name]) && isempty(types(Tuple{typeof(sin), typeof(Layered.read_chain)}))
         callable = short(type_layout(Layered.Callable))
-        Core.eval(Layered, :(struct Callable <: Function; payload::String; end))
+        Core.eval(
+            Layered, :(
+                struct Callable <: Function
+                    payload::String
+                end
+            )
+        )
         @test invokelatest(() -> short(type_layout(Layered.Callable))) != callable
         # Code digest reads package bindings: constant of package submodule too.
         layered = Set([Layered, Layered.Other, Layered.Sub, Layered.Sub.Deep])
