@@ -182,11 +182,11 @@ end
 
 """
 Forms that can leave body unrun when file loads: function bodies run when called; branch, loop, comprehension and `try`
-can skip, as empty loop does.
+can skip, as empty loop does; macro can drop its argument. Syntax index skips quoted code, so no quote holds `call`.
 """
-const SKIPPING = ("function", "->", "do", "macro", "if", "elseif", "&&", "||", "?", "while", "for", "generator", "try")
+const SKIPPING = ("function", "->", "do", "macro", "if", "elseif", "&&", "||", "?", "while", "for", "generator", "try", "macrocall")
 
-"""Whether `call` runs whenever its file loads: no function body, branch, loop or `try` holds it."""
+"""Whether `call` runs whenever its file loads: no function body, branch, loop, `try` or macro call holds it."""
 always_runs(call::SyntaxNode)::Bool = !any(ancestor -> kind_name(ancestor) in SKIPPING, ancestors(call))
 
 """Julia files under `directory`, sorted; skips hidden directories, symbolic links and directories with own Project.toml."""

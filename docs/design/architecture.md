@@ -101,7 +101,7 @@ Files, as Cargo picks targets:
 - Other directory: Julia files under it, without hidden directories, symbolic links and nested projects.
 - Include path: string literal, `@__DIR__` or `joinpath` of those. Computed path or missing file goes to coverage line.
 - Run of module or extension file adds files its load included: precompile cache header lists them, as Revise reads them.
-- Computed include outside branch, loop, `try` and function body then leaves coverage line: it ran on load.
+- Computed include outside branch, loop, `try`, macro call and function body then leaves coverage line: it ran on load.
 - Included file outside project root goes to coverage line: cache key leaves it out.
 - Missing module or extension file is config error.
 

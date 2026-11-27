@@ -315,8 +315,8 @@ end
 end
 
 """
-Entry of package `name` with computed includes: loop, branch and function body, which load can skip; file beside
-package root, outside project, which load always includes.
+Entry of package `name` with computed includes: loop, branch, function body and macro argument, which load can skip;
+file beside package root, outside project, which load always includes; quoted include, which is data.
 """
 loop_entry(name::String)::String = """
 module $name
@@ -328,6 +328,8 @@ if get(ENV, "CORSET_EXTRA", "0") == "1"
 end
 load_c() = include(string("c", ".jl"))
 include(joinpath(dirname(dirname(@__DIR__)), string("shared", ".jl")))
+const later = :(include(string("c", ".jl")))
+@eval include(string("c", ".jl"))
 end
 """
 
@@ -342,12 +344,12 @@ end
             write(joinpath(package, "Project.toml"), read(joinpath(package, "Project.toml"), String) * triggers)
             loaded = Corset.Package.load(Corset.Discovery.discover(package; environment = nothing))
             @test isempty(loaded.errors)
-            @test sort!([relpath(file.path, package) for file in loaded.sources.files]) == ["ext/LoopsExt.jl", "ext/x.jl", "src/Loops.jl", "src/a.jl", "src/b.jl", "src/e.jl"]
+            @test sort!([relpath(file.path, package) for file in loaded.sources.files]) == ["ext/LoopsExt.jl", "ext/x.jl", "src/Loops.jl", "src/a.jl", "src/b.jl", "src/c.jl", "src/e.jl"]
             line(span::Span)::Int = count(==(UInt8('\n')), codeunits(read(span.file, String))[1:(span.first_byte - 1)]) + 1
             spots = [(relpath(spot.span.file, package), line(spot.span), spot.cause) for spot in loaded.sources.blind_spots]
-            # Loop includes files, but empty loop would not: its spot stays, as spots of branch and function body do.
-            @test [spot for spot in spots if last(spot) == "include with computed path"] == [("src/Loops.jl", line, "include with computed path") for line in (3, 6, 8)]
-            @test last(spots) == ("../shared.jl", 1, "computed include outside project") && length(spots) == 4
+            # Loop includes files, but empty loop would not: its spot stays, as spots of branch, function body and macro do.
+            @test [spot for spot in spots if last(spot) == "include with computed path"] == [("src/Loops.jl", line, "include with computed path") for line in (3, 6, 8, 11)]
+            @test last(spots) == ("../shared.jl", 1, "computed include outside project") && length(spots) == 5
             @test Set(site.file.path for site in loaded.facts.methods) ⊇ Set(joinpath(package, "src", name) for name in ("a.jl", "Loops.jl"))
             # Run of one file checks its include closure only.
             single = Corset.Package.load(Corset.Discovery.discover(joinpath(package, "src", "a.jl"); environment = nothing))
@@ -357,7 +359,7 @@ end
         with_package(parent, "Uncached", "src/Uncached.jl" => "__precompile__(false)\n" * loop_entry("Uncached"), parts...) do package
             loaded = Corset.Package.load(Corset.Discovery.discover(package; environment = nothing))
             @test [relpath(file.path, package) for file in loaded.sources.files] == ["src/Uncached.jl"]
-            @test [spot.cause for spot in loaded.sources.blind_spots] == fill("include with computed path", 4)
+            @test [spot.cause for spot in loaded.sources.blind_spots] == fill("include with computed path", 5)
         end
     end
 end
