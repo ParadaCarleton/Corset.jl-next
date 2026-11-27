@@ -17,7 +17,7 @@ end
 timing(stage::String, result::NamedTuple)::Timing = Timing(stage, result.time, result.compile_time, result.gctime)
 
 """Value of `work()`; appends its timing under `stage` to `timings` unless `nothing`."""
-function timed!(work::Function, timings::Union{Nothing, Vector{Timing}}, stage::String)::Any
+function timed!(work::Function, timings::Union{Nothing, AbstractVector{Timing}}, stage::String)::Any
     isnothing(timings) && return work()
     result = @timed work()
     push!(timings, timing(stage, result))

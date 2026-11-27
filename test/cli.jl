@@ -552,7 +552,8 @@ end
                 @test hit[1:2] == (code, out) && timing_rows(hit[3]) == ["environment", "cache lookup"]
                 fresh = launched("check", root, "-A", "annotation", "--timings", "--no-cache")
                 @test fresh[1:2] == (code, out)
-                @test timing_rows(fresh[3]) == ["load Corset", "discovery", "package load", "inference", "effects", "lifecycle", "external", "rules", "environment", "analysis process"]
+                # Crash journal of relaunched process serves as method store, so store update runs without cache.
+                @test timing_rows(fresh[3]) == ["load Corset", "discovery", "package load", "inference", "effects", "method store update", "lifecycle", "external", "rules", "environment", "analysis process"]
                 # Copy elsewhere reuses environment: no build note. Analysis key reads Corset tree, which holds `root`:
                 # first copy misses, second copy reuses analysis of first.
                 mktempdir() do elsewhere

@@ -193,7 +193,7 @@ end
 Exit code of `command` on path `path` with parsed `options`, level `flags` and command line `args`, as `execute` runs
 it; `cache` is `nothing` when off. Stage times go to `timings` unless `nothing`.
 """
-function run_command(command::String, path::String, options::Dict{String, Any}, flags::Flags, args::AbstractVector{String}, launch::Bool, cache::Union{Nothing, String}, journal::Union{Nothing, String}, timings::Union{Nothing, Vector{Timing}}, @nospecialize(out::IO), @nospecialize(err::IO))::Int
+function run_command(command::String, path::String, options::AbstractDict{String, Any}, flags::Flags, args::AbstractVector{String}, launch::Bool, cache::Union{Nothing, String}, journal::Union{Nothing, String}, timings::Union{Nothing, AbstractVector{Timing}}, @nospecialize(out::IO), @nospecialize(err::IO))::Int
     target = launch ? Engine.load_target(path, flags) : nothing
     if !isnothing(target)
         env = timed!(() -> Launch.relocated(target, err), timings, "environment")
