@@ -165,12 +165,18 @@ function global_type(binding::GlobalRef)::Any
     return isconst(binding) ? typeof(getglobal(binding.mod, binding.name)) : Core.get_binding_type(binding.mod, binding.name)
 end
 
-"""Type in `step` slot of object of `type`; `Any` when type has no such slot."""
+"""
+Type in `step` slot of object of `type`: `Union{}` when concrete `type` has no such field or position, as no value sits
+there; `Any` when abstract type does not say. `Position` names tuple element, or field of struct that summary of struct
+family (`Box{T} where T`) reads by index. `Element` of other than array or memory is `Any`: it names any element.
+"""
 function step_type(@nospecialize(type::Any), step::Step.Type)::Any
     type isa DataType || return Any
+    concrete = isconcretetype(type)
+    missing_slot = concrete ? Union{} : Any
     return @match step begin
-        Step.Field(name) => hasfield(type, name) ? fieldtype(type, name) : Any
-        Step.Position(position) => type <: Tuple && position <= something(Base.datatype_fieldcount(type), position) ? fieldtype(type, position) : Any
+        Step.Field(name) => hasfield(type, name) ? fieldtype(type, name) : missing_slot
+        Step.Position(position) => (count = type <: Tuple || concrete ? Base.datatype_fieldcount(type) : 0; 1 <= position <= something(count, position) ? fieldtype(type, position) : missing_slot)
         Step.Element() => type <: Union{Array, GenericMemory} ? eltype(type) : Any
     end
 end
