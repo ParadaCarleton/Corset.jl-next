@@ -8,7 +8,7 @@ using Corset.Inference: Inference, infer_package, Store, entry_key, serialized, 
 using Corset.Effects.Summaries:
     Summaries, MethodVerdict, UnitVerdict, Library, LibraryEntry, Summary, Run, Variant, Closure, start_run, solve!, dispatch, root_summary!, same, cached_effects,
     library_entries!, unshared!, closure_key!, variant_key!, instance_key!, instance_node, record_text!, stored_value!, type_text!, inferred!,
-    record_bytes, unit_record, structure_text!
+    record_bytes, unit_record, structure_text!, held_summary
 using EvilArrays: EvilArray
 using Moshi.Data: isa_variant
 using Serialization: deserialize
@@ -249,13 +249,13 @@ end
         precompile(CASES.call_setter!, (CASES.Setter, Int))
         setter, setter_root = solved(Library(), Module[], CASES.call_setter!, CASES.Setter, Int)
         setter_key = variant_key!(setter, fresh(), setter_root)
-        @test !isempty(setter.summaries[setter_root].callbacks) && !isnothing(setter_key) && !haskey(library_entries!(setter).entries, something(setter_key))
+        @test !isempty(held_summary(setter.slots, setter_root).callbacks) && !isnothing(setter_key) && !haskey(library_entries!(setter).entries, something(setter_key))
         # Caller of package method stays out, though its own signature names no package type.
         relay, relay_root = solved(Library(), [CASES], relay_twice, Int)
         @test relay_root in unshared!(relay, fresh())
         # Variant with package module as constant stays out.
         named, _ = solved(Library(), [CASES], CASES.read_module)
-        moduled = [variant for variant in keys(named.summaries) if any(constant -> last(constant) === CASES, last(variant))]
+        moduled = [variant for variant in keys(named.slots) if any(constant -> last(constant) === CASES, last(variant))]
         @test !isempty(moduled) && issubset(moduled, unshared!(named, fresh()))
         # Entry holds throw helper verdicts its closure read, and hits only while each holds.
         instance = first(root)
