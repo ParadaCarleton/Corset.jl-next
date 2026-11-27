@@ -218,6 +218,13 @@ zero_first_pair!(pair::Tuple{Box, Box})::Nothing = ((left, _) = pair; left.value
 zero_copied!(boxes::Vector{Box})::Nothing = (copy(boxes)[1].value = 0; nothing)
 """Push onto copy of `items`: copy of integers holds no caller object."""
 grow_copy(items::Vector{Int})::Vector{Int} = push!(copy(items), 1)
+"""First `rows * columns` entries of `buffer` as matrix, after growing `buffer` when it is shorter."""
+function grown_buffer!(buffer::Vector{Float64}, rows::Int, columns::Int)::AbstractMatrix{Float64}
+    length(buffer) < rows * columns && resize!(buffer, rows * columns)
+    return reshape(view(buffer, 1:(rows * columns)), rows, columns)
+end
+"""Sum of ones in fresh block that `length(items)` sizes: size argument names no place of `items`."""
+grown_ones(items::Vector{Int})::Float64 = sum(fill!(grown_buffer!(Float64[], length(items), 2), 1.0))
 """Zero box under `:a` in `table`, or new box."""
 zero_lookup!(table::Dict{Symbol, Box})::Nothing = (get(table, :a, Box(0)).value = 0; nothing)
 """Push `value` onto group `key` of `groups`, made on first use."""

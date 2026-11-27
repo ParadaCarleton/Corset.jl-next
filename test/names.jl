@@ -119,6 +119,9 @@ end
     @test shape(effects(:zero_copied!).writes) == [(parameter(2, Step.Element()), false, MEMORY, DEFINITE)]
     # Copy of integers holds no caller object: push writes and aliases nothing of caller.
     @test isempty(effects(:grow_copy).writes) && isempty(effects(:grow_copy).aliases)
+    # Grown block aliases its buffer only: write into block that `length(items)` sizes writes no place of `items`.
+    grown = effects(:grown_buffer!).writes
+    @test !isempty(grown) && all(access -> place_root(access.place) == Root.Parameter(2), grown) && isempty(effects(:grown_ones).writes)
     # Element function result: element of container, or other operand; run-time key decides.
     @test shape(effects(:zero_lookup!).writes) == [(parameter(2, Step.Element()), false, MEMORY, POSSIBLE)]
     @test (parameter(2), false, MEMORY, DEFINITE) in shape(effects(:group!).writes) && (parameter(2, Step.Element()), false, MEMORY, POSSIBLE) in shape(effects(:group!).writes)
