@@ -350,10 +350,10 @@ blind spots): Base, Core, and stand-in methods that model them.
 keeps_contracts(method::Method)::Bool = Base.moduleroot(method.module) in (Base, Core) || method.module === StandIns
 
 """
-Crash journal key of native inference of `instance`; prefix keeps it apart from method store keys. Non-compact `show`
-skips type alias search, which takes seconds on deep types.
+Crash journal key of native inference of `instance`; prefix keeps it apart from method store keys. Canonical type text
+(`type_text!`) agrees across processes and caches each type part per run, as library keys do; `show` of deep types is slow.
 """
-journal_key(instance::Core.MethodInstance)::String = "effects\n" * sprint(show, instance.specTypes; context = :compact => false)
+journal_key!(run::Run, instance::Core.MethodInstance)::String = "effects\n" * first(type_text!(run, instance.specTypes))
 
 """
 Body of inference `frame` whose own code stand-ins `cut`, or shortcut when its compiler effects prove empty summary
@@ -374,7 +374,7 @@ relaunch skips instance that aborts process.
 """
 function inferred!(run::Run, instance::Core.MethodInstance)::Union{Tuple{CC.InferenceState, Bool}, String}
     journal = run.journal
-    key = isnothing(journal) ? "" : journal_key(instance)
+    key = isnothing(journal) ? "" : journal_key!(run, instance)
     isnothing(journal) || !(key in journal.crashed) || return "inference crashed process"
     isnothing(journal) || record!(journal, start_record(key, method_label(instance.def::Method), true))
     frame = CC.typeinf_frame(run.interpreter, instance, false)
