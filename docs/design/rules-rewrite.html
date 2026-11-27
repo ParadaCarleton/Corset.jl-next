@@ -1763,6 +1763,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li>Entry records generated code of each <code>@generated</code> instance it read. Run calls generator again and compares.</li>
 <li>Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.</li>
 <li>Store key line hashes environment, Corset source, analyzed file list and package shape. Other key drops whole store.</li>
+<li>Environment counts by load path position and content. Relaunch copies environment to new directory each run, so copy keeps key.</li>
 <li>Package shape: signature and file of each package method, struct layouts, global types and constants. Non-analyzed files in <code>src</code>, <code>ext</code> and <code>deps</code> count too.</li>
 <li>Constant counts by value when plain (number, string, symbol, immutable struct of those), by name when function or module, else by type.</li>
 <li>Type counts by layout: field names and types. Struct that edit redefines serializes as before.</li>

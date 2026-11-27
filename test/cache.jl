@@ -118,9 +118,12 @@ end
             manifest = "manifest_format = \"2.0\"\n\n[[deps.A]]\npath = \"../root\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n"
             write_files(environment, "Project.toml" => "", "Manifest.toml" => manifest)
             analyzed = [joinpath(root, "src", "A.jl")]
-            key(shape::Vector{String}, files::Vector{String})::String =
-                Cache.method_key(root, root, files, shape, [joinpath(environment, "Project.toml")], joinpath(root, "cache"))
+            key(shape::Vector{String}, files::Vector{String}, project::String = joinpath(environment, "Project.toml"))::String =
+                Cache.method_key(root, root, files, shape, [project], joinpath(root, "cache"))
             original = key(["shape"], analyzed)
+            # Relaunch runs in new temporary copy of environment each time: copy keys alike.
+            copied = cp(environment, joinpath(scratch, "copied"))
+            @test key(["shape"], analyzed, joinpath(copied, "Project.toml")) == original
             write_files(root, "src/A.jl" => "a = 2\n", "test/runtests.jl" => "b = 1\n")
             @test key(["shape"], analyzed) == original
             # Stage reads which files hold package code, so analyzed file list counts.

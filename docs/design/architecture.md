@@ -148,6 +148,7 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 - Entry records generated code of each `@generated` instance it read. Run calls generator again and compares.
 - Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.
 - Store key line hashes environment, Corset source, analyzed file list and package shape. Other key drops whole store.
+- Environment counts by load path position and content. Relaunch copies environment to new directory each run, so copy keeps key.
 - Package shape: signature and file of each package method, struct layouts, global types and constants. Non-analyzed files in `src`, `ext` and `deps` count too.
 - Constant counts by value when plain (number, string, symbol, immutable struct of those), by name when function or module, else by type.
 - Type counts by layout: field names and types. Struct that edit redefines serializes as before.
