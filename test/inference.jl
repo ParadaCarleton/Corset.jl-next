@@ -43,12 +43,12 @@ function case_facts()::Tuple{Module, Vector{SyntaxFile}, PackageFacts, Inference
     sources = Corset.Discovery.discover(CASE; environment = nothing)
     push!(LOAD_PATH, CASE)
     loaded = try
-        Corset.Package.load(sources.project, sources.files)
+        Corset.Package.load(sources)
     finally
         pop!(LOAD_PATH)
     end
-    facts, spots, units, _ = infer_package(loaded.facts, sources.files, nothing, nothing)
-    return first(loaded.facts.modules), sources.files, loaded.facts, facts, spots, units.typed
+    facts, spots, units, _ = infer_package(loaded.facts, loaded.sources.files, nothing, nothing)
+    return first(loaded.facts.modules), loaded.sources.files, loaded.facts, facts, spots, units.typed
 end
 
 const MODULE, FILES, PACKAGE, FACTS, SPOTS, TYPED = case_facts()

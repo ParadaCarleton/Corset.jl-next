@@ -1,7 +1,7 @@
 """Choose files to analyze: package entry files and their include closure, like Cargo targets, or Julia files under directory."""
 module Discovery
 
-using ..Facts: SyntaxFile, BlindSpot, Role, ProjectFacts, Extension, TestDeps, include_calls, include_target, span
+using ..Facts: SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Role, ProjectFacts, Extension, TestDeps, ancestors, include_calls, include_target, kind_name, span
 using ..Syntax: parse_file
 using ..Config: ConfigError, parse_toml, project_root
 
@@ -138,9 +138,13 @@ function extension_file(root::String, name::String)::String
 end
 
 """Parse `entries` of `project` and every file they include, breadth first; include calls not followed become blind spots."""
-function closure(entries::AbstractVector{String}, project::Union{Nothing, ProjectFacts})::Sources
-    paths = append!(String[], entries)
-    files, blind_spots, pending, seen = SyntaxFile[], BlindSpot[], copy(paths), Set{String}()
+closure(entries::AbstractVector{String}, project::Union{Nothing, ProjectFacts})::Sources =
+    extend(Sources(SyntaxFile[], BlindSpot[], append!(String[], entries), project), entries)
+
+"""`sources` with files at `paths` it lacks and every file they include, breadth first, as in `closure`."""
+function extend(sources::Sources, paths::AbstractVector{String})::Sources
+    files, blind_spots, pending = copy(sources.files), copy(sources.blind_spots), append!(String[], paths)
+    seen = Set{String}(file.path for file in files)
     while !isempty(pending)
         path = popfirst!(pending)
         path in seen && continue
@@ -158,8 +162,32 @@ function closure(entries::AbstractVector{String}, project::Union{Nothing, Projec
             end
         end
     end
-    return Sources(files, blind_spots, paths, project)
+    return Sources(files, blind_spots, sources.entries, sources.project)
 end
+
+"""
+`sources` with `loaded` files, which Julia included to load package, and files they include; file outside project root
+becomes blind spot, as cache key leaves it out. Computed include that runs whenever loaded file loads drops its blind spot.
+"""
+function resolve(sources::Sources, loaded::AbstractVector{String})::Sources
+    root, known = joinpath((sources.project::ProjectFacts).root, ""), Set{String}(file.path for file in sources.files)
+    added = filter(path -> path ∉ known, loaded)
+    extended = extend(sources, filter(path -> startswith(path, root), added))
+    outside = [BlindSpot("computed include outside project", Span(path, 1, 1, Precision.line)) for path in added if !startswith(path, root)]
+    ran = Set{String}(loaded)
+    calls = [(file, call) for file in extended.files if file.path in ran for call in include_calls(file)]
+    resolved = Set{Span}(span(file, call) for (file, call) in calls if isnothing(include_target(file, call)) && always_runs(call))
+    return Sources(extended.files, [filter(spot -> spot.span ∉ resolved, extended.blind_spots); outside], sources.entries, sources.project)
+end
+
+"""
+Forms that can leave body unrun when file loads: function bodies run when called; branch, loop, comprehension and `try`
+can skip, as empty loop does; macro can drop its argument. Syntax index skips quoted code, so no quote holds `call`.
+"""
+const SKIPPING = ("function", "->", "do", "macro", "if", "elseif", "&&", "||", "?", "while", "for", "generator", "try", "macrocall")
+
+"""Whether `call` runs whenever its file loads: no function body, branch, loop, `try` or macro call holds it."""
+always_runs(call::SyntaxNode)::Bool = !any(ancestor -> kind_name(ancestor) in SKIPPING, ancestors(call))
 
 """Julia files under `directory`, sorted; skips hidden directories, symbolic links and directories with own Project.toml."""
 function walk_files(directory::String)::Vector{String}

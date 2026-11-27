@@ -39,7 +39,7 @@ Source of answer decides report. Run-time values, foreign code and methods added
 - Finding: write lands below argument `w` past place Corset names. Doubt is only where it lands: `w` changes, so `bang-convention` keeps certainty of write.
 - Blind spot: syntax-only rule cannot see that `a::Vector` is 1-based, because `inference` stage did not run.
 - Blind spot: inference gave no code (generator threw); method has more signatures than limit; argument type has no stand-in.
-- Blind spot: no call reaches untyped method; macro did not expand; `include` path is computed.
+- Blind spot: no call reaches untyped method; macro did not expand; computed `include` sits in branch, loop or function body, or loads file outside project.
 - Exemption needs proof: rule counts access Corset cannot prove exempt (balanced lock, `IO` or RNG write). Rare false finding takes `# corset: allow`.
 - Corset limits never fall below compiler limits (`max_methods`, union splitting).
 - Rules assume Base functions keep documented contracts: `==` has no side effects, and comparison with `NaN` is false. Method that breaks contract is out of scope, as for Clippy `ifs_same_cond`.

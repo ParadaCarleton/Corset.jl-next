@@ -49,10 +49,11 @@ end
     sarif = JSON.parse(corset("check", LIBRARY, "--format", "sarif")[2])
     @test isnothing(JSONSchema.validate(SARIF_SCHEMA, sarif))
     @test [result["level"] for result in only(sarif["runs"])["results"]] == ["warning", "error", "error"]
-    computed = "\"\"\"Computed include.\"\"\"\nmodule Computed\ninclude(string(\"part\", \".jl\"))\nend\n"
+    # Load runs top-level include, so cache lists its file; include in branch load skips stays blind spot.
+    computed = "\"\"\"Computed include.\"\"\"\nmodule Computed\ninclude(string(\"part\", \".jl\"))\nif get(ENV, \"CORSET_PART\", \"\") == \"1\"\n    include(string(\"part\", \".jl\"))\nend\nend\n"
     with_package(@__DIR__, "Computed", "src/Computed.jl" => computed, "src/part.jl" => "part_value = 1\n") do package
         coverage = JSON.parse(corset("check", package, "--format", "json")[2])["coverage"]
-        @test coverage["files"] == 1 && only(coverage["blind_spots"])["cause"] == "include with computed path"
+        @test coverage["files"] == 2 && only(coverage["blind_spots"])["cause"] == "include with computed path"
         sarif = JSON.parse(corset("check", package, "--format", "sarif")[2])
         @test isnothing(JSONSchema.validate(SARIF_SCHEMA, sarif))
         @test only(only(only(sarif["runs"])["invocations"])["toolExecutionNotifications"])["message"]["text"] == "skipped: include with computed path"

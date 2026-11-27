@@ -40,18 +40,18 @@ function package_facts(case::String, stage::Stage.T)::FactSet
     stage == Stage.syntax && return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, nothing, nothing, nothing, nothing, nothing)
     push!(LOAD_PATH, case)
     loaded = try
-        Corset.Package.load(sources.project, sources.files)
+        Corset.Package.load(sources)
     finally
         pop!(LOAD_PATH)
     end
     isempty(loaded.errors) || error("fixture $case does not load: $(first(loaded.errors).primary.text)")
-    inferred = stage in (Stage.inference, Stage.effects, Stage.lifecycle) ? Corset.Inference.infer_package(loaded.facts, sources.files, nothing, nothing) : nothing
+    inferred = stage in (Stage.inference, Stage.effects, Stage.lifecycle) ? Corset.Inference.infer_package(loaded.facts, loaded.sources.files, nothing, nothing) : nothing
     inference = isnothing(inferred) ? nothing : first(inferred)
     staged = stage in (Stage.effects, Stage.lifecycle) ? Corset.Effects.effects_facts(loaded.facts, inferred[3], nothing, Corset.Effects.Summaries.Library()) : nothing
     effects = isnothing(staged) ? nothing : staged.facts
     lifecycle = stage == Stage.lifecycle ? Corset.Lifecycle.lifecycle_facts(loaded.facts, staged.ordered) : nothing
-    external = stage == Stage.external ? Corset.External.external_facts(loaded.facts, sources.project.entry, sources.files) : nothing
-    return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, loaded.facts, inference, effects, lifecycle, external)
+    external = stage == Stage.external ? Corset.External.external_facts(loaded.facts, loaded.sources.project.entry, loaded.sources.files) : nothing
+    return FactSet(loaded.sources.files, loaded.sources.entries, case_bans(dirname(case)), loaded.sources.project, loaded.facts, inference, effects, lifecycle, external)
 end
 
 """Source file of `case` that must start with `# runic: off`: case file, or module file of package case."""
