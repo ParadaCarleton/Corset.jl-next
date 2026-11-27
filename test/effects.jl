@@ -10,7 +10,7 @@ using Corset.Effects.Summaries:
     element_type, constant, value_type, start_flow, statement!, map_node!, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
     components, foreign_name, foreign_library, FOREIGN_EFFECTS, BLAS_EFFECTS, foreign_effects, blas_library, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt!, source_provenance,
     Callback, Callees, Variant, root_summary!, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut!, CUT, catches!, cut!,
-    special_kind, audited_field, site_kind, field_kind, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
+    special_kind, audited_field, site_kind, field_kind, scheduler_method, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body!, root_calls!, merge_calls, merge_callees, load!, store!, store_backing!,
     beneath, map_nodes!, merges_exactly, exact_path, extend, load_any, keyword_types, over_budget, outside_targets!, unknown
 using Supposition: Supposition, Data, @check, @composed
@@ -1186,7 +1186,7 @@ four_way(x::Symbol) = x
     @test constant(code.ir, GlobalRef(Base, :nothing)) == Some(nothing)
     @test operand_type(code.ir, Operand.Part(Core.Argument(2), 1)) == MemoryRef{Int}
     @test value_type(code.ir, Expr(:call, GlobalRef(Core, :tuple), QuoteNode(:jl_n_threads), "libjulia-internal")) == Tuple{Symbol, String}
-    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
+    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     # `copy` result: `Array` backed by fresh `Memory` that holds caller elements merges exactly.
@@ -1226,13 +1226,13 @@ four_way(x::Symbol) = x
     @test type_sources(flow, holder, Sources(0)) == INHERENT | parameter_source(3) | parameter_source(4)
     # Chain with less doubt found after visit of fresh object still reaches its contents: every visit order agrees.
     for (late, early) in ((20, 21), (21, 20))
-        chained = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
+        chained = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
         store!(chained, Targets(Origin.Allocation(early) => NO_DOUBT), Step.Field(:y), Targets(Origin.Allocation(late) => NO_DOUBT))
         store!(chained, Targets(Origin.Allocation(late) => NO_DOUBT), Step.Field(:y), Targets(Origin.Caller(parameter(5)) => NO_DOUBT))
         @test beneath(chained, Targets(Origin.Allocation(late) => CODE_DOUBT, Origin.Allocation(early) => NO_DOUBT))[Origin.Caller(parameter(5))] == NO_DOUBT
     end
     # Outside object keeps doubt of its chain, at least `code`: blind store stays blind; sources join. Each link is work.
-    outside = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
+    outside = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
     store!(outside, unknown(NO_DOUBT), Step.Field(:y), Targets(Origin.Caller(parameter(2)) => BLIND_DOUBT, Origin.Allocation(20) => NO_DOUBT))
     store!(outside, Targets(Origin.Allocation(20) => NO_DOUBT), Step.Field(:z), Targets(Origin.Caller(parameter(3)) => sourced(4)))
     work = outside.work
@@ -1244,7 +1244,7 @@ four_way(x::Symbol) = x
     )
     @test outside.work == work + 3
     # Flow past limit stops walk: round is partial, so summary opens with `BUDGET` cause.
-    spent = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, 0)
+    spent = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, 0)
     store!(spent, unknown(NO_DOUBT), Step.Field(:y), Targets(Origin.Allocation(20) => NO_DOUBT))
     @test over_budget(spent) && outside_targets!(spent) == unknown(NO_DOUBT)
     # Callee `deep` write changes argument; object in slot of fresh argument may stay unchanged: blind.
@@ -1285,7 +1285,7 @@ four_way(x::Symbol) = x
         @test load_any(flow, Targets(detour => BLIND_DOUBT, memory => NO_DOUBT)) == element
     end
     # A call with many stores reuses traces of other slots on the same object.
-    many = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
+    many = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
     summary = empty_summary()
     prefix = Step.Field(:chain)
     root = global_place(@__MODULE__, :NESTED)
@@ -1299,25 +1299,25 @@ four_way(x::Symbol) = x
     # This fixture executes 41 traces; allow headroom for changes in path handling.
     @test many.traces <= 60
     # A backing-chain mutation invalidates every trace that reaches the changed origin.
-    chain = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
+    chain = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
     first_memory, second_memory = Targets(Origin.Allocation(101) => NO_DOUBT), Targets(Origin.Allocation(102) => NO_DOUBT)
     store_backing!(chain, first_memory, second_memory)
     @test isempty(load!(chain, first_memory, Step.Element()))
     store!(chain, second_memory, Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
     @test load!(chain, first_memory, Step.Element()) == Targets(Origin.Unknown() => NO_DOUBT)
-    spread = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
+    spread = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
     @test isempty(load!(spread, first_memory, Step.Field(:x))) && isempty(load!(spread, first_memory, Step.Field(:y)))
     store!(spread, first_memory, nothing, Targets(Origin.Unknown() => NO_DOUBT))
     @test load!(spread, first_memory, Step.Field(:x)) == Targets(Origin.Unknown() => NO_DOUBT)
     @test load!(spread, first_memory, Step.Field(:y)) == Targets(Origin.Unknown() => NO_DOUBT)
     # A retained trace still charges the work of a global cache flush.
-    limited = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, 2)
+    limited = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, 2)
     @test isempty(load!(limited, first_memory, Step.Element()))
     store!(limited, second_memory, Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
     @test isempty(load!(limited, first_memory, Step.Element()))
     @test limited.traces == 1 && limited.work == 3 && over_budget(limited)
     # Long traces stay indexed until the flow membership budget fills.
-    long = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, run.work_limit)
+    long = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
     memories = [Targets(Origin.Allocation(index) => NO_DOUBT) for index in 1001:2000]
     for index in 1:(length(memories) - 1)
         store_backing!(long, memories[index], memories[index + 1])
@@ -1662,7 +1662,7 @@ end
     delete!(roomy.over_budget, root)
     # Trace counts origins it walks, and load past budget stops: one call statement cannot run past limit.
     code = roomy.codes[root]
-    spent = start_flow(code.ir, code.outcomes, code.message, roomy.referent, false, false, Sources[], false, 1)
+    spent = start_flow(code.ir, code.outcomes, code.message, roomy.referent, false, false, Sources[], false, false, 1)
     holder = Targets(Origin.Allocation(30) => NO_DOUBT)
     store!(spent, holder, Step.Field(:z), Targets(Origin.Caller(parameter(2)) => NO_DOUBT))
     @test !isempty(load!(spent, holder, Step.Field(:z))) && over_budget(spent) && isempty(load!(spent, holder, Step.Field(:z)))
@@ -1907,6 +1907,16 @@ temp_folder() = mktempdir()
 keep_handle(t::Timer) = Base.preserve_handle(t)
 toml_of(path::String) = Base.parsed_toml(path)
 take_value(channel::Channel{Int}) = take!(channel)
+"""Stores `v` in task storage, then waits on `channel`: scheduler writes to fields of current task reach no stored object."""
+stash_taken!(v::Vector{Int}, channel::Channel{Int})::Nothing = (task_local_storage(:effects_stash, v); take!(channel); nothing)
+"""Notifies condition from task storage: object caller may have stored there."""
+@noinline notify_stashed()::Nothing = (notify(task_local_storage(:effects_cond)::Threads.Condition); nothing)
+"""Lets task `t` run on any thread: package write to scheduler field of task caller gave."""
+unpin(t::Task) = (t.sticky = false; nothing)
+"""Starts task `t`: scheduler changes fields of task caller gave."""
+start_task(t::Task) = (schedule(t); nothing)
+"""Stores `c` in task storage, then notifies condition from there: maybe `c`."""
+stash_notify!(c::Threads.Condition)::Nothing = (task_local_storage(:effects_cond, c); notify_stashed(); nothing)
 project_of(env::String) = Base.env_project_file(env)
 doc_meta(m::Module) = Base.Docs.meta(m)
 frame_color(m::Module) = Base.get_stacktrace_color(m)
@@ -2026,6 +2036,17 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     for ref in (GlobalRef(Base, :Workqueues), GlobalRef(Base.Partr, :heaps))
         @test EffectKind.synchronization in kinds_at(scheduled, Root.Global(ref)) && !(EffectKind.memory in kinds_at(scheduled, Root.Global(ref)))
     end
+    # Wait changes scheduler fields of current task (`sticky`, `result`): audited state, never task-local state.
+    @test EffectKind.audited in kinds_at(scheduled, Root.Elsewhere()) && !any(kind == EffectKind.task_local for (_, _, kind) in keys(scheduled))
+    # Scheduler field of current task reaches no object caller stored; condition from task storage reaches caller one.
+    pinned = summary_of(stash_taken!, Vector{Int}, Channel{Int}).writes
+    @test EffectKind.audited in kinds_at(pinned, Root.Elsewhere()) && !(EffectKind.audited in kinds_at(pinned, Root.Parameter(2)))
+    @test EffectKind.synchronization in kinds_at(summary_of(stash_notify!, Threads.Condition).writes, Root.Parameter(2))
+    # Package write to scheduler field of task it gets changes that task: task-local state, as `bang-convention` needs.
+    @test kinds_at(summary_of(unpin, Task).writes, Root.Parameter(2)) == Set([EffectKind.task_local])
+    # Base `schedule` changes scheduler fields of task it gets: audited state, as for current task.
+    started = kinds_at(summary_of(start_task, Task).writes, Root.Parameter(2))
+    @test EffectKind.audited in started && !(EffectKind.task_local in started)
     # `include` evaluates code, so blind writes of every kind stay; its include record push is IO for sure.
     included, record = summary_of(include_into, Module, String).writes, Root.Global(GlobalRef(Base, :_require_dependencies))
     @test included[(Place.At(record, Step.Type[]), false, io)].doubt == NO_DOUBT
@@ -2045,8 +2066,11 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     @test kinds_at(tagged, Root.Parameter(2)) == Set([EffectKind.memory, io])
     @test audited_field(Serialization.Serializer{IOBuffer}, :known_object_data) == io && isnothing(audited_field(Tagged, :known_object_data))
     @test isnothing(audited_field(Tagged, :tags)) && isnothing(audited_field(Any, :table)) && audited_field(Regex, :regex) == EffectKind.lazy_init
-    @test (site_kind(Task, :rngState0), site_kind(Task, :scope), site_kind(Task, :storage)) == (EffectKind.default_rng, EffectKind.scoped_read, EffectKind.task_local)
-    @test field_kind(Regex, Some{Any}(4)) == EffectKind.lazy_init && field_kind(Tuple{IOBuffer}, Some{Any}(1)) == EffectKind.memory && field_kind(IOBuffer, nothing) == io
+    @test (site_kind(Task, :rngState0, false), site_kind(Task, :scope, false), site_kind(Task, :storage, true)) == (EffectKind.default_rng, EffectKind.scoped_read, EffectKind.task_local)
+    @test (site_kind(Task, :sticky, true), site_kind(Task, :result, true), site_kind(Task, :sticky, false), site_kind(Task, nothing, true)) == (EffectKind.audited, EffectKind.audited, EffectKind.task_local, EffectKind.task_local)
+    # Property accessor runs field access of its caller; other Base methods own scheduler state.
+    @test scheduler_method(which(schedule, (Task,))) && !scheduler_method(which(setproperty!, (Task, Symbol, Any))) && !scheduler_method(only(methods(unpin)))
+    @test field_kind(Regex, Some{Any}(4), false) == EffectKind.lazy_init && field_kind(Tuple{IOBuffer}, Some{Any}(1), false) == EffectKind.memory && field_kind(IOBuffer, nothing, false) == io
     @test step_type(Tuple{Vararg{Int}}, Step.Position(3)) == Int && step_type(Tuple{Int}, Step.Position(2)) == Any && step_type(Vector{IOBuffer}, Step.Element()) == IOBuffer
     @test step_type(Any, Step.Field(:x)) == Any && step_type(Logger, Step.Field(:missing)) == Any && step_type(Dict{Int, Int}, Step.Element()) == Any
 end

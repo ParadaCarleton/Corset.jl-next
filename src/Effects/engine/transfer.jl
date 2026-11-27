@@ -278,7 +278,7 @@ function builtin!(flow::Flow, writes::OriginAccesses, index::Integer, @nospecial
         if isnothing(binding)
             # Own name: closure of field write branch captures `field`; second assignment boxes it.
             read_field = operand_constant(flow.ir, operands[2])
-            access!(flow.reads, targets(1), false, definite(index), field_kind(operand_type(flow.ir, operands[1]), read_field))
+            access!(flow.reads, targets(1), false, definite(index), field_kind(operand_type(flow.ir, operands[1]), read_field, flow.scheduler))
             assign!(flow, index, load_field!(flow, operands[1], read_field))
         else
             read_global!(flow, index, something(binding))
@@ -286,7 +286,7 @@ function builtin!(flow::Flow, writes::OriginAccesses, index::Integer, @nospecial
     elseif haskey(FIELD_WRITES, builtin)
         field = operand_constant(flow.ir, operands[2])
         slot = slot_type(operand_type(flow.ir, operands[1]), field)
-        kind = field_kind(operand_type(flow.ir, operands[1]), field)
+        kind = field_kind(operand_type(flow.ir, operands[1]), field, flow.scheduler)
         write!(flow, writes, index, FIELD_WRITES[builtin], operands, targets(1), load_field!(flow, operands[1], field), values -> store_field!(flow, operands[1], field, values), slot, kind)
     elseif builtin === Core.getglobal
         binding = module_global(flow, operands)
@@ -801,19 +801,31 @@ function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index
     if defers && deferred(arguments)
         defer!(flow, index, (variant, arguments))
     else
-        apply_accesses!(flow, writes, reads, site, summary, defers, callees, nothing)
+        apply_accesses!(flow, writes, reads, site, summary, defers, callees, nothing, scheduler_access(flow, method, operands))
     end
     return nothing
+end
+
+"""
+Whether call of `method` with `operands` in `flow` is scheduler access to `Task` field: scheduler instance calls Base
+property accessor on scheduler field (`scheduler_field`). Accessor runs field access of its caller, so caller kind holds.
+"""
+function scheduler_access(flow::Flow, method::Method, operands::AbstractVector{Operand.Type})::Bool
+    Base.require_one_based_indexing(operands)
+    (flow.scheduler && method.name in PROPERTY_ACCESSORS && Base.moduleroot(method.module) === Base && length(operands) >= 3) || return false
+    field = operand_constant(flow.ir, operands[3])
+    return !isnothing(field) && scheduler_field(operand_type(flow.ir, operands[2]), something(field))
 end
 
 """
 Accesses of callee `summary` at `site` into `writes` and `reads`, and its callback records: record waits again when
 `defers` and callable still holds caller object, else resolves here. `seen` holds records resolved at site; first
 record resolved makes it, since most calls have none. Only settled round (`Flow`) maps accesses: round empties them
-first. Every round resolves records, so variants of records count as read (`summary!`).
+first. Every round resolves records, so variants of records count as read (`summary!`). `scheduled`: task state access
+of callee is scheduler access of caller (`scheduler_access`).
 """
-function apply_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::Union{Nothing, AbstractSet{Deferred}})::Nothing
-    flow.settled && map_accesses!(flow, writes, reads, site, summary)
+function apply_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::Union{Nothing, AbstractSet{Deferred}}, scheduled::Bool)::Nothing
+    flow.settled && map_accesses!(flow, writes, reads, site, summary, scheduled)
     for callback in summary.callbacks
         record = (callback.variant, Targets[map_nodes!(flow, nodes, site) for nodes in callback.parameters])
         if defers && deferred(last(record))
@@ -828,26 +840,28 @@ end
 
 """
 Writes and reads of callee `summary` at `site` into `writes` and `reads`, each mapped onto caller objects. Callee place
-that maps to one of several caller objects gives `possible` write on each (`alternative_access!`).
+that maps to one of several caller objects gives `possible` write on each (`alternative_access!`). `scheduled` call
+gives audited state for task state (`scheduler_access`).
 """
-function map_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary)::Nothing
+function map_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, scheduled::Bool)::Nothing
+    caller_kind(kind::EffectKind.T)::EffectKind.T = scheduled && kind == EffectKind.task_local ? EffectKind.audited : kind
     for ((place, below, kind), effect) in summary.writes
-        direct, objects = access_objects!(flow, site, place, below, kind)
-        alternative_access!(writes, direct, objects, below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), kind)
+        direct, objects = access_objects!(flow, site, place, below, caller_kind(kind))
+        alternative_access!(writes, direct, objects, below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), caller_kind(kind))
     end
     for ((place, below, kind), effect) in summary.reads
-        access!(reads, last(access_objects!(flow, site, place, below, kind)), below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), kind)
+        access!(reads, last(access_objects!(flow, site, place, below, caller_kind(kind))), below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), caller_kind(kind))
     end
     return nothing
 end
 
 """
-Caller objects at callee `place` at `site`, and objects access of `kind` on it (or `below` it) reaches. Task state
-access (`TASK_KINDS`) on `Elsewhere` stays on unknown object, which names current task; access to object reaches each
-outside object. Access to object reaches its memory backing too (`with_backing!`).
+Caller objects at callee `place` at `site`, and objects access of `kind` on it (or `below` it) reaches. Task state and
+audited access (`UNMAPPED_KINDS`) on `Elsewhere` stay on unknown object: current task or Base object. Other access to
+object reaches each outside object. Access to object reaches its memory backing too (`with_backing!`).
 """
 function access_objects!(flow::Flow, site::CallSite, place::Place.Type, below::Bool, kind::EffectKind.T)::Tuple{Targets, Targets}
-    kind in TASK_KINDS && root_of(place) == Root.Elsewhere() && return (unknown(NO_DOUBT), unknown(NO_DOUBT))
+    kind in UNMAPPED_KINDS && root_of(place) == Root.Elsewhere() && return (unknown(NO_DOUBT), unknown(NO_DOUBT))
     direct = site_place!(flow, site, place)
     return (direct, below ? site_below!(flow, site, place) : with_backing!(flow, direct))
 end
@@ -884,7 +898,7 @@ function resolve!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, ind
     variant, arguments = record
     summary = summary!(callees, variant)
     site = CallSite(arguments, zeros(Sources, length(arguments)), index, summary)
-    apply_accesses!(flow, writes, reads, site, summary, defers, callees, seen)
+    apply_accesses!(flow, writes, reads, site, summary, defers, callees, seen, false)
     return nothing
 end
 

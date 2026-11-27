@@ -29,6 +29,7 @@ backing, unknown-slot stores and global bindings; result targets; accesses by or
 below; callback records by call statement. `changed` records growth of targets in current round; `closed_world` records
 join over methods loaded now, and `cut` path stand-ins cut (`Summary`). `flush` resolves every callback record here:
 root unit has no caller to resolve them. `record` keeps kinds of writes each call statement makes (`call_kinds`).
+`scheduler`: instance whose access to scheduler fields of `Task` is audited state (`scheduler_method`).
 `follows` keeps slot targets by origin and step (`load!`); `dependents` indexes traces by origins they read.
 `coarse` holds traces beyond `TRACE_MEMBERSHIP_LIMIT`; any heap growth invalidates them.
 `stale` and `generation` preserve work accounting after heap growth.
@@ -55,6 +56,7 @@ mutable struct Flow
     const referent::IdDict{Any, Bool}
     const flush::Bool
     const record::Bool
+    const scheduler::Bool
     const call_kinds::Dict{Int, Set{EffectKind.T}}
     const follows::Dict{Tuple{Origin.Type, Step.Type}, Follow}
     const dependents::Dict{TraceDependency, Set{Tuple{Origin.Type, Step.Type}}}
@@ -74,10 +76,10 @@ end
 """
 Flow of `ir` with call `outcomes` and `message` statements before first round: each referent argument points to its
 parameter. `flush` resolves callback records in this instance; `cut` marks instance whose own code stand-ins cut;
-`statics` holds sources of each static parameter (`static_sources`); `record` keeps write kinds of each call. Rounds
-stop once `work` passes `limit` (`over_budget`).
+`statics` holds sources of each static parameter (`static_sources`); `record` keeps write kinds of each call;
+`scheduler` marks scheduler instance (`Flow`). Rounds stop once `work` passes `limit` (`over_budget`).
 """
-function start_flow(ir::CC.IRCode, outcomes::AbstractVector{Union{Nothing, Outcome.Type}}, message::AbstractVector{Bool}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::AbstractVector{Sources}, record::Bool, limit::Integer)::Flow
+function start_flow(ir::CC.IRCode, outcomes::AbstractVector{Union{Nothing, Outcome.Type}}, message::AbstractVector{Bool}, referent::IdDict{Any, Bool}, flush::Bool, cut::Bool, statics::AbstractVector{Sources}, record::Bool, scheduler::Bool, limit::Integer)::Flow
     Base.require_one_based_indexing(outcomes)
     arguments = [
         referent!(referent, CC.widenconst(type)) ? Targets(Origin.Caller(Place.At(Root.Parameter(position), NO_STEPS)) => NO_DOUBT) : Targets()
@@ -86,7 +88,7 @@ function start_flow(ir::CC.IRCode, outcomes::AbstractVector{Union{Nothing, Outco
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     callbacks = Dict{Int, Vector{Deferred}}()
     primitives = Union{Nothing, Primitive}[statement_primitive(ir, index, outcomes[index]) for index in 1:length(ir.stmts)]
-    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, Dict{Int, Set{EffectKind.T}}(), Dict{Tuple{Origin.Type, Step.Type}, Follow}(), Dict{TraceDependency, Set{Tuple{Origin.Type, Step.Type}}}(), Set{Tuple{Origin.Type, Step.Type}}(), 0, 0, false, false, false, false, cut, limit, 0, 0)
+    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, scheduler, Dict{Int, Set{EffectKind.T}}(), Dict{Tuple{Origin.Type, Step.Type}, Follow}(), Dict{TraceDependency, Set{Tuple{Origin.Type, Step.Type}}}(), Set{Tuple{Origin.Type, Step.Type}}(), 0, 0, false, false, false, false, cut, limit, 0, 0)
 end
 
 """Release balance primitive of statement `index` of `ir` with call `outcome`: dispatched call only (`primitive`)."""

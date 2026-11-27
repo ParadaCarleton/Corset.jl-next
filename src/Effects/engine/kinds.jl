@@ -6,6 +6,12 @@ using Serialization: Serialization, AbstractSerializer
 const RNG_FIELDS = (:rngState0, :rngState1, :rngState2, :rngState3, :rngState4)
 
 """
+Scheduler state of `Task`: Base `wait`, `yield` and `schedule` change these fields of current task, and hand value or
+exception to task they wake through `result`. Package write to them changes task state.
+"""
+const SCHEDULER_FIELDS = (:next, :queue, :donenotify, :result, :_state, :sticky, :priority, :_isexception, :metrics_enabled, :first_enqueued_at, :last_started_running_at, :running_time_ns, :finished_at)
+
+"""
 Audited internal state by holder type and field (`engine.md`, Effect kinds): lazy compile of `Regex`, lazy text of
 `LazyString`.
 """
@@ -99,16 +105,33 @@ function special_kind(@nospecialize(type::Any))::Union{Nothing, EffectKind.T}
     return nothing
 end
 
-"""Kinds of access to `Task` state (`site_kind`). On `Elsewhere` they name current task, never object caller stored outside."""
-const TASK_KINDS = (EffectKind.default_rng, EffectKind.scoped_read, EffectKind.task_local)
+"""Base property accessors: call of one is field access of its caller (`scheduler_access`)."""
+const PROPERTY_ACCESSORS = (:getproperty, :setproperty!, :modifyproperty!, :replaceproperty!, :swapproperty!, :setpropertyonce!)
+
+"""
+Whether instance of `method` accesses scheduler fields of `Task` as scheduler (`SCHEDULER_FIELDS`): Base method other
+than property accessor.
+"""
+scheduler_method(method::Method)::Bool = Base.moduleroot(method.module) === Base && !(method.name in PROPERTY_ACCESSORS)
+
+"""Whether `field` of object of type `holder` is scheduler field of `Task` (`SCHEDULER_FIELDS`)."""
+scheduler_field(@nospecialize(holder::Any), field::Union{Nothing, Symbol})::Bool = holder isa Type && holder !== Union{} && holder <: Task && field in SCHEDULER_FIELDS
+
+"""
+Kinds whose access on `Elsewhere` names no object caller stored outside: `Task` state names current task (`site_kind`).
+Audited internal state names Base object: scheduler fields of current task, logging cache, frames of deprecation.
+"""
+const UNMAPPED_KINDS = (EffectKind.default_rng, EffectKind.scoped_read, EffectKind.task_local, EffectKind.audited)
 
 """
 Kind of access to `field` of object of type `holder` at access statement (`engine.md`, Effect kinds): audited field,
 `Task` state (RNG, scope, other), else kind of holder type itself. `nothing` field: access to whole object or memory.
+Statement of `scheduler` instance (`scheduler_method`) accesses scheduler fields of `Task` as audited state.
 """
-function site_kind(@nospecialize(holder::Any), field::Union{Nothing, Symbol})::EffectKind.T
+function site_kind(@nospecialize(holder::Any), field::Union{Nothing, Symbol}, scheduler::Bool)::EffectKind.T
     audited = isnothing(field) ? nothing : audited_field(holder, field)
     isnothing(audited) || return audited
+    scheduler && scheduler_field(holder, field) && return EffectKind.audited
     if holder isa Type && holder !== Union{} && holder <: Task
         field in RNG_FIELDS && return EffectKind.default_rng
         return field === :scope ? EffectKind.scoped_read : EffectKind.task_local
@@ -116,11 +139,14 @@ function site_kind(@nospecialize(holder::Any), field::Union{Nothing, Symbol})::E
     return something(special_kind(holder), EffectKind.memory)
 end
 
-"""Kind of access to `field` (constant operand: name or index) of object of type `holder` (`site_kind`)."""
-function field_kind(@nospecialize(holder::Any), field::Union{Nothing, Some{Any}})::EffectKind.T
+"""
+Kind of access to `field` (constant operand: name or index) of object of type `holder` in `scheduler` instance or
+other (`site_kind`).
+"""
+function field_kind(@nospecialize(holder::Any), field::Union{Nothing, Some{Any}}, scheduler::Bool)::EffectKind.T
     name = isnothing(field) ? nothing : something(field)
-    name isa Int && isconcretetype(holder) && !(holder <: Tuple) && 1 <= name <= fieldcount(holder) && return site_kind(holder, fieldname(holder, name))
-    return site_kind(holder, name isa Symbol ? name : nothing)
+    name isa Int && isconcretetype(holder) && !(holder <: Tuple) && 1 <= name <= fieldcount(holder) && return site_kind(holder, fieldname(holder, name), scheduler)
+    return site_kind(holder, name isa Symbol ? name : nothing, scheduler)
 end
 
 """
