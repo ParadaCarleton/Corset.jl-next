@@ -1089,6 +1089,9 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Callee object outside its caller places maps to <code>unknown</code> and to each object caller stored into it. Each keeps doubt of its chain, at least <code>code</code>.</li>
 <li>Such caller object also maps to <code>deep</code> of its root: callee may reach below it.</li>
 <li>Task state access (<code>task_local</code>, <code>default_rng</code>, <code>scoped_read</code>) on <code>Elsewhere</code> stays on <code>unknown</code>: it names current task. Every other kind reaches those objects.</li>
+<li>Audited access on <code>Elsewhere</code> stays on <code>unknown</code> too: audit names Base object, such as scheduler fields of current task.</li>
+<li>Base methods access scheduler fields of <code>Task</code> as audited state. Property accessors (<code>setproperty!</code>) are exempt: their access belongs to caller.</li>
+<li>Package write to scheduler field of task, such as <code>t.sticky = false</code>, stays task-local state.</li>
 <li>Path: field name or element. Path follows declared field types.</li>
 <li>Path collapses to <code>deep</code> at step into concrete type it already passed (recursive type), at third abstract step in a row, or past 8 steps.</li>
 <li>Place says where access lands; certainty says whether it happens. <code>deep w</code> is coarse place: write below it still changes <code>w</code>.</li>
@@ -1292,6 +1295,7 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>IO bookkeeping: temporary path cleanup (<code>mktempdir</code>), libuv handles kept alive (<code>preserve_handle</code>).</li>
 <li>Lazy caches: parsed TOML, loading cache, docstring modules, stack trace module colors.</li>
 <li>Synchronization: Base task queues (<code>Workqueues</code>, <code>Partr.heaps</code>) that <code>wait</code>, <code>yield</code> and <code>schedule</code> change.</li>
+<li>Scheduler fields of <code>Task</code> that Base methods change (<code>sticky</code>, <code>queue</code>, <code>result</code> handoff): audited internal state.</li>
 <li>Logging <code>JULIA_DEBUG</code> cache (<code>env_override_minlevel</code>) and frame lookup of deprecation (<code>_depwarn</code>): unknown objects they write.</li>
 <li>Repair method <code>unsafe_convert(Ref{BigFloat}, ::BigFloatData)</code>: rewrites stale MPFR limb pointer before each call.</li>
 </ul>

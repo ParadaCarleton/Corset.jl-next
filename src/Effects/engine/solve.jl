@@ -554,7 +554,8 @@ rounds read. `flush` resolves callback records here; `record` keeps write kinds 
 """
 function variant_flow(run::Run, variant::Variant, flush::Bool, record::Bool)::Tuple{Flow, Callees}
     code = run.codes[variant]
-    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, flush, code.cut, static_sources(first(variant).def::Method), record, run.work_limit)
+    method = first(variant).def::Method
+    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, flush, code.cut, static_sources(method), record, scheduler_method(method), run.work_limit)
     callees = Callees(code.callees, run.summaries, Set{Variant}())
     while true
         flow.changed = false

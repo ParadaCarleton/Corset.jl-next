@@ -39,6 +39,9 @@ Engine code lives in `src/Effects/engine/`, module `Effects.Summaries`.
 - Callee object outside its caller places maps to `unknown` and to each object caller stored into it. Each keeps doubt of its chain, at least `code`.
 - Such caller object also maps to `deep` of its root: callee may reach below it.
 - Task state access (`task_local`, `default_rng`, `scoped_read`) on `Elsewhere` stays on `unknown`: it names current task. Every other kind reaches those objects.
+- Audited access on `Elsewhere` stays on `unknown` too: audit names Base object, such as scheduler fields of current task.
+- Base methods access scheduler fields of `Task` as audited state. Property accessors (`setproperty!`) are exempt: their access belongs to caller.
+- Package write to scheduler field of task, such as `t.sticky = false`, stays task-local state.
 - Path: field name or element. Path follows declared field types.
 - Path collapses to `deep` at step into concrete type it already passed (recursive type), at third abstract step in a row, or past 8 steps.
 - Place says where access lands; certainty says whether it happens. `deep w` is coarse place: write below it still changes `w`.
@@ -235,6 +238,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
   - IO bookkeeping: temporary path cleanup (`mktempdir`), libuv handles kept alive (`preserve_handle`).
   - Lazy caches: parsed TOML, loading cache, docstring modules, stack trace module colors.
   - Synchronization: Base task queues (`Workqueues`, `Partr.heaps`) that `wait`, `yield` and `schedule` change.
+  - Scheduler fields of `Task` that Base methods change (`sticky`, `queue`, `result` handoff): audited internal state.
   - Logging `JULIA_DEBUG` cache (`env_override_minlevel`) and frame lookup of deprecation (`_depwarn`): unknown objects they write.
   - Repair method `unsafe_convert(Ref{BigFloat}, ::BigFloatData)`: rewrites stale MPFR limb pointer before each call.
 - Package `setfieldonce!` and package caches follow memo-cache rule above: cheap proof or opt-out.
