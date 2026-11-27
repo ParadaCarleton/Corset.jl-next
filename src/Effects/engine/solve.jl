@@ -615,14 +615,14 @@ end
 
 """
 Summary of root `variant` for verdicts after solve: no caller resolves its callback records, so root with records
-reruns with each record resolved at call statement where it starts. Root past budget gets open summary: its name
-tells nothing about itself.
+reruns with each record resolved at call statement where it starts. Root past budget, in solve or in that rerun, gets
+open summary: its name tells nothing about itself.
 """
 function root_summary!(run::Run, variant::Variant)::Summary
-    run.slots[variant].over_budget && return open_summary(Int((first(variant).def::Method).nargs), BUDGET)
+    slot = run.slots[variant]
     summary = held_summary(run.slots, variant)
-    isempty(summary.callbacks) && return summary
-    return first(variant_summary!(run, variant, true))
+    slot.over_budget || isempty(summary.callbacks) || (summary = first(variant_summary!(run, variant, true)))
+    return slot.over_budget ? open_summary(Int((first(variant).def::Method).nargs), BUDGET) : summary
 end
 
 """

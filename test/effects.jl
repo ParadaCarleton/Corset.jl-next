@@ -1740,6 +1740,13 @@ end
     wrapped.slots[root].over_budget = true
     wrapped.slots[root].summary = Summaries.named_summary(wrapped, root)
     @test first(Summaries.variant_summary!(wrapped, caller, false)).writes[memory((parameter(2), true))].doubt == CODE_DOUBT
+    # Root can pass budget only in rerun that resolves its callback records: own verdict still gets open summary.
+    called = start_run(nothing, Module[CASES])
+    setter = (only(something(dispatch(Any[typeof(CASES.call_setter!), CASES.Setter, Int], called.world, 1))), Pair{Int, Any}[])
+    solve!(called, [setter])
+    @test !isempty(held_summary(called.slots, setter).callbacks) && !called.slots[setter].over_budget
+    spent = Summaries.Run((name == :work_limit ? 0 : getfield(called, name) for name in fieldnames(Summaries.Run))...)
+    @test same(root_summary!(spent, setter), open_summary(3, Summaries.BUDGET)) && spent.slots[setter].over_budget
     # Name subject skips RNG and values that point to no object; method without `!` names none.
     seeded = (only(something(dispatch(Any[typeof(seeded_fill!), Xoshiro, Int, Vector{Int}], wrapped.world, 1))), Pair{Int, Any}[])
     solve!(wrapped, [seeded])
