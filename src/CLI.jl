@@ -21,7 +21,7 @@ using ..Baseline: Baseline
 using ..Syntax: Syntax
 using ..Package: Package
 using ..Launch: Launch
-using ..Timings: Timing, timed!, print_timings
+using ..Timings: Timing, Sink, timed, print_timing
 
 const EXIT_PASS = 0
 const EXIT_FAIL = 1
@@ -109,7 +109,7 @@ function argument_settings()::ArgParseSettings
             help = "analyze again; read and write no cached analysis"
             action = :store_true
             "--timings"
-            help = "print seconds of each stage to standard error"
+            help = "print seconds of each stage to standard error as it ends"
             action = :store_true
         end
     end
@@ -193,18 +193,18 @@ end
 Exit code of `command` on path `path` with parsed `options`, level `flags` and command line `args`, as `execute` runs
 it; `cache` is `nothing` when off. Stage times go to `timings` unless `nothing`.
 """
-function run_command(command::String, path::String, options::AbstractDict{String, Any}, flags::Flags, args::AbstractVector{String}, launch::Bool, cache::Union{Nothing, String}, journal::Union{Nothing, String}, timings::Union{Nothing, AbstractVector{Timing}}, @nospecialize(out::IO), @nospecialize(err::IO))::Int
+function run_command(command::String, path::String, options::AbstractDict{String, Any}, flags::Flags, args::AbstractVector{String}, launch::Bool, cache::Union{Nothing, String}, journal::Union{Nothing, String}, timings::Union{Nothing, Sink}, @nospecialize(out::IO), @nospecialize(err::IO))::Int
     target = launch ? Engine.load_target(path, flags) : nothing
     if !isnothing(target)
-        env = timed!(() -> Launch.relocated(target, err), timings, "environment")
+        env = timed(() -> Launch.relocated(target, err), timings, "environment")
         # Fix writes files and checks again, so it always runs in relaunched process.
-        stored = command == "fix" || isnothing(cache) ? nothing : timed!(() -> Engine.cached(path, flags, cache, Launch.load_path(env)), timings, "cache lookup")
+        stored = command == "fix" || isnothing(cache) ? nothing : timed(() -> Engine.cached(path, flags, cache, Launch.load_path(env)), timings, "cache lookup")
         isnothing(stored) || return finish(command, stored..., out, err, options["format"])
-        code = exit_code(timed!(() -> Launch.supervise(env, args, cache, out, err, Launch.CRASHES), timings, "analysis process"))
+        code = exit_code(timed(() -> Launch.supervise(env, args, cache, out, err, Launch.CRASHES), timings, "analysis process"))
         code == EXIT_RECHECK || return code
-        return exit_code(timed!(() -> Launch.supervise(env, recheck_arguments(args), cache, out, err, Launch.CRASHES), timings, "check process"))
+        return exit_code(timed(() -> Launch.supervise(env, recheck_arguments(args), cache, out, err, Launch.CRASHES), timings, "check process"))
     end
-    stored = command == "fix" || isnothing(cache) ? nothing : timed!(() -> Engine.cached(path, flags, cache, Base.load_path()), timings, "cache lookup")
+    stored = command == "fix" || isnothing(cache) ? nothing : timed(() -> Engine.cached(path, flags, cache, Base.load_path()), timings, "cache lookup")
     isnothing(stored) || return finish(command, stored..., out, err, options["format"])
     # Method store makes rerun after edit fast; first run of path has none.
     isnothing(cache) || !Cache.cold(cache, Engine.method_entry(realpath(path))) || println(err, "corset: no cached analysis of ", path, "; first run can be slow, later runs reuse it")
@@ -241,10 +241,10 @@ function execute(args::AbstractVector{String}, @nospecialize(out::IO), @nospecia
         path = options["path"]
         ispath(path) || throw(UsageError("no such file or directory: $path"))
         flags = Flags(; levels, deny_warnings, confidence = enum_option(Confidence.T, options, "confidence"), tier = enum_option(Tier.T, options, "tier"))
-        timings = !options["timings"] ? nothing : isnothing(loading) ? Timing[] : [loading]
-        code = run_command(command, path, options, flags, args, launch, options["no-cache"] ? nothing : cache, journal, timings, out, err)
-        isnothing(timings) || print_timings(err, timings)
-        return code
+        timings = options["timings"] ? Sink(err) : nothing
+        # Relaunched process prints own load of Corset before its stages.
+        isnothing(timings) || isnothing(loading) || print_timing(timings, loading)
+        return run_command(command, path, options, flags, args, launch, options["no-cache"] ? nothing : cache, journal, timings, out, err)
     catch error
         if error isa ArgParseError || error isa ConfigError || error isa UsageError
             println(err, "corset: ", sprint(showerror, error))

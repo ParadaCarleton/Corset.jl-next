@@ -1,5 +1,6 @@
 """
-Stage times of one run, which `--timings` prints: wall, compile and garbage collection seconds per stage.
+Stage times of one run, which `--timings` prints as each stage ends: wall, compile and garbage collection seconds per
+stage.
 """
 module Timings
 
@@ -16,22 +17,27 @@ end
 """Timing of `stage` from `@timed` result `result`."""
 timing(stage::String, result::NamedTuple)::Timing = Timing(stage, result.time, result.compile_time, result.gctime)
 
-"""Value of `work()`; appends its timing under `stage` to `timings` unless `nothing`."""
-function timed!(work::Function, timings::Union{Nothing, AbstractVector{Timing}}, stage::String)::Any
-    isnothing(timings) && return work()
-    result = @timed work()
-    push!(timings, timing(stage, result))
-    return result.value
+"""Stream that `--timings` prints to. One concrete type for every stream, so stage functions compile once."""
+struct Sink
+    io::IO
 end
 
-"""Print `timings` to `io`: header, then one line per stage with its seconds to the millisecond."""
-function print_timings(io::IO, timings::AbstractVector{Timing})::Nothing
-    println(io, "corset: timings in seconds (wall, compile, garbage collection)")
-    width = maximum(timing -> textwidth(timing.stage), timings; init = 0)
-    for timing in timings
-        println(io, "  ", rpad(timing.stage, width), @sprintf("%10.3f%10.3f%10.3f", timing.seconds, timing.compile, timing.gc))
-    end
+"""Width of stage name column: longest stage name, `method store update`, and one space."""
+const STAGE_WIDTH = 20
+
+"""Print `timing` to `sink` as one line: stage, then wall, compile and garbage collection seconds to the millisecond."""
+function print_timing(sink::Sink, timing::Timing)::Nothing
+    seconds = @sprintf("%10.3f s wall%10.3f s compile%10.3f s gc", timing.seconds, timing.compile, timing.gc)
+    println(sink.io, "corset: stage ", rpad(timing.stage, STAGE_WIDTH), seconds)
     return nothing
+end
+
+"""Value of `work()`; prints its timing under `stage` to `sink` unless `nothing` (`print_timing`)."""
+function timed(work::Function, sink::Union{Nothing, Sink}, stage::String)::Any
+    isnothing(sink) && return work()
+    result = @timed work()
+    print_timing(sink, timing(stage, result))
+    return result.value
 end
 
 end

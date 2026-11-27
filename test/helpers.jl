@@ -9,8 +9,8 @@ function corset(args::String...)::Tuple{Int, String, String}
     return code, String(take!(out)), String(take!(err))
 end
 
-"""Line of `--timings` table: stage name, then wall, compile and garbage collection seconds."""
-const TIMING_ROW = r"^  (\S+(?: \S+)*) +[\d.]+ +[\d.]+ +[\d.]+$"
+"""Line `--timings` prints: stage name, then wall, compile and garbage collection seconds."""
+const TIMING_ROW = r"^corset: stage (\S+(?: \S+)*) +[\d.]+ s wall +[\d.]+ s compile +[\d.]+ s gc$"
 
 """Stage names of `--timings` lines in standard error text `err`, in order."""
 timing_rows(err::String)::Vector{String} = [String(match(TIMING_ROW, line)[1]) for line in split(err, '\n') if occursin(TIMING_ROW, line)]

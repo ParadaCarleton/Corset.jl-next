@@ -90,7 +90,7 @@ end
 
 Flags: `-A`, `-W`, `-D <rule or group>` set levels and apply in order, as in rustc; `-D warnings` fails run on warnings; `--confidence definite|possible`; `--format text|json|sarif`; `--tier safe|likely|breaking` for `fix`; `--no-cache`; `--timings`.
 
-`--timings` prints wall, compile and garbage collection seconds per stage to stderr. Relaunched process prints first; its Corset load leads. Relaunching process then prints environment, cache lookup and analysis process. Flag stays out of cache key: hit times lookup only.
+`--timings` prints wall, compile and garbage collection seconds of each stage to stderr as stage ends: stderr write, so stage functions write no argument. Relaunching process prints environment and cache lookup, relaunched process its Corset load and stages, then relaunching process analysis process. Flag stays out of cache key: hit times lookup only.
 
 Install: `pkg> app add Corset` puts `corset` on PATH (Julia app); `julia -m Corset` runs same entry point. App starts Julia on all cores (`--threads=auto`); `corset --threads=N --` sets other count. Text output ends with count line (errors, warnings, baselined), then coverage line. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.
 
