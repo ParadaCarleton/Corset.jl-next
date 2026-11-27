@@ -105,4 +105,7 @@ toss(rng::AbstractRNG, count::Int) = fill(0.5, count)
 # Two definitions on one line: `bump(x)` makes no call to `bump(x, rng)`, so caller RNG cannot reach draw.
 bump(x::Int) = rand() + x; bump(x::Int, rng::AbstractRNG) = 0.0
 
+# Draw before forwarding is no default value: `jolt(x, rng)` never draws, so caller RNG cannot replace draw.
+jolt(x::Int) = (rand(); jolt(x, nothing)); jolt(x::Int, rng::Union{AbstractRNG, Nothing}) = 0.0
+
 end

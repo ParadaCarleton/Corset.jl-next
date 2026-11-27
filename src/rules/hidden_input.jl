@@ -183,8 +183,8 @@ function rng_keyword(method::Method)::Bool
 end
 
 """
-Whether lowered body of `method` returns call to own function (slot 1) with own arguments first, as each method that
-default positional arguments make does: `f(x)` returns `f(x, 10^6, nothing)`.
+Whether lowered body of `method` only computes default values and returns call to own function (slot 1) with own
+arguments first, as each method that default positional arguments make does: `f(x)` returns `f(x, 10^6, nothing)`.
 """
 function fills_defaults(method::Method)::Bool
     (Base.hasgenerator(method) || isnothing(method.source)) && return false
@@ -194,10 +194,27 @@ function fills_defaults(method::Method)::Bool
     isdefined(returned, :val) || return false
     position = returned.val
     position isa Core.SSAValue || return false
+    position.id == length(code) - 1 || return false
     call = code[position.id]
     call isa Expr || return false
     (call.head === :call && length(call.args) > method.nargs) || return false
-    return all(slot -> call.args[slot] == Core.SlotNumber(slot), 1:method.nargs)
+    all(slot -> call.args[slot] == Core.SlotNumber(slot), 1:method.nargs) || return false
+    return reads_all_before(code, position.id)
+end
+
+"""Whether statement `id` of straight-line lowered `code` reads each earlier statement, directly or through others."""
+function reads_all_before(code::AbstractVector{Any}, id::Integer)::Bool
+    used = falses(id)
+    used[id] = true
+    for index in id:-1:1
+        used[index] || continue
+        statement = code[index]
+        statement isa Expr || continue
+        for argument in statement.args
+            argument isa Core.SSAValue && (used[argument.id] = true)
+        end
+    end
+    return all(used)
 end
 
 """

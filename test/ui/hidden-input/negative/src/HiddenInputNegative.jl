@@ -76,5 +76,7 @@ pick(rng::AbstractRNG, values::Vector{Float64}) = rand(rng, values)
 spread(values::Vector{Float64}, scale::Float64 = 2.0^3, rng::Union{AbstractRNG, Nothing} = nothing) = scale * pick(rng, values)
 # Keywords keep shorter methods calling own function: `sample(values)` calls `sample(values, nothing)`.
 sample(values::Vector{Float64}, rng::Union{AbstractRNG, Nothing} = nothing; scale::Float64 = 1.0) = scale * pick(rng, values)
+# Default value may call `default_rng()`: caller of `reordered(values)` can pass own RNG.
+reordered(values::Vector{Float64}, rng::AbstractRNG = Random.default_rng()) = Random.shuffle(rng, values)
 
 end

@@ -251,3 +251,14 @@ error[hidden-input]: method draws from default RNG
     = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
     = docs: corset explain hidden-input
 
+error[hidden-input]: method draws from default RNG
+   --> src/HiddenInputPositive.jl:109:1
+    |
+109 | jolt(x::Int) = (rand(); jolt(x, nothing)); jolt(x::Int, rng::Union{AbstractRNG, Nothing}) = 0.0
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reads default RNG
+    | ----------------------------------------------------------------------------------------------- takes no RNG argument
+    |
+    = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+    = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+    = docs: corset explain hidden-input
+
