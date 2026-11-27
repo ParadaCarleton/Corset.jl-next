@@ -123,7 +123,7 @@ function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files:
     library_directory = isnothing(cache) ? "" : Cache.library_directory(cache)
     partition = isnothing(cache) ? "" : Cache.partition_key(string(VERSION), DEPOT_PATH)
     library = Effects.Summaries.Library(isnothing(cache) ? Dict{String, Cache.Stamped}() : timed(() -> Cache.read_library(library_directory, partition), timings, "library read"))
-    stages(journal::Union{Nothing, Inference.Journal}) = run_stages(package, files, store, effects, lifecycle, library, journal, timings)
+    stages(journal::Union{Nothing, Inference.Journal}) = run_stages(package, files, store, !isnothing(cache), effects, lifecycle, library, journal, timings)
     facts, spots, stored, run, lifecycle_found = isnothing(directory) ? stages(nothing) : journaled(stages, directory)
     isnothing(cache) || timed(() -> Cache.store!(cache, method_entry(path), key, something(stored); root = nothing), timings, "method store write")
     isnothing(cache) || isnothing(run) || timed(() -> Cache.keep_library!(library_directory, partition, run.library.entries, run.hits, Cache.LIBRARY_BYTES), timings, "library write")
@@ -131,16 +131,18 @@ function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files:
 end
 
 """
-Facts and blind spots of `inference` stage on `package` with method `store`, store this run used, `effects` stage run
-when `effects` (`Effects.StageRun`) with `library` cache, and `lifecycle` stage facts when `lifecycle` too. Crash
-`journal` covers effects stage and store entries too: index proof infers again, engine infers library instances, and
-entries run generators. Stage times go to `timings` unless `nothing`.
+Facts and blind spots of `inference` stage on `package` with method `store`, store this run used when `keep` (else
+`nothing`), `effects` stage run when `effects` (`Effects.StageRun`) with `library` cache, and `lifecycle` stage facts
+when `lifecycle` too. Crash `journal` covers effects stage and store entries too: index proof infers again, engine
+infers library instances, and entries run generators. Stage times go to `timings` unless `nothing`.
 """
-function run_stages(package::PackageFacts, files::AbstractVector{Facts.SyntaxFile}, store::Union{Nothing, Inference.Store}, effects::Bool, lifecycle::Bool, library::Effects.Summaries.Library, journal::Union{Nothing, Inference.Journal}, timings::Union{Nothing, Sink})::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Inference.Store}, Union{Nothing, Effects.StageRun}, Union{Nothing, LifecycleFacts}}
+function run_stages(package::PackageFacts, files::AbstractVector{Facts.SyntaxFile}, store::Union{Nothing, Inference.Store}, keep::Bool, effects::Bool, lifecycle::Bool, library::Effects.Summaries.Library, journal::Union{Nothing, Inference.Journal}, timings::Union{Nothing, Sink})::Tuple{InferenceFacts, Vector{BlindSpot}, Union{Nothing, Inference.Store}, Union{Nothing, Effects.StageRun}, Union{Nothing, LifecycleFacts}}
     facts, spots, units, used = timed(() -> Inference.infer_package(package, files, store, journal), timings, "inference")
-    effects || return facts, spots, used, nothing, nothing
+    # Run without cache drops store, so it fills no entries.
+    filling = keep ? used : nothing
+    effects || return facts, spots, filling, nothing, nothing
     run = timed(() -> Effects.effects_facts(package, units, journal, library), timings, "effects")
-    kept = isnothing(used) ? nothing : timed(() -> with_records(used, units, run, files, package, journal), timings, "method store update")
+    kept = isnothing(filling) ? nothing : timed(() -> with_records(filling, units, run, files, package, journal), timings, "method store update")
     return facts, spots, kept, run, lifecycle ? timed(() -> Lifecycle.lifecycle_facts(package, run.ordered), timings, "lifecycle") : nothing
 end
 
