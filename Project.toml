@@ -55,6 +55,7 @@ TypedSyntax = "1.5.4"
 julia = "1.13"
 
 [apps.corset]
+julia_flags = ["--threads=auto"]
 
 [preferences.Corset]
 kind = "library"

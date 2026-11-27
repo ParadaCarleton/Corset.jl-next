@@ -452,6 +452,8 @@ end
     # Relaunched process runs on as many threads as this one.
     counts = "print(Threads.nthreads(:default), ',', Threads.nthreads(:interactive))"
     @test read(`$(Corset.Launch.threaded(Base.julia_cmd())) --startup-file=no -e $counts`, String) == "$(Threads.nthreads(:default)),$(Threads.nthreads(:interactive))"
+    # App starts Julia on all cores: Julia default is one thread, so inference and effects would run on one.
+    @test TOML.parsefile(joinpath(pkgdir(Corset), "Project.toml"))["apps"]["corset"]["julia_flags"] == ["--threads=auto"]
 end
 
 @testset "manifest moves" begin
