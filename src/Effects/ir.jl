@@ -66,6 +66,9 @@ function referent!(cache::IdDict{Any, Bool}, @nospecialize(type::Any))::Bool
     return answer
 end
 
+"""Whether value of `type` can point to object effects can reach (`referent!`), with fresh answer cache."""
+referent(@nospecialize(type::Any))::Bool = referent!(IdDict{Any, Bool}(), type)
+
 """
 Type of IR value `value` in `ir`, widened to plain type. Library tuple of `cglobal` stays nested `Core.tuple` call,
 which `argextype` rejects: it gives tuple of its element types.

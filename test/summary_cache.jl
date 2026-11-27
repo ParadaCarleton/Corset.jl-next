@@ -3,8 +3,8 @@
 using Test: @test, @testset, @test_throws
 using Corset: Corset
 using Corset.Cache: Cache
-using Corset.Facts: Facts, Callee, callee_methods
-using Corset.Inference: Inference, infer_package, serialized, edge_instance
+using Corset.Facts: Facts, MethodEffects, Callee, BlindSpot, callee_methods
+using Corset.Inference: Inference, infer_package, Store, entry_key, serialized, edge_instance
 using Corset.Effects.Summaries:
     Summaries, MethodVerdict, UnitVerdict, Library, LibraryEntry, Summary, Run, Variant, Closure, start_run, solve!, dispatch, root_summary!, same, cached_effects,
     library_entries!, unshared!, closure_key!, variant_key!, instance_key!, instance_node, record_text!, stored_value!, type_text!, inferred!,
@@ -30,14 +30,26 @@ end
 
 const CASES, FILES, PACKAGE = case_package()
 
+"""Units and used method store of inference run that `store` serves."""
+function inferred(store::Store)::Tuple{Inference.Units, Store}
+    _, _, units, used = infer_package(PACKAGE, FILES, store, nothing)
+    return units, something(used)
+end
+
 """Stored verdicts of inference run that infers every unit: none."""
 const NONE_STORED = Union{Nothing, UnitVerdict}[]
 
-const _, _, UNITS, _ = infer_package(PACKAGE, FILES, nothing, nothing)
+const UNITS, USED = inferred(Store())
 const FACTS, SPOTS, RECORDS, LIBRARY = cached_effects(PACKAGE, UNITS, NONE_STORED, nothing, Library())
+
+"""`effects` stage run of every unit without library cache: name tier records with engine verdicts."""
+const RUN = Corset.Effects.effects_facts(PACKAGE, UNITS, nothing, Library())
 
 """Text of verdict of each method, method in place of site: runs that agree give same text."""
 fact_text(facts::AbstractVector{MethodVerdict})::Vector{String} = [repr(Any[found.site.method; [getfield(found, name) for name in fieldnames(MethodVerdict)[2:end]]]) for found in facts]
+
+"""Text of `effects` stage facts of each method, method in place of site: runs that agree give same text."""
+fact_text(facts::Facts.EffectsFacts)::Vector{String} = [repr(Any[found.site.method; [getfield(found, name) for name in fieldnames(MethodEffects)[2:end]]]) for found in facts.methods]
 
 """`data` after round trip through bytes, as disk cache keeps it."""
 reread(data::T) where {T} = deserialize(IOBuffer(serialized(data)))::T
@@ -317,19 +329,46 @@ end
     end
 
     @testset "stored units" begin
-        # Method store serves units; their kept verdicts give facts of run that infers every unit.
-        kept = Dict((typed.site.method, typed.signature) => record for (typed, record) in zip(UNITS.typed, RECORDS))
-        verdicts(units::Inference.Units) = Union{Nothing, UnitVerdict}[kept[(unit.site.method, unit.signature)] for unit in units.stored]
-        used = something(last(infer_package(PACKAGE, FILES, Inference.Store(), nothing)))
-        units = infer_package(PACKAGE, FILES, copy(used), nothing)[3]
-        @test isempty(units.typed) && !isempty(units.stored)
-        facts, spots, records, new, _ = cached_effects(PACKAGE, units, verdicts(units), nothing, Library())
-        @test fact_text(facts) == fact_text(FACTS) && spots == SPOTS && isempty(records) && isempty(new.entries)
+        filled = Corset.Engine.with_records(USED, UNITS, RUN, FILES, PACKAGE, nothing)
+        @test all(entry -> !isempty(entry.effects), values(filled)) && all(entry -> isempty(entry.effects), values(USED))
+        units, used = inferred(copy(filled))
+        @test isempty(units.typed) && !isempty(units.stored) && keys(used) == keys(filled)
+        run = Corset.Effects.effects_facts(PACKAGE, units, nothing, Library())
+        @test fact_text(run.facts) == fact_text(RUN.facts) && run.spots == RUN.spots && isempty(run.fresh) && isempty(run.verdicts)
         # Callers infer again while their callees stay stored: callee keeps unit body, so facts agree.
-        callers = Set(Inference.entry_key(typed.site.method, typed.signature) for typed in UNITS.typed if startswith(string(typed.site.method.name), "call_"))
-        units = infer_package(PACKAGE, FILES, filter(((key, _),) -> !(key in callers), used), nothing)[3]
+        callers = Set(entry_key(typed.site.method, typed.signature) for typed in UNITS.typed if startswith(string(typed.site.method.name), "call_"))
+        units, _ = inferred(filter(((key, _),) -> !(key in callers), filled))
         @test !isempty(units.typed) && !isempty(units.stored)
-        facts, spots, _ = cached_effects(PACKAGE, units, verdicts(units), nothing, reread(LIBRARY))
-        @test fact_text(facts) == fact_text(FACTS) && spots == SPOTS
+        run = Corset.Effects.effects_facts(PACKAGE, units, nothing, reread(LIBRARY))
+        @test fact_text(run.facts) == fact_text(RUN.facts) && run.spots == RUN.spots
+    end
+
+    @testset "engine stage" begin
+        none = (nothing, BlindSpot[], nothing, BlindSpot[], nothing)
+        @test Corset.Engine.stage_facts(CASE, nothing, FILES, true, true, false, nothing, nothing) == none
+        @test Corset.Engine.stage_facts(CASE, PACKAGE, FILES, false, true, false, nothing, nothing) == none
+        mktempdir(@__DIR__) do cache
+            staged(effects::Bool)::Tuple = Corset.Engine.stage_facts(CASE, PACKAGE, FILES, true, effects, false, cache, nothing)
+            entry = Corset.Engine.method_entry(CASE)
+            store() = Cache.lookup(Store, cache, entry, readline(Cache.entry(cache, entry)); root = nothing)
+            # Inference run keeps no records; effects run infers their units again.
+            @test isnothing(staged(false)[3]) && all(found -> isempty(found.effects), values(store()))
+            _, _, facts, spots = staged(true)
+            @test fact_text(facts) == fact_text(RUN.facts) && spots == RUN.spots && all(found -> !isempty(found.effects), values(store()))
+            @test length(readdir(Cache.library_directory(cache))) == 1
+            # Stored entries keep their records through inference run.
+            staged(false)
+            @test all(found -> !isempty(found.effects), values(store()))
+            # Fresh units with library summaries, then stored units only.
+            rm(Cache.entry(cache, entry))
+            @test fact_text(staged(true)[3]) == fact_text(RUN.facts)
+            @test fact_text(staged(true)[3]) == fact_text(RUN.facts)
+            @test length(readdir(Cache.library_directory(cache))) == 1
+        end
+        mktempdir(@__DIR__) do directory
+            mktempdir(@__DIR__) do cache
+                @test fact_text(Corset.Engine.stage_facts(CASE, PACKAGE, FILES, true, true, false, cache, directory)[3]) == fact_text(RUN.facts)
+            end
+        end
     end
 end

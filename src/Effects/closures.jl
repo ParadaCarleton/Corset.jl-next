@@ -6,7 +6,6 @@ struct HeldClosure
     captures::Vector{Any}
 end
 
-# corset: allow bang-convention -- memo of closure writes in walk; result never changes
 """
 Events of package closures that call `call`, statement `index`, of `callee` with `operands` can invoke (`effects.md`,
 Writes, source 5), and their writes. Closure body writes through captured fields map onto operands its `new` statement
@@ -17,7 +16,7 @@ function closure_events(walk::Walk, call::Expr, index::Integer, @nospecialize(ca
     closures = HeldClosure[held for operand in invoked_operands(walk, call, callee, operands) for held in held_closures(walk, operand)]
     isempty(closures) && return found, writes
     proven_call(walk, index, call, call_callee(walk, call)) && return found, writes
-    for held in closures, write in closure_writes!(walk, held.type)
+    for held in closures, write in closure_writes(held.type, walk.world)
         confidence = write.exact ? Confidence.definite : Confidence.possible
         if write.target isa GlobalRef
             place = Place.At(Root.Global(write.target), NO_STEPS)
@@ -93,15 +92,13 @@ function anonymous_function(type::DataType)::Bool
 end
 
 """
-Captured fields of closure `type` that its methods write, by field position: `!` call or builtin store on captured
-field or below it, in lowered code. Lowered code has no types: callable skip reads constant callees.
+Captured fields of closure `type` that its methods in `world` write, by field position: `!` call or builtin store on
+captured field or below it, in lowered code. Lowered code has no types: callable skip reads constant callees.
 """
-function closure_writes!(walk::Walk, type::DataType)::Vector{ClosureWrite}
-    haskey(walk.closures, type) && return walk.closures[type]
-    walk.closures[type] = ClosureWrite[]
+function closure_writes(type::DataType, world::UInt)::Vector{ClosureWrite}
     found = ClosureWrite[]
     # `methods(type)` lists constructors; call methods match call signature of closure instance.
-    matches = Base._methods_by_ftype(Tuple{type, Vararg{Any}}, -1, walk.world)
+    matches = Base._methods_by_ftype(Tuple{type, Vararg{Any}}, -1, world)
     for method in (matches isa Vector ? Method[(match::Core.MethodMatch).method for match in matches] : Method[])
         (isdefined(method, :source) && method.source !== nothing) || continue
         code = Base.uncompressed_ast(method)
@@ -120,8 +117,7 @@ function closure_writes!(walk::Walk, type::DataType)::Vector{ClosureWrite}
         append!(found, (ClosureWrite(field, EffectKind.memory, exact && length(fields) == 1) for fields in written for field in fields))
         append!(found, (ClosureWrite(binding, EffectKind.memory, true) for binding in globals))
     end
-    walk.closures[type] = unique!(found)
-    return walk.closures[type]
+    return unique!(found)
 end
 
 """Count of captured fields over every statement and local: sets only grow, so equal count means no change."""

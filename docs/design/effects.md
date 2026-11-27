@@ -37,8 +37,9 @@ Code lives in `src/Effects/`.
 
 - Name trust: a public function writes an argument only when its name ends in `!`, as Julia style guide asks.
 - A callee that breaks the convention is a bug in its own package. `bang-convention` reports it there.
-- Cost: a write through a non-`!` function that breaks the convention stays unseen in its callers.
-- Whole-program engine (points-to through Base) lives in `src/Effects/engine/` (`engine.md`). It does not feed facts yet.
+- Cost: name tier misses a write through a non-`!` function that breaks the convention. Engine verdict sees it.
+- Whole-program engine (points-to through Base) lives in `src/Effects/engine/` (`engine.md`).
+- Engine verdict gives method writes, reads and result aliases. Name tier gives other method facts.
 
 #### Units and IR
 
@@ -130,7 +131,7 @@ Write sources, in order:
 Facts keep every effect with its kind. Rules apply exemptions.
 
 - Kinds: memory write, IO, default RNG, RNG argument, task-local state, `ScopedValue` read, lock and other synchronization, lazy init, iteration start.
-- `bang-convention` exempts IO, RNG and lazy init, macros (own expression they rewrite) and `iterate` state writes (loop owns state). `unused-call` counts every kind. `hidden-input` reads default RNG, task-local state, `ScopedValue` and mutable globals.
+- `bang-convention` exempts IO, RNG and lazy init, macros (own expression they rewrite), `iterate` state writes (loop owns state) and callable argument writes (`map`, `foreach`). `unused-call` counts every kind. `hidden-input` reads default RNG, task-local state, `ScopedValue` and mutable globals.
 - Kind comes from types along place path, root first: first `IO` gives IO, `AbstractRNG` gives RNG argument.
 - Lock, `Condition` and `Semaphore` on path give synchronization. Path without such type gives memory write.
 - Package `setfieldonce!` and package caches follow memo-cache rule above: cheap proof or opt-out.

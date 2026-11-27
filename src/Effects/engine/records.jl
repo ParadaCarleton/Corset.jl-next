@@ -144,7 +144,7 @@ default RNG, since draw still touches `Task` state; `possible` when several argu
 function chosen_rng(accesses::AbstractVector{Access}, positions::AbstractVector{<:Integer})::Vector{Access}
     isempty(positions) && return accesses
     moved(access::Access, position::Integer)::Access =
-        Access(Place.At(Root.Parameter(position), NO_STEPS), false, EffectKind.default_rng, length(positions) == 1 ? access.confidence : Confidence.possible, access.cause)
+        Access(Place.At(Root.Parameter(position), NO_STEPS), false, EffectKind.default_rng, length(positions) == 1 ? access.confidence : Confidence.possible, access.callback, access.cause)
     return [found for access in accesses for found in (access.kind == EffectKind.default_rng ? [moved(access, position) for position in positions] : [access])]
 end
 
@@ -156,13 +156,13 @@ function unit_verdict!(run::Run, typed::TypedCode, root::Variant)::UnitVerdict
         false, Access[], Access[], BlindAccess[], BlindAccess[], Place.Type[], UnguardedHold[], UnitCalls(),
         [BlindSpot("always throws on stand-ins", typed.site.span)], false, nothing, own_cut,
     )
-    summary = root_summary!(run, root)
+    summary, own = root_summary!(run, root), run.summaries[root]
     span_of(cause::Integer)::Span = cause_span(typed, run.codes[root], cause)
     kind_of(place::Place.Type)::EffectKind.T = path_kind(run.codes[root].ir, first(root).def::Method, place)
-    writes, blind_writes = unit_accesses(summary.writes, span_of, typed.provenance)
+    writes, blind_writes = verdict_accesses(summary.writes, own.writes, span_of, typed.provenance)
     held_writes, held_blind = lock_writes(summary, span_of, kind_of)
     unguarded, spots = unguarded_holds(summary, span_of)
-    reads, blind_reads = unit_accesses(summary.reads, span_of, typed.provenance)
+    reads, blind_reads = verdict_accesses(summary.reads, own.reads, span_of, typed.provenance)
     chosen = chosen_rng_arguments(run, root)
     cut = summary.cut ? cut_span(run, typed, root) : nothing
     return UnitVerdict(

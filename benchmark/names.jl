@@ -19,10 +19,11 @@ loaded = Corset.Package.load(sources.project, sources.files)
 inference = @timed Corset.Inference.infer_package(loaded.facts, sources.files, nothing, nothing)
 _, _, units, _ = inference.value
 GC.gc()
-effects = @timed Effects.effects_facts(loaded.facts, units, nothing)
+# Each run starts from empty library summaries, so both runs solve same units.
+effects = @timed Effects.effects_facts(loaded.facts, units, nothing, Effects.Summaries.Library())
 GC.gc()
-warm = @timed Effects.effects_facts(loaded.facts, units, nothing)
-facts, spots, _, _, ordered = effects.value
+warm = @timed Effects.effects_facts(loaded.facts, units, nothing, Effects.Summaries.Library())
+(; facts, spots, ordered) = effects.value
 GC.gc()
 lifecycle = @timed Corset.Lifecycle.lifecycle_facts(loaded.facts, ordered)
 GC.gc()

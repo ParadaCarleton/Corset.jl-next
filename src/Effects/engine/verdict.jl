@@ -27,10 +27,22 @@ function source_provenance(sources::Sources, provenance::AbstractVector{Provenan
 end
 
 """
-Accesses of unit `effects` with doubt below blind, and blind accesses, with cause spans from `span_of`. Argument
-`provenance` judges `code` doubt: opaque gives blind access (`OPAQUE_DATA`); opt-out gives no access.
+Accesses of root unit as `unit_accesses`: `own` accesses of its code, then each other access of `resolved` summary.
+Callable arguments make those when unit runs them: root resolves their callback records.
 """
-function unit_accesses(effects::Accesses, span_of::Function, provenance::AbstractVector{Provenance.T})::Tuple{Vector{Access}, Vector{BlindAccess}}
+function verdict_accesses(resolved::Accesses, own::Accesses, span_of::Function, provenance::AbstractVector{Provenance.T})::Tuple{Vector{Access}, Vector{BlindAccess}}
+    accesses, blind = unit_accesses(own, span_of, provenance, false)
+    resolved === own && return accesses, blind
+    called = Accesses(key => effect for (key, effect) in resolved if get(own, key, nothing) != effect)
+    callback, callback_blind = unit_accesses(called, span_of, provenance, true)
+    return [accesses; callback], unique!([blind; callback_blind])
+end
+
+"""
+Accesses of unit `effects` with doubt below blind, each marked `callback`, and blind accesses, with cause spans from
+`span_of`. Argument `provenance` judges `code` doubt: opaque gives blind access (`OPAQUE_DATA`); opt-out gives none.
+"""
+function unit_accesses(effects::Accesses, span_of::Function, provenance::AbstractVector{Provenance.T}, callback::Bool)::Tuple{Vector{Access}, Vector{BlindAccess}}
     accesses, blind = Access[], BlindAccess[]
     for ((place, below, effect_kind), effect) in effects
         span, level = span_of(effect.cause), level_of(effect.doubt)
@@ -40,7 +52,7 @@ function unit_accesses(effects::Accesses, span_of::Function, provenance::Abstrac
         elseif judged == Provenance.opaque
             push!(blind, BlindAccess(place, below, effect_kind, BlindSpot(OPAQUE_DATA, span)))
         elseif judged == Provenance.code
-            push!(accesses, Access(place, below, effect_kind, level == Level.none ? Confidence.definite : Confidence.possible, span))
+            push!(accesses, Access(place, below, effect_kind, level == Level.none ? Confidence.definite : Confidence.possible, callback, span))
         end
     end
     return accesses, blind
@@ -93,7 +105,7 @@ function lock_writes(summary::Summary, span_of::Function, kind_of::Function)::Tu
         if hold.level == Level.blind
             push!(blind, BlindAccess(place, false, kind, BlindSpot(hold.reason, span)))
         else
-            push!(writes, Access(place, false, kind, hold.level == Level.none ? Confidence.definite : Confidence.possible, span))
+            push!(writes, Access(place, false, kind, hold.level == Level.none ? Confidence.definite : Confidence.possible, false, span))
         end
     end
     return writes, blind
@@ -119,11 +131,14 @@ end
 """Order key of access to `place` with `below` and `kind`: places sort by text."""
 place_key(place::Place.Type, below::Bool, kind::EffectKind.T)::Tuple{String, Bool, EffectKind.T} = (repr(place), below, kind)
 
-"""Worst access per place, coverage and kind over `accesses` of all units: definite beats possible; first cause stays."""
+"""
+Worst access per place, coverage, kind and callback mark over `accesses` of all units: definite beats possible; first
+cause stays.
+"""
 function worst(accesses::AbstractVector{Access})::Vector{Access}
-    found = Dict{Tuple{Place.Type, Bool, EffectKind.T}, Access}()
+    found = Dict{Tuple{Place.Type, Bool, EffectKind.T, Bool}, Access}()
     for access in accesses
-        key = (access.place, access.below, access.kind)
+        key = (access.place, access.below, access.kind, access.callback)
         old = get(found, key, nothing)
         (isnothing(old) || access.confidence < old.confidence) && (found[key] = access)
     end

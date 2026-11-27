@@ -106,19 +106,14 @@ end
 
 """
 IR of one unit with value of each statement, whether compiler proves each statement `effect_free` (`proven`), places
-stored into each caller place (`stored`), `referent!` answers (`ir.jl`), package modules, captured field writes of each
-closure type (`closure_writes!`), `effect_free` claim of each callee method or generated instance, and world dispatch
-reads.
+stored into each caller place (`stored`), package modules, and world dispatch reads.
 """
 struct Walk
     ir::CC.IRCode
     values::Vector{Value}
     proven::Vector{Bool}
     stored::Dict{Place.Type, Set{Place.Type}}
-    referent::IdDict{Any, Bool}
     modules::Set{Module}
-    closures::IdDict{Any, Vector{ClosureWrite}}
-    claims::IdDict{Union{Method, Core.MethodInstance}, Bool}
     world::UInt
 end
 
@@ -135,9 +130,8 @@ end
 """Type of statement or operand `operand` in `walk`, widened."""
 operand_type(walk::Walk, @nospecialize(operand::Any))::Any = value_type(walk.ir, operand)
 
-# corset: allow bang-convention -- memo of type answers in walk; result never changes
 """Whether value of `type` can point to caller-visible object; `ScopedValue` points to its scoped state."""
-pointing(walk::Walk, @nospecialize(type::Any))::Bool = referent!(walk.referent, type) || (type isa Type && type !== Union{} && type <: Base.ScopedValues.ScopedValue)
+pointing(walk::Walk, @nospecialize(type::Any))::Bool = referent(type) || (type isa Type && type !== Union{} && type <: Base.ScopedValues.ScopedValue)
 
 """Value of IR `operand` in `walk`: statement value, argument place, global place, or global state for literal object."""
 function operand_value(walk::Walk, @nospecialize(operand::Any))::Value
@@ -649,10 +643,9 @@ function statement_events(walk::Walk, index::Integer)::Tuple{Vector{Event}, Vect
     return found, ClosureWrite[]
 end
 
-# corset: allow bang-convention -- memo of type answers in walk; result never changes
 """Read of global `binding` (`effects.md`, Reads): non-constant binding, or constant whose value holds mutable object."""
 function global_reads(walk::Walk, binding::GlobalRef)::Vector{Event}
-    isconst(binding) && !referent!(walk.referent, binding_type(binding)) && return Event[]
+    isconst(binding) && !referent(binding_type(binding)) && return Event[]
     place = Place.At(Root.Global(binding), NO_STEPS)
     return [Event(place, false, place_kind(walk, place, EffectKind.memory), Confidence.definite, false)]
 end
@@ -910,14 +903,11 @@ function callee_claims(walk::Walk, call::Expr, callee::Callee.Type)::Bool
     return !isnothing(matches) && any(match -> match_claims(walk, match), matches)
 end
 
-# corset: allow bang-convention -- memo of claim answers in walk; result never changes
 """
-Whether method of `match` claims `:effect_free` in code compiler infers for its instance; answers cached in `walk`.
-Generated method gives code per instance, so its answer is per instance. Stand-in claim only restores proof that
+Whether method of `match` claims `:effect_free` in code compiler infers for its instance in world of `walk`. Stand-in claim only restores proof that
 coverage counters void, so it counts as none.
 """
 function match_claims(walk::Walk, match::Core.MethodMatch)::Bool
     match.method.module === StandIns && return false
-    key = Base.hasgenerator(match.method) ? CC.specialize_method(match) : match.method
-    return get!(() -> claims_effect_free(match.method, CC.retrieve_code_info(CC.specialize_method(match), walk.world)), walk.claims, key)
+    return claims_effect_free(match.method, CC.retrieve_code_info(CC.specialize_method(match), walk.world))
 end

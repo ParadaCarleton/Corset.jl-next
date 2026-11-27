@@ -15,6 +15,9 @@ report(io::IO, x::Int) = println(io, x)
 # RNG advance needs no `!`.
 draw(rng::AbstractRNG) = rand(rng)
 
+# Callable argument owns its writes, as for Base `map` and `foreach`.
+feed(push_to::Base.Fix1{typeof(push!), Vector{Int}}, x::Int) = (push_to(x); nothing)
+
 # Cache: non-public global that only `square` touches.
 const SQUARES = Dict{Int, Int}()
 square(n::Int) = get!(() -> n^2, SQUARES, n)
@@ -54,13 +57,6 @@ jittered(rng::Union{Nothing, AbstractRNG}, n::Int) = jitter!(rng, zeros(n))
 abstract type Sampler end
 Random.rand!(rng::AbstractRNG, s::Sampler, x::AbstractVector{Float64}) = (x .= 1.0; x)
 sampled(rng::AbstractRNG, s::Sampler, n::Int) = Random.rand!(rng, s, zeros(n))
-
-# `!!` call writes operand only when it can.
-mutable struct Tally
-    count::Int
-end
-tally!!(tally::Tally, x::Int) = (tally.count += x; tally)
-counted(tally::Tally) = tally!!(tally, 1)
 
 # `!` call on immutable operands writes no global state.
 struct Device end

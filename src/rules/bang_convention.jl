@@ -135,7 +135,8 @@ function findings(facts::FactSet)::Vector{Finding}
         else
             # Flag, not `callee`: closure over function value compiles once per function.
             iterating = callee === iterate
-            kept = [access for access in method.writes if state_write(access, method.site.method, touched) && !trusted_write(method, access) && !(iterating && iteration_state(access))]
+            # Base names higher-order functions without `!` (`map`, `foreach`): callable argument owns its writes.
+            kept = [access for access in method.writes if !access.callback && state_write(access, method.site.method, touched) && !trusted_write(method, access) && !(iterating && iteration_state(access))]
             writes = sort(kept; by = access -> access.cause.first_byte)
             isempty(writes) || push!(found, missing_finding(method, callee, first(writes), modules))
         end

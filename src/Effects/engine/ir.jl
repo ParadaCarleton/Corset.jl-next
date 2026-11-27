@@ -106,6 +106,9 @@ end
 """Types whose values point to no object Corset tracks: type objects, modules, symbols and strings."""
 const PLAIN = Union{Type, Core.TypeName, Module, Symbol, String, Core.MethodInstance, Method}
 
+"""Whether value of `type` can point to object (`referent!`), with fresh answer cache."""
+referent(@nospecialize(type::Any))::Bool = referent!(IdDict{Any, Bool}(), type)
+
 """Whether value of any of `types` can point to object (`referent!`); stops at first that can."""
 function any_referent!(cache::IdDict{Any, Bool}, types::Core.SimpleVector)::Bool
     for type in types

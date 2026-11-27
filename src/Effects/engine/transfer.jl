@@ -73,7 +73,7 @@ function call!(flow::Flow, index::Integer, outcome::Outcome.Type, callees::Calle
         Outcome.Dead() => nothing
     end
     start = started(flow.ir, index, outcome)
-    isnothing(start) || access!(flow.reads, value_targets!(flow, something(start)), false, definite(index), EffectKind.iteration)
+    isnothing(start) || access!(flow.reads, value_targets!(flow, something(start)), false, start_effect(flow.ir, index, outcome), EffectKind.iteration)
     flow.record && (flow.call_kinds[index] = call_kinds(outcome, writes, callees, index))
     (message || flow.record) && merge_accesses!(flow.writes, writes, message)
     return nothing
@@ -84,6 +84,19 @@ Functions whose call starts iteration of first argument (`engine.md`, Facts), by
 `iterate(x)`, destructuring `indexed_iterate(x, i)`, `first(x)`, `only(x)` and `isempty(x)`.
 """
 const STARTS = IdDict{Any, Int}(iterate => 1, Base.indexed_iterate => 2, first => 1, only => 1, isempty => 1)
+
+"""Contract functions whose call may start iteration: `isempty` docstring says it may consume stateful iterator."""
+const MAY_START = (isempty,)
+
+"""Effect of iteration start of call statement `index` with `outcome`: contract of `MAY_START` function gives `possible`."""
+function start_effect(ir::CC.IRCode, index::Integer, outcome::Outcome.Type)::Effect
+    contract = @match outcome begin
+        Outcome.Contract(_, _, _) => true
+        _ => false
+    end
+    callee = constant(ir, (ir.stmts[index][:stmt]::Expr).args[1])
+    return contract && something(callee) in MAY_START ? Effect(CODE_DOUBT, index, "") : definite(index)
+end
 
 """
 IR value whose iteration call statement `index` of `ir` with `outcome` starts (`STARTS`); `nothing` for other call.

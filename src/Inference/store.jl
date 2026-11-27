@@ -170,7 +170,6 @@ function cached_digest(codes::AbstractDict{String, String}, journal::Union{Nothi
     return code
 end
 
-# corset: allow bang-convention -- crash journal records progress; caller reads it only after crash
 """
 `staged_digest` of `specialized` between start and finish records of `"staged "` plus staged `key` in crash `journal`:
 generator can abort process. `nothing` when earlier run crashed there.

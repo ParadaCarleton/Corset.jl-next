@@ -143,3 +143,14 @@ error[bang-convention]: method of `empty!` writes nothing, but name ends in `!`
    = fix: write argument that `empty!` promises to change   [manual]
    = docs: corset explain bang-convention
 
+error[bang-convention]: method of `counted` writes `tally`, but name has no `!`
+  --> src/BangConventionPositive.jl:66:1
+   |
+66 | counted(tally::Tally) = tally!!(tally, 1)
+   | ^^^^^^^ name has no `!`
+   |                         ----------------- writes `tally`
+   |
+   = why: caller reads name without `!` as promise that call changes nothing it can see
+   = fix: rename `counted` to `counted!`, with call sites   [manual]
+   = docs: corset explain bang-convention
+

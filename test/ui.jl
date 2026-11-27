@@ -47,9 +47,9 @@ function package_facts(case::String, stage::Stage.T)::FactSet
     isempty(loaded.errors) || error("fixture $case does not load: $(first(loaded.errors).primary.text)")
     inferred = stage in (Stage.inference, Stage.effects, Stage.lifecycle) ? Corset.Inference.infer_package(loaded.facts, sources.files, nothing, nothing) : nothing
     inference = isnothing(inferred) ? nothing : first(inferred)
-    staged = stage in (Stage.effects, Stage.lifecycle) ? Corset.Effects.effects_facts(loaded.facts, inferred[3], nothing) : nothing
-    effects = isnothing(staged) ? nothing : first(staged)
-    lifecycle = stage == Stage.lifecycle ? Corset.Lifecycle.lifecycle_facts(loaded.facts, last(staged)) : nothing
+    staged = stage in (Stage.effects, Stage.lifecycle) ? Corset.Effects.effects_facts(loaded.facts, inferred[3], nothing, Corset.Effects.Summaries.Library()) : nothing
+    effects = isnothing(staged) ? nothing : staged.facts
+    lifecycle = stage == Stage.lifecycle ? Corset.Lifecycle.lifecycle_facts(loaded.facts, staged.ordered) : nothing
     external = stage == Stage.external ? Corset.External.external_facts(loaded.facts, sources.project.entry, sources.files) : nothing
     return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, loaded.facts, inference, effects, lifecycle, external)
 end

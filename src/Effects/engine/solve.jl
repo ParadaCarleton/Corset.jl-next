@@ -71,7 +71,7 @@ struct Lookup
 end
 
 """
-State of one effects run: world of dispatch and native inference, crash journal, package modules, referent cache; per
+State of one effects run: world of dispatch and native inference, crash journal, package modules; per
 instance its body, shortcut or blind spot cause, caller that first reached it, and its variant parameters (`variant_parameters!`);
 per method whether it claims effects and whether it catches; throw-helper verdict per callee (`throw_helper`); per
 instance whether stand-ins cut its own code; instances whose reach compiler effects describe on model types too
@@ -82,7 +82,6 @@ struct Run  # corset: allow wide-struct -- one memo per analysis; summary cache 
     interpreter::CC.NativeInterpreter
     journal::Union{Nothing, Journal}
     modules::Set{Module}
-    referent::IdDict{Any, Bool}
     bodies::IdDict{Core.MethodInstance, Union{Body, Shortcut, String}}
     callers::IdDict{Core.MethodInstance, Core.MethodInstance}
     parameters::IdDict{Core.MethodInstance, Set{Int}}
@@ -115,7 +114,7 @@ function start_run(journal::Union{Nothing, Journal}, modules::AbstractVector{Mod
     parameters, claims, catches = IdDict{Core.MethodInstance, Set{Int}}(), IdDict{Method, Bool}(), IdDict{Method, Bool}()
     helpers, cuts, trusted = IdDict{Any, Tuple{Bool, Vector{Any}}}(), IdDict{Core.MethodInstance, Bool}(), Base.IdSet{Core.MethodInstance}()
     return Run(
-        world, CC.NativeInterpreter(world), journal, Set(modules), IdDict{Any, Bool}(), bodies, callers, parameters, claims, catches, helpers, cuts, IdDict{Core.MethodInstance, Tuple{CC.InferenceState, Bool}}(), trusted, Dict{Variant, Code}(), Dict{Variant, Summary}(),
+        world, CC.NativeInterpreter(world), journal, Set(modules), bodies, callers, parameters, claims, catches, helpers, cuts, IdDict{Core.MethodInstance, Tuple{CC.InferenceState, Bool}}(), trusted, Dict{Variant, Code}(), Dict{Variant, Summary}(),
         Lookup(
             library, IdDict{Core.MethodInstance, String}(), IdDict{Any, Tuple{String, Vector{Module}}}(), IdDict{Module, Union{Nothing, Vector{String}}}(),
             IdDict{Module, Union{Nothing, String}}(), IdDict{Any, Tuple{String, Vector{Any}}}(), Closure(Base.IdSet{Core.MethodInstance}()), IdDict{Any, Bool}(), IdDict{Core.MethodInstance, Vector{Any}}(),
@@ -213,7 +212,7 @@ untrusted (`reaches_untrusted!`).
 function proven_empty!(run::Run, frame::CC.InferenceState)::Bool
     effects = frame.result.ipo_effects
     CC.is_effect_free(effects) && CC.is_inaccessiblememonly(effects) && CC.is_notaskstate(effects) || return false
-    referent!(run.referent, CC.widenconst(frame.result.result)) && return false
+    referent(CC.widenconst(frame.result.result)) && return false
     method = frame.linfo.def
     return !(method isa Method && claims!(run, method)) && !reaches_untrusted!(run, frame.edges)
 end
@@ -555,7 +554,7 @@ rounds read. `flush` resolves callback records here; `record` keeps write kinds 
 function variant_flow(run::Run, variant::Variant, flush::Bool, record::Bool)::Tuple{Flow, Callees}
     code = run.codes[variant]
     method = first(variant).def::Method
-    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, flush, code.cut, static_sources(method), record, scheduler_method(method), run.work_limit)
+    flow = start_flow(code.ir, code.outcomes, code.message, flush, code.cut, static_sources(method), record, scheduler_method(method), run.work_limit)
     callees = Callees(code.callees, run.summaries, Set{Variant}())
     while true
         flow.changed = false

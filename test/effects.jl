@@ -227,6 +227,8 @@ end
     raw = raw_summary(CASES.call_setter!, CASES.Setter, Int)
     @test only(raw.callbacks).parameters[1] == Nodes(Node.Placed(parameter(2)) => NO_DOUBT) && !haskey(raw.writes, (parameter(2, box), false))
     @test shape(named(:call_setter!).writes) == [(parameter(2, box), false, definite)]
+    # Callable that caller passes makes that write, so access carries callback mark. Own closure write carries none.
+    @test only(named(:call_setter!).writes).callback && !any(access -> access.callback, named(:fill_pair!).writes)
     @test isempty(raw_summary(CASES.set_pair!, CASES.Box).callbacks)
     # Units split `Union` stand-ins: `Relay` unit resolves record of `Relay` call, then record of `Setter` call inside it.
     setter = Step.Field(:setter)
@@ -396,6 +398,22 @@ cut_spots(name::Symbol)::Vector{BlindSpot} = [spot for spot in SPOTS if spot.cau
     @test !isempty(run.frames) && (solve!(run, Variant[]); isempty(run.frames))
     @test catches!(run, only(methods(CASES.poke_caught_at!))) && catches!(run, only(methods(stand_in_broken)))
     @test !catches!(run, only(methods(CASES.poke_at!)))
+end
+
+@testset "engine stage" begin
+    run = Corset.Effects.effects_facts(PACKAGE, UNITS, nothing, Library())
+    @test [found.site.method for found in run.facts.methods] == [found.site.method for found in FACTS] && length(run.verdicts) == length(UNITS.typed)
+    @test issubset(SPOTS, run.spots)
+    mktempdir(@__DIR__) do directory
+        journal = open_journal(directory)
+        journaled = try
+            Corset.Effects.effects_facts(PACKAGE, UNITS, journal, Library())
+        finally
+            close(journal.io)
+        end
+        @test length(journaled.facts.methods) == length(FACTS)
+        @test any(record -> startswith(record.key, "effects\n") && !record.finished, records(directory))
+    end
 end
 
 """Summary of method `f` on argument `types`, solved with every instance it reaches."""
@@ -1187,7 +1205,7 @@ four_way(x::Symbol) = x
     @test constant(code.ir, GlobalRef(Base, :nothing)) == Some(nothing)
     @test operand_type(code.ir, Operand.Part(Core.Argument(2), 1)) == MemoryRef{Int}
     @test value_type(code.ir, Expr(:call, GlobalRef(Core, :tuple), QuoteNode(:jl_n_threads), "libjulia-internal")) == Tuple{Symbol, String}
-    flow = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
+    flow = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, run.work_limit)
     @test_throws ArgumentError statement!(flow, 1, Expr(:unknown_head), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     @test_throws ArgumentError statement!(flow, 1, QuoteNode(:literal), Callees(Vector{Variant}[], Dict{Variant, Summary}(), Set{Variant}()))
     # `copy` result: `Array` backed by fresh `Memory` that holds caller elements merges exactly.
@@ -1227,13 +1245,13 @@ four_way(x::Symbol) = x
     @test type_sources(flow, holder, Sources(0)) == INHERENT | parameter_source(3) | parameter_source(4)
     # Chain with less doubt found after visit of fresh object still reaches its contents: every visit order agrees.
     for (late, early) in ((20, 21), (21, 20))
-        chained = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
+        chained = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, run.work_limit)
         store!(chained, Targets(Origin.Allocation(early) => NO_DOUBT), Step.Field(:y), Targets(Origin.Allocation(late) => NO_DOUBT))
         store!(chained, Targets(Origin.Allocation(late) => NO_DOUBT), Step.Field(:y), Targets(Origin.Caller(parameter(5)) => NO_DOUBT))
         @test beneath(chained, Targets(Origin.Allocation(late) => CODE_DOUBT, Origin.Allocation(early) => NO_DOUBT))[Origin.Caller(parameter(5))] == NO_DOUBT
     end
     # Outside object keeps doubt of its chain, at least `code`: blind store stays blind; sources join. Each link is work.
-    outside = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
+    outside = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, run.work_limit)
     store!(outside, unknown(NO_DOUBT), Step.Field(:y), Targets(Origin.Caller(parameter(2)) => BLIND_DOUBT, Origin.Allocation(20) => NO_DOUBT))
     store!(outside, Targets(Origin.Allocation(20) => NO_DOUBT), Step.Field(:z), Targets(Origin.Caller(parameter(3)) => sourced(4)))
     work = outside.work
@@ -1245,7 +1263,7 @@ four_way(x::Symbol) = x
     )
     @test outside.work == work + 3
     # Flow past limit stops walk: round is partial, so summary opens with `BUDGET` cause.
-    spent = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, 0)
+    spent = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, 0)
     store!(spent, unknown(NO_DOUBT), Step.Field(:y), Targets(Origin.Allocation(20) => NO_DOUBT))
     @test over_budget(spent) && outside_targets!(spent) == unknown(NO_DOUBT)
     # Callee `deep` write changes argument; object in slot of fresh argument may stay unchanged: blind.
@@ -1291,7 +1309,7 @@ four_way(x::Symbol) = x
         @test load_any(flow, Targets(detour => BLIND_DOUBT, memory => NO_DOUBT)) == element
     end
     # A call with many stores reuses traces of other slots on the same object.
-    many = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
+    many = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, run.work_limit)
     summary = empty_summary()
     prefix = Step.Field(:chain)
     root = global_place(@__MODULE__, :NESTED)
@@ -1305,25 +1323,25 @@ four_way(x::Symbol) = x
     # This fixture executes 41 traces; allow headroom for changes in path handling.
     @test many.traces <= 60
     # A backing-chain mutation invalidates every trace that reaches the changed origin.
-    chain = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
+    chain = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, run.work_limit)
     first_memory, second_memory = Targets(Origin.Allocation(101) => NO_DOUBT), Targets(Origin.Allocation(102) => NO_DOUBT)
     store_backing!(chain, first_memory, second_memory)
     @test isempty(load!(chain, first_memory, Step.Element()))
     store!(chain, second_memory, Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
     @test load!(chain, first_memory, Step.Element()) == Targets(Origin.Unknown() => NO_DOUBT)
-    spread = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
+    spread = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, run.work_limit)
     @test isempty(load!(spread, first_memory, Step.Field(:x))) && isempty(load!(spread, first_memory, Step.Field(:y)))
     store!(spread, first_memory, nothing, Targets(Origin.Unknown() => NO_DOUBT))
     @test load!(spread, first_memory, Step.Field(:x)) == Targets(Origin.Unknown() => NO_DOUBT)
     @test load!(spread, first_memory, Step.Field(:y)) == Targets(Origin.Unknown() => NO_DOUBT)
     # A retained trace still charges the work of a global cache flush.
-    limited = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, 2)
+    limited = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, 2)
     @test isempty(load!(limited, first_memory, Step.Element()))
     store!(limited, second_memory, Step.Element(), Targets(Origin.Unknown() => NO_DOUBT))
     @test isempty(load!(limited, first_memory, Step.Element()))
     @test limited.traces == 1 && limited.work == 3 && over_budget(limited)
     # Long traces stay indexed until the flow membership budget fills.
-    long = start_flow(code.ir, code.outcomes, code.message, run.referent, false, false, Sources[], false, false, run.work_limit)
+    long = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, run.work_limit)
     memories = [Targets(Origin.Allocation(index) => NO_DOUBT) for index in 1001:2000]
     for index in 1:(length(memories) - 1)
         store_backing!(long, memories[index], memories[index + 1])
@@ -1398,10 +1416,12 @@ four_way(x::Symbol) = x
     package_run = start_run(nothing, [@__MODULE__])
     @test join_limit(package_run, only(something(dispatch(Any[typeof(three_way), Int], world, 1)))) == JOIN_LIMIT
     @test join_limit(package_run, only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], world, 1)))) == 1
-    possible_first = Access(parameter(2), false, EffectKind.memory, Confidence.possible, typed.site.span)
-    @test worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, typed.site.span)])[1].confidence == Confidence.definite
+    possible_first = Access(parameter(2), false, EffectKind.memory, Confidence.possible, false, typed.site.span)
+    @test worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, false, typed.site.span)])[1].confidence == Confidence.definite
     # Kinds stay apart: definite IO write never hides `possible` memory write.
-    @test length(worst([possible_first, Access(parameter(2), false, EffectKind.io, Confidence.definite, typed.site.span)])) == 2
+    @test length(worst([possible_first, Access(parameter(2), false, EffectKind.io, Confidence.definite, false, typed.site.span)])) == 2
+    # Callback mark stays apart too: definite write of callable argument never hides `possible` own write.
+    @test length(worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, true, typed.site.span)])) == 2
 end
 
 """Whether `first` and `second` hold same state: same type, and same fields and elements, deep."""
@@ -1668,7 +1688,7 @@ end
     delete!(roomy.over_budget, root)
     # Trace counts origins it walks, and load past budget stops: one call statement cannot run past limit.
     code = roomy.codes[root]
-    spent = start_flow(code.ir, code.outcomes, code.message, roomy.referent, false, false, Sources[], false, false, 1)
+    spent = start_flow(code.ir, code.outcomes, code.message, false, false, Sources[], false, false, 1)
     holder = Targets(Origin.Allocation(30) => NO_DOUBT)
     store!(spent, holder, Step.Field(:z), Targets(Origin.Caller(parameter(2)) => NO_DOUBT))
     @test !isempty(load!(spent, holder, Step.Field(:z))) && over_budget(spent) && isempty(load!(spent, holder, Step.Field(:z)))

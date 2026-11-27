@@ -250,6 +250,9 @@ function dependency_ids(root::String)::Union{Nothing, Vector{Base.PkgId}}
     return [Base.PkgId(Base.UUID(uuid), name) for (name, uuid) in deps]
 end
 
+"""Library directory of cache `directory`: one library file per partition (`partition_key`)."""
+library_directory(directory::String)::String = joinpath(directory, "library")
+
 """
 Partition key of library file: Julia version `julia`, cache flags and content of Corset (`package_content`) under
 `depots`. Entry keys hold all else.

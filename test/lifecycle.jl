@@ -17,8 +17,8 @@ function case_facts()::Tuple{Module, Facts.LifecycleFacts}
         pop!(LOAD_PATH)
     end
     _, _, units, _ = infer_package(loaded.facts, sources.files, nothing, nothing)
-    _, _, _, _, ordered = Effects.effects_facts(loaded.facts, units, nothing)
-    return first(loaded.facts.modules), lifecycle_facts(loaded.facts, ordered)
+    run = Effects.effects_facts(loaded.facts, units, nothing, Effects.Summaries.Library())
+    return first(loaded.facts.modules), lifecycle_facts(loaded.facts, run.ordered)
 end
 
 const CASES, FACTS = case_facts()
