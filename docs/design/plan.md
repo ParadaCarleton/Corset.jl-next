@@ -29,7 +29,7 @@ Rule is on by default only when all hold:
 Speed budget (draft): time from Corset ready to findings out; Julia startup and target package load excluded. Syntax-only run under 2 s per 10,000 lines; rerun with no changes under 1 s.
 
 - `check` and `inference` stages: full cold run at least 5× faster than legacy on same package.
-- `effects` stage: at most 0.25× `inference` stage time. Phase 5 row 5 measures it.
+- `effects` stage has no run-time budget (`engine.md`, Solve and cache). Phase 5 row 5 measures its time against `inference` stage.
 - Legacy runs no effects analysis, so ratio to legacy leaves `effects` stage out.
 
 Syntax stage: 21 rules take 15–40 ms per 10,000 lines; rule time grows linearly with rule count.

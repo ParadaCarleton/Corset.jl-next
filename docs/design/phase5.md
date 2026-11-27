@@ -17,10 +17,11 @@ PR plan for `effects` and `lifecycle` stages and their rules. Design: `effects.m
 | 9 | `bang-convention` | F53, F86 | 5 | #321 (manual fix); done |
 | 10 | Lifecycle facts | `lifecycle` stage | 5 | #324; done |
 | 11 | Lifecycle rules | F32, F33, F34, F39, F40, F41 | 10 | F33, F34, F39, F40 #325; F32 #326; F41 #327; done |
+| 12 | Engine connection | Engine verdicts feed method writes, reads and result aliases; name tier stays where engine gives no verdict | 4, 5 | in progress |
 
 - One PR per row; split a rule row by rule when it grows large. Status gets PR number at merge.
 - Rule rows merge in any order after row 5. Bug rules go first: F48, F50, F98, F58, F54.
-- Rows 1 to 4 built the whole-program engine (`engine.md`). It left main at row 5 and came back unwired; tag `effects-engine` marks its last wired state.
+- Rows 1 to 4 built the whole-program engine (`engine.md`). It left main at row 5 and came back unwired; tag `effects-engine` marks its last wired state. Row 12 connects it again.
 
 ### Every PR
 
