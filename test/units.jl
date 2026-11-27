@@ -437,6 +437,9 @@ level(settings::Settings, name::String)::Level.T = first(Config.level_of(setting
     mktempdir(@__DIR__) do directory
         write(joinpath(directory, "LocalPreferences.toml"), "[Corset]\nbanned = [{ name = \"x\", reason = \"r\", group = \"correctness\" }]\n")
         @test_throws ConfigError Config.read_table(joinpath(directory, "LocalPreferences.toml"), ("Corset",))
+        # PrecompileTools switch shares table: config reads past it.
+        write(joinpath(directory, "LocalPreferences.toml"), "[Corset]\nprecompile_workload = false\nkind = \"script\"\n")
+        @test Config.read_table(joinpath(directory, "LocalPreferences.toml"), ("Corset",)).kind == "script"
         # Missing key means defaults; key holding other value than table is error.
         project_file = joinpath(directory, "Project.toml")
         write(project_file, "name = \"P\"\n")

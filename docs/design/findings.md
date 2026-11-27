@@ -69,7 +69,7 @@ Extension that throws gets `load-error` at its file; package rules still run, an
 
 ### Config
 
-`[preferences.Corset]` table in target Project.toml; `[Corset]` table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: `kind`, `confidence`, `fix_tier`, `levels` (group or rule name to level), `banned` (list of bans).
+`[preferences.Corset]` table in target Project.toml; `[Corset]` table in LocalPreferences.toml overrides it key by key (Preferences.jl layout). Corset reads both files by path: target project is rarely active environment. Keys: `kind`, `confidence`, `fix_tier`, `levels` (group or rule name to level), `banned` (list of bans). PrecompileTools reads `precompile_workload` from same table; config ignores it.
 Each ban holds `reason` and one target: Argus `pattern`, or `name` regex that must match whole bound name. Unknown key, value or name is config error (exit 2). Scripts without Project.toml use defaults and command-line flags.
 
 ### Project kind
