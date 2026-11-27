@@ -48,16 +48,47 @@ function package_call(code::Core.CodeInfo, call::Expr, parameters::AbstractVecto
 end
 
 """
+Throw-helper verdict with its compiler edges by callee (`throw_helper`), shared by inference threads; `lock` guards
+`verdicts`. Verdicts are written and read as stored, so field types stay concrete.
+"""
+struct HelperVerdicts
+    lock::ReentrantLock
+    verdicts::IdDict{Any, Tuple{Bool, Vector{Any}}}
+end
+
+HelperVerdicts() = HelperVerdicts(ReentrantLock(), IdDict{Any, Tuple{Bool, Vector{Any}}}())
+
+"""
+Throw helper verdict on `callee` from `helpers`, computed on first use. Inference runs outside lock: threads that race
+compute same verdict, and first stored one stays.
+"""
+function helper_verdict!(helpers::HelperVerdicts, @nospecialize(callee::Any))::Tuple{Bool, Vector{Any}}
+    known = @lock helpers.lock get(helpers.verdicts, callee, nothing)
+    isnothing(known) || return known
+    found = throw_helper(callee)
+    return @lock helpers.lock get!(helpers.verdicts, callee, found)
+end
+
+"""
+Typed code of `method` on `signature` from `codes`, inferred on first use: each signature infers once per unit, not once
+per statement. Adds compiler edges of inference to `edges`; `nothing` without code.
+"""
+function typed_code!(codes::IdDict{Any, Union{Nothing, Core.CodeInfo}}, edges::AbstractVector{Any}, method::Method, signature::Type)::Union{Nothing, Core.CodeInfo}
+    haskey(codes, signature) && return codes[signature]
+    inferred = infer(method, signature)
+    isnothing(inferred) || append!(edges, inferred[4])
+    return codes[signature] = isnothing(inferred) ? nothing : inferred[2]
+end
+
+"""
 Inferred type on `signature` of statement `index` of code of `method` on `own`, `Union{}` when it never returns, `nothing`
 without code. Generated code differs per signature, so its index names no statement on other signature: `nothing` too.
-Adds compiler edges of inference to `edges`.
+`codes` keeps typed code per signature (`typed_code!`) and adds compiler edges of inference to `edges`.
 """
-function statement_type!(edges::AbstractVector{Any}, method::Method, own::Type, signature::Type, index::Integer)::Union{Nothing, Type}
+function statement_type!(codes::IdDict{Any, Union{Nothing, Core.CodeInfo}}, edges::AbstractVector{Any}, method::Method, own::Type, signature::Type, index::Integer)::Union{Nothing, Type}
     Base.hasgenerator(method) && signature != own && return nothing
-    inferred = infer(method, signature)
-    isnothing(inferred) && return nothing
-    append!(edges, inferred[4])
-    return CC.widenconst(inferred[2].ssavaluetypes[index])
+    code = typed_code!(codes, edges, method, signature)
+    return isnothing(code) ? nothing : CC.widenconst(code.ssavaluetypes[index])
 end
 
 """Name of called function; called type as `scope` prints it (`Vector{Float64}`); text of other callable value."""
@@ -80,33 +111,57 @@ function never_returning(code::Core.CodeInfo, parameters::AbstractVector{CC.VarS
 end
 
 """
-Call statements of `typed` that never return, by statement index: fact, or blind spot where call returns once stand-ins
-become their models. Skips unknown callees and throw helpers. Also gives index of each call that fails on stand-in only:
-stand-in cuts (`cuts!`). Call of package method in `files` gets no fact or spot: its own frame reports failure inside it.
-Adds compiler edges of inferences it runs to `edges`; `helpers` caches throw-helper verdicts with their edges.
+Verdict on call statement `index` that never returns, with callee that inference knows (`called`). `confidence` of
+failure; `nothing` when call returns once stand-ins become their models. `own` call of package method gets no fact or
+spot: its own frame reports failure inside it.
 """
-function failures!(edges::AbstractVector{Any}, helpers::IdDict{Any, <:Tuple{Bool, AbstractVector{Any}}}, typed::TypedCode, files::AbstractDict{String, SyntaxFile})::Tuple{Vector{Pair{Int, Union{FailingCall, BlindSpot}}}, Vector{Int}}
-    found, failing = Pair{Int, Union{FailingCall, BlindSpot}}[], Int[]
-    method, code, signature = typed.site.method, typed.code, typed.signature
-    parameters = CC.sptypes_from_meth_instance(something(instance(method, signature)))
+struct CallVerdict
+    index::Int
+    callee::Any
+    own::Bool
+    confidence::Union{Nothing, Confidence.T}
+end
+
+"""
+Verdicts on call statements that never return in `output` of `method` on unit `signature` (`infer`), with compiler edges
+of inferences they read. Skips unknown callees and throw helpers (`helper_verdict!`). Inference threads run it
+(`infer_wave!`); package method in `files` decides `own`.
+"""
+function call_verdicts!(helpers::HelperVerdicts, method::Method, signature::Type, output::Output, files::AbstractDict{String, SyntaxFile})::Tuple{Vector{CallVerdict}, Vector{Any}}
+    verdicts, edges, codes = CallVerdict[], Any[], IdDict{Any, Union{Nothing, Core.CodeInfo}}()
+    code, parameters = output[2], CC.sptypes_from_meth_instance(output[1])
     for (index, call, callee) in never_returning(code, parameters)
-        # Closure over `callee` would compile `get!` once per callee type.
-        verdict = get(helpers, callee, nothing)
-        isnothing(verdict) && (verdict = helpers[callee] = throw_helper(callee))
-        helper, helper_edges = verdict
+        helper, helper_edges = helper_verdict!(helpers, callee)
         append!(edges, helper_edges)
         helper && continue
         own = package_call(code, call, parameters, files)
         # Model signature without code cannot confirm failure either, so it also counts as blind spot.
-        modeled = statement_type!(edges, method, signature, StandIns.model_type(signature), index)
-        if modeled !== Union{}
-            push!(failing, index)
-            own || push!(found, index => BlindSpot("call fails on stand-in only", typed.spans[index]))
+        if statement_type!(codes, edges, method, signature, StandIns.model_type(signature), index) !== Union{}
+            push!(verdicts, CallVerdict(index, callee, own, nothing))
             continue
         end
         own && continue
-        confidence = statement_type!(edges, method, signature, method.sig, index) === Union{} ? Confidence.definite : Confidence.possible
-        push!(found, index => FailingCall(typed.spans[index], name_span(typed.site), callee_text(callee, method.module), confidence))
+        declared = statement_type!(codes, edges, method, signature, method.sig, index) === Union{}
+        push!(verdicts, CallVerdict(index, callee, false, declared ? Confidence.definite : Confidence.possible))
+    end
+    return verdicts, edges
+end
+
+"""
+Call statements of `typed` that never return, by statement index, from its `verdicts` (`call_verdicts!`): fact, or blind
+spot where call returns once stand-ins become their models. Also gives index of each call that fails on stand-in only:
+stand-in cuts (`cuts!`).
+"""
+function call_failures(typed::TypedCode, verdicts::AbstractVector{CallVerdict})::Tuple{Vector{Pair{Int, Union{FailingCall, BlindSpot}}}, Vector{Int}}
+    found, failing = Pair{Int, Union{FailingCall, BlindSpot}}[], Int[]
+    for verdict in verdicts
+        span = typed.spans[verdict.index]
+        if isnothing(verdict.confidence)
+            push!(failing, verdict.index)
+            verdict.own || push!(found, verdict.index => BlindSpot("call fails on stand-in only", span))
+        else
+            push!(found, verdict.index => FailingCall(span, name_span(typed.site), callee_text(verdict.callee, typed.site.method.module), something(verdict.confidence)))
+        end
     end
     return found, failing
 end
@@ -119,7 +174,7 @@ dead_calls(code::Core.CodeInfo)::Vector{Int} = [index for (index, statement) in 
 
 """
 Stand-in cuts of `typed` code of `method` on `signature` (`effects.md`, Stand-in cuts): dead call statements that
-declared signature reaches, and `failing` calls (fail on stand-in only, `failures!`). Infers declared signature once per
+declared signature reaches, and `failing` calls (fail on stand-in only, `call_verdicts!`). Infers declared signature once per
 method (`declared`), only for code with dead calls. Declared signature without code cannot clear dead call, so each
 counts as cut; nor can generated code, whose statements differ per signature.
 """

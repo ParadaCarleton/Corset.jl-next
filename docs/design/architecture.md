@@ -61,7 +61,7 @@ end
 - Load each extension's trigger packages: extension activates only when all triggers are loaded.
 - Cache check runs before package load: unchanged rerun loads nothing.
 - Native abort kills relaunched process, and Julia `try` cannot catch it: LLVM `UNREACHABLE` in Enzyme generator that inference runs on stand-in types.
-- Relaunched process runs on thread counts of relaunching process. `inference` stage infers each worklist wave on all threads, then merges results in queue order: findings and output order match one-thread run. Wave is queue head of `WAVE` signatures per thread, since wave keeps each compiler frame until its merge.
+- Relaunched process runs on thread counts of relaunching process. `inference` stage infers each worklist wave on all threads, then merges results in queue order: findings and output order match one-thread run. Wave threads also infer model and declared signatures that calls which never return need (`call_verdicts!`), once per unit. Wave is queue head of `WAVE` signatures per thread, since wave keeps each compiler frame until its merge.
 - Relaunched process keeps crash journal: store key of each method and signature before its inference, store entry after it. Inference writes stderr to crash log.
 - Start record tells whether inference ran alone. Crash beside other inferences makes next run infer each inference in flight alone, so next crash names one method.
 - Journal open cuts torn last record: abort on one thread can stop write of other thread.

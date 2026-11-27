@@ -114,7 +114,7 @@ end
         end
     end
     @testset "inference and effects compile independent of package" begin
-        # Closures over unit signature (`offset_signature`) and callee (`failures!`) compiled again for each value.
+        # Closures over unit signature (`offset_signature`) and callee (`call_verdicts!`) compiled again for each value.
         # Measured on Distributions after PDMats: 337 signature closures, 63 callee closures.
         mktempdir(@__DIR__) do directory
             stages = map(1:2) do batch
