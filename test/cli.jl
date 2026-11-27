@@ -562,14 +562,11 @@ end
                 @test fresh[1:2] == (code, out)
                 # Crash journal of relaunched process serves as method store; run without cache fills none.
                 @test timing_rows(fresh[3]) == ["environment", "load Corset", "discovery", "package load", "inference", "effects", "lifecycle", "external", "rules", "analysis process"]
-                # Copy elsewhere reuses environment: no build note. Analysis key reads Corset tree, which holds `root`:
-                # first copy misses, second copy reuses analysis of first.
+                # Copy elsewhere reuses environment and analysis of `root`: key names root by anchor, and skips Corset
+                # root, which holds `root`.
                 mktempdir() do elsewhere
                     copies = [cp(root, joinpath(mkpath(joinpath(elsewhere, name)), "Relaunched")) for name in ("first", "second")]
-                    copied, again = (launched("check", copy, "-A", "annotation") for copy in copies)
-                    @test first(copied) == code && occursin("error[shadowed-base]", copied[2])
-                    @test !occursin("building environment", last(copied)) && occursin("no cached analysis", last(copied))
-                    @test again == (code, replace(copied[2], first(copies) => last(copies)), "")
+                    @test [launched("check", copy, "-A", "annotation") for copy in copies] == [(code, replace(out, root => copy), "") for copy in copies]
                 end
                 @test launched("baseline", root, "-A", "annotation") == (0, "", "corset: wrote 1 findings to $(Corset.Baseline.FILE)\n")
                 rm(joinpath(root, Corset.Baseline.FILE))

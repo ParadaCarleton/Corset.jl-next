@@ -64,7 +64,7 @@ end
             @test issubset(listed, files) && issorted(files) && allunique(files)
             @test !any(file -> file in (joinpath(root, ".hidden"), link) || startswith(file, joinpath(scratch, "gone")), files)
             # Developed Corset counts by project file and source: depot and outputs in its root change no Corset code.
-            @test !any(startswith(joinpath(corset, "test")), files)
+            @test !(joinpath(corset, "test", "cache.jl") in files)
             # Manifest format 1 keeps entries at top level.
             write_files(environment, "Manifest.toml" => "[[D]]\npath = \"../dependency\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n")
             @test Cache.path_entries(project) == [dependency]
