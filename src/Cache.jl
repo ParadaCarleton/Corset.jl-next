@@ -134,7 +134,8 @@ end
 
 """
 Environment parts of key: each environment of `load_path`. Files: Corset project file, and each project environment
-with its Manifest and preferences. Trees: Corset source and Manifest `path` entries.
+with its Manifest and preferences. Trees: Corset source and Manifest `path` entries but Corset root, which can hold
+depot and outputs beside code that Corset loads.
 """
 function environment_inputs(load_path::AbstractVector{String})::Tuple{Vector{String}, Vector{String}, Vector{String}}
     corset = corset_root()
@@ -144,7 +145,8 @@ function environment_inputs(load_path::AbstractVector{String})::Tuple{Vector{Str
         # Directory environment, such as standard library, counts by path.
         isfile(environment) || continue
         append!(listed, environment_files(environment))
-        append!(trees, path_entries(environment))
+        # Relaunch develops Corset by path; its project file and source cover its code.
+        append!(trees, filter(entry -> !(ispath(entry) && realpath(entry) == realpath(corset)), path_entries(environment)))
     end
     return parts, listed, trees
 end

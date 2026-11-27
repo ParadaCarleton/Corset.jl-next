@@ -1757,7 +1757,7 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 </div><div class="decision"><h3>Incremental runs and disk cache</h3>
 <ul>
 <li>Disk cache (<code>Cache</code>) holds one entry per analysis key: key line, then serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.</li>
-<li>Key: SHA-256 of Julia version, <code>Base.CacheFlags</code>, checked path, serialized flags, each load path environment with Manifest and preferences, Corset source, analyzed files, and every file of project root and Manifest <code>path</code> entries.</li>
+<li>Key: SHA-256 of Julia version, <code>Base.CacheFlags</code>, checked path, serialized flags, each load path environment with Manifest and preferences, Corset project file and source, analyzed files, and every file of project root and Manifest <code>path</code> entries but Corset root. Corset root can hold depot and outputs beside its code.</li>
 <li>Key reads file content, so fresh CI checkout hits. Names that start with dot and cache directory stay out of key.</li>
 <li>Key names paths relative to anchors: project root, and project, Manifest and preference files of each load path environment. Other files keep real path: entry relocates root alone. Load path Manifests count by entries, <code>path</code> entries as anchored real paths; other files count by bytes. Copy of project in other directory gives same key.</li>
 <li>Root anchors only when no key file but Manifest holds root path text. Code that names own root can act on it, so key then names root.</li>
