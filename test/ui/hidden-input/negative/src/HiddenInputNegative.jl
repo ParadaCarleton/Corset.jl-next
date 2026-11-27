@@ -78,5 +78,7 @@ spread(values::Vector{Float64}, scale::Float64 = 2.0^3, rng::Union{AbstractRNG, 
 sample(values::Vector{Float64}, rng::Union{AbstractRNG, Nothing} = nothing; scale::Float64 = 1.0) = scale * pick(rng, values)
 # Default value may call `default_rng()`: caller of `reordered(values)` can pass own RNG.
 reordered(values::Vector{Float64}, rng::AbstractRNG = Random.default_rng()) = Random.shuffle(rng, values)
+# Default value that draws runs only when caller passes no RNG: `nudge(x, shift, rng)` replaces draw.
+nudge(x::Float64, shift::Float64 = rand(), rng::Union{AbstractRNG, Nothing} = nothing) = x + shift
 
 end
