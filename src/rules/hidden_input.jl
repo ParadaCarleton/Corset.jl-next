@@ -188,7 +188,8 @@ arguments first, as each method that default positional arguments make does: `f(
 """
 function fills_defaults(method::Method)::Bool
     (Base.hasgenerator(method) || isnothing(method.source)) && return false
-    code = Base.uncompressed_ast(method).code
+    source = Base.uncompressed_ast(method)
+    code = source.code
     returned = last(code)
     returned isa Core.ReturnNode || return false
     isdefined(returned, :val) || return false
@@ -199,11 +200,12 @@ function fills_defaults(method::Method)::Bool
     call isa Expr || return false
     (call.head === :call && length(call.args) > method.nargs) || return false
     all(slot -> call.args[slot] == Core.SlotNumber(slot), 1:method.nargs) || return false
-    return reads_all_before(code, position.id)
+    return reads_all_before(source, position.id)
 end
 
-"""Whether statement `id` of straight-line lowered `code` reads each earlier statement, directly or through others."""
-function reads_all_before(code::AbstractVector{Any}, id::Integer)::Bool
+"""Whether statement `id` of straight-line lowered `source` reads each earlier statement, directly or through others."""
+function reads_all_before(source::Core.CodeInfo, id::Integer)::Bool
+    code = source.code
     used = falses(id)
     used[id] = true
     for index in id:-1:1
