@@ -1765,16 +1765,23 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li>Entry holds plain data: spans, names, call signatures. Typed code stays inside stage, so no rule reads data that store leaves out.</li>
 <li>Entry depends on content hash of file of its method, since spans hold byte offsets.</li>
 <li>Entry also depends on lowered code of each package method that inference read through compiler edges, transitively. Lowered code holds macro output and <code>@eval</code> code.</li>
+<li>Code digest also holds each package binding that lowered code reads: global reference, <code>Sub.C</code>, <code>getglobal(Sub, :C)</code>. Inference folds their values.</li>
+<li>Package module that flows elsewhere (slot, argument, constant container) counts whole: every binding of it and its submodules.</li>
+<li>Binding counts by value when plain constant (number, string, symbol, immutable struct of those), by name when function or module, else by type.</li>
 <li>Closure that edit renumbers has other code, so lowered code also checks what closure and keyword body names mean.</li>
 <li>Edge walk passes through dependency method whose specialization names package type or function: <code>map(f, xs)</code> with package <code>f</code> depends on <code>f</code>.</li>
+<li>Entry also depends on meaning of each package name it read. Callee name (<code>call M.f</code>, <code>new M.T</code>) means ids of its package methods. Type name (<code>type M.T</code>) means layout.</li>
+<li>Entry reads callee of each call its code makes and of each walked instance; reads package types of signatures and their field types.</li>
+<li>So new method of package function drops only entries that call it. Edge of call without match names no method; callee name covers it.</li>
 <li>Entry records generated code of each <code>@generated</code> instance it read. Run calls generator again and compares.</li>
 <li>Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.</li>
 <li>Store key line hashes environment, Corset source, analyzed file list and package shape. Other key drops whole store.</li>
-<li>Package shape: signature and file of each package method, struct layouts, global types and constants. Non-analyzed files in <code>src</code>, <code>ext</code> and <code>deps</code> count too.</li>
-<li>Constant counts by value when plain (number, string, symbol, immutable struct of those), by name when function or module, else by type.</li>
+<li>Package shape: text of files that hold pirate methods, and id of each method on callee of other module (<code>Base.show(::IO, ::T)</code>). Non-analyzed files in <code>src</code>, <code>ext</code> and <code>deps</code> count too.</li>
+<li>Base code reaches pirate and foreign methods with no edge to package code, so their change drops whole store.</li>
 <li>Type counts by layout: field names and types. Struct that edit redefines serializes as before.</li>
-<li>Shape also counts text of files that hold pirate methods: any call can reach them, and walk sees no edge.</li>
-<li>Run checks each entry against file hash, lowered code and generated code; infers only invalid ones; writes store with entries this run used.</li>
+<li>Limit: callee code call that matches too many methods leaves no edge. New package method under such call can leave entry result wider than fresh one.</li>
+<li>Limit: module that code computes (<code>parentmodule(f)</code>) counts by name only.</li>
+<li>Run checks each entry against file hash, names, lowered code and generated code; infers only invalid ones; writes store with entries this run used.</li>
 <li>Result stays serialized until entry proves valid: it can name closure type that edit removed.</li>
 <li>Edit of one method invalidates entries of its file and entries that read its code.</li>
 <li>Later, engine runs on Salsa.jl (julia-vscode, MIT; JuliaWorkspaces.jl uses it): inputs are file texts and Project.toml; derived queries are parse trees, facts and findings. Edit recomputes only dependents; early cutoff stops at unchanged facts. Salsa keeps tables in memory only; disk cache starts new process warm.</li>

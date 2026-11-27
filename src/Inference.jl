@@ -96,14 +96,15 @@ end
 
 """
 Method store entry: content hash of file of method, since spans hold byte offsets; `code_digest` of each package method
-inference read, by `method_id`; generated code it read; serialized `Inferred` result; and serialized `effects` stage
-record of unit (`effects.md`, Solve and cache), empty until `effects` run gives one. Result stays bytes until entry
-proves valid: it can name closure type that edit removed.
+inference read, by `method_id`; generated code it read; meaning of each package name it read (`meanings`); serialized
+`Inferred` result; and serialized `effects` stage record of unit (`effects.md`, Solve and cache), empty until
+`effects` run gives one. Result stays bytes until entry proves valid: it can name closure type that edit removed.
 """
 struct Entry
     file::Pair{String, String}
     methods::Vector{Pair{String, String}}
     staged::Vector{Staged}
+    names::Vector{Pair{String, String}}
     inferred::Vector{UInt8}
     effects::Vector{UInt8}
 end
@@ -640,18 +641,47 @@ include("Inference/failures.jl")
 
 include("Inference/store.jl")
 
+"""Marker of undefined field in `plain_digest` stream."""
+struct UndefinedField end
+
+"""Marker of struct that `plain_digest` stream wrote before, by its visit position: shared part counts once."""
+struct SeenStruct
+    position::Int
+end
+
 """
-Whether `value` is number, character, string, symbol, or immutable struct of those, tuples included: data that inference
-or `@eval` loops of other files read.
+Digest of `value` when number, character, string, symbol, bits value (enum), or immutable struct of those, tuples
+included: data that inference or `@eval` loops of other files read. Other value gives `nothing`. Work stack and
+leaf-only serializer: constant linked list can be deeper than call stack.
 """
-function plain(@nospecialize(value::Any))::Bool
-    value isa Union{Number, AbstractChar, String, Symbol} && return true
-    (isstructtype(typeof(value)) && !ismutable(value)) || return false
-    # Loop, since `all` over tuple compiles once per tuple type. Serializer writes undefined field too.
-    for index in 1:nfields(value)
-        (!isdefined(value, index) || plain(getfield(value, index))) || return false
+function plain_digest(@nospecialize(value::Any))::Union{Nothing, String}
+    stream, pending, seen, kept = IOBuffer(), Any[value], Dict{Ptr{Cvoid}, Int}(), Any[]
+    while !isempty(pending)
+        current = pop!(pending)
+        if current isa Union{Number, AbstractChar, String, Symbol, UndefinedField}
+            serialize(stream, current)
+        elseif isprimitivetype(typeof(current))
+            # Enum value and other bits type: serializer throws for type without `write`, so stream takes raw bytes.
+            serialize(stream, typeof(current))
+            write(stream, reinterpret(UInt8, [current]))
+        elseif isstructtype(typeof(current)) && !ismutable(current)
+            position = get(seen, heap_address(current), 0)
+            if position > 0
+                serialize(stream, SeenStruct(position))
+                continue
+            end
+            push!(kept, current)
+            seen[heap_address(current)] = length(kept)
+            # Type, then fields in order (stack pops last push first): fixed field count keeps stream unambiguous.
+            serialize(stream, typeof(current))
+            for index in nfields(current):-1:1
+                push!(pending, isdefined(current, index) ? getfield(current, index) : UndefinedField())
+            end
+        else
+            return nothing
+        end
     end
-    return true
+    return bytes2hex(sha256(take!(stream)))
 end
 
 """
@@ -671,38 +701,52 @@ function type_layout(value::Type)::String
 end
 
 """
-Shape text of constant `value`: layout for type (`type_layout`), name for function or module, code for enum value,
-serialized value for `plain` value, else type. Inference reads constants (`const op = +`). Serializer throws for `@enum` value.
+Shape text of constant `value`: layout for type (`type_layout`), name for function or module, value digest for plain
+value (`plain_digest`), else type. Inference reads constants (`const op = +`).
 """
 function constant_text(@nospecialize(value::Any))::String
     # Closure value would serialize its methods with their lines; name is stable.
     value isa Union{Function, Module} && return "$(parentmodule(value)).$(nameof(value))"
     value isa Type && return type_layout(value)
-    value isa Enum && return digest(Any[typeof(value), Integer(value)])
-    return plain(value) ? digest(value) : digest(typeof(value))
+    text = plain_digest(value)
+    return isnothing(text) ? digest(typeof(value)) : text
 end
 
 """
-Package shape that method store key hashes: signature and file of each package method; type of each global and shape
-text of each constant (`constant_text`) in package modules, gensym names left out; text of each file that holds method
-whose signature names no package type (piracy: any call can reach it, and walk sees no edge).
+Package shape that method store key hashes (`architecture.md`, Method store): text of each file that holds method whose
+signature names no package type (piracy), and id of each method on callee of other module or on any callee (`foreign_callee`).
+Walk sees no edge to them: call in Base code can reach them.
 """
 function shape(package::PackageFacts)::Vector{String}
     modules, named, parts = Set(package.modules), IdDict{Any, Bool}(), String[]
     for site in Iterators.flatten((package.methods, package.keyword_bodies))
-        push!(parts, "method $(site.file.path) $(digest(site.method.sig))")
-        names_package!(named, site.method.sig, modules) || push!(parts, "piracy $(site.file.path) $(bytes2hex(sha256(site.file.text)))")
-    end
-    for mod in package.modules, name in names(mod; all = true)
-        # Lowering names function types, closures and keyword bodies; entries check their code (`code_digest`).
-        (isdefined(mod, name) && !occursin('#', string(name))) || continue
-        if isconst(mod, name)
-            push!(parts, "constant $mod.$name $(constant_text(getglobal(mod, name)))")
-        else
-            push!(parts, "global $mod.$name $(digest(Core.get_binding_type(mod, name)))")
+        if !names_package!(named, site.method.sig, modules)
+            push!(parts, "piracy $(site.file.path) $(bytes2hex(sha256(site.file.text)))")
+        elseif foreign_callee(site.method.sig, modules)
+            push!(parts, "foreign $(site.file.path) $(method_id(site.method))")
         end
     end
     return unique!(parts)
+end
+
+"""
+Meaning of each package name store entries read (`architecture.md`, Method store): of callee (`package_callee`), digest
+of ids of its package methods; of type, its layout (`type_layout`). Name absent here means `""`: call of name with no
+method, or type that edit removed.
+"""
+function meanings(package::PackageFacts)::Dict{String, String}
+    modules, ids = Set(package.modules), Dict{String, Vector{String}}()
+    for site in Iterators.flatten((package.methods, package.keyword_bodies))
+        name = package_callee(dispatch_name(site.method.sig), modules)
+        isnothing(name) || push!(get!(Vector{String}, ids, name), method_id(site.method))
+    end
+    found = Dict(name => short(digest(sort!(methods))) for (name, methods) in ids)
+    for mod in package.modules, name in names(mod; all = true)
+        (isdefined(mod, name) && isconst(mod, name)) || continue
+        value = getglobal(mod, name)
+        value isa Type && (found["type $mod.$name"] = short(type_layout(value)))
+    end
+    return found
 end
 
 """Step for queued signature: seen before, over `LIMIT`, crashed earlier run, served by store, or inferred."""
@@ -715,14 +759,14 @@ const WAVE = 4
 Step for `method` on `call_signature`, with store key and store entry; marks signature seen and counts it. Calls can
 reach one method with ever new types (`f(x) = f((x,))`), so reached signatures stop at limit.
 """
-function next_step!(seen::AbstractSet{Tuple{Method, Type}}, counts::AbstractDict{Method, <:Integer}, method::Method, call_signature::Type, store::Union{Nothing, Store}, journal::Union{Nothing, Journal}, hashes::AbstractDict{String, String}, index::AbstractDict{String, Method}, codes::AbstractDict{String, String})::Tuple{Step.T, String, Union{Nothing, Entry}}
+function next_step!(seen::AbstractSet{Tuple{Method, Type}}, counts::AbstractDict{Method, <:Integer}, method::Method, call_signature::Type, store::Union{Nothing, Store}, journal::Union{Nothing, Journal}, hashes::AbstractDict{String, String}, index::AbstractDict{String, Method}, memo::Union{Nothing, StoreMemo})::Tuple{Step.T, String, Union{Nothing, Entry}}
     (method, call_signature) in seen && return Step.seen, "", nothing
     push!(seen, (method, call_signature))
     counts[method] = get(counts, method, 0) + 1
     counts[method] > LIMIT && return Step.over_limit, "", nothing
     key = isnothing(store) ? "" : entry_key(method, call_signature)
     isnothing(journal) || !(key in journal.crashed) || return Step.crashed, key, nothing
-    entry = isnothing(store) ? nothing : valid_entry(store, key, hashes, index, codes, journal)
+    entry = isnothing(store) ? nothing : valid_entry(store, key, hashes, index, something(memo), journal)
     return isnothing(entry) ? Step.inferred : Step.stored, key, entry
 end
 
@@ -779,16 +823,16 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
     lines = Dict(file.path => Package.Lines(file) for file in files)
     sites = Dict(site.method => site for site in Iterators.flatten((package.methods, package.keyword_bodies)))
     hashes = Dict(file.path => bytes2hex(sha256(file.text)) for file in files)
-    used, modules, named, helpers = isnothing(store) ? nothing : Store(), Set(package.modules), IdDict{Any, Bool}(), IdDict{Any, Tuple{Bool, Vector{Any}}}()
+    used, modules, helpers = isnothing(store) ? nothing : Store(), Set(package.modules), IdDict{Any, Tuple{Bool, Vector{Any}}}()
     index, ids = isnothing(store) ? (Dict{String, Method}(), IdDict{Method, String}()) : method_index(by_path)
-    codes = Dict{String, String}()
+    memo = isnothing(store) ? nothing : StoreMemo(package, ids)
     typed, stored, seen, counts, coded = TypedCode[], StoredUnit[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
     failing, gaps, settled, disrupting, narrowing = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[], NarrowingLoss[]
     hard, iterates, observed, declared = HardArray[], StatefulIterate[], IdDict{Method, Vector{Tuple{Type, Type}}}(), IdDict{Method, Union{Nothing, Core.CodeInfo}}()
     while !isempty(pending)
         # Queue head is one wave; merge queues reached calls behind rest, in order one queue would give.
         wave = splice!(pending, 1:min(length(pending), WAVE * Threads.nthreads(:default)))
-        steps = Tuple{Step.T, String, Union{Nothing, Entry}}[next_step!(seen, counts, site.method, call_signature, store, journal, hashes, index, codes) for (site, call_signature, _) in wave]
+        steps = Tuple{Step.T, String, Union{Nothing, Entry}}[next_step!(seen, counts, site.method, call_signature, store, journal, hashes, index, memo) for (site, call_signature, _) in wave]
         inferring = [position for (position, (step, _, _)) in enumerate(steps) if step == Step.inferred]
         outputs = Dict(zip(inferring, infer_wave!(journal, Tuple{Method, Type, String}[(wave[position][1].method, wave[position][2], steps[position][2]) for position in inferring])))
         for (position, (site, call_signature, stand_in)) in enumerate(wave)
@@ -805,7 +849,7 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
                     Inferred(Union{}, Tuple{Type, Type}[], Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, false, Disruption[], HardArray[], NarrowingLoss[], StatefulIterate[])
                 else
                     instance, code, returned, frame_edges, flow, frame = result
-                    append!(edges, frame_edges)
+                    append!(edges, frame_edges, call_signatures(code, instance))
                     nodes = statement_nodes(code, mappings(code, instance, site), site.file)
                     opted = [position for position in 1:(site.method.nargs - 1) if explicit_any(site, code.slotnames[position + 1])]
                     provenance = argument_provenance(site.method, call_signature, stand_in, opted)
@@ -822,7 +866,7 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
                         hard_arrays(last(typed), instance, nodes, constructions, array_branch), lost, stateful_iterates(last(typed), instance, nodes),
                     )
                 end
-                entry = isnothing(used) ? nothing : entry!(named, ids, codes, site, call_signature, inferred, edges, by_path, hashes, modules)
+                entry = isnothing(used) ? nothing : entry!(something(memo), site, call_signature, inferred, edges, by_path, hashes)
                 isnothing(journal) || record!(journal, finish_record(key, entry))
             else
                 inferred = deserialize(IOBuffer(entry.inferred))::Inferred

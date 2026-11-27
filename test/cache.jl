@@ -373,24 +373,33 @@ end
             fixed, plain = cached_corset(cache, "fix", directory), corset("fix", other)
             @test fixed[1:2] == plain[1:2] && read(joinpath(directory, "a.jl"), String) == read(joinpath(other, "a.jl"), String)
         end
-        # Rerun after edit takes facts of unchanged files from method store.
+        # Rerun after edit takes facts of unchanged files from method store. New method drops only entries that call its function.
         entry = "\"\"\"Package with two files.\"\"\"\nmodule Stored\ninclude(\"a.jl\")\ninclude(\"b.jl\")\nend\n"
-        first_part, second_part = "first_part(x::Real) = x + 1\n", "second_part(x::Real) = x * 2\n"
+        first_part, second_part = "first_part(x::Real) = x + 1\n", "second_part(x::Real) = x * 2\nthird_part(x::Real) = first_part(x)\n"
         with_package(@__DIR__, "Stored", "src/Stored.jl" => entry, "src/a.jl" => first_part, "src/b.jl" => second_part) do package
             mktempdir(@__DIR__) do cache
                 @test first(cached_corset(cache, "check", package)) == 0
                 checked, store_entry = realpath(package), Corset.Engine.method_entry(realpath(package))
                 key, b = readline(Cache.entry(cache, store_entry)), joinpath(realpath(package), "src", "b.jl")
                 store = Cache.lookup(Corset.Inference.Store, cache, store_entry, key; root = nothing)
-                # Entry of `second_part` that claims failing call shows store serves facts.
-                held = first(name for (name, held) in store if first(held.file) == b)
+                # Entries of `b.jl` that claim failing call show store serves facts: `fake` for `second_part`, `faker` for `third_part`.
                 span = Corset.Facts.Span(b, 1, 11, Corset.Facts.Precision.exact)
-                fake = Corset.Facts.FailingCall(span, span, "fake", Corset.Facts.Confidence.definite)
-                bytes = Corset.Inference.serialized(Corset.Inference.Inferred(Union{}, Tuple{Type, Type}[], Type[], [1 => fake], true, false, Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.StatefulIterate[]))
-                store[held] = Corset.Inference.Entry(store[held].file, store[held].methods, store[held].staged, bytes, store[held].effects)
+                for (name, held) in store
+                    first(held.file) == b || continue
+                    callee = any(==("call Stored.first_part") ∘ first, held.names) ? "faker" : "fake"
+                    fake = Corset.Facts.FailingCall(span, span, callee, Corset.Facts.Confidence.definite)
+                    bytes = Corset.Inference.serialized(Corset.Inference.Inferred(Union{}, Tuple{Type, Type}[], Type[], [1 => fake], true, false, Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.StatefulIterate[]))
+                    store[name] = Corset.Inference.Entry(held.file, held.methods, held.staged, held.names, bytes, held.effects)
+                end
                 Cache.store!(cache, store_entry, key, store; root = nothing)
-                write(joinpath(checked, "src", "a.jl"), first_part * "\n")
-                @test occursin("call to `fake` never succeeds", cached_corset(cache, "check", package)[2])
+                # New method of `first_part` and new function: `third_part` infers again, `second_part` keeps its entry.
+                # Rerun in process keeps loaded module (`Base.require`), so new lines run in it at their file lines.
+                # Rerun of old line would overwrite its method (`method-overwrite`).
+                added, a = "first_part(x::Int) = x - 1\nunrelated(x::Int) = x\n", joinpath(checked, "src", "a.jl")
+                write(a, first_part * added)
+                include_string(Base.root_module(Base.identify_package("Stored")), "\n" * added, a)
+                rerun = cached_corset(cache, "check", package)[2]
+                @test occursin("call to `fake` never succeeds", rerun) && !occursin("call to `faker` never succeeds", rerun)
                 write(b, second_part * "\n")
                 @test first(cached_corset(cache, "check", package)) == 0
                 rm(Cache.entry(cache, store_entry))

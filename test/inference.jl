@@ -12,6 +12,7 @@ using Corset.Inference: reached
 using Base.Broadcast: broadcasted
 using Corset.Inference:
     Store, Entry, Staged, entry_key, method_id, code_digest, staged_digest, method_index, instance, shape, constant_text, digest, names_package!, holds_gensym
+using Corset.Inference: meanings, dispatch_name, package_callee, package_types!, package_reads, binding_text, module_text, held_modules, plain_digest, type_layout, short
 using Corset.Inference: start_record, records, crashed, suspects, unfinished, finished_store, open_journal, record!, method_label, log_file, journal_file
 
 const CASE = joinpath(@__DIR__, "inference", "InferenceCases")
@@ -61,6 +62,59 @@ module Overwritten
     tail(x::Int) = string(x)
     # One line: sorter and replacement method share file and line.
     include_string(@__MODULE__, "same(x::Int; k::Int = 1) = x + k; same(x::Int) = x")
+end
+
+"""Package types and reads for store names: `Outer` holds `Inner`, `Node` holds itself, `Twin` shares parts; `read_*` methods read `Sub` bindings."""
+module Layered
+    module Other
+        const C = 5
+    end
+    module Sub
+        const C = 3
+        # Sibling module only inside container: no binding names it.
+        const MODS = (getglobal(parentmodule(@__MODULE__), :Other),)
+        const var"#C" = 7
+        module Deep
+            const D = 4
+        end
+    end
+    struct Inner
+        a::Int
+    end
+    struct Outer
+        inner::Inner
+    end
+    struct Node
+        next::Union{Nothing, Node}
+    end
+    struct Twin
+        left::Any
+        right::Any
+    end
+    const CHAIN = foldl((next, _) -> Node(next), 1:200_000; init = nothing)
+    read_chain() = CHAIN
+    const SHARED = foldl((inner, _) -> Twin(inner, inner), 1:64; init = 1)
+    read_shared() = SHARED
+    @enum Speed quick crawl
+    const CONFIG = (quick,)
+    read_config() = CONFIG[1] == quick ? 1 : 2
+    read_constant() = Sub.C + 1
+    read_global() = getglobal(Sub, :C)
+    read_deep() = Sub.Deep.D
+    read_alias() = (holder = Sub; holder.C)
+    read_contained() = (holder = Sub; holder.MODS[1].C)
+    read_hidden() = (holder = Sub; getglobal(holder, Symbol("#C")))
+    var"#hash"(x::Int) = x
+    struct var"#Hashed"
+        a::Int
+    end
+    struct Callable <: Function
+        payload::Int
+    end
+    read_here() = getglobal(@__MODULE__, :Inner)
+    const MODULES = (Sub, [(Sub.Deep,)])
+    const NUMBERS = [1.0, 2.0]
+    read_held() = MODULES[1].C
 end
 
 """Code that tests redefine, as edit and reload would: struct `Point`, methods `f` and `leveled`. `Partial` leaves its field undefined."""
@@ -312,27 +366,34 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         # Method whose code changed invalidates callers that read it, through `map` too.
         function stale(name::String)::Store
             id = method_id(only(methods(getglobal(MODULE, Symbol(name)))))
-            return Store(key => Entry(entry.file, [read => (read == id ? "stale" : code) for (read, code) in entry.methods], entry.staged, entry.inferred, entry.effects) for (key, entry) in used)
+            return Store(key => Entry(entry.file, [read => (read == id ? "stale" : code) for (read, code) in entry.methods], entry.staged, entry.names, entry.inferred, entry.effects) for (key, entry) in used)
         end
         @test refreshed(FILES, stale("increment")) == ["increment", "stepped"] && refreshed(FILES, stale("step_of")) == ["mapped", "step_of"]
         # Generator that gives other code invalidates entries that read its output.
-        regenerated = Store(key => Entry(entry.file, entry.methods, [Staged(staged.method, staged.signature, staged.key, "stale") for staged in entry.staged], entry.inferred, entry.effects) for (key, entry) in used)
+        regenerated = Store(key => Entry(entry.file, entry.methods, [Staged(staged.method, staged.signature, staged.key, "stale") for staged in entry.staged], entry.names, entry.inferred, entry.effects) for (key, entry) in used)
         @test refreshed(FILES, regenerated) == ["doubled", "redoubled"]
+        # Entry keeps meaning of package names it read: callees, and types of signature and walked instances.
+        recorded(name::String)::Vector{String} = sort!(unique(first(pair) for code in fresh if stored(code) && source_name(code.site.method) == name for pair in used[entry_key(code.site.method, code.signature)].names))
+        @test recorded("stepped") == ["call $MODULE.increment"] && recorded("mapped") == ["call $MODULE.step_of"] && recorded("radius_of") == ["type $MODULE.Circle"]
+        @test all(meaning == get(meanings(PACKAGE), name, "") for entry in values(used) for (name, meaning) in entry.names)
+        # Name whose meaning changed invalidates only entries that read it: new method of `increment` reaches `stepped` alone.
+        renamed = Store(key => Entry(entry.file, entry.methods, entry.staged, [name => (name == "call $MODULE.increment" ? "stale" : meaning) for (name, meaning) in entry.names], entry.inferred, entry.effects) for (key, entry) in used)
+        @test refreshed(FILES, renamed) == ["stepped"]
         # Method gone from table: entries that read it, or its generated code, infer again.
-        gone = Store(key => Entry(entry.file, [entry.methods; "gone" => "code"], entry.staged, entry.inferred, entry.effects) for (key, entry) in used)
+        gone = Store(key => Entry(entry.file, [entry.methods; "gone" => "code"], entry.staged, entry.names, entry.inferred, entry.effects) for (key, entry) in used)
         signature = Corset.Inference.serialized(Tuple{Int})
-        gone_staged = Store(key => Entry(entry.file, entry.methods, [entry.staged; Staged("gone", signature, "gone", "code")], entry.inferred, entry.effects) for (key, entry) in used)
+        gone_staged = Store(key => Entry(entry.file, entry.methods, [entry.staged; Staged("gone", signature, "gone", "code")], entry.names, entry.inferred, entry.effects) for (key, entry) in used)
         @test length(infer_package(PACKAGE, FILES, gone, nothing)[3].typed) == length(infer_package(PACKAGE, FILES, gone_staged, nothing)[3].typed) == length(fresh)
         # Redefined method keeps its id, so stored entry finds it; its code digest changes.
         before = only(methods(Redefined.f))
         Core.eval(Redefined, :(f(x::Int) = 2))
         after = invokelatest(() -> only(methods(Redefined.f)))
-        @test method_id(before) == method_id(after) && code_digest(before) != code_digest(after)
+        @test method_id(before) == method_id(after) && code_digest(before, Set([Redefined])) != code_digest(after, Set([Redefined]))
         # Generator that gives other code for same signature changes staged digest.
         generated() = something(instance(only(methods(Redefined.leveled)), Tuple{typeof(Redefined.leveled), Int}))
         old = generated()
         Core.eval(Redefined, :(@generated leveled(x) = :(2)))
-        @test staged_digest(old) != staged_digest(invokelatest(generated))
+        @test staged_digest(old, Set([Redefined])) != staged_digest(invokelatest(generated), Set([Redefined]))
         # Index holds methods of analyzed files only, keyword bodies and closures included.
         index, ids = method_index(Dict(file.path => file for file in FILES))
         @test all(method -> any(file -> file.path == string(method.file), FILES), values(index)) && length(index) > length(PACKAGE.methods)
@@ -415,10 +476,75 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         whole(name::String)::Bool = any(startswith("piracy $(only(file.path for file in FILES if basename(file.path) == name)) "), parts)
         # Pirate method makes its file count whole; macro output counts through code of methods that hold it.
         @test whole("callees.jl") && !whole("macros.jl") && !whole("callers.jl")
-        @test count(startswith("method "), parts) == length(PACKAGE.methods) + length(PACKAGE.keyword_bodies)
-        @test !any(contains('#'), parts)
-        @test "global $MODULE.counter $(digest(Int))" in parts && "constant $MODULE.declared $MODULE.declared" in parts
-        @test any(startswith("constant $MODULE.unit "), parts) && allunique(parts)
+        # Method on callee of other module counts by id (`@enum` defines `typemax`); package constructor and callable do not.
+        foreign(signature::Type)::Bool = any(site -> site.method.sig == signature && "foreign $(site.file.path) $(method_id(site.method))" in parts, PACKAGE.methods)
+        @test foreign(Tuple{typeof(typemax), Type{MODULE.Mode}}) && !foreign(Tuple{MODULE.Circle, Real}) && allunique(parts)
+        @test !any(startswith("foreign "), (part for part in parts if contains(part, "callers.jl")))
+        # Meanings: ids of package methods per callee, layout per type.
+        meant = meanings(PACKAGE)
+        @test meant["call $MODULE.increment"] == short(digest([method_id(only(methods(MODULE.increment)))])) && meant["type $MODULE.Circle"] == short(type_layout(MODULE.Circle))
+        @test haskey(meant, "new $MODULE.Circle") && haskey(meant, "call $MODULE.Circle")
+        @test dispatch_name(Tuple{typeof(Core.kwcall), NamedTuple, typeof(sin), Int}) == (:call => typeof(sin).name) && dispatch_name(Tuple{Type{Int}, Int}) == (:new => Int.name)
+        @test isnothing(dispatch_name(Tuple{Type{T}, Int} where {T})) && isnothing(dispatch_name(Tuple{Function, Int})) && isnothing(dispatch_name(Tuple{}))
+        # Name with `#` counts: user writes `var"#hash"`; lowering names closure.
+        closure = x -> x
+        @test isnothing(package_callee(dispatch_name(Tuple{typeof(sin)}), Set([MODULE]))) && package_callee(dispatch_name(Tuple{typeof(closure)}), Set([parentmodule(typeof(closure))])) == "call $(parentmodule(typeof(closure))).$(typeof(closure).name.singletonname)"
+        @test package_callee(dispatch_name(Tuple{typeof(Layered.var"#hash"), Int}), Set([Layered])) == "call $Layered.#hash"
+        # Types: field types of package structs count; self-reference stops.
+        types(type::Type)::Set{Core.TypeName} = (found = Set{Core.TypeName}(); package_types!(found, IdDict{Any, Bool}(), type, Set([Layered])); found)
+        @test types(Tuple{typeof(sin), Vector{Layered.Outer}}) == Set([Layered.Outer.name, Layered.Inner.name]) && types(Tuple{typeof(sin), Layered.Node}) == Set([Layered.Node.name])
+        @test isempty(types(Tuple{typeof(sin), Int})) && types(Tuple{typeof(sin), Layered.var"#Hashed"}) == Set([Layered.var"#Hashed".name])
+        # Splatted argument (`xs::Inner...`) names its element type.
+        @test types(Tuple{typeof(sin), Vararg{Layered.Inner}}) == Set([Layered.Inner.name])
+        # Callable struct has layout; type of named function has none.
+        @test types(Tuple{typeof(sin), Layered.Callable}) == Set([Layered.Callable.name]) && isempty(types(Tuple{typeof(sin), typeof(Layered.read_chain)}))
+        callable = short(type_layout(Layered.Callable))
+        Core.eval(Layered, :(struct Callable <: Function; payload::String; end))
+        @test invokelatest(() -> short(type_layout(Layered.Callable))) != callable
+        # Code digest reads package bindings: constant of package submodule too.
+        layered = Set([Layered, Layered.Other, Layered.Sub, Layered.Sub.Deep])
+        lowered(reader::Function)::Core.CodeInfo = Base.uncompressed_ast(only(methods(reader)))
+        reads(reader::Function)::Vector{String} = package_reads(lowered(reader), layered)
+        whole(reads::Vector{String})::Bool = any(startswith("module "), reads)
+        @test binding_text(Layered.Sub, :C) in reads(Layered.read_constant) && binding_text(Layered, :Sub) in reads(Layered.read_constant) && !whole(reads(Layered.read_constant))
+        @test binding_text(Layered.Sub, :C) in reads(Layered.read_global) && binding_text(Layered, :Inner) in reads(Layered.read_here) && binding_text(Layered.Sub.Deep, :D) in reads(Layered.read_deep)
+        @test !any(whole ∘ reads, (Layered.read_global, Layered.read_here, Layered.read_deep)) && isempty(package_reads(lowered(Layered.read_constant), Set([Redefined])))
+        # Module in slot hides field name, so code reads module whole, submodules too.
+        @test module_text(Layered.Sub, layered) in reads(Layered.read_alias) && module_text(Layered.Sub, layered) != module_text(Layered.Sub.Deep, layered)
+        # Module inside constant container counts whole: index can reach it. Bits element type holds none.
+        held(value::Any)::Set{Module} = held_modules(value, layered)
+        # Whole module counts modules in its constant containers.
+        # Testset calls see latest world, so each read comes before its redefinition.
+        contained = module_text(Layered.Sub, layered)
+        @test contained in reads(Layered.read_contained)
+        Core.eval(Layered.Other, :(const C = 6))
+        @test invokelatest(module_text, Layered.Sub, layered) != contained
+        # Name with `#` counts: alias reads it by computed symbol.
+        hidden = invokelatest(module_text, Layered.Sub, layered)
+        @test hidden in invokelatest(reads, Layered.read_hidden)
+        Core.eval(Layered.Sub, :(const $(Symbol("#C")) = 8))
+        @test invokelatest(module_text, Layered.Sub, layered) != hidden
+        @test module_text(Layered.Sub, layered) in reads(Layered.read_held) && held(Layered.MODULES) == Set([Layered.Sub, Layered.Sub.Deep])
+        @test isempty(held(Layered.NUMBERS)) && isempty(held(Layered.Outer)) && isempty(held((Base, Layered.Inner(1))))
+        # Walk keeps own stack: linked list deeper than call stack holds no module. Shared part counts once: 2^64 paths, 64 objects.
+        @test isempty(held(foldl((next, _) -> Layered.Node(next), 1:200_000; init = nothing)))
+        @test isempty(held(foldl((inner, _) -> Layered.Twin(inner, inner), 1:64; init = 1))) && held(Layered.Twin(Layered.Twin(Layered.Sub, 1), 2)) == Set([Layered.Sub])
+        # Deep plain constant counts by value without recursion; shared part counts once (2^64 paths).
+        @test binding_text(Layered, :CHAIN) in reads(Layered.read_chain) && constant_text(Layered.CHAIN) != constant_text(something(Layered.CHAIN.next))
+        @test binding_text(Layered, :SHARED) in reads(Layered.read_shared) && constant_text(Layered.SHARED) != constant_text(Layered.SHARED.left)
+        # Enum value inside constant counts by value: redefined constant changes code digest of reader.
+        @test constant_text((MODULE.fast,)) != constant_text((MODULE.slow,)) && constant_text(Layered.Twin(MODULE.fast, 1)) != constant_text(Layered.Twin(MODULE.slow, 1))
+        configured = code_digest(only(methods(Layered.read_config)), layered)
+        Core.eval(Layered, :(const CONFIG = (crawl,)))
+        @test invokelatest(code_digest, only(methods(Layered.read_config)), layered) != configured
+        # Lowering puts globals in own statements; nodes that hold operands count too.
+        returned = copy(lowered(Layered.read_deep))
+        returned.code[end] = Core.ReturnNode(GlobalRef(Layered.Sub, :C))
+        @test !(binding_text(Layered.Sub, :C) in reads(Layered.read_deep)) && binding_text(Layered.Sub, :C) in package_reads(returned, layered)
+        # Phi node keeps its operands in vector.
+        returned.code[end] = Core.PhiNode(Int32[1], Any[GlobalRef(Layered.Sub, :C)])
+        @test binding_text(Layered.Sub, :C) in package_reads(returned, layered)
+        @test binding_text(Layered, :absent) == "$Layered.absent" && binding_text(MODULE, :counter) == "$MODULE.counter global $(digest(Int))"
         @test constant_text(MODULE.Circle) != constant_text(MODULE.Wrap) && constant_text(+) == "Base.+"
         @test constant_text(Union{Int, String}) == digest(Union{Int, String}) && constant_text(Int) != constant_text(Int32)
         # `Vararg` tuple type has no field count, so layout reads parameters only.
@@ -428,7 +554,7 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         # Value of other type counts by type: run can change mutable value.
         @test constant_text([1]) == constant_text([2]) != constant_text([1.0]) && constant_text((1, [2])) == constant_text((1, [3]))
         @test constant_text(MODULE.Wrap(1)) != constant_text(MODULE.Wrap(2)) && constant_text(MODULE.Wrap([1])) == constant_text(MODULE.Wrap([2]))
-        @test constant_text(Redefined.Partial()) == digest(Redefined.Partial()) && constant_text(Ref(1)) == constant_text(Ref(2))
+        @test constant_text(Redefined.Partial()) == plain_digest(Redefined.Partial()) && constant_text(Ref(1)) == constant_text(Ref(2)) && isnothing(plain_digest([1]))
         # Struct that edit redefines serializes as before; its layout differs.
         point = Redefined.Point
         Core.eval(
