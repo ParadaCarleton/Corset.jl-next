@@ -6,7 +6,7 @@ using Corset.Package: source_name, keyword_body
 using Corset.Signatures: LIMIT
 using Corset.Inference:
     TypedCode, infer_package, infer, mappings, statement_nodes, broadcast_node, callee_name, spells, untyped, throw_helper, callable, callee_text,
-    settled, holds_stand_in
+    settled, holds_stand_in, typed_code!, helper_verdict!, HelperVerdicts
 using Corset.Widening: statement_call, code_argextype
 using Corset.Inference: reached
 using Base.Broadcast: broadcasted
@@ -596,6 +596,15 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test helper(throw) && helper(error) && helper(rethrow)
         # Builtin, function without methods, and function that returns for some argument types are no helpers.
         @test !helper(Core.tuple) && !helper(MODULE.declared) && !helper(MODULE.single)
+        # Threads share verdicts: second lookup reads cache, so edges are same object.
+        shared = HelperVerdicts()
+        @test first(helper_verdict!(shared, error)) && helper_verdict!(shared, error)[2] === helper_verdict!(shared, error)[2]
+        # Each signature infers once per unit: second statement reads typed code, so edges grow once.
+        codes, edges, method = IdDict{Any, Union{Nothing, Core.CodeInfo}}(), Any[], only(methods(MODULE.single))
+        code = typed_code!(codes, edges, method, method.sig)
+        grown = length(edges)
+        @test typed_code!(codes, edges, method, method.sig) === code && length(edges) == grown && length(codes) == 1
+        @test isnothing(typed_code!(codes, edges, method, Tuple{typeof(MODULE.single), Float64})) && length(codes) == 2
         # Signature that misses method gives no code.
         @test isnothing(infer(only(methods(MODULE.single)), Tuple{typeof(MODULE.single), Float64}))
         @test callable(Core.Const(sin)) === sin && callable(Type{Int}) === Int

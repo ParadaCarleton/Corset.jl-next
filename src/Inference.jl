@@ -66,7 +66,7 @@ end
 
 """
 Result of inferring one method on one signature, as method store keeps it: call signatures of package methods its calls
-reach, call statements that never return by statement index (`failures!`), whether inference gave code and whether
+reach, call statements that never return by statement index (`call_failures`), whether inference gave code and whether
 code tests type, weak values that change input type (`disruptions`), type tests whose narrowing guard drops
 (`narrowings`), and `iterate` calls on `Iterators.Stateful` (`stateful_iterates`).
 """
@@ -773,26 +773,28 @@ function next_step!(seen::AbstractSet{Tuple{Method, Type}}, counts::AbstractDict
 end
 
 """
-`infer` of each `(method, signature, key)` in `jobs`, in order. Suspect of crash `journal` runs alone, first; so does
-each job of one-job wave or one-thread run. Others run on all threads at once.
+`infer` of each `(method, signature, key)` in `jobs`, in order, with verdicts on its calls that never return
+(`call_verdicts!`). Suspect of crash `journal` runs alone, first; so does each job of one-job wave or one-thread run.
+Others run on all threads at once; `helpers` caches throw-helper verdicts across them (`HelperVerdicts`), and package `files` decide own calls.
 """
-function infer_wave!(journal::Union{Nothing, Journal}, jobs::AbstractVector{<:Tuple{Method, Type, String}})::Vector{Union{Nothing, Output}}
+function infer_wave!(journal::Union{Nothing, Journal}, jobs::AbstractVector{<:Tuple{Method, Type, String}}, helpers::HelperVerdicts, files::AbstractDict{String, SyntaxFile})::Vector{Union{Nothing, Tuple{Output, Vector{CallVerdict}, Vector{Any}}}}
     solo = length(jobs) == 1 || Threads.nthreads(:default) == 1
     alone = [solo || (!isnothing(journal) && key in journal.suspects) for (_, _, key) in jobs]
-    single = Dict(position => journaled_infer!(journal, jobs[position]..., true) for position in findall(alone))
-    shared = Dict(position => Threads.@spawn(journaled_infer!(journal, jobs[position]..., false)) for position in findall(!, alone))
-    return Union{Nothing, Output}[alone[position] ? single[position] : fetch(shared[position]) for position in eachindex(jobs)]
+    single = Dict(position => journaled_infer!(journal, helpers, files, jobs[position]..., true) for position in findall(alone))
+    shared = Dict(position => Threads.@spawn(journaled_infer!(journal, helpers, files, jobs[position]..., false)) for position in findall(!, alone))
+    return Union{Nothing, Tuple{Output, Vector{CallVerdict}, Vector{Any}}}[alone[position] ? single[position] : fetch(shared[position]) for position in eachindex(jobs)]
 end
 
 """
-`infer` of `method` on `signature` between start and finish records of store `key` in crash `journal`; `alone` when no
-other inference runs beside it.
+`infer` of `method` on `signature` and verdicts on its calls that never return (`call_verdicts!`), between start and
+finish records of store `key` in crash `journal`; `alone` when no other inference runs beside it.
 """
-function journaled_infer!(journal::Union{Nothing, Journal}, method::Method, signature::Type, key::String, alone::Bool)::Union{Nothing, Output}
+function journaled_infer!(journal::Union{Nothing, Journal}, helpers::HelperVerdicts, files::AbstractDict{String, SyntaxFile}, method::Method, signature::Type, key::String, alone::Bool)::Union{Nothing, Tuple{Output, Vector{CallVerdict}, Vector{Any}}}
     isnothing(journal) || record!(journal, start_record(key, method_label(method), alone))
     result = infer(method, signature)
+    verdicts = isnothing(result) ? nothing : (result, call_verdicts!(helpers, method, signature, result, files)...)
     isnothing(journal) || record!(journal, finish_record(key, nothing))
-    return result
+    return verdicts
 end
 
 """
@@ -825,7 +827,7 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
     lines = Dict(file.path => Package.Lines(file) for file in files)
     sites = Dict(site.method => site for site in Iterators.flatten((package.methods, package.keyword_bodies)))
     hashes = Dict(file.path => bytes2hex(sha256(file.text)) for file in files)
-    used, modules, helpers = isnothing(store) ? nothing : Store(), Set(package.modules), IdDict{Any, Tuple{Bool, Vector{Any}}}()
+    used, modules, helpers = isnothing(store) ? nothing : Store(), Set(package.modules), HelperVerdicts()
     index, ids = isnothing(store) ? (Dict{String, Method}(), IdDict{Method, String}()) : method_index(by_path)
     memo = isnothing(store) ? nothing : StoreMemo(package, ids)
     typed, stored, seen, counts, coded = TypedCode[], StoredUnit[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
@@ -836,7 +838,7 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
         wave = splice!(pending, 1:min(length(pending), WAVE * Threads.nthreads(:default)))
         steps = Tuple{Step.T, String, Union{Nothing, Entry}}[next_step!(seen, counts, site.method, call_signature, store, journal, hashes, index, memo) for (site, call_signature, _) in wave]
         inferring = [position for (position, (step, _, _)) in enumerate(steps) if step == Step.inferred]
-        outputs = Dict(zip(inferring, infer_wave!(journal, Tuple{Method, Type, String}[(wave[position][1].method, wave[position][2], steps[position][2]) for position in inferring])))
+        outputs = Dict(zip(inferring, infer_wave!(journal, Tuple{Method, Type, String}[(wave[position][1].method, wave[position][2], steps[position][2]) for position in inferring], helpers, by_path)))
         for (position, (site, call_signature, stand_in)) in enumerate(wave)
             step, key, entry = steps[position]
             step == Step.seen && continue
@@ -850,14 +852,15 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
                 inferred = if isnothing(result)
                     Inferred(Union{}, Tuple{Type, Type}[], Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, false, Disruption[], HardArray[], NarrowingLoss[], StatefulIterate[])
                 else
-                    instance, code, returned, frame_edges, flow, frame = result
+                    (instance, code, returned, frame_edges, flow, frame), verdicts, verdict_edges = result
                     append!(edges, frame_edges, call_signatures(code, instance))
                     nodes = statement_nodes(code, mappings(code, instance, site), site.file)
                     opted = [position for position in 1:(site.method.nargs - 1) if explicit_any(site, code.slotnames[position + 1])]
                     provenance = argument_provenance(site.method, call_signature, stand_in, opted)
                     push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes)..., frame, provenance, Int[]))
                     # Failures need unit spans; cuts need failures.
-                    failures, stand_in_only = failures!(edges, helpers, last(typed), by_path)
+                    failures, stand_in_only = call_failures(last(typed), verdicts)
+                    append!(edges, verdict_edges)
                     append!(last(typed).cuts, cuts!(declared, site.method, call_signature, code, stand_in_only))
                     changes, branch = Widening.changes!(edges, instance, code)
                     constructions, array_branch = HardArrays.changes!(edges, instance, code)
