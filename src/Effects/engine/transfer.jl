@@ -139,7 +139,7 @@ function call_kinds(outcome::Outcome.Type, writes::OriginAccesses, callees::Call
     end
     dispatched || return kinds
     # Held counts keep no exact 0 (`set_hold!`).
-    for variant in callees.variants[index], (_, resource) in keys(callees.summaries[variant].held)
+    for variant in callees.variants[index], (_, resource) in keys(held_summary(callees.slots, variant).held)
         push!(kinds, resource == Resource.lock ? EffectKind.synchronization : EffectKind.io)
     end
     return kinds

@@ -432,7 +432,7 @@ so variant with code needs own check only. Closure key in `state` holds native e
 out too.
 """
 function unshared!(run::Run, state::Closure)::Set{Variant}
-    order, checked = collect(keys(run.summaries)), IdDict{Core.MethodInstance, Bool}()
+    order, checked = collect(keys(run.slots)), IdDict{Core.MethodInstance, Bool}()
     successors, inside = call_graph(run, order), falses(length(order))
     for component in components(successors)
         reaches = false
@@ -468,7 +468,8 @@ variant with code proves variant parameters of its instance with body, since its
 function library_entries!(run::Run)::Library
     state = Closure(copy(run.cache.modeled))
     inside, entries = unshared!(run, state), Library()
-    for (variant, summary) in run.summaries
+    for variant in keys(run.slots)
+        summary = held_summary(run.slots, variant)
         (variant in inside || !isempty(summary.callbacks)) && continue
         add_entry!(entries, run, state, variant_key!(run, state, variant), first(variant), summary)
     end

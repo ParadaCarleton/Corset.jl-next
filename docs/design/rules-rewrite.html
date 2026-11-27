@@ -1341,6 +1341,9 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 </div><div class="decision"><h3>Solve and cache</h3>
 <ul>
 <li>Call graph over variants; strongly connected components from iterative Tarjan; solve bottom-up.</li>
+<li>Components solve on all threads. Component starts once each component it calls has solved.</li>
+<li>Component reads summaries of its members and of variants they reach alone, so thread schedule changes no summary.</li>
+<li>Reach gives each variant solve slot: summary and budget mark. Solve threads write slots only, so slot table stays fixed.</li>
 <li>Inside component: worklist. Member reads summaries of callees and of callback record variants it resolves. Member reruns when read summary changes.</li>
 <li>Inside instance: rounds over IR until targets settle. These rounds apply callee stores only. One settled round then applies callee accesses.</li>
 <li>Join of methods (Calls, step 5) is not monotone, so summaries in cycle can oscillate.</li>
@@ -1676,7 +1679,7 @@ Build holds file lock. Next run removes lock of dead process at once when lock i
 <li>Load each extension's trigger packages: extension activates only when all triggers are loaded.</li>
 <li>Cache check runs before package load: unchanged rerun loads nothing.</li>
 <li>Native abort kills relaunched process, and Julia <code>try</code> cannot catch it: LLVM <code>UNREACHABLE</code> in Enzyme generator that inference runs on stand-in types.</li>
-<li>Relaunched process runs on thread counts of relaunching process. <code>inference</code> stage infers each worklist wave on all threads, then merges results in queue order: findings and output order match one-thread run. Wave is queue head of <code>WAVE</code> signatures per thread, since wave keeps each compiler frame until its merge.</li>
+<li>Relaunched process runs on thread counts of relaunching process. <code>inference</code> stage infers each worklist wave on all threads, then merges results in queue order: findings and output order match one-thread run. Effects engine solves call graph components on all threads (<code>engine.md</code>, Solve and cache). Wave is queue head of <code>WAVE</code> signatures per thread, since wave keeps each compiler frame until its merge.</li>
 <li>Relaunched process keeps crash journal: store key of each method and signature before its inference, store entry after it. Inference writes stderr to crash log.</li>
 <li>Start record tells whether inference ran alone. Crash beside other inferences makes next run infer each inference in flight alone, so next crash names one method.</li>
 <li>Journal open cuts torn last record: abort on one thread can stop write of other thread.</li>
