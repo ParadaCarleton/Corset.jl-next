@@ -236,7 +236,7 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
   - Method entry lists kinds it takes over, mostly memory. `seed!` turns seed record bookkeeping into default RNG write.
   - Audited field sets kind of every place below it: JIT compile writes code below `Regex` field.
   - Audited global sets kind only in methods of its own package. Caller that writes `Dict` from `parsed_toml` writes memory.
-  - `Regex` compile cache, `LazyString`; Base logging and PCRE contexts.
+  - `Regex` compile cache, `LazyString`; Base logging, PCRE contexts, lock profiling switch of `@time` and `@timed`.
   - IO bookkeeping: temporary path cleanup (`mktempdir`), libuv handles kept alive (`preserve_handle`).
   - Lazy caches: parsed TOML, loading cache, docstring modules, stack trace module colors.
   - Synchronization: Base task queues (`Workqueues`, `Partr.heaps`) that `wait`, `yield` and `schedule` change.

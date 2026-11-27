@@ -88,4 +88,7 @@ end
 Log(line::String, lines::Vector{String}) = (push!(lines, line); Log(lines))
 (log::Log)(line::String) = (push!(log.lines, line); nothing)
 
+# `@timed` turns lock profiling on, then off: Base bookkeeping, no state caller sees.
+seconds_to_sum(values::Vector{Int}) = (@timed sum(values)).time
+
 end

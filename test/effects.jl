@@ -1968,6 +1968,8 @@ hold!(l::ReentrantLock) = lock(l)
 matches(r::Regex, s::String) = occursin(r, s)
 text_of(s::LazyString) = String(s)
 note(x::Int) = @info "note" x
+"""Seconds `sum` of `x` takes: `@timed` turns lock profiling on, then off."""
+seconds_to_sum(x::Vector{Int}) = (@timed sum(x)).time
 warn_old(x::Int) = (Base.depwarn("old", :warn_old); x)
 temp_folder() = mktempdir()
 keep_handle(t::Timer) = Base.preserve_handle(t)
@@ -2079,6 +2081,7 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     @test EffectKind.audited in kinds_at(matched, Root.Global(GlobalRef(Base.PCRE, :THREAD_MATCH_CONTEXTS)))
     @test summary_of(text_of, LazyString).writes[(parameter(2), false, EffectKind.lazy_init)].doubt == NO_DOUBT
     @test EffectKind.audited in kinds_at(summary_of(note, Int).reads, Root.Global(GlobalRef(Base.CoreLogging, :_global_logstate)))
+    @test kinds_at(summary_of(seconds_to_sum, Vector{Int}).writes, Root.Global(GlobalRef(Base.Threads, :LOCK_PROFILING))) == Set([EffectKind.audited])
     @test kinds_at(summary_of(Base.unsafe_convert, Type{Ref{BigFloat}}, Base.MPFR.BigFloatData).writes, Root.Parameter(3)) == Set([EffectKind.audited])
     # `JULIA_DEBUG` cache and frame lookup of deprecation write unknown objects as audited state only.
     for logs in (note, warn_old)
