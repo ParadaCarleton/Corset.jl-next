@@ -46,7 +46,8 @@ const CHECKED_LOADS = ("Package.jl" => :(Base.include(container, entry)),)
 
 """Literal paths of `include` calls in parsed `expression` of `name` (path below `src`), outside quoted code."""
 function included_paths(expression::Any, name::String)::Vector{String}
-    expression isa Expr && !(expression.head in (:quote, :inert)) || return String[]
+    expression isa Expr || return String[]
+    expression.head in (:quote, :inert) && return String[]
     expression.head === :call && expression.args[1] in (:include, :(Base.include)) || return mapreduce(argument -> included_paths(argument, name), vcat, expression.args; init = String[])
     expression.args[end] isa String && return [expression.args[end]]
     (name => expression) in CHECKED_LOADS || throw(ArgumentError("$name: include of computed path, which producer key cannot follow; list checked package load in `CHECKED_LOADS`"))

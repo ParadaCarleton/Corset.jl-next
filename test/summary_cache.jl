@@ -332,7 +332,7 @@ end
     end
 
     @testset "stored units" begin
-        filled = Corset.Engine.with_records(USED, UNITS, RUN, FILES, PACKAGE, nothing)
+        filled = Corset.Effects.with_records(USED, UNITS, RUN, FILES, PACKAGE, nothing)
         @test all(entry -> !isempty(entry.effects), values(filled)) && all(entry -> isempty(entry.effects), values(USED))
         units, used = inferred(copy(filled))
         @test isempty(units.typed) && !isempty(units.stored) && keys(used) == keys(filled)
