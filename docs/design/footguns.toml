@@ -263,10 +263,10 @@ note = "Aqua.jl ambiguity check; covers intersections no analyzed call reaches."
 id = 83
 area = "types"
 text = "Call can never succeed"
-example = "no matching method; undefined global or field"
+example = "no matching method; undefined global or field; call cycle without base case"
 group = "correctness"
 stage = "inference"
-note = "Package call inferred `Union{}` without explicit `throw`. Re-dispatch failing call on narrow real types (`Float32`, `Int32`, `Array`): success means stand-in blind spot, counted on coverage line. Report at deepest package frame only. Signature that works only with `Int`, `Float64` or `Vector`: `possible`. Callee with method that intersects declared argument type (`g(::UInt64)` reached from `x::Integer`): `possible`. JET is test reference."
+note = "Package call inferred `Union{}` without explicit `throw`. Re-dispatch failing call on narrow real types (`Float32`, `Int32`, `Array`): success means stand-in blind spot, counted on coverage line. Report at deepest package frame only. Package method inferred `Union{}` and `nothrow` never ends: loop without exit, or call cycle without base case. One finding per cycle, at first method; callers inherit cycle. Signature that works only with `Int`, `Float64` or `Vector`: `possible`. Callee with method that intersects declared argument type (`g(::UInt64)` reached from `x::Integer`): `possible`. JET is test reference."
 
 [[footgun]]
 id = 84

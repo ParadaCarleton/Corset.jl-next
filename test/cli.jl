@@ -303,7 +303,7 @@ end
         # `--timings` adds stage times to stderr and keeps report.
         timed_code, timed_out, timed_err = corset("check", package, "--timings")
         @test (timed_code, timed_out) == (code, out)
-        @test timing_rows(timed_err) == ["discovery", "package load", "inference", "effects", "lifecycle", "external", "rules"]
+        @test timing_rows(timed_err) == ["discovery", "package load", "inference", EFFECTS_ROWS..., "lifecycle", "external", "rules"]
         @test occursin("warning[internal-access]: `Base.unwrap_unionall` is internal to `Base`\n --> src/Ambiguous.jl:5:25", out)
         # Access in file outside checked path drops.
         @test !occursin("internal-access", corset("check", joinpath(package, "src", "side.jl"))[2])
@@ -562,7 +562,7 @@ end
                 fresh = launched("check", root, "-A", "annotation", "--timings", "--no-cache")
                 @test fresh[1:2] == (code, out)
                 # Crash journal of relaunched process serves as method store; run without cache fills none.
-                @test timing_rows(fresh[3]) == ["environment", "load Corset", "discovery", "package load", "inference", "effects", "lifecycle", "external", "rules", "analysis process"]
+                @test timing_rows(fresh[3]) == ["environment", "load Corset", "discovery", "package load", "inference", EFFECTS_ROWS..., "lifecycle", "external", "rules", "analysis process"]
                 # Copy elsewhere reuses environment and analysis of `root`: key names root by anchor, and skips Corset
                 # root, which holds `root`.
                 mktempdir() do elsewhere

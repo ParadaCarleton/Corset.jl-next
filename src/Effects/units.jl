@@ -1,5 +1,7 @@
 # Unit records and method facts of name tier (`effects.md`, Units and IR, Facts).
 
+using ..Timings: Sink, timed
+
 """Blind spot cause of unit that always throws on stand-ins: it shows no behavior of declared signature."""
 const ALWAYS_THROWS = "always throws on stand-ins"
 
@@ -294,21 +296,23 @@ end
 """
 `effects` stage run on `package` from inference `units` (`StageRun`), with `library` cache of engine summaries
 (`engine.md`, Solve and cache). Stored units give their kept records. Crash `journal` records offset inferences and
-native inference of library instances; `nothing` none.
+native inference of library instances; `nothing` none. Step times go to `timings` unless `nothing`.
 """
-function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Inference.Journal}, library::Summaries.Library)::StageRun
+function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Inference.Journal}, library::Summaries.Library; timings::Union{Nothing, Sink} = nothing)::StageRun
     world = Base.get_world_counter()
     interpreter, modules, seen = CC.NativeInterpreter(world), Set{Module}(package.modules), Base.IdSet{Core.MethodInstance}()
     fresh, edges = Union{Nothing, UnitEffects}[], Union{Nothing, Vector{Any}}[]
-    for typed in units.typed
-        record, read = typed.frame.linfo in seen ? (nothing, Any[]) : unit_effects(typed, modules, interpreter, world, journal)
-        push!(fresh, record)
-        push!(edges, read)
-        push!(seen, typed.frame.linfo)
+    timed(timings, "effects name tier") do
+        for typed in units.typed
+            record, read = typed.frame.linfo in seen ? (nothing, Any[]) : unit_effects(typed, modules, interpreter, world, journal)
+            push!(fresh, record)
+            push!(edges, read)
+            push!(seen, typed.frame.linfo)
+        end
     end
     kept = Union{Nothing, Tuple{UnitEffects, Summaries.UnitVerdict}}[unit_record(unit.effects, world) for unit in units.stored]
     stored = Union{Nothing, UnitEffects}[isnothing(pair) ? nothing : first(pair) for pair in kept]
-    verdicts, engine_spots, fresh_verdicts, entries, hits = Summaries.cached_effects(package, units, Union{Nothing, Summaries.UnitVerdict}[isnothing(pair) ? nothing : last(pair) for pair in kept], journal, library)
+    verdicts, engine_spots, fresh_verdicts, entries, hits = Summaries.cached_effects(package, units, Union{Nothing, Summaries.UnitVerdict}[isnothing(pair) ? nothing : last(pair) for pair in kept], journal, library; timings)
     ordered = ordered_records(units, fresh, stored)
     facts, spots = method_facts(package, units.incomplete, ordered, verdicts)
     return StageRun(facts, unique!([spots; engine_spots]), fresh, fresh_verdicts, edges, ordered, entries, hits)

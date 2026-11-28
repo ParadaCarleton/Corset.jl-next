@@ -34,6 +34,7 @@ The guide section "Load errors" describes this environment.
 `fix` also takes `--tier` with `safe`, `likely` or `breaking`. The default comes from the configuration.
 
 `--timings` prints the seconds of each stage to standard error when the stage ends: wall time, compile time and garbage collection time.
+The `effects` stage also prints its steps before its own line: name tier, bodies, reach, solve and verdicts.
 The first process prints the environment build and the cache lookup.
 The second Julia process then prints the time to load Corset and its stages.
 The last line is the whole second process.

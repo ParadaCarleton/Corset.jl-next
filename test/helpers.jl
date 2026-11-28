@@ -12,6 +12,9 @@ end
 """Line `--timings` prints: stage name, then wall, compile and garbage collection seconds."""
 const TIMING_ROW = r"^corset: stage (\S+(?: \S+)*) +[\d.]+ s wall +[\d.]+ s compile +[\d.]+ s gc$"
 
+"""Timing rows of `effects` stage: its steps as each ends, then stage."""
+const EFFECTS_ROWS = ["effects name tier", "effects bodies", "effects reach", "effects solve", "effects verdicts", "effects"]
+
 """Stage names of `--timings` lines in standard error text `err`, in order."""
 timing_rows(err::String)::Vector{String} = [String(match(TIMING_ROW, line)[1]) for line in split(err, '\n') if occursin(TIMING_ROW, line)]
 

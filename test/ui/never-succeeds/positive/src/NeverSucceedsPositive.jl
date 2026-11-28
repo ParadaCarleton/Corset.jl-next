@@ -23,4 +23,17 @@ function scaled(count::Integer, factor::Integer = 1.5)
     return count * factor
 end
 
+# Cycle without base case reports once, at first method; caller of cycle only inherits it.
+variance(x::Real) = deviation(x)^2
+deviation(x::Real) = sqrt(variance(x))
+spread(x::Real) = deviation(x) + 1
+
+# Loop without exit.
+function settle(count::Int)
+    while true
+        count += 1
+    end
+    return count
+end
+
 end

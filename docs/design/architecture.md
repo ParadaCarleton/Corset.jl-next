@@ -90,7 +90,7 @@ end
 
 Flags: `-A`, `-W`, `-D <rule or group>` set levels and apply in order, as in rustc; `-D warnings` fails run on warnings; `--confidence definite|possible`; `--format text|json|sarif`; `--tier safe|likely|breaking` for `fix`; `--no-cache`; `--timings`.
 
-`--timings` prints wall, compile and garbage collection seconds of each stage to stderr as stage ends: stderr write, so stage functions write no argument. Relaunching process prints environment and cache lookup, relaunched process its Corset load and stages, then relaunching process analysis process. Flag stays out of cache key: hit times lookup only.
+`--timings` prints wall, compile and garbage collection seconds of each stage to stderr as stage ends: stderr write, so stage functions write no argument. Effects stage prints its steps too (name tier, bodies, reach, solve, verdicts), so a routine run shows serial steps. Relaunching process prints environment and cache lookup, relaunched process its Corset load and stages, then relaunching process analysis process. Flag stays out of cache key: hit times lookup only.
 
 Install: `pkg> app add Corset` puts `corset` on PATH (Julia app); `julia -m Corset` runs same entry point. App starts Julia on all cores (`--threads=auto`); `corset --threads=N --` sets other count. Text output ends with count line (errors, warnings, baselined), then coverage line. JSON report has version field; SARIF 2.1.0 log counts columns in code points and carries byte offsets, related locations and fixes.
 
@@ -133,7 +133,7 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 
 - Disk cache (`Cache`) holds one entry per analysis key: key line, then serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.
 - Key: SHA-256 of Julia version, `Base.CacheFlags`, checked path, serialized flags, each load path environment with Manifest and preferences, Corset project file and source, analyzed files, and every file of project root and Manifest `path` entries but Corset root. Corset root can hold depot and outputs beside its code.
-- Key reads file content, so fresh CI checkout hits. Names that start with dot and cache directory stay out of key.
+- Key reads file content, so fresh CI checkout hits. Names that start with dot and cache directory stay out of key. Corset source counts by its Julia files.
 - Key names paths relative to anchors: project root, and project, Manifest and preference files of each load path environment. Other files keep real path: entry relocates root alone. Load path Manifests count by entries, `path` entries as anchored real paths; other files count by bytes. Copy of project in other directory gives same key.
 - Root anchors only when no key file but Manifest holds root path text. Code that names own root can act on it, so key then names root.
 - Entry of anchored root stores root as mark in every string; read puts root of checked copy in its place. Root left outside strings, such as in `Symbol`, fails store. `SubString` fails too: its offsets would go stale.

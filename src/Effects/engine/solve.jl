@@ -797,18 +797,21 @@ end
 """
 Summaries of `roots` and every variant they reach: call graph components solved callees first, on `workers` tasks
 (`after_successors`). Component reads summaries of its members and of variants they reach alone, so schedule changes
-no summary. Library cache hit has no code, so it forms component alone and keeps its stored summary.
+no summary. Library cache hit has no code, so it forms component alone and keeps its stored summary. Reach and solve
+times go to `timings` unless `nothing`.
 """
-function solve!(run::Run, roots::AbstractVector{Variant}; workers::Integer = Threads.nthreads(:default))::Nothing
-    order = reach!(run, roots)
+function solve!(run::Run, roots::AbstractVector{Variant}; workers::Integer = Threads.nthreads(:default), timings::Union{Nothing, Sink} = nothing)::Nothing
+    order = timed(() -> reach!(run, roots), timings, "effects reach")::Vector{Variant}
     # Frames left are of callees no body needs.
     empty!(run.frames)
-    successors = call_graph(run, order)
-    found = components(successors)
-    after_successors(component_graph(successors, found); workers) do component
-        members = order[found[component]]
-        # Only hit has summary before its component solves.
-        all(member -> !isnothing(run.slots[member].summary), members) || solve_cycle!(run, members)
+    timed(timings, "effects solve") do
+        successors = call_graph(run, order)
+        found = components(successors)
+        after_successors(component_graph(successors, found); workers) do component
+            members = order[found[component]]
+            # Only hit has summary before its component solves.
+            all(member -> !isnothing(run.slots[member].summary), members) || solve_cycle!(run, members)
+        end
     end
     return nothing
 end
