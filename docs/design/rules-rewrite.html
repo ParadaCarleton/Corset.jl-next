@@ -1317,6 +1317,15 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>Library callee that gets argument and draws default RNG: caller verdict misses it. Fix needs default RNG provenance in summaries.</li>
 </ul>
 </li>
+<li>Summary keeps library draw site: line of first default RNG draw in dependency code.
+<ul>
+<li>Draw statement takes site of callee summary there.</li>
+<li>Without one, method outside Base, stdlib and package gives own line.</li>
+<li>Unit verdict gives each default RNG access span of that line, from callees at its cause statement.</li>
+<li><code>hidden-input</code> labels that line: dependency draws without RNG argument caller could pass.</li>
+<li>Widening keeps old site; summary without draw has none.</li>
+</ul>
+</li>
 <li><code>ScopedValue</code> read: read of <code>ScopedValue</code> object or of current task scope, its dictionary included (<code>ScopedValues.get</code> of <code>ScopedValue</code>; package subtype runs own default).</li>
 <li>Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.</li>
 <li>Lazy init and audited internal state come from audited table of Base types and methods only:

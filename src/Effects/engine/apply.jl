@@ -200,7 +200,7 @@ function map_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses
     end
     for ((place, below, kind), effect) in summary.reads
         access!(reads, last(access_objects!(flow, site, place, below, caller_kind(kind))), below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), caller_kind(kind))
-        summary.seeding.draws && draw!(flow, site.index, caller_kind(kind))
+        summary.rng.draws && draw!(flow, site.index, caller_kind(kind))
     end
     return nothing
 end

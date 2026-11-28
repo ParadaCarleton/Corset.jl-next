@@ -34,7 +34,7 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, world::UIn
     for index in 1:length(ir.stmts)
         line, span = lines[index], spans[index]
         events, invoked = statement_events(walk, index)
-        foreach(event -> push!(event.write ? writes : reads, Access(event.place, event.below, event.kind, event.confidence, false, span)), events)
+        foreach(event -> push!(event.write ? writes : reads, Access(event.place, event.below, event.kind, event.confidence, false, span, nothing)), events)
         statement = ir.stmts[index][:stmt]
         if statement isa Core.ReturnNode && isdefined(statement, :val)
             returned = operand_value(walk, statement.val)

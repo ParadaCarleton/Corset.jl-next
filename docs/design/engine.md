@@ -260,6 +260,12 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
   - Bare `rand()` beside `rand(rng)`, or builtin access to `Task`, keeps default RNG.
   - Callee that gets argument and also draws default RNG: package callee verdict keeps it, so `hidden-input` reports callee.
   - Library callee that gets argument and draws default RNG: caller verdict misses it. Fix needs default RNG provenance in summaries.
+- Summary keeps library draw site: line of first default RNG draw in dependency code.
+  - Draw statement takes site of callee summary there.
+  - Without one, method outside Base, stdlib and package gives own line.
+  - Unit verdict gives each default RNG access span of that line, from callees at its cause statement.
+  - `hidden-input` labels that line: dependency draws without RNG argument caller could pass.
+  - Widening keeps old site; summary without draw has none.
 - `ScopedValue` read: read of `ScopedValue` object or of current task scope, its dictionary included (`ScopedValues.get` of `ScopedValue`; package subtype runs own default).
 - Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.
 - Lazy init and audited internal state come from audited table of Base types and methods only:

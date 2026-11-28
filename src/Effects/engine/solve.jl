@@ -352,6 +352,13 @@ blind spots): Base, Core, and stand-in methods that model them.
 keeps_contracts(method::Method)::Bool = Base.moduleroot(method.module) in (Base, Core) || method.module === StandIns
 
 """
+Whether draw of default RNG in `method` gives its own line as library draw site (`engine.md`, Effect kinds): module
+outside Base, Core, stand-ins, stdlib and package of `run`.
+"""
+library_line(run::Run, method::Method)::Bool =
+    !keeps_contracts(method) && !Base.is_stdlib(Base.PkgId(Base.moduleroot(method.module))) && !(method.module in run.modules)
+
+"""
 Crash journal key of native inference of `instance`; prefix keeps it apart from method store keys. Canonical type text
 (`type_text!`) agrees across processes and caches each type part per run, as library keys do; `show` of deep types is slow.
 """
@@ -598,7 +605,7 @@ function named_summary(run::Run, variant::Variant)::Summary
     method = first(variant).def::Method
     open, subject = open_summary(Int(method.nargs), BUDGET), named_subject(method, run.codes[variant].ir)
     writes = isnothing(subject) ? Accesses() : Accesses((Place.At(Root.Parameter(subject), NO_STEPS), true, EffectKind.memory) => Effect(CODE_DOUBT, 0, ""))
-    return Summary(writes, open.reads, open.edges, open.backing, open.spread, open.bound, open.callbacks, open.result, open.fresh, true, open.cut, open.held, open.thrown, open.unguarded, open.seeding)
+    return Summary(writes, open.reads, open.edges, open.backing, open.spread, open.bound, open.callbacks, open.result, open.fresh, true, open.cut, open.held, open.thrown, open.unguarded, open.rng)
 end
 
 """
@@ -610,7 +617,7 @@ function variant_summary!(run::Run, variant::Variant, flush::Bool)::Tuple{Summar
     method, slot = first(variant).def::Method, run.slots[variant]
     slot.over_budget && return named_summary(run, variant), Set{Variant}()
     flow, callees = variant_flow(run, variant, flush, false)
-    over_budget(flow) || return summarize!(flow, method, callees), callees.read
+    over_budget(flow) || return summarize!(flow, method, callees, library_line(run, method)), callees.read
     slot.over_budget = true
     return named_summary(run, variant), callees.read
 end

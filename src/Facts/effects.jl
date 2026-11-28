@@ -224,8 +224,9 @@ end
 
 """
 Access to caller-visible object (`effects` stage fact): place, whether it covers every place below it too, kind,
-confidence, whether callable argument makes it, and cause span in package code. `possible` access: value can hold more
-than one object, or foreign call. Callable argument access: unit runs callable that caller passes (`map(f, xs)`).
+confidence, whether callable argument makes it, cause span in package code, and line in dependency that draws default
+RNG (`site`, `nothing` otherwise). `possible` access: value can hold more than one object, or foreign call. Callable
+argument access: unit runs callable that caller passes (`map(f, xs)`).
 """
 struct Access
     place::Place.Type
@@ -234,6 +235,7 @@ struct Access
     confidence::Confidence.T
     callback::Bool
     cause::Span
+    site::Union{Nothing, Span}
 end
 
 """
