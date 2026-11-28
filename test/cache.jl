@@ -165,8 +165,8 @@ end
         @test joinpath(source, "Inference", "failures.jl") in files && Cache.producer_digest() == Cache.producer_digest()
         @test all(occursin(string(call), read(joinpath(source, name), String)) for (name, call) in Cache.CHECKED_LOADS)
         mktempdir(@__DIR__) do scratch
-            # Literal include counts in block and function body; docstring and quote hold text.
-            nested = "begin include(\"A/b.jl\") end\n\"\"\"\ninclude(\"none.jl\")\n\"\"\"\nquote include(name) end\nk() = include(\"A/c.jl\")\n"
+            # Literal include counts in block and function body; docstring and quote hold text. Self-include ends walk.
+            nested = "begin include(\"A/b.jl\") end\n\"\"\"\ninclude(\"none.jl\")\n\"\"\"\nquote include(name) end\nk() = include(\"A/c.jl\")\nif false\n    include(\"./A.jl\")\nend\n"
             write_files(scratch, "A.jl" => nested, "A/b.jl" => "b = 1\n", "A/c.jl" => "", "C.jl" => "")
             @test Cache.producer_files(scratch, ("A.jl",)) == joinpath.(scratch, ["A.jl", "A/b.jl", "A/c.jl"])
             # Computed include throws in function body too, but listed checked package load.

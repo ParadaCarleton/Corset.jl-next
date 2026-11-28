@@ -55,12 +55,12 @@ end
 
 """Files of `source` that `entries` load: each entry and every file it includes, transitively, sorted. Missing file throws."""
 function producer_files(source::String, entries::Tuple{Vararg{String}})::Vector{String}
-    pending, found = joinpath.(source, collect(entries)), Set{String}()
+    pending, found = normpath.(joinpath.(source, collect(entries))), Set{String}()
     while !isempty(pending)
         file = pop!(pending)
         file in found && continue
         push!(found, file)
-        append!(pending, joinpath.(dirname(file), included_paths(Meta.parseall(read(file, String); filename = file), relpath(file, source))))
+        append!(pending, normpath.(joinpath.(dirname(file), included_paths(Meta.parseall(read(file, String); filename = file), relpath(file, source)))))
     end
     return sort!(collect(found))
 end
