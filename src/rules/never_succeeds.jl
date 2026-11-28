@@ -47,12 +47,15 @@ using ...Facts
 
 const NAME = Symbol("never-succeeds")
 
-"""Finding for package methods of `cycle` that never return nor throw."""
+"""
+Finding for package methods of `cycle` that never return. Loop never throws either; recursion throws `StackOverflowError`.
+"""
 function endless_finding(cycle::EndlessCycle)::Finding
-    why = isempty(cycle.calls) ? "loop never exits, so every call hangs" : "calls recurse without base case, so every call overflows stack"
+    loop = isempty(cycle.calls)
+    why = loop ? "loop never exits, so every call hangs" : "calls recurse without base case, so every call overflows stack"
     return Finding(
-        NAME, :never_returns, cycle.confidence, "`$(cycle.name)` never returns", Label(cycle.span, "never returns and never throws"), cycle.calls, why,
-        manual_fix(isempty(cycle.calls) ? "add loop exit" : "add base case, or call other method in cycle"),
+        NAME, :never_returns, cycle.confidence, "`$(cycle.name)` never returns", Label(cycle.span, loop ? "never returns and never throws" : "never returns"), cycle.calls, why,
+        manual_fix(loop ? "add loop exit" : "add base case, or call other method in cycle"),
     )
 end
 

@@ -61,7 +61,7 @@ error[never-succeeds]: `variance` never returns
   --> src/NeverSucceedsPositive.jl:27:1
    |
 27 | variance(x::Real) = deviation(x)^2
-   | ^^^^^^^^ never returns and never throws
+   | ^^^^^^^^ never returns
    |                     ------------ calls `deviation`, which never returns
 28 | deviation(x::Real) = sqrt(variance(x))
    |                           ----------- calls `variance`, which never returns
