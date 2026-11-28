@@ -103,6 +103,9 @@ forever(x::Int) = forever(x)
 spin(x::Int) = (while true; x += 1; end; x)
 countdown(x::Int) = x > 0 ? countdown(x - 1) : 0
 pump(channel::Channel{Int}) = (while true; put!(channel, 1); end)
+# `Int` input enters endless `spiral`; stand-in input recurses on itself, so both cycles report.
+branching(x::Real) = x isa Int ? spiral(x) : branching(x)
+spiral(x::Real) = spiral(x)
 # Ends on declared `Real`; float stand-in and its model run without end.
 bounce(x::Real) = x isa AbstractFloat ? bounce(x) : x
 function padded(x::Real, y = 2)

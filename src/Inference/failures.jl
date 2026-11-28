@@ -207,14 +207,31 @@ function endless_verdict(method::Method, signature::Type, output::Output)::Tuple
     return nothing, edges
 end
 
-"""Methods that `callees` (method to methods its endless calls reach) lead to from `start`, through any number of calls."""
-function reachable(callees::IdDict{Method, Vector{Method}}, start::Method)::IdSet{Method}
-    found, pending = IdSet{Method}(), copy(get(callees, start, Method[]))
+"""
+Endless units of each package method: method site, its confidence, and for each unit its signature and package calls
+that never return (call span => call signature).
+"""
+const EndlessUnits = IdDict{Method, Tuple{MethodSite, Confidence.T, Vector{Tuple{Type, Vector{Pair{Span, Type}}}}}}
+
+"""
+Units that call of `signature` reaches, as indices of `nodes` (method and signature): unit of same signature, else
+every unit of callee. Callee without endless unit gives `0`: cause stays hidden, so no cycle around call reports.
+"""
+function call_targets(nodes::Vector{Tuple{Method, Type}}, by_method::IdDict{Method, Vector{Int}}, signature::Type)::Vector{Int}
+    units = get(by_method, dispatched(signature), Int[])
+    isempty(units) && return [0]
+    exact = filter(index -> nodes[index][2] == signature, units)
+    return isempty(exact) ? units : exact
+end
+
+"""Units that `edges` (unit to units its endless calls reach) lead to from `start`, through any number of calls."""
+function reachable(edges::Vector{Vector{Int}}, start::Int)::BitSet
+    found, pending = BitSet(), copy(edges[start])
     while !isempty(pending)
-        method = pop!(pending)
-        method in found && continue
-        push!(found, method)
-        append!(pending, get(callees, method, Method[]))
+        node = pop!(pending)
+        node in found && continue
+        push!(found, node)
+        node == 0 || append!(pending, edges[node])
     end
     return found
 end
@@ -223,25 +240,38 @@ end
 source_position(site::MethodSite)::Tuple{String, Int} = (site.span.file, site.span.first_byte)
 
 """
-Endless cycles (`EndlessCycle`) of package methods. `units` maps endless method to its site, confidence and package
-calls that never return (call span => call signature). Cycle reports when no such call leaves it: caller of endless
-method only inherits it, and callee without endless unit hides cause. One fact per cycle, at its first method.
+Endless cycles (`EndlessCycle`) of package `units`. Cycle of units reports when no endless call leaves it: caller of
+endless unit only inherits it. Units, not methods, make cycle: `f(x::Real) = x isa Int ? g(x) : f(x)` with endless `g`
+loops on its own for float stand-in. One fact per first method of cycle.
 """
-function endless_cycles(units::IdDict{Method, Tuple{MethodSite, Confidence.T, Vector{Pair{Span, Type}}}})::Vector{EndlessCycle}
-    callees = IdDict{Method, Vector{Method}}(method => [dispatched(signature) for (_, signature) in calls] for (method, (_, _, calls)) in units)
-    reach = IdDict{Method, IdSet{Method}}(method => reachable(callees, method) for method in keys(units))
-    found, seen = EndlessCycle[], IdSet{Method}()
-    for method in sort!(collect(keys(units)); by = method -> source_position(units[method][1]))
-        method in seen && continue
-        cycle = push!(IdSet{Method}(callee for callee in reach[method] if haskey(reach, callee) && method in reach[callee]), method)
+function endless_cycles(units::EndlessUnits)::Vector{EndlessCycle}
+    ordered = sort!(collect(keys(units)); by = method -> source_position(units[method][1]))
+    nodes = Tuple{Method, Type}[(method, signature) for method in ordered for (signature, _) in units[method][3]]
+    calls = Vector{Pair{Span, Type}}[unit_calls for method in ordered for (_, unit_calls) in units[method][3]]
+    by_method = IdDict{Method, Vector{Int}}()
+    for (index, (method, _)) in enumerate(nodes)
+        push!(get!(Vector{Int}, by_method, method), index)
+    end
+    targets = [[call_targets(nodes, by_method, signature) for (_, signature) in unit_calls] for unit_calls in calls]
+    edges = [reduce(vcat, unit_targets; init = Int[]) for unit_targets in targets]
+    reach = [reachable(edges, index) for index in eachindex(nodes)]
+    cycles, seen = IdDict{Method, Tuple{Vector{Label}, Bool}}(), BitSet()
+    for index in eachindex(nodes)
+        index in seen && continue
+        cycle = push!(BitSet(node for node in reach[index] if node != 0 && index in reach[node]), index)
         union!(seen, cycle)
         # Every member reaches what first member reaches, so one check covers cycle.
-        issubset(reach[method], cycle) || continue
-        members = sort!(collect(cycle); by = member -> source_position(units[member][1]))
-        # Stand-in signatures of one method repeat call span.
-        calls = unique!(label -> label.span, [Label(span, "calls `$(dispatched(signature).name)`, which never returns") for member in members for (span, signature) in units[member][3] if dispatched(signature) in cycle])
-        definite = all(member -> units[member][2] == Confidence.definite, members)
-        push!(found, EndlessCycle(name_span(units[method][1]), Package.source_name(method), calls, definite ? Confidence.definite : Confidence.possible))
+        issubset(reach[index], cycle) || continue
+        labels = [Label(span, "calls `$(dispatched(signature).name)`, which never returns") for node in cycle for ((span, signature), reached) in zip(calls[node], targets[node]) if any(in(cycle), reached)]
+        definite = all(node -> units[first(nodes[node])][2] == Confidence.definite, cycle)
+        # Nodes follow method order, so first node holds first method of cycle.
+        found, certain = get(cycles, first(nodes[index]), (Label[], true))
+        cycles[first(nodes[index])] = (append!(found, labels), certain && definite)
     end
-    return found
+    return map(filter(in(keys(cycles)), ordered)) do method
+        labels, definite = cycles[method]
+        # Stand-in units of one method repeat call span.
+        closing = sort!(unique!(label -> label.span, labels); by = label -> (label.span.file, label.span.first_byte))
+        return EndlessCycle(name_span(units[method][1]), Package.source_name(method), closing, definite ? Confidence.definite : Confidence.possible)
+    end
 end

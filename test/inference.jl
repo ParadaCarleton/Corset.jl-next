@@ -346,7 +346,9 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         cycles = Dict(text(cycle.span) => cycle for cycle in FACTS.endless)
         # Caller of cycle inherits it, so cycle reports once, at first method. Stand-in signatures share call spans.
         # `nest` wraps its argument at each call and has no base case either.
-        @test sort!(collect(keys(cycles))) == ["bounce", "endless_var", "forever", "nest", "spin"] && all(name -> cycles[name].name == name, keys(cycles))
+        @test sort!(collect(keys(cycles))) == ["bounce", "branching", "endless_var", "forever", "nest", "spin", "spiral"] && all(name -> cycles[name].name == name, keys(cycles))
+        # Call into other cycle closes no cycle, so it gets no label.
+        @test [text(label.span) for label in cycles["branching"].calls] == ["branching(x)"]
         @test [text(label.span) for label in cycles["nest"].calls] == ["nest((x,))"]
         @test [(text(label.span), label.text) for label in cycles["endless_var"].calls] == [("endless_std(x)", "calls `endless_std`, which never returns"), ("endless_var(x)", "calls `endless_var`, which never returns")]
         @test [text(label.span) for label in cycles["forever"].calls] == ["forever(x)"] && isempty(cycles["spin"].calls)

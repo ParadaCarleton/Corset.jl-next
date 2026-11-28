@@ -842,7 +842,7 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
     typed, stored, seen, counts, coded = TypedCode[], StoredUnit[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
     failing, gaps, settled, disrupting, narrowing = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[], NarrowingLoss[]
     hard, iterates, observed, declared = HardArray[], StatefulIterate[], IdDict{Method, Vector{Tuple{Type, Type}}}(), IdDict{Method, Union{Nothing, Core.CodeInfo}}()
-    looping = IdDict{Method, Tuple{MethodSite, Confidence.T, Vector{Pair{Span, Type}}}}()
+    looping = EndlessUnits()
     while !isempty(pending)
         # Queue head is one wave; merge queues reached calls behind rest, in order one queue would give.
         wave = splice!(pending, 1:min(length(pending), WAVE * Threads.nthreads(:default)))
@@ -899,7 +899,7 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
             end
             push!(coded, site.method)
             # Declared signature decides `definite`, so units of one method agree on confidence.
-            isnothing(inferred.endless) || unique!(append!(get!(() -> (site, something(inferred.endless), Pair{Span, Type}[]), looping, site.method)[3], inferred.endless_calls))
+            isnothing(inferred.endless) || push!(get!(() -> (site, something(inferred.endless), Tuple{Type, Vector{Pair{Span, Type}}}[]), looping, site.method)[3], (call_signature, inferred.endless_calls))
             # Package methods are those analyzed files define; others (Base) stay outside.
             for signature in inferred.reached
                 method = dispatched(signature)
