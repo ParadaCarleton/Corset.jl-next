@@ -562,6 +562,9 @@ function foreign_outcome(statement::Expr)::Outcome.Type
     return Outcome.Foreign(effects, Operand.Type[Operand.Value(value) for value in statement.args[6:(5 + count)]])
 end
 
+"""Whether statement `index` of `ir` is foreign call `jl_new_task`, which builds task that `Task(f)` returns."""
+foreign_task_build(ir::CC.IRCode, index::Integer)::Bool = (statement = ir.stmts[index][:stmt]; statement isa Expr && statement.head === :foreigncall && foreign_name(statement.args[1]) === :jl_new_task)
+
 """Functions that start their `Task` argument: run it now (`yield`, `yieldto`) or queue it (`schedule`, `enq_work`)."""
 const TASK_STARTS = (Base.schedule, Base.yield, Base.yieldto, Base.enq_work)
 

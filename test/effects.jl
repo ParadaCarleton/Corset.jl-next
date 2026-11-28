@@ -2163,6 +2163,8 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     for (f, types) in ((push_task, (Vector{Int},)), (maybe_push, (Vector{Int}, Bool)))
         written = doubts(summary_of(f, types...).writes)
         @test level_of(written[(parameter(2), true)]) == Level.code && level_of(get(written, top(2), CODE_DOUBT)) != Level.none
+        # Build alone advances caller RNG.
+        @test written[(Place.At(elsewhere, Step.Type[]), false, EffectKind.default_rng)] == NO_DOUBT
     end
     @test level_of(doubts(summary_of(task_result!, Vector{Int}).writes)[top(2)]) == Level.code
     # Body call needs callable that dispatch resolves: abstract type, stand-in and splat keep old resolution.

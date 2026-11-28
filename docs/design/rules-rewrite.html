@@ -1235,6 +1235,7 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li><code>Task(f)</code> runs <code>f()</code> in new task when call on every later path starts task (<code>schedule</code>, <code>yield</code>, <code>yieldto</code>, <code>enq_work</code>).</li>
 <li><code>@spawn</code>, <code>@async</code>, and <code>@task</code> with <code>schedule</code> build and start task this way.</li>
 <li>Other task may never run: <code>Task(f)</code> keeps old resolution. <code>jl_new_task</code> stays unresolved, so body effects are blind spots.</li>
+<li>Every task build advances RNG state of caller (<code>jl_rng_split</code>): definite default RNG write, also when body reseeds or never runs.</li>
 <li><code>threading_run(fun, static)</code> of <code>@threads</code> runs <code>fun(thread)</code> in tasks. Thread number takes no operand: constant would make variant.</li>
 <li>Callable of abstract type, or callable stand-in, keeps old resolution: unresolved foreign call or dispatch.</li>
 <li>Body stores and accesses apply at call. Callable holds caller objects, so no callback record waits for caller.</li>
@@ -1244,7 +1245,6 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>New task owns its default RNG state and task-local storage. Body writes to them stay in task.</li>
 <li>New task takes scope of caller: body <code>ScopedValue</code> reads stay.</li>
 <li>New task derives its RNG from RNG of caller. Body draw before reseed reads default RNG of caller.</li>
-<li>Derivation advances RNG state of caller (<code>jl_rng_split</code>): definite default RNG write, also for body that reseeds.</li>
 <li>Write alone draws nothing: caller-chosen RNG (Effect kinds) counts calls that read default RNG.</li>
 <li>Body that reseeds before every draw on every path passes <code>hidden-input</code>. Its other reads of task state drop.</li>
 <li>Reseed: <code>seed!(seed)</code> or <code>seed!(TaskLocalRNG(), seed)</code>, with seed that cannot be <code>nothing</code>.</li>

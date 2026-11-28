@@ -70,7 +70,7 @@ function call!(flow::Flow, index::Integer, outcome::Outcome.Type, callees::Calle
         Outcome.Spawn(_, operands) => spawn!(flow, writes, index, operands, callees)
         Outcome.Contract(effects, operands, breached) => contract!(flow, writes, index, effects, operands, breached)
         Outcome.Open(operands) => open_call!(flow, writes, index, operands)
-        Outcome.Unresolved(operands) => open!(flow, writes, index, operands, CODE_DOUBT)
+        Outcome.Unresolved(operands) => (open!(flow, writes, index, operands, CODE_DOUBT); foreign_task_build(flow.ir, index) && split_rng!(writes, index))
         Outcome.Dead() => nothing
     end
     start = started(flow.ir, index, outcome)
@@ -271,6 +271,9 @@ task-local storage. New task takes scope of caller, so scoped reads stay.
 """
 const TASK_STATE = (EffectKind.default_rng, EffectKind.task_local)
 
+"""Record task build of statement `index` in `writes`: build advances caller RNG to seed new task (`jl_rng_split`)."""
+split_rng!(writes::OriginAccesses, index::Integer)::Nothing = (access!(writes, unknown(NO_DOUBT), false, definite(index), EffectKind.default_rng); nothing)
+
 """Slot of `Task` that holds result of its body: `fetch` loads it."""
 const TASK_RESULT = Step.Field(:result)
 
@@ -278,7 +281,7 @@ const TASK_RESULT = Step.Field(:result)
 Transfer call statement `index` that starts new task running body variants of `callees` on `operands`, callable first
 (`engine.md`, Task bodies). Body runs as call, so its stores and accesses apply here; writes of task state
 (`TASK_STATE`) stay in new task. Body that draws before reseed reads default RNG of caller, since new task derives
-its RNG from it; other reads of task state drop. Derivation advances caller RNG: definite write. Result: new task,
+its RNG from it; other reads of task state drop. Derivation advances caller RNG (`split_rng!`). Result: new task,
 which holds body result (`TASK_RESULT`). Callable holds caller objects, so no callback record waits for caller.
 """
 function spawn!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type}, callees::Callees)::Nothing
@@ -287,7 +290,7 @@ function spawn!(flow::Flow, writes::OriginAccesses, index::Integer, operands::Ab
     draws = any(variant -> summary!(callees, variant).draws, callees.variants[index])
     merge_accesses!(writes, filter(((key, _),) -> !(last(key) in TASK_STATE), body_writes), false)
     merge_accesses!(flow.reads, filter(((key, _),) -> !(last(key) in TASK_STATE) || (draws && last(key) == EffectKind.default_rng), body_reads), false)
-    access!(writes, unknown(NO_DOUBT), false, definite(index), EffectKind.default_rng)
+    split_rng!(writes, index)
     assign!(flow, index, Targets(Origin.Allocation(index) => NO_DOUBT))
     return nothing
 end

@@ -181,6 +181,7 @@ Engine follows task body as call of body. Else `@spawn`, `@async` and `@threads`
 - `Task(f)` runs `f()` in new task when call on every later path starts task (`schedule`, `yield`, `yieldto`, `enq_work`).
 - `@spawn`, `@async`, and `@task` with `schedule` build and start task this way.
 - Other task may never run: `Task(f)` keeps old resolution. `jl_new_task` stays unresolved, so body effects are blind spots.
+- Every task build advances RNG state of caller (`jl_rng_split`): definite default RNG write, also when body reseeds or never runs.
 - `threading_run(fun, static)` of `@threads` runs `fun(thread)` in tasks. Thread number takes no operand: constant would make variant.
 - Callable of abstract type, or callable stand-in, keeps old resolution: unresolved foreign call or dispatch.
 - Body stores and accesses apply at call. Callable holds caller objects, so no callback record waits for caller.
@@ -190,7 +191,6 @@ Engine follows task body as call of body. Else `@spawn`, `@async` and `@threads`
 - New task owns its default RNG state and task-local storage. Body writes to them stay in task.
 - New task takes scope of caller: body `ScopedValue` reads stay.
 - New task derives its RNG from RNG of caller. Body draw before reseed reads default RNG of caller.
-- Derivation advances RNG state of caller (`jl_rng_split`): definite default RNG write, also for body that reseeds.
 - Write alone draws nothing: caller-chosen RNG (Effect kinds) counts calls that read default RNG.
 - Body that reseeds before every draw on every path passes `hidden-input`. Its other reads of task state drop.
 - Reseed: `seed!(seed)` or `seed!(TaskLocalRNG(), seed)`, with seed that cannot be `nothing`.
