@@ -17,12 +17,14 @@ const DISPATCH_LIMIT = 3
 """
 Effects record of unit `typed` (`effects.md`, Units and IR): events of each IR statement, result aliases and call
 facts. `effect_free`: compiler proves unit writes nothing caller sees; stand-in signature, claim in method, or claim of
-direct callee gives no proof. Crash `journal` records offset inference of index proof (`unit_indices`), whose compiler
-edges come second: `nothing` when it failed. Unit that always throws on stand-ins gives no verdict, only blind spot.
+direct callee gives no proof. Crash `journal` records offset inference of index proof (`unit_indices`, `alone`), whose
+compiler edges come second: `nothing` when it failed. Unit that always throws on stand-ins gives no verdict, only blind
+spot. Own interpreter in `world`: units run on several tasks at once (`name_records`).
 """
-function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interpreter::CC.NativeInterpreter, world::UInt, journal::Union{Nothing, Inference.Journal})::Tuple{UnitEffects, Union{Nothing, Vector{Any}}}
+function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, world::UInt, journal::Union{Nothing, Inference.Journal}, alone::Bool)::Tuple{UnitEffects, Union{Nothing, Vector{Any}}}
     cut = isempty(typed.cuts) ? nothing : typed.spans[first(typed.cuts)]
     typed.result === Union{} && return UnitEffects(false, Access[], Access[], Place.Type[], UnguardedHold[], UnitCalls(), LoopWrite[], SelfAlias[], StatefulReuse[], IndexFacts(), ArrayLife[], [BlindSpot(ALWAYS_THROWS, typed.site.span)], false, false, cut), Any[]
+    interpreter = CC.NativeInterpreter(world)
     walk, lines, used, claimed = unit_walk(typed, modules, interpreter, world)
     ir = walk.ir
     walk_values!(walk, 2 * length(ir.stmts) + 10)
@@ -49,7 +51,7 @@ function unit_effects(typed::TypedCode, modules::AbstractSet{Module}, interprete
     effect_free = CC.is_effect_free(typed.frame.ipo_effects) && !claimed && !holds_stand_in(typed.signature) && !callee_claimed
     loops, loop_spots = loop_writes(walk, spans)
     reuses, reuse_spots = stateful_reuses(walk, typed.site.method, spans)
-    indices, index_spots, edges = unit_indices(typed, walk, interpreter, journal)
+    indices, index_spots, edges = unit_indices(typed, walk, interpreter, journal, alone)
     unspanned = [BlindSpot(UNSPANNED_CALL, span) for ((line, span), fact) in calls if line in typed.unmapped && no_effect(fact)]
     unguarded = unguarded_holds(walk, spans)
     return UnitEffects(true, writes, reads, text_order(collect(aliases), repr), unguarded, calls, loops, self_aliases(walk, spans), reuses, indices, unit_arrays(walk, lines, spans), [loop_spots; reuse_spots; index_spots; unspanned], effect_free, new_result, cut), edges
@@ -294,22 +296,29 @@ struct StageRun
 end
 
 """
+Name records of `units` (`unit_effects`), each with compiler edges of its effects stage; unit whose instance came
+earlier gets `nothing` and no edges. Unit whose offset inference crash `journal` suspects runs alone, first; so does
+each unit of one-thread run. Others run on all threads at once, as `Inference.infer_wave!` runs inference.
+"""
+function name_records(units::AbstractVector{TypedCode}, modules::AbstractSet{Module}, world::UInt, journal::Union{Nothing, Inference.Journal})::Tuple{Vector{Union{Nothing, UnitEffects}}, Vector{Union{Nothing, Vector{Any}}}}
+    firsts = unique(position -> units[position].frame.linfo, eachindex(units))
+    alone = Dict(position => Threads.nthreads(:default) == 1 || offset_suspect(units[position], journal) for position in firsts)
+    single = Dict(position => unit_effects(units[position], modules, world, journal, true) for position in firsts if alone[position])
+    shared = Dict(position => Threads.@spawn(unit_effects(units[position], modules, world, journal, false)) for position in firsts if !alone[position])
+    found = Tuple{Union{Nothing, UnitEffects}, Union{Nothing, Vector{Any}}}[
+        haskey(single, position) ? single[position] : haskey(shared, position) ? fetch(shared[position]) : (nothing, Any[]) for position in eachindex(units)
+    ]
+    return Union{Nothing, UnitEffects}[first(pair) for pair in found], Union{Nothing, Vector{Any}}[last(pair) for pair in found]
+end
+
+"""
 `effects` stage run on `package` from inference `units` (`StageRun`), with `library` cache of engine summaries
 (`engine.md`, Solve and cache). Stored units give their kept records. Crash `journal` records offset inferences and
 native inference of library instances; `nothing` none. Step times go to `timings` unless `nothing`.
 """
 function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothing, Inference.Journal}, library::Summaries.Library; timings::Union{Nothing, Sink} = nothing)::StageRun
     world = Base.get_world_counter()
-    interpreter, modules, seen = CC.NativeInterpreter(world), Set{Module}(package.modules), Base.IdSet{Core.MethodInstance}()
-    fresh, edges = Union{Nothing, UnitEffects}[], Union{Nothing, Vector{Any}}[]
-    timed(timings, "effects name tier") do
-        for typed in units.typed
-            record, read = typed.frame.linfo in seen ? (nothing, Any[]) : unit_effects(typed, modules, interpreter, world, journal)
-            push!(fresh, record)
-            push!(edges, read)
-            push!(seen, typed.frame.linfo)
-        end
-    end
+    fresh, edges = timed(() -> name_records(units.typed, Set{Module}(package.modules), world, journal), timings, "effects name tier")
     kept = Union{Nothing, Tuple{UnitEffects, Summaries.UnitVerdict}}[unit_record(unit.effects, world) for unit in units.stored]
     stored = Union{Nothing, UnitEffects}[isnothing(pair) ? nothing : first(pair) for pair in kept]
     verdicts, engine_spots, fresh_verdicts, entries, hits = Summaries.cached_effects(package, units, Union{Nothing, Summaries.UnitVerdict}[isnothing(pair) ? nothing : last(pair) for pair in kept], journal, library; timings)

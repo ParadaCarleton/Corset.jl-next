@@ -47,6 +47,7 @@ Code lives in `src/Effects/`.
 - IR: copy unit's unoptimized typed code; run compiler passes until `CC: COMPACT_1`. No callee gets IR.
 - Statement flags from inference give compiler effects per call: `effect_free`, `nothrow`, `terminates`, `consistent`.
 - Method gets facts from its units only. Verdict of method: worst over its units.
+- Units run on all threads, each with own interpreter. Unit whose offset inference crash journal suspects runs alone, first.
 - Incomplete method (`inference` stage `incomplete`) gets no definite none. Coverage reason names cause.
 - Method store entry keeps effects record of unit beside `Inferred`, same invalidation. Stored unit needs no typed code.
 

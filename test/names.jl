@@ -184,13 +184,13 @@ end
     signature, world = something(Effects.offset_signature(typed.site.method, typed.signature)), Base.get_world_counter()
     mktempdir() do directory
         journal = Corset.Inference.open_journal(directory)
-        @test Effects.offset_inference(typed, signature, journal, world) isa Corset.Inference.Output
+        @test Effects.offset_inference(typed, signature, journal, world, true) isa Corset.Inference.Output
         close(journal.io)
         records = Corset.Inference.records(directory)
         @test [record.finished for record in records] == [false, true] && endswith(first(records).label, "with offset stand-in")
         # Start record that no finish record closes is crash: next run skips inference.
         crashed = Corset.Inference.Journal(open(Corset.Inference.journal_file(directory), "a"), Set([first(records).key]), Set{String}())
-        @test Effects.offset_inference(typed, signature, crashed, world) == Effects.OFFSET_CRASHED
+        @test Effects.offset_inference(typed, signature, crashed, world, true) == Effects.OFFSET_CRASHED
         close(crashed.io)
     end
 end
@@ -215,9 +215,20 @@ end
     offset_key = "offset " * Corset.Inference.entry_key(typed.site.method, something(Effects.offset_signature(typed.site.method, typed.signature)))
     mktempdir() do directory
         crashed = Corset.Inference.Journal(open(Corset.Inference.journal_file(directory), "a"), Set([offset_key]), Set{String}())
-        record, unknown = Effects.unit_effects(typed, Set(PACKAGE.modules), Effects.CC.NativeInterpreter(world), world, crashed)
+        record, unknown = Effects.unit_effects(typed, Set(PACKAGE.modules), world, crashed, true)
         close(crashed.io)
         @test isnothing(unknown) && any(spot -> spot.cause == Effects.OFFSET_CRASHED, record.spots)
+    end
+    # Suspect offset inference runs alone; others run beside each other. Repeat instance gets no record.
+    head = only(index for (index, unit) in enumerate(UNITS.typed) if unit.site.method.name == :generated_head)
+    mktempdir() do directory
+        suspected = Corset.Inference.Journal(open(Corset.Inference.journal_file(directory), "a"), Set{String}(), Set([offset_key]))
+        @test Effects.offset_suspect(typed, suspected) && !Effects.offset_suspect(UNITS.typed[head], suspected) && !Effects.offset_suspect(typed, nothing)
+        found, found_edges = Effects.name_records(UNITS.typed[[position, position, head]], Set(PACKAGE.modules), world, suspected)
+        close(suspected.io)
+        @test !isnothing(found[1]) && isnothing(found[2]) && found_edges[2] == Any[] && !isnothing(found[3])
+        starts = [record for record in Corset.Inference.records(directory) if !record.finished]
+        @test length(starts) == 2 && all(record -> record.alone == (record.key == offset_key || Threads.nthreads(:default) == 1), starts)
     end
     @test isnothing(Corset.Inference.with_edges!(memo, entry, nothing, files, nothing))
     key = Corset.Inference.entry_key(typed.site.method, typed.signature)

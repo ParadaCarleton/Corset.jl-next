@@ -888,6 +888,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>IR: copy unit's unoptimized typed code; run compiler passes until <code>CC: COMPACT_1</code>. No callee gets IR.</li>
 <li>Statement flags from inference give compiler effects per call: <code>effect_free</code>, <code>nothrow</code>, <code>terminates</code>, <code>consistent</code>.</li>
 <li>Method gets facts from its units only. Verdict of method: worst over its units.</li>
+<li>Units run on all threads, each with own interpreter. Unit whose offset inference crash journal suspects runs alone, first.</li>
 <li>Incomplete method (<code>inference</code> stage <code>incomplete</code>) gets no definite none. Coverage reason names cause.</li>
 <li>Method store entry keeps effects record of unit beside <code>Inferred</code>, same invalidation. Stored unit needs no typed code.</li>
 </ul>
