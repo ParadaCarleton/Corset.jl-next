@@ -386,8 +386,7 @@ end
 """Whether call `outcome` reaches `targets` only: dispatch to them, or no dispatch. Call without method counts out."""
 function outcome_contained(outcome::Outcome.Type, targets::Base.IdSet{Core.MethodInstance})::Bool
     return @match outcome begin
-        Outcome.Dispatch(instances, _) => all_in(instances, targets)
-        Outcome.Spawn(instances, _) => all_in(instances, targets)
+        Outcome.Dispatch(instances, _) || Outcome.Spawn(instances, _) => all_in(instances, targets)
         Outcome.Dead() => false
         _ => true
     end

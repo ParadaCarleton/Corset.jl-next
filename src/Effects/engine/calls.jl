@@ -295,12 +295,6 @@ task that runs body (`engine.md`, Task bodies): instances of body call, with ope
     Dead()
 end
 
-"""Whether `outcome` starts task (`Spawn`)."""
-spawn_outcome(outcome::Outcome.Type)::Bool = @match outcome begin
-    Outcome.Spawn(_, _) => true
-    _ => false
-end
-
 """Type of `operand` in `ir`: element type for `Rest`."""
 function operand_type(ir::CC.IRCode, operand::Operand.Type)::Any
     return @match operand begin
@@ -363,7 +357,7 @@ function resolve(ir::CC.IRCode, operands::AbstractVector{Operand.Type}, world::U
     isnothing(latest) || return resolve(ir, latest, world, limit)
     if !isnothing(callee) && something(callee) === Base.Threads.threading_run && length(operands) == 3
         # Thread number varies, so it takes no operand: operand constant would make variant.
-        spawned = spawn_call(operands[2:2], Any[operand_type(ir, operands[2]), Int], world, limit)
+        spawned = spawn_call(Operand.Type[operands[2]], Any[operand_type(ir, operands[2]), Int], world, limit)
         isnothing(spawned) || return spawned
     end
     instances = dispatch(call_types(ir, operands), world, limit)
@@ -584,9 +578,11 @@ function started_tasks(ir::CC.IRCode)::BitSet
     pairs = Tuple{Int, Int}[]
     for index in 1:length(ir.stmts)
         statement = ir.stmts[index][:stmt]
-        (statement isa Expr && statement.head === :call && length(statement.args) >= 2) || continue
+        statement isa Expr || continue
+        (statement.head === :call && length(statement.args) >= 2) || continue
         task, callee = statement.args[2], operand_constant(ir, Operand.Value(statement.args[1]))
-        (task isa Core.SSAValue && task.id < index && !isnothing(callee) && any(start -> start === something(callee), TASK_STARTS)) || continue
+        task isa Core.SSAValue || continue
+        (task.id < index && !isnothing(callee) && any(start -> start === something(callee), TASK_STARTS)) || continue
         task_build(ir, task.id) && push!(pairs, (task.id, index))
     end
     isempty(pairs) && return BitSet()

@@ -221,14 +221,22 @@ of `variant` where callable is fresh. `parameters` holds nodes of each callee pa
 const Callback = @NamedTuple{variant::Variant, parameters::Vector{Nodes}}
 
 """
+Reseed facts of task body (`engine.md`, Task bodies): `seeds` when every normal exit follows reseed of default RNG;
+`draws` when read of default RNG can come before reseed.
+"""
+struct Seeding
+    seeds::Bool
+    draws::Bool
+end
+
+"""
 Effect summary of method instance: writes and reads by place and whether they cover places below; stores between
 objects caller can see and fresh objects (`edges` by slot, `backing` for memory, `spread` for unknown slot, `bound`
 for global binding); callback records whose accesses caller applies; result nodes; count of fresh nodes;
 `closed_world`: summary joins methods loaded now, so its "writes nothing" is at most `possible`; and `cut`: path
 stand-ins cut reaches it, so its "writes nothing" holds for stand-ins only. Places need parameters and globals only.
 Release balance: hold counts at normal exit (`held`) and throw exit (`thrown`), and holds own throws skip
-(`unguarded`, local resources too). Task bodies (`engine.md`, Task bodies): `seeds` when every normal exit follows
-reseed of default RNG; `draws` when read of default RNG can come before reseed.
+(`unguarded`, local resources too). `seeding`: reseed facts of task body.
 """
 struct Summary
     writes::Accesses
@@ -245,15 +253,14 @@ struct Summary
     held::HoldCounts
     thrown::HoldCounts
     unguarded::Dict{Tuple{Node.Type, Resource.T}, Unguarded}
-    seeds::Bool
-    draws::Bool
+    seeding::Seeding
 end
 
 """
 Summary of instance that writes, reads and returns nothing, with reseed fact `seeds`. Shortcut unit never reseeds. Call
 cycle member that solve reruns starts reseeded: `widen` lowers `seeds` from there, as must analysis needs.
 """
-empty_summary(seeds::Bool)::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), seeds, false)
+empty_summary(seeds::Bool)::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), Seeding(seeds, false))
 
 """Whether summaries `first` and `second` hold same effects, stores, result and causes."""
 same(first::Summary, second::Summary)::Bool = all(name -> getfield(first, name) == getfield(second, name), fieldnames(Summary))
@@ -282,7 +289,7 @@ function widen(old::Summary, new::Summary)::Summary
     unguarded = mergewith((first, second) -> first == second ? first : (hold = unsettled(first.hold), throws = first.throws), old.unguarded, new.unguarded)
     return Summary(
         writes, reads, edges, backing, spread, bound, callbacks, result, max(old.fresh, new.fresh), old.closed_world || new.closed_world, old.cut || new.cut, held, thrown, unguarded,
-        old.seeds && new.seeds, old.draws || new.draws,
+        Seeding(old.seeding.seeds && new.seeding.seeds, old.seeding.draws || new.seeding.draws),
     )
 end
 
@@ -337,5 +344,5 @@ function open_summary(count::Integer, cause::String)::Summary
     effects = Accesses((place, true, EffectKind.memory) => Effect(BLIND_DOUBT, 0, cause) for place in [places; Place.At(Root.Elsewhere(), NO_STEPS)])
     result = Nodes(Node.Placed(place) => BLIND_DOUBT for place in places)
     result[Node.Outside()] = BLIND_DOUBT
-    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), result, 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), false, true)
+    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), result, 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), Seeding(false, true))
 end

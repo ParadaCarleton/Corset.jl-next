@@ -112,10 +112,10 @@ Task body (`Spawn`) reaches it only when body draws before reseed: new task hold
 """
 function reaches_default_rng(run::Run, code::Code, index::Integer)::Bool
     outcome = code.outcomes[index]
-    spawned = !isnothing(outcome) && spawn_outcome(something(outcome))
+    spawned = !isnothing(outcome) && isa_variant(something(outcome), Outcome.Spawn)
     for callee in code.callees[index]
         summary = held_summary(run.slots, callee)
-        reaches_default_rng(summary) && (!spawned || summary.draws) && return true
+        reaches_default_rng(summary) && (!spawned || summary.seeding.draws) && return true
     end
     isnothing(outcome) && return false
     return @match something(outcome) begin

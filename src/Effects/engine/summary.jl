@@ -56,7 +56,7 @@ end
 Whether call statement `index` of `flow` reseeds default RNG: each callee variant in `callees` reseeds before every
 normal exit (`Summary`). Task body (`Spawn`) reseeds new task, so it counts out.
 """
-function reseed_call(flow::Flow, callees::Callees, index::Integer)::Bool
+function reseed_call!(flow::Flow, callees::Callees, index::Integer)::Bool
     outcome = flow.outcomes[index]
     isnothing(outcome) && return false
     @match something(outcome) begin
@@ -66,19 +66,19 @@ function reseed_call(flow::Flow, callees::Callees, index::Integer)::Bool
     variants = callees.variants[index]
     isempty(variants) && return false
     for variant in variants
-        summary!(callees, variant).seeds || return false
+        summary!(callees, variant).seeding.seeds || return false
     end
     return true
 end
 
 """
 Reseed facts of instance with `flow` at fixpoint, from callee summaries of `callees` (`engine.md`, Task bodies):
-whether every normal exit follows reseed (`reseed_call`), and whether draw (`Flow`) can come before reseed. Reseed
+whether every normal exit follows reseed (`reseed_call!`), and whether draw (`Flow`) can come before reseed. Reseed
 holds at block start when it holds at end of every predecessor; entry block and predecessor 0 (entry edge) carry none.
 """
-function seed_facts(flow::Flow, callees::Callees)::Tuple{Bool, Bool}
-    reseed = BitSet(index for index in 1:length(flow.ir.stmts) if reseed_call(flow, callees, index))
-    isempty(reseed) && return (false, !isempty(flow.draws))
+function seed_facts!(flow::Flow, callees::Callees)::Seeding
+    reseed = BitSet(index for index in 1:length(flow.ir.stmts) if reseed_call!(flow, callees, index))
+    isempty(reseed) && return Seeding(false, !isempty(flow.draws))
     blocks = flow.ir.cfg.blocks
     # Must analysis starts from all blocks seeded: values only fall, so loop ends.
     at_end = trues(length(blocks))
@@ -101,17 +101,17 @@ function seed_facts(flow::Flow, callees::Callees)::Tuple{Bool, Bool}
             statement isa Core.ReturnNode && isdefined(statement, :val) && (returns = true; seeds &= seeded)
         end
     end
-    return (seeds && returns, draws)
+    return Seeding(seeds && returns, draws)
 end
 
 """
 Summary of instance of `method` from `flow` at fixpoint, with callee summaries from `callees`: caller-visible accesses,
-stores of exported objects, result, release balance (`balance!`) and reseed facts (`seed_facts`). `seed!` with seed it
+stores of exported objects, result, release balance (`balance!`) and reseed facts (`seed_facts!`). `seed!` with seed it
 takes (`reseeds`) reseeds, and draws nothing first.
 """
 function summarize!(flow::Flow, method::Method, callees::Callees)::Summary
     held, thrown, unguarded = balance!(flow, callees)
-    seeds, draws = reseeds(method, flow.ir) ? (true, false) : seed_facts(flow, callees)
+    seeding = reseeds(method, flow.ir) ? Seeding(true, false) : seed_facts!(flow, callees)
     exported = escaping(flow)
     shown(origin::Origin.Type)::Bool = !fresh_origin(origin) || origin in exported
     edges = Dict((node_of(holder), step) => nodes_of(targets) for (holder, slots) in flow.heap if shown(holder) for (step, targets) in slots if !isempty(targets))
@@ -123,6 +123,6 @@ function summarize!(flow::Flow, method::Method, callees::Callees)::Summary
     unguarded_nodes = Dict{Tuple{Node.Type, Resource.T}, Unguarded}((node_of(origin), resource) => hold for ((origin, resource), hold) in unguarded)
     return Summary(
         exported_effects(flow.ir, method, flow.writes), exported_effects(flow.ir, method, flow.reads), edges, backing, spread, bound, callbacks, nodes_of(flow.result), length(exported), flow.closed_world, flow.cut,
-        exported_holds(held, exported), exported_holds(thrown, exported), unguarded_nodes, seeds, draws,
+        exported_holds(held, exported), exported_holds(thrown, exported), unguarded_nodes, seeding,
     )
 end

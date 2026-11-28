@@ -507,6 +507,9 @@ draw_each_default(values::AbstractVector)::Vector{Float64} = draw_each(Random.de
 # Closure captures default RNG beside unused RNG argument: inference folds both closures to same constant.
 draw_captured(rng::Random.AbstractRNG, values::AbstractVector)::Vector{Float64} = (other = Random.default_rng(); map(_ -> rand(other), 1:length(values)))
 draw_captured_default(values::AbstractVector)::Vector{Float64} = draw_captured(Random.default_rng(), values)
+# Task body draws from caller RNG: new task holds own RNG, which `TaskLocalRNG` argument names there.
+draw_spawned(rng::Random.AbstractRNG, values::AbstractVector)::Float64 = fetch(Threads.@spawn rand(rng))::Float64 * length(values)
+draw_spawned_default(values::AbstractVector)::Float64 = draw_spawned(Random.default_rng(), values)
 # Declared `TaskLocalRNG`: method chose default RNG itself, so caller cannot pass own RNG.
 draw_task(rng::Random.TaskLocalRNG, values::AbstractVector)::Float64 = rand(rng) * length(values)
 
