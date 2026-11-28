@@ -14,6 +14,7 @@ using ...Inference: Inference, TypedCode, Units, Journal, start_record, finish_r
 using ...Inference: names_package!, edge_instance, serialized
 using ...StandIns: StandIns, FunctionStandIn, model_type, array_stand_in
 using ...Cache: Cache
+using ...Timings: Sink, timed
 
 const CC = Core.Compiler
 

@@ -7,6 +7,7 @@ module Effects
 using Moshi.Match: @match
 using ..Facts: argument_type, subject_position, RESIZE_FUNCTIONS, Access, UnguardedHold, LoopWrite, SelfAlias, StatefulReuse, UnprovenIndex, IndexContract, IndexSource, OperandIndex, ArrayOperand, IndexCall, IndexFacts, AllocationKind, ArrayEventKind, Coverage, ArrayPath, ArrayEvent, Rebind, ArrayLife, Callee, methods_callee, callee_methods, CallFact, no_effect, MethodEffects, EffectsFacts, PackageFacts, Place, PlaceSteps, place_root, root_global, place_text, Root, Step, NO_STEPS, PATH_DEPTH, EffectKind, Confidence, BlindSpot, Span, Precision, SyntaxFile
 using ..Inference: Inference, TypedCode, Units, called, holds_stand_in, serialized
+using ..Timings: Sink, timed
 
 const CC = Core.Compiler
 
