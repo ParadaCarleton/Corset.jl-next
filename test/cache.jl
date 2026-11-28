@@ -26,7 +26,7 @@ end
 
 @testset "cache" begin
     @testset "tree files" begin
-        mktempdir(@__DIR__) do root
+        mktempdir(@__DIR__; prefix = ".jl_") do root
             write_files(root, "b.jl" => "", "a/c.jl" => "", ".hidden.jl" => "", ".git/config" => "", "a/.d/e.jl" => "")
             write_files(root, "cache/entry" => "", "cached/entry" => "")
             symlink(joinpath(root, "a"), joinpath(root, "directory link"))
@@ -36,7 +36,7 @@ end
     end
 
     @testset "key inputs" begin
-        mktempdir(@__DIR__) do scratch
+        mktempdir(@__DIR__; prefix = ".jl_") do scratch
             root, dependency, environment = joinpath.(scratch, ["root", "dependency", "environment"])
             write_files(root, "Project.toml" => "", "src/a.jl" => "a = 1\n", ".hidden" => "")
             write_files(dependency, "src/D.jl" => "module D end\n", "out.json" => "{}")
@@ -114,7 +114,7 @@ end
     end
 
     @testset "method store key" begin
-        mktempdir(@__DIR__) do scratch
+        mktempdir(@__DIR__; prefix = ".jl_") do scratch
             root, environment = joinpath.(scratch, ["root", "environment"])
             write_files(root, "Project.toml" => "", "src/A.jl" => "a = 1\n", "src/b.jl" => "", "test/runtests.jl" => "")
             # Environment develops root by path; entries count analyzed files, so root tree stays out.
@@ -138,7 +138,7 @@ end
     end
 
     @testset "digest" begin
-        mktempdir(@__DIR__) do root
+        mktempdir(@__DIR__; prefix = ".jl_") do root
             file, missing_file = joinpath(root, "a.jl"), joinpath(root, "b.jl")
             write(file, "a = 1\n")
             digest() = Cache.digest(["part"], [file, missing_file])
@@ -164,7 +164,7 @@ end
         @test "Inference" in producers && "Effects" in producers && isdisjoint(producers, ("Rules", "Engine", "CLI", "Launch"))
         @test joinpath(source, "Inference", "failures.jl") in files && Cache.producer_digest() == Cache.producer_digest()
         @test all(occursin(string(call), read(joinpath(source, name), String)) for (name, call) in Cache.CHECKED_LOADS)
-        mktempdir(@__DIR__) do scratch
+        mktempdir(@__DIR__; prefix = ".jl_") do scratch
             # Literal include counts in block and function body; docstring and quote hold text. Self-include ends walk.
             nested = "begin include(\"A/b.jl\") end\n\"\"\"\ninclude(\"none.jl\")\n\"\"\"\nquote include(name) end\nk() = include(\"A/c.jl\")\nif false\n    include(\"./A.jl\")\nend\n"
             write_files(scratch, "A.jl" => nested, "A/b.jl" => "b = 1\n", "A/c.jl" => "", "C.jl" => "")
@@ -188,7 +188,7 @@ end
     @testset "library key" begin
         julia = string(VERSION)
         @test Cache.partition_key(julia) == Cache.partition_key(julia) != Cache.partition_key("$julia+other")
-        mktempdir(@__DIR__) do scratch
+        mktempdir(@__DIR__; prefix = ".jl_") do scratch
             depot, developed, environment = joinpath.(scratch, ["depot", "developed", "environment"])
             registered = joinpath(depot, "packages", "Registered", "slug")
             write_files(registered, "Project.toml" => "", "src/Registered.jl" => "module Registered end\n")
@@ -221,7 +221,7 @@ end
         # Partition key holds content of Corset, so it gives texts of its dependencies only.
         own = something(texts(Corset))
         @test !any(startswith("Corset "), own) && any(startswith("Moshi "), own)
-        mktempdir(@__DIR__) do scratch
+        mktempdir(@__DIR__; prefix = ".jl_") do scratch
             uuids = Dict(name => Base.UUID(rand(RandomDevice(), UInt128)) for name in ["Lib", "User", "Host", "Trigger", "Absent"])
             project(name::String, sections::String = "")::String = "name = \"$name\"\nuuid = \"$(uuids[name])\"\n$sections"
             roots = Dict(name => joinpath(scratch, name) for name in keys(uuids))
@@ -253,7 +253,7 @@ end
     end
 
     @testset "library file" begin
-        mktempdir(@__DIR__) do scratch
+        mktempdir(@__DIR__; prefix = ".jl_") do scratch
             directory, partition = joinpath(scratch, "library"), "partition"
             stamped(size::Int)::Cache.Stamped = Cache.Stamped("instance", fill(0x01, size), 0.0)
             keep!(found::Dict{String, Cache.Stamped}, hits::Set{String}, limit::Int)::Nothing = Cache.keep_library!(directory, partition, found, hits, limit)
@@ -291,7 +291,7 @@ end
     end
 
     @testset "entries" begin
-        mktempdir(@__DIR__) do directory
+        mktempdir(@__DIR__; prefix = ".jl_") do directory
             cache = joinpath(directory, "cache")
             @test Cache.cold(cache, "/checked") && isnothing(Cache.lookup(String, cache, "/checked", "key"; root = nothing))
             Cache.store!(cache, "/checked", "key", "first"; root = nothing)
@@ -354,7 +354,7 @@ end
     end
 
     @testset "cached analysis" begin
-        mktempdir(@__DIR__) do scratch
+        mktempdir(@__DIR__; prefix = ".jl_") do scratch
             cache, directory = joinpath(scratch, "cache"), joinpath(scratch, "scripts")
             # Own Project.toml keeps test directory, which holds `cache`, out of key.
             write_files(directory, "Project.toml" => "[deps]\n", "a.jl" => "total = 1.0\ntotal ≈ 0\n")
@@ -392,7 +392,7 @@ end
     end
 
     @testset "command line" begin
-        mktempdir(@__DIR__) do scratch
+        mktempdir(@__DIR__; prefix = ".jl_") do scratch
             cache, directory = joinpath(scratch, "cache"), joinpath(scratch, "scripts")
             write_files(directory, "Project.toml" => "[deps]\n", "a.jl" => "total = 1.0\ntotal ≈ 0\n")
             code, out, err = cached_corset(cache, "check", directory)
@@ -413,7 +413,7 @@ end
         entry = "\"\"\"Package with two files.\"\"\"\nmodule Stored\ninclude(\"a.jl\")\ninclude(\"b.jl\")\nend\n"
         first_part, second_part = "first_part(x::Real) = x + 1\n", "second_part(x::Real) = x * 2\nthird_part(x::Real) = first_part(x)\n"
         with_package(@__DIR__, "Stored", "src/Stored.jl" => entry, "src/a.jl" => first_part, "src/b.jl" => second_part) do package
-            mktempdir(@__DIR__) do cache
+            mktempdir(@__DIR__; prefix = ".jl_") do cache
                 @test first(cached_corset(cache, "check", package)) == 0
                 checked, store_entry = realpath(package), Corset.Engine.method_entry(realpath(package))
                 key, b = readline(Cache.entry(cache, store_entry)), joinpath(realpath(package), "src", "b.jl")
@@ -447,12 +447,12 @@ end
         # Load skips include in branch, so it stays blind spot.
         computed = "\"\"\"Package with computed include.\"\"\"\nmodule Cached\nif get(ENV, \"CORSET_PART\", \"\") == \"1\"\n    include(string(\"part\", \".jl\"))\nend\nend\n"
         with_package(@__DIR__, "Cached", "src/Cached.jl" => computed, "src/part.jl" => "part_value = 1\n") do package
-            mktempdir(@__DIR__) do cache
+            mktempdir(@__DIR__; prefix = ".jl_") do cache
                 first = cached_corset(cache, "check", package)
                 @test occursin("skipped 1", first[2]) && cached_corset(cache, "check", package) == (first[1], first[2], "")
             end
             # `--timings` on cold cache times store reads and writes too; hit times lookup only.
-            mktempdir(@__DIR__) do cache
+            mktempdir(@__DIR__; prefix = ".jl_") do cache
                 cold = cached_corset(cache, "check", package, "--timings")
                 stages = [
                     "cache lookup", "discovery", "cache lookup", "package load", "method store read", "library read", "inference", "effects",

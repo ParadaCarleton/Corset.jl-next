@@ -405,7 +405,7 @@ end
     run = Corset.Effects.effects_facts(PACKAGE, UNITS, nothing, Library())
     @test [found.site.method for found in run.facts.methods] == [found.site.method for found in FACTS] && length(run.verdicts) == length(UNITS.typed)
     @test issubset(SPOTS, run.spots)
-    mktempdir(@__DIR__) do directory
+    mktempdir(@__DIR__; prefix = ".jl_") do directory
         journal = open_journal(directory)
         journaled = try
             Corset.Effects.effects_facts(PACKAGE, UNITS, journal, Library())
@@ -987,7 +987,7 @@ end
     @test summary_of(open_on!, FunctionStandIn, Vector{Int}).writes[memory((parameter(3), true))].doubt == Doubt(Level.code, OPAQUE)
     @test summary_of(open_keywords!, FunctionStandIn, Vector{Int}).writes[memory((parameter(3), true))].doubt == Doubt(Level.code, OPAQUE)
     @test all(((place, _),) -> root_of(place) != Root.Parameter(3), keys(summary_of(open_element!, Any, Vector{Int}).writes))
-    mktempdir(@__DIR__) do directory
+    mktempdir(@__DIR__; prefix = ".jl_") do directory
         journal = open_journal(directory)
         try
             target = only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], run.world, 1)))
