@@ -1,12 +1,14 @@
 """
-IR of instance before specialization, source statement index of each IR statement, call outcome of each statement,
-whether each statement builds thrown value only (`message_statements`), whether code uses value of each statement,
-whether stand-ins cut path of its own code (`engine.md`, Stand-in cuts), and `shortcut`: compiler effects prove empty
-summary (`proven_empty!`). Only unit keeps body with shortcut: its call facts need code.
+IR of instance before specialization, source statement index and library file line (`library_sites`) of each IR
+statement, call outcome of each statement, whether each statement builds thrown value only (`message_statements`),
+whether code uses value of each statement, whether stand-ins cut path of its own code (`engine.md`, Stand-in cuts), and
+`shortcut`: compiler effects prove empty summary (`proven_empty!`). Only unit keeps body with shortcut: its call facts
+need code.
 """
 struct Body
     ir::CC.IRCode
     lines::Vector{Int}
+    sites::Vector{Union{Nothing, LineNumberNode}}
     outcomes::Vector{Union{Nothing, Outcome.Type}}
     message::Vector{Bool}
     used::Vector{Bool}
@@ -15,12 +17,13 @@ struct Body
 end
 
 """
-Code of variant for solve: specialized IR, statement lines, outcomes, message statements, used statements, cut and
-shortcut of its body, and variants each call reaches.
+Code of variant for solve: specialized IR, statement lines, library lines, outcomes, message statements, used
+statements, cut and shortcut of its body, and variants each call reaches.
 """
 struct Code
     ir::CC.IRCode
     lines::Vector{Int}
+    sites::Vector{Union{Nothing, LineNumberNode}}
     outcomes::Vector{Union{Nothing, Outcome.Type}}
     message::Vector{Bool}
     used::Vector{Bool}
@@ -299,7 +302,8 @@ function frame_body!(run::Run, frame::CC.InferenceState, cut::Bool, unit::Bool, 
     users = statement_users(ir)
     # Statement compiler inserted has no source statement: its uses after compaction count.
     used = [iszero(line) ? !isempty(users[index]) : before[line] for (index, line) in enumerate(lines)]
-    return Body(ir, lines, outcomes, message_statements(users, throw_sinks!(run, frame.linfo, ir)), used, cut, shortcut)
+    sites = library_sites(run, frame, lines)
+    return Body(ir, lines, sites, outcomes, message_statements(users, throw_sinks!(run, frame.linfo, ir)), used, cut, shortcut)
 end
 
 """
@@ -357,6 +361,16 @@ outside Base, Core, stand-ins, stdlib and package of `run`.
 """
 library_line(run::Run, method::Method)::Bool =
     !keeps_contracts(method) && !Base.is_stdlib(Base.PkgId(Base.moduleroot(method.module))) && !(method.module in run.modules)
+
+"""
+File line of each IR statement of inference `frame` with source statement `lines` (`frame_ir`), from frame debuginfo:
+engine IR lines hold statement indices. `nothing` outside library code (`library_line`) and for statement without line.
+"""
+function library_sites(run::Run, frame::CC.InferenceState, lines::AbstractVector{<:Integer})::Vector{Union{Nothing, LineNumberNode}}
+    method = frame.linfo.def
+    library = method isa Method && library_line(run, method)
+    return Union{Nothing, LineNumberNode}[library && !iszero(line) ? statement_site(frame.src.debuginfo, frame.linfo, line) : nothing for line in lines]
+end
 
 """
 Crash journal key of native inference of `instance`; prefix keeps it apart from method store keys. Canonical type text
@@ -524,7 +538,7 @@ function variant_code(run::Run, variant::Variant, body::Body)::Code
             _ => nothing
         end
     end
-    return Code(ir, body.lines, outcomes, body.message, body.used, callees, body.cut, body.shortcut)
+    return Code(ir, body.lines, body.sites, outcomes, body.message, body.used, callees, body.cut, body.shortcut)
 end
 
 """Outcomes of `body` that specialized `ir` keeps: statement that specialization drops (`drop_unreached`) has none."""
@@ -617,7 +631,7 @@ function variant_summary!(run::Run, variant::Variant, flush::Bool)::Tuple{Summar
     method, slot = first(variant).def::Method, run.slots[variant]
     slot.over_budget && return named_summary(run, variant), Set{Variant}()
     flow, callees = variant_flow(run, variant, flush, false)
-    over_budget(flow) || return summarize!(flow, method, callees, library_line(run, method)), callees.read
+    over_budget(flow) || return summarize!(flow, method, callees, run.codes[variant].sites), callees.read
     slot.over_budget = true
     return named_summary(run, variant), callees.read
 end

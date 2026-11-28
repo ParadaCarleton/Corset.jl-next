@@ -29,6 +29,15 @@ end
 """Source statement index of statement `index` of `ir` (`frame_ir`)."""
 statement_line(ir::CC.IRCode, index::Integer)::Int = Int(ir.stmts[index][:line][1])
 
+"""
+File line of source statement `index` in inference code of `instance` with `debuginfo`: outermost scope, as
+`Inference.spans` reads it. `nothing` when debuginfo gives statement no line.
+"""
+function statement_site(debuginfo::Core.DebugInfo, instance::Core.MethodInstance, index::Integer)::Union{Nothing, LineNumberNode}
+    scopes = Base.IRShow.buildLineInfoNode(debuginfo, instance, index)
+    return isempty(scopes) ? nothing : LineNumberNode(Int(first(scopes).line), first(scopes).file)
+end
+
 """Whether value of each of `count` source statements has use in `ir` before compaction: in statement or in new node."""
 function source_used(ir::CC.IRCode, count::Integer)::Vector{Bool}
     used = fill(false, count)
