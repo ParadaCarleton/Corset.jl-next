@@ -1097,7 +1097,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <li>Path: field name or element. Path follows declared field types.</li>
 <li>Path collapses to <code>deep</code> at step into concrete type it already passed (recursive type), at third abstract step in a row, or past 8 steps.</li>
 <li>Place says where access lands; certainty says whether it happens. <code>deep w</code> is coarse place: write below it still changes <code>w</code>.</li>
-<li>Field name comes from concrete type, array stand-in family or <code>Array</code> family. Other struct family (<code>Object{K, V} where …</code>) gives field position.</li>
+<li>Field name comes from concrete type or struct family (<code>Object{K, V} where …</code>): members share names. Tuple and named tuple families give position.</li>
 <li>Memory backing belongs to its owner: field of type <code>GenericMemory</code> or <code>GenericMemoryRef</code> adds no step. Write to <code>Vector</code> elements writes <code>Vector</code>.</li>
 <li>Callee or table access to owner may land on its memory alone or owner alone: memory behind it gets <code>possible</code> access (<code>pop!</code> of <code>Base.wrap(Array, m, n)</code>).</li>
 <li>Memory address (<code>Ptr</code>, <code>MemoryRef</code>) that callee returns names memory behind fresh owner: write through it writes that memory.</li>

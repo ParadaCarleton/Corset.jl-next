@@ -691,26 +691,25 @@ function new!(flow::Flow, index::Integer, @nospecialize(type_value::Any), operan
 end
 
 """
-Struct type that gives fields of object of `type`: concrete `type`, or body of array stand-in or `Array` family
-(`ArrayStandIn{<:Any, 1}` and its `Vector` data). `nothing` for other type.
-Code struct family keeps `Position` steps: its field paths multiply places to map at each call.
+Struct type that gives fields of object of `type`: concrete `type`, or body of struct family (`Box{<:Function}`),
+whose members share field names. Named tuple and tuple families name no fixed fields. `nothing` for other type.
 """
 function layout(@nospecialize(type::Any))::Union{Nothing, DataType}
     isconcretetype(type) && return type
     type isa UnionAll || return nothing
-    array_stand_in(type) || type <: Array || return nothing
     body = Base.unwrap_unionall(type)
-    return body isa DataType ? body : nothing
+    return body isa DataType && isstructtype(body) && !(body <: Union{Tuple, NamedTuple}) ? body : nothing
 end
 
 """Whether field `field` of `type` holds memory backing (`GenericMemory` or `GenericMemoryRef`): it adds no path step."""
 function backing_field(@nospecialize(type::Any), field::Union{Symbol, Integer})::Bool
-    type = layout(type)
-    isnothing(type) && return false
-    type <: Tuple && return false
-    field isa Symbol && !hasfield(type, field) && return false
-    field isa Int && !(1 <= field <= fieldcount(type)) && return false
-    return fieldtype(type, field) <: Union{GenericMemory, GenericMemoryRef}
+    fields = layout(type)
+    isnothing(fields) && return false
+    fields <: Tuple && return false
+    field isa Symbol && !hasfield(fields, field) && return false
+    field isa Int && !(1 <= field <= fieldcount(fields)) && return false
+    # Field type of family body names its variables; rewrap keeps them bound.
+    return Base.rewrap_unionall(fieldtype(fields, field), type) <: Union{GenericMemory, GenericMemoryRef}
 end
 
 """
