@@ -925,8 +925,9 @@ end
     instance = only(something(dispatch(Any[typeof(broken), Int], run.world, 1)))
     @test library_body!(run, instance) == "inference gave no code"
     @test summary_of(calls_broken, Vector{Int}).writes == Dict()
+    # Callee without code may write global state, though its `Int` argument points to no object.
     broken_int = summary_of(x -> broken(x), Int)
-    @test isempty(broken_int.writes)
+    @test [(key, effect.doubt, effect.reason) for (key, effect) in broken_int.writes] == [(memory((Place.At(Root.Elsewhere(), Step.Type[]), true)), BLIND_DOUBT, "inference gave no code")]
     # Phi joins both branches: run-time `flag` picks written vector, so write is `possible` on each.
     @test doubts(summary_of(pick!, Vector{Int}, Vector{Int}, Bool).writes) == Dict(top(2) => code, top(3) => code)
     # Blind alternative leaves choice open too: known object gets `possible` write, blind one keeps its blind spot.
