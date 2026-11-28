@@ -1,0 +1,18 @@
+error[hidden-input]: method draws from default RNG
+ --> src/HiddenInputLibrary.jl:8:22
+  |
+8 | points(count::Int) = DrawCases.fill_points!(zeros(count), 100)
+  | -------------------------------------------------------------- takes no RNG argument
+  |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reads default RNG
+  |
+ ::: ../../../effects/DrawCases/src/DrawCases.jl:8:5
+  |
+8 |     length(values) > limit && return Random.rand!(values)
+  |     ----------------------------------------------------- dependency draws without RNG
+  |
+  = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+  = fix: dependency draws without RNG; report upstream or allow with reason   [manual]
+  = docs: corset explain hidden-input
+  = note: deny from correctness group, library preset
+  = note: opt out with `# corset: allow hidden-input -- <reason>`
+

@@ -573,7 +573,7 @@ text = "Hidden input: default RNG, or package global other method writes"
 example = "`rand()` in package code"
 group = "correctness"
 stage = "effects"
-note = "Task-local storage and `ScopedValue` pass: caller sets both, and logging reads both for every message."
+note = "Task-local storage and `ScopedValue` pass: caller sets both, and logging reads both for every message. Draw in dependency labels dependency line (engine library draw site); fix reports it upstream."
 
 [[footgun]]
 id = 56

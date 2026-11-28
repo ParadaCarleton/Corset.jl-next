@@ -8,6 +8,7 @@ Reports package method that reads input no argument passes:
 Default RNG read passes when caller controls RNG: package method of same function takes RNG argument beside same
 arguments (`f(rng, x)` beside convenience method `f(x) = f(default_rng(), x)`), or method takes RNG keyword
 (`f(x; rng::AbstractRNG = default_rng())`). Method that takes RNG and draws without it gets finding.
+Draw inside dependency code labels dependency line: package cannot pass RNG there, so fix reports it upstream.
 Read through call to package method that reads same input passes: callee gets finding.
 Method that writes global it reads passes: `bang-convention` covers it.
 
@@ -319,11 +320,14 @@ function input_finding(method::MethodEffects, entry::Hidden)::Finding
     read, access, match = entry
     if read === :default_rng
         takes = !isempty(rng_positions(method.site.method))
+        own = Label(method.site.span, takes ? "takes RNG argument but draws without it" : "takes no RNG argument")
+        fix = takes ? "pass RNG argument to each draw" : "take `rng::AbstractRNG` argument and pass it to each draw"
+        # Dependency line draws itself: package code has no RNG to pass there.
+        isnothing(access.site) || (fix = "dependency draws without RNG; report upstream or allow with reason")
         return Finding(
             NAME, :rng, access.confidence, "method draws from default RNG", Label(access.cause, "reads default RNG"),
-            [Label(method.site.span, takes ? "takes RNG argument but draws without it" : "takes no RNG argument")],
-            "caller cannot seed draws or pass own RNG; concurrent tasks share stream",
-            manual_fix(takes ? "pass RNG argument to each draw" : "take `rng::AbstractRNG` argument and pass it to each draw"),
+            isnothing(access.site) ? [own] : [own, Label(something(access.site), "dependency draws without RNG")],
+            "caller cannot seed draws or pass own RNG; concurrent tasks share stream", manual_fix(fix),
         )
     end
     writing, write, certainty = something(match)
