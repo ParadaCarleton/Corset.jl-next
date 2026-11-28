@@ -1647,7 +1647,7 @@ switch_log(switch::Switch) = switch.log
     argument = Operand.Value(Core.Argument(2))
     for (position, link) in enumerate(links)
         outcome = position == length(links) ? Outcome.Builtin(Core.getfield, [argument, Operand.Value(QuoteNode(:a))]) : Outcome.Dispatch([links[position + 1]], [Operand.Value(chain_link), argument])
-        run.bodies[link] = Body(ir, Int[], Union{Nothing, LineNumberNode}[], Union{Nothing, Outcome.Type}[outcome], [false], [false], false, false)
+        run.bodies[link] = Body(ir, Int[], nothing, Union{Nothing, Outcome.Type}[outcome], [false], [false], false, false)
     end
     @test variant_parameters!(run, first(links)) == Set([2])
     # Branch condition: constant flag drops unreached store, as Julia inference does; unknown flag keeps it.

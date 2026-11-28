@@ -105,30 +105,14 @@ function seed_facts!(flow::Flow, callees::Callees)::Tuple{Bool, Bool}
 end
 
 """
-Library line of first draw of default RNG in instance with `flow` that names one (`engine.md`, Effect kinds): site of
-callee summary at draw, else library line of draw statement in `sites` (`library_sites`). `nothing` when no draw names
-line.
-"""
-function draw_site!(flow::Flow, callees::Callees, sites::AbstractVector{Union{Nothing, LineNumberNode}})::Union{Nothing, LineNumberNode}
-    for index in flow.draws
-        for variant in callees.variants[index]
-            site = summary!(callees, variant).rng.site
-            isnothing(site) || return site
-        end
-        isnothing(sites[index]) || return sites[index]
-    end
-    return nothing
-end
-
-"""
 Summary of instance of `method` from `flow` at fixpoint, with callee summaries from `callees`: caller-visible accesses,
-stores of exported objects, result, release balance (`balance!`) and default RNG facts (`seed_facts!`, `draw_site!` with
-library lines `sites`). `seed!` with seed it takes (`reseeds`) reseeds, and draws nothing first.
+stores of exported objects, result, release balance (`balance!`) and default RNG facts (`seed_facts!`, library draw
+`site` from `draw_site!`). `seed!` with seed it takes (`reseeds`) reseeds, and draws nothing first.
 """
-function summarize!(flow::Flow, method::Method, callees::Callees, sites::AbstractVector{Union{Nothing, LineNumberNode}})::Summary
+function summarize!(flow::Flow, method::Method, callees::Callees, site::Union{Nothing, LineNumberNode})::Summary
     held, thrown, unguarded = balance!(flow, callees)
     seeds, draws = reseeds(method, flow.ir) ? (true, false) : seed_facts!(flow, callees)
-    rng = DefaultRng(seeds, draws, draw_site!(flow, callees, sites))
+    rng = DefaultRng(seeds, draws, site)
     exported = escaping(flow)
     shown(origin::Origin.Type)::Bool = !fresh_origin(origin) || origin in exported
     edges = Dict((node_of(holder), step) => nodes_of(targets) for (holder, slots) in flow.heap if shown(holder) for (step, targets) in slots if !isempty(targets))
