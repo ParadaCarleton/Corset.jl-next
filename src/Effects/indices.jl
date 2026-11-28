@@ -862,17 +862,27 @@ function lowered_indexing(method::Method)::Bool
     return any(call -> any(indexing, something(callee_globals(aliases, call.args[1], method.nargs), Set{GlobalRef}())), lowered_calls(code))
 end
 
+"""Crash journal key of offset inference of `method` at offset `signature`."""
+offset_key(method::Method, signature::Type)::String = "offset " * Inference.entry_key(method, signature)
+
+"""Whether earlier run of crash `journal` left offset inference of unit `typed` unfinished beside other inference."""
+function offset_suspect(typed::TypedCode, journal::Union{Nothing, Inference.Journal})::Bool
+    (isnothing(journal) || isempty(journal.suspects)) && return false
+    signature = offset_signature(typed.site.method, typed.signature)
+    return !isnothing(signature) && offset_key(typed.site.method, signature) in journal.suspects
+end
+
 """
 Offset inference of unit `typed` at `signature` in `world`, or blind spot cause: `OFFSET_CRASHED` when key crashed earlier
 run of `journal`, `OFFSET_UNINFERRED` when inference gives no code, `OFFSET_UNMAPPED` when generator gives other code
 than for unit. Journal records start and finish, as for first inference: generator can abort process on offset
-stand-in. `nothing` journal records none.
+stand-in. `alone`: no other inference runs beside it. `nothing` journal records none.
 """
-function offset_inference(typed::TypedCode, signature::Type, journal::Union{Nothing, Inference.Journal}, world::UInt)::Union{String, Inference.Output}
+function offset_inference(typed::TypedCode, signature::Type, journal::Union{Nothing, Inference.Journal}, world::UInt, alone::Bool)::Union{String, Inference.Output}
     method = typed.site.method
-    key = "offset " * Inference.entry_key(method, signature)
+    key = offset_key(method, signature)
     isnothing(journal) || !(key in journal.crashed) || return OFFSET_CRASHED
-    isnothing(journal) || Inference.record!(journal, Inference.start_record(key, Inference.method_label(method) * " with offset stand-in", true))
+    isnothing(journal) || Inference.record!(journal, Inference.start_record(key, Inference.method_label(method) * " with offset stand-in", alone))
     inferred = Inference.infer(method, signature)
     # Spans of unit fit offset code only when both lower alike; generator runs again, so journal covers check.
     mapped = isnothing(inferred) || !Base.hasgenerator(method) || same_lowered(typed.frame.linfo, first(inferred), world)
@@ -889,17 +899,17 @@ end
 
 """
 Index facts of unit `typed` with `walk` (`index_facts`), and blind spots: method infers again with offset
-stand-ins (`offset_inference` with `journal`), and proof runs on that code. Method without indexing or package call
+stand-ins (`offset_inference` with `journal` and `alone`), and proof runs on that code. Method without indexing or package call
 with array stand-in, in typed or lowered code, and method that rejects offset stand-ins give none. Generated method always infers again: one-based inference can
 drop its indexing branch.
 """
-function unit_indices(typed::TypedCode, walk::Walk, interpreter::CC.NativeInterpreter, journal::Union{Nothing, Inference.Journal})::Tuple{IndexFacts, Vector{BlindSpot}, Union{Nothing, Vector{Any}}}
+function unit_indices(typed::TypedCode, walk::Walk, interpreter::CC.NativeInterpreter, journal::Union{Nothing, Inference.Journal}, alone::Bool)::Tuple{IndexFacts, Vector{BlindSpot}, Union{Nothing, Vector{Any}}}
     method = typed.site.method
     reaches = indexes_stand_in(walk) || passes_stand_in(walk) || lowered_indexing(method) || lowered_passes(method, typed.signature, walk.modules)
     (Base.hasgenerator(method) || reaches) || return IndexFacts(), BlindSpot[], Any[]
     signature = offset_signature(method, typed.signature)
     isnothing(signature) && return IndexFacts(), BlindSpot[], Any[]
-    inferred = offset_inference(typed, signature, journal, walk.world)
+    inferred = offset_inference(typed, signature, journal, walk.world, alone)
     # Failed offset inference leaves its callees unknown, so store cannot check record: no edges.
     inferred isa String && return IndexFacts(), [BlindSpot(inferred, typed.site.span)], nothing
     offset_walk, lines = frame_walk(last(inferred), method, walk.modules, interpreter, walk.world)
