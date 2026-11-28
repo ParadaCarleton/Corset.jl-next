@@ -158,7 +158,8 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 - So new method of package function drops only entries that call it. Edge of call without match names no method; callee name covers it.
 - Entry records generated code of each `@generated` instance it read. Run calls generator again and compares.
 - Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.
-- Store key line hashes environment, Corset source, analyzed file list and package shape. Other key drops whole store.
+- Store key line hashes environment, Corset producer source (engine.md, Solve and cache), analyzed file list and package shape. Other key drops whole store.
+- Producer source counts by content even when Corset checks itself: analyzed file list counts files by path only.
 - Environment counts by load path position and content. Relaunch copies environment to new directory each run, so copy keeps key.
 - Package shape: text of files that hold pirate methods, and id of each method on callee of other module (`Base.show(::IO, ::T)`). Non-analyzed files in `src`, `ext` and `deps` count too.
 - Base code reaches pirate and foreign methods with no edge to package code, so their change drops whole store.

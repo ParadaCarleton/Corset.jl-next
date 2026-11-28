@@ -307,7 +307,9 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Library instance: method outside package, and signature names no package type.
 - Library summary: variant of library instance. Disk cache keeps it; cache hit skips native inference and passes.
 - Cache also keeps variant parameters and stand-in cut of library instances.
-- Partition: Julia version, cache flags and Corset content. One library file per partition serves every checked path and environment.
+- Partition: Julia version, cache flags and Corset producer source (`Cache.PRODUCERS`). One library file per partition serves every checked path and environment.
+- Producer source: `Inference`, `Effects`, modules they import, and `Cache`. Edit of rules, CLI or rendering keeps library and method store.
+- Partition leaves Corset preferences out: relaunch copies checked project's `[Corset]` config into them.
 - Entry key: kind, closure key of instance, and constants of variant. Module constant adds its owner text.
 - Closure key: digest over strongly connected components of native edge graph, callees first. Walk order cannot change it.
 - Node: cached code instance, else instance that run inferred. Lookup before native inference needs cached code; instance without it misses.
@@ -317,7 +319,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Lookup count is negative when matches do not cover call. Too many matches give no record, so push past method limit changes key.
 - Package method that changes dispatch of library call removes cached code of caller. New code gives other edge records.
 - Owner text: package content and texts of its loaded dependencies. Extension: texts of parent and triggers. Base and Core: none.
-- Corset gives texts of its dependencies only: partition holds its content.
+- Corset gives texts of its dependencies only: partition holds its producer source, which defines stand-ins.
 - Package content: path in depot `packages` or standard library, since depot slug derives from tree hash. Else digest of project file, `src`, `ext` and `deps`.
 - Package content adds preferences of package. Edit of unrelated package keeps key.
 - No key: package code, `Main` code, root without project file, unknown edge form, or edge target without node.

@@ -120,7 +120,7 @@ function stage_facts(path::String, package::Union{Nothing, PackageFacts}, files:
     # Effects run reads effects record of each stored unit, so entry without one infers again.
     effects && !isnothing(store) && filter!(pair -> !isempty(last(pair).effects), store)
     library_directory = isnothing(cache) ? "" : Cache.library_directory(cache)
-    partition = isnothing(cache) ? "" : Cache.partition_key(string(VERSION), DEPOT_PATH)
+    partition = isnothing(cache) ? "" : Cache.partition_key(string(VERSION))
     library = Effects.Summaries.Library(isnothing(cache) ? Dict{String, Cache.Stamped}() : timed(() -> Cache.read_library(library_directory, partition), timings, "library read"))
     stages(journal::Union{Nothing, Inference.Journal}) = run_stages(package, files, store, !isnothing(cache), effects, lifecycle, library, journal, timings)
     facts, spots, stored, run, lifecycle_found = isnothing(directory) ? stages(nothing) : journaled(stages, directory)
@@ -141,32 +141,8 @@ function run_stages(package::PackageFacts, files::AbstractVector{Facts.SyntaxFil
     filling = keep ? used : nothing
     effects || return facts, spots, filling, nothing, nothing
     run = timed(() -> Effects.effects_facts(package, units, journal, library), timings, "effects")
-    kept = isnothing(filling) ? nothing : timed(() -> with_records(filling, units, run, files, package, journal), timings, "method store update")
+    kept = isnothing(filling) ? nothing : timed(() -> Effects.with_records(filling, units, run, files, package, journal), timings, "method store update")
     return facts, spots, kept, run, lifecycle ? timed(() -> Lifecycle.lifecycle_facts(package, run.ordered), timings, "lifecycle") : nothing
-end
-
-"""
-Store `used` where each entry without effects record takes one: typed unit of `units` its name record and engine
-verdict in effects `run`, other unit (no code) `nothing`. Filled entry also reads methods behind compiler edges of its
-effects stage; entry drops when they are unknown (`Inference.with_edges!`). Generators run under crash `journal`.
-Stored entries keep theirs.
-"""
-function with_records(used::Inference.Store, units::Inference.Units, run::Effects.StageRun, files::AbstractVector{Facts.SyntaxFile}, package::PackageFacts, journal::Union{Nothing, Inference.Journal})::Inference.Store
-    bytes, read = Dict{String, Vector{UInt8}}(), Dict{String, Union{Nothing, Vector{Any}}}()
-    for (typed, record, verdict, unit_edges) in zip(units.typed, run.fresh, run.verdicts, run.edges)
-        key = Inference.entry_key(typed.site.method, typed.signature)
-        # Unit that repeats method instance of earlier unit has no record of its own.
-        isnothing(record) && haskey(bytes, key) && continue
-        bytes[key], read[key] = Effects.record_bytes(record, verdict), unit_edges
-    end
-    none, by_path, memo = Effects.record_bytes(nothing, nothing), Dict(file.path => file for file in files), Inference.StoreMemo(package, IdDict{Method, String}())
-    filled(key::String, entry::Inference.Entry)::Union{Nothing, Inference.Entry} = Inference.with_edges!(memo, Inference.Entry(entry.file, entry.methods, entry.staged, entry.names, entry.inferred, get(bytes, key, none)), get(read, key, Any[]), by_path, journal)
-    store = Inference.Store()
-    for (key, entry) in used
-        kept = isempty(entry.effects) ? filled(key, entry) : entry
-        isnothing(kept) || (store[key] = kept)
-    end
-    return store
 end
 
 """

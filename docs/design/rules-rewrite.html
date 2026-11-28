@@ -1366,7 +1366,9 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>Library instance: method outside package, and signature names no package type.</li>
 <li>Library summary: variant of library instance. Disk cache keeps it; cache hit skips native inference and passes.</li>
 <li>Cache also keeps variant parameters and stand-in cut of library instances.</li>
-<li>Partition: Julia version, cache flags and Corset content. One library file per partition serves every checked path and environment.</li>
+<li>Partition: Julia version, cache flags and Corset producer source (<code>Cache.PRODUCERS</code>). One library file per partition serves every checked path and environment.</li>
+<li>Producer source: <code>Inference</code>, <code>Effects</code>, modules they import, and <code>Cache</code>. Edit of rules, CLI or rendering keeps library and method store.</li>
+<li>Partition leaves Corset preferences out: relaunch copies checked project's <code>[Corset]</code> config into them.</li>
 <li>Entry key: kind, closure key of instance, and constants of variant. Module constant adds its owner text.</li>
 <li>Closure key: digest over strongly connected components of native edge graph, callees first. Walk order cannot change it.</li>
 <li>Node: cached code instance, else instance that run inferred. Lookup before native inference needs cached code; instance without it misses.</li>
@@ -1376,7 +1378,7 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>Lookup count is negative when matches do not cover call. Too many matches give no record, so push past method limit changes key.</li>
 <li>Package method that changes dispatch of library call removes cached code of caller. New code gives other edge records.</li>
 <li>Owner text: package content and texts of its loaded dependencies. Extension: texts of parent and triggers. Base and Core: none.</li>
-<li>Corset gives texts of its dependencies only: partition holds its content.</li>
+<li>Corset gives texts of its dependencies only: partition holds its producer source, which defines stand-ins.</li>
 <li>Package content: path in depot <code>packages</code> or standard library, since depot slug derives from tree hash. Else digest of project file, <code>src</code>, <code>ext</code> and <code>deps</code>.</li>
 <li>Package content adds preferences of package. Edit of unrelated package keeps key.</li>
 <li>No key: package code, <code>Main</code> code, root without project file, unknown edge form, or edge target without node.</li>
@@ -1788,7 +1790,8 @@ Relaunched <code>fix</code> that edits loaded package exits <code>3</code>: load
 <li>So new method of package function drops only entries that call it. Edge of call without match names no method; callee name covers it.</li>
 <li>Entry records generated code of each <code>@generated</code> instance it read. Run calls generator again and compares.</li>
 <li>Store keeps no entry whose generated instance names closure or keyword body type: edit can remove that name, and then store cannot read type back.</li>
-<li>Store key line hashes environment, Corset source, analyzed file list and package shape. Other key drops whole store.</li>
+<li>Store key line hashes environment, Corset producer source (engine.md, Solve and cache), analyzed file list and package shape. Other key drops whole store.</li>
+<li>Producer source counts by content even when Corset checks itself: analyzed file list counts files by path only.</li>
 <li>Environment counts by load path position and content. Relaunch copies environment to new directory each run, so copy keeps key.</li>
 <li>Package shape: text of files that hold pirate methods, and id of each method on callee of other module (<code>Base.show(::IO, ::T)</code>). Non-analyzed files in <code>src</code>, <code>ext</code> and <code>deps</code> count too.</li>
 <li>Base code reaches pirate and foreign methods with no edge to package code, so their change drops whole store.</li>

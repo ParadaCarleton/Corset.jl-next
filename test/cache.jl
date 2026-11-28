@@ -155,9 +155,18 @@ end
         end
     end
 
+    @testset "producer source" begin
+        # Store and library keys read producer files only, so module that producer imports must be producer too.
+        source, files = joinpath(Cache.corset_root(), "src"), Cache.producer_files()
+        producers = Set(first(splitext(first(splitpath(relpath(file, source))))) for file in files)
+        @test Set(found[1] for file in files for found in eachmatch(r"\.\.+([A-Z]\w*)", read(file, String))) ⊆ producers
+        @test "Inference" in producers && "Effects" in producers && isdisjoint(producers, ("Rules", "Engine", "CLI", "Launch"))
+        @test Cache.producer_digest() == Cache.producer_digest()
+    end
+
     @testset "library key" begin
         julia = string(VERSION)
-        @test Cache.partition_key(julia, DEPOT_PATH) == Cache.partition_key(julia, DEPOT_PATH) != Cache.partition_key("$julia+other", DEPOT_PATH)
+        @test Cache.partition_key(julia) == Cache.partition_key(julia) != Cache.partition_key("$julia+other")
         mktempdir(@__DIR__) do scratch
             depot, developed, environment = joinpath.(scratch, ["depot", "developed", "environment"])
             registered = joinpath(depot, "packages", "Registered", "slug")

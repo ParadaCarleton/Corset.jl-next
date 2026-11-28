@@ -11,7 +11,14 @@ using Serialization: Serialization, AbstractSerializer, serialize, deserialize
 using SHA: SHA, sha256
 using Scratch: get_scratch!
 using TOML: TOML
-using ..Launch: corset_root
+"""Root directory of Corset package this process runs."""
+corset_root()::String = pkgdir(Base.moduleroot(@__MODULE__))
+
+"""
+Corset source below `src` that method store entries and library summaries depend on: `Inference`, `Effects`, each
+module they import, transitively, and `Cache`. Store and library keys hash only these, so other edit keeps both.
+"""
+const PRODUCERS = ("Cache.jl", "Config.jl", "Discovery.jl", "Effects", "Facts.jl", "Guesses.jl", "HardArrays.jl", "Inference.jl", "Narrowing.jl", "Package.jl", "Signatures.jl", "StandIns.jl", "Syntax.jl", "Widening.jl")
 
 """Cache directory of command line: scratch space of Corset in Julia depot. CI that saves depot keeps it."""
 directory()::String = get_scratch!(Base.moduleroot(@__MODULE__), "analyses")
@@ -29,6 +36,19 @@ function tree_files(root::String, cache::String)::Vector{String}
         append!(files, filter(isfile, kept))
     end
     return sort!(files)
+end
+
+"""Files of `PRODUCERS` in Corset source, sorted. Missing producer file stays listed, so `producer_digest` throws."""
+producer_files()::Vector{String} = sort!(reduce(vcat, (isdir(path) ? tree_files(path, "") : [path] for path in joinpath.(corset_root(), "src", PRODUCERS))))
+
+"""Digest of each `producer_files` file by path below Corset `src` and content; location of Corset stays out."""
+function producer_digest()::String
+    source, context = joinpath(corset_root(), "src"), SHA.SHA256_CTX()
+    for file in producer_files()
+        update_part!(context, relpath(file, source))
+        update_part!(context, read(file, String))
+    end
+    return bytes2hex(SHA.digest!(context))
 end
 
 """
@@ -119,7 +139,7 @@ Corset source, each project environment with its Manifest and preferences, and e
 Manifest `path` entries, `cache` directory left out.
 """
 function inputs(path::String, flags::String, root::Union{Nothing, String}, files::AbstractVector{String}, load_path::AbstractVector{String}, cache::String)::Tuple{Vector{String}, Vector{String}, Naming}
-    parts, listed, trees = environment_inputs(load_path)
+    parts, listed, trees = environment_inputs(load_path, [joinpath(corset_root(), "src")])
     found = found_files([files; listed], [trees; something(root, String[])], cache)
     named = naming(root, load_path, found)
     labeled = [anchored(real_path(part), named.anchors) for part in parts]
@@ -134,12 +154,12 @@ end
 
 """
 Environment parts of key: each environment of `load_path`. Files: Corset project file, and each project environment
-with its Manifest and preferences. Trees: Corset source and Manifest `path` entries but Corset root, which can hold
-depot and outputs beside code that Corset loads.
+with its Manifest and preferences. Trees: `source` (Corset code key reads as tree) and Manifest `path` entries but
+Corset root, which can hold depot and outputs beside code that Corset loads.
 """
-function environment_inputs(load_path::AbstractVector{String})::Tuple{Vector{String}, Vector{String}, Vector{String}}
+function environment_inputs(load_path::AbstractVector{String}, source::AbstractVector{String})::Tuple{Vector{String}, Vector{String}, Vector{String}}
     corset = corset_root()
-    parts, listed, trees = String[], [joinpath(corset, "Project.toml")], [joinpath(corset, "src")]
+    parts, listed, trees = String[], [joinpath(corset, "Project.toml")], copy(source)
     for environment in load_path
         push!(parts, environment)
         # Directory environment, such as standard library, counts by path.
@@ -160,20 +180,21 @@ function found_files(listed::AbstractVector{String}, trees::AbstractVector{Strin
 end
 
 """
-Key line of method store of checked `path`: Julia version, cache flags, `path`, environment (`environment_inputs`),
-analyzed `files` by path, package `shape`, and files of project `root` that package code loads from (`src`, `ext`,
+Key line of method store of checked `path`: Julia version, cache flags, `path`, Corset code that makes entries
+(`producer_digest`), environment (`environment_inputs`), analyzed `files` by path, package `shape`, and files of project `root` that package code loads from (`src`, `ext`,
 `deps`) but `files` leave out. Store entries count analyzed files by content, so Manifest `path` entry of `root` stays out.
 Environments count by load path position (`naming`): relaunch copies environment to new temporary directory each run.
 """
 function method_key(path::String, root::String, files::AbstractVector{String}, shape::AbstractVector{String}, load_path::AbstractVector{String}, cache::String)::String
-    parts, listed, trees = environment_inputs(load_path)
+    parts, listed, trees = environment_inputs(load_path, String[])
     root = realpath(root)
     kept = [filter(tree -> !(ispath(tree) && realpath(tree) == root), trees); joinpath.(root, ["src", "ext", "deps"])]
     analyzed = Set(real_path(file) for file in files)
     outside = filter(file -> !(file in analyzed), found_files(listed, kept, cache))
     named = naming(nothing, load_path, String[])
     labeled = [anchored(real_path(part), named.anchors) for part in parts]
-    return digest([string(VERSION), repr(Base.CacheFlags()), path, labeled..., files..., shape...], outside, named)
+    # Digest counts producer files even when checked package is Corset: `outside` drops analyzed files.
+    return digest([string(VERSION), repr(Base.CacheFlags()), path, producer_digest(), labeled..., files..., shape...], outside, named)
 end
 
 """
@@ -219,7 +240,7 @@ end
 """
 Content texts that inference of code in module `mod` depends on (`engine.md`, Solve and cache): none for Base and
 Core, as Julia version covers them; else content of its package (`package_content`) and texts of each loaded package
-it depends on. Corset gives texts of its dependencies only, as partition key holds its content. Extension depends on its
+it depends on. Corset gives texts of its dependencies only: partition key holds its producer source, home of stand-ins. Extension depends on its
 parent and triggers. `nothing` for module without package root on disk, such as `Main`. `texts` caches answers by root
 module.
 """
@@ -259,13 +280,10 @@ end
 library_directory(directory::String)::String = joinpath(directory, "library")
 
 """
-Partition key of library file: Julia version `julia`, cache flags and content of Corset (`package_content`) under
-`depots`. Entry keys hold all else.
+Partition key of library file: Julia version `julia`, cache flags and Corset code that makes summaries
+(`producer_digest`). Entry keys hold all else. Corset preferences stay out: they hold checked project's config.
 """
-function partition_key(julia::String, depots::AbstractVector{String})::String
-    corset = Base.moduleroot(@__MODULE__)
-    return digest([julia, repr(Base.CacheFlags()), package_content(Base.PkgId(corset), corset_root(), depots)], String[])
-end
+partition_key(julia::String)::String = digest([julia, repr(Base.CacheFlags()), producer_digest()], String[])
 
 """
 Library cache entry: instance key of instance it describes (`Effects.Summaries.instance_key!`), serialized value, and time of
