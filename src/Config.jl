@@ -31,13 +31,17 @@ Base.showerror(io::IO, error::ConfigError)::Nothing = print(io, "config error: "
     reason::String
 end
 
-"""One preferences table as written. `nothing` marks key left out, so later table overlays earlier one key by key."""
+"""
+One preferences table as written. `nothing` marks key left out, so later table overlays earlier one key by key.
+Table holds preferences of package Corset, so PrecompileTools reads `precompile_workload` there; config ignores it.
+"""
 @option struct Table
     kind::Union{Nothing, String} = nothing
     confidence::Union{Nothing, String} = nothing
     fix_tier::Union{Nothing, String} = nothing
     levels::Dict{String, String} = Dict{String, String}()
     banned::Union{Nothing, Vector{BanTable}} = nothing
+    precompile_workload::Union{Nothing, Bool} = nothing
 end
 
 """Command-line settings; each beats config file value."""
