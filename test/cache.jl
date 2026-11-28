@@ -29,11 +29,9 @@ end
         mktempdir(@__DIR__) do root
             write_files(root, "b.jl" => "", "a/c.jl" => "", ".hidden.jl" => "", ".git/config" => "", "a/.d/e.jl" => "")
             write_files(root, "cache/entry" => "", "cached/entry" => "")
-            # Julia writes coverage and allocation files beside source. File of other name, or without source beside it, stays.
-            write_files(root, "b.jl.4242.cov" => "", "a/c.jl.17.mem" => "", "notes.1.cov" => "", "orphan.jl.5.cov" => "")
             symlink(joinpath(root, "a"), joinpath(root, "directory link"))
             symlink(joinpath(root, "b.jl"), joinpath(root, "file link"))
-            @test Cache.tree_files(root, joinpath(root, "cache")) == joinpath.(root, ["a/c.jl", "b.jl", "cached/entry", "file link", "notes.1.cov", "orphan.jl.5.cov"])
+            @test Cache.tree_files(root, joinpath(root, "cache")) == joinpath.(root, ["a/c.jl", "b.jl", "cached/entry", "file link"])
         end
     end
 
@@ -67,6 +65,14 @@ end
             @test !any(file -> file in (joinpath(root, ".hidden"), link) || startswith(file, joinpath(scratch, "gone")), files)
             # Developed Corset counts by project file and source: depot and outputs in its root change no Corset code.
             @test !(joinpath(corset, "test", "cache.jl") in files)
+            # Test process with coverage writes `.cov` beside Corset source as it exits; key counts Julia files of Corset only.
+            coverage = joinpath(corset, "src", "Cache.jl.$(rand(UInt32)).cov")
+            try
+                write(coverage, "")
+                @test Cache.inputs(root, "flags", root, [joinpath(root, "src", "a.jl"), link], [project, Sys.STDLIB], joinpath(root, "cache"))[2] == files
+            finally
+                rm(coverage; force = true)
+            end
             # Manifest format 1 keeps entries at top level.
             write_files(environment, "Manifest.toml" => "[[D]]\npath = \"../dependency\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n")
             @test Cache.path_entries(project) == [dependency]
