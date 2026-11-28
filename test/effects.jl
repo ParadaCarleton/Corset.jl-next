@@ -467,6 +467,7 @@ set_named!(holder::Module, name::Symbol, values::Vector{Int}) = Core.setglobal!(
 get_named(holder::Module, name::Symbol) = Core.getglobal(holder, name)
 get_slot() = Core.getglobal(@__MODULE__, :slot)
 read_holder() = HOLDER[]
+holder_length() = length(read_holder())
 
 element(memory::Memory{Vector{Int}}) = Core.memoryrefnew(Core.memoryrefnew(memory), 1, false)
 memory_get(memory::Memory{Vector{Int}}) = Core.memoryrefget(element(memory), :not_atomic, false)
@@ -924,8 +925,9 @@ end
     instance = only(something(dispatch(Any[typeof(broken), Int], run.world, 1)))
     @test library_body!(run, instance) == "inference gave no code"
     @test summary_of(calls_broken, Vector{Int}).writes == Dict()
+    # Callee without code may write global state, though its `Int` argument points to no object.
     broken_int = summary_of(x -> broken(x), Int)
-    @test isempty(broken_int.writes)
+    @test [(key, effect.doubt, effect.reason) for (key, effect) in broken_int.writes] == [(memory((Place.At(Root.Elsewhere(), Step.Type[]), true)), BLIND_DOUBT, "inference gave no code")]
     # Phi joins both branches: run-time `flag` picks written vector, so write is `possible` on each.
     @test doubts(summary_of(pick!, Vector{Int}, Vector{Int}, Bool).writes) == Dict(top(2) => code, top(3) => code)
     # Blind alternative leaves choice open too: known object gets `possible` write, blind one keeps its blind spot.
@@ -1147,6 +1149,7 @@ four_way(x::Symbol) = x
     @test same(empty_summary(), empty_summary()) && !same(empty_summary(), open_summary(1, "cause"))
     opened = open_summary(2, "cause")
     @test opened.writes[memory((parameter(2), true))] == Effect(BLIND_DOUBT, 0, "cause") && opened.result[Node.Outside()] == BLIND_DOUBT
+    @test opened.reads[memory((Place.At(Root.Elsewhere(), Step.Type[]), true))] == Effect(BLIND_DOUBT, 0, "cause")
     cache = IdDict{Any, Bool}()
     @test !referent!(cache, Union{}) && referent!(cache, Union{Int, Vector{Int}}) && !referent!(cache, Union{Int, Symbol})
     @test referent!(cache, AbstractVector) && !referent!(cache, Type{Int}) && referent!(cache, Ptr{Int})
@@ -1764,6 +1767,13 @@ end
     holder = Targets(Origin.Allocation(30) => NO_DOUBT)
     store!(spent, holder, Step.Field(:z), Targets(Origin.Caller(parameter(2)) => NO_DOUBT))
     @test !isempty(load!(spent, holder, Step.Field(:z))) && over_budget(spent) && isempty(load!(spent, holder, Step.Field(:z)))
+    # Open callee may touch global state: caller of zero-argument callee keeps blind write and read on `Elsewhere`.
+    open_run = start_run(nothing, Module[])
+    measured, holder = ((only(something(dispatch(Any[typeof(f)], open_run.world, 1))), Pair{Int, Any}[]) for f in (holder_length, read_holder))
+    solve!(open_run, [measured])
+    open_run.slots[holder].summary = open_summary(1, "cause")
+    measured_summary, global_key = first(Summaries.variant_summary!(open_run, measured, false)), memory((Place.At(Root.Elsewhere(), Step.Type[]), true))
+    @test all(table -> table[global_key].doubt == BLIND_DOUBT && table[global_key].reason == "cause", (measured_summary.writes, measured_summary.reads))
     # Package unit past budget: blind access with budget cause goes to coverage line.
     _, spots = cached_effects(PACKAGE, UNITS, Union{Nothing, UnitVerdict}[], nothing, Library(); work_limit = 0)
     @test any(spot -> spot.cause == Summaries.BUDGET, spots) && !any(spot -> spot.cause == Summaries.BUDGET, SPOTS)

@@ -294,7 +294,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - After 8 reruns, member summary widens: union with previous summary. Access that still changes becomes blind (`unsettled call cycle`).
 - Widened summaries only grow through finite values, so fixpoint ends.
 - Flow work: targets that loads trace and joins read, over every round of one variant.
-- Flow past work limit stops. Own verdict of variant gets open summary: blind access on each parameter, blind spot `effects budget`.
+- Flow past work limit stops. Own verdict of variant gets open summary: blind access on each parameter and on global state, blind spot `effects budget`.
 - Callers of that variant trust its name (`effects.md`, Name trust): `!` method writes its first argument that can point to object; other method writes none. Both are `possible`; reads and result stay blind.
 - CLI warns when report holds `effects budget` blind spot.
 - Variant past work limit keeps open summary for whole run: call cycle reruns no flow of it.
