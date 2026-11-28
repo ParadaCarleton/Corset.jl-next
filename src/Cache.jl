@@ -38,26 +38,18 @@ function tree_files(root::String, cache::String)::Vector{String}
     return sort!(files)
 end
 
-"""Whether `expression` defines function, whose body runs at call, after Corset loads."""
-function defines_function(expression::Expr)::Bool
-    expression.head in (:function, :->, :do) && return true
-    signature = expression.head === :(=) ? expression.args[1] : nothing
-    while signature isa Expr && signature.head in (:where, :(::))
-        signature = signature.args[1]
-    end
-    return signature isa Expr && signature.head === :call
-end
+"""
+Computed `include` calls that producers may make, by file below `src`: each loads checked package file, never Corset
+code. Every other computed include in producer throws, as key could not follow it.
+"""
+const CHECKED_LOADS = ("Package.jl" => :(Base.include(container, entry)),)
 
-"""
-Literal paths of `include` calls in parsed `expression` of `file`, outside quoted code. Computed path throws when
-include runs at load (`loading`), as key could not follow it; function body takes it at call: checked package file.
-"""
-function included_paths(expression::Any, file::String, loading::Bool)::Vector{String}
+"""Literal paths of `include` calls in parsed `expression` of `name` (path below `src`), outside quoted code."""
+function included_paths(expression::Any, name::String)::Vector{String}
     expression isa Expr && !(expression.head in (:quote, :inert)) || return String[]
-    inner = loading && !defines_function(expression)
-    expression.head === :call && expression.args[1] in (:include, :(Base.include)) || return mapreduce(argument -> included_paths(argument, file, inner), vcat, expression.args; init = String[])
+    expression.head === :call && expression.args[1] in (:include, :(Base.include)) || return mapreduce(argument -> included_paths(argument, name), vcat, expression.args; init = String[])
     expression.args[end] isa String && return [expression.args[end]]
-    loading && throw(ArgumentError("$file: include of computed path at load, which producer key cannot follow"))
+    (name => expression) in CHECKED_LOADS || throw(ArgumentError("$name: include of computed path, which producer key cannot follow; list checked package load in `CHECKED_LOADS`"))
     return String[]
 end
 
@@ -68,7 +60,7 @@ function producer_files(source::String, entries::Tuple{Vararg{String}})::Vector{
         file = pop!(pending)
         file in found && continue
         push!(found, file)
-        append!(pending, joinpath.(dirname(file), included_paths(Meta.parseall(read(file, String); filename = file), file, true)))
+        append!(pending, joinpath.(dirname(file), included_paths(Meta.parseall(read(file, String); filename = file), relpath(file, source))))
     end
     return sort!(collect(found))
 end

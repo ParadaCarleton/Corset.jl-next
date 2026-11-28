@@ -1369,7 +1369,7 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>Partition: Julia version, cache flags and Corset producer source (<code>Cache.PRODUCERS</code>). One library file per partition serves every checked path and environment.</li>
 <li>Producer source: <code>Inference</code>, <code>Effects</code>, modules they import, <code>Cache</code>, and every file they include. Edit of rules, CLI or rendering keeps library and method store.</li>
 <li>Key follows literal <code>include</code> calls in parsed producer code, function bodies included; quoted code and docstrings stay out.</li>
-<li>Computed include at load throws. Function body may take computed path: it loads checked package.</li>
+<li>Computed include in producer throws. <code>Cache.CHECKED_LOADS</code> lists exceptions: calls that load checked package file.</li>
 <li>Partition leaves Corset preferences out: relaunch copies checked project's <code>[Corset]</code> config into them.</li>
 <li>Entry key: kind, closure key of instance, and constants of variant. Module constant adds its owner text.</li>
 <li>Closure key: digest over strongly connected components of native edge graph, callees first. Walk order cannot change it.</li>
