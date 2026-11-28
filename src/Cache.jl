@@ -49,14 +49,16 @@ function defines_function(expression::Expr)::Bool
 end
 
 """
-Literal paths of `include` calls that run while `file` loads: parsed `expression` outside quoted code and function
-bodies. Include of computed path throws, as key could not follow it.
+Literal paths of `include` calls in parsed `expression` of `file`, outside quoted code. Computed path throws when
+include runs at load (`loading`), as key could not follow it; function body takes it at call: checked package file.
 """
-function included_paths(expression::Any, file::String)::Vector{String}
-    expression isa Expr && !(expression.head in (:quote, :inert)) && !defines_function(expression) || return String[]
-    expression.head === :call && expression.args[1] in (:include, :(Base.include)) || return mapreduce(argument -> included_paths(argument, file), vcat, expression.args; init = String[])
-    expression.args[end] isa String || throw(ArgumentError("$file: include of computed path, which producer key cannot follow"))
-    return [expression.args[end]]
+function included_paths(expression::Any, file::String, loading::Bool)::Vector{String}
+    expression isa Expr && !(expression.head in (:quote, :inert)) || return String[]
+    inner = loading && !defines_function(expression)
+    expression.head === :call && expression.args[1] in (:include, :(Base.include)) || return mapreduce(argument -> included_paths(argument, file, inner), vcat, expression.args; init = String[])
+    expression.args[end] isa String && return [expression.args[end]]
+    loading && throw(ArgumentError("$file: include of computed path at load, which producer key cannot follow"))
+    return String[]
 end
 
 """Files of `source` that `entries` load: each entry and every file it includes, transitively, sorted. Missing file throws."""
@@ -66,7 +68,7 @@ function producer_files(source::String, entries::Tuple{Vararg{String}})::Vector{
         file = pop!(pending)
         file in found && continue
         push!(found, file)
-        append!(pending, joinpath.(dirname(file), included_paths(Meta.parseall(read(file, String); filename = file), file)))
+        append!(pending, joinpath.(dirname(file), included_paths(Meta.parseall(read(file, String); filename = file), file, true)))
     end
     return sort!(collect(found))
 end

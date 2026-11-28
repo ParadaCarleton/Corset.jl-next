@@ -164,10 +164,10 @@ end
         @test "Inference" in producers && "Effects" in producers && isdisjoint(producers, ("Rules", "Engine", "CLI", "Launch"))
         @test joinpath(source, "Inference", "failures.jl") in files && Cache.producer_digest() == Cache.producer_digest()
         mktempdir(@__DIR__) do scratch
-            # Include inside block counts; docstring, quoted code and function body do not load at load time.
-            nested = "begin include(\"A/b.jl\") end\n\"\"\"\ninclude(\"none.jl\")\n\"\"\"\nf() = include(name)\nquote include(\"none.jl\") end\nfunction g(name)\n    Base.include(Main, name)\nend\nh(name)::Any where {T} = include(name)\n"
-            write_files(scratch, "A.jl" => nested, "A/b.jl" => "b = 1\n", "C.jl" => "")
-            @test Cache.producer_files(scratch, ("A.jl",)) == joinpath.(scratch, ["A.jl", "A/b.jl"])
+            # Literal include counts in block and function body; docstring and quote hold text.
+            nested = "begin include(\"A/b.jl\") end\n\"\"\"\ninclude(\"none.jl\")\n\"\"\"\nf() = include(name)\nquote include(\"none.jl\") end\nfunction g(name)\n    Base.include(Main, name)\nend\nh(name)::Any where {T} = include(name)\nk() = include(\"A/c.jl\")\n"
+            write_files(scratch, "A.jl" => nested, "A/b.jl" => "b = 1\n", "A/c.jl" => "", "C.jl" => "")
+            @test Cache.producer_files(scratch, ("A.jl",)) == joinpath.(scratch, ["A.jl", "A/b.jl", "A/c.jl"])
             original = Cache.producer_digest(scratch, ("A.jl",))
             # File no entry includes stays out; included file counts by content.
             write_files(scratch, "C.jl" => "c = 1\n")
