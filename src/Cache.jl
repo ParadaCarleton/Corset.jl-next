@@ -163,16 +163,22 @@ end
 """
 Text parts, files and `Naming` that key of analysis of real checked `path` with `flags` text hashes. Parts: Julia
 version, cache flags, `path`, `flags` and each environment of `load_path`, paths `anchored`. Files: analyzed `files`,
-Corset source, each project environment with its Manifest and preferences, and every file of project root `root` and of
+`corset_sources`, each project environment with its Manifest and preferences, and every file of project root `root` and of
 Manifest `path` entries, `cache` directory left out.
 """
 function inputs(path::String, flags::String, root::Union{Nothing, String}, files::AbstractVector{String}, load_path::AbstractVector{String}, cache::String)::Tuple{Vector{String}, Vector{String}, Naming}
-    parts, listed, trees = environment_inputs(load_path, [joinpath(corset_root(), "src")])
-    found = found_files([files; listed], [trees; something(root, String[])], cache)
+    parts, listed, trees = environment_inputs(load_path)
+    found = found_files([files; listed; corset_sources(cache)], [trees; something(root, String[])], cache)
     named = naming(root, load_path, found)
     labeled = [anchored(real_path(part), named.anchors) for part in parts]
     return [string(VERSION), repr(Base.CacheFlags()), anchored(path, named.anchors), flags, labeled...], found, named
 end
+
+"""
+Julia files of Corset `src`, which hold all code Corset loads. Coverage file that test process writes beside them as it
+exits (`Cache.jl.4242.cov`) stays out, so it changes no key.
+"""
+corset_sources(cache::String)::Vector{String} = filter(endswith(".jl"), tree_files(joinpath(corset_root(), "src"), cache))
 
 """Project file `environment`, its Manifest and its preference files."""
 function environment_files(environment::String)::Vector{String}
@@ -182,12 +188,12 @@ end
 
 """
 Environment parts of key: each environment of `load_path`. Files: Corset project file, and each project environment
-with its Manifest and preferences. Trees: `source` (Corset code key reads as tree) and Manifest `path` entries but
-Corset root, which can hold depot and outputs beside code that Corset loads.
+with its Manifest and preferences. Trees: Manifest `path` entries but Corset root, which can hold depot and outputs beside
+code that Corset loads.
 """
-function environment_inputs(load_path::AbstractVector{String}, source::AbstractVector{String})::Tuple{Vector{String}, Vector{String}, Vector{String}}
+function environment_inputs(load_path::AbstractVector{String})::Tuple{Vector{String}, Vector{String}, Vector{String}}
     corset = corset_root()
-    parts, listed, trees = String[], [joinpath(corset, "Project.toml")], copy(source)
+    parts, listed, trees = String[], [joinpath(corset, "Project.toml")], String[]
     for environment in load_path
         push!(parts, environment)
         # Directory environment, such as standard library, counts by path.
@@ -214,7 +220,7 @@ Key line of method store of checked `path`: Julia version, cache flags, `path`, 
 Environments count by load path position (`naming`): relaunch copies environment to new temporary directory each run.
 """
 function method_key(path::String, root::String, files::AbstractVector{String}, shape::AbstractVector{String}, load_path::AbstractVector{String}, cache::String)::String
-    parts, listed, trees = environment_inputs(load_path, String[])
+    parts, listed, trees = environment_inputs(load_path)
     root = realpath(root)
     kept = [filter(tree -> !(ispath(tree) && realpath(tree) == root), trees); joinpath.(root, ["src", "ext", "deps"])]
     analyzed = Set(real_path(file) for file in files)
