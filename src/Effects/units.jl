@@ -1,5 +1,7 @@
 # Unit records and method facts of name tier (`effects.md`, Units and IR, Facts).
 
+using ..Timings: Sink, timed
+
 """Blind spot cause of unit that always throws on stand-ins: it shows no behavior of declared signature."""
 const ALWAYS_THROWS = "always throws on stand-ins"
 

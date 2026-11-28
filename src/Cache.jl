@@ -18,7 +18,7 @@ corset_root()::String = pkgdir(Base.moduleroot(@__MODULE__))
 Entry files below `src` of Corset modules that make method store entries and library summaries: `Inference`, `Effects`,
 each module they import, transitively, and `Cache`. Store and library keys hash these and files they include.
 """
-const PRODUCERS = ("Cache.jl", "Config.jl", "Discovery.jl", "Effects/Effects.jl", "Facts.jl", "Guesses.jl", "HardArrays.jl", "Inference.jl", "Narrowing.jl", "Package.jl", "Signatures.jl", "StandIns.jl", "Syntax.jl", "Widening.jl")
+const PRODUCERS = ("Cache.jl", "Config.jl", "Discovery.jl", "Effects/Effects.jl", "Facts.jl", "Guesses.jl", "HardArrays.jl", "Inference.jl", "Narrowing.jl", "Package.jl", "Signatures.jl", "StandIns.jl", "Syntax.jl", "Timings.jl", "Widening.jl")
 
 """Cache directory of command line: scratch space of Corset in Julia depot. CI that saves depot keeps it."""
 directory()::String = get_scratch!(Base.moduleroot(@__MODULE__), "analyses")
