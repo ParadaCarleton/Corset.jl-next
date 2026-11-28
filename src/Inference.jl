@@ -899,7 +899,8 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
             end
             push!(coded, site.method)
             # Declared signature decides `definite`, so units of one method agree on confidence.
-            isnothing(inferred.endless) || push!(get!(() -> (site, something(inferred.endless), Tuple{Type, Vector{Pair{Span, Type}}}[]), looping, site.method)[3], (call_signature, inferred.endless_calls))
+            # Default without closure: closure over `inferred`, which branches assign, boxes it.
+            isnothing(inferred.endless) || push!(get!(looping, site.method, (site, something(inferred.endless), Tuple{Type, Vector{Pair{Span, Type}}}[]))[3], (call_signature, inferred.endless_calls))
             # Package methods are those analyzed files define; others (Base) stay outside.
             for signature in inferred.reached
                 method = dispatched(signature)

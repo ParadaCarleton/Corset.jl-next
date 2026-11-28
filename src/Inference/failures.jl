@@ -217,7 +217,7 @@ const EndlessUnits = IdDict{Method, Tuple{MethodSite, Confidence.T, Vector{Tuple
 Units that call of `signature` reaches, as indices of `nodes` (method and signature): unit of same signature, else
 every unit of callee. Callee without endless unit gives `0`: cause stays hidden, so no cycle around call reports.
 """
-function call_targets(nodes::Vector{Tuple{Method, Type}}, by_method::IdDict{Method, Vector{Int}}, signature::Type)::Vector{Int}
+function call_targets(nodes::AbstractVector{Tuple{Method, Type}}, by_method::IdDict{Method, <:AbstractVector{<:Integer}}, signature::Type)::Vector{Int}
     units = get(by_method, dispatched(signature), Int[])
     isempty(units) && return [0]
     exact = filter(index -> nodes[index][2] == signature, units)
@@ -225,8 +225,9 @@ function call_targets(nodes::Vector{Tuple{Method, Type}}, by_method::IdDict{Meth
 end
 
 """Units that `edges` (unit to units its endless calls reach) lead to from `start`, through any number of calls."""
-function reachable(edges::Vector{Vector{Int}}, start::Int)::BitSet
-    found, pending = BitSet(), copy(edges[start])
+function reachable(edges::AbstractVector{<:AbstractVector{<:Integer}}, start::Integer)::BitSet
+    # Growable copy: `edges` entry may be range.
+    found, pending = BitSet(), Vector{Int}(edges[start])
     while !isempty(pending)
         node = pop!(pending)
         node in found && continue
