@@ -215,11 +215,44 @@ function rng_positions(method::Method)::Vector{Int}
     return found
 end
 
+"""Whether lowered body of `method` reads its argument at `position` (1 is first after callee); `false` without body."""
+function reads_argument(method::Method, position::Integer)::Bool
+    # Generated method without fallback keeps no lowered body.
+    (isdefined(method, :source) && !isnothing(method.source)) || return false
+    # Slot 1 holds callee; argument at `position` sits in slot `position + 1`.
+    return Base.uncompressed_ast(method).slotflags[position + 1] & Base.SLOT_USED != 0
+end
+
+"""
+Whether keyword body of `method` declares keyword whose type can hold `AbstractRNG` (`rng_positions`), and reads it
+(`reads_argument`): caller passes own RNG by name. With `every`, keyword type must take every RNG (`takes_every_rng`).
+"""
+function rng_keyword(method::Method, every::Bool)::Bool
+    keywords = length(Base.kwarg_decl(method))
+    keywords == 0 && return false
+    body = Base.bodyfunction(method)
+    isnothing(body) && return false
+    for other in Base.methods(body)
+        # Keyword body takes keywords first, before callee and positional arguments.
+        any(position -> position <= keywords && (!every || takes_every_rng(other, position)) && reads_argument(other, position), rng_positions(other)) && return true
+    end
+    return false
+end
+
 """Global binding `place` starts at; `nothing` for place at argument or elsewhere."""
 root_global(place::Place.Type)::Union{Nothing, GlobalRef} = @match place begin
     Place.At(Root.Global(ref), _) => ref
     Place.Deep(Root.Global(ref)) => ref
     _ => nothing
+end
+
+"""
+Line in dependency that draws default RNG (`span`), and whether call at cause offers RNG argument or keyword (`offered`).
+Offer is unproven: engine does not summarize offered method, so it can still draw default RNG.
+"""
+struct DrawSite
+    span::Span
+    offered::Bool
 end
 
 """
@@ -235,7 +268,7 @@ struct Access
     confidence::Confidence.T
     callback::Bool
     cause::Span
-    site::Union{Nothing, Span}
+    site::Union{Nothing, DrawSite}
 end
 
 """

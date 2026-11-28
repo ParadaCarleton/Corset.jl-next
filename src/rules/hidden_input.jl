@@ -166,23 +166,6 @@ function draws_from(reads::AbstractVector{Access}, position::Integer)::Bool
 end
 
 """
-Whether keyword body of `method` declares keyword whose type can hold `AbstractRNG` (`rng_positions`), and reads it:
-caller passes own RNG by name.
-"""
-function rng_keyword(method::Method)::Bool
-    keywords = length(Base.kwarg_decl(method))
-    keywords == 0 && return false
-    body = Base.bodyfunction(method)
-    isnothing(body) && return false
-    for other in Base.methods(body)
-        flags = Base.uncompressed_ast(other).slotflags
-        # Slot 1 holds body function; keyword at `position` sits in slot `position + 1`.
-        any(position -> position <= keywords && flags[position + 1] & Base.SLOT_USED != 0, rng_positions(other)) && return true
-    end
-    return false
-end
-
-"""
 Whether lowered body of `method` only computes default values and returns call to own function (slot 1) with own
 arguments first, as each method that default positional arguments make does: `f(x)` returns `f(x, 10^6, nothing)`.
 """
@@ -235,7 +218,7 @@ RNG argument counts as no argument. Method that same definition makes with more 
 """
 function chooses_rng(method::Method, methods::AbstractVector{MethodEffects})::Bool
     isempty(rng_positions(method)) || return false
-    rng_keyword(method) && return true
+    rng_keyword(method, false) && return true
     parameters = tuple_parameters(method.sig)
     count = length(parameters) - 1
     for other in methods

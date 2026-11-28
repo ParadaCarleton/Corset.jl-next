@@ -153,10 +153,35 @@ function chosen_rng(accesses::AbstractVector{Access}, positions::AbstractVector{
 end
 
 """
-Span of dependency line that draws default RNG at statement `cause` of root `code` in `run`: site of first callee
-summary that holds one (`DefaultRng`). `nothing` without such callee, or when dependency file lost that line.
+Whether call with `signature` offers caller own RNG, as `world` dispatches (`engine.md`, Effect kinds): method that call
+reaches takes RNG keyword of every RNG (`rng_keyword`), or method of same function takes every RNG in place of
+`TaskLocalRNG` argument or as added argument, and reads it (`reads_argument`). Keyword call: its positional call decides.
 """
-function draw_span(run::Run, code::Code, cause::Integer)::Union{Nothing, Span}
+function offers_rng(signature::Type, world::UInt)::Bool
+    types = tuple_parameters(signature)
+    first(types) === typeof(Core.kwcall) && return offers_rng(Base.rewrap_unionall(Tuple{types[3:end]...}, signature), world)
+    # Added argument goes before trailing varargs.
+    added = Base.isvarargtype(last(types)) ? length(types) - 1 : length(types)
+    for found in Base._methods_by_ftype(Base.rewrap_unionall(Tuple{first(types), Vararg{Any}}, signature), -1, world)::Vector
+        method = (found::Core.MethodMatch).method
+        signature <: method.sig && rng_keyword(method, true) && return true
+        for position in rng_positions(method)
+            reads_argument(method, position) || continue
+            passed = position < length(types) && types[position + 1] === Random.TaskLocalRNG
+            passed || position <= added || continue
+            rest = types[(position + (passed ? 2 : 1)):end]
+            Base.rewrap_unionall(Tuple{types[1:position]..., Random.AbstractRNG, rest...}, signature) <: method.sig && return true
+        end
+    end
+    return false
+end
+
+"""
+Dependency line that draws default RNG at statement `cause` of `root` in `run`: site of first callee summary that holds
+one, and whether that callee offers own RNG (`offers_rng`). `nothing` without such callee, or when file lost that line.
+"""
+function draw_span(run::Run, root::Variant, cause::Integer)::Union{Nothing, DrawSite}
+    code = run.codes[root]
     cause in eachindex(code.callees) || return nothing
     for callee in code.callees[cause]
         site = held_summary(run.slots, callee).rng.site
@@ -164,7 +189,7 @@ function draw_span(run::Run, code::Code, cause::Integer)::Union{Nothing, Span}
         file = string(site.file::Symbol)
         starts = isfile(file) ? line_starts(read(file, String)) : Int[]
         site.line in eachindex(starts) || return nothing
-        return Span(file, starts[site.line], starts[site.line], Precision.line)
+        return DrawSite(Span(file, starts[site.line], starts[site.line], Precision.line), offers_rng(first(callee).specTypes, run.world))
     end
     return nothing
 end
@@ -179,7 +204,7 @@ function unit_verdict!(run::Run, typed::TypedCode, root::Variant)::UnitVerdict
     )
     summary, own = root_summary!(run, root), held_summary(run.slots, root)
     span_of(cause::Integer)::Span = cause_span(typed, run.codes[root], cause)
-    site_of(cause::Integer)::Union{Nothing, Span} = draw_span(run, run.codes[root], cause)
+    site_of(cause::Integer)::Union{Nothing, DrawSite} = draw_span(run, root, cause)
     kind_of(place::Place.Type)::EffectKind.T = path_kind(run.codes[root].ir, first(root).def::Method, place)
     writes, blind_writes = verdict_accesses(summary.writes, own.writes, span_of, site_of, typed.provenance)
     held_writes, held_blind = lock_writes(summary, span_of, kind_of)

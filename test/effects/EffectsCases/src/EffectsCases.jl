@@ -504,6 +504,17 @@ draw_both(rng::Random.AbstractRNG, values::AbstractVector)::Float64 = (rand(rng)
 draw_both_default(values::AbstractVector)::Float64 = draw_both(Random.default_rng(), values)
 draw_each(rng::Random.AbstractRNG, values::AbstractVector)::Vector{Float64} = map(_ -> rand(rng), 1:length(values))
 draw_each_default(values::AbstractVector)::Vector{Float64} = draw_each(Random.default_rng(), values)
+# Draw beside method that takes RNG before same arguments: caller can pass own RNG.
+draw_offered(values::AbstractVector)::Float64 = rand() * length(values)
+draw_offered(rng::Random.AbstractRNG, values::AbstractVector)::Float64 = rand(rng) * length(values)
+# RNG keyword beside other keyword; varargs draw beside method that takes RNG before them.
+draw_keyword(values::AbstractVector; scale::Float64 = 1.0, rng::Random.AbstractRNG = Random.default_rng())::Float64 = rand(rng) * scale * length(values)
+draw_varargs(values::Float64...)::Float64 = rand() * sum(values)
+draw_varargs(rng::Random.AbstractRNG, values::Float64...)::Float64 = rand(rng) * sum(values)
+# RNG method ignores its RNG; keyword takes `TaskLocalRNG` only: caller cannot pass own RNG.
+draw_ignored(values::AbstractVector)::Float64 = rand() * length(values)
+draw_ignored(::Random.AbstractRNG, values::AbstractVector)::Float64 = rand() * length(values)
+draw_token(values::AbstractVector; token::Random.TaskLocalRNG = Random.default_rng())::Float64 = rand(token) * length(values)
 # Closure captures default RNG beside unused RNG argument: inference folds both closures to same constant.
 draw_captured(rng::Random.AbstractRNG, values::AbstractVector)::Vector{Float64} = (other = Random.default_rng(); map(_ -> rand(other), 1:length(values)))
 draw_captured_default(values::AbstractVector)::Vector{Float64} = draw_captured(Random.default_rng(), values)
