@@ -1,4 +1,5 @@
 using Corset: Corset
+using Malt: Malt
 using ParallelTestRunner: ParallelTestRunner
 
 const FILES = [
@@ -31,7 +32,23 @@ isempty(BARE) || error("temp directory without dot prefix in $(BARE): use `mktem
 const PICKED = filter(!startswith("-"), ARGS)
 isempty(setdiff(PICKED, FILES)) || error("unknown test files $(setdiff(PICKED, FILES)); choose from $(FILES)")
 
-# Workers start without `--threads` of this process; same count lets UI cases run on all threads of each worker.
-const THREADS = ["--threads=$(Threads.nthreads(:default)),$(Threads.nthreads(:interactive))"]
-println("test threads per worker: $(Threads.nthreads(:default))")
-ParallelTestRunner.runtests(Corset, ARGS; testsuite = SUITE, serial = SERIAL, serial_position = :after, exeflags = THREADS)
+"""Worker of `ui.jl` once runner starts it; runner stops only workers of its own pool."""
+const UI_WORKER = Ref{Union{Nothing, ParallelTestRunner.PTRWorker}}(nothing)
+
+"""
+Worker for test `name`: `ui.jl` runs cases as tasks, so its worker gets every thread of this process. `nothing` sends
+other files to pool workers, which run one thread each: thread per worker in pool would oversubscribe cores.
+"""
+function file_worker(name::String)::Union{Nothing, ParallelTestRunner.PTRWorker}
+    name == "ui.jl" || return nothing
+    UI_WORKER[] = ParallelTestRunner.addworker(; exeflags = ["--threads=$(Threads.nthreads(:default))"])
+    return UI_WORKER[]
+end
+
+println("test threads of ui.jl worker: $(Threads.nthreads(:default))")
+try
+    ParallelTestRunner.runtests(Corset, ARGS; testsuite = SUITE, serial = SERIAL, serial_position = :after, test_worker = file_worker)
+finally
+    # Stop lets worker exit, so it writes coverage files; killed process writes none.
+    isnothing(UI_WORKER[]) || Malt.stop(something(UI_WORKER[]))
+end
