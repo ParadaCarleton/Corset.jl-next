@@ -227,7 +227,8 @@ for global binding); callback records whose accesses caller applies; result node
 `closed_world`: summary joins methods loaded now, so its "writes nothing" is at most `possible`; and `cut`: path
 stand-ins cut reaches it, so its "writes nothing" holds for stand-ins only. Places need parameters and globals only.
 Release balance: hold counts at normal exit (`held`) and throw exit (`thrown`), and holds own throws skip
-(`unguarded`, local resources too).
+(`unguarded`, local resources too). Task bodies (`engine.md`, Task bodies): `seeds` when every normal exit follows
+reseed of default RNG; `draws` when read of default RNG can come before reseed.
 """
 struct Summary
     writes::Accesses
@@ -244,10 +245,15 @@ struct Summary
     held::HoldCounts
     thrown::HoldCounts
     unguarded::Dict{Tuple{Node.Type, Resource.T}, Unguarded}
+    seeds::Bool
+    draws::Bool
 end
 
-"""Summary of instance that writes, reads and returns nothing: start of fixpoint inside call cycle."""
-empty_summary()::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}())
+"""
+Summary of instance that writes, reads and returns nothing, with reseed fact `seeds`. Shortcut unit never reseeds. Call
+cycle member that solve reruns starts reseeded: `widen` lowers `seeds` from there, as must analysis needs.
+"""
+empty_summary(seeds::Bool)::Summary = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), seeds, false)
 
 """Whether summaries `first` and `second` hold same effects, stores, result and causes."""
 same(first::Summary, second::Summary)::Bool = all(name -> getfield(first, name) == getfield(second, name), fieldnames(Summary))
@@ -274,7 +280,10 @@ function widen(old::Summary, new::Summary)::Summary
     bound, callbacks, result = union_stores(old.bound, new.bound), union(old.callbacks, new.callbacks), union_nodes(old.result, new.result)
     held, thrown = widen_holds(old.held, new.held), widen_holds(old.thrown, new.thrown)
     unguarded = mergewith((first, second) -> first == second ? first : (hold = unsettled(first.hold), throws = first.throws), old.unguarded, new.unguarded)
-    return Summary(writes, reads, edges, backing, spread, bound, callbacks, result, max(old.fresh, new.fresh), old.closed_world || new.closed_world, old.cut || new.cut, held, thrown, unguarded)
+    return Summary(
+        writes, reads, edges, backing, spread, bound, callbacks, result, max(old.fresh, new.fresh), old.closed_world || new.closed_world, old.cut || new.cut, held, thrown, unguarded,
+        old.seeds && new.seeds, old.draws || new.draws,
+    )
 end
 
 """Blind hold of resource of `hold` with cause `UNSETTLED`: count that still changes when call cycle widens."""
@@ -321,11 +330,12 @@ end
 """
 Summary of instance with `count` parameters engine cannot analyze, for blind spot `cause`: blind write and read below
 every parameter and global state (`Elsewhere`), result anywhere. Without `Elsewhere`, caller of `f()` would lose blind spot.
+It may draw and need not reseed.
 """
 function open_summary(count::Integer, cause::String)::Summary
     places = [Place.At(Root.Parameter(position), NO_STEPS) for position in 1:count]
     effects = Accesses((place, true, EffectKind.memory) => Effect(BLIND_DOUBT, 0, cause) for place in [places; Place.At(Root.Elsewhere(), NO_STEPS)])
     result = Nodes(Node.Placed(place) => BLIND_DOUBT for place in places)
     result[Node.Outside()] = BLIND_DOUBT
-    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), result, 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}())
+    return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), result, 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), false, true)
 end

@@ -108,4 +108,13 @@ bump(x::Int) = rand() + x; bump(x::Int, rng::AbstractRNG) = 0.0
 # Draw before forwarding is no default value: `jolt(x, rng)` never draws, so caller RNG cannot replace draw.
 jolt(x::Int) = (rand(); jolt(x, nothing)); jolt(x::Int, rng::Union{AbstractRNG, Nothing}) = 0.0
 
+# Task body draws: new task derives its RNG from caller RNG.
+spawned() = fetch(Threads.@spawn rand())
+
+# Reseed after draw comes too late: first draw comes from caller RNG.
+late_seed(seed::Int) = fetch(Threads.@spawn (drawn = rand(); Random.seed!(seed); drawn))
+
+# `seed!()` takes system entropy: draws stay open to callers.
+entropy_seed() = fetch(Threads.@spawn (Random.seed!(); rand()))
+
 end

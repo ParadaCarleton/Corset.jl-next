@@ -280,17 +280,25 @@ Call statement resolution (`engine.md`, Calls): `Builtin` or `Intrinsic` with op
 table entry with C arguments; `Dispatch` to instances of matching methods with operands, callee first: one is static
 call, more join; `Contract` effects with arguments and argument positions breach may write; `Open` dispatch with
 operands, whose open types decide doubt (`engine.md`, Provenance); `Unresolved` call with operands that types cannot
-resolve (unknown C function, unknown argument count), doubt in code; `Dead` when no method matches.
+resolve (unknown C function, unknown argument count), doubt in code; `Dead` when no method matches. `Spawn` starts
+task that runs body (`engine.md`, Task bodies): instances of body call, with operands callable first.
 """
 @data Outcome begin
     Builtin(Any, Vector{Operand.Type})
     Intrinsic(Any, Vector{Operand.Type})
     Foreign(CallEffects, Vector{Operand.Type})
     Dispatch(Vector{Core.MethodInstance}, Vector{Operand.Type})
+    Spawn(Vector{Core.MethodInstance}, Vector{Operand.Type})
     Contract(CallEffects, Vector{Operand.Type}, Vector{Int})
     Open(Vector{Operand.Type})
     Unresolved(Vector{Operand.Type})
     Dead()
+end
+
+"""Whether `outcome` starts task (`Spawn`)."""
+spawn_outcome(outcome::Outcome.Type)::Bool = @match outcome begin
+    Outcome.Spawn(_, _) => true
+    _ => false
 end
 
 """Type of `operand` in `ir`: element type for `Rest`."""
@@ -331,7 +339,7 @@ Resolution of call with `operands` (callee first) in `ir`: builtin, intrinsic, u
 Builtins that call operand (`invokelatest`, `_apply_iterate`, `finalizer`) resolve to call they make. Intrinsic operand
 can be nested constant expression (`cglobal((:name, library))`), so operand types wait until dispatch. Builtin other
 than `tuple` with `Rest` operands stays unresolved. Call of `FunctionStandIn` is open dispatch: it stands for any
-function.
+function. `threading_run(fun, static)` of `@threads` runs `fun(thread)` in tasks (`spawn_call`).
 """
 function resolve(ir::CC.IRCode, operands::AbstractVector{Operand.Type}, world::UInt, limit::Integer)::Outcome.Type
     Base.require_one_based_indexing(operands)
@@ -353,6 +361,11 @@ function resolve(ir::CC.IRCode, operands::AbstractVector{Operand.Type}, world::U
     stand_in_call(ir, callee, operands) && return Outcome.Open(operands)
     latest = latest_call(ir, callee, operands)
     isnothing(latest) || return resolve(ir, latest, world, limit)
+    if !isnothing(callee) && something(callee) === Base.Threads.threading_run && length(operands) == 3
+        # Thread number varies, so it takes no operand: operand constant would make variant.
+        spawned = spawn_call(operands[2:2], Any[operand_type(ir, operands[2]), Int], world, limit)
+        isnothing(spawned) || return spawned
+    end
     instances = dispatch(call_types(ir, operands), world, limit)
     isnothing(instances) && return contract_call(ir, callee, operands)
     # No matching method: call throws `MethodError`.
@@ -525,11 +538,29 @@ function arity(effects::CallEffects)::Int
 end
 
 """
-Resolution of foreign call `statement`: table entry with C arguments when table knows target and call passes each
-argument entry names; else unresolved on every operand, GC roots included. Arguments follow target, result type,
-argument types, vararg count and calling convention.
+Resolution of call that starts task running callable first of `operands` (`engine.md`, Task bodies): `Spawn` with
+instances of body call on argument `types`, callable first. Body takes no operand past callable that `types` lack.
+`nothing` when dispatch leaves body open or finds no method, or callable is stand-in: caller resolves call as before.
 """
-function foreign_outcome(statement::Expr)::Outcome.Type
+function spawn_call(operands::AbstractVector{Operand.Type}, types::AbstractVector{Any}, world::UInt, limit::Integer)::Union{Nothing, Outcome.Type}
+    Base.require_one_based_indexing(operands)
+    (any(is_rest, operands) || first(types) === FunctionStandIn) && return nothing
+    instances = dispatch(types, world, limit)
+    (isnothing(instances) || isempty(instances)) && return nothing
+    return Outcome.Spawn(instances, operands)
+end
+
+"""
+Resolution of foreign call `statement` of `ir`: table entry with C arguments when table knows target and call passes
+each argument entry names; else unresolved on every operand, GC roots included. Arguments follow target, result type,
+argument types, vararg count and calling convention. `jl_new_task` runs its callable in new task (`spawn_call`).
+"""
+function foreign_outcome(ir::CC.IRCode, statement::Expr, world::UInt, limit::Integer)::Outcome.Type
+    if foreign_name(statement.args[1]) === :jl_new_task && length(statement.args) >= 6
+        body = statement.args[6]
+        spawned = spawn_call(Operand.Type[Operand.Value(body)], Any[value_type(ir, body)], world, limit)
+        isnothing(spawned) || return spawned
+    end
     effects = foreign_effects(statement.args[1])
     count = length(statement.args[3]::Core.SimpleVector)
     (isnothing(effects) || arity(effects) > count) && return Outcome.Unresolved(Operand.Type[Operand.Value(value) for value in statement.args[6:end]])
@@ -543,7 +574,7 @@ inlining holds no `:invoke` statement.
 function statement_outcome(ir::CC.IRCode, @nospecialize(statement::Any), world::UInt, limit::Integer)::Union{Nothing, Outcome.Type}
     statement isa Expr || return nothing
     statement.head === :call && return resolve(ir, Operand.Type[Operand.Value(value) for value in statement.args], world, limit)
-    statement.head === :foreigncall && return foreign_outcome(statement)
+    statement.head === :foreigncall && return foreign_outcome(ir, statement, world, limit)
     return nothing
 end
 

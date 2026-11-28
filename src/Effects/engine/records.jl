@@ -106,10 +106,17 @@ end
 """Whether `summary` reads or writes default RNG."""
 reaches_default_rng(summary::Summary)::Bool = any(((_, _, kind),) -> kind == EffectKind.default_rng, Iterators.flatten((keys(summary.writes), keys(summary.reads))))
 
-"""Whether call statement `index` of `code` in `run` reaches default RNG: callee summary does, or builtin gets `Task`."""
+"""
+Whether call statement `index` of `code` in `run` reaches default RNG: callee summary does, or builtin gets `Task`.
+Task body (`Spawn`) reaches it only when body draws before reseed: new task holds own RNG.
+"""
 function reaches_default_rng(run::Run, code::Code, index::Integer)::Bool
-    any(callee -> reaches_default_rng(held_summary(run.slots, callee)), code.callees[index]) && return true
     outcome = code.outcomes[index]
+    spawned = !isnothing(outcome) && spawn_outcome(something(outcome))
+    for callee in code.callees[index]
+        summary = held_summary(run.slots, callee)
+        reaches_default_rng(summary) && (!spawned || summary.draws) && return true
+    end
     isnothing(outcome) && return false
     return @match something(outcome) begin
         Outcome.Builtin(_, operands) => any(operand -> operand_type(code.ir, operand) <: Task, operands)

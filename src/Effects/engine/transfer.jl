@@ -66,7 +66,8 @@ function call!(flow::Flow, index::Integer, outcome::Outcome.Type, callees::Calle
         Outcome.Builtin(builtin, operands) => builtin!(flow, writes, index, builtin, operands)
         Outcome.Intrinsic(intrinsic, operands) => intrinsic!(flow, writes, index, intrinsic, operands)
         Outcome.Foreign(effects, operands) => table!(flow, writes, index, effects, operands, false)
-        Outcome.Dispatch(_, operands) => dispatch!(flow, writes, index, operands, callees, !flow.flush && !message)
+        Outcome.Dispatch(_, operands) => dispatch!(flow, writes, flow.reads, index, operands, callees, !flow.flush && !message, false)
+        Outcome.Spawn(_, operands) => spawn!(flow, writes, index, operands, callees)
         Outcome.Contract(effects, operands, breached) => contract!(flow, writes, index, effects, operands, breached)
         Outcome.Open(operands) => open_call!(flow, writes, index, operands)
         Outcome.Unresolved(operands) => open!(flow, writes, index, operands, CODE_DOUBT)
@@ -176,6 +177,7 @@ outcome_operands(outcome::Outcome.Type)::Vector{Operand.Type} = @match outcome b
     Outcome.Intrinsic(_, operands) => operands
     Outcome.Foreign(_, operands) => operands
     Outcome.Dispatch(_, operands) => operands
+    Outcome.Spawn(_, operands) => operands
     Outcome.Contract(_, operands, _) => operands
     Outcome.Open(operands) => operands
     Outcome.Unresolved(operands) => operands
@@ -243,23 +245,49 @@ end
 Transfer call at `index` that reaches variants of `callees` (`engine.md`, Calls, steps 3 to 5): one applies its
 summary, or leaves callback record for caller when `defers`; more join their summaries and resolve their records here.
 Access every member makes keeps most doubt among them; access only some make takes doubt of dispatch between them
-(`open_doubt`). Writes go into `writes`.
+(`open_doubt`). Accesses go into `writes` and `reads`. `task`: call runs body of new task (`apply!`).
 """
-function dispatch!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type}, callees::Callees, defers::Bool)::Nothing
+function dispatch!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type}, callees::Callees, defers::Bool, task::Bool)::Nothing
     variants = callees.variants[index]
     if length(variants) == 1
         variant = only(variants)
-        apply!(flow, writes, flow.reads, index, summary!(callees, variant), variant, operands, defers, callees)
+        apply!(flow, writes, reads, index, summary!(callees, variant), variant, operands, defers, callees, task)
         return nothing
     end
     flow.closed_world = true
     member_writes, member_reads = [OriginAccesses() for _ in variants], [OriginAccesses() for _ in variants]
     for (member, variant) in enumerate(variants)
-        apply!(flow, member_writes[member], member_reads[member], index, summary!(callees, variant), variant, operands, false, callees)
+        apply!(flow, member_writes[member], member_reads[member], index, summary!(callees, variant), variant, operands, false, callees, task)
     end
     partial = open_doubt(flow, operands)
     join_accesses!(writes, member_writes, partial)
-    join_accesses!(flow.reads, member_reads, partial)
+    join_accesses!(reads, member_reads, partial)
+    return nothing
+end
+
+"""
+Kinds of task state that body of new task (`Spawn`) keeps to itself (`engine.md`, Task bodies): default RNG state and
+task-local storage. New task takes scope of caller, so scoped reads stay.
+"""
+const TASK_STATE = (EffectKind.default_rng, EffectKind.task_local)
+
+"""Slot of `Task` that holds result of its body: `fetch` loads it."""
+const TASK_RESULT = Step.Field(:result)
+
+"""
+Transfer call statement `index` that starts new task running body variants of `callees` on `operands`, callable first
+(`engine.md`, Task bodies). Body runs as call, so its stores and accesses apply here; writes of task state
+(`TASK_STATE`) stay in new task. Body that draws before reseed reads default RNG of caller, since new task derives
+its RNG from it; other reads of task state drop. Result: new task, which holds body result (`TASK_RESULT`).
+Callable holds caller objects, so no callback record waits for caller.
+"""
+function spawn!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type}, callees::Callees)::Nothing
+    body_writes, body_reads = OriginAccesses(), OriginAccesses()
+    dispatch!(flow, body_writes, body_reads, index, operands, callees, false, true)
+    draws = any(variant -> summary!(callees, variant).draws, callees.variants[index])
+    merge_accesses!(writes, filter(((key, _),) -> !(last(key) in TASK_STATE), body_writes), false)
+    merge_accesses!(flow.reads, filter(((key, _),) -> !(last(key) in TASK_STATE) || (draws && last(key) == EffectKind.default_rng), body_reads), false)
+    assign!(flow, index, Targets(Origin.Allocation(index) => NO_DOUBT))
     return nothing
 end
 
@@ -291,7 +319,9 @@ function builtin!(flow::Flow, writes::OriginAccesses, index::Integer, @nospecial
         if isnothing(binding)
             # Own name: closure of field write branch captures `field`; second assignment boxes it.
             read_field = operand_constant(flow.ir, operands[2])
-            access!(flow.reads, targets(1), false, definite(index), field_kind(operand_type(flow.ir, operands[1]), read_field, flow.scheduler))
+            kind = field_kind(operand_type(flow.ir, operands[1]), read_field, flow.scheduler)
+            access!(flow.reads, targets(1), false, definite(index), kind)
+            draw!(flow, index, kind)
             assign!(flow, index, load_field!(flow, operands[1], read_field))
         else
             read_global!(flow, index, something(binding))
@@ -374,7 +404,7 @@ points to no object holds no targets. `modify` operator call stays open. Writes 
 function write!(flow::Flow, writes::OriginAccesses, index::Integer, shape::Shape, operands::AbstractVector{Operand.Type}, objects::Targets, old::Targets, store::Function, @nospecialize(slot::Any), kind::EffectKind.T)::Nothing
     Base.require_one_based_indexing(operands)
     alternative_access!(writes, objects, objects, false, definite(index), kind)
-    shape.returns in (Returns.stored, Returns.object) || access!(flow.reads, objects, false, definite(index), kind)
+    shape.returns in (Returns.stored, Returns.object) || (access!(flow.reads, objects, false, definite(index), kind); draw!(flow, index, kind))
     holds = points!(flow, slot)
     old = holds ? old : Targets()
     given = holds ? operand_targets!(flow, operands[shape.stored]) : Targets()
@@ -534,6 +564,7 @@ function open!(flow::Flow, writes::OriginAccesses, index::Integer, operands::Abs
     if any(operand -> holds_task_rng_type(operand_type(flow.ir, operand), 3), operands)
         access!(writes, unknown(NO_DOUBT), false, Effect(doubt, index, ""), EffectKind.default_rng)
         access!(flow.reads, unknown(NO_DOUBT), false, Effect(doubt, index, ""), EffectKind.default_rng)
+        draw!(flow, index, EffectKind.default_rng)
     end
     assign!(flow, index, union_targets((objects, unknown(doubt))), doubt)
     return nothing
@@ -564,6 +595,7 @@ function open_call!(flow::Flow, writes::OriginAccesses, index::Integer, operands
     rng, kind = task_rng ? (unknown(NO_DOUBT), EffectKind.default_rng) : (operand_targets!(flow, operands[2]), EffectKind.rng_argument)
     access!(writes, rng, false, definite(index), kind)
     access!(flow.reads, rng, false, definite(index), kind)
+    draw!(flow, index, kind)
     return nothing
 end
 
@@ -820,15 +852,15 @@ end
 Apply callee `summary` of `variant` at call statement `index` with `operands` (`engine.md`, Calls, steps 3 and 4):
 stores and result now. Accesses go into `writes` and `reads`, or into callback record when `defers` and callable holds
 caller object (`deferred`). Vararg tuple becomes allocation at `index`. Settled round (`Flow`) skips stores: they
-change nothing there.
+change nothing there. `task`: callee is body of new task at `index` (`spawn!`), so result goes into task.
 """
-function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Integer, summary::Summary, variant::Variant, operands::AbstractVector{Operand.Type}, defers::Bool, callees::Callees)::Nothing
+function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Integer, summary::Summary, variant::Variant, operands::AbstractVector{Operand.Type}, defers::Bool, callees::Callees, task::Bool)::Nothing
     method = first(variant).def::Method
     arguments = parameter_targets!(flow, index, method, operands)
     site = CallSite(arguments, parameter_derived(flow, method, operands), index, summary)
     summary.closed_world && (flow.closed_world = true)
     summary.cut && (flow.cut = true)
-    flow.settled || apply_stores!(flow, site, summary)
+    flow.settled || apply_stores!(flow, site, summary, task)
     if defers && deferred(arguments)
         defer!(flow, index, (variant, arguments))
     else
@@ -872,7 +904,8 @@ end
 """
 Writes and reads of callee `summary` at `site` into `writes` and `reads`, each mapped onto caller objects. Callee place
 that maps to one of several caller objects gives `possible` write on each (`alternative_access!`). `scheduled` call
-gives audited state for task state (`scheduler_access`).
+gives audited state for task state (`scheduler_access`). Default RNG read of callee that draws before reseed is draw
+of call (`draw!`).
 """
 function map_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, scheduled::Bool)::Nothing
     caller_kind(kind::EffectKind.T)::EffectKind.T = scheduled && kind == EffectKind.task_local ? EffectKind.audited : kind
@@ -882,6 +915,7 @@ function map_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses
     end
     for ((place, below, kind), effect) in summary.reads
         access!(reads, last(access_objects!(flow, site, place, below, caller_kind(kind))), below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), caller_kind(kind))
+        summary.draws && draw!(flow, site.index, caller_kind(kind))
     end
     return nothing
 end
@@ -954,22 +988,70 @@ parameter_origin(origin::Origin.Type)::Bool = @match origin begin
     _ => false
 end
 
-"""Callee stores between caller objects at `site`, global bindings and result."""
-function apply_stores!(flow::Flow, site::CallSite, summary::Summary)::Nothing
+"""
+Callee stores between caller objects at `site`, global bindings and result. Result of `task` body goes into task
+(`TASK_RESULT`), fresh object of call statement. New objects of body that caller cannot reach stay in task
+(`caller_stored`).
+"""
+function apply_stores!(flow::Flow, site::CallSite, summary::Summary, task::Bool)::Nothing
+    reached = task ? task_reached(summary) : nothing
     for ((node, step), nodes) in summary.edges
-        store!(flow, map_node!(flow, node, site), step, map_nodes!(flow, nodes, site))
+        stored = caller_stored(node, nodes, reached)
+        isempty(stored) || store!(flow, map_node!(flow, node, site), step, map_nodes!(flow, stored, site))
     end
     for (node, nodes) in summary.backing
-        store_backing!(flow, map_node!(flow, node, site), map_nodes!(flow, nodes, site))
+        stored = caller_stored(node, nodes, reached)
+        isempty(stored) || store_backing!(flow, map_node!(flow, node, site), map_nodes!(flow, stored, site))
     end
     for (node, nodes) in summary.spread
-        store!(flow, map_node!(flow, node, site), nothing, map_nodes!(flow, nodes, site))
+        stored = caller_stored(node, nodes, reached)
+        isempty(stored) || store!(flow, map_node!(flow, node, site), nothing, map_nodes!(flow, stored, site))
     end
     for (binding, nodes) in summary.bound
         bind!(flow, binding, map_nodes!(flow, nodes, site))
     end
+    task && (store!(flow, Targets(Origin.Allocation(site.index) => NO_DOUBT), TASK_RESULT, map_nodes!(flow, summary.result, site)); return nothing)
     assign!(flow, site.index, address_targets!(flow, flow.ir.stmts[site.index][:type], map_nodes!(flow, summary.result, site)))
     return nothing
+end
+
+"""
+Stored `nodes` from `holder` that caller sees; task body gives fresh nodes caller `reached` (`task_reached`). Body
+keeps new object in unknown object, such as task storage of new task: caller load from it gives unknown object anyway.
+"""
+function caller_stored(holder::Node.Type, nodes::Nodes, reached::Union{Nothing, Set{Node.Type}})::Nodes
+    isnothing(reached) && return nodes
+    fresh_node(holder) && !(holder in reached) && return Nodes()
+    holder == Node.Outside() || return nodes
+    return filter(((node, _),) -> !fresh_node(node), nodes)
+end
+
+"""
+Fresh nodes of task body `summary` that caller can reach: body result and stores into caller objects or globals,
+then stores between fresh nodes. Store into unknown object reaches nothing (`caller_stored`).
+"""
+function task_reached(summary::Summary)::Set{Node.Type}
+    inside, pending = Dict{Node.Type, Vector{Node.Type}}(), Node.Type[]
+    stores = Iterators.flatten((((first(key), nodes) for (key, nodes) in summary.edges), summary.backing, summary.spread))
+    for (holder, nodes) in stores
+        fresh = [node for node in keys(nodes) if fresh_node(node)]
+        if fresh_node(holder)
+            append!(get!(Vector{Node.Type}, inside, holder), fresh)
+        elseif holder != Node.Outside()
+            append!(pending, fresh)
+        end
+    end
+    for nodes in Iterators.flatten((values(summary.bound), (summary.result,)))
+        append!(pending, (node for node in keys(nodes) if fresh_node(node)))
+    end
+    reached = Set{Node.Type}()
+    while !isempty(pending)
+        node = pop!(pending)
+        node in reached && continue
+        push!(reached, node)
+        append!(pending, get(inside, node, Node.Type[]))
+    end
+    return reached
 end
 
 """

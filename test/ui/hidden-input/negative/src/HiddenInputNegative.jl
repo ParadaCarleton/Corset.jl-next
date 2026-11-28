@@ -81,4 +81,20 @@ reordered(values::Vector{Float64}, rng::AbstractRNG = Random.default_rng()) = Ra
 # Default value that draws runs only when caller passes no RNG: `nudge(x, shift, rng)` replaces draw.
 nudge(x::Float64, shift::Float64 = rand(), rng::Union{AbstractRNG, Nothing} = nothing) = x + shift
 
+# Task body reseeds before each draw on every path: draws follow its own seed.
+seeded_task(seed::Int) = fetch(Threads.@spawn (Random.seed!(seed); rand()))
+
+# Helper reseeds RNG it gets, both branches reseed, and `@threads` body reseeds per thread.
+reseed!(rng::AbstractRNG, seed::Int) = (Random.seed!(rng, seed); nothing)
+helper_task(seed::Int) = fetch(Threads.@spawn (reseed!(Random.default_rng(), seed); rand()))
+branch_task(flag::Bool) = fetch(Threads.@spawn (flag ? Random.seed!(1) : Random.seed!(2); rand()))
+function threaded_draws(seed::Int)::Vector{Float64}
+    drawn = zeros(Threads.nthreads())
+    Threads.@threads for thread in 1:Threads.nthreads()
+        Random.seed!(seed + thread)
+        drawn[thread] = rand()
+    end
+    return drawn
+end
+
 end

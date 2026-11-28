@@ -387,6 +387,7 @@ end
 function outcome_contained(outcome::Outcome.Type, targets::Base.IdSet{Core.MethodInstance})::Bool
     return @match outcome begin
         Outcome.Dispatch(instances, _) => all_in(instances, targets)
+        Outcome.Spawn(instances, _) => all_in(instances, targets)
         Outcome.Dead() => false
         _ => true
     end
