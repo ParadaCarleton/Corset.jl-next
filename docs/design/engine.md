@@ -317,6 +317,7 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Components solve on all threads. Component starts once each component it calls has solved.
 - Component reads summaries of its members and of variants they reach alone, so thread schedule changes no summary.
 - Reach gives each variant solve slot: summary and budget mark. Solve threads write slots only, so slot table stays fixed.
+- Unit verdicts run on all threads after solve. Each root reruns alone and writes budget mark of own slot only.
 - Inside component: worklist. Member reads summaries of callees and of callback record variants it resolves. Member reruns when read summary changes.
 - Inside instance: rounds over IR until targets settle. These rounds apply callee stores only. One settled round then applies callee accesses.
 - Join of methods (Calls, step 5) is not monotone, so summaries in cycle can oscillate.
