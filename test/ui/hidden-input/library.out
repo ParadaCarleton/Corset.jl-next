@@ -16,3 +16,19 @@ error[hidden-input]: method draws from default RNG
   = note: deny from correctness group, library preset
   = note: opt out with `# corset: allow hidden-input -- <reason>`
 
+error[hidden-input]: method draws from default RNG
+  --> src/HiddenInputLibrary.jl:11:34
+   |
+11 | mixed(values::Vector{Float64}) = DrawCases.shuffled(values)
+   | ----------------------------------------------------------- takes no RNG argument
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^ reads default RNG
+   |
+  ::: ../../../effects/DrawCases/src/DrawCases.jl:17:1
+   |
+17 | shuffled(values::Vector{Float64})::Vector{Float64} = Random.shuffle(values)
+   | --------------------------------------------------------------------------- dependency draws without RNG
+   |
+   = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+   = fix: take `rng::AbstractRNG` argument and pass it to each draw; report upstream if dependency still draws default RNG   [manual]
+   = docs: corset explain hidden-input
+

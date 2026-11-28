@@ -13,4 +13,8 @@ end
 """`values` filled with draws from `rng`."""
 fill_points!(rng::AbstractRNG, values::Vector{Float64})::Vector{Float64} = Random.rand!(rng, values)
 
+"""`values` in random order, from default RNG; method below takes RNG in its place."""
+shuffled(values::Vector{Float64})::Vector{Float64} = Random.shuffle(values)
+shuffled(rng::AbstractRNG, values::Vector{Float64})::Vector{Float64} = Random.shuffle(rng, values)
+
 end
