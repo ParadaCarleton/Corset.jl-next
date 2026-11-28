@@ -194,7 +194,7 @@ end
 @testset "library draw site" begin
     # Run without package modules: fixture methods count as dependency code.
     method = which(CASES.draw_each, (AbstractRNG, AbstractVector))
-    site = LineNumberNode(method.line, method.file)
+    site = LineNumberNode(Int(method.line), method.file)
     @test Summaries.library_line(start_run(nothing, Module[]), method) && !Summaries.library_line(start_run(nothing, Module[CASES]), method)
     @test !Summaries.library_line(start_run(nothing, Module[]), which(rand, ())) && !Summaries.library_line(start_run(nothing, Module[]), which(sum, (Vector{Int},)))
     # Closure draw gives line of `draw_each`; caller keeps that line over its own; stdlib draw names none.
