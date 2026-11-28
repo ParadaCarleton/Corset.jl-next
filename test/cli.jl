@@ -61,7 +61,7 @@ end
 end
 
 @testset "fix of loaded package asks for fresh check" begin
-    mktempdir(@__DIR__) do root
+    mktempdir(@__DIR__; prefix = ".jl_") do root
         uuid = Base.UUID(rand(UInt128))
         write(joinpath(root, "Project.toml"), "name = \"RecheckSample\"\nuuid = \"$uuid\"\n\n[preferences.Corset]\nkind = \"library\"\n")
         mkpath(joinpath(root, "src"))
@@ -81,7 +81,7 @@ end
 end
 
 @testset "cli fix, baseline, explain" begin
-    mktempdir(@__DIR__) do directory
+    mktempdir(@__DIR__; prefix = ".jl_") do directory
         write(joinpath(directory, "Project.toml"), "[deps]\n")
         write(joinpath(directory, "a.jl"), "f(x::T)::T where T = x\nreach(value::Real)::Bool = value ≈ 0\n")
         sarif = JSON.parse(corset("check", directory, "--format", "sarif", "-A", "one-letter")[2])
@@ -108,7 +108,7 @@ end
 end
 
 @testset "parse errors" begin
-    mktempdir(@__DIR__) do directory
+    mktempdir(@__DIR__; prefix = ".jl_") do directory
         write(joinpath(directory, "Project.toml"), "[deps]\n")
         # Missing token: empty diagnostic range widens to byte there. Error at end of file: last byte.
         write(joinpath(directory, "a.jl"), "first_value = (1 2)\nsecond_value = 1 +\n")
@@ -134,7 +134,7 @@ end
         @test !occursin("load-error", corset("check", package, allow_package...)[2])
         # Checked file leaves out entry and frames: span falls back to entry file, read from disk.
         @test occursin("--> src/Throws.jl:1:1", corset("check", joinpath(package, "src", "notes.jl"))[2])
-        other = mktempdir(@__DIR__)
+        other = mktempdir(@__DIR__; prefix = ".jl_")
         cp(package, other; force = true)
         code, _, err = corset("check", other)
         @test code == 2 && occursin("loads Throws from $(joinpath(package, "src", "Throws.jl"))", err)
@@ -156,7 +156,7 @@ end
         # Manifest holds blind spot, so it is source, but JSON counts analyzed files only.
         @test JSON.parse(corset("check", package, "--format", "json")[2])["coverage"]["files"] == 1
     end
-    mktempdir(@__DIR__) do package
+    mktempdir(@__DIR__; prefix = ".jl_") do package
         mkpath(joinpath(package, "src"))
         write(joinpath(package, "src", "Lost.jl"), "\"\"\"Package off load path.\"\"\"\nmodule Lost\nend\n")
         write(joinpath(package, "Project.toml"), "name = \"Lost\"\n\n[preferences.Corset]\nkind = \"library\"\n")
@@ -167,7 +167,7 @@ end
         @test code == 2 && occursin("environment cannot load Lost", err)
     end
     # Second load resolves `using` as package does: Helper is dependency of Outer only, not of environment.
-    mktempdir(@__DIR__) do root
+    mktempdir(@__DIR__; prefix = ".jl_") do root
         outer, helper = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
         manifest = "manifest_format = \"2.0\"\n\n[[deps.Outer]]\ndeps = [\"Helper\"]\npath = \"../Outer\"\nuuid = \"$outer\"\n\n[[deps.Helper]]\npath = \"../Helper\"\nuuid = \"$helper\"\n"
         files = [
@@ -254,7 +254,7 @@ end
         "failing/Project.toml" => "name = \"Failing\"\nuuid = \"$failing\"\n",
         "failing/src/Failing.jl" => "module Failing\nerror(\"trigger boom\")\nend\n",
     ]
-    mktempdir(@__DIR__) do root
+    mktempdir(@__DIR__; prefix = ".jl_") do root
         for (path, text) in files
             mkpath(dirname(joinpath(root, path)))
             write(joinpath(root, path), text)
@@ -314,7 +314,7 @@ end
         @test length(allowed) > 1 && isnothing(external(Corset.Config.Flags(; levels = allowed)))
         @test !isnothing(external(Corset.Config.Flags(; levels = allowed[2:end])))
         # Path through symlink finds same method sites.
-        mktempdir(@__DIR__) do directory
+        mktempdir(@__DIR__; prefix = ".jl_") do directory
             link = joinpath(directory, "link")
             symlink(package, link)
             @test corset("check", link)[2] == out
@@ -325,7 +325,7 @@ end
 @testset "relaunch inputs" begin
     Launch, Discovery, TestDeps = Corset.Launch, Corset.Discovery, Corset.Facts.TestDeps
     uuid = Base.UUID(rand(UInt128))
-    mktempdir(@__DIR__) do root
+    mktempdir(@__DIR__; prefix = ".jl_") do root
         project = "name = \"Targets\"\nuuid = \"$uuid\"\n\n[deps]\nJSON = \"682c06a0-de6a-54ab-a142-c8b1cf79cde6\"\n\n[weakdeps]\nTOML = \"fa267f1f-6049-4f14-aa54-33bafae1ed76\"\n\n[extras]\nTest = \"8dfed614-e22c-5e08-85e1-65c5234f0b40\"\n"
         write(joinpath(root, "Project.toml"), project)
         @test_throws "package Targets has no module file src/Targets.jl" Discovery.project_facts(root; environment = nothing)
@@ -382,7 +382,7 @@ end
             @test Launch.cache_key(facts) != key
         end
         # Copy of project elsewhere shares key; `developed` points each path package at copy, Corset at running Corset.
-        mktempdir(@__DIR__) do elsewhere
+        mktempdir(@__DIR__; prefix = ".jl_") do elsewhere
             copy = cp(root, joinpath(realpath(elsewhere), "Targets"))
             copied = Discovery.project_facts(copy; environment = nothing)
             @test Launch.cache_key(copied) == Launch.cache_key(facts)
@@ -491,7 +491,7 @@ end
     @test Launch.preserve_level(pinned, Set{Base.UUID}()) == Launch.Pkg.PRESERVE_ALL
     @test Launch.preserve_level(pinned, Set([textwrap])) == Launch.Pkg.PRESERVE_DIRECT
     @test Launch.freed(Dict{String, Any}("TextWrap" => [entry(string(textwrap))], "Other" => [entry(string(Base.UUID(rand(UInt128))))]), Set([textwrap, syntax])) == Set([textwrap])
-    mktempdir(@__DIR__) do root
+    mktempdir(@__DIR__; prefix = ".jl_") do root
         json, argus = Base.PkgId(Base.UUID("682c06a0-de6a-54ab-a142-c8b1cf79cde6"), "JSON"), Base.PkgId(Base.UUID("e39743ec-b2cc-45ef-a990-b666fc093538"), "Argus")
         write(joinpath(root, "Project.toml"), "name = \"Moved\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n")
         manifest = """
@@ -528,11 +528,11 @@ end
 
 @testset "relaunch" begin
     # Packages sit off test load path, so only relaunched process can load them.
-    mktempdir(@__DIR__) do scratch
+    mktempdir(@__DIR__; prefix = ".jl_") do scratch
         Scratch.with_scratch_directory(scratch) do
             launched(args::String...) = (out = IOBuffer(); err = IOBuffer(); code = Corset.CLI.execute(String[args...], out, err; launch = true, cache = Corset.Cache.directory()); (code, String(take!(out)), String(take!(err))))
             box = "\"\"\"Package only relaunched process loads.\"\"\"\nmodule Relaunched\n\"\"\"Number in box.\"\"\"\nstruct Box\n    number::Int\nend\nlength(box::Box)::Int = box.number\nend\n"
-            mktempdir(@__DIR__) do root
+            mktempdir(@__DIR__; prefix = ".jl_") do root
                 uuid, helper = Base.UUID(rand(UInt128)), Base.UUID(rand(UInt128))
                 files = [
                     "Project.toml" => "name = \"Relaunched\"\nuuid = \"$uuid\"\n\n[weakdeps]\nDates = \"ade2ca70-3891-5945-98fb-dc099432e06a\"\n\n[extensions]\nDatesExt = \"Dates\"\n\n[preferences.Corset]\nkind = \"library\"\n",
@@ -594,7 +594,7 @@ end
             other(x::Real) = x + 2
             end
             """
-            mktempdir(@__DIR__) do root
+            mktempdir(@__DIR__; prefix = ".jl_") do root
                 write(joinpath(root, "Project.toml"), "name = \"Crashing\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n\n[preferences.Corset]\nkind = \"library\"\n")
                 mkpath(joinpath(root, "src"))
                 write(joinpath(root, "src", "Crashing.jl"), crashing)
@@ -630,7 +630,7 @@ end
             end
             # Manifest pins TextWrap 0.3; Corset needs ArgParse 1, which needs TextWrap 1. Compat bound blocks move.
             for compat in ("", "\n[compat]\nTextWrap = \"0.3\"\n")
-                mktempdir(@__DIR__) do root
+                mktempdir(@__DIR__; prefix = ".jl_") do root
                     textwrap = "b718987f-49a8-5099-9789-dcd902bef87d"
                     write(joinpath(root, "Project.toml"), "name = \"Pinned\"\nuuid = \"$(Base.UUID(rand(UInt128)))\"\n\n[deps]\nTextWrap = \"$textwrap\"\n$compat\n[preferences.Corset]\nkind = \"library\"\n")
                     write(joinpath(root, "Manifest.toml"), "manifest_format = \"2.0\"\n\n[[deps.TextWrap]]\ngit-tree-sha1 = \"8355cc559e85469cd4dbe927c375f61d3750e002\"\nuuid = \"$textwrap\"\nversion = \"0.3.0\"\n")
@@ -650,7 +650,7 @@ end
 end
 
 @testset "precompile workload" begin
-    mktempdir(@__DIR__) do directory
+    mktempdir(@__DIR__; prefix = ".jl_") do directory
         @test isnothing(Corset.workload(directory))
         @test isfile(joinpath(directory, "corset-baseline.toml"))
         write(joinpath(directory, "corset-baseline.toml"), "not toml")

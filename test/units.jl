@@ -208,7 +208,7 @@ end
 end
 
 @testset "engine" begin
-    mktempdir(@__DIR__) do directory
+    mktempdir(@__DIR__; prefix = ".jl_") do directory
         write(joinpath(directory, "a.jl"), "x ≈ 0\n")
         write(joinpath(directory, "notes.txt"), "x ≈ 0\n")
         report = Corset.check(directory)
@@ -260,7 +260,7 @@ end
 end
 
 @testset "discovery" begin
-    mktempdir(@__DIR__) do root
+    mktempdir(@__DIR__; prefix = ".jl_") do root
         files = Dict(
             "Project.toml" => "name = \"Pkg\"\n\n[weakdeps]\nA = \"$(Base.UUID(rand(UInt128)))\"\nB = \"$(Base.UUID(rand(UInt128)))\"\n\n[extensions]\nFlatExt = \"A\"\nNestedExt = \"B\"\n\n[preferences.Corset]\nkind = \"library\"\n",
             "src/Pkg.jl" => "module Pkg\ninclude(\"a.jl\")\ninclude(joinpath(@__DIR__, \"sub\", \"b.jl\"))\ninclude(name)\ninclude(\"gone.jl\")\nend\n",
@@ -337,7 +337,7 @@ end
     # `a.jl` includes `e.jl` only when called: cache omits it, discovery follows it.
     parts = ["src/a.jl" => "load_e() = include(\"e.jl\")\n", "src/b.jl" => "b = 1\n", "src/c.jl" => "c = 1\n", "src/e.jl" => "e = 1\n"]
     extension = "ext/LoopsExt.jl" => "module LoopsExt\nusing Random: Random\ninclude(string(\"x\", \".jl\"))\nend\n"
-    mktempdir(@__DIR__) do parent
+    mktempdir(@__DIR__; prefix = ".jl_") do parent
         write(joinpath(parent, "shared.jl"), "shared = 1\n")
         with_package(parent, "Loops", "src/Loops.jl" => loop_entry("Loops"), parts..., extension, "ext/x.jl" => "x = 1\n") do package
             triggers = "\n[weakdeps]\nRandom = \"9a3f8284-a2c9-5f02-9a11-845980a1fd5c\"\n\n[extensions]\nLoopsExt = \"Random\"\n"
@@ -366,7 +366,7 @@ end
 
 @testset "pipeline runs on legacy sources" begin
     # Real code finds crashes that fixtures miss; replace this corpus once legacy code is deleted.
-    mktempdir(@__DIR__) do directory
+    mktempdir(@__DIR__; prefix = ".jl_") do directory
         cp(joinpath(dirname(@__DIR__), "lib", "CorsetLegacy", "src"), joinpath(directory, "src"))
         write(joinpath(directory, "Project.toml"), "name = \"CorsetLegacy\"\n\n[preferences.Corset]\nkind = \"library\"\n")
         # Copy lacks legacy dependencies, so it cannot load; corpus tests syntax stage.
@@ -434,7 +434,7 @@ level(settings::Settings, name::String)::Level.T = first(Config.level_of(setting
     end
     project, local_bans = Config.Table(; banned = [Config.BanTable(; name = "a", reason = "r")]), Config.Table(; banned = Config.BanTable[])
     @test isempty(Config.overlay(project, local_bans).banned) && length(Config.overlay(project, Config.Table()).banned) == 1
-    mktempdir(@__DIR__) do directory
+    mktempdir(@__DIR__; prefix = ".jl_") do directory
         write(joinpath(directory, "LocalPreferences.toml"), "[Corset]\nbanned = [{ name = \"x\", reason = \"r\", group = \"correctness\" }]\n")
         @test_throws ConfigError Config.read_table(joinpath(directory, "LocalPreferences.toml"), ("Corset",))
         # PrecompileTools switch shares table: config reads past it.
@@ -516,7 +516,7 @@ end
     @test Corset.Baseline.definition_name(Corset.Baseline.Definitions(nested), last(findfirst("= x", nested.text))) == "f"
     @test Corset.Baseline.definition_name(Corset.Baseline.Definitions(nested), 1) == "M"
     @test Corset.Baseline.definition_name(Corset.Baseline.Definitions(Corset.Syntax.parse_file("t.jl", "x = 1\n", Role.package)), 1) == ""
-    mktempdir(@__DIR__) do directory
+    mktempdir(@__DIR__; prefix = ".jl_") do directory
         write(joinpath(directory, "Project.toml"), "[deps]\n")
         source = "near(value::Real)::Bool = value ≈ 0\nfunction far(value::Real)::Bool\n    return value ≈ 0\nend\n"
         write(joinpath(directory, "a.jl"), source)

@@ -202,7 +202,7 @@ end
     end
 
     @testset "closure keys" begin
-        mktempdir(@__DIR__) do scratch
+        mktempdir(@__DIR__; prefix = ".jl_") do scratch
             lib, _ = load_package(scratch, "Lib", fresh_uuid(), LIB_SOURCE, "", String[])
             precompile(lib.ping, (Int,))
             run = start_run(nothing, Module[], Library())
@@ -275,14 +275,14 @@ end
         @test any(entry -> entry isa Summary, found) && any(entry -> entry isa Set{Int}, found) && any(entry -> entry isa Bool, found)
         @test all(entry -> !(entry isa Summary) || isempty(entry.callbacks), found)
         # Unrelated package loaded after store keeps every hit.
-        mktempdir(@__DIR__) do scratch
+        mktempdir(@__DIR__; prefix = ".jl_") do scratch
             load_package(scratch, "Unrelated", fresh_uuid(), "module Unrelated\nf() = 1\nend\n", "", String[])
             facts, spots, records, new, hits = cached_effects(PACKAGE, UNITS, NONE_STORED, nothing, stored)
             @test fact_text(facts) == fact_text(FACTS) && spots == SPOTS && repr(records) == repr(RECORDS)
             @test isempty(new) && !isempty(hits) && issubset(hits, keys(stored.entries))
         end
         # Run that skipped crashed instance keeps blind spot of this run only, so it stores nothing.
-        mktempdir(@__DIR__) do directory
+        mktempdir(@__DIR__; prefix = ".jl_") do directory
             journal = Inference.Journal(open(joinpath(directory, "journal"), "a"), Set(["effects\nother"]), Set{String}())
             try
                 @test isempty(cached_effects(PACKAGE, UNITS, NONE_STORED, journal, Library())[4])
@@ -293,7 +293,7 @@ end
     end
 
     @testset "package edits" begin
-        mktempdir(@__DIR__) do scratch
+        mktempdir(@__DIR__; prefix = ".jl_") do scratch
             lib_uuid = fresh_uuid()
             lib, lib_root = load_package(scratch, "Lib", lib_uuid, LIB_SOURCE, "", String[])
             _, other_root = load_package(scratch, "Other", fresh_uuid(), "module Other\nf() = 1\nend\n", "", String[])
@@ -350,7 +350,7 @@ end
         none = (nothing, BlindSpot[], nothing, BlindSpot[], nothing)
         @test Corset.Engine.stage_facts(CASE, nothing, FILES, true, true, false, nothing, nothing, nothing) == none
         @test Corset.Engine.stage_facts(CASE, PACKAGE, FILES, false, true, false, nothing, nothing, nothing) == none
-        mktempdir(@__DIR__) do cache
+        mktempdir(@__DIR__; prefix = ".jl_") do cache
             staged(effects::Bool)::Tuple = Corset.Engine.stage_facts(CASE, PACKAGE, FILES, true, effects, false, cache, nothing, nothing)
             entry = Corset.Engine.method_entry(CASE)
             store() = Cache.lookup(Store, cache, entry, readline(Cache.entry(cache, entry)); root = nothing)
@@ -368,8 +368,8 @@ end
             @test fact_text(staged(true)[3]) == fact_text(RUN.facts)
             @test length(readdir(Cache.library_directory(cache))) == 1
         end
-        mktempdir(@__DIR__) do directory
-            mktempdir(@__DIR__) do cache
+        mktempdir(@__DIR__; prefix = ".jl_") do directory
+            mktempdir(@__DIR__; prefix = ".jl_") do cache
                 @test fact_text(Corset.Engine.stage_facts(CASE, PACKAGE, FILES, true, true, false, cache, directory, nothing)[3]) == fact_text(RUN.facts)
             end
         end

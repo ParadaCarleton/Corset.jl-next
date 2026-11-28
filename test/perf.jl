@@ -60,7 +60,7 @@ end
     @testset "method sites sort without printing signatures" begin
         # Sort once printed signatures in every comparison; printing type searches loaded modules for alias.
         # Measured 7977 bytes per method; printing sort took 2.6 MB per method.
-        mktempdir(@__DIR__) do directory
+        mktempdir(@__DIR__; prefix = ".jl_") do directory
             path = joinpath(directory, "Sites.jl")
             write(path, join(("f$index(x::Vector{Int}, y::Dict{String, Float64}) = x" for index in 1:300), "\n"))
             mod = Module(:Sites)
@@ -86,7 +86,7 @@ end
     @testset "package facts compile independent of package" begin
         # Closure over type value, `Ref(type)`, `Some(value)` and hash set of types compiled again for each type.
         # Measured `package_facts` on Distributions: 116 s cold, 1.8 s warm.
-        mktempdir(@__DIR__) do directory
+        mktempdir(@__DIR__; prefix = ".jl_") do directory
             facts = map(1:2) do batch
                 source = """
                 struct Point$batch
@@ -116,7 +116,7 @@ end
     @testset "inference and effects compile independent of package" begin
         # Closures over unit signature (`offset_signature`) and callee (`call_verdicts!`) compiled again for each value.
         # Measured on Distributions after PDMats: 337 signature closures, 63 callee closures.
-        mktempdir(@__DIR__) do directory
+        mktempdir(@__DIR__; prefix = ".jl_") do directory
             stages = map(1:2) do batch
                 source = """
                 first_item(items::AbstractVector{Int}) = items[1]
@@ -143,7 +143,7 @@ end
     @testset "package rules compile independent of struct count" begin
         RULES = [Symbol("missing-interface"), Symbol("shadowed-base")]
         # Closure over type value compiles once per value: missing-interface and shadowed-base compiled again for each type.
-        mktempdir(@__DIR__) do directory
+        mktempdir(@__DIR__; prefix = ".jl_") do directory
             facts = map(1:2) do batch
                 path = joinpath(directory, "Structs$batch.jl")
                 write(path, structs_source(batch))
@@ -165,7 +165,7 @@ end
         # `bang-convention` closure over function value and `one-based-range` table keyed by `Type` compiled per value.
         # Cold self-lint on main: 81 s and 29 s of 189 s.
         entries = filter(entry -> entry.name in (Symbol("bang-convention"), Symbol("one-based-range")), Corset.Rules.REGISTRY)
-        mktempdir(@__DIR__) do directory
+        mktempdir(@__DIR__; prefix = ".jl_") do directory
             facts = map(1:2) do batch
                 source = """
                 first_item(items::AbstractVector{Int}) = items[1]
@@ -201,7 +201,7 @@ end
         # Both sizes exceed processor cache: smaller trees fit in it, and cache step looks like superlinear time.
         ui = [case for rule in readdir(joinpath(@__DIR__, "ui"); join = true) for case in readdir(rule; join = true) if endswith(case, ".jl")]
         cases = join((read(case, String) for case in [ui; joinpath(@__DIR__, "optout", "cases.jl")]), "\n")
-        mktempdir(@__DIR__) do directory
+        mktempdir(@__DIR__; prefix = ".jl_") do directory
             small, large = map((16, 128)) do copies
                 path = joinpath(directory, "copies_$copies.jl")
                 write(path, "function wrapped()\n$(repeat(cases, copies))end\n")
