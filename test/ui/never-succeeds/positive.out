@@ -57,3 +57,26 @@ error[never-succeeds]: call to `scaled` never succeeds
    = fix: fix call, add method for these argument types, or narrow method signature   [manual]
    = docs: corset explain never-succeeds
 
+error[never-succeeds]: `variance` never returns
+  --> src/NeverSucceedsPositive.jl:27:1
+   |
+27 | variance(x::Real) = deviation(x)^2
+   | ^^^^^^^^ never returns
+   |                     ------------ calls `deviation`, which never returns
+28 | deviation(x::Real) = sqrt(variance(x))
+   |                           ----------- calls `variance`, which never returns
+   |
+   = why: calls recurse without base case, so every call overflows stack
+   = fix: add base case, or call other method in cycle   [manual]
+   = docs: corset explain never-succeeds
+
+error[never-succeeds]: `settle` never returns
+  --> src/NeverSucceedsPositive.jl:32:10
+   |
+32 | function settle(count::Int)
+   |          ^^^^^^ never returns and never throws
+   |
+   = why: loop never exits, so every call hangs
+   = fix: add loop exit   [manual]
+   = docs: corset explain never-succeeds
+
