@@ -264,6 +264,8 @@ Summary keeps every effect with its kind. Rules apply exemptions; engine filters
   - Draw statement takes site of callee summary there.
   - Without one, method outside Base, stdlib and package gives own line. Package method takes site of later draw.
   - Unit verdict gives each default RNG access span of that line, from callees at its cause statement.
+  - Verdict marks site offered when that callee takes RNG keyword, added RNG argument, or RNG in place of `TaskLocalRNG`.
+  - Offered method must read RNG and take every RNG. Offer stays unproven: engine does not summarize offered method.
   - Widening keeps old site; summary without draw has none.
 - `ScopedValue` read: read of `ScopedValue` object or of current task scope, its dictionary included (`ScopedValues.get` of `ScopedValue`; package subtype runs own default).
 - Lock write: lock or semaphore of argument or global changes hold count by normal exit (Release balance). Balanced use writes nothing.

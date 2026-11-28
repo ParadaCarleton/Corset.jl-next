@@ -40,7 +40,7 @@ end
 
 """
 Accesses of unit `effects` with doubt below blind, each marked `callback`, and blind accesses, with cause spans from
-`span_of` and dependency draw spans of default RNG accesses from `site_of`. Argument `provenance` judges `code` doubt:
+`span_of` and dependency draw sites of default RNG accesses from `site_of`. Argument `provenance` judges `code` doubt:
 opaque gives blind access (`OPAQUE_DATA`); opt-out gives none.
 """
 function unit_accesses(effects::Accesses, span_of::Function, site_of::Function, provenance::AbstractVector{Provenance.T}, callback::Bool)::Tuple{Vector{Access}, Vector{BlindAccess}}
