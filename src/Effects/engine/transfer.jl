@@ -66,10 +66,11 @@ function call!(flow::Flow, index::Integer, outcome::Outcome.Type, callees::Calle
         Outcome.Builtin(builtin, operands) => builtin!(flow, writes, index, builtin, operands)
         Outcome.Intrinsic(intrinsic, operands) => intrinsic!(flow, writes, index, intrinsic, operands)
         Outcome.Foreign(effects, operands) => table!(flow, writes, index, effects, operands, false)
-        Outcome.Dispatch(_, operands) => dispatch!(flow, writes, index, operands, callees, !flow.flush && !message)
+        Outcome.Dispatch(_, operands) => dispatch!(flow, writes, flow.reads, index, operands, callees, !flow.flush && !message, false)
+        Outcome.Spawn(_, operands) => spawn!(flow, writes, index, operands, callees)
         Outcome.Contract(effects, operands, breached) => contract!(flow, writes, index, effects, operands, breached)
         Outcome.Open(operands) => open_call!(flow, writes, index, operands)
-        Outcome.Unresolved(operands) => open!(flow, writes, index, operands, CODE_DOUBT)
+        Outcome.Unresolved(operands) => (open!(flow, writes, index, operands, CODE_DOUBT); foreign_task_build(flow.ir, index) && split_rng!(writes, index))
         Outcome.Dead() => nothing
     end
     start = started(flow.ir, index, outcome)
@@ -176,6 +177,7 @@ outcome_operands(outcome::Outcome.Type)::Vector{Operand.Type} = @match outcome b
     Outcome.Intrinsic(_, operands) => operands
     Outcome.Foreign(_, operands) => operands
     Outcome.Dispatch(_, operands) => operands
+    Outcome.Spawn(_, operands) => operands
     Outcome.Contract(_, operands, _) => operands
     Outcome.Open(operands) => operands
     Outcome.Unresolved(operands) => operands
@@ -243,23 +245,53 @@ end
 Transfer call at `index` that reaches variants of `callees` (`engine.md`, Calls, steps 3 to 5): one applies its
 summary, or leaves callback record for caller when `defers`; more join their summaries and resolve their records here.
 Access every member makes keeps most doubt among them; access only some make takes doubt of dispatch between them
-(`open_doubt`). Writes go into `writes`.
+(`open_doubt`). Accesses go into `writes` and `reads`. `task`: call runs body of new task (`apply!`).
 """
-function dispatch!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type}, callees::Callees, defers::Bool)::Nothing
+function dispatch!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type}, callees::Callees, defers::Bool, task::Bool)::Nothing
     variants = callees.variants[index]
     if length(variants) == 1
         variant = only(variants)
-        apply!(flow, writes, flow.reads, index, summary!(callees, variant), variant, operands, defers, callees)
+        apply!(flow, writes, reads, index, summary!(callees, variant), variant, operands, defers, callees, task)
         return nothing
     end
     flow.closed_world = true
     member_writes, member_reads = [OriginAccesses() for _ in variants], [OriginAccesses() for _ in variants]
     for (member, variant) in enumerate(variants)
-        apply!(flow, member_writes[member], member_reads[member], index, summary!(callees, variant), variant, operands, false, callees)
+        apply!(flow, member_writes[member], member_reads[member], index, summary!(callees, variant), variant, operands, false, callees, task)
     end
     partial = open_doubt(flow, operands)
     join_accesses!(writes, member_writes, partial)
-    join_accesses!(flow.reads, member_reads, partial)
+    join_accesses!(reads, member_reads, partial)
+    return nothing
+end
+
+"""
+Kinds of task state that body of new task (`Spawn`) keeps to itself (`engine.md`, Task bodies): default RNG state and
+task-local storage. New task takes scope of caller, so scoped reads stay.
+"""
+const TASK_STATE = (EffectKind.default_rng, EffectKind.task_local)
+
+"""Record task build of statement `index` in `writes`: build advances caller RNG to seed new task (`jl_rng_split`)."""
+split_rng!(writes::OriginAccesses, index::Integer)::Nothing = (access!(writes, unknown(NO_DOUBT), false, definite(index), EffectKind.default_rng); nothing)
+
+"""Slot of `Task` that holds result of its body: `fetch` loads it."""
+const TASK_RESULT = Step.Field(:result)
+
+"""
+Transfer call statement `index` that starts new task running body variants of `callees` on `operands`, callable first
+(`engine.md`, Task bodies). Body runs as call, so its stores and accesses apply here; writes of task state
+(`TASK_STATE`) stay in new task. Body that draws before reseed reads default RNG of caller, since new task derives
+its RNG from it; other reads of task state drop. Derivation advances caller RNG (`split_rng!`). Result: new task,
+which holds body result (`TASK_RESULT`). Callable holds caller objects, so no callback record waits for caller.
+"""
+function spawn!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type}, callees::Callees)::Nothing
+    body_writes, body_reads = OriginAccesses(), OriginAccesses()
+    dispatch!(flow, body_writes, body_reads, index, operands, callees, false, true)
+    draws = any(variant -> summary!(callees, variant).seeding.draws, callees.variants[index])
+    merge_accesses!(writes, filter(((key, _),) -> !(last(key) in TASK_STATE), body_writes), false)
+    merge_accesses!(flow.reads, filter(((key, _),) -> !(last(key) in TASK_STATE) || (draws && last(key) == EffectKind.default_rng), body_reads), false)
+    split_rng!(writes, index)
+    assign!(flow, index, Targets(Origin.Allocation(index) => NO_DOUBT))
     return nothing
 end
 
@@ -291,7 +323,9 @@ function builtin!(flow::Flow, writes::OriginAccesses, index::Integer, @nospecial
         if isnothing(binding)
             # Own name: closure of field write branch captures `field`; second assignment boxes it.
             read_field = operand_constant(flow.ir, operands[2])
-            access!(flow.reads, targets(1), false, definite(index), field_kind(operand_type(flow.ir, operands[1]), read_field, flow.scheduler))
+            kind = field_kind(operand_type(flow.ir, operands[1]), read_field, flow.scheduler)
+            access!(flow.reads, targets(1), false, definite(index), kind)
+            draw!(flow, index, kind)
             assign!(flow, index, load_field!(flow, operands[1], read_field))
         else
             read_global!(flow, index, something(binding))
@@ -374,7 +408,7 @@ points to no object holds no targets. `modify` operator call stays open. Writes 
 function write!(flow::Flow, writes::OriginAccesses, index::Integer, shape::Shape, operands::AbstractVector{Operand.Type}, objects::Targets, old::Targets, store::Function, @nospecialize(slot::Any), kind::EffectKind.T)::Nothing
     Base.require_one_based_indexing(operands)
     alternative_access!(writes, objects, objects, false, definite(index), kind)
-    shape.returns in (Returns.stored, Returns.object) || access!(flow.reads, objects, false, definite(index), kind)
+    shape.returns in (Returns.stored, Returns.object) || (access!(flow.reads, objects, false, definite(index), kind); draw!(flow, index, kind))
     holds = points!(flow, slot)
     old = holds ? old : Targets()
     given = holds ? operand_targets!(flow, operands[shape.stored]) : Targets()
@@ -534,6 +568,7 @@ function open!(flow::Flow, writes::OriginAccesses, index::Integer, operands::Abs
     if any(operand -> holds_task_rng_type(operand_type(flow.ir, operand), 3), operands)
         access!(writes, unknown(NO_DOUBT), false, Effect(doubt, index, ""), EffectKind.default_rng)
         access!(flow.reads, unknown(NO_DOUBT), false, Effect(doubt, index, ""), EffectKind.default_rng)
+        draw!(flow, index, EffectKind.default_rng)
     end
     assign!(flow, index, union_targets((objects, unknown(doubt))), doubt)
     return nothing
@@ -564,6 +599,7 @@ function open_call!(flow::Flow, writes::OriginAccesses, index::Integer, operands
     rng, kind = task_rng ? (unknown(NO_DOUBT), EffectKind.default_rng) : (operand_targets!(flow, operands[2]), EffectKind.rng_argument)
     access!(writes, rng, false, definite(index), kind)
     access!(flow.reads, rng, false, definite(index), kind)
+    draw!(flow, index, kind)
     return nothing
 end
 
@@ -677,318 +713,6 @@ function outside_targets!(flow::Flow)::Targets
     found = copy(reached)
     for (origin, doubt) in reached
         add!(found, collapsed(origin), doubt)
-    end
-    return found
-end
-
-"""
-Call statement `index` that applies callee summary: targets and derived type sources of each callee parameter, targets
-of every callee fresh node (`nothing`: callee makes none), callee places mapped so far with and without origins below
-(`beneath`), and type sources of arguments so far. Stores of later edges miss cached places until next round.
-"""
-struct CallSite
-    arguments::Vector{Targets}
-    derived::Vector{Sources}
-    index::Int
-    fresh::Union{Nothing, Targets}
-    places::Dict{Place.Type, Targets}
-    below::Dict{Place.Type, Targets}
-    sources::Dict{Int, Sources}
-end
-
-"""
-Call site at statement `index` of callee with `summary`: its fresh nodes merge into allocation at `index`, blind unless
-merge is exact. One fresh node merges exactly; several need check (`merges_exactly`).
-"""
-function CallSite(arguments::AbstractVector{Targets}, derived::AbstractVector{Sources}, index::Integer, summary::Summary)::CallSite
-    merged = summary.fresh == 0 ? nothing : Targets(Origin.Allocation(index) => (summary.fresh == 1 || merges_exactly(summary)) ? NO_DOUBT : BLIND_DOUBT)
-    return CallSite(arguments, derived, index, merged, Dict{Place.Type, Targets}(), Dict{Place.Type, Targets}(), Dict{Int, Sources}())
-end
-
-"""Whether `node` is fresh object of callee."""
-fresh_node(node::Node.Type)::Bool = @match node begin
-    Node.Fresh(_) => true
-    _ => false
-end
-
-"""
-Whether fresh nodes of `summary` merge into one allocation without false targets. Fresh nodes must form one object:
-every fresh node but one backs another (`Array` and its `Memory`); merged object backs itself. Independent objects
-(two vectors in one tuple) would share caller stores after call. No slot step holds stores of two fresh nodes, and
-fresh node with unknown slot or backing outside fresh nodes is only fresh node with stores.
-"""
-function merges_exactly(summary::Summary)::Bool
-    holders, stored, open, backs = Dict{Step.Type, Node.Type}(), Set{Node.Type}(), Set{Node.Type}(), Set{Node.Type}()
-    for (node, step) in keys(summary.edges)
-        fresh_node(node) || continue
-        push!(stored, node)
-        get!(holders, step, node) == node || return false
-    end
-    for node in keys(summary.spread)
-        fresh_node(node) && push!(open, node)
-    end
-    for (node, nodes) in summary.backing
-        fresh_node(node) || continue
-        all(fresh_node, keys(nodes)) || push!(open, node)
-        # Node that backs itself is earlier merge of one object (`[x]` calls `Vector(undef, 1)`).
-        union!(backs, Iterators.filter(other -> fresh_node(other) && other != node, keys(nodes)))
-    end
-    summary.fresh - length(backs) == 1 || return false
-    return isempty(open) || (length(open) == 1 && stored ⊆ open)
-end
-
-"""Targets of callee `place` at `site`, mapped once per call statement and round."""
-site_place!(flow::Flow, site::CallSite, place::Place.Type)::Targets = get!(() -> map_place!(flow, place, site.arguments), site.places, place)
-
-"""Targets of callee `place` at `site` with origins below them (`beneath`), found once per call statement and round."""
-site_below!(flow::Flow, site::CallSite, place::Place.Type)::Targets = get!(() -> beneath(flow, site_place!(flow, site, place)), site.below, place)
-
-"""
-Targets of callee `node` at `site`; every fresh node of callee merges into allocation at call statement. Result is
-shared by later calls at `site`: callers only read it.
-"""
-function map_node!(flow::Flow, node::Node.Type, site::CallSite)::Targets
-    return @match node begin
-        Node.Placed(place) => site_place!(flow, site, place)
-        Node.Fresh(_) => something(site.fresh)
-        Node.Outside() => site_place!(flow, site, Place.At(Root.Elsewhere(), NO_STEPS))
-    end
-end
-
-"""
-Targets of each callee parameter at call `index` of `method` with `operands`. Parameters past last fixed operand take
-any `Rest` element. Vararg method packs trailing operands into allocation; `Rest` elements go to its unknown slot.
-"""
-function parameter_targets!(flow::Flow, index::Integer, method::Method, operands::AbstractVector{Operand.Type})::Vector{Targets}
-    given = Targets[operand_targets!(flow, operand) for operand in operands if !is_rest(operand)]
-    rest = union_targets(operand_targets!(flow, operand) for operand in operands if is_rest(operand))
-    fixed = method.isva ? method.nargs - 1 : method.nargs
-    arguments = [given[1:min(fixed, length(given))]; [rest for _ in (length(given) + 1):fixed]]
-    method.isva || return arguments
-    vararg = Targets(Origin.Allocation(index) => NO_DOUBT)
-    for (position, targets) in enumerate(given[(fixed + 1):end])
-        store!(flow, vararg, Step.Position(position), targets)
-    end
-    isempty(rest) || store!(flow, vararg, nothing, rest)
-    return [arguments; vararg]
-end
-
-"""Derived type sources of each callee parameter, grouped from call `operands` as `parameter_targets!` groups targets."""
-function parameter_derived(flow::Flow, method::Method, operands::AbstractVector{Operand.Type})::Vector{Sources}
-    given = Sources[derived_of(flow, operand) for operand in operands if !is_rest(operand)]
-    rest = reduce(|, (derived_of(flow, operand) for operand in operands if is_rest(operand)); init = Sources(0))
-    fixed = method.isva ? method.nargs - 1 : method.nargs
-    derived = [position <= length(given) ? given[position] : rest for position in 1:fixed]
-    method.isva && push!(derived, reduce(|, @view(given[(fixed + 1):end]); init = rest))
-    return derived
-end
-
-"""Union of targets of callee `nodes` at `site`, each raised to its node doubt (`caller_doubt!`)."""
-function map_nodes!(flow::Flow, nodes::Nodes, site::CallSite)::Targets
-    found = Targets()
-    for (node, doubt) in nodes
-        mapped = map_node!(flow, node, site)
-        # Flow stays same over node, so its doubt maps once.
-        isempty(mapped) || add_all!(found, mapped, caller_doubt!(flow, site, doubt))
-    end
-    return found
-end
-
-"""
-Callee `doubt` at `site`: each parameter source becomes type sources of its argument (`type_sources`). Parameter
-without argument is doubt in code.
-"""
-function caller_doubt!(flow::Flow, site::CallSite, doubt::Doubt)::Doubt
-    sources_of(doubt) & PARAMETERS != 0 || return doubt
-    sources, pending = sources_of(doubt) & ~PARAMETERS, sources_of(doubt) & PARAMETERS
-    while pending != 0
-        position = trailing_zeros(pending)
-        pending &= pending - Sources(1)
-        sources |= argument_sources!(flow, site, position)
-    end
-    return Doubt(Level.code, sources)
-end
-
-"""Type sources of argument `position` at `site`, found once per call statement and round; doubt in code past arguments."""
-function argument_sources!(flow::Flow, site::CallSite, position::Integer)::Sources
-    position <= length(site.arguments) || return INHERENT
-    haskey(site.sources, position) || (site.sources[position] = type_sources(flow, site.arguments[position], site.derived[position]))
-    return site.sources[position]
-end
-
-"""
-Apply callee `summary` of `variant` at call statement `index` with `operands` (`engine.md`, Calls, steps 3 and 4):
-stores and result now. Accesses go into `writes` and `reads`, or into callback record when `defers` and callable holds
-caller object (`deferred`). Vararg tuple becomes allocation at `index`. Settled round (`Flow`) skips stores: they
-change nothing there.
-"""
-function apply!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Integer, summary::Summary, variant::Variant, operands::AbstractVector{Operand.Type}, defers::Bool, callees::Callees)::Nothing
-    method = first(variant).def::Method
-    arguments = parameter_targets!(flow, index, method, operands)
-    site = CallSite(arguments, parameter_derived(flow, method, operands), index, summary)
-    summary.closed_world && (flow.closed_world = true)
-    summary.cut && (flow.cut = true)
-    flow.settled || apply_stores!(flow, site, summary)
-    if defers && deferred(arguments)
-        defer!(flow, index, (variant, arguments))
-    else
-        apply_accesses!(flow, writes, reads, site, summary, defers, callees, nothing, scheduler_access(flow, method, operands))
-    end
-    return nothing
-end
-
-"""
-Whether call of `method` with `operands` in `flow` is scheduler access to `Task` field: scheduler instance calls Base
-property accessor on scheduler field (`scheduler_field`). Accessor runs field access of its caller, so caller kind holds.
-"""
-function scheduler_access(flow::Flow, method::Method, operands::AbstractVector{Operand.Type})::Bool
-    Base.require_one_based_indexing(operands)
-    (flow.scheduler && method.name in PROPERTY_ACCESSORS && Base.moduleroot(method.module) === Base && length(operands) >= 3) || return false
-    field = operand_constant(flow.ir, operands[3])
-    return !isnothing(field) && scheduler_field(operand_type(flow.ir, operands[2]), something(field))
-end
-
-"""
-Accesses of callee `summary` at `site` into `writes` and `reads`, and its callback records: record waits again when
-`defers` and callable still holds caller object, else resolves here. `seen` holds records resolved at site; first
-record resolved makes it, since most calls have none. Only settled round (`Flow`) maps accesses: round empties them
-first. Every round resolves records, so variants of records count as read (`summary!`). `scheduled`: task state access
-of callee is scheduler access of caller (`scheduler_access`).
-"""
-function apply_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, defers::Bool, callees::Callees, seen::Union{Nothing, AbstractSet{Deferred}}, scheduled::Bool)::Nothing
-    flow.settled && map_accesses!(flow, writes, reads, site, summary, scheduled)
-    for callback in summary.callbacks
-        record = (callback.variant, Targets[map_nodes!(flow, nodes, site) for nodes in callback.parameters])
-        if defers && deferred(last(record))
-            defer!(flow, site.index, record)
-        else
-            isnothing(seen) && (seen = Set{Deferred}())
-            resolve!(flow, writes, reads, site.index, record, defers, callees, seen)
-        end
-    end
-    return nothing
-end
-
-"""
-Writes and reads of callee `summary` at `site` into `writes` and `reads`, each mapped onto caller objects. Callee place
-that maps to one of several caller objects gives `possible` write on each (`alternative_access!`). `scheduled` call
-gives audited state for task state (`scheduler_access`).
-"""
-function map_accesses!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, site::CallSite, summary::Summary, scheduled::Bool)::Nothing
-    caller_kind(kind::EffectKind.T)::EffectKind.T = scheduled && kind == EffectKind.task_local ? EffectKind.audited : kind
-    for ((place, below, kind), effect) in summary.writes
-        direct, objects = access_objects!(flow, site, place, below, caller_kind(kind))
-        alternative_access!(writes, direct, objects, below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), caller_kind(kind))
-    end
-    for ((place, below, kind), effect) in summary.reads
-        access!(reads, last(access_objects!(flow, site, place, below, caller_kind(kind))), below, Effect(caller_doubt!(flow, site, effect.doubt), site.index, effect.reason), caller_kind(kind))
-    end
-    return nothing
-end
-
-"""
-Caller objects at callee `place` at `site`, and objects access of `kind` on it (or `below` it) reaches. Task state and
-audited access (`UNMAPPED_KINDS`) on `Elsewhere` stay on unknown object: current task or Base object. Other access to
-object reaches each outside object. Access to object reaches its memory backing too (`with_backing!`).
-"""
-function access_objects!(flow::Flow, site::CallSite, place::Place.Type, below::Bool, kind::EffectKind.T)::Tuple{Targets, Targets}
-    kind in UNMAPPED_KINDS && root_of(place) == Root.Elsewhere() && return (unknown(NO_DOUBT), unknown(NO_DOUBT))
-    direct = site_place!(flow, site, place)
-    return (direct, below ? site_below!(flow, site, place) : with_backing!(flow, direct))
-end
-
-"""
-`objects` and each memory backing chain from them reaches. Callee place holds memory of its object (`backing_field` adds
-no step), so access to owner may land on memory alone or owner alone: `Base.wrap(Array, m, n)` gives `possible` access
-to `m`, as `pop!` changes wrapper alone. Each link counts as work; walk stops past limit.
-"""
-function with_backing!(flow::Flow, objects::Targets)::Targets
-    any(origin -> haskey(flow.backing, origin), keys(objects)) || return objects
-    found, pending = copy(objects), collect(keys(objects))
-    while !isempty(pending) && !over_budget(flow)
-        origin = pop!(pending)
-        backing = get(flow.backing, origin, nothing)
-        isnothing(backing) && continue
-        for (memory, flag) in backing
-            over_budget(flow) && break
-            flow.work += 1
-            add!(found, memory, most(most(flag, CODE_DOUBT), found[origin])) && push!(pending, memory)
-        end
-    end
-    return found
-end
-
-"""
-Resolve callback `record` at call statement `index`: callable is fresh here, so accesses of its variant apply to record
-targets. Record in `seen` adds nothing: recursion through callable repeats same accesses on same targets. Instance
-that kept record took `closed_world` of variant already (`apply!`). Record keeps targets only, so no derived sources.
-"""
-function resolve!(flow::Flow, writes::OriginAccesses, reads::OriginAccesses, index::Integer, record::Deferred, defers::Bool, callees::Callees, seen::AbstractSet{Deferred})::Nothing
-    record in seen && return nothing
-    push!(seen, record)
-    variant, arguments = record
-    summary = summary!(callees, variant)
-    site = CallSite(arguments, zeros(Sources, length(arguments)), index, summary)
-    apply_accesses!(flow, writes, reads, site, summary, defers, callees, seen, false)
-    return nothing
-end
-
-"""Keep callback `record` of call statement `index` for caller; its targets are copied, since values grow in round."""
-function defer!(flow::Flow, index::Integer, record::Deferred)::Nothing
-    push!(get!(Vector{Deferred}, flow.callbacks, index), (first(record), map(copy, last(record))))
-    return nothing
-end
-
-"""
-Whether call with callee parameter `arguments` (callable first) leaves accesses to caller: callable holds object below
-caller parameter, and no argument holds fresh object. Caller merges fresh objects of instance into one (`map_node!`).
-"""
-function deferred(arguments::AbstractVector{Targets})::Bool
-    any(parameter_origin, keys(first(arguments))) || return false
-    return !any(targets -> any(fresh_origin, keys(targets)), arguments)
-end
-
-"""Whether `origin` is caller object at path below parameter: caller can tell which object it is."""
-parameter_origin(origin::Origin.Type)::Bool = @match origin begin
-    Origin.Caller(Place.At(Root.Parameter(_), _)) => true
-    _ => false
-end
-
-"""Callee stores between caller objects at `site`, global bindings and result."""
-function apply_stores!(flow::Flow, site::CallSite, summary::Summary)::Nothing
-    for ((node, step), nodes) in summary.edges
-        store!(flow, map_node!(flow, node, site), step, map_nodes!(flow, nodes, site))
-    end
-    for (node, nodes) in summary.backing
-        store_backing!(flow, map_node!(flow, node, site), map_nodes!(flow, nodes, site))
-    end
-    for (node, nodes) in summary.spread
-        store!(flow, map_node!(flow, node, site), nothing, map_nodes!(flow, nodes, site))
-    end
-    for (binding, nodes) in summary.bound
-        bind!(flow, binding, map_nodes!(flow, nodes, site))
-    end
-    assign!(flow, site.index, address_targets!(flow, flow.ir.stmts[site.index][:type], map_nodes!(flow, summary.result, site)))
-    return nothing
-end
-
-"""
-Targets of value of `type` that `objects` give. Memory address (`Ptr`, `MemoryRef`) names memory: fresh owner in
-`objects` gives memory backing it instead, as `load_field!` does. Other value keeps `objects`. Each backing link counts
-as work; walk stops past limit.
-"""
-function address_targets!(flow::Flow, @nospecialize(type::Any), objects::Targets)::Targets
-    type = CC.widenconst(type)
-    (type isa DataType && type <: Union{Ptr, GenericMemoryRef}) || return objects
-    found = Targets()
-    for (origin, doubt) in objects
-        backing = fresh_origin(origin) ? get(flow.backing, origin, nothing) : nothing
-        isnothing(backing) && (add!(found, origin, doubt); continue)
-        for (memory, flag) in backing
-            over_budget(flow) && return found
-            flow.work += 1
-            add!(found, memory, most(flag, doubt))
-        end
     end
     return found
 end

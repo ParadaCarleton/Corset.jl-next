@@ -29,7 +29,8 @@ backing, unknown-slot stores and global bindings; result targets; accesses by or
 below; callback records by call statement. `changed` records growth of targets in current round; `closed_world` records
 join over methods loaded now, and `cut` path stand-ins cut (`Summary`). `flush` resolves every callback record here:
 root unit has no caller to resolve them. `record` keeps kinds of writes each call statement makes (`call_kinds`).
-`scheduler`: instance whose access to scheduler fields of `Task` is audited state (`scheduler_method`).
+`scheduler`: instance whose access to scheduler fields of `Task` is audited state (`scheduler_method`). `draws` holds
+statements that read default RNG, callee reads before reseed included (`draw!`).
 `follows` keeps slot targets by origin and step (`load!`); `dependents` indexes traces by origins they read.
 `coarse` holds traces beyond `TRACE_MEMBERSHIP_LIMIT`; any heap growth invalidates them.
 `stale` and `generation` preserve work accounting after heap growth.
@@ -58,6 +59,7 @@ mutable struct Flow
     const record::Bool
     const scheduler::Bool
     const call_kinds::Dict{Int, Set{EffectKind.T}}
+    const draws::BitSet
     const follows::Dict{Tuple{Origin.Type, Step.Type}, Follow}
     const dependents::Dict{TraceDependency, Set{Tuple{Origin.Type, Step.Type}}}
     const coarse::Set{Tuple{Origin.Type, Step.Type}}
@@ -89,7 +91,7 @@ function start_flow(ir::CC.IRCode, outcomes::AbstractVector{Union{Nothing, Outco
     heap = Dict{Origin.Type, Dict{Step.Type, Targets}}()
     callbacks = Dict{Int, Vector{Deferred}}()
     primitives = Union{Nothing, Primitive}[statement_primitive(ir, index, outcomes[index]) for index in 1:length(ir.stmts)]
-    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, scheduler, Dict{Int, Set{EffectKind.T}}(), Dict{Tuple{Origin.Type, Step.Type}, Follow}(), Dict{TraceDependency, Set{Tuple{Origin.Type, Step.Type}}}(), Set{Tuple{Origin.Type, Step.Type}}(), 0, 0, false, false, false, false, cut, limit, 0, 0)
+    return Flow(ir, outcomes, message, primitives, [Targets() for _ in 1:length(ir.stmts)], zeros(Sources, length(ir.stmts)), statics, arguments, heap, OriginHolds(), OriginHolds(), Dict{GlobalRef, Targets}(), Targets(), OriginAccesses(), OriginAccesses(), callbacks, referent, flush, record, scheduler, Dict{Int, Set{EffectKind.T}}(), BitSet(), Dict{Tuple{Origin.Type, Step.Type}, Follow}(), Dict{TraceDependency, Set{Tuple{Origin.Type, Step.Type}}}(), Set{Tuple{Origin.Type, Step.Type}}(), 0, 0, false, false, false, false, cut, limit, 0, 0)
 end
 
 """Release balance primitive of statement `index` of `ir` with call `outcome`: dispatched call only (`primitive`)."""
@@ -452,6 +454,9 @@ function access!(table::OriginAccesses, objects::Targets, below::Bool, effect::E
     return nothing
 end
 
+"""Record statement `index` as draw (`Flow`) when it reads with `kind` default RNG."""
+draw!(flow::Flow, index::Integer, kind::EffectKind.T)::Nothing = (kind == EffectKind.default_rng && push!(flow.draws, index); nothing)
+
 """
 Record write as `access!` on `objects`, when write lands on one of `direct` origins (`y = flag ? a : b; push!(y, 1)`).
 Several origins make write on each at least `possible`: run-time values pick one. Blind origin counts too, as in join
@@ -549,6 +554,7 @@ function round!(flow::Flow, callees::Callees)::Nothing
     empty!(flow.writes)
     empty!(flow.reads)
     empty!(flow.call_kinds)
+    empty!(flow.draws)
     for index in 1:length(flow.ir.stmts)
         statement!(flow, index, flow.ir.stmts[index][:stmt], callees)
         over_budget(flow) && return nothing

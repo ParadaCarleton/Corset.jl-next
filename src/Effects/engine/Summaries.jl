@@ -7,7 +7,7 @@ Summary holds writes, reads and result aliases by caller place, with doubt: defi
 module Summaries
 
 using EnumX: @enumx
-using Moshi.Data: @data
+using Moshi.Data: @data, isa_variant
 using Moshi.Match: @match
 using ...Facts: PackageFacts, MethodSite, Access, UnguardedHold, Callee, methods_callee, callee_methods, Step, Root, Place, PlaceSteps, NO_STEPS, PATH_DEPTH, BlindSpot, Confidence, Span, EffectKind, rng_positions, takes_every_rng, tuple_parameters
 using ...Inference: Inference, TypedCode, Units, Journal, start_record, finish_record, record!, method_label, holds_stand_in, never_returning, throw_helper, called, dead_calls
@@ -24,6 +24,7 @@ include("kinds.jl")
 include("calls.jl")
 include("flow.jl")
 include("transfer.jl")
+include("apply.jl")
 include("balance.jl")
 include("summary.jl")
 include("solve.jl")

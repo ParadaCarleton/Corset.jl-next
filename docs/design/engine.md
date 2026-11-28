@@ -174,6 +174,35 @@ Resolution of each call statement, first match wins:
 - Limit 3 is compiler `max_methods`, never below. Limit 8 reached 20 times more instances on Distances.
 - Library code joins nothing: its run-time dispatch stays open (step 7). Joins there raised `possible` share and cost most time.
 
+### Task bodies
+
+Engine follows task body as call of body. Else `@spawn`, `@async` and `@threads` hide body effects.
+
+- `Task(f)` runs `f()` in new task when call on every later path starts task (`schedule`, `yield`, `yieldto`, `enq_work`).
+- `@spawn`, `@async`, and `@task` with `schedule` build and start task this way.
+- Other task may never run: `Task(f)` keeps old resolution. `jl_new_task` stays unresolved, so body effects are blind spots.
+- Every task build advances RNG state of caller (`jl_rng_split`): definite default RNG write, also when body reseeds or never runs.
+- `threading_run(fun, static)` of `@threads` runs `fun(thread)` in tasks. Thread number takes no operand: constant would make variant.
+- Callable of abstract type, or callable stand-in, keeps old resolution: unresolved foreign call or dispatch.
+- Body stores and accesses apply at call. Callable holds caller objects, so no callback record waits for caller.
+- New body object stays in task when caller cannot reach it. Reach starts at body result and at stores into caller objects or globals.
+- Body store of new object into unknown object stays in task: task storage of new task, for one. Caller load from unknown object gives unknown object anyway.
+- Result is new task. Body result goes into `result` slot of task: `fetch` loads it.
+- New task owns its default RNG state and task-local storage. Body writes to them stay in task.
+- New task takes scope of caller: body `ScopedValue` reads stay.
+- New task derives its RNG from RNG of caller. Body draw before reseed reads default RNG of caller.
+- Write alone draws nothing: caller-chosen RNG (Effect kinds) counts calls that read default RNG.
+- Body that reseeds before every draw on every path passes `hidden-input`. Its other reads of task state drop.
+- Reseed: `seed!(seed)` or `seed!(TaskLocalRNG(), seed)`, with seed that cannot be `nothing`.
+- `seed!()` takes system entropy: draws after it stay open.
+- Call reseeds when each callee variant reseeds before every normal exit. Helper `reseed!(seed)` counts.
+- Summary keeps `seeds` (every normal exit follows reseed) and `draws` (draw can come before reseed).
+- Must analysis on blocks: reseed holds at block start when it holds at end of every predecessor. Entry block starts without it.
+- Call cycle member starts reseeded; `widen` lowers fact. Shortcut unit never reseeds.
+- Draw: statement that reads default RNG. Callee draw before its own reseed counts.
+- Reseed in plain function keeps `hidden-input`: it changes RNG of caller. Only task body escapes.
+- Holds of task body stay in task: release balance skips task start.
+
 ### Compiler effects
 
 - Compiler effects come free with unit inference and native cache.

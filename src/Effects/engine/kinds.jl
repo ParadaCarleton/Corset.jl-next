@@ -100,6 +100,21 @@ const AUDITED_METHODS = Dict{Method, Audit}(
     which(Random.seed!, (Any,)) => Audit(Tuple{Union{Nothing, Base.BitInteger}}, Root.Elsewhere(), (EffectKind.memory, EffectKind.rng_argument, EffectKind.task_local), EffectKind.default_rng),
 )
 
+"""
+Methods of `Random.seed!` that reseed default RNG with seed they take (`engine.md`, Task bodies): `seed!(seed)`, and
+`seed!(rng, seed)` on `TaskLocalRNG`. Seed `nothing` takes system entropy, so draws after it stay open.
+"""
+const RESEED_METHODS = (which(Random.seed!, (Any,)), which(Random.seed!, (AbstractRNG, Any)))
+
+"""Whether instance of `method` with IR `ir` reseeds default RNG with seed it takes (`RESEED_METHODS`)."""
+function reseeds(method::Method, ir::CC.IRCode)::Bool
+    method in RESEED_METHODS || return false
+    types = Any[CC.widenconst(type) for type in @view(ir.argtypes[2:end])]
+    given(@nospecialize(seed::Any))::Bool = typeintersect(seed, Nothing) === Union{}
+    length(types) == 1 && return given(only(types))
+    return length(types) == 2 && types[1] === Random.TaskLocalRNG && given(types[2])
+end
+
 """Kind of access to object of `type` itself: `IO`, RNG or synchronization object; `nothing` for other types."""
 function special_kind(@nospecialize(type::Any))::Union{Nothing, EffectKind.T}
     type isa Type && type !== Union{} || return nothing

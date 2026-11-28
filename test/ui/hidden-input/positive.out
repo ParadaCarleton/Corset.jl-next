@@ -262,3 +262,36 @@ error[hidden-input]: method draws from default RNG
     = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
     = docs: corset explain hidden-input
 
+error[hidden-input]: method draws from default RNG
+   --> src/HiddenInputPositive.jl:112:1
+    |
+112 | spawned() = fetch(Threads.@spawn rand())
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reads default RNG
+    | ---------------------------------------- takes no RNG argument
+    |
+    = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+    = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+    = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+   --> src/HiddenInputPositive.jl:115:1
+    |
+115 | late_seed(seed::Int) = fetch(Threads.@spawn (drawn = rand(); Random.seed!(seed); drawn))
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reads default RNG
+    | ---------------------------------------------------------------------------------------- takes no RNG argument
+    |
+    = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+    = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+    = docs: corset explain hidden-input
+
+error[hidden-input]: method draws from default RNG
+   --> src/HiddenInputPositive.jl:118:1
+    |
+118 | entropy_seed() = fetch(Threads.@spawn (Random.seed!(); rand()))
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ reads default RNG
+    | --------------------------------------------------------------- takes no RNG argument
+    |
+    = why: caller cannot seed draws or pass own RNG; concurrent tasks share stream
+    = fix: take `rng::AbstractRNG` argument and pass it to each draw   [manual]
+    = docs: corset explain hidden-input
+

@@ -280,13 +280,15 @@ Call statement resolution (`engine.md`, Calls): `Builtin` or `Intrinsic` with op
 table entry with C arguments; `Dispatch` to instances of matching methods with operands, callee first: one is static
 call, more join; `Contract` effects with arguments and argument positions breach may write; `Open` dispatch with
 operands, whose open types decide doubt (`engine.md`, Provenance); `Unresolved` call with operands that types cannot
-resolve (unknown C function, unknown argument count), doubt in code; `Dead` when no method matches.
+resolve (unknown C function, unknown argument count), doubt in code; `Dead` when no method matches. `Spawn` starts
+task that runs body (`engine.md`, Task bodies): instances of body call, with operands callable first.
 """
 @data Outcome begin
     Builtin(Any, Vector{Operand.Type})
     Intrinsic(Any, Vector{Operand.Type})
     Foreign(CallEffects, Vector{Operand.Type})
     Dispatch(Vector{Core.MethodInstance}, Vector{Operand.Type})
+    Spawn(Vector{Core.MethodInstance}, Vector{Operand.Type})
     Contract(CallEffects, Vector{Operand.Type}, Vector{Int})
     Open(Vector{Operand.Type})
     Unresolved(Vector{Operand.Type})
@@ -331,7 +333,7 @@ Resolution of call with `operands` (callee first) in `ir`: builtin, intrinsic, u
 Builtins that call operand (`invokelatest`, `_apply_iterate`, `finalizer`) resolve to call they make. Intrinsic operand
 can be nested constant expression (`cglobal((:name, library))`), so operand types wait until dispatch. Builtin other
 than `tuple` with `Rest` operands stays unresolved. Call of `FunctionStandIn` is open dispatch: it stands for any
-function.
+function. `threading_run(fun, static)` of `@threads` runs `fun(thread)` in tasks (`spawn_call`).
 """
 function resolve(ir::CC.IRCode, operands::AbstractVector{Operand.Type}, world::UInt, limit::Integer)::Outcome.Type
     Base.require_one_based_indexing(operands)
@@ -353,6 +355,11 @@ function resolve(ir::CC.IRCode, operands::AbstractVector{Operand.Type}, world::U
     stand_in_call(ir, callee, operands) && return Outcome.Open(operands)
     latest = latest_call(ir, callee, operands)
     isnothing(latest) || return resolve(ir, latest, world, limit)
+    if !isnothing(callee) && something(callee) === Base.Threads.threading_run && length(operands) == 3
+        # Thread number varies, so it takes no operand: operand constant would make variant.
+        spawned = spawn_call(Operand.Type[operands[2]], Any[operand_type(ir, operands[2]), Int], world, limit)
+        isnothing(spawned) || return spawned
+    end
     instances = dispatch(call_types(ir, operands), world, limit)
     isnothing(instances) && return contract_call(ir, callee, operands)
     # No matching method: call throws `MethodError`.
@@ -525,6 +532,19 @@ function arity(effects::CallEffects)::Int
 end
 
 """
+Resolution of call that starts task running callable first of `operands` (`engine.md`, Task bodies): `Spawn` with
+instances of body call on argument `types`, callable first. Body takes no operand past callable that `types` lack.
+`nothing` when dispatch leaves body open or finds no method, or callable is stand-in: caller resolves call as before.
+"""
+function spawn_call(operands::AbstractVector{Operand.Type}, types::AbstractVector{Any}, world::UInt, limit::Integer)::Union{Nothing, Outcome.Type}
+    Base.require_one_based_indexing(operands)
+    (any(is_rest, operands) || first(types) === FunctionStandIn) && return nothing
+    instances = dispatch(types, world, limit)
+    (isnothing(instances) || isempty(instances)) && return nothing
+    return Outcome.Spawn(instances, operands)
+end
+
+"""
 Resolution of foreign call `statement`: table entry with C arguments when table knows target and call passes each
 argument entry names; else unresolved on every operand, GC roots included. Arguments follow target, result type,
 argument types, vararg count and calling convention.
@@ -536,15 +556,53 @@ function foreign_outcome(statement::Expr)::Outcome.Type
     return Outcome.Foreign(effects, Operand.Type[Operand.Value(value) for value in statement.args[6:(5 + count)]])
 end
 
+"""Whether statement `index` of `ir` is foreign call `jl_new_task`, which builds task that `Task(f)` returns."""
+foreign_task_build(ir::CC.IRCode, index::Integer)::Bool = (statement = ir.stmts[index][:stmt]; statement isa Expr && statement.head === :foreigncall && foreign_name(statement.args[1]) === :jl_new_task)
+
+"""Functions that start their `Task` argument: run it now (`yield`, `yieldto`) or queue it (`schedule`, `enq_work`)."""
+const TASK_STARTS = (Base.schedule, Base.yield, Base.yieldto, Base.enq_work)
+
+"""Whether statement `index` of `ir` builds task: `Task(body)` or `Task(body, stack)`."""
+function task_build(ir::CC.IRCode, index::Integer)::Bool
+    statement = ir.stmts[index][:stmt]
+    (statement isa Expr && statement.head === :call && length(statement.args) in (2, 3)) || return false
+    callee = operand_constant(ir, Operand.Value(statement.args[1]))
+    return !isnothing(callee) && something(callee) === Core.Task
+end
+
 """
-Resolution of statement `statement` of `ir`: call or foreign call outcome; `nothing` for other statements. IR before
-inlining holds no `:invoke` statement.
+Statements of `ir` that build task (`task_build`) that call on every later path starts (`TASK_STARTS`): `@spawn`,
+`@async`, and `@task` with `schedule`. Body of other task may never run (`engine.md`, Task bodies).
 """
-function statement_outcome(ir::CC.IRCode, @nospecialize(statement::Any), world::UInt, limit::Integer)::Union{Nothing, Outcome.Type}
+function started_tasks(ir::CC.IRCode)::BitSet
+    pairs = Tuple{Int, Int}[]
+    for index in 1:length(ir.stmts)
+        statement = ir.stmts[index][:stmt]
+        statement isa Expr || continue
+        (statement.head === :call && length(statement.args) >= 2) || continue
+        task, callee = statement.args[2], operand_constant(ir, Operand.Value(statement.args[1]))
+        task isa Core.SSAValue || continue
+        (task.id < index && !isnothing(callee) && any(start -> start === something(callee), TASK_STARTS)) || continue
+        task_build(ir, task.id) && push!(pairs, (task.id, index))
+    end
+    isempty(pairs) && return BitSet()
+    # Every path from build passes start: block of start post-dominates block of build.
+    tree = CC.construct_postdomtree(ir)
+    return BitSet(build for (build, start) in pairs if CC.postdominates(tree, CC.block_for_inst(ir.cfg, start), CC.block_for_inst(ir.cfg, build)))
+end
+
+"""
+Resolution of statement `index` of `ir`: call or foreign call outcome; `nothing` for other statements. Build of task
+in `started` (`started_tasks`) runs its body (`spawn_call`). IR before inlining holds no `:invoke` statement.
+"""
+function statement_outcome(ir::CC.IRCode, index::Integer, world::UInt, limit::Integer, started::BitSet)::Union{Nothing, Outcome.Type}
+    statement = ir.stmts[index][:stmt]
     statement isa Expr || return nothing
-    statement.head === :call && return resolve(ir, Operand.Type[Operand.Value(value) for value in statement.args], world, limit)
     statement.head === :foreigncall && return foreign_outcome(statement)
-    return nothing
+    statement.head === :call || return nothing
+    operands = Operand.Type[Operand.Value(value) for value in statement.args]
+    spawned = index in started ? spawn_call(operands[2:2], Any[operand_type(ir, operands[2])], world, limit) : nothing
+    return isnothing(spawned) ? resolve(ir, operands, world, limit) : spawned
 end
 
 """Constant value of call `operand` in `ir`; `nothing` when not constant."""

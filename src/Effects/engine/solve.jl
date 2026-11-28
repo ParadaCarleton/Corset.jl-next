@@ -266,6 +266,7 @@ function limited_outcome!(run::Run, chain::AbstractVector{Core.MethodInstance}, 
     isnothing(outcome) && return nothing
     return @match something(outcome) begin
         Outcome.Dispatch(instances, operands) => Outcome.Dispatch(limit_callees!(run, chain, instances), operands)
+        Outcome.Spawn(instances, operands) => Outcome.Spawn(limit_callees!(run, chain, instances), operands)
         _ => outcome
     end
 end
@@ -293,7 +294,8 @@ function frame_body!(run::Run, frame::CC.InferenceState, cut::Bool, unit::Bool, 
     ]
     ir, lines, before = frame_ir(frame, run.interpreter, kept)
     chain, limit = call_chain(run, frame.linfo), join_limit(run, frame.linfo)
-    outcomes = [limited_outcome!(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world, limit)) for index in 1:length(ir.stmts)]
+    started = started_tasks(ir)
+    outcomes = [limited_outcome!(run, chain, statement_outcome(ir, index, run.world, limit, started)) for index in 1:length(ir.stmts)]
     users = statement_users(ir)
     # Statement compiler inserted has no source statement: its uses after compaction count.
     used = [iszero(line) ? !isempty(users[index]) : before[line] for (index, line) in enumerate(lines)]
@@ -458,7 +460,7 @@ function parameters_frame!(run::Run, instance::Core.MethodInstance)::ParametersF
         @match something(outcome) begin
             Outcome.Builtin(builtin, operands) => naming(builtin) && add_parameters!(frame.found, operands, 1:min(2, length(operands)))
             # Closure inside `@match` arm boxes its captures: helper keeps loop out of arm.
-            Outcome.Dispatch(callees, operands) => append_calls!(frame.calls, operands, callees)
+            Outcome.Dispatch(callees, operands) || Outcome.Spawn(callees, operands) => append_calls!(frame.calls, operands, callees)
             _ => nothing
         end
     end
@@ -511,7 +513,7 @@ function variant_code(run::Run, variant::Variant, body::Body)::Code
     for (index, outcome) in enumerate(outcomes)
         isnothing(outcome) && continue
         @match something(outcome) begin
-            Outcome.Dispatch(instances, operands) => (callees[index] = callee_variants(run, ir, instances, operands))
+            Outcome.Dispatch(instances, operands) || Outcome.Spawn(instances, operands) => (callees[index] = callee_variants(run, ir, instances, operands))
             _ => nothing
         end
     end
@@ -596,7 +598,7 @@ function named_summary(run::Run, variant::Variant)::Summary
     method = first(variant).def::Method
     open, subject = open_summary(Int(method.nargs), BUDGET), named_subject(method, run.codes[variant].ir)
     writes = isnothing(subject) ? Accesses() : Accesses((Place.At(Root.Parameter(subject), NO_STEPS), true, EffectKind.memory) => Effect(CODE_DOUBT, 0, ""))
-    return Summary(writes, open.reads, open.edges, open.backing, open.spread, open.bound, open.callbacks, open.result, open.fresh, true, open.cut, open.held, open.thrown, open.unguarded)
+    return Summary(writes, open.reads, open.edges, open.backing, open.spread, open.bound, open.callbacks, open.result, open.fresh, true, open.cut, open.held, open.thrown, open.unguarded, open.seeding)
 end
 
 """
@@ -647,14 +649,14 @@ member it read changes, and widens after `WIDEN_AFTER` reruns. Member reads call
 records it resolves, so readers come from each solve.
 """
 function solve_cycle!(run::Run, members::AbstractVector{Variant})::Nothing
-    for member in members
-        body = run.bodies[first(member)]
-        run.slots[member].summary = body isa String ? open_summary(Int((first(member).def::Method).nargs), body) : empty_summary()
-    end
-    readers = Dict(member => Variant[] for member in members)
     # Shortcut unit keeps code for call facts; its summary stays empty.
     queue = filter(member -> haskey(run.codes, member) && !run.codes[member].shortcut, members)
     queued, reruns = Set(queue), Dict{Variant, Int}()
+    for member in members
+        body = run.bodies[first(member)]
+        run.slots[member].summary = body isa String ? open_summary(Int((first(member).def::Method).nargs), body) : empty_summary(member in queued)
+    end
+    readers = Dict(member => Variant[] for member in members)
     while !isempty(queue)
         member = popfirst!(queue)
         delete!(queued, member)
