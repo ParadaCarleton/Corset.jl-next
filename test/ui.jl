@@ -3,6 +3,7 @@
 # Set CORSET_BLESS=1 to rewrite snapshots.
 # Package case is directory test/ui/<rule>/<case>/; package loads only for rule after `syntax` stage.
 # Each case file starts with `# runic: off`: formatter must not normalize syntax cases test.
+# Cases run on all threads as tasks; `@test` runs in main task, which fetches each result.
 
 using Corset: Corset
 using Corset.Facts: FactSet, Tier, Confidence, Role, Ban, Stage
@@ -17,6 +18,9 @@ const UI_SETTINGS = Settings(Kind.library, Confidence.possible, Tier.breaking, D
 
 """Bans of `[Corset]` table in `config.toml` next to case, as LocalPreferences.toml holds them; none without file."""
 case_bans(directory::String)::Vector{Ban} = Corset.Config.bans(Corset.Config.read_table(joinpath(directory, "config.toml"), ("Corset",)))
+
+"""Guards `LOAD_PATH` while case loads: case that loads at same time would pop path of other case."""
+const LOADING = ReentrantLock()
 
 """Compare `actual` with snapshot `path`; write it when blessing. Missing snapshot means empty expected text."""
 function snapshot(path::String, actual::String)::Bool
@@ -38,11 +42,13 @@ effects facts for `effects` and `lifecycle`; lifecycle and external facts for th
 function package_facts(case::String, stage::Stage.T)::FactSet
     sources = Corset.Discovery.discover(case; environment = nothing)
     stage == Stage.syntax && return FactSet(sources.files, sources.entries, case_bans(dirname(case)), sources.project, nothing, nothing, nothing, nothing, nothing)
-    push!(LOAD_PATH, case)
-    loaded = try
-        Corset.Package.load(sources)
-    finally
-        pop!(LOAD_PATH)
+    loaded = @lock LOADING begin
+        push!(LOAD_PATH, case)
+        try
+            Corset.Package.load(sources)
+        finally
+            pop!(LOAD_PATH)
+        end
     end
     isempty(loaded.errors) || error("fixture $case does not load: $(first(loaded.errors).primary.text)")
     inferred = stage in (Stage.inference, Stage.effects, Stage.lifecycle) ? Corset.Inference.infer_package(loaded.facts, loaded.sources.files, nothing, nothing) : nothing
@@ -103,6 +109,12 @@ function fixed_package(case::String, edits::Vector{Corset.Facts.Edit}, directory
     return copy
 end
 
+"""Case names in directory of `rule`: package directories and case files, fixed sources excluded; name order."""
+rule_cases(rule::String)::Vector{String} = sort!(filter(name -> isdir(joinpath(UI, rule, name)) || endswith(name, ".jl") && !endswith(name, ".fixed.jl"), readdir(joinpath(UI, rule))))
+
+"""Task of each UI case by path: it returns `run_case` text pair. Tasks start now, so cases run on all threads."""
+const CASE_TASKS = Dict(joinpath(UI, rule, case) => Threads.@spawn(run_case(Symbol(rule), joinpath(UI, rule, case))) for rule in readdir(UI) for case in rule_cases(rule))
+
 """Most fix rounds fixes of one case may take: annotation guess of argument lets next run guess result."""
 const FIX_ROUNDS = 3
 
@@ -112,16 +124,39 @@ const INFERENCE_CASES = [
         for case in sort!(readdir(joinpath(UI, rule))) if isdir(joinpath(UI, rule, case))
 ]
 
+"""Whether `found` holds finding with fix of tier above manual."""
+fixable(found::Vector{Corset.Facts.Finding})::Bool = any(finding -> !isnothing(finding.fix) && finding.fix.tier != Tier.manual, found)
+
+"""
+Finding count of package `name` of `rule`, and findings left after fix rounds: each round fixes copy of package,
+until no fixable finding is left or `FIX_ROUNDS` pass.
+"""
+function fix_rounds(rule::String, name::String)::Tuple{Int, Vector{Corset.Facts.Finding}}
+    entry, case = Corset.Rules.entry(Symbol(rule)), joinpath(UI, rule, name)
+    return mktempdir() do directory
+        findings = Corset.Engine.run_rules(package_facts(case, entry.fix_stage), [entry])
+        initial, rounds = length(findings), 0
+        while fixable(findings) && rounds < FIX_ROUNDS
+            case, rounds = fixed_package(case, Corset.Fixes.applicable_edits(findings, Tier.breaking), directory), rounds + 1
+            findings = Corset.Engine.run_rules(package_facts(case, entry.fix_stage), [entry])
+        end
+        return initial, findings
+    end
+end
+
+"""Task of `fix_rounds` for each case of `INFERENCE_CASES`, in order. Tasks start now, beside case tasks."""
+const FIX_TASKS = [Threads.@spawn(fix_rounds(rule, name)) for (rule, name) in INFERENCE_CASES]
+
 @testset "UI $(rule)" for rule in sort!(readdir(UI))
-    directory = joinpath(UI, rule)
-    cases = sort!(filter(name -> isdir(joinpath(directory, name)) || endswith(name, ".jl") && !endswith(name, ".fixed.jl"), readdir(directory)))
+    directory, cases = joinpath(UI, rule), rule_cases(rule)
     stems = map(case -> chopsuffix(case, ".jl"), cases)
     @test "positive" in stems
     @test "negative" in stems
-    for (case, stem) in zip(cases, stems)
+    # Testset per case: error of one case leaves results of other cases.
+    @testset "$stem" for (case, stem) in zip(cases, stems)
         path = joinpath(directory, case)
         @test startswith(read(case_file(path), String), "# runic: off\n")
-        rendered, fixed = run_case(Symbol(rule), path)
+        rendered, fixed = fetch(CASE_TASKS[path])::Tuple{String, String}
         @test snapshot(joinpath(directory, stem * ".out"), rendered)
         @test snapshot(joinpath(directory, stem * ".fixed.jl"), fixed)
         stem == "negative" && @test isempty(rendered)
@@ -129,19 +164,10 @@ const INFERENCE_CASES = [
     end
 end
 
-@testset "UI $(rule) $(name) fixes converge" for (rule, name) in INFERENCE_CASES
-    entry, case = Corset.Rules.entry(Symbol(rule)), joinpath(UI, rule, name)
-    fixable(found::Vector{Corset.Facts.Finding})::Bool = any(finding -> !isnothing(finding.fix) && finding.fix.tier != Tier.manual, found)
-    mktempdir() do directory
-        findings = Corset.Engine.run_rules(package_facts(case, entry.fix_stage), [entry])
-        initial, rounds = length(findings), 0
-        while fixable(findings) && rounds < FIX_ROUNDS
-            case, rounds = fixed_package(case, Corset.Fixes.applicable_edits(findings, Tier.breaking), directory), rounds + 1
-            findings = Corset.Engine.run_rules(package_facts(case, entry.fix_stage), [entry])
-        end
-        @test !fixable(findings)
-        @test length(findings) <= initial
-    end
+@testset "UI $(rule) $(name) fixes converge" for ((rule, name), task) in zip(INFERENCE_CASES, FIX_TASKS)
+    initial, findings = fetch(task)::Tuple{Int, Vector{Corset.Facts.Finding}}
+    @test !fixable(findings)
+    @test length(findings) <= initial
 end
 
 @testset "every rule has UI tests" begin
