@@ -38,20 +38,35 @@ function tree_files(root::String, cache::String)::Vector{String}
     return sort!(files)
 end
 
+"""Whether `expression` defines function, whose body runs at call, after Corset loads."""
+function defines_function(expression::Expr)::Bool
+    expression.head in (:function, :->, :do) && return true
+    signature = expression.head === :(=) ? expression.args[1] : nothing
+    while signature isa Expr && signature.head in (:where, :(::))
+        signature = signature.args[1]
+    end
+    return signature isa Expr && signature.head === :call
+end
+
 """
-Files of `source` that `entries` load: each entry and every file it includes, transitively, sorted. Include of computed
-path throws, as key could not follow it; so does missing file.
+Literal paths of `include` calls that run while `file` loads: parsed `expression` outside quoted code and function
+bodies. Include of computed path throws, as key could not follow it.
 """
+function included_paths(expression::Any, file::String)::Vector{String}
+    expression isa Expr && !(expression.head in (:quote, :inert)) && !defines_function(expression) || return String[]
+    expression.head === :call && expression.args[1] in (:include, :(Base.include)) || return mapreduce(argument -> included_paths(argument, file), vcat, expression.args; init = String[])
+    expression.args[end] isa String || throw(ArgumentError("$file: include of computed path, which producer key cannot follow"))
+    return [expression.args[end]]
+end
+
+"""Files of `source` that `entries` load: each entry and every file it includes, transitively, sorted. Missing file throws."""
 function producer_files(source::String, entries::Tuple{Vararg{String}})::Vector{String}
     pending, found = joinpath.(source, collect(entries)), Set{String}()
     while !isempty(pending)
         file = pop!(pending)
         file in found && continue
         push!(found, file)
-        text = read(file, String)
-        literal = [joinpath(dirname(file), only(included.captures)) for included in eachmatch(r"^\s*include\(\"([^\"]+)\"\)"m, text)]
-        count(r"^\s*include\("m, text) == length(literal) || throw(ArgumentError("$file: include of computed path, which producer key cannot follow"))
-        append!(pending, literal)
+        append!(pending, joinpath.(dirname(file), included_paths(Meta.parseall(read(file, String); filename = file), file)))
     end
     return sort!(collect(found))
 end
