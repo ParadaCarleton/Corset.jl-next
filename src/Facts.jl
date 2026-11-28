@@ -13,7 +13,7 @@ using ReadOnlyArrays: ReadOnlyVector
 
 export Precision, Tier, Confidence, Group, Stage, Role, BindingKind, TestDeps, Weak, Exit, EffectKind
 export Span, Label, Edit, Fix, Finding, BlindSpot, RuleEntry
-export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, ArgumentUse, RESIZE_FUNCTIONS, PackageFacts, FailingCall, Disruption, HardArray, NarrowingLoss, AnnotationGuess, StatefulIterate, InferenceFacts, Step, Root, Place, Access, UnguardedHold, LoopWrite, SelfAlias, StatefulReuse, UnprovenIndex, IndexContract, IndexSource, OperandIndex, ArrayOperand, IndexCall, IndexFacts, AllocationKind, ArrayEventKind, Coverage, ArrayPath, ArrayEvent, Rebind, ArrayLife, MethodArrays, LifecycleFacts, Callee, callee_name, callee_methods, place_text, place_root, place_steps, step_child, current_objects, takes_rng, rng_positions, takes_every_rng, default_rng_type, root_global, CallFact, no_effect, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
+export SyntaxFile, SyntaxNode, FactSet, IndexedPattern, Match, BindingSite, Ban, MethodSite, StructSite, ArgumentUse, RESIZE_FUNCTIONS, PackageFacts, FailingCall, EndlessCycle, Disruption, HardArray, NarrowingLoss, AnnotationGuess, StatefulIterate, InferenceFacts, Step, Root, Place, Access, UnguardedHold, LoopWrite, SelfAlias, StatefulReuse, UnprovenIndex, IndexContract, IndexSource, OperandIndex, ArrayOperand, IndexCall, IndexFacts, AllocationKind, ArrayEventKind, Coverage, ArrayPath, ArrayEvent, Rebind, ArrayLife, MethodArrays, LifecycleFacts, Callee, callee_name, callee_methods, place_text, place_root, place_steps, step_child, current_objects, takes_rng, rng_positions, takes_every_rng, default_rng_type, root_global, CallFact, no_effect, MethodEffects, EffectsFacts, InternalAccess, BareUsing, ExplicitImport, ExternalFacts, Extension, ProjectFacts
 export @pattern, matches, binding, span, source, all_nodes, forms, leaves, children_of, kind_name
 export name_span, tuple_parameters, lowered_value, argument_type, subject_position, trait_type, call_text, finding, replace_fix, manual_fix, weak_words, weak_label, weak_fix, weak_causes, identifier_name, base_name, base_macro, infix_operator, parent_of, ancestors, descendants, call_head, leaf_value
 export definition_name, signature, callee_node, call_arguments, argument_annotations, resolve_type, struct_fields, include_calls, include_target, normalized_source, macro_name, macro_span
@@ -230,6 +230,19 @@ struct FailingCall
 end
 
 """
+Package methods that never return and never throw (`inference` stage fact): loop without exit, or cycle of package calls
+without base case. `span` and `name`: name of first method of cycle; `calls`: package calls that close cycle, labeled.
+`definite` when every method of cycle runs without end on its declared signature; `possible` when only stand-in
+signature does.
+"""
+struct EndlessCycle
+    span::Span
+    name::String
+    calls::Vector{Label}
+    confidence::Confidence.T
+end
+
+"""
 Weak value that changes input type (`inference` stage fact). `span`: weak value, or statement that holds it when
 mapping cannot narrow; `meeting`: call where it meets input; `exit_span`: statement where type changes, and `exit` how.
 `value`: source text of weak value; `float`: its value when it is float number; `weak_type`: its type, or type it names;
@@ -314,12 +327,13 @@ end
 
 """
 `inference` stage facts: calls that never return, one per statement, without explicit throws and calls of package
-methods (their own frame reports); weak values that change input type, one per span; hard-coded arrays, one per span;
+methods (their own frame reports); package methods that never return nor throw, one per cycle; weak values that change input type, one per span; hard-coded arrays, one per span;
 type tests whose narrowing guard drops, one per test; annotation guesses, one per cause; `iterate` calls on
 `Iterators.Stateful`, one per span. Typed code stays inside stage.
 """
 struct InferenceFacts
     failing::Vector{FailingCall}
+    endless::Vector{EndlessCycle}
     disruptions::Vector{Disruption}
     hard_arrays::Vector{HardArray}
     narrowings::Vector{NarrowingLoss}

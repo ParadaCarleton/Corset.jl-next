@@ -424,7 +424,7 @@ end
                     first(held.file) == b || continue
                     callee = any(==("call Stored.first_part") ∘ first, held.names) ? "faker" : "fake"
                     fake = Corset.Facts.FailingCall(span, span, callee, Corset.Facts.Confidence.definite)
-                    bytes = Corset.Inference.serialized(Corset.Inference.Inferred(Union{}, Tuple{Type, Type}[], Type[], [1 => fake], true, false, Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.StatefulIterate[]))
+                    bytes = Corset.Inference.serialized(Corset.Inference.Inferred(Union{}, Tuple{Type, Type}[], Type[], [1 => fake], nothing, Pair{Corset.Facts.Span, Type}[], true, false, Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.StatefulIterate[]))
                     store[name] = Corset.Inference.Entry(held.file, held.methods, held.staged, held.names, bytes, held.effects)
                 end
                 Cache.store!(cache, store_entry, key, store; root = nothing)

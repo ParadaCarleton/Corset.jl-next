@@ -186,3 +186,93 @@ function cuts!(declared::IdDict{Method, Union{Nothing, Core.CodeInfo}}, method::
     length(reference.code) == length(code.code) || error("declared and stand-in code of $method differ in length")
     return sort!([filter(index -> !(reference.code[index] isa Core.Const), dead); failing])
 end
+
+"""Whether inference `output` never returns and never throws: code loops or recurses without end."""
+never_ends(output::Output)::Bool = output[3] === Union{} && CC.is_nothrow(output[6].result.ipo_effects)
+
+"""
+Confidence that `method` on unit `signature` never returns nor throws (`never_ends`), with compiler edges of inferences
+it ran. `definite`: declared signature runs without end too; `possible`: only stand-in model signature does; `nothing`
+when unit `output` ends, or only stand-in type keeps it running.
+"""
+function endless_verdict(method::Method, signature::Type, output::Output)::Tuple{Union{Nothing, Confidence.T}, Vector{Any}}
+    never_ends(output) || return nothing, Any[]
+    edges = Any[]
+    for (reference, confidence) in ((method.sig, Confidence.definite), (StandIns.model_type(signature), Confidence.possible))
+        inferred = reference == signature ? output : infer(method, reference)
+        isnothing(inferred) && continue
+        inferred === output || append!(edges, inferred[4])
+        never_ends(inferred) && return confidence, edges
+    end
+    return nothing, edges
+end
+
+"""
+Endless units of each package method: method site, its confidence, and for each unit its signature and package calls
+that never return (call span => call signature).
+"""
+const EndlessUnits = IdDict{Method, Tuple{MethodSite, Confidence.T, Vector{Tuple{Type, Vector{Pair{Span, Type}}}}}}
+
+"""
+Units that call of `signature` reaches, as indices of `nodes` (method and signature): unit of same signature, else
+every unit of callee. Callee without endless unit gives `0`: cause stays hidden, so no cycle around call reports.
+"""
+function call_targets(nodes::AbstractVector{Tuple{Method, Type}}, by_method::IdDict{Method, <:AbstractVector{<:Integer}}, signature::Type)::Vector{Int}
+    units = get(by_method, dispatched(signature), Int[])
+    isempty(units) && return [0]
+    exact = filter(index -> nodes[index][2] == signature, units)
+    return isempty(exact) ? units : exact
+end
+
+"""Units that `edges` (unit to units its endless calls reach) lead to from `start`, through any number of calls."""
+function reachable(edges::AbstractVector{<:AbstractVector{<:Integer}}, start::Integer)::BitSet
+    # Growable copy: `edges` entry may be range.
+    found, pending = BitSet(), Vector{Int}(edges[start])
+    while !isempty(pending)
+        node = pop!(pending)
+        node in found && continue
+        push!(found, node)
+        node == 0 || append!(pending, edges[node])
+    end
+    return found
+end
+
+"""Source position of method `site`: file, then first byte."""
+source_position(site::MethodSite)::Tuple{String, Int} = (site.span.file, site.span.first_byte)
+
+"""
+Endless cycles (`EndlessCycle`) of package `units`. Cycle of units reports when no endless call leaves it: caller of
+endless unit only inherits it. Units, not methods, make cycle: `f(x::Real) = x isa Int ? g(x) : f(x)` with endless `g`
+loops on its own for float stand-in. One fact per first method of cycle.
+"""
+function endless_cycles(units::EndlessUnits)::Vector{EndlessCycle}
+    ordered = sort!(collect(keys(units)); by = method -> source_position(units[method][1]))
+    nodes = Tuple{Method, Type}[(method, signature) for method in ordered for (signature, _) in units[method][3]]
+    calls = Vector{Pair{Span, Type}}[unit_calls for method in ordered for (_, unit_calls) in units[method][3]]
+    by_method = IdDict{Method, Vector{Int}}()
+    for (index, (method, _)) in enumerate(nodes)
+        push!(get!(Vector{Int}, by_method, method), index)
+    end
+    targets = [[call_targets(nodes, by_method, signature) for (_, signature) in unit_calls] for unit_calls in calls]
+    edges = [reduce(vcat, unit_targets; init = Int[]) for unit_targets in targets]
+    reach = [reachable(edges, index) for index in eachindex(nodes)]
+    cycles, seen = IdDict{Method, Tuple{Vector{Label}, Bool}}(), BitSet()
+    for index in eachindex(nodes)
+        index in seen && continue
+        cycle = push!(BitSet(node for node in reach[index] if node != 0 && index in reach[node]), index)
+        union!(seen, cycle)
+        # Every member reaches what first member reaches, so one check covers cycle.
+        issubset(reach[index], cycle) || continue
+        labels = [Label(span, "calls `$(dispatched(signature).name)`, which never returns") for node in cycle for ((span, signature), reached) in zip(calls[node], targets[node]) if any(in(cycle), reached)]
+        definite = all(node -> units[first(nodes[node])][2] == Confidence.definite, cycle)
+        # Nodes follow method order, so first node holds first method of cycle.
+        found, certain = get(cycles, first(nodes[index]), (Label[], true))
+        cycles[first(nodes[index])] = (append!(found, labels), certain && definite)
+    end
+    return map(filter(in(keys(cycles)), ordered)) do method
+        labels, definite = cycles[method]
+        # Stand-in units of one method repeat call span.
+        closing = sort!(unique!(label -> label.span, labels); by = label -> (label.span.file, label.span.first_byte))
+        return EndlessCycle(name_span(units[method][1]), Package.source_name(method), closing, definite ? Confidence.definite : Confidence.possible)
+    end
+end
