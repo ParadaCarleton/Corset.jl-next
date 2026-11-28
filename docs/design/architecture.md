@@ -133,7 +133,7 @@ UI cases for rules after `syntax`: case directory holds package (Project.toml wi
 
 - Disk cache (`Cache`) holds one entry per analysis key: key line, then serialized analysis. Analysis holds leveled diagnostics, baseline keys, check problems, blind spots and analyzed files. Settings and baseline apply each run.
 - Key: SHA-256 of Julia version, `Base.CacheFlags`, checked path, serialized flags, each load path environment with Manifest and preferences, Corset project file and source, analyzed files, and every file of project root and Manifest `path` entries but Corset root. Corset root can hold depot and outputs beside its code.
-- Key reads file content, so fresh CI checkout hits. Names that start with dot and cache directory stay out of key.
+- Key reads file content, so fresh CI checkout hits. Names that start with dot, coverage and allocation files of Julia, and cache directory stay out of key.
 - Key names paths relative to anchors: project root, and project, Manifest and preference files of each load path environment. Other files keep real path: entry relocates root alone. Load path Manifests count by entries, `path` entries as anchored real paths; other files count by bytes. Copy of project in other directory gives same key.
 - Root anchors only when no key file but Manifest holds root path text. Code that names own root can act on it, so key then names root.
 - Entry of anchored root stores root as mark in every string; read puts root of checked copy in its place. Root left outside strings, such as in `Symbol`, fails store. `SubString` fails too: its offsets would go stale.
