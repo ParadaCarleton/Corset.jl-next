@@ -18,6 +18,7 @@ using ..Config: ConfigError, parse_toml
 using ..Facts: ProjectFacts, TestDeps
 using ..Package: package_id
 using ..Inference: Record, records, unfinished, log_file
+using ..Cache: corset_root
 
 """Load path of relaunched process: active project, then standard library."""
 const LOAD_PATH = "@:@stdlib"
@@ -63,9 +64,6 @@ function test_specs(project::ProjectFacts)::Vector{Pkg.PackageSpec}
     corset = Base.PkgId(Base.moduleroot(@__MODULE__))
     return [source_spec(id, get(sources, id.name, nothing), directory) for id in project.tests if id != corset]
 end
-
-"""Root directory of Corset package this process runs."""
-corset_root()::String = pkgdir(Base.moduleroot(@__MODULE__))
 
 """
 Cache key of environment for package of `project`: hash of Julia version and files that shape environment. Those

@@ -224,8 +224,8 @@ end
     used, failed = Corset.Inference.Store(key => entry), copy(EDGES)
     failed[position] = nothing
     failed_run = Effects.StageRun(RUN.facts, RUN.spots, RUN.fresh, RUN.verdicts, failed, RUN.ordered, RUN.library, RUN.hits)
-    @test haskey(Corset.Engine.with_records(used, UNITS, RUN, collect(values(files)), PACKAGE, nothing), key)
-    @test isempty(Corset.Engine.with_records(used, UNITS, failed_run, collect(values(files)), PACKAGE, nothing))
+    @test haskey(Corset.Effects.with_records(used, UNITS, RUN, collect(values(files)), PACKAGE, nothing), key)
+    @test isempty(Corset.Effects.with_records(used, UNITS, failed_run, collect(values(files)), PACKAGE, nothing))
 end
 
 @testset "generator digest journal" begin

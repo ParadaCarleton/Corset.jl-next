@@ -155,9 +155,39 @@ end
         end
     end
 
+    @testset "producer source" begin
+        # Store and library keys read producer files only, so module that producer imports must be producer too.
+        source = joinpath(Cache.corset_root(), "src")
+        files = Cache.producer_files(source, Cache.PRODUCERS)
+        producers = Set(first(splitext(first(splitpath(relpath(file, source))))) for file in files)
+        @test Set(found[1] for file in files for found in eachmatch(r"\.\.+([A-Z]\w*)", read(file, String))) ⊆ producers
+        @test "Inference" in producers && "Effects" in producers && isdisjoint(producers, ("Rules", "Engine", "CLI", "Launch"))
+        @test joinpath(source, "Inference", "failures.jl") in files && Cache.producer_digest() == Cache.producer_digest()
+        @test all(occursin(string(call), read(joinpath(source, name), String)) for (name, call) in Cache.CHECKED_LOADS)
+        mktempdir(@__DIR__) do scratch
+            # Literal include counts in block and function body; docstring and quote hold text. Self-include ends walk.
+            nested = "begin include(\"A/b.jl\") end\n\"\"\"\ninclude(\"none.jl\")\n\"\"\"\nquote include(name) end\nk() = include(\"A/c.jl\")\nif false\n    include(\"./A.jl\")\nend\n"
+            write_files(scratch, "A.jl" => nested, "A/b.jl" => "b = 1\n", "A/c.jl" => "", "C.jl" => "")
+            @test Cache.producer_files(scratch, ("A.jl",)) == joinpath.(scratch, ["A.jl", "A/b.jl", "A/c.jl"])
+            # Computed include throws in function body too, but listed checked package load.
+            write_files(scratch, "Package.jl" => "load(container, entry) = Base.include(container, entry)\n")
+            @test Cache.producer_files(scratch, ("Package.jl",)) == [joinpath(scratch, "Package.jl")]
+            write_files(scratch, "Package.jl" => "load() = include(joinpath(@__DIR__, \"A/b.jl\"))\n")
+            @test_throws ArgumentError Cache.producer_files(scratch, ("Package.jl",))
+            original = Cache.producer_digest(scratch, ("A.jl",))
+            # File no entry includes stays out; included file counts by content.
+            write_files(scratch, "C.jl" => "c = 1\n")
+            @test Cache.producer_digest(scratch, ("A.jl",)) == original
+            write_files(scratch, "A/b.jl" => "b = 2\n")
+            @test Cache.producer_digest(scratch, ("A.jl",)) != original
+            write_files(scratch, "A.jl" => "include(name)\n")
+            @test_throws ArgumentError Cache.producer_files(scratch, ("A.jl",))
+        end
+    end
+
     @testset "library key" begin
         julia = string(VERSION)
-        @test Cache.partition_key(julia, DEPOT_PATH) == Cache.partition_key(julia, DEPOT_PATH) != Cache.partition_key("$julia+other", DEPOT_PATH)
+        @test Cache.partition_key(julia) == Cache.partition_key(julia) != Cache.partition_key("$julia+other")
         mktempdir(@__DIR__) do scratch
             depot, developed, environment = joinpath.(scratch, ["depot", "developed", "environment"])
             registered = joinpath(depot, "packages", "Registered", "slug")

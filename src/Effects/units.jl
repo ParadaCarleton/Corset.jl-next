@@ -313,3 +313,27 @@ function effects_facts(package::PackageFacts, units::Units, journal::Union{Nothi
     facts, spots = method_facts(package, units.incomplete, ordered, verdicts)
     return StageRun(facts, unique!([spots; engine_spots]), fresh, fresh_verdicts, edges, ordered, entries, hits)
 end
+
+"""
+Store `used` where each entry without effects record takes one: typed unit of `units` its name record and engine
+verdict in effects `run`, other unit (no code) `nothing`. Filled entry also reads methods behind compiler edges of its
+effects stage; entry drops when they are unknown (`Inference.with_edges!`). Generators run under crash `journal`.
+Stored entries keep theirs.
+"""
+function with_records(used::Inference.Store, units::Inference.Units, run::StageRun, files::AbstractVector{SyntaxFile}, package::PackageFacts, journal::Union{Nothing, Inference.Journal})::Inference.Store
+    bytes, read = Dict{String, Vector{UInt8}}(), Dict{String, Union{Nothing, Vector{Any}}}()
+    for (typed, record, verdict, unit_edges) in zip(units.typed, run.fresh, run.verdicts, run.edges)
+        key = Inference.entry_key(typed.site.method, typed.signature)
+        # Unit that repeats method instance of earlier unit has no record of its own.
+        isnothing(record) && haskey(bytes, key) && continue
+        bytes[key], read[key] = record_bytes(record, verdict), unit_edges
+    end
+    none, by_path, memo = record_bytes(nothing, nothing), Dict(file.path => file for file in files), Inference.StoreMemo(package, IdDict{Method, String}())
+    filled(key::String, entry::Inference.Entry)::Union{Nothing, Inference.Entry} = Inference.with_edges!(memo, Inference.Entry(entry.file, entry.methods, entry.staged, entry.names, entry.inferred, get(bytes, key, none)), get(read, key, Any[]), by_path, journal)
+    store = Inference.Store()
+    for (key, entry) in used
+        kept = isempty(entry.effects) ? filled(key, entry) : entry
+        isnothing(kept) || (store[key] = kept)
+    end
+    return store
+end
