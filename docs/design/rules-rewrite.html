@@ -1317,10 +1317,10 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>Library callee that gets argument and draws default RNG: caller verdict misses it. Fix needs default RNG provenance in summaries.</li>
 </ul>
 </li>
-<li>Summary keeps library draw site: line of first default RNG draw in dependency code.
+<li>Summary keeps library draw site: line in dependency code of first default RNG draw that names one.
 <ul>
 <li>Draw statement takes site of callee summary there.</li>
-<li>Without one, method outside Base, stdlib and package gives own line.</li>
+<li>Without one, method outside Base, stdlib and package gives own line. Package method takes site of later draw.</li>
 <li>Unit verdict gives each default RNG access span of that line, from callees at its cause statement.</li>
 <li>Widening keeps old site; summary without draw has none.</li>
 </ul>

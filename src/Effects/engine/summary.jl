@@ -105,20 +105,21 @@ function seed_facts!(flow::Flow, callees::Callees)::Tuple{Bool, Bool}
 end
 
 """
-Line of first draw of default RNG in instance with `flow` (`engine.md`, Effect kinds): site of callee summary there,
-else own line of draw when `own` (`library_line`). `nothing` without draw.
+Library line of first draw of default RNG in instance with `flow` that names one (`engine.md`, Effect kinds): site of
+callee summary at draw, else own line of draw when `own` (`library_line`). `nothing` when no draw names line.
 """
 function draw_site!(flow::Flow, callees::Callees, own::Bool)::Union{Nothing, LineNumberNode}
-    isempty(flow.draws) && return nothing
-    index = first(flow.draws)
-    for variant in callees.variants[index]
-        site = summary!(callees, variant).rng.site
-        isnothing(site) || return site
+    for index in flow.draws
+        for variant in callees.variants[index]
+            site = summary!(callees, variant).rng.site
+            isnothing(site) || return site
+        end
+        own || continue
+        scopes = Base.IRShow.buildLineInfoNode(flow.ir.debuginfo, nothing, index)
+        # Outermost scope is instance itself (`Inference.spans`).
+        isempty(scopes) || return LineNumberNode(Int(first(scopes).line), first(scopes).file)
     end
-    own || return nothing
-    scopes = Base.IRShow.buildLineInfoNode(flow.ir.debuginfo, nothing, index)
-    # Outermost scope is instance itself (`Inference.spans`).
-    return isempty(scopes) ? nothing : LineNumberNode(Int(first(scopes).line), first(scopes).file)
+    return nothing
 end
 
 """

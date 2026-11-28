@@ -72,6 +72,20 @@ function line_text(span::Span)::String
     return file.text[start:stop]
 end
 
+"""Run with package `modules`, solved from instance of `f` on argument `types`, and that root instance."""
+function solved_root(modules::Vector{Module}, f::Any, types::Type...)::Tuple{Summaries.Run, Variant}
+    run = start_run(nothing, modules)
+    root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
+    solve!(run, [root])
+    return run, root
+end
+
+"""Summary of method `f` on argument `types`, solved without package modules."""
+summary_of(f::Any, types::Type...)::Summary = root_summary!(solved_root(Module[], f, types...)...)
+
+"""Package method of draw site test: stdlib draw first, dependency draw (`draw_each_default`) after."""
+draw_after_rand(values::Vector{Float64})::Vector{Float64} = (rand(); CASES.draw_each_default(values))
+
 @testset "fixture verdicts" begin
     definite, possible = Confidence.definite, Confidence.possible
     box, next, content = Step.Field(:box), Step.Field(:next), Step.Field(:content)
@@ -188,10 +202,10 @@ end
     @test summary_of(CASES.draw_each_default, Vector{Float64}).rng.site == site
     @test isnothing(summary_of(rand).rng.site) && summary_of(rand).rng.draws
     @test isnothing(summary_of(CASES.draw_from, Xoshiro, Vector{Float64}).rng.site)
+    # Package method passes dependency site of later draw when first draw names none.
+    @test root_summary!(solved_root(Module[@__MODULE__], draw_after_rand, Vector{Float64})...).rng.site == site
     # Root access at call of dependency takes span of its line.
-    run = start_run(nothing, Module[])
-    root = (only(something(dispatch(Any[typeof(CASES.draw_each_default), Vector{Float64}], run.world, 1))), Pair{Int, Any}[])
-    solve!(run, [root])
+    run, root = solved_root(Module[], CASES.draw_each_default, Vector{Float64})
     code, file = run.codes[root], string(method.file)
     start = Facts.line_starts(read(file, String))[method.line]
     spans = [Summaries.draw_span(run, code, index) for index in eachindex(code.callees)]
@@ -443,14 +457,6 @@ end
         @test length(journaled.facts.methods) == length(FACTS)
         @test any(record -> startswith(record.key, "effects\n") && !record.finished, records(directory))
     end
-end
-
-"""Summary of method `f` on argument `types`, solved with every instance it reaches."""
-function summary_of(f::Any, types::Type...)::Summary
-    run = start_run(nothing, Module[])
-    root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
-    solve!(run, [root])
-    return root_summary!(run, root)
 end
 
 """Unknown-slot contents of only exported node of `summary`, which must be fresh; coverage shifts its statement index."""
