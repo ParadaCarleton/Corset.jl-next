@@ -1,6 +1,6 @@
 using Test: @test, @testset, @test_throws, @test_broken
 using Corset: Corset
-using Corset.Facts: Facts, Callee, methods_callee, callee_methods, Access, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind, PATH_DEPTH
+using Corset.Facts: Facts, Callee, methods_callee, callee_methods, Access, DrawSite, Place, Root, Step, Confidence, BlindSpot, Span, Precision, EffectKind, PATH_DEPTH
 using Corset.Inference: infer_package, open_journal, records, explicit_any, cuts!, dead_calls
 using Corset.StandIns: FunctionStandIn, ArrayStandIn, DenseStandIn, FloatStandIn
 using Corset.Signatures: Provenance
@@ -85,6 +85,10 @@ summary_of(f::Any, types::Type...)::Summary = root_summary!(solved_root(Module[]
 
 """Package method of draw site test: stdlib draw first, dependency draw (`draw_each_default`) after."""
 draw_after_rand(values::Vector{Float64})::Vector{Float64} = (rand(); CASES.draw_each_default(values))
+"""Package methods of draw site test: each calls dependency that lets it pass own RNG."""
+draw_offered_root(values::Vector{Float64})::Float64 = CASES.draw_offered(values)
+draw_keyword_root(values::Vector{Float64})::Float64 = CASES.draw_keyword(values; scale = 2.0)
+draw_chosen_root(values::Vector{Float64})::Vector{Float64} = CASES.draw_each(Random.default_rng(), values)
 
 @testset "fixture verdicts" begin
     definite, possible = Confidence.definite, Confidence.possible
@@ -204,13 +208,30 @@ end
     @test isnothing(summary_of(CASES.draw_from, Xoshiro, Vector{Float64}).rng.site)
     # Package method passes dependency site of later draw when first draw names none.
     @test root_summary!(solved_root(Module[@__MODULE__], draw_after_rand, Vector{Float64})...).rng.site == site
-    # Root access at call of dependency takes span of its line.
-    run, root = solved_root(Module[], CASES.draw_each_default, Vector{Float64})
-    code, file = run.codes[root], string(method.file)
-    start = Facts.line_starts(read(file, String))[method.line]
-    spans = [Summaries.draw_span(run, code, index) for index in eachindex(code.callees)]
-    @test nothing in spans && only(unique(filter(!isnothing, spans))) == Span(file, start, start, Precision.line)
-    @test isnothing(Summaries.draw_span(run, code, length(code.callees) + 1))
+    # Callee offers RNG: in place of `TaskLocalRNG`, as added argument before varargs, or by keyword.
+    world = Base.get_world_counter()
+    offered = (Tuple{typeof(CASES.draw_offered), Vector{Float64}}, Tuple{typeof(CASES.draw_each), Random.TaskLocalRNG, Vector{Float64}}, Tuple{typeof(CASES.draw_varargs), Vararg{Float64}})
+    keywords = (Tuple{typeof(CASES.draw_keyword), Vector{Float64}}, Tuple{typeof(Core.kwcall), @NamedTuple{rng::Random.TaskLocalRNG}, typeof(CASES.draw_keyword), Vector{Float64}})
+    @test all(signature -> Summaries.offers_rng(signature, world), (offered..., keywords...))
+    @test Summaries.offers_rng(Tuple{typeof(Core.kwcall), @NamedTuple{scale::Float64}, typeof(CASES.draw_keyword), Vector{Float64}}, world)
+    @test !Summaries.offers_rng(Tuple{typeof(CASES.draw_each_default), Vector{Float64}}, world) && !Summaries.offers_rng(Tuple{typeof(CASES.draw_each), Xoshiro, Vector{Float64}}, world)
+    @test !Summaries.offers_rng(Tuple{typeof(Core.kwcall), @NamedTuple{dims::Int}, typeof(sum), Matrix{Float64}}, world)
+    # RNG method that ignores RNG, and keyword of `TaskLocalRNG` only, offer none.
+    @test !Summaries.offers_rng(Tuple{typeof(CASES.draw_ignored), Vector{Float64}}, world)
+    @test !Summaries.offers_rng(Tuple{typeof(Core.kwcall), @NamedTuple{token::Random.TaskLocalRNG}, typeof(CASES.draw_token), Vector{Float64}}, world)
+    # Rule takes keyword that holds `TaskLocalRNG` only; engine needs keyword of every RNG.
+    @test Facts.rng_keyword(which(CASES.draw_token, (AbstractVector,)), false) && !Facts.rng_keyword(which(CASES.draw_token, (AbstractVector,)), true)
+    # Root access at call of dependency takes span of its line, offered when callee offers RNG.
+    span_at(line::LineNumberNode)::Span = (file = string(line.file); start = Facts.line_starts(read(file, String))[line.line]; Span(file, start, start, Precision.line))
+    function root_sites(root::Function)::Vector{Union{Nothing, DrawSite}}
+        run, variant = solved_root(Module[@__MODULE__], root, Vector{Float64})
+        return [Summaries.draw_span(run, variant, index) for index in 1:(length(run.codes[variant].callees) + 1)]
+    end
+    found = root_sites(draw_after_rand)
+    @test nothing in found && only(unique(filter(!isnothing, found))) == DrawSite(span_at(site), false) && isnothing(last(found))
+    offered_line = which(CASES.draw_offered, (AbstractVector,))
+    @test only(filter(!isnothing, root_sites(draw_offered_root))) == DrawSite(span_at(LineNumberNode(Int(offered_line.line), offered_line.file)), true)
+    @test all(root -> only(filter(!isnothing, root_sites(root))).offered, (draw_keyword_root, draw_chosen_root))
     # Package draw names no dependency line.
     @test all(access -> isnothing(access.site), [access for found in FACTS for access in [found.reads; found.writes]])
 end
