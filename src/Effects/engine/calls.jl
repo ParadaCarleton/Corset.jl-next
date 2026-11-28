@@ -551,31 +551,59 @@ function spawn_call(operands::AbstractVector{Operand.Type}, types::AbstractVecto
 end
 
 """
-Resolution of foreign call `statement` of `ir`: table entry with C arguments when table knows target and call passes
-each argument entry names; else unresolved on every operand, GC roots included. Arguments follow target, result type,
-argument types, vararg count and calling convention. `jl_new_task` runs its callable in new task (`spawn_call`).
+Resolution of foreign call `statement`: table entry with C arguments when table knows target and call passes each
+argument entry names; else unresolved on every operand, GC roots included. Arguments follow target, result type,
+argument types, vararg count and calling convention.
 """
-function foreign_outcome(ir::CC.IRCode, statement::Expr, world::UInt, limit::Integer)::Outcome.Type
-    if foreign_name(statement.args[1]) === :jl_new_task && length(statement.args) >= 6
-        body = statement.args[6]
-        spawned = spawn_call(Operand.Type[Operand.Value(body)], Any[value_type(ir, body)], world, limit)
-        isnothing(spawned) || return spawned
-    end
+function foreign_outcome(statement::Expr)::Outcome.Type
     effects = foreign_effects(statement.args[1])
     count = length(statement.args[3]::Core.SimpleVector)
     (isnothing(effects) || arity(effects) > count) && return Outcome.Unresolved(Operand.Type[Operand.Value(value) for value in statement.args[6:end]])
     return Outcome.Foreign(effects, Operand.Type[Operand.Value(value) for value in statement.args[6:(5 + count)]])
 end
 
+"""Functions that start their `Task` argument: run it now (`yield`, `yieldto`) or queue it (`schedule`, `enq_work`)."""
+const TASK_STARTS = (Base.schedule, Base.yield, Base.yieldto, Base.enq_work)
+
+"""Whether statement `index` of `ir` builds task: `Task(body)` or `Task(body, stack)`."""
+function task_build(ir::CC.IRCode, index::Integer)::Bool
+    statement = ir.stmts[index][:stmt]
+    (statement isa Expr && statement.head === :call && length(statement.args) in (2, 3)) || return false
+    callee = operand_constant(ir, Operand.Value(statement.args[1]))
+    return !isnothing(callee) && something(callee) === Core.Task
+end
+
 """
-Resolution of statement `statement` of `ir`: call or foreign call outcome; `nothing` for other statements. IR before
-inlining holds no `:invoke` statement.
+Statements of `ir` that build task (`task_build`) that call on every later path starts (`TASK_STARTS`): `@spawn`,
+`@async`, and `@task` with `schedule`. Body of other task may never run (`engine.md`, Task bodies).
 """
-function statement_outcome(ir::CC.IRCode, @nospecialize(statement::Any), world::UInt, limit::Integer)::Union{Nothing, Outcome.Type}
+function started_tasks(ir::CC.IRCode)::BitSet
+    pairs = Tuple{Int, Int}[]
+    for index in 1:length(ir.stmts)
+        statement = ir.stmts[index][:stmt]
+        (statement isa Expr && statement.head === :call && length(statement.args) >= 2) || continue
+        task, callee = statement.args[2], operand_constant(ir, Operand.Value(statement.args[1]))
+        (task isa Core.SSAValue && task.id < index && !isnothing(callee) && any(start -> start === something(callee), TASK_STARTS)) || continue
+        task_build(ir, task.id) && push!(pairs, (task.id, index))
+    end
+    isempty(pairs) && return BitSet()
+    # Every path from build passes start: block of start post-dominates block of build.
+    tree = CC.construct_postdomtree(ir)
+    return BitSet(build for (build, start) in pairs if CC.postdominates(tree, CC.block_for_inst(ir.cfg, start), CC.block_for_inst(ir.cfg, build)))
+end
+
+"""
+Resolution of statement `index` of `ir`: call or foreign call outcome; `nothing` for other statements. Build of task
+in `started` (`started_tasks`) runs its body (`spawn_call`). IR before inlining holds no `:invoke` statement.
+"""
+function statement_outcome(ir::CC.IRCode, index::Integer, world::UInt, limit::Integer, started::BitSet)::Union{Nothing, Outcome.Type}
+    statement = ir.stmts[index][:stmt]
     statement isa Expr || return nothing
-    statement.head === :call && return resolve(ir, Operand.Type[Operand.Value(value) for value in statement.args], world, limit)
-    statement.head === :foreigncall && return foreign_outcome(ir, statement, world, limit)
-    return nothing
+    statement.head === :foreigncall && return foreign_outcome(statement)
+    statement.head === :call || return nothing
+    operands = Operand.Type[Operand.Value(value) for value in statement.args]
+    spawned = index in started ? spawn_call(operands[2:2], Any[operand_type(ir, operands[2])], world, limit) : nothing
+    return isnothing(spawned) ? resolve(ir, operands, world, limit) : spawned
 end
 
 """Constant value of call `operand` in `ir`; `nothing` when not constant."""

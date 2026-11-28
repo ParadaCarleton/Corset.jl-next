@@ -103,8 +103,8 @@ function passed_arguments(code::Code, positions::AbstractVector{<:Integer})::Dic
     return passed
 end
 
-"""Whether `summary` reads or writes default RNG."""
-reaches_default_rng(summary::Summary)::Bool = any(((_, _, kind),) -> kind == EffectKind.default_rng, Iterators.flatten((keys(summary.writes), keys(summary.reads))))
+"""Whether `summary` draws from default RNG: reads it. Write alone draws nothing: new task advances caller RNG."""
+reaches_default_rng(summary::Summary)::Bool = any(((_, _, kind),) -> kind == EffectKind.default_rng, keys(summary.reads))
 
 """
 Whether call statement `index` of `code` in `run` reaches default RNG: callee summary does, or builtin gets `Task`.

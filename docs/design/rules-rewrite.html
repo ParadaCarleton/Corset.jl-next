@@ -1166,7 +1166,7 @@ Code lives in <code>src/Effects/</code>.</p>
 <ul>
 <li>MPFR and GMP entries come from C headers: pointer to non-const is written, pointer to const is read (<code>mpfr_srcptr</code>, <code>const char *</code>). Generator: <code>gen/foreign/generate.jl</code>; output: <code>src/Effects/engine/foreign_gmp_mpfr.jl</code>.</li>
 <li>Symbols: every MPFR and GMP function that Base and SpecialFunctions call, plus five numeric extras. The whole header holds about 800 functions; each one needs vetting for global state.</li>
-<li>Hand entries (<code>calls.jl</code>) cover variadic functions and pointer results. <code>jl_get_current_task</code> returns <code>unknown</code> without doubt. <code>jl_new_task</code> runs task body (Task bodies). Left open: functions that write C global state (<code>mpfr_set_emax</code>, <code>mpfr_set_emin</code>, <code>mpfr_clear_flags</code>, GMP allocator hooks).</li>
+<li>Hand entries (<code>calls.jl</code>) cover variadic functions and pointer results. <code>jl_get_current_task</code> returns <code>unknown</code> without doubt. Left open: functions that write C global state (<code>mpfr_set_emax</code>, <code>mpfr_set_emin</code>, <code>mpfr_clear_flags</code>, GMP allocator hooks).</li>
 <li>PCRE2 entries cover functions that Base regex code calls, by PCRE2 API manual. Match writes match data and JIT stack of match context.</li>
 <li>BLAS and LAPACK entries come from <code>\param</code> role comments of Reference-LAPACK source: <code>[out]</code> written, <code>[in]</code> read, <code>[in,out]</code> both. Generator: <code>gen/foreign/blas_lapack.jl</code>; output: <code>src/Effects/engine/foreign_blas_lapack.jl</code>.</li>
 <li>Symbols: every BLAS and LAPACK routine that LinearAlgebra calls. <code>[in]</code> argument that routine modifies and restores (<code>A</code> of <code>?ormrz</code>) counts as written.</li>
@@ -1232,7 +1232,9 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 </div><div class="decision"><h3>Task bodies</h3>
 <p>Engine follows task body as call of body. Else <code>@spawn</code>, <code>@async</code> and <code>@threads</code> hide body effects.</p>
 <ul>
-<li><code>jl_new_task(f, ...)</code> inside <code>Task(f)</code> runs <code>f()</code> in new task. <code>@spawn</code> and <code>@async</code> build their task this way.</li>
+<li><code>Task(f)</code> runs <code>f()</code> in new task when call on every later path starts task (<code>schedule</code>, <code>yield</code>, <code>yieldto</code>, <code>enq_work</code>).</li>
+<li><code>@spawn</code>, <code>@async</code>, and <code>@task</code> with <code>schedule</code> build and start task this way.</li>
+<li>Other task may never run: <code>Task(f)</code> keeps old resolution. <code>jl_new_task</code> stays unresolved, so body effects are blind spots.</li>
 <li><code>threading_run(fun, static)</code> of <code>@threads</code> runs <code>fun(thread)</code> in tasks. Thread number takes no operand: constant would make variant.</li>
 <li>Callable of abstract type, or callable stand-in, keeps old resolution: unresolved foreign call or dispatch.</li>
 <li>Body stores and accesses apply at call. Callable holds caller objects, so no callback record waits for caller.</li>
@@ -1242,6 +1244,8 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>New task owns its default RNG state and task-local storage. Body writes to them stay in task.</li>
 <li>New task takes scope of caller: body <code>ScopedValue</code> reads stay.</li>
 <li>New task derives its RNG from RNG of caller. Body draw before reseed reads default RNG of caller.</li>
+<li>Derivation advances RNG state of caller (<code>jl_rng_split</code>): definite default RNG write, also for body that reseeds.</li>
+<li>Write alone draws nothing: caller-chosen RNG (Effect kinds) counts calls that read default RNG.</li>
 <li>Body that reseeds before every draw on every path passes <code>hidden-input</code>. Its other reads of task state drop.</li>
 <li>Reseed: <code>seed!(seed)</code> or <code>seed!(TaskLocalRNG(), seed)</code>, with seed that cannot be <code>nothing</code>.</li>
 <li><code>seed!()</code> takes system entropy: draws after it stay open.</li>

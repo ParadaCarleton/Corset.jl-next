@@ -278,8 +278,8 @@ const TASK_RESULT = Step.Field(:result)
 Transfer call statement `index` that starts new task running body variants of `callees` on `operands`, callable first
 (`engine.md`, Task bodies). Body runs as call, so its stores and accesses apply here; writes of task state
 (`TASK_STATE`) stay in new task. Body that draws before reseed reads default RNG of caller, since new task derives
-its RNG from it; other reads of task state drop. Result: new task, which holds body result (`TASK_RESULT`).
-Callable holds caller objects, so no callback record waits for caller.
+its RNG from it; other reads of task state drop. Derivation advances caller RNG: definite write. Result: new task,
+which holds body result (`TASK_RESULT`). Callable holds caller objects, so no callback record waits for caller.
 """
 function spawn!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type}, callees::Callees)::Nothing
     body_writes, body_reads = OriginAccesses(), OriginAccesses()
@@ -287,6 +287,7 @@ function spawn!(flow::Flow, writes::OriginAccesses, index::Integer, operands::Ab
     draws = any(variant -> summary!(callees, variant).draws, callees.variants[index])
     merge_accesses!(writes, filter(((key, _),) -> !(last(key) in TASK_STATE), body_writes), false)
     merge_accesses!(flow.reads, filter(((key, _),) -> !(last(key) in TASK_STATE) || (draws && last(key) == EffectKind.default_rng), body_reads), false)
+    access!(writes, unknown(NO_DOUBT), false, definite(index), EffectKind.default_rng)
     assign!(flow, index, Targets(Origin.Allocation(index) => NO_DOUBT))
     return nothing
 end

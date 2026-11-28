@@ -1979,6 +1979,12 @@ function threaded_fill!(values::Vector{Float64})::Vector{Float64}
     return values
 end
 async_push!(values::Vector{Int})::Vector{Int} = (wait(@async push!(values, 1)); values)
+"""Starts `@task` body with `schedule` on every path: body runs."""
+started_push!(values::Vector{Int})::Vector{Int} = (task = @task push!(values, 1); schedule(task); wait(task); values)
+"""Returns task unstarted: body may never run."""
+push_task(values::Vector{Int})::Task = @task push!(values, 1)
+"""Starts task on one branch only: body may never run."""
+maybe_push(values::Vector{Int}, flag::Bool)::Task = (task = @task push!(values, 1); flag && schedule(task); task)
 """Task result aliases `values`: write through `fetch` reaches argument."""
 task_result!(values::Vector{Int})::Nothing = (fetch(Threads.@spawn values)[1] = 0; nothing)
 """Body stores into task storage of new task: caller task storage stays untouched."""
@@ -2132,14 +2138,18 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     # Audit needs bits integer seed: other seed keeps memory kinds.
     @test EffectKind.memory in kinds_at(summary_of(reseed_with!, Integer).writes, elsewhere)
     # Task body (`engine.md`, Task bodies): draw before reseed reads caller RNG; new task keeps its RNG writes.
-    task_state(summary::Summary)::Set{EffectKind.T} = intersect(union(kinds_at(summary.reads, elsewhere), kinds_at(summary.writes, elsewhere)), Set([EffectKind.default_rng, EffectKind.task_local]))
+    state = Set([EffectKind.default_rng, EffectKind.task_local])
+    task_reads(summary::Summary)::Set{EffectKind.T} = intersect(kinds_at(summary.reads, elsewhere), state)
     spawned = summary_of(spawned_draw)
-    @test task_state(spawned) == Set([EffectKind.default_rng]) && EffectKind.default_rng in kinds_at(spawned.reads, elsewhere)
-    @test !spawned.seeds && spawned.draws
+    @test task_reads(spawned) == Set([EffectKind.default_rng]) && !spawned.seeds && spawned.draws
     # Reseed before every draw on every path: through helper, in both branches. Body task storage stays in new task.
-    @test all(isempty(task_state(summary_of(f, types...))) for (f, types) in ((seeded_spawn, (Int,)), (helper_seeded_spawn, (Int,)), (both_seed_spawn, (Bool,)), (stash_spawn, ())))
+    reseeded = [summary_of(f, types...) for (f, types) in ((seeded_spawn, (Int,)), (helper_seeded_spawn, (Int,)), (both_seed_spawn, (Bool,)), (stash_spawn, ()))]
+    @test all(isempty ∘ task_reads, reseeded)
+    # Task start advances caller RNG, also for body that reseeds: write alone draws nothing.
+    @test all(summary -> intersect(kinds_at(summary.writes, elsewhere), state) == Set([EffectKind.default_rng]), [reseeded; spawned])
+    @test !any(Summaries.reaches_default_rng, reseeded) && Summaries.reaches_default_rng(spawned)
     # Entropy seed, reseed after draw, reseed on one branch or inside loop: draw can read caller RNG.
-    @test all(task_state(summary_of(f, types...)) == Set([EffectKind.default_rng]) for (f, types) in ((entropy_spawn, ()), (late_seed_spawn, (Int,)), (branch_seed_spawn, (Bool, Int)), (loop_seed_spawn, (Int,))))
+    @test all(task_reads(summary_of(f, types...)) == Set([EffectKind.default_rng]) for (f, types) in ((entropy_spawn, ()), (late_seed_spawn, (Int,)), (branch_seed_spawn, (Bool, Int)), (loop_seed_spawn, (Int,))))
     # Reseed in plain function changes caller RNG: draw stays.
     seeded = summary_of(seeded_draw, Int)
     @test seeded.seeds && !seeded.draws && EffectKind.default_rng in kinds_at(seeded.reads, elsewhere)
@@ -2148,6 +2158,12 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     # `@threads` and `@async` bodies write argument; task result aliases body result.
     @test doubts(summary_of(threaded_fill!, Vector{Float64}).writes)[top(2)] == NO_DOUBT
     @test doubts(summary_of(async_push!, Vector{Int}).writes)[top(2)] == NO_DOUBT
+    @test doubts(summary_of(started_push!, Vector{Int}).writes)[top(2)] == NO_DOUBT
+    # Task that some path leaves unstarted may never run: `jl_new_task` stays unresolved, so body write is blind spot.
+    for (f, types) in ((push_task, (Vector{Int},)), (maybe_push, (Vector{Int}, Bool)))
+        written = doubts(summary_of(f, types...).writes)
+        @test level_of(written[(parameter(2), true)]) == Level.code && level_of(get(written, top(2), CODE_DOUBT)) != Level.none
+    end
     @test level_of(doubts(summary_of(task_result!, Vector{Int}).writes)[top(2)]) == Level.code
     # Body call needs callable that dispatch resolves: abstract type, stand-in and splat keep old resolution.
     world, body = Base.get_world_counter(), Operand.Type[Operand.Value(:body)]

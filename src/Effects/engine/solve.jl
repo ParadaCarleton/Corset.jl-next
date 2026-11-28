@@ -294,7 +294,8 @@ function frame_body!(run::Run, frame::CC.InferenceState, cut::Bool, unit::Bool, 
     ]
     ir, lines, before = frame_ir(frame, run.interpreter, kept)
     chain, limit = call_chain(run, frame.linfo), join_limit(run, frame.linfo)
-    outcomes = [limited_outcome!(run, chain, statement_outcome(ir, ir.stmts[index][:stmt], run.world, limit)) for index in 1:length(ir.stmts)]
+    started = started_tasks(ir)
+    outcomes = [limited_outcome!(run, chain, statement_outcome(ir, index, run.world, limit, started)) for index in 1:length(ir.stmts)]
     users = statement_users(ir)
     # Statement compiler inserted has no source statement: its uses after compaction count.
     used = [iszero(line) ? !isempty(users[index]) : before[line] for (index, line) in enumerate(lines)]

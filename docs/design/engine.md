@@ -114,7 +114,7 @@ Resolution of each call statement, first match wins:
 2. Foreign call: table of known C functions (`memmove` writes destination; runtime type queries read only). Unknown: `possible` write on pointer and object operands, doubt in code.
    - MPFR and GMP entries come from C headers: pointer to non-const is written, pointer to const is read (`mpfr_srcptr`, `const char *`). Generator: `gen/foreign/generate.jl`; output: `src/Effects/engine/foreign_gmp_mpfr.jl`.
    - Symbols: every MPFR and GMP function that Base and SpecialFunctions call, plus five numeric extras. The whole header holds about 800 functions; each one needs vetting for global state.
-   - Hand entries (`calls.jl`) cover variadic functions and pointer results. `jl_get_current_task` returns `unknown` without doubt. `jl_new_task` runs task body (Task bodies). Left open: functions that write C global state (`mpfr_set_emax`, `mpfr_set_emin`, `mpfr_clear_flags`, GMP allocator hooks).
+   - Hand entries (`calls.jl`) cover variadic functions and pointer results. `jl_get_current_task` returns `unknown` without doubt. Left open: functions that write C global state (`mpfr_set_emax`, `mpfr_set_emin`, `mpfr_clear_flags`, GMP allocator hooks).
    - PCRE2 entries cover functions that Base regex code calls, by PCRE2 API manual. Match writes match data and JIT stack of match context.
    - BLAS and LAPACK entries come from `\param` role comments of Reference-LAPACK source: `[out]` written, `[in]` read, `[in,out]` both. Generator: `gen/foreign/blas_lapack.jl`; output: `src/Effects/engine/foreign_blas_lapack.jl`.
    - Symbols: every BLAS and LAPACK routine that LinearAlgebra calls. `[in]` argument that routine modifies and restores (`A` of `?ormrz`) counts as written.
@@ -178,7 +178,9 @@ Resolution of each call statement, first match wins:
 
 Engine follows task body as call of body. Else `@spawn`, `@async` and `@threads` hide body effects.
 
-- `jl_new_task(f, ...)` inside `Task(f)` runs `f()` in new task. `@spawn` and `@async` build their task this way.
+- `Task(f)` runs `f()` in new task when call on every later path starts task (`schedule`, `yield`, `yieldto`, `enq_work`).
+- `@spawn`, `@async`, and `@task` with `schedule` build and start task this way.
+- Other task may never run: `Task(f)` keeps old resolution. `jl_new_task` stays unresolved, so body effects are blind spots.
 - `threading_run(fun, static)` of `@threads` runs `fun(thread)` in tasks. Thread number takes no operand: constant would make variant.
 - Callable of abstract type, or callable stand-in, keeps old resolution: unresolved foreign call or dispatch.
 - Body stores and accesses apply at call. Callable holds caller objects, so no callback record waits for caller.
@@ -188,6 +190,8 @@ Engine follows task body as call of body. Else `@spawn`, `@async` and `@threads`
 - New task owns its default RNG state and task-local storage. Body writes to them stay in task.
 - New task takes scope of caller: body `ScopedValue` reads stay.
 - New task derives its RNG from RNG of caller. Body draw before reseed reads default RNG of caller.
+- Derivation advances RNG state of caller (`jl_rng_split`): definite default RNG write, also for body that reseeds.
+- Write alone draws nothing: caller-chosen RNG (Effect kinds) counts calls that read default RNG.
 - Body that reseeds before every draw on every path passes `hidden-input`. Its other reads of task state drop.
 - Reseed: `seed!(seed)` or `seed!(TaskLocalRNG(), seed)`, with seed that cannot be `nothing`.
 - `seed!()` takes system entropy: draws after it stay open.
