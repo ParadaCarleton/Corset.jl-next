@@ -23,11 +23,14 @@ const PRODUCERS = ("Cache.jl", "Config.jl", "Discovery.jl", "Effects/Effects.jl"
 """Cache directory of command line: scratch space of Corset in Julia depot. CI that saves depot keeps it."""
 directory()::String = get_scratch!(Base.moduleroot(@__MODULE__), "analyses")
 
-"""Coverage and allocation files that Julia writes beside source (`Cache.jl.4242.cov`); Julia never loads them."""
+"""Name ending of coverage and allocation files that Julia writes beside source (`Cache.jl.4242.cov`)."""
 const TRACKING = r"\.jl\.\d+\.(cov|mem)$"
 
+"""Whether `name` is coverage or allocation file that Julia wrote for source file among `names` of same directory."""
+tracking(name::String, names::AbstractSet{String})::Bool = occursin(TRACKING, name) && replace(name, TRACKING => ".jl") in names
+
 """
-Files under `root`, sorted. Names that start with dot stay out, with everything below them; so do `TRACKING` files,
+Files under `root`, sorted. Names that start with dot stay out, with everything below them; so do `tracking` files,
 which test process writes as it exits, and directory `cache`, whose entries would change key they are stored under.
 """
 function tree_files(root::String, cache::String)::Vector{String}
@@ -35,7 +38,8 @@ function tree_files(root::String, cache::String)::Vector{String}
     for (directory, directories, names) in walkdir(root)
         filter!(name -> !startswith(name, '.') && joinpath(directory, name) != cache, directories)
         # Symbolic link to directory arrives in `names`; `isfile` drops it.
-        kept = [joinpath(directory, name) for name in names if !startswith(name, '.') && !occursin(TRACKING, name)]
+        present = Set(names)
+        kept = [joinpath(directory, name) for name in names if !startswith(name, '.') && !tracking(name, present)]
         append!(files, filter(isfile, kept))
     end
     return sort!(files)

@@ -29,11 +29,11 @@ end
         mktempdir(@__DIR__) do root
             write_files(root, "b.jl" => "", "a/c.jl" => "", ".hidden.jl" => "", ".git/config" => "", "a/.d/e.jl" => "")
             write_files(root, "cache/entry" => "", "cached/entry" => "")
-            # Julia writes coverage and allocation files beside source; file with other name keeps its place.
-            write_files(root, "b.jl.4242.cov" => "", "a/c.jl.17.mem" => "", "notes.1.cov" => "")
+            # Julia writes coverage and allocation files beside source. File of other name, or without source beside it, stays.
+            write_files(root, "b.jl.4242.cov" => "", "a/c.jl.17.mem" => "", "notes.1.cov" => "", "orphan.jl.5.cov" => "")
             symlink(joinpath(root, "a"), joinpath(root, "directory link"))
             symlink(joinpath(root, "b.jl"), joinpath(root, "file link"))
-            @test Cache.tree_files(root, joinpath(root, "cache")) == joinpath.(root, ["a/c.jl", "b.jl", "cached/entry", "file link", "notes.1.cov"])
+            @test Cache.tree_files(root, joinpath(root, "cache")) == joinpath.(root, ["a/c.jl", "b.jl", "cached/entry", "file link", "notes.1.cov", "orphan.jl.5.cov"])
         end
     end
 
