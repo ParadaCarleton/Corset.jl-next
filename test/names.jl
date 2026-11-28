@@ -600,6 +600,12 @@ only_callables(f::Function, type::Type)::Nothing = nothing
     @test isnothing(subject_position(only(methods(only_callables))))
 end
 
+@testset "plain tuple points nowhere" begin
+    # Name tier once kept own copy of `referent`: abstract tuple of plain elements counted as pointing.
+    @test !Effects.referent(Tuple{Vararg{Int}}) && !Effects.referent(Tuple{Symbol, Vararg{Union{Int, Float64}}})
+    @test Effects.referent(Tuple{Vararg{Vector{Int}}}) && Effects.referent(Tuple{Int, Vararg})
+end
+
 @testset "RNG type facts" begin
     # Argument takes every RNG only when its type covers `AbstractRNG`; untyped and missing arguments count for none.
     draws(rng::Random.AbstractRNG, maybe::Union{Nothing, Random.AbstractRNG}, seeded::Xoshiro, untyped) = nothing

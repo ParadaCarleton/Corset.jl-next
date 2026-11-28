@@ -13,9 +13,9 @@ const CC = Core.Compiler
 # Engine reads Base function contracts of name tier (`IO_FUNCTIONS`).
 include("tables.jl")
 include("engine/Summaries.jl")
-using .Summaries: Summaries, stored_callee, loaded_callee, merge_callees, ordered_records
+# Name tier reads IR through engine helpers: one copy of each.
+using .Summaries: Summaries, stored_callee, loaded_callee, merge_callees, ordered_records, PLAIN, call_statement, constant, frame_ir, referent, statement_users, value_type
 
-include("ir.jl")
 include("records.jl")
 include("names.jl")
 include("closures.jl")
