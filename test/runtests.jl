@@ -48,17 +48,20 @@ const PICKED = filter(!startswith("-"), ARGS)
 isempty(setdiff(PICKED, FILES)) || error("unknown test files $(setdiff(PICKED, FILES)); choose from $(FILES)")
 
 """
-Files that get own worker with every thread of this process: `ui.jl` runs cases as tasks; `cli.jl` relaunches Corset,
-whose child copies thread count of its parent, and its crash test needs several threads.
+Files that get own worker with several threads: `ui.jl` runs cases as tasks; `cli.jl` relaunches Corset, whose child
+copies thread count of its parent, and its crash test needs several threads.
 """
 const THREADED = ["ui.jl", "cli.jl"]
 
+"""Threads of each `THREADED` worker: those files share threads of this process, but crash test needs two at least."""
+const FILE_THREADS = max(2, Threads.nthreads(:default) ÷ length(THREADED))
+
 """
-Worker for test `name`: own worker with every thread for `THREADED` file, which runner stops once file ends. `nothing`
+Worker for test `name`: own worker with `FILE_THREADS` for `THREADED` file, which runner stops once file ends. `nothing`
 sends other files to pool workers, which run one thread each: thread per worker in pool would oversubscribe cores.
 """
 file_worker(name::String)::Union{Nothing, ParallelTestRunner.PTRWorker} =
-    name in THREADED ? ParallelTestRunner.addworker(; exeflags = ["--threads=$(Threads.nthreads(:default))"]) : nothing
+    name in THREADED ? ParallelTestRunner.addworker(; exeflags = ["--threads=$FILE_THREADS"]) : nothing
 
-println("test threads of $(join(THREADED, " and ")) workers: $(Threads.nthreads(:default))")
+println("test threads of $(join(THREADED, " and ")) workers: $FILE_THREADS each")
 ParallelTestRunner.runtests(Corset, ARGS; testsuite = SUITE, serial = SERIAL, serial_position = :after, test_worker = file_worker, init_code = INIT)
