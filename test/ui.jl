@@ -2,6 +2,7 @@
 # fixed source in <case>.fixed.jl; package case puts each changed file there under `# ==> <path>` line.
 # Set CORSET_BLESS=1 to rewrite snapshots.
 # Package case is directory test/ui/<rule>/<case>/; package loads only for rule after `syntax` stage.
+# Package case with own Manifest.toml loads its dependencies from it (path entries).
 # Each case file starts with `# runic: off`: formatter must not normalize syntax cases test.
 # Cases run on all threads as tasks; `@test` runs in main task, which fetches each result.
 
@@ -82,6 +83,10 @@ function run_case(name::Symbol, case::String)::Tuple{String, String}
     facts = isdir(case) ? package_facts(case, Corset.Rules.entry(name).fix_stage) : file_facts(case)
     findings = Corset.Engine.run_rules(facts, [Corset.Rules.entry(name)])
     sources = Dict(file.path => file.text for file in facts.files)
+    # Cause label can point at dependency file, as `Engine.report` reads it.
+    for label in [label for finding in findings for label in [finding.primary; finding.causes]]
+        haskey(sources, label.span.file) || (sources[label.span.file] = read(label.span.file, String))
+    end
     root = isdir(case) ? case : dirname(case)
     report = Corset.Engine.Report(Corset.Engine.diagnostics(findings, UI_SETTINGS), UI_SETTINGS, root, sources, length(sources), 0, [], [])
     rendered = sprint(io -> Corset.Render.render_all(io, report))

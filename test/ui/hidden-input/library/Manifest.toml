@@ -1,0 +1,26 @@
+# This file is machine-generated - editing it directly is not advised
+
+julia_version = "1.13.4"
+manifest_format = "2.1"
+project_hash = "1c236dff3b0f5181fedb7d9a50f7c14b8f57a65b"
+
+[[deps.DrawCases]]
+deps = ["Random"]
+path = "../../../effects/DrawCases"
+uuid = "c3b8bd65-ccae-4296-ad60-0d148c4ba99e"
+version = "0.1.0"
+
+[[deps.HiddenInputLibrary]]
+deps = ["DrawCases", "Random"]
+path = "."
+uuid = "592835f2-5487-4331-8c77-e0298b473e6c"
+version = "0.0.0"
+
+[[deps.Random]]
+deps = ["SHA"]
+uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+version = "1.11.0"
+
+[[deps.SHA]]
+uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
+version = "1.0.0"

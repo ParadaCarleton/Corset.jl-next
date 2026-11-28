@@ -1,0 +1,9 @@
+name = "HiddenInputLibrary"
+uuid = "592835f2-5487-4331-8c77-e0298b473e6c"
+
+[deps]
+DrawCases = "c3b8bd65-ccae-4296-ad60-0d148c4ba99e"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
+[sources]
+DrawCases = {path = "../../../effects/DrawCases"}
