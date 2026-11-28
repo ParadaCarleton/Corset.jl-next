@@ -1,5 +1,7 @@
 using Corset: Corset
 using ParallelTestRunner: ParallelTestRunner
+# Test sets of property tests hold Supposition reports; runner deserializes them only with package loaded.
+using Supposition: Supposition
 
 const FILES = [
     "units.jl", "standins.jl", "signatures.jl", "inference.jl", "widening.jl", "hard_arrays.jl", "guesses.jl", "narrowing.jl",
@@ -20,8 +22,22 @@ const PERF = quote
     end
 end
 
-"""Expression worker runs for each file, in own module: `PERF` for speed tests, `include` of file for others."""
-const SUITE = Dict(file => file == "perf.jl" ? PERF : :(include($(joinpath(@__DIR__, file)))) for file in FILES)
+"""
+Expression worker runs for each file, in own module: `PERF` for speed tests, `include` of file for others.
+Runner process deserializes test sets of file, so `plain_reports!` of `INIT` reduces Supposition reports first.
+"""
+const SUITE = Dict(
+    file => :(
+        try
+            $(file == "perf.jl" ? PERF : :(include($(joinpath(@__DIR__, file)))))
+        finally
+            plain_reports!(Test.get_testset())
+        end
+    ) for file in FILES
+)
+
+"""Code each test module runs before its file: defines `plain_reports!`."""
+const INIT = :(include($(joinpath(@__DIR__, "plain_reports.jl"))))
 
 # Temp directory in `test` enters cache keys of concurrent files, unless dot prefix keeps it out of `tree_files`.
 const BARE = filter(file -> occursin("mktempdir(@__DIR__)", read(joinpath(@__DIR__, file), String)), [FILES; "helpers.jl"])
@@ -39,4 +55,4 @@ Runner stops worker of `ui.jl` once file ends.
 file_worker(name::String)::Union{Nothing, ParallelTestRunner.PTRWorker} = name == "ui.jl" ? ParallelTestRunner.addworker(; exeflags = ["--threads=$(Threads.nthreads(:default))"]) : nothing
 
 println("test threads of ui.jl worker: $(Threads.nthreads(:default))")
-ParallelTestRunner.runtests(Corset, ARGS; testsuite = SUITE, serial = SERIAL, serial_position = :after, test_worker = file_worker)
+ParallelTestRunner.runtests(Corset, ARGS; testsuite = SUITE, serial = SERIAL, serial_position = :after, test_worker = file_worker, init_code = INIT)
