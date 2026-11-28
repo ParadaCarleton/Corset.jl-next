@@ -156,13 +156,13 @@ function writer(written::Writes, access::Access)::Match
 end
 
 """
-Whether method with `accesses` draws from its RNG argument at `position` and never surely from default RNG it chose
+Whether method with `reads` draws from its RNG argument at `position` and never surely from default RNG it chose
 itself. Default RNG at argument is RNG caller passed there. Method whose callee `possible` draws default RNG (one method
-of open dispatch) still takes caller RNG.
+of open dispatch) still takes caller RNG. Draw reads RNG; write alone (task build advances caller RNG) draws nothing.
 """
-function draws_from(accesses::AbstractVector{Access}, position::Integer)::Bool
-    any(access -> access.kind == EffectKind.default_rng && place_root(access.place) == Root.Elsewhere() && access.confidence == Confidence.definite, accesses) && return false
-    return any(access -> access.kind in (EffectKind.rng_argument, EffectKind.default_rng) && place_root(access.place) == Root.Parameter(position + 1), accesses)
+function draws_from(reads::AbstractVector{Access}, position::Integer)::Bool
+    any(access -> access.kind == EffectKind.default_rng && place_root(access.place) == Root.Elsewhere() && access.confidence == Confidence.definite, reads) && return false
+    return any(access -> access.kind in (EffectKind.rng_argument, EffectKind.default_rng) && place_root(access.place) == Root.Parameter(position + 1), reads)
 end
 
 """
@@ -249,7 +249,7 @@ function chooses_rng(method::Method, methods::AbstractVector{MethodEffects})::Bo
                 position > count && kept_arguments(method, parameters, count, 0) <: kept_arguments(sibling, others, count, 0) && return true
             else
                 own = length(others) == length(parameters) && parameters[position + 1] === Nothing ? position : 0
-                kept_arguments(method, parameters, count, own) <: kept_arguments(sibling, others, length(others) - 1, position) && draws_from([other.writes; other.reads], position) && return true
+                kept_arguments(method, parameters, count, own) <: kept_arguments(sibling, others, length(others) - 1, position) && draws_from(other.reads, position) && return true
             end
         end
     end

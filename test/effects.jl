@@ -152,15 +152,17 @@ end
     for name in (:draw_from, :draw_each), accesses in (drawers[name].writes, drawers[name].reads)
         @test chosen in rng_kinds(accesses) && !(default in rng_kinds(accesses))
     end
-    # Task body draw through argument moves too: build advances same `Task` state.
-    @test rng_kinds(drawers[:draw_spawned].reads) == Set([chosen]) && rng_kinds(drawers[:draw_spawned].writes) == Set([chosen])
+    # Task body draw through argument moves too; declared signature unit keeps build write of caller RNG.
+    spawned = drawers[:draw_spawned]
+    @test chosen in rng_kinds(spawned.reads) && !(default in rng_kinds(spawned.reads)) && default in rng_kinds(spawned.writes)
     moved = only(access for access in drawers[:draw_from].writes if (access.place, access.kind) == chosen)
     @test moved.confidence == Confidence.definite
     # Moved draw still touches `Task` state for `:notaskstate` claims, yet hides no input.
     @test Corset.Rules.FalseEffects.task_state(moved)
     @test isnothing(Corset.Rules.HiddenInput.input(moved, Module[CASES]))
-    drawn(name::Symbol)::Bool = Corset.Rules.HiddenInput.draws_from([drawers[name].writes; drawers[name].reads], 1)
-    @test drawn(:draw_each) && !drawn(:draw_both)
+    drawn(name::Symbol)::Bool = Corset.Rules.HiddenInput.draws_from(drawers[name].reads, 1)
+    # Task build advances caller RNG, yet sibling still draws from argument.
+    @test drawn(:draw_each) && drawn(:draw_spawned) && !drawn(:draw_both)
     @test all(name -> rng_kinds(effects(name, AbstractVector).writes) == Set([default]), (:draw_default, :draw_both_default, :draw_each_default, :draw_captured_default, :draw_spawned_default))
     # Bare `rand()` beside draw from argument keeps default RNG.
     @test default in rng_kinds(drawers[:draw_both].writes)
