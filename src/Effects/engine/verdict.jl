@@ -217,9 +217,10 @@ Engine verdicts of methods of `package` from inference `units` and blind spots, 
 Solve and cache). Stored units (`Units.stored`) give their kept records in `stored`. Also verdict record of each typed
 unit for method store, `nothing` for unit whose instance earlier unit holds, new library cache entries, and keys of
 entries that hit. Run that skipped crashed instance gives no entries: its blind spot holds here only. Crash `journal`
-records native inference of instances outside units. Flow past `work_limit` stops (`WORK_LIMIT`).
+records native inference of instances outside units. Flow past `work_limit` stops (`WORK_LIMIT`). Step times go to
+`timings` unless `nothing`.
 """
-function cached_effects(package::PackageFacts, units::Units, stored::AbstractVector{Union{Nothing, UnitVerdict}}, journal::Union{Nothing, Journal}, library::Library; work_limit::Integer = WORK_LIMIT)::Tuple{Vector{MethodVerdict}, Vector{BlindSpot}, Vector{Union{Nothing, UnitVerdict}}, Library, Set{String}}
+function cached_effects(package::PackageFacts, units::Units, stored::AbstractVector{Union{Nothing, UnitVerdict}}, journal::Union{Nothing, Journal}, library::Library; work_limit::Integer = WORK_LIMIT, timings::Union{Nothing, Sink} = nothing)::Tuple{Vector{MethodVerdict}, Vector{BlindSpot}, Vector{Union{Nothing, UnitVerdict}}, Library, Set{String}}
     length(stored) == length(units.stored) || throw(ArgumentError("$(length(stored)) stored verdicts for $(length(units.stored)) stored units"))
     run = start_run(journal, package.modules, library; work_limit)
     typed_of = IdDict{Core.MethodInstance, TypedCode}()
@@ -236,11 +237,15 @@ function cached_effects(package::PackageFacts, units::Units, stored::AbstractVec
     end
     roots = Variant[(typed.frame.linfo, Pair{Int, Any}[]) for typed in units.typed if typed_of[typed.frame.linfo] === typed]
     # Every unit cut is known before first shortcut check walks callees; unit order keeps first callers fixed.
-    for (instance, _) in roots
-        run.bodies[instance] = unit_body!(run, typed_of[instance].frame, run.cuts[instance])
+    timed(timings, "effects bodies") do
+        for (instance, _) in roots
+            run.bodies[instance] = unit_body!(run, typed_of[instance].frame, run.cuts[instance])
+        end
     end
-    solve!(run, roots)
-    fresh = Union{Nothing, UnitVerdict}[typed_of[typed.frame.linfo] === typed ? unit_verdict!(run, typed, (typed.frame.linfo, Pair{Int, Any}[])) : nothing for typed in units.typed]
+    solve!(run, roots; timings)
+    fresh = timed(timings, "effects verdicts") do
+        Union{Nothing, UnitVerdict}[typed_of[typed.frame.linfo] === typed ? unit_verdict!(run, typed, (typed.frame.linfo, Pair{Int, Any}[])) : nothing for typed in units.typed]
+    end::Vector{Union{Nothing, UnitVerdict}}
     verdicts, spots = method_facts(package, units.incomplete, ordered_records(units, fresh, stored))
     crashed = !isnothing(journal) && !isempty(journal.crashed)
     return verdicts, spots, fresh, crashed ? Library() : library_entries!(run), run.cache.hits

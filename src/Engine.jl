@@ -140,7 +140,7 @@ function run_stages(package::PackageFacts, files::AbstractVector{Facts.SyntaxFil
     # Run without cache drops store, so it fills no entries.
     filling = keep ? used : nothing
     effects || return facts, spots, filling, nothing, nothing
-    run = timed(() -> Effects.effects_facts(package, units, journal, library), timings, "effects")
+    run = timed(() -> Effects.effects_facts(package, units, journal, library; timings), timings, "effects")
     kept = isnothing(filling) ? nothing : timed(() -> Effects.with_records(filling, units, run, files, package, journal), timings, "method store update")
     return facts, spots, kept, run, lifecycle ? timed(() -> Lifecycle.lifecycle_facts(package, run.ordered), timings, "lifecycle") : nothing
 end
