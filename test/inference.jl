@@ -342,6 +342,21 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         @test only(failing("oddly")).confidence == Confidence.possible
         @test all(name -> isempty(failing(name)), ("halved", "checked"))
     end
+    @testset "endless cycles" begin
+        cycles = Dict(text(cycle.span) => cycle for cycle in FACTS.endless)
+        # Caller of cycle inherits it, so cycle reports once, at first method. Stand-in signatures share call spans.
+        # `nest` wraps its argument at each call and has no base case either.
+        @test sort!(collect(keys(cycles))) == ["bounce", "endless_var", "forever", "nest", "spin"] && all(name -> cycles[name].name == name, keys(cycles))
+        @test [text(label.span) for label in cycles["nest"].calls] == ["nest((x,))"]
+        @test [(text(label.span), label.text) for label in cycles["endless_var"].calls] == [("endless_std(x)", "calls `endless_std`, which never returns"), ("endless_var(x)", "calls `endless_var`, which never returns")]
+        @test [text(label.span) for label in cycles["forever"].calls] == ["forever(x)"] && isempty(cycles["spin"].calls)
+        @test all(name -> cycles[name].confidence == Confidence.definite, ("endless_var", "forever", "spin")) && cycles["bounce"].confidence == Confidence.possible
+        @test [text(label.span) for label in cycles["bounce"].calls] == ["bounce(x)"]
+        # Unit that ends gets no verdict; nor does stand-in unit whose declared and model signatures end.
+        bounce, endless = only(methods(MODULE.bounce)), infer(only(methods(MODULE.bounce)), Tuple{typeof(MODULE.bounce), Float64})
+        @test isnothing(first(Corset.Inference.endless_verdict(bounce, Tuple{typeof(MODULE.bounce), Int}, infer(bounce, Tuple{typeof(MODULE.bounce), Int}))))
+        @test isnothing(first(Corset.Inference.endless_verdict(bounce, Tuple{typeof(MODULE.bounce), IntStandIn}, endless)))
+    end
     @testset "engine infers only for rule whose findings or fixes read inference or effects" begin
         # `effects` stage reads inference units and `lifecycle` reads effects, so their rules need inference too.
         stages = (Corset.Facts.Stage.inference, Corset.Facts.Stage.effects, Corset.Facts.Stage.lifecycle)
@@ -458,7 +473,7 @@ call_span(code::TypedCode, name::Symbol)::Corset.Facts.Span = code.spans[
         end
         # Stderr of inference goes to crash log; normal end copies it to stderr.
         mktempdir() do directory
-            empty = (Corset.Facts.InferenceFacts(FailingCall[], Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.AnnotationGuess[], Corset.Facts.StatefulIterate[]), Corset.Facts.BlindSpot[], Corset.Inference.Units(TypedCode[], Set{Method}(), Corset.Inference.StoredUnit[]), nothing)
+            empty = (Corset.Facts.InferenceFacts(FailingCall[], Corset.Facts.EndlessCycle[], Corset.Facts.Disruption[], Corset.Facts.HardArray[], Corset.Facts.NarrowingLoss[], Corset.Facts.AnnotationGuess[], Corset.Facts.StatefulIterate[]), Corset.Facts.BlindSpot[], Corset.Inference.Units(TypedCode[], Set{Method}(), Corset.Inference.StoredUnit[]), nothing)
             text = mktemp() do path, io
                 result = redirect_stderr(io) do
                     Corset.Engine.journaled(journal -> (println(stderr, "inner note"); empty), directory)

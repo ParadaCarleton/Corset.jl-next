@@ -95,6 +95,16 @@ oddly(x::Integer) = odd(x)
 single(x::Float32) = x / 2
 halved(x::AbstractFloat) = single(x)
 checked(x::Real) = x > 0 ? x : error("negative")
+# Never end: cycle without base case, self call, loop. Caller of cycle inherits; base case and loop that can throw end.
+endless_var(x::Real) = endless_std(x)
+endless_std(x::Real) = endless_var(x)
+endless_caller(x::Real) = endless_var(x) + 1
+forever(x::Int) = forever(x)
+spin(x::Int) = (while true; x += 1; end; x)
+countdown(x::Int) = x > 0 ? countdown(x - 1) : 0
+pump(channel::Channel{Int}) = (while true; put!(channel, 1); end)
+# Ends on declared `Real`; float stand-in and its model run without end.
+bounce(x::Real) = x isa AbstractFloat ? bounce(x) : x
 function padded(x::Real, y = 2)
     return x + y
 end

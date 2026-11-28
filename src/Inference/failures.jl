@@ -186,3 +186,62 @@ function cuts!(declared::IdDict{Method, Union{Nothing, Core.CodeInfo}}, method::
     length(reference.code) == length(code.code) || error("declared and stand-in code of $method differ in length")
     return sort!([filter(index -> !(reference.code[index] isa Core.Const), dead); failing])
 end
+
+"""Whether inference `output` never returns and never throws: code loops or recurses without end."""
+never_ends(output::Output)::Bool = output[3] === Union{} && CC.is_nothrow(output[6].result.ipo_effects)
+
+"""
+Confidence that `method` on unit `signature` never returns nor throws (`never_ends`), with compiler edges of inferences
+it ran. `definite`: declared signature runs without end too; `possible`: only stand-in model signature does; `nothing`
+when unit `output` ends, or only stand-in type keeps it running.
+"""
+function endless_verdict(method::Method, signature::Type, output::Output)::Tuple{Union{Nothing, Confidence.T}, Vector{Any}}
+    never_ends(output) || return nothing, Any[]
+    edges = Any[]
+    for (reference, confidence) in ((method.sig, Confidence.definite), (StandIns.model_type(signature), Confidence.possible))
+        inferred = reference == signature ? output : infer(method, reference)
+        isnothing(inferred) && continue
+        inferred === output || append!(edges, inferred[4])
+        never_ends(inferred) && return confidence, edges
+    end
+    return nothing, edges
+end
+
+"""Methods that `callees` (method to methods its endless calls reach) lead to from `start`, through any number of calls."""
+function reachable(callees::IdDict{Method, Vector{Method}}, start::Method)::IdSet{Method}
+    found, pending = IdSet{Method}(), copy(get(callees, start, Method[]))
+    while !isempty(pending)
+        method = pop!(pending)
+        method in found && continue
+        push!(found, method)
+        append!(pending, get(callees, method, Method[]))
+    end
+    return found
+end
+
+"""Source position of method `site`: file, then first byte."""
+source_position(site::MethodSite)::Tuple{String, Int} = (site.span.file, site.span.first_byte)
+
+"""
+Endless cycles (`EndlessCycle`) of package methods. `units` maps endless method to its site, confidence and package
+calls that never return (call span => call signature). Cycle reports when no such call leaves it: caller of endless
+method only inherits it, and callee without endless unit hides cause. One fact per cycle, at its first method.
+"""
+function endless_cycles(units::IdDict{Method, Tuple{MethodSite, Confidence.T, Vector{Pair{Span, Type}}}})::Vector{EndlessCycle}
+    callees = IdDict{Method, Vector{Method}}(method => [dispatched(signature) for (_, signature) in calls] for (method, (_, _, calls)) in units)
+    reach = IdDict{Method, IdSet{Method}}(method => reachable(callees, method) for method in keys(units))
+    found, seen = EndlessCycle[], IdSet{Method}()
+    for method in sort!(collect(keys(units)); by = method -> source_position(units[method][1]))
+        method in seen && continue
+        cycle = push!(IdSet{Method}(callee for callee in reach[method] if haskey(reach, callee) && method in reach[callee]), method)
+        union!(seen, cycle)
+        # Every member reaches what first member reaches, so one check covers cycle.
+        issubset(reach[method], cycle) || continue
+        members = sort!(collect(cycle); by = member -> source_position(units[member][1]))
+        # Stand-in signatures of one method repeat call span.
+        calls = unique!(label -> label.span, [Label(span, "calls `$(dispatched(signature).name)`, which never returns") for member in members for (span, signature) in units[member][3] if dispatched(signature) in cycle])
+        definite = all(member -> units[member][2] == Confidence.definite, members)
+        push!(found, EndlessCycle(name_span(units[method][1]), Package.source_name(method), calls, definite ? Confidence.definite : Confidence.possible))
+    end
+    return found
+end

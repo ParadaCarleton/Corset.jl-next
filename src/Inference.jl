@@ -12,7 +12,7 @@ using Serialization: serialize, deserialize
 using SHA: sha256
 using EnumX: @enumx
 using TypedSyntax: TypedSyntax
-using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, Disruption, HardArray, NarrowingLoss, StatefulIterate, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence, Weak, Exit
+using ..Facts: Facts, PackageFacts, InferenceFacts, FailingCall, EndlessCycle, Label, Disruption, HardArray, NarrowingLoss, StatefulIterate, MethodSite, SyntaxFile, SyntaxNode, Span, Precision, BlindSpot, Confidence, Weak, Exit
 using ..Facts: children_of, kind_name, identifier_name, source, signature, callee_node, call_arguments, name_span, parent_of, ancestors, base_macro, resolve_type
 using ..Package: Package
 using ..StandIns: StandIns
@@ -66,7 +66,8 @@ end
 
 """
 Result of inferring one method on one signature, as method store keeps it: call signatures of package methods its calls
-reach, call statements that never return by statement index (`call_failures`), whether inference gave code and whether
+reach, call statements that never return by statement index (`call_failures`), confidence that unit never returns nor
+throws (`endless_verdict`) with its package calls that never return (call span => signature), whether inference gave code and whether
 code tests type, weak values that change input type (`disruptions`), type tests whose narrowing guard drops
 (`narrowings`), and `iterate` calls on `Iterators.Stateful` (`stateful_iterates`).
 """
@@ -75,6 +76,8 @@ struct Inferred
     calls::Vector{Tuple{Type, Type}}
     reached::Vector{Type}
     failures::Vector{Pair{Int, Union{FailingCall, BlindSpot}}}
+    endless::Union{Nothing, Confidence.T}
+    endless_calls::Vector{Pair{Span, Type}}
     coded::Bool
     tests_type::Bool
     disruptions::Vector{Disruption}
@@ -598,11 +601,12 @@ end
 
 """
 Calls in typed `code` of `instance` to function of package `modules` with concrete argument types that dispatch to one
-method of analyzed files (`by_path`): signature, and type inference gives call there. Annotation guesses read them.
+method of analyzed files (`by_path`): statement index, signature, and type inference gives call there. Annotation
+guesses and endless cycles read them.
 """
-function package_calls(code::Core.CodeInfo, instance::Core.MethodInstance, modules::AbstractSet{Module}, by_path::AbstractDict{String, SyntaxFile})::Vector{Tuple{Type, Type}}
+function package_calls(code::Core.CodeInfo, instance::Core.MethodInstance, modules::AbstractSet{Module}, by_path::AbstractDict{String, SyntaxFile})::Vector{Tuple{Int, Type, Type}}
     parameters = CC.sptypes_from_meth_instance(instance)
-    found = Tuple{Type, Type}[]
+    found = Tuple{Int, Type, Type}[]
     for (index, statement) in enumerate(code.code)
         call = statement_call(statement)
         isnothing(call) && continue
@@ -613,7 +617,7 @@ function package_calls(code::Core.CodeInfo, instance::Core.MethodInstance, modul
         call_signature = Tuple{types...}
         matches = Base._methods_by_ftype(call_signature, 1, Base.get_world_counter())
         (matches isa Vector && length(matches) == 1 && haskey(by_path, string(only(matches).method.file))) || continue
-        push!(found, (call_signature, statement_type(code, index)))
+        push!(found, (index, call_signature, statement_type(code, index)))
     end
     return found
 end
@@ -778,25 +782,26 @@ end
 
 """
 `infer` of each `(method, signature, key)` in `jobs`, in order, with verdicts on its calls that never return
-(`call_verdicts!`). Suspect of crash `journal` runs alone, first; so does each job of one-job wave or one-thread run.
+(`call_verdicts!`) and on whether it ends (`endless_verdict`), each with compiler edges. Suspect of crash `journal` runs alone, first; so does each job of one-job wave or one-thread run.
 Others run on all threads at once; `helpers` caches throw-helper verdicts across them (`HelperVerdicts`), and package `files` decide own calls.
 """
-function infer_wave!(journal::Union{Nothing, Journal}, jobs::AbstractVector{<:Tuple{Method, Type, String}}, helpers::HelperVerdicts, files::AbstractDict{String, SyntaxFile})::Vector{Union{Nothing, Tuple{Output, Vector{CallVerdict}, Vector{Any}}}}
+function infer_wave!(journal::Union{Nothing, Journal}, jobs::AbstractVector{<:Tuple{Method, Type, String}}, helpers::HelperVerdicts, files::AbstractDict{String, SyntaxFile})::Vector{Union{Nothing, Tuple{Output, Vector{CallVerdict}, Vector{Any}, Union{Nothing, Confidence.T}, Vector{Any}}}}
     solo = length(jobs) == 1 || Threads.nthreads(:default) == 1
     alone = [solo || (!isnothing(journal) && key in journal.suspects) for (_, _, key) in jobs]
     single = Dict(position => journaled_infer!(journal, helpers, files, jobs[position]..., true) for position in findall(alone))
     shared = Dict(position => Threads.@spawn(journaled_infer!(journal, helpers, files, jobs[position]..., false)) for position in findall(!, alone))
-    return Union{Nothing, Tuple{Output, Vector{CallVerdict}, Vector{Any}}}[alone[position] ? single[position] : fetch(shared[position]) for position in eachindex(jobs)]
+    return Union{Nothing, Tuple{Output, Vector{CallVerdict}, Vector{Any}, Union{Nothing, Confidence.T}, Vector{Any}}}[alone[position] ? single[position] : fetch(shared[position]) for position in eachindex(jobs)]
 end
 
 """
-`infer` of `method` on `signature` and verdicts on its calls that never return (`call_verdicts!`), between start and
+`infer` of `method` on `signature`, verdicts on its calls that never return (`call_verdicts!`) and on whether it ends
+(`endless_verdict`), between start and
 finish records of store `key` in crash `journal`; `alone` when no other inference runs beside it.
 """
-function journaled_infer!(journal::Union{Nothing, Journal}, helpers::HelperVerdicts, files::AbstractDict{String, SyntaxFile}, method::Method, signature::Type, key::String, alone::Bool)::Union{Nothing, Tuple{Output, Vector{CallVerdict}, Vector{Any}}}
+function journaled_infer!(journal::Union{Nothing, Journal}, helpers::HelperVerdicts, files::AbstractDict{String, SyntaxFile}, method::Method, signature::Type, key::String, alone::Bool)::Union{Nothing, Tuple{Output, Vector{CallVerdict}, Vector{Any}, Union{Nothing, Confidence.T}, Vector{Any}}}
     isnothing(journal) || record!(journal, start_record(key, method_label(method), alone))
     result = infer(method, signature)
-    verdicts = isnothing(result) ? nothing : (result, call_verdicts!(helpers, method, signature, result, files)...)
+    verdicts = isnothing(result) ? nothing : (result, call_verdicts!(helpers, method, signature, result, files)..., endless_verdict(method, signature, result)...)
     isnothing(journal) || record!(journal, finish_record(key, nothing))
     return verdicts
 end
@@ -837,6 +842,7 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
     typed, stored, seen, counts, coded = TypedCode[], StoredUnit[], Set{Tuple{Method, Type}}(), Dict{Method, Int}(), Set{Method}()
     failing, gaps, settled, disrupting, narrowing = FailingCall[], BlindSpot[], Set{Tuple{Method, Int}}(), Disruption[], NarrowingLoss[]
     hard, iterates, observed, declared = HardArray[], StatefulIterate[], IdDict{Method, Vector{Tuple{Type, Type}}}(), IdDict{Method, Union{Nothing, Core.CodeInfo}}()
+    looping = IdDict{Method, Tuple{MethodSite, Confidence.T, Vector{Pair{Span, Type}}}}()
     while !isempty(pending)
         # Queue head is one wave; merge queues reached calls behind rest, in order one queue would give.
         wave = splice!(pending, 1:min(length(pending), WAVE * Threads.nthreads(:default)))
@@ -854,9 +860,9 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
                 edges = Any[]
                 result = outputs[position]
                 inferred = if isnothing(result)
-                    Inferred(Union{}, Tuple{Type, Type}[], Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], false, false, Disruption[], HardArray[], NarrowingLoss[], StatefulIterate[])
+                    Inferred(Union{}, Tuple{Type, Type}[], Type[], Pair{Int, Union{FailingCall, BlindSpot}}[], nothing, Pair{Span, Type}[], false, false, Disruption[], HardArray[], NarrowingLoss[], StatefulIterate[])
                 else
-                    (instance, code, returned, frame_edges, flow, frame), verdicts, verdict_edges = result
+                    (instance, code, returned, frame_edges, flow, frame), verdicts, verdict_edges, endless, endless_edges = result
                     append!(edges, frame_edges, call_signatures(code, instance))
                     nodes = statement_nodes(code, mappings(code, instance, site), site.file)
                     opted = [position for position in 1:(site.method.nargs - 1) if explicit_any(site, code.slotnames[position + 1])]
@@ -864,13 +870,15 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
                     push!(typed, TypedCode(site, call_signature, code, returned, spans(code, instance, site, lines[site.file.path].starts, nodes)..., frame, provenance, Int[]))
                     # Failures need unit spans; cuts need failures.
                     failures, stand_in_only = call_failures(last(typed), verdicts)
-                    append!(edges, verdict_edges)
+                    append!(edges, verdict_edges, endless_edges)
                     append!(last(typed).cuts, cuts!(declared, site.method, call_signature, code, stand_in_only))
                     changes, branch = Widening.changes!(edges, instance, code)
                     constructions, array_branch = HardArrays.changes!(edges, instance, code)
                     lost = narrowings(last(typed), nodes, Narrowing.losses(code, flow, CC.sptypes_from_meth_instance(instance)))
+                    called = package_calls(code, instance, modules, by_path)
+                    stuck = isnothing(endless) ? Pair{Span, Type}[] : [last(typed).spans[index] => signature for (index, signature, result) in called if result === Union{}]
                     Inferred(
-                        returned, package_calls(code, instance, modules, by_path), reached(code, instance), failures, true,
+                        returned, [(signature, result) for (_, signature, result) in called], reached(code, instance), failures, endless, stuck, true,
                         Widening.type_branch(code, CC.sptypes_from_meth_instance(instance)), disruptions(last(typed), instance, nodes, changes, branch),
                         hard_arrays(last(typed), instance, nodes, constructions, array_branch), lost, stateful_iterates(last(typed), instance, nodes),
                     )
@@ -890,6 +898,8 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
                 push!(get!(Vector{Tuple{Type, Type}}, observed, dispatched(call_signature)), (call_signature, result))
             end
             push!(coded, site.method)
+            # Declared signature decides `definite`, so units of one method agree on confidence.
+            isnothing(inferred.endless) || unique!(append!(get!(() -> (site, something(inferred.endless), Pair{Span, Type}[]), looping, site.method)[3], inferred.endless_calls))
             # Package methods are those analyzed files define; others (Base) stay outside.
             for signature in inferred.reached
                 method = dispatched(signature)
@@ -916,7 +926,7 @@ function infer_package(package::PackageFacts, files::AbstractVector{SyntaxFile},
     # One finding per weak value: escape before intermediate, definite before possible.
     sort!(disrupting; by = disruption -> (disruption.exit == Exit.intermediate, disruption.confidence == Confidence.possible))
     sort!(hard; by = array -> (array.exit == Exit.intermediate, array.confidence == Confidence.possible))
-    facts = InferenceFacts(failing, unique!(disruption -> disruption.span, disrupting), unique!(array -> array.span, hard), unique!(lost -> lost.test, narrowing), annotation_guesses(package, observed, incomplete), unique!(call -> call.span, iterates))
+    facts = InferenceFacts(failing, endless_cycles(looping), unique!(disruption -> disruption.span, disrupting), unique!(array -> array.span, hard), unique!(lost -> lost.test, narrowing), annotation_guesses(package, observed, incomplete), unique!(call -> call.span, iterates))
     return facts, unique!(append!(spots, gaps)), Units(typed, incomplete, stored), used
 end
 
