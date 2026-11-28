@@ -8,7 +8,7 @@ using Corset.Inference: Inference, infer_package, Store, entry_key, serialized, 
 using Corset.Effects.Summaries:
     Summaries, MethodVerdict, UnitVerdict, Library, LibraryEntry, Summary, Run, Variant, Closure, start_run, solve!, dispatch, root_summary!, same, cached_effects,
     library_entries!, unshared!, closure_key!, variant_key!, instance_key!, instance_node, record_text!, stored_value!, type_text!, inferred!,
-    record_bytes, unit_record, structure_text!, held_summary
+    record_bytes, unit_record, structure_text!, held_summary, solved_run, unit_verdict!, unit_verdicts!, WORK_LIMIT
 using EvilArrays: EvilArray
 using Moshi.Data: isa_variant
 using Serialization: deserialize
@@ -322,6 +322,11 @@ end
     @testset "unit records" begin
         world = Base.get_world_counter()
         @test all(record -> repr(unit_record(record_bytes(record), world)) == repr(record), RECORDS)
+        # Verdicts on all threads match serial verdicts of same solved run.
+        run, typed_of = solved_run(PACKAGE, UNITS, NONE_STORED, nothing, Library(), WORK_LIMIT, nothing)
+        threaded = unit_verdicts!(run, UNITS.typed, typed_of)
+        serial = [typed_of[typed.frame.linfo] === typed ? unit_verdict!(run, typed, (typed.frame.linfo, Pair{Int, Any}[])) : nothing for typed in UNITS.typed]
+        @test count(!isnothing, threaded) > 1 && repr(threaded) == repr(serial)
         calls = [fact for record in RECORDS if !isnothing(record) for (_, fact) in record.calls]
         # Round trip covers callee methods, dead call and builtin.
         callees = [callee_methods(fact.callee) for fact in calls]

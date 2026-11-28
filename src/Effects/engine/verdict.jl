@@ -221,6 +221,19 @@ records native inference of instances outside units. Flow past `work_limit` stop
 `timings` unless `nothing`.
 """
 function cached_effects(package::PackageFacts, units::Units, stored::AbstractVector{Union{Nothing, UnitVerdict}}, journal::Union{Nothing, Journal}, library::Library; work_limit::Integer = WORK_LIMIT, timings::Union{Nothing, Sink} = nothing)::Tuple{Vector{MethodVerdict}, Vector{BlindSpot}, Vector{Union{Nothing, UnitVerdict}}, Library, Set{String}}
+    run, typed_of = solved_run(package, units, stored, journal, library, work_limit, timings)
+    fresh = timed(timings, "effects verdicts") do
+        unit_verdicts!(run, units.typed, typed_of)
+    end::Vector{Union{Nothing, UnitVerdict}}
+    verdicts, spots = method_facts(package, units.incomplete, ordered_records(units, fresh, stored))
+    crashed = !isnothing(journal) && !isempty(journal.crashed)
+    return verdicts, spots, fresh, crashed ? Library() : library_entries!(run), run.cache.hits
+end
+
+"""
+Run of `cached_effects` after solve, and first typed unit of each instance: roots are those units, with no constants.
+"""
+function solved_run(package::PackageFacts, units::Units, stored::AbstractVector{Union{Nothing, UnitVerdict}}, journal::Union{Nothing, Journal}, library::Library, work_limit::Integer, timings::Union{Nothing, Sink})::Tuple{Run, IdDict{Core.MethodInstance, TypedCode}}
     length(stored) == length(units.stored) || throw(ArgumentError("$(length(stored)) stored verdicts for $(length(units.stored)) stored units"))
     run = start_run(journal, package.modules, library; work_limit)
     typed_of = IdDict{Core.MethodInstance, TypedCode}()
@@ -243,12 +256,17 @@ function cached_effects(package::PackageFacts, units::Units, stored::AbstractVec
         end
     end
     solve!(run, roots; timings)
-    fresh = timed(timings, "effects verdicts") do
-        Union{Nothing, UnitVerdict}[typed_of[typed.frame.linfo] === typed ? unit_verdict!(run, typed, (typed.frame.linfo, Pair{Int, Any}[])) : nothing for typed in units.typed]
-    end::Vector{Union{Nothing, UnitVerdict}}
-    verdicts, spots = method_facts(package, units.incomplete, ordered_records(units, fresh, stored))
-    crashed = !isnothing(journal) && !isempty(journal.crashed)
-    return verdicts, spots, fresh, crashed ? Library() : library_entries!(run), run.cache.hits
+    return run, typed_of
+end
+
+"""
+Verdict record of each unit of `typed` in solved `run`, `nothing` for unit whose instance earlier unit holds
+(`typed_of`). Roots are distinct instances: verdict reads `run` and writes slot of own root only, so roots run on all
+threads.
+"""
+function unit_verdicts!(run::Run, typed::AbstractVector{TypedCode}, typed_of::IdDict{Core.MethodInstance, TypedCode})::Vector{Union{Nothing, UnitVerdict}}
+    tasks = Union{Nothing, Task}[typed_of[unit.frame.linfo] === unit ? Threads.@spawn(unit_verdict!(run, unit, (unit.frame.linfo, Pair{Int, Any}[]))) : nothing for unit in typed]
+    return Union{Nothing, UnitVerdict}[isnothing(task) ? nothing : fetch(task)::UnitVerdict for task in tasks]
 end
 
 """
