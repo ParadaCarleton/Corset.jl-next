@@ -467,6 +467,7 @@ set_named!(holder::Module, name::Symbol, values::Vector{Int}) = Core.setglobal!(
 get_named(holder::Module, name::Symbol) = Core.getglobal(holder, name)
 get_slot() = Core.getglobal(@__MODULE__, :slot)
 read_holder() = HOLDER[]
+holder_length() = length(read_holder())
 
 element(memory::Memory{Vector{Int}}) = Core.memoryrefnew(Core.memoryrefnew(memory), 1, false)
 memory_get(memory::Memory{Vector{Int}}) = Core.memoryrefget(element(memory), :not_atomic, false)
@@ -1767,11 +1768,11 @@ end
     @test !isempty(load!(spent, holder, Step.Field(:z))) && over_budget(spent) && isempty(load!(spent, holder, Step.Field(:z)))
     # Open callee may touch global state: caller of zero-argument callee keeps blind write and read on `Elsewhere`.
     open_run = start_run(nothing, Module[])
-    plus, level_variant = ((only(something(dispatch(Any[typeof(f)], open_run.world, 1))), Pair{Int, Any}[]) for f in (level_plus, level))
-    solve!(open_run, [plus])
-    open_run.slots[level_variant].summary = open_summary(1, "cause")
-    plus_summary, global_key = first(Summaries.variant_summary!(open_run, plus, false)), memory((Place.At(Root.Elsewhere(), Step.Type[]), true))
-    @test all(table -> table[global_key].doubt == BLIND_DOUBT && table[global_key].reason == "cause", (plus_summary.writes, plus_summary.reads))
+    measured, holder = ((only(something(dispatch(Any[typeof(f)], open_run.world, 1))), Pair{Int, Any}[]) for f in (holder_length, read_holder))
+    solve!(open_run, [measured])
+    open_run.slots[holder].summary = open_summary(1, "cause")
+    measured_summary, global_key = first(Summaries.variant_summary!(open_run, measured, false)), memory((Place.At(Root.Elsewhere(), Step.Type[]), true))
+    @test all(table -> table[global_key].doubt == BLIND_DOUBT && table[global_key].reason == "cause", (measured_summary.writes, measured_summary.reads))
     # Package unit past budget: blind access with budget cause goes to coverage line.
     _, spots = cached_effects(PACKAGE, UNITS, Union{Nothing, UnitVerdict}[], nothing, Library(); work_limit = 0)
     @test any(spot -> spot.cause == Summaries.BUDGET, spots) && !any(spot -> spot.cause == Summaries.BUDGET, SPOTS)
@@ -2000,7 +2001,6 @@ writes_in_doubt(summary::Summary, position::Int)::Bool = any(kind == EffectKind.
 """Scoped value: read of current task scope."""
 const LEVEL = ScopedValue(1)
 level() = LEVEL[]
-level_plus() = level() + 1
 
 """Package scoped value whose default writes object in code: `ScopedValues.get` runs package code."""
 struct Counted <: Base.ScopedValues.AbstractScopedValue{Int} end
