@@ -24,10 +24,13 @@ const SELECTED = isempty(ARGS) ? FILES : ARGS
 isempty(setdiff(SELECTED, FILES)) || error("unknown test files $(setdiff(SELECTED, FILES)); choose from $(FILES)")
 
 # Outer testset reports failures at end; testset per file records load error. Later files run in both cases.
+# Thread count and wall time of each file print, so log shows which file is slow and whether it ran parallel.
+println("test threads: $(Threads.nthreads())")
 @testset "Corset" begin
     for file in SELECTED
-        @testset "$file" begin
+        seconds = @elapsed @testset "$file" begin
             file == "perf.jl" ? perf() : isolated(file)
         end
+        println("test file $file: $(round(seconds; digits = 1)) s")
     end
 end
