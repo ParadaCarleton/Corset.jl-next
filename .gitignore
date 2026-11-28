@@ -8,7 +8,8 @@
 /docs/Manifest.toml
 .worktrees/
 /test/SuppositionDB/
-/test/jl_*/
+# Test temp directories: `mktempdir(@__DIR__; prefix = ".jl_")` (runtests.jl rejects other prefix).
+/test/.jl_*/
 # Machine-local package options, such as `precompile_workload = false` for test runs.
 LocalPreferences.toml
 
