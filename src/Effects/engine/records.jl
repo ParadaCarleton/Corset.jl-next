@@ -115,7 +115,7 @@ function reaches_default_rng(run::Run, code::Code, index::Integer)::Bool
     spawned = !isnothing(outcome) && isa_variant(something(outcome), Outcome.Spawn)
     for callee in code.callees[index]
         summary = held_summary(run.slots, callee)
-        reaches_default_rng(summary) && (!spawned || summary.seeding.draws) && return true
+        reaches_default_rng(summary) && (!spawned || summary.rng.draws) && return true
     end
     isnothing(outcome) && return false
     return @match something(outcome) begin
@@ -148,8 +148,25 @@ default RNG, since draw still touches `Task` state; `possible` when several argu
 function chosen_rng(accesses::AbstractVector{Access}, positions::AbstractVector{<:Integer})::Vector{Access}
     isempty(positions) && return accesses
     moved(access::Access, position::Integer)::Access =
-        Access(Place.At(Root.Parameter(position), NO_STEPS), false, EffectKind.default_rng, length(positions) == 1 ? access.confidence : Confidence.possible, access.callback, access.cause)
+        Access(Place.At(Root.Parameter(position), NO_STEPS), false, EffectKind.default_rng, length(positions) == 1 ? access.confidence : Confidence.possible, access.callback, access.cause, access.site)
     return [found for access in accesses for found in (access.kind == EffectKind.default_rng ? [moved(access, position) for position in positions] : [access])]
+end
+
+"""
+Span of dependency line that draws default RNG at statement `cause` of root `code` in `run`: site of first callee
+summary that holds one (`DefaultRng`). `nothing` without such callee, or when dependency file lost that line.
+"""
+function draw_span(run::Run, code::Code, cause::Integer)::Union{Nothing, Span}
+    cause in eachindex(code.callees) || return nothing
+    for callee in code.callees[cause]
+        site = held_summary(run.slots, callee).rng.site
+        isnothing(site) && continue
+        file = string(site.file::Symbol)
+        starts = isfile(file) ? line_starts(read(file, String)) : Int[]
+        site.line in eachindex(starts) || return nothing
+        return Span(file, starts[site.line], starts[site.line], Precision.line)
+    end
+    return nothing
 end
 
 """Verdict record of root unit `typed` with variant `root` in solved `run`."""
@@ -162,11 +179,12 @@ function unit_verdict!(run::Run, typed::TypedCode, root::Variant)::UnitVerdict
     )
     summary, own = root_summary!(run, root), held_summary(run.slots, root)
     span_of(cause::Integer)::Span = cause_span(typed, run.codes[root], cause)
+    site_of(cause::Integer)::Union{Nothing, Span} = draw_span(run, run.codes[root], cause)
     kind_of(place::Place.Type)::EffectKind.T = path_kind(run.codes[root].ir, first(root).def::Method, place)
-    writes, blind_writes = verdict_accesses(summary.writes, own.writes, span_of, typed.provenance)
+    writes, blind_writes = verdict_accesses(summary.writes, own.writes, span_of, site_of, typed.provenance)
     held_writes, held_blind = lock_writes(summary, span_of, kind_of)
     unguarded, spots = unguarded_holds(summary, span_of)
-    reads, blind_reads = verdict_accesses(summary.reads, own.reads, span_of, typed.provenance)
+    reads, blind_reads = verdict_accesses(summary.reads, own.reads, span_of, site_of, typed.provenance)
     chosen = chosen_rng_arguments(run, root)
     cut = summary.cut ? cut_span(run, typed, root) : nothing
     return UnitVerdict(

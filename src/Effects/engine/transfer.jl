@@ -287,7 +287,7 @@ which holds body result (`TASK_RESULT`). Callable holds caller objects, so no ca
 function spawn!(flow::Flow, writes::OriginAccesses, index::Integer, operands::AbstractVector{Operand.Type}, callees::Callees)::Nothing
     body_writes, body_reads = OriginAccesses(), OriginAccesses()
     dispatch!(flow, body_writes, body_reads, index, operands, callees, false, true)
-    draws = any(variant -> summary!(callees, variant).seeding.draws, callees.variants[index])
+    draws = any(variant -> summary!(callees, variant).rng.draws, callees.variants[index])
     merge_accesses!(writes, filter(((key, _),) -> !(last(key) in TASK_STATE), body_writes), false)
     merge_accesses!(flow.reads, filter(((key, _),) -> !(last(key) in TASK_STATE) || (draws && last(key) == EffectKind.default_rng), body_reads), false)
     split_rng!(writes, index)

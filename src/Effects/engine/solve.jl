@@ -1,12 +1,14 @@
 """
-IR of instance before specialization, source statement index of each IR statement, call outcome of each statement,
-whether each statement builds thrown value only (`message_statements`), whether code uses value of each statement,
-whether stand-ins cut path of its own code (`engine.md`, Stand-in cuts), and `shortcut`: compiler effects prove empty
-summary (`proven_empty!`). Only unit keeps body with shortcut: its call facts need code.
+IR of instance before specialization, source statement index of each IR statement, frame debuginfo of library code
+(`library_line`; `nothing` outside it), call outcome of each statement, whether each statement builds thrown value only
+(`message_statements`), whether code uses value of each statement, whether stand-ins cut path of its own code
+(`engine.md`, Stand-in cuts), and `shortcut`: compiler effects prove empty summary (`proven_empty!`). Only unit keeps
+body with shortcut: its call facts need code.
 """
 struct Body
     ir::CC.IRCode
     lines::Vector{Int}
+    debuginfo::Union{Nothing, Core.DebugInfo}
     outcomes::Vector{Union{Nothing, Outcome.Type}}
     message::Vector{Bool}
     used::Vector{Bool}
@@ -15,12 +17,13 @@ struct Body
 end
 
 """
-Code of variant for solve: specialized IR, statement lines, outcomes, message statements, used statements, cut and
-shortcut of its body, and variants each call reaches.
+Code of variant for solve: specialized IR, statement lines, library debuginfo, outcomes, message statements, used
+statements, cut and shortcut of its body, and variants each call reaches.
 """
 struct Code
     ir::CC.IRCode
     lines::Vector{Int}
+    debuginfo::Union{Nothing, Core.DebugInfo}
     outcomes::Vector{Union{Nothing, Outcome.Type}}
     message::Vector{Bool}
     used::Vector{Bool}
@@ -299,7 +302,8 @@ function frame_body!(run::Run, frame::CC.InferenceState, cut::Bool, unit::Bool, 
     users = statement_users(ir)
     # Statement compiler inserted has no source statement: its uses after compaction count.
     used = [iszero(line) ? !isempty(users[index]) : before[line] for (index, line) in enumerate(lines)]
-    return Body(ir, lines, outcomes, message_statements(users, throw_sinks!(run, frame.linfo, ir)), used, cut, shortcut)
+    debuginfo = method isa Method && library_line(run, method) ? frame.src.debuginfo : nothing
+    return Body(ir, lines, debuginfo, outcomes, message_statements(users, throw_sinks!(run, frame.linfo, ir)), used, cut, shortcut)
 end
 
 """
@@ -350,6 +354,32 @@ Whether `method` keeps documented contracts, so its type branches keep same effe
 blind spots): Base, Core, and stand-in methods that model them.
 """
 keeps_contracts(method::Method)::Bool = Base.moduleroot(method.module) in (Base, Core) || method.module === StandIns
+
+"""
+Whether draw of default RNG in `method` gives its own line as library draw site (`engine.md`, Effect kinds): module
+outside Base, Core, stand-ins, stdlib and package of `run`.
+"""
+library_line(run::Run, method::Method)::Bool =
+    !keeps_contracts(method) && !Base.is_stdlib(Base.PkgId(Base.moduleroot(method.module))) && !(method.module in run.modules)
+
+"""
+Library line of first draw of default RNG in `instance` with `code` and `flow` at fixpoint that names one (`engine.md`,
+Effect kinds): site of callee summary in `callees` at draw, else file line of draw in library code (`library_line`).
+`nothing` when no draw names line.
+"""
+function draw_site!(flow::Flow, callees::Callees, code::Code, instance::Core.MethodInstance)::Union{Nothing, LineNumberNode}
+    for index in flow.draws
+        for variant in callees.variants[index]
+            site = summary!(callees, variant).rng.site
+            isnothing(site) || return site
+        end
+        # Engine IR lines hold source statement indices (`frame_ir`): frame debuginfo maps them to file lines.
+        (isnothing(code.debuginfo) || iszero(code.lines[index])) && continue
+        site = statement_site(something(code.debuginfo), instance, code.lines[index])
+        isnothing(site) || return site
+    end
+    return nothing
+end
 
 """
 Crash journal key of native inference of `instance`; prefix keeps it apart from method store keys. Canonical type text
@@ -517,7 +547,7 @@ function variant_code(run::Run, variant::Variant, body::Body)::Code
             _ => nothing
         end
     end
-    return Code(ir, body.lines, outcomes, body.message, body.used, callees, body.cut, body.shortcut)
+    return Code(ir, body.lines, body.debuginfo, outcomes, body.message, body.used, callees, body.cut, body.shortcut)
 end
 
 """Outcomes of `body` that specialized `ir` keeps: statement that specialization drops (`drop_unreached`) has none."""
@@ -598,7 +628,7 @@ function named_summary(run::Run, variant::Variant)::Summary
     method = first(variant).def::Method
     open, subject = open_summary(Int(method.nargs), BUDGET), named_subject(method, run.codes[variant].ir)
     writes = isnothing(subject) ? Accesses() : Accesses((Place.At(Root.Parameter(subject), NO_STEPS), true, EffectKind.memory) => Effect(CODE_DOUBT, 0, ""))
-    return Summary(writes, open.reads, open.edges, open.backing, open.spread, open.bound, open.callbacks, open.result, open.fresh, true, open.cut, open.held, open.thrown, open.unguarded, open.seeding)
+    return Summary(writes, open.reads, open.edges, open.backing, open.spread, open.bound, open.callbacks, open.result, open.fresh, true, open.cut, open.held, open.thrown, open.unguarded, open.rng)
 end
 
 """
@@ -610,7 +640,7 @@ function variant_summary!(run::Run, variant::Variant, flush::Bool)::Tuple{Summar
     method, slot = first(variant).def::Method, run.slots[variant]
     slot.over_budget && return named_summary(run, variant), Set{Variant}()
     flow, callees = variant_flow(run, variant, flush, false)
-    over_budget(flow) || return summarize!(flow, method, callees), callees.read
+    over_budget(flow) || return summarize!(flow, method, callees, draw_site!(flow, callees, run.codes[variant], first(variant))), callees.read
     slot.over_budget = true
     return named_summary(run, variant), callees.read
 end

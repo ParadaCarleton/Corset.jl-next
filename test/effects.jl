@@ -9,7 +9,7 @@ using Corset.Effects.Summaries:
     library_body!, journal_key!, stronger, most, same, empty_summary, open_summary, referent!, field_step, backing_field, slot_type,
     element_type, constant, value_type, start_flow, statement!, map_node!, CallSite, cause_span, root_of, resolve, operand_type, access!, add!, deep, worst,
     components, foreign_name, foreign_library, FOREIGN_EFFECTS, BLAS_EFFECTS, foreign_effects, blas_library, CallEffects, join_accesses!, JOIN_LIMIT, join_limit, widen, UNSETTLED, Accesses, Edges, Holds, null_pointer, variant_parameters!, Body, type_sources, static_sources, derive!, caller_doubt!, source_provenance,
-    Callback, Callees, Variant, Seeding, root_summary!, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut!, CUT, catches!, cut!,
+    Callback, Callees, Variant, DefaultRng, root_summary!, deferred, parameter_origin, Shortcut, claims!, reaches_untrusted!, stand_in_cut!, CUT, catches!, cut!,
     special_kind, audited_field, site_kind, field_kind, scheduler_method, step_type, HoldCount, HoldCounts, Unguarded, Resource, Path, PATH_LIMIT, plus, join_hold, widen_holds,
     unsettled, add_path!, RELEASE_PATTERN, ZERO_HOLD, unit_body!, root_calls!, merge_calls, merge_callees, load!, store!, store_backing!,
     beneath, map_nodes!, merges_exactly, exact_path, extend, load_any, keyword_types, over_budget, outside_targets!, unknown, Slot, held_summary,
@@ -71,6 +71,20 @@ function line_text(span::Span)::String
     stop = something(findnext('\n', file.text, span.first_byte), ncodeunits(file.text) + 1) - 1
     return file.text[start:stop]
 end
+
+"""Run with package `modules`, solved from instance of `f` on argument `types`, and that root instance."""
+function solved_root(modules::Vector{Module}, f::Any, types::Type...)::Tuple{Summaries.Run, Variant}
+    run = start_run(nothing, modules)
+    root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
+    solve!(run, [root])
+    return run, root
+end
+
+"""Summary of method `f` on argument `types`, solved without package modules."""
+summary_of(f::Any, types::Type...)::Summary = root_summary!(solved_root(Module[], f, types...)...)
+
+"""Package method of draw site test: stdlib draw first, dependency draw (`draw_each_default`) after."""
+draw_after_rand(values::Vector{Float64})::Vector{Float64} = (rand(); CASES.draw_each_default(values))
 
 @testset "fixture verdicts" begin
     definite, possible = Confidence.definite, Confidence.possible
@@ -175,6 +189,30 @@ end
     @test Summaries.holds_task_rng((1, (task_rng,)), 3) && !Summaries.holds_task_rng((1, (2,)), 3)
     @test Summaries.holds_task_rng((((task_rng,),),), 3) && !Summaries.holds_task_rng(((((task_rng,),),),), 3)
     @test !Summaries.holds_task_rng((Int, Base), 3)
+end
+
+@testset "library draw site" begin
+    # Run without package modules: fixture methods count as dependency code.
+    method = which(CASES.draw_each, (AbstractRNG, AbstractVector))
+    site = LineNumberNode(Int(method.line), method.file)
+    @test Summaries.library_line(start_run(nothing, Module[]), method) && !Summaries.library_line(start_run(nothing, Module[CASES]), method)
+    @test !Summaries.library_line(start_run(nothing, Module[]), which(rand, ())) && !Summaries.library_line(start_run(nothing, Module[]), which(sum, (Vector{Int},)))
+    # Closure draw gives line of `draw_each`; caller keeps that line over its own; stdlib draw names none.
+    @test summary_of(CASES.draw_each, Random.TaskLocalRNG, Vector{Float64}).rng.site == site
+    @test summary_of(CASES.draw_each_default, Vector{Float64}).rng.site == site
+    @test isnothing(summary_of(rand).rng.site) && summary_of(rand).rng.draws
+    @test isnothing(summary_of(CASES.draw_from, Xoshiro, Vector{Float64}).rng.site)
+    # Package method passes dependency site of later draw when first draw names none.
+    @test root_summary!(solved_root(Module[@__MODULE__], draw_after_rand, Vector{Float64})...).rng.site == site
+    # Root access at call of dependency takes span of its line.
+    run, root = solved_root(Module[], CASES.draw_each_default, Vector{Float64})
+    code, file = run.codes[root], string(method.file)
+    start = Facts.line_starts(read(file, String))[method.line]
+    spans = [Summaries.draw_span(run, code, index) for index in eachindex(code.callees)]
+    @test nothing in spans && only(unique(filter(!isnothing, spans))) == Span(file, start, start, Precision.line)
+    @test isnothing(Summaries.draw_span(run, code, length(code.callees) + 1))
+    # Package draw names no dependency line.
+    @test all(access -> isnothing(access.site), [access for found in FACTS for access in [found.reads; found.writes]])
 end
 
 """Effects of only fixture method `name`."""
@@ -419,14 +457,6 @@ end
         @test length(journaled.facts.methods) == length(FACTS)
         @test any(record -> startswith(record.key, "effects\n") && !record.finished, records(directory))
     end
-end
-
-"""Summary of method `f` on argument `types`, solved with every instance it reaches."""
-function summary_of(f::Any, types::Type...)::Summary
-    run = start_run(nothing, Module[])
-    root = (only(something(dispatch(Any[typeof(f), types...], run.world, 1))), Pair{Int, Any}[])
-    solve!(run, [root])
-    return root_summary!(run, root)
 end
 
 """Unknown-slot contents of only exported node of `summary`, which must be fresh; coverage shifts its statement index."""
@@ -1119,7 +1149,7 @@ end
 
 """Summary with `fresh` fresh nodes and stores `edges`, memory `backing` and unknown-slot `spread`; it accesses nothing."""
 function fresh_summary(fresh::Integer, edges::Edges, backing::Holds, spread::Holds)::Summary
-    return Summary(Accesses(), Accesses(), edges, backing, spread, Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), fresh, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), Seeding(false, false))
+    return Summary(Accesses(), Accesses(), edges, backing, spread, Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), fresh, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), DefaultRng(false, false, nothing))
 end
 
 """Summary with `fresh` fresh nodes and no stores."""
@@ -1434,12 +1464,12 @@ four_way(x::Symbol) = x
     package_run = start_run(nothing, [@__MODULE__])
     @test join_limit(package_run, only(something(dispatch(Any[typeof(three_way), Int], world, 1)))) == JOIN_LIMIT
     @test join_limit(package_run, only(something(dispatch(Any[typeof(push!), Vector{Int}, Int], world, 1)))) == 1
-    possible_first = Access(parameter(2), false, EffectKind.memory, Confidence.possible, false, typed.site.span)
-    @test worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, false, typed.site.span)])[1].confidence == Confidence.definite
+    possible_first = Access(parameter(2), false, EffectKind.memory, Confidence.possible, false, typed.site.span, nothing)
+    @test worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, false, typed.site.span, nothing)])[1].confidence == Confidence.definite
     # Kinds stay apart: definite IO write never hides `possible` memory write.
-    @test length(worst([possible_first, Access(parameter(2), false, EffectKind.io, Confidence.definite, false, typed.site.span)])) == 2
+    @test length(worst([possible_first, Access(parameter(2), false, EffectKind.io, Confidence.definite, false, typed.site.span, nothing)])) == 2
     # Callback mark stays apart too: definite write of callable argument never hides `possible` own write.
-    @test length(worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, true, typed.site.span)])) == 2
+    @test length(worst([possible_first, Access(parameter(2), false, EffectKind.memory, Confidence.definite, true, typed.site.span, nothing)])) == 2
 end
 
 """Whether `first` and `second` hold same state: same type, and same fields and elements, deep."""
@@ -1617,7 +1647,7 @@ switch_log(switch::Switch) = switch.log
     argument = Operand.Value(Core.Argument(2))
     for (position, link) in enumerate(links)
         outcome = position == length(links) ? Outcome.Builtin(Core.getfield, [argument, Operand.Value(QuoteNode(:a))]) : Outcome.Dispatch([links[position + 1]], [Operand.Value(chain_link), argument])
-        run.bodies[link] = Body(ir, Int[], Union{Nothing, Outcome.Type}[outcome], [false], [false], false, false)
+        run.bodies[link] = Body(ir, Int[], nothing, Union{Nothing, Outcome.Type}[outcome], [false], [false], false, false)
     end
     @test variant_parameters!(run, first(links)) == Set([2])
     # Branch condition: constant flag drops unreached store, as Julia inference does; unknown flag keeps it.
@@ -1691,39 +1721,43 @@ const NODES = Data.Dicts(Data.SampledFrom([Node.Placed(parameter(2)), Node.Fresh
 """Whether `first` doubts at most as `second` does: lower level, or same level with every source of `second`."""
 at_most(first::Doubt, second::Doubt)::Bool = level_of(first) < level_of(second) || level_of(first) == level_of(second) && sources_of(first) & sources_of(second) == sources_of(second)
 
+"""Draw sites for summaries: none, or one of two lines."""
+const SITES = Data.SampledFrom(Union{Nothing, LineNumberNode}[nothing, LineNumberNode(1, :a), LineNumberNode(2, :b)])
+
 """Summaries over two parameters: few places, nodes and causes, so draws overlap."""
-const SUMMARIES = @composed function summaries(writes = ACCESSES, reads = ACCESSES, held = NODES, result = NODES, fresh = Data.Integers(0, 2), closed = Data.Booleans(), cut = Data.Booleans(), seeds = Data.Booleans(), draws = Data.Booleans())
+const SUMMARIES = @composed function summaries(writes = ACCESSES, reads = ACCESSES, held = NODES, result = NODES, fresh = Data.Integers(0, 2), closed = Data.Booleans(), cut = Data.Booleans(), seeds = Data.Booleans(), draws = Data.Booleans(), site = SITES)
     edges = isempty(held) ? Edges() : Edges((Node.Placed(parameter(2)), Step.Element()) => held)
     bound = isempty(held) ? Dict{GlobalRef, Nodes}() : Dict(GlobalRef(Main, :slot) => held)
-    return Summary(writes, reads, edges, Holds(Node.Fresh(1) => held), Holds(), bound, Set{Callback}(), result, fresh, closed, cut, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), Seeding(seeds, draws))
+    return Summary(writes, reads, edges, Holds(Node.Fresh(1) => held), Holds(), bound, Set{Callback}(), result, fresh, closed, cut, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), DefaultRng(seeds, draws, site))
 end
 
 @testset "call cycle widening" begin
     key, single = (Node.Placed(parameter(2)), Resource.lock), HoldCount(1, Level.none, 3, "")
     old_holds, old_unguarded = HoldCounts(key => single), Dict(key => (hold = single, throws = 4))
-    old = Summary(Accesses((parameter(2), false, EffectKind.memory) => Effect(NO_DOUBT, 3, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 1, false, true, old_holds, old_holds, old_unguarded, Seeding(true, false))
+    old = Summary(Accesses((parameter(2), false, EffectKind.memory) => Effect(NO_DOUBT, 3, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 1, false, true, old_holds, old_holds, old_unguarded, DefaultRng(true, false, LineNumberNode(1, :old)))
     new_unguarded = Dict(key => (hold = single, throws = 5))
-    new = Summary(Accesses((parameter(2), false, EffectKind.memory) => Effect(CODE_DOUBT, 2, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, true, false, HoldCounts(key => HoldCount(2, Level.none, 2, "")), old_holds, new_unguarded, Seeding(false, true))
+    new = Summary(Accesses((parameter(2), false, EffectKind.memory) => Effect(CODE_DOUBT, 2, "")), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, true, false, HoldCounts(key => HoldCount(2, Level.none, 2, "")), old_holds, new_unguarded, DefaultRng(false, true, LineNumberNode(2, :new)))
     widened = widen(old, new)
     @test widened.writes == Accesses((parameter(2), false, EffectKind.memory) => Effect(BLIND_DOUBT, 3, UNSETTLED))
     # Hold count and unguarded hold that change become blind; equal ones stay.
     @test widened.held == HoldCounts(key => unsettled(single)) && widened.thrown == old_holds
     @test widened.unguarded == Dict(key => (hold = unsettled(single), throws = 4))
     @test widened.fresh == 1 && widened.closed_world && widened.cut
-    # Reseed must hold in both; draw before reseed in either.
-    @test widened.seeding == Seeding(false, true)
+    # Reseed must hold in both; draw before reseed in either; old draw site stays.
+    @test widened.rng == DefaultRng(false, true, LineNumberNode(1, :old))
     # Callback records of both summaries stay.
     instance = only(something(dispatch(Any[typeof(CASES.set_value!), CASES.Box, Int], Base.get_world_counter(), 1)))
     record = Callback((variant = (instance, Pair{Int, Any}[]), parameters = [Nodes(Node.Placed(parameter(2)) => NO_DOUBT)]))
-    recorded = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set([record]), Nodes(), 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), Seeding(false, false))
+    recorded = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set([record]), Nodes(), 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), DefaultRng(false, false, nothing))
     @test widen(recorded, new).callbacks == Set([record]) && widen(new, recorded).callbacks == Set([record])
     @check max_examples = 300 db = false function widen_grows(old = SUMMARIES, new = SUMMARIES)
         widened = widen(old, new)
         kept = all(issubset(keys(getfield(summary, name)), keys(getfield(widened, name))) for summary in (old, new), name in (:writes, :reads, :result))
         # Least doubt per node: level never rises; `code` sources only grow.
         certain = all(at_most(widened.result[node], doubt) for summary in (old, new) for (node, doubt) in summary.result)
-        reseeded = widened.seeding == Seeding(old.seeding.seeds && new.seeding.seeds, old.seeding.draws || new.seeding.draws)
-        same(widen(widened, new), widened) && kept && certain && reseeded && widened.fresh >= max(old.fresh, new.fresh) && widened.cut == (old.cut || new.cut)
+        reseeded = (widened.rng.seeds, widened.rng.draws) == (old.rng.seeds && new.rng.seeds, old.rng.draws || new.rng.draws)
+        sited = widened.rng.site in (old.rng.site, new.rng.site) && isnothing(widened.rng.site) == (isnothing(old.rng.site) && isnothing(new.rng.site))
+        same(widen(widened, new), widened) && kept && certain && reseeded && sited && widened.fresh >= max(old.fresh, new.fresh) && widened.cut == (old.cut || new.cut)
     end
     # Rerun chain: access changes at most once after it appears, so finite places bound reruns.
     @check max_examples = 300 db = false function widened_chain_settles(chain = Data.Vectors(SUMMARIES; min_size = 1, max_size = 6))
@@ -2151,7 +2185,7 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     state = Set([EffectKind.default_rng, EffectKind.task_local])
     task_reads(summary::Summary)::Set{EffectKind.T} = intersect(kinds_at(summary.reads, elsewhere), state)
     spawned = summary_of(spawned_draw)
-    @test task_reads(spawned) == Set([EffectKind.default_rng]) && spawned.seeding == Seeding(false, true)
+    @test task_reads(spawned) == Set([EffectKind.default_rng]) && (spawned.rng.seeds, spawned.rng.draws) == (false, true)
     # Reseed before every draw on every path: through helper, in both branches. Body task storage stays in new task.
     reseeded = [summary_of(f, types...) for (f, types) in ((seeded_spawn, (Int,)), (helper_seeded_spawn, (Int,)), (both_seed_spawn, (Bool,)), (stash_spawn, ()))]
     @test all(isempty ∘ task_reads, reseeded)
@@ -2162,9 +2196,9 @@ kinds_at(table::Dict{Tuple{Place.Type, Bool, EffectKind.T}, Effect}, root::Root.
     @test all(task_reads(summary_of(f, types...)) == Set([EffectKind.default_rng]) for (f, types) in ((entropy_spawn, ()), (late_seed_spawn, (Int,)), (branch_seed_spawn, (Bool, Int)), (loop_seed_spawn, (Int,))))
     # Reseed in plain function changes caller RNG: draw stays.
     seeded = summary_of(seeded_draw, Int)
-    @test seeded.seeding == Seeding(true, false) && EffectKind.default_rng in kinds_at(seeded.reads, elsewhere)
-    @test summary_of(reseed_with!, Int).seeding.seeds && !summary_of(reseed!).seeding.seeds && !summary_of(maybe_seed!, Union{Nothing, Int}).seeding.seeds
-    @test summary_of(recursive_seed!, Int).seeding.seeds
+    @test (seeded.rng.seeds, seeded.rng.draws) == (true, false) && EffectKind.default_rng in kinds_at(seeded.reads, elsewhere)
+    @test summary_of(reseed_with!, Int).rng.seeds && !summary_of(reseed!).rng.seeds && !summary_of(maybe_seed!, Union{Nothing, Int}).rng.seeds
+    @test summary_of(recursive_seed!, Int).rng.seeds
     # `@threads` and `@async` bodies write argument; task result aliases body result.
     @test doubts(summary_of(threaded_fill!, Vector{Float64}).writes)[top(2)] == NO_DOUBT
     @test doubts(summary_of(async_push!, Vector{Int}).writes)[top(2)] == NO_DOUBT
@@ -2476,7 +2510,7 @@ placed(position::Int, steps::Step.Type...)::Node.Type = Node.Placed(parameter(po
     # Lock write counts lock resource only; file hold on caller place writes nothing.
     span = Span("fixture.jl", 1, 1, Precision.line)
     file_held = HoldCounts((placed(2), lock_) => HoldCount(1, none, 1, ""), (placed(3), file) => HoldCount(1, none, 1, ""))
-    found = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, false, false, file_held, HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), Seeding(false, false))
+    found = Summary(Accesses(), Accesses(), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), Nodes(), 0, false, false, file_held, HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}(), DefaultRng(false, false, nothing))
     writes, blind_writes = Summaries.lock_writes(found, _ -> span, _ -> EffectKind.memory)
     @test shape(writes) == [(parameter(2), false, Confidence.definite)] && only(writes).kind == EffectKind.synchronization && isempty(blind_writes)
     # Semaphore slot counts like lock; `trylock` gives blind spot.
