@@ -1147,6 +1147,7 @@ four_way(x::Symbol) = x
     @test same(empty_summary(), empty_summary()) && !same(empty_summary(), open_summary(1, "cause"))
     opened = open_summary(2, "cause")
     @test opened.writes[memory((parameter(2), true))] == Effect(BLIND_DOUBT, 0, "cause") && opened.result[Node.Outside()] == BLIND_DOUBT
+    @test opened.reads[memory((Place.At(Root.Elsewhere(), Step.Type[]), true))] == Effect(BLIND_DOUBT, 0, "cause")
     cache = IdDict{Any, Bool}()
     @test !referent!(cache, Union{}) && referent!(cache, Union{Int, Vector{Int}}) && !referent!(cache, Union{Int, Symbol})
     @test referent!(cache, AbstractVector) && !referent!(cache, Type{Int}) && referent!(cache, Ptr{Int})
@@ -1764,6 +1765,13 @@ end
     holder = Targets(Origin.Allocation(30) => NO_DOUBT)
     store!(spent, holder, Step.Field(:z), Targets(Origin.Caller(parameter(2)) => NO_DOUBT))
     @test !isempty(load!(spent, holder, Step.Field(:z))) && over_budget(spent) && isempty(load!(spent, holder, Step.Field(:z)))
+    # Open callee may touch global state: caller of zero-argument callee keeps blind write and read on `Elsewhere`.
+    open_run = start_run(nothing, Module[])
+    plus, level_variant = ((only(something(dispatch(Any[typeof(f)], open_run.world, 1))), Pair{Int, Any}[]) for f in (level_plus, level))
+    solve!(open_run, [plus])
+    open_run.slots[level_variant].summary = open_summary(1, "cause")
+    plus_summary, global_key = first(Summaries.variant_summary!(open_run, plus, false)), memory((Place.At(Root.Elsewhere(), Step.Type[]), true))
+    @test all(table -> table[global_key].doubt == BLIND_DOUBT && table[global_key].reason == "cause", (plus_summary.writes, plus_summary.reads))
     # Package unit past budget: blind access with budget cause goes to coverage line.
     _, spots = cached_effects(PACKAGE, UNITS, Union{Nothing, UnitVerdict}[], nothing, Library(); work_limit = 0)
     @test any(spot -> spot.cause == Summaries.BUDGET, spots) && !any(spot -> spot.cause == Summaries.BUDGET, SPOTS)
@@ -1992,6 +2000,7 @@ writes_in_doubt(summary::Summary, position::Int)::Bool = any(kind == EffectKind.
 """Scoped value: read of current task scope."""
 const LEVEL = ScopedValue(1)
 level() = LEVEL[]
+level_plus() = level() + 1
 
 """Package scoped value whose default writes object in code: `ScopedValues.get` runs package code."""
 struct Counted <: Base.ScopedValues.AbstractScopedValue{Int} end

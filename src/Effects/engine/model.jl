@@ -320,11 +320,11 @@ end
 
 """
 Summary of instance with `count` parameters engine cannot analyze, for blind spot `cause`: blind write and read below
-every parameter, result anywhere.
+every parameter and global state (`Elsewhere`), result anywhere. Without `Elsewhere`, caller of `f()` would lose blind spot.
 """
 function open_summary(count::Integer, cause::String)::Summary
     places = [Place.At(Root.Parameter(position), NO_STEPS) for position in 1:count]
-    effects = Accesses((place, true, EffectKind.memory) => Effect(BLIND_DOUBT, 0, cause) for place in places)
+    effects = Accesses((place, true, EffectKind.memory) => Effect(BLIND_DOUBT, 0, cause) for place in [places; Place.At(Root.Elsewhere(), NO_STEPS)])
     result = Nodes(Node.Placed(place) => BLIND_DOUBT for place in places)
     result[Node.Outside()] = BLIND_DOUBT
     return Summary(effects, copy(effects), Edges(), Holds(), Holds(), Dict{GlobalRef, Nodes}(), Set{Callback}(), result, 0, false, false, HoldCounts(), HoldCounts(), Dict{Tuple{Node.Type, Resource.T}, Unguarded}())

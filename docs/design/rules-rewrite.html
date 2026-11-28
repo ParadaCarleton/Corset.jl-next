@@ -1353,7 +1353,7 @@ Random draw (<code>rand</code>, <code>shuffle!</code>) writes its <code>Abstract
 <li>After 8 reruns, member summary widens: union with previous summary. Access that still changes becomes blind (<code>unsettled call cycle</code>).</li>
 <li>Widened summaries only grow through finite values, so fixpoint ends.</li>
 <li>Flow work: targets that loads trace and joins read, over every round of one variant.</li>
-<li>Flow past work limit stops. Own verdict of variant gets open summary: blind access on each parameter, blind spot <code>effects budget</code>.</li>
+<li>Flow past work limit stops. Own verdict of variant gets open summary: blind access on each parameter and on global state, blind spot <code>effects budget</code>.</li>
 <li>Callers of that variant trust its name (<code>effects.md</code>, Name trust): <code>!</code> method writes its first argument that can point to object; other method writes none. Both are <code>possible</code>; reads and result stay blind.</li>
 <li>CLI warns when report holds <code>effects budget</code> blind spot.</li>
 <li>Variant past work limit keeps open summary for whole run: call cycle reruns no flow of it.</li>
