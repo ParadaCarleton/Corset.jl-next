@@ -45,7 +45,7 @@ Engine code lives in `src/Effects/engine/`, module `Effects.Summaries`.
 - Path: field name or element. Path follows declared field types.
 - Path collapses to `deep` at step into concrete type it already passed (recursive type), at third abstract step in a row, or past 8 steps.
 - Place says where access lands; certainty says whether it happens. `deep w` is coarse place: write below it still changes `w`.
-- Field name comes from concrete type, array stand-in family or `Array` family. Other struct family (`Object{K, V} where …`) gives field position.
+- Field name comes from concrete type or struct family (`Object{K, V} where …`): members share names. Tuple and named tuple families give position.
 - Memory backing belongs to its owner: field of type `GenericMemory` or `GenericMemoryRef` adds no step. Write to `Vector` elements writes `Vector`.
 - Callee or table access to owner may land on its memory alone or owner alone: memory behind it gets `possible` access (`pop!` of `Base.wrap(Array, m, n)`).
 - Memory address (`Ptr`, `MemoryRef`) that callee returns names memory behind fresh owner: write through it writes that memory.

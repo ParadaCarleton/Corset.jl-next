@@ -536,6 +536,7 @@ spread!(values::Vector{Int}, more::Tuple{Int, Int}) = push!(values, more...)
 spread_rest!(values::Vector{Int}, more::Tuple{Vararg{Int}}) = push!(values, more...)
 nested_spread!(values::Vector{Int}, more::Tuple{Tuple{Int}}) = push!(values, more[1]...)
 dynamic!(container::Any) = sort!(container)
+closure_call(f::Function) = (() -> f())()
 nested_apply(values::Vector{Int}, more::Tuple{Tuple{Int}}) = (values[1] = 0; Core._apply_iterate(iterate, Core._apply_iterate, (iterate, push!, values), more))
 @eval embedded() = $(Ref([1]))
 unknown_field(holder::Module, name::Symbol) = getfield(Core.getglobal(holder, name)::Base.RefValue{Vector{Int}}, :x)
@@ -910,6 +911,8 @@ end
     @test doubts(summary_of(spread_rest!, Vector{Int}, Tuple{Vararg{Int}}).writes) == Dict(top(2) => none)
     # Open dispatch on `::Any` argument: its type is source of doubt, so caller provenance decides.
     @test summary_of(dynamic!, Any).writes[memory((parameter(2), true))].doubt == sourced(2)
+    # Closure of struct family type stores capture by field name, as closure body reads it; argument type is doubt.
+    @test summary_of(closure_call, Function).writes[memory((parameter(2), true))].doubt == sourced(2)
     # No method matches: call throws, so it writes and reads nothing.
     @test isempty(summary_of(no_method, Vector{Int}).writes) && isempty(summary_of(no_method, Vector{Int}).reads)
     @test summary_of(nested_apply, Vector{Int}, Tuple{Tuple{Int}}).writes[memory((parameter(2), true))].doubt == code
@@ -1158,8 +1161,10 @@ four_way(x::Symbol) = x
     @test !referent!(cache, Tuple{Vararg{Int}}) && !referent!(cache, Tuple{Symbol, Vararg{Union{Int, Float64}}}) && referent!(cache, Tuple{Vararg{Vector{Int}}})
     @test referent!(cache, Tuple{Int, Vararg}) && referent!(cache, Tuple{Vararg{Integer}})
     @test field_step(Tuple{Int}, :a) === nothing && field_step(Tuple{Int}, 1) == Step.Position(1)
-    # Array stand-in and `Array` families name fields as members do; code struct family keeps `Position`.
-    @test field_step(Base.RefValue{Int}, 1) == Step.Field(:x) && field_step(Base.RefValue, 1) == Step.Position(1)
+    # Struct family names fields as members do; tuple and named tuple families keep `Position`.
+    @test field_step(Base.RefValue{Int}, 1) == Step.Field(:x) && field_step(Base.RefValue, 1) == Step.Field(:x)
+    @test field_step(Base.RefValue{<:Function}, 1) == Step.Field(:x) && !backing_field(Base.RefValue{<:Function}, :x)
+    @test field_step(NamedTuple{(:a,), <:Tuple}, 1) == Step.Position(1)
     @test field_step(ArrayStandIn{<:Any, 1}, 1) == Step.Field(:data) && field_step(Vector, 2) == Step.Field(:size)
     @test field_step(Union{ArrayStandIn{T, 1}, DenseStandIn{T, 1}} where {T}, 1) == Step.Position(1)
     @test field_step(AbstractVector, 1) == Step.Position(1) && field_step(NTuple{N, Int} where {N}, 1) == Step.Position(1)
@@ -1170,7 +1175,8 @@ four_way(x::Symbol) = x
     @test !backing_field(Base.RefValue, :x)
     @test slot_type(Base.RefValue{Int}, nothing) == Any && slot_type(Base.RefValue{Int}, Some{Any}(:x)) == Int
     @test slot_type(Base.RefValue{Int}, Some{Any}(:nope)) == Any && slot_type(AbstractVector, Some{Any}(1)) == Any
-    @test slot_type(ArrayStandIn{<:Any, 1}, Some{Any}(:data)) == Vector && slot_type(Base.RefValue{<:Real}, Some{Any}(:x)) == Any
+    # Field type of struct family keeps bound of its variable.
+    @test slot_type(ArrayStandIn{<:Any, 1}, Some{Any}(:data)) == Vector && slot_type(Base.RefValue{<:Real}, Some{Any}(:x)) == Real
     @test element_type(Ptr{Int}) == Int && element_type(Vector{Int}) == Any && element_type(Union{Int, Ptr{Int}}) == Any
     @test element_type(MemoryRef{Vector{Int}}) == Vector{Int}
     @test root_of(Place.Deep(Root.Elsewhere())) == Root.Elsewhere()
