@@ -308,7 +308,8 @@ Summary keeps hold count per resource place at normal exit and at throw exit. Co
 - Library summary: variant of library instance. Disk cache keeps it; cache hit skips native inference and passes.
 - Cache also keeps variant parameters and stand-in cut of library instances.
 - Partition: Julia version, cache flags and Corset producer source (`Cache.PRODUCERS`). One library file per partition serves every checked path and environment.
-- Producer source: `Inference`, `Effects`, modules they import, and `Cache`. Edit of rules, CLI or rendering keeps library and method store.
+- Producer source: `Inference`, `Effects`, modules they import, `Cache`, and every file they include. Edit of rules, CLI or rendering keeps library and method store.
+- Key follows literal `include` paths; include of computed path in producer throws.
 - Partition leaves Corset preferences out: relaunch copies checked project's `[Corset]` config into them.
 - Entry key: kind, closure key of instance, and constants of variant. Module constant adds its owner text.
 - Closure key: digest over strongly connected components of native edge graph, callees first. Walk order cannot change it.

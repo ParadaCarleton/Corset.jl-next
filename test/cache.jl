@@ -157,11 +157,23 @@ end
 
     @testset "producer source" begin
         # Store and library keys read producer files only, so module that producer imports must be producer too.
-        source, files = joinpath(Cache.corset_root(), "src"), Cache.producer_files()
+        source = joinpath(Cache.corset_root(), "src")
+        files = Cache.producer_files(source, Cache.PRODUCERS)
         producers = Set(first(splitext(first(splitpath(relpath(file, source))))) for file in files)
         @test Set(found[1] for file in files for found in eachmatch(r"\.\.+([A-Z]\w*)", read(file, String))) ⊆ producers
         @test "Inference" in producers && "Effects" in producers && isdisjoint(producers, ("Rules", "Engine", "CLI", "Launch"))
-        @test Cache.producer_digest() == Cache.producer_digest()
+        @test joinpath(source, "Inference", "failures.jl") in files && Cache.producer_digest() == Cache.producer_digest()
+        mktempdir(@__DIR__) do scratch
+            write_files(scratch, "A.jl" => "include(\"A/b.jl\")\n", "A/b.jl" => "b = 1\n", "C.jl" => "")
+            original = Cache.producer_digest(scratch, ("A.jl",))
+            # File no entry includes stays out; included file counts by content.
+            write_files(scratch, "C.jl" => "c = 1\n")
+            @test Cache.producer_digest(scratch, ("A.jl",)) == original
+            write_files(scratch, "A/b.jl" => "b = 2\n")
+            @test Cache.producer_digest(scratch, ("A.jl",)) != original
+            write_files(scratch, "A.jl" => "include(name)\n")
+            @test_throws ArgumentError Cache.producer_files(scratch, ("A.jl",))
+        end
     end
 
     @testset "library key" begin

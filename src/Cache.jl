@@ -15,10 +15,10 @@ using TOML: TOML
 corset_root()::String = pkgdir(Base.moduleroot(@__MODULE__))
 
 """
-Corset source below `src` that method store entries and library summaries depend on: `Inference`, `Effects`, each
-module they import, transitively, and `Cache`. Store and library keys hash only these, so other edit keeps both.
+Entry files below `src` of Corset modules that make method store entries and library summaries: `Inference`, `Effects`,
+each module they import, transitively, and `Cache`. Store and library keys hash these and files they include.
 """
-const PRODUCERS = ("Cache.jl", "Config.jl", "Discovery.jl", "Effects", "Facts.jl", "Guesses.jl", "HardArrays.jl", "Inference.jl", "Narrowing.jl", "Package.jl", "Signatures.jl", "StandIns.jl", "Syntax.jl", "Widening.jl")
+const PRODUCERS = ("Cache.jl", "Config.jl", "Discovery.jl", "Effects/Effects.jl", "Facts.jl", "Guesses.jl", "HardArrays.jl", "Inference.jl", "Narrowing.jl", "Package.jl", "Signatures.jl", "StandIns.jl", "Syntax.jl", "Widening.jl")
 
 """Cache directory of command line: scratch space of Corset in Julia depot. CI that saves depot keeps it."""
 directory()::String = get_scratch!(Base.moduleroot(@__MODULE__), "analyses")
@@ -38,18 +38,36 @@ function tree_files(root::String, cache::String)::Vector{String}
     return sort!(files)
 end
 
-"""Files of `PRODUCERS` in Corset source, sorted. Missing producer file stays listed, so `producer_digest` throws."""
-producer_files()::Vector{String} = sort!(reduce(vcat, (isdir(path) ? tree_files(path, "") : [path] for path in joinpath.(corset_root(), "src", PRODUCERS))))
+"""
+Files of `source` that `entries` load: each entry and every file it includes, transitively, sorted. Include of computed
+path throws, as key could not follow it; so does missing file.
+"""
+function producer_files(source::String, entries::Tuple{Vararg{String}})::Vector{String}
+    pending, found = joinpath.(source, collect(entries)), Set{String}()
+    while !isempty(pending)
+        file = pop!(pending)
+        file in found && continue
+        push!(found, file)
+        text = read(file, String)
+        literal = [joinpath(dirname(file), only(included.captures)) for included in eachmatch(r"^\s*include\(\"([^\"]+)\"\)"m, text)]
+        count(r"^\s*include\("m, text) == length(literal) || throw(ArgumentError("$file: include of computed path, which producer key cannot follow"))
+        append!(pending, literal)
+    end
+    return sort!(collect(found))
+end
 
-"""Digest of each `producer_files` file by path below Corset `src` and content; location of Corset stays out."""
-function producer_digest()::String
-    source, context = joinpath(corset_root(), "src"), SHA.SHA256_CTX()
-    for file in producer_files()
+"""Digest of each `producer_files` file of `source` and `entries` by path below `source` and content."""
+function producer_digest(source::String, entries::Tuple{Vararg{String}})::String
+    context = SHA.SHA256_CTX()
+    for file in producer_files(source, entries)
         update_part!(context, relpath(file, source))
         update_part!(context, read(file, String))
     end
     return bytes2hex(SHA.digest!(context))
 end
+
+"""Digest of Corset producer source (`PRODUCERS`); location of Corset stays out."""
+producer_digest()::String = producer_digest(joinpath(corset_root(), "src"), PRODUCERS)
 
 """
 Directories of `path` entries in Manifest of project file `environment`, made absolute. Reads Manifest format 1 too:
