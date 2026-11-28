@@ -39,6 +39,13 @@ end
 """Stored verdicts of inference run that infers every unit: none."""
 const NONE_STORED = Union{Nothing, UnitVerdict}[]
 
+"""Index and names of differing fields (`:nothing` when one is `nothing`) of each verdict pair whose text differs."""
+function mismatches(left::Vector{Union{Nothing, UnitVerdict}}, right::Vector{Union{Nothing, UnitVerdict}})::Vector{Tuple{Int, Vector{Symbol}}}
+    differing(x::UnitVerdict, y::UnitVerdict)::Vector{Symbol} = [name for name in fieldnames(UnitVerdict) if repr(getfield(x, name)) != repr(getfield(y, name))]
+    differing(x::Any, y::Any)::Vector{Symbol} = [:nothing]
+    return [(index, differing(x, y)) for (index, (x, y)) in enumerate(zip(left, right)) if repr(x) != repr(y)]
+end
+
 const UNITS, USED = inferred(Store())
 const FACTS, SPOTS, RECORDS, LIBRARY = cached_effects(PACKAGE, UNITS, NONE_STORED, nothing, Library())
 
@@ -322,11 +329,16 @@ end
     @testset "unit records" begin
         world = Base.get_world_counter()
         @test all(record -> repr(unit_record(record_bytes(record), world)) == repr(record), RECORDS)
-        # Verdicts on all threads match serial verdicts of same solved run.
+        # Verdicts on all threads match serial verdicts of fresh solve, and serial rerun on same run.
         run, typed_of = solved_run(PACKAGE, UNITS, NONE_STORED, nothing, Library(), WORK_LIMIT, nothing)
         threaded = unit_verdicts!(run, UNITS.typed, typed_of)
-        serial = [typed_of[typed.frame.linfo] === typed ? unit_verdict!(run, typed, (typed.frame.linfo, Pair{Int, Any}[])) : nothing for typed in UNITS.typed]
-        @test count(!isnothing, threaded) > 1 && repr(threaded) == repr(serial)
+        serial_verdicts(solved::Run, roots::AbstractDict{Core.MethodInstance})::Vector{Union{Nothing, UnitVerdict}} = Union{Nothing, UnitVerdict}[roots[typed.frame.linfo] === typed ? unit_verdict!(solved, typed, (typed.frame.linfo, Pair{Int, Any}[])) : nothing for typed in UNITS.typed]
+        serial = serial_verdicts(solved_run(PACKAGE, UNITS, NONE_STORED, nothing, Library(), WORK_LIMIT, nothing)...)
+        @test count(!isnothing, threaded) > 1
+        @test isempty(mismatches(threaded, serial))
+        @test isempty(mismatches(threaded, serial_verdicts(run, typed_of)))
+        # Records of file setup ran before test loads other packages.
+        @test isempty(mismatches(RECORDS, serial))
         calls = [fact for record in RECORDS if !isnothing(record) for (_, fact) in record.calls]
         # Round trip covers callee methods, dead call and builtin.
         callees = [callee_methods(fact.callee) for fact in calls]
